@@ -203,6 +203,14 @@ export interface DischargeInput {
   readonly forCauseReason?: string;
 }
 
+/** §4.2.7 route 37 body (TransferOutSchema) — the receiving hospice's identity + the transfer narrative. */
+export interface TransferOutInput {
+  readonly effectiveDate: string;
+  readonly otherHospiceName: string;
+  readonly otherHospiceCcn?: string;
+  readonly narrative: string;
+}
+
 /** The discharge outcome the route returns (§4.2 — `requiresMedicalDirectorCosign` drives route 40). */
 export interface DischargeResult extends MutationResult {
   readonly requiresMedicalDirectorCosign: boolean;
@@ -458,6 +466,7 @@ export interface AdmissionRouteService {
   transferOut(
     organizationId: string,
     admissionId: string,
+    input: TransferOutInput,
     actorUserId: string,
   ): Promise<MutationResult>;
   transferIn(
@@ -539,6 +548,13 @@ interface Rec {
   // NOR acknowledgment facts (TASK-034) — what was actually submitted, not a hardcoded default.
   deliveryMethod?: NorAcknowledgeInput["deliveryMethod"];
   acknowledgedByRole?: NorAcknowledgeInput["acknowledgedByRole"];
+  // transfer facts (§4.2.7 routes 37/38) — the counterparty hospice identity + narrative, what was
+  // actually submitted rather than silently dropped.
+  direction?: "in" | "out";
+  effectiveAt?: string;
+  otherHospiceName?: string;
+  otherHospiceCcn?: string | null;
+  narrative?: string;
 }
 
 /** A seed record for the slice (lets a test pre-populate a resource with owner facts for ABAC). */
@@ -1093,7 +1109,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       events.push("m6.admission.discharged");
       return summary(rec);
     },
-    async transferOut(organizationId, admissionId, actorUserId) {
+    async transferOut(organizationId, admissionId, input, actorUserId) {
       void actorUserId;
       const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
       adm.state = "discharged";
@@ -1101,6 +1117,11 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const rec = insert("transfer", organizationId, "created", {
         admissionId: adm.id,
         patientId: adm.patientId,
+        direction: "out",
+        effectiveAt: input.effectiveDate,
+        otherHospiceName: input.otherHospiceName,
+        otherHospiceCcn: input.otherHospiceCcn ?? null,
+        narrative: input.narrative,
       });
       events.push("m6.transfer.created");
       events.push("m6.admission.discharged");
@@ -1135,6 +1156,11 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const rec = insert("transfer", organizationId, "created", {
         admissionId: adm.id,
         patientId: adm.patientId,
+        direction: "in",
+        effectiveAt: input.effectiveDate,
+        otherHospiceName: input.otherHospiceName,
+        otherHospiceCcn: input.otherHospiceCcn ?? null,
+        narrative: input.narrative,
       });
       events.push("m6.transfer.created");
       events.push("m6.election.period_started");

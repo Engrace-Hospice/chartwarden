@@ -573,8 +573,18 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     { preHandler: [TRANSFER_OUT] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
-      parse(TransferOutSchema, request.body);
-      const res = await service.transferOut(organizationId, idOf(request), userId);
+      const body = parse(TransferOutSchema, request.body);
+      const res = await service.transferOut(
+        organizationId,
+        idOf(request),
+        {
+          effectiveDate: body.effectiveDate,
+          otherHospiceName: body.otherHospiceName,
+          otherHospiceCcn: body.otherHospiceCcn,
+          narrative: body.narrative,
+        },
+        userId,
+      );
       return reply.code(201).send(res);
     },
   );
@@ -593,6 +603,10 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
           priorElectionStartDate: body.priorElectionStartDate,
           hospiceMedicalDirectorId: body.hospiceMedicalDirectorId,
           attendingPhysicianId: body.attendingPhysicianId,
+          effectiveDate: body.effectiveDate,
+          otherHospiceName: body.otherHospiceName,
+          otherHospiceCcn: body.otherHospiceCcn,
+          narrative: body.narrative,
         },
         userId,
       );

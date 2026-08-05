@@ -404,6 +404,9 @@ describe("M6-T12 §7.6 — discharge workflows (W-DC)", () => {
         priorBenefitPeriodSequence: 3,
         priorElectionStartDate: "2026-04-01",
         hospiceMedicalDirectorId: "md_1",
+        effectiveDate: "2026-04-01",
+        otherHospiceName: "Other Hospice",
+        narrative: "patient transferred in from another hospice mid-benefit-period",
       },
       U,
     );

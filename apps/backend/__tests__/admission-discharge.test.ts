@@ -294,6 +294,9 @@ describe("M6-T09 — slice: discharge cascades (§7.6)", () => {
         priorBenefitPeriodSequence: 3,
         priorElectionStartDate: "2026-04-01",
         hospiceMedicalDirectorId: "md_1",
+        effectiveDate: "2026-04-01",
+        otherHospiceName: "Other Hospice",
+        narrative: "patient transferred in from another hospice mid-benefit-period",
       },
       "u1",
     );
@@ -311,7 +314,16 @@ describe("M6-T09 — slice: discharge cascades (§7.6)", () => {
     );
 
     const xfer = seedAdmission();
-    await xfer.service.transferOut(ORG, ADMISSION, "u1");
+    await xfer.service.transferOut(
+      ORG,
+      ADMISSION,
+      {
+        effectiveDate: "2026-06-20",
+        otherHospiceName: "Other Hospice",
+        narrative: "patient requested transfer to a closer facility",
+      },
+      "u1",
+    );
     expect(xfer.events).toEqual(
       expect.arrayContaining(["m6.transfer.created", "m6.admission.discharged"]),
     );

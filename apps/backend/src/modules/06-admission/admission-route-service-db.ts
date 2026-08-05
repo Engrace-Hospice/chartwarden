@@ -27,7 +27,12 @@ import {
 } from "./discharge/permission-map";
 import { type TransferInInput, planTransferIn } from "./discharge/transfer-in";
 import { computeActivationGate } from "./intake";
-import type { CtiDraftInput, DischargeInput, DischargeResult } from "./routes/service";
+import type {
+  CtiDraftInput,
+  DischargeInput,
+  DischargeResult,
+  TransferOutInput,
+} from "./routes/service";
 import {
   ActivationPreconditionError,
   InvalidReferralStateError,
@@ -1913,11 +1918,15 @@ export function createDbAdmissionRouteService(
         return { id: rev.id, state: "created", version: Number(rev.version) };
       });
     },
-    async transferOut(organizationId, admissionId, actorUserId): Promise<MutationResult> {
+    async transferOut(
+      organizationId,
+      admissionId,
+      input: TransferOutInput,
+      actorUserId,
+    ): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const period = await latestPeriod(tx, admissionId);
         if (!period) throw new ResourceNotFoundError(admissionId);
-        const today = new Date().toISOString().slice(0, 10);
         const xfer = firstOrThrow(
           await tx
             .insert(TE)
@@ -1925,8 +1934,11 @@ export function createDbAdmissionRouteService(
               organizationId,
               admissionId,
               direction: "out",
-              effectiveAt: today,
+              effectiveAt: input.effectiveDate,
               periodSequenceAtTransfer: period.sequence,
+              receivingOrSendingCcn: input.otherHospiceCcn ?? null,
+              receivingOrSendingName: input.otherHospiceName,
+              narrative: input.narrative,
             })
             .returning({ id: TE.id, version: TE.version }),
           "transfer insert returned no row",
@@ -1934,7 +1946,7 @@ export function createDbAdmissionRouteService(
         // §2.3.1 — a transfer-out discharges the admission (the receiving hospice inherits the election).
         await dischargeAdmissionTx(tx, organizationId, admissionId, {
           dischargeType: "transfer",
-          effectiveAt: today,
+          effectiveAt: input.effectiveDate,
           forCauseCosigned: false,
         });
         await outbox.publish(tx, {
@@ -2001,7 +2013,6 @@ export function createDbAdmissionRouteService(
           aggregateKind: "certification_of_terminal_illness",
           aggregateId: cti.id,
         });
-        const today = new Date().toISOString().slice(0, 10);
         const xfer = firstOrThrow(
           await tx
             .insert(TE)
@@ -2009,8 +2020,11 @@ export function createDbAdmissionRouteService(
               organizationId,
               admissionId,
               direction: "in",
-              effectiveAt: today,
+              effectiveAt: input.effectiveDate,
               periodSequenceAtTransfer: plan.inherited.sequence,
+              receivingOrSendingCcn: input.otherHospiceCcn ?? null,
+              receivingOrSendingName: input.otherHospiceName,
+              narrative: input.narrative,
             })
             .returning({ id: TE.id, version: TE.version }),
           "transfer insert returned no row",

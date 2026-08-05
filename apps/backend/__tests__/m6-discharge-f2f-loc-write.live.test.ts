@@ -367,13 +367,31 @@ describe.skipIf(!DB_URL)(
       expect(ep.rows.every((r: { status: string }) => r.status === "completed")).toBe(true);
     });
 
-    it("transfer-out → admission discharged", async () => {
+    it("transfer-out → admission discharged, with the counterparty hospice + narrative persisted", async () => {
       const { admissionId } = await activeAdmission(randomUUID());
-      const xfer = await svc.transferOut(ORG_A, admissionId, USER);
+      const xfer = await svc.transferOut(
+        ORG_A,
+        admissionId,
+        {
+          effectiveDate: "2026-06-15",
+          otherHospiceName: "Sunrise Hospice",
+          otherHospiceCcn: "391234",
+          narrative: "patient relocated closer to family; care transferred by mutual agreement",
+        },
+        USER,
+      );
       expect(xfer.state).toBe("created");
       expect((await svc.getAdmission(ORG_A, admissionId))!.state).toBe("discharged");
-      const row = await admin.query("SELECT direction FROM transfer_event WHERE id=$1", [xfer.id]);
+      const row = await admin.query(
+        `SELECT direction, effective_at::text, receiving_or_sending_ccn, receiving_or_sending_name, narrative
+           FROM transfer_event WHERE id=$1`,
+        [xfer.id],
+      );
       expect(row.rows[0].direction).toBe("out");
+      expect(row.rows[0].effective_at).toBe("2026-06-15");
+      expect(row.rows[0].receiving_or_sending_ccn).toBe("391234");
+      expect(row.rows[0].receiving_or_sending_name).toBe("Sunrise Hospice");
+      expect(row.rows[0].narrative).toMatch(/relocated closer to family/);
     });
 
     it("transfer-in → inherited active + next pending period (no counter restart)", async () => {
@@ -390,10 +408,23 @@ describe.skipIf(!DB_URL)(
           priorBenefitPeriodSequence: 3,
           priorElectionStartDate: "2026-01-01",
           hospiceMedicalDirectorId: MD,
+          effectiveDate: "2026-04-01",
+          otherHospiceName: "Prior Hospice Inc",
+          otherHospiceCcn: "381588",
+          narrative: "patient transferred in mid-benefit-period from Prior Hospice Inc",
         },
         USER,
       );
       expect(res.currentElectionPeriodSequence).toBe(3);
+      const xferRow = await admin.query(
+        `SELECT effective_at::text, receiving_or_sending_ccn, receiving_or_sending_name, narrative
+           FROM transfer_event WHERE id=$1`,
+        [res.id],
+      );
+      expect(xferRow.rows[0].effective_at).toBe("2026-04-01");
+      expect(xferRow.rows[0].receiving_or_sending_ccn).toBe("381588");
+      expect(xferRow.rows[0].receiving_or_sending_name).toBe("Prior Hospice Inc");
+      expect(xferRow.rows[0].narrative).toMatch(/transferred in mid-benefit-period/);
       const periods = await svc.listElectionPeriods(ORG_A, adm.id);
       const seqs = await admin.query(
         "SELECT id, sequence_number, status FROM election_period WHERE admission_id=$1 ORDER BY sequence_number",

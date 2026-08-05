@@ -18,6 +18,14 @@ export interface TransferInInput {
    */
   readonly hospiceMedicalDirectorId: string;
   readonly attendingPhysicianId?: string;
+  /** The date the transfer took effect — anchors `transfer_event.effective_at` (not `now()`). */
+  readonly effectiveDate: string;
+  /** The sending hospice's name — `transfer_event.receiving_or_sending_name`. */
+  readonly otherHospiceName: string;
+  /** The sending hospice's CMS CCN, when known — `transfer_event.receiving_or_sending_ccn`. */
+  readonly otherHospiceCcn?: string;
+  /** Free-text transfer narrative — `transfer_event.narrative`. */
+  readonly narrative: string;
 }
 
 /** A planned election period the receiving hospice creates on the new transferred-in admission. */

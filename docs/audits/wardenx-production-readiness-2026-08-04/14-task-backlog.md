@@ -406,6 +406,26 @@
   period (not the inherited one), and that signing it activates that period. `openapi.json` +
   `packages/ui/src/core/api/schema.ts` regenerated (request schema changed). Full gate green + all 6 M6
   live suites (50 tests).
+- **Follow-up, same day**: `TransferInSchema`/`TransferOutSchema` both accept
+  `otherHospiceName`/`otherHospiceCcn`/`narrative`/`effectiveDate`, but neither route handler forwarded
+  them to the service — `transferIn` used a hardcoded `today()` and never wrote to
+  `transfer_event.receiving_or_sending_{ccn,name}`/`narrative`; `transferOut` was worse, its service
+  signature had NO input parameter at all, so those 4 fields were structurally unreachable regardless of
+  what the client sent. The `transfer_event` table already had the right columns (its own doc comment:
+  "routes 37/38 do not yet capture the counterparty agency"), so this was purely dead wiring, same class
+  as `intakeMethod` and the CTI-for-`next`-period gaps above. Fixed: widened `TransferInInput` with
+  `effectiveDate`/`otherHospiceName`/`otherHospiceCcn`/`narrative`; added a new `TransferOutInput` type +
+  updated `AdmissionRouteService.transferOut`'s signature to take it; both DB and in-memory-fake
+  implementations of both methods now persist all four fields (`transferOut`'s discharge-effective-date
+  also switched from `now()` to the caller-supplied `effectiveDate`, for consistency). Updated the 4
+  existing `transferIn`/`transferOut` call sites (2 fake-service unit tests, 2 in the same live-test
+  file) and extended both live tests to read back `transfer_event` and assert the persisted values match
+  what was submitted. No OpenAPI regen needed this time (the route SCHEMAS didn't change, only what the
+  handlers do with fields they already declared). Full gate green + all 6 M6 live suites (50 tests).
+  **Noted, not fixed** (a further instance of the same pattern, genuinely separate): route 36
+  (`POST .../revocation`) parses `RevocationCreateSchema` (`revocationDate`/`narrative`/
+  `signingPatientName`/`signingRole`) but `createRevocation(organizationId, admissionId, actorUserId)`
+  has no input parameter either — all four fields are dropped the same way `transferOut`'s were.
 
   4 new unit tests (state-machine coverage already existed), 4 new HTTP-inject tests (`admission-routes.test.ts` —
   proving the real route, not just the service method, including the short-code fix), 2 new live-Postgres
