@@ -4,7 +4,7 @@
     "enriched": 1217,
     "deficit": 7,
     "mutating": 699,
-    "mutatingNoBody": 113,
+    "mutatingNoBody": 112,
     "gets": 494,
     "getsNoResponse": 80
   },
@@ -385,7 +385,7 @@
       "enriched": 27,
       "deficit": 0,
       "mutating": 13,
-      "mutatingNoBody": 3,
+      "mutatingNoBody": 2,
       "gets": 13,
       "getsNoResponse": 0
     },

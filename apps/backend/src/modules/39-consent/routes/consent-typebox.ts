@@ -56,7 +56,39 @@ export const CreateDraftBodySchema = Type.Object({
     ].map((m) => Type.Literal(m)),
   ),
   scopeDescriptor: Type.Unknown(),
+  grantorUserId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
+  grantorCaregiverId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
+  grantorRelationshipText: Type.Optional(
+    Type.Union([Type.String({ minLength: 2, maxLength: 100 }), Type.Null()]),
+  ),
+  actingConsentId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
+  effectiveAt: Type.Optional(Type.String({ minLength: 20 })),
+  expiresAt: Type.Optional(Type.Union([Type.String({ minLength: 20 }), Type.Null()])),
+  jurisdictionCode: Type.Optional(
+    Type.Union([Type.String({ pattern: "^[A-Z]{2}$" }), Type.Null()]),
+  ),
+  languageCode: Type.Optional(
+    Type.Union([Type.String({ pattern: "^[a-z]{2}(-[A-Z]{2})?$" }), Type.Null()]),
+  ),
+  survivesDeath: Type.Optional(Type.Boolean()),
+  internalNotesPlaintext: Type.Optional(
+    Type.Union([Type.String({ maxLength: 4000 }), Type.Null()]),
+  ),
 });
+
+export const CaptureEvidenceSchema = Type.Object({
+  signedAtIso: Type.Optional(Type.String({ minLength: 20 })),
+  typedSignatureName: Type.Optional(Type.String({ minLength: 2, maxLength: 200 })),
+  typedSignatureRole: Type.Optional(Type.String({ minLength: 2, maxLength: 100 })),
+  portalSessionId: Type.Optional(Type.String({ minLength: 1 })),
+  uploadedPdfDocumentId: Type.Optional(Type.String({ format: "uuid" })),
+  witnessName: Type.Optional(Type.String({ minLength: 2, maxLength: 200 })),
+  witnessAttestationText: Type.Optional(Type.String({ minLength: 20, maxLength: 4000 })),
+  witnessSignatureEvidenceDocumentId: Type.Optional(Type.String({ format: "uuid" })),
+  notaryCertificateDocumentId: Type.Optional(Type.String({ format: "uuid" })),
+});
+
+export const SignConsentBodySchema = Type.Object({ captureEvidence: CaptureEvidenceSchema });
 
 export const RevokeBodySchema = Type.Object({
   revokedByKind: Type.Union(
@@ -204,6 +236,9 @@ export const UpdateDraftBodySchema = Type.Object({
   captureMethod: Type.Optional(CAPTURE_METHOD),
   grantorKind: Type.Optional(GRANTOR_KIND),
   survivesDeath: Type.Optional(Type.Boolean()),
+  internalNotesPlaintext: Type.Optional(
+    Type.Union([Type.String({ maxLength: 4000 }), Type.Null()]),
+  ),
 });
 
 /** Route 9 — POST /consents/:consentId/supersede. */
@@ -211,7 +246,14 @@ export const SupersedeBodySchema = Type.Object({
   scopeDescriptor: Type.Unknown(),
   captureMethod: CAPTURE_METHOD,
   grantorKind: GRANTOR_KIND,
+  grantorUserId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
+  grantorCaregiverId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
+  grantorRelationshipText: Type.Optional(
+    Type.Union([Type.String({ minLength: 2, maxLength: 100 }), Type.Null()]),
+  ),
+  actingConsentId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
   survivesDeath: Type.Optional(Type.Boolean()),
+  captureEvidence: CaptureEvidenceSchema,
 });
 
 /** Route 20 — POST /consents/:consentId/renew. */
@@ -219,7 +261,14 @@ export const RenewBodySchema = Type.Object({
   scopeDescriptor: Type.Unknown(),
   captureMethod: CAPTURE_METHOD,
   grantorKind: GRANTOR_KIND,
+  grantorUserId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
+  grantorCaregiverId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
+  grantorRelationshipText: Type.Optional(
+    Type.Union([Type.String({ minLength: 2, maxLength: 100 }), Type.Null()]),
+  ),
+  actingConsentId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
   expiresAt: Type.Optional(Type.Union([isoInstant(), Type.Null()])),
+  captureEvidence: CaptureEvidenceSchema,
 });
 
 /** Route 12 — POST /consents/:consentId/recipients. */

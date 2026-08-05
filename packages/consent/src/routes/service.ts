@@ -76,6 +76,35 @@ export interface CreateConsentDraftInput {
   scopeDescriptor: unknown;
   createdById: string;
   survivesDeath?: boolean;
+  grantorUserId?: string | null;
+  grantorCaregiverId?: string | null;
+  grantorRelationshipText?: string | null;
+  actingConsentId?: string | null;
+  effectiveAt?: string;
+  expiresAt?: string | null;
+  jurisdictionCode?: string | null;
+  languageCode?: string | null;
+  /** Plaintext exists only at the command boundary; production seals it with the tenant DEK. */
+  internalNotesPlaintext?: string | null;
+}
+
+/** Immutable evidence sealed onto `consent_record.capture_evidence_jsonb` at sign time. */
+export interface ConsentCaptureEvidence {
+  signedAtIso?: string;
+  typedSignatureName?: string;
+  typedSignatureRole?: string;
+  portalSessionId?: string;
+  uploadedPdfDocumentId?: string;
+  witnessName?: string;
+  witnessAttestationText?: string;
+  witnessSignatureEvidenceDocumentId?: string;
+  notaryCertificateDocumentId?: string;
+}
+
+/** Server-derived provenance. Routes must never accept these values from the request body. */
+export interface ConsentCommandContext {
+  stepUpSessionId?: string;
+  membershipId?: string;
 }
 
 export interface RevokeConsentInput {
@@ -132,6 +161,18 @@ function refuse(d: { ok: false; code: string; message: string }): never {
     "bereavement_patient_not_deceased",
     "supersedes_type_mismatch",
     "renewed_from_type_mismatch",
+    "portal_signature_evidence_required",
+    "typed_signature_evidence_required",
+    "uploaded_pdf_evidence_required",
+    "witness_evidence_required",
+    "notary_evidence_required",
+    "capture_method_below_floor",
+    "effective_at_future",
+    "expires_before_effective",
+    "term_exceeds_max",
+    "grantor_authority_missing",
+    "grantor_self_reference",
+    "part2_recipient_required",
   ]);
   throw new ConsentRouteError(
     validationCodes.has(d.code) ? "validation" : "invalid_transition",
@@ -304,22 +345,33 @@ export interface UpdateConsentDraftInput {
   captureMethod?: ConsentCaptureMethod;
   grantorKind?: ConsentGrantorKind;
   survivesDeath?: boolean;
+  internalNotesPlaintext?: string | null;
 }
 
 export interface SupersedeConsentInput {
   scopeDescriptor: unknown;
   captureMethod: ConsentCaptureMethod;
   grantorKind: ConsentGrantorKind;
+  grantorUserId?: string | null;
+  grantorCaregiverId?: string | null;
+  grantorRelationshipText?: string | null;
+  actingConsentId?: string | null;
   createdById: string;
   survivesDeath?: boolean;
+  captureEvidence?: ConsentCaptureEvidence;
 }
 
 export interface RenewConsentInput {
   scopeDescriptor: unknown;
   captureMethod: ConsentCaptureMethod;
   grantorKind: ConsentGrantorKind;
+  grantorUserId?: string | null;
+  grantorCaregiverId?: string | null;
+  grantorRelationshipText?: string | null;
+  actingConsentId?: string | null;
   createdById: string;
   expiresAt?: string | null;
+  captureEvidence?: ConsentCaptureEvidence;
 }
 
 export interface AddRecipientInput {
@@ -394,24 +446,29 @@ export interface SyncConsentRouteService {
     consentId: string,
     signerId: string,
     nowIso: string,
+    evidence?: ConsentCaptureEvidence,
+    commandContext?: ConsentCommandContext,
   ): ConsentRecordView;
   supersedeConsent(
     organizationId: string,
     consentId: string,
     input: SupersedeConsentInput,
     nowIso: string,
+    commandContext?: ConsentCommandContext,
   ): ConsentRecordView;
   revokeConsent(
     organizationId: string,
     consentId: string,
     input: RevokeConsentInput,
     nowIso: string,
+    commandContext?: ConsentCommandContext,
   ): ConsentRecordView;
   renewConsent(
     organizationId: string,
     consentId: string,
     input: RenewConsentInput,
     nowIso: string,
+    commandContext?: ConsentCommandContext,
   ): ConsentRecordView;
 
   // ── recipients (routes 11–13) ──

@@ -31,6 +31,11 @@ export type DecisionCode =
   | "renewed_from_status_invalid"
   | "renewed_from_type_mismatch"
   | "capture_method_below_floor"
+  | "portal_signature_evidence_required"
+  | "typed_signature_evidence_required"
+  | "uploaded_pdf_evidence_required"
+  | "witness_evidence_required"
+  | "notary_evidence_required"
   | "revocation_reason_too_short"
   | "revocation_evidence_required"
   | "effective_at_future"
@@ -39,6 +44,7 @@ export type DecisionCode =
   | "dpoa_primary_required"
   | "dpoa_duplicate_agent_kind"
   | "recipient_fk_kind_mismatch"
+  | "part2_recipient_required"
   | "bereavement_grantor_invalid"
   | "bereavement_patient_not_deceased";
 

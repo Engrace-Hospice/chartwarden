@@ -50,23 +50,38 @@ export {
 // (injected in `registerConsentSeams`); `createDbConsentRouteService` backs the §4.1 read routes. The
 // Patient Chart consent tab (apps/web/src/modules/05-patient, FB-T10) reads live through these.
 export {
+  type ConsentInternalNotesCipher,
+  type ConsentPatientReader,
+  type ConsentWriteOutboxPort,
+  type DbConsentRouteServiceDeps,
   createDbConsentEvaluator,
   createDbConsentRouteService,
   createDbConsentStore,
 } from "./consent-store-db";
+export { buildM39ConsentRenderConsumer } from "./render-consumer";
+export {
+  type ConsentTenantKeyProvider,
+  createConsentInternalNotesCipher,
+} from "./consent-crypto";
 
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
-import { createDbConsentRouteService as _createDbConsentRouteService } from "./consent-store-db";
+import {
+  type DbConsentRouteServiceDeps,
+  createDbConsentRouteService as _createDbConsentRouteService,
+} from "./consent-store-db";
 import { registerConsentRoutes as _registerConsentRoutes } from "./routes/consent-routes";
 
 /**
  * Mount the M39 consent REST routes (catalog / patient consents / record / decision audit + the
  * lifecycle endpoints) on a server — invoked by the composition root when a DB client is present.
- * The read surface runs over the real Drizzle-backed `ConsentRouteService` (org-scoped reads under
- * RLS); the lifecycle writes defer to the §2.2.1 consent-flow surface (501). Backs the Patient Chart
- * consent tab (FB-T03 → FB-T10).
+ * Reads and lifecycle writes run over the real Drizzle-backed `ConsentRouteService` under RLS. The
+ * injected outbox/cipher/patient ports are mandatory at production composition for operative writes.
  */
-export function mountConsentRoutes(app: FastifyInstance, db: DbClient): void {
-  _registerConsentRoutes(app, { service: _createDbConsentRouteService(db) });
+export function mountConsentRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  deps: DbConsentRouteServiceDeps = {},
+): void {
+  _registerConsentRoutes(app, { service: _createDbConsentRouteService(db, deps) });
 }

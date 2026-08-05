@@ -29890,6 +29890,7 @@ export interface operations {
                     captureMethod?: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                     grantorKind?: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
                     survivesDeath?: boolean;
+                    internalNotesPlaintext?: string | null;
                 };
             };
         };
@@ -30335,7 +30336,25 @@ export interface operations {
                     scopeDescriptor: unknown;
                     captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                     grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                    grantorUserId?: string | null;
+                    grantorCaregiverId?: string | null;
+                    grantorRelationshipText?: string | null;
+                    actingConsentId?: string | null;
                     expiresAt?: string | null;
+                    captureEvidence: {
+                        signedAtIso?: string;
+                        typedSignatureName?: string;
+                        typedSignatureRole?: string;
+                        portalSessionId?: string;
+                        /** Format: uuid */
+                        uploadedPdfDocumentId?: string;
+                        witnessName?: string;
+                        witnessAttestationText?: string;
+                        /** Format: uuid */
+                        witnessSignatureEvidenceDocumentId?: string;
+                        /** Format: uuid */
+                        notaryCertificateDocumentId?: string;
+                    };
                 };
             };
         };
@@ -30472,7 +30491,26 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    captureEvidence: {
+                        signedAtIso?: string;
+                        typedSignatureName?: string;
+                        typedSignatureRole?: string;
+                        portalSessionId?: string;
+                        /** Format: uuid */
+                        uploadedPdfDocumentId?: string;
+                        witnessName?: string;
+                        witnessAttestationText?: string;
+                        /** Format: uuid */
+                        witnessSignatureEvidenceDocumentId?: string;
+                        /** Format: uuid */
+                        notaryCertificateDocumentId?: string;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -30521,7 +30559,25 @@ export interface operations {
                     scopeDescriptor: unknown;
                     captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                     grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                    grantorUserId?: string | null;
+                    grantorCaregiverId?: string | null;
+                    grantorRelationshipText?: string | null;
+                    actingConsentId?: string | null;
                     survivesDeath?: boolean;
+                    captureEvidence: {
+                        signedAtIso?: string;
+                        typedSignatureName?: string;
+                        typedSignatureRole?: string;
+                        portalSessionId?: string;
+                        /** Format: uuid */
+                        uploadedPdfDocumentId?: string;
+                        witnessName?: string;
+                        witnessAttestationText?: string;
+                        /** Format: uuid */
+                        witnessSignatureEvidenceDocumentId?: string;
+                        /** Format: uuid */
+                        notaryCertificateDocumentId?: string;
+                    };
                 };
             };
         };
@@ -48368,6 +48424,16 @@ export interface operations {
                     grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
                     captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                     scopeDescriptor: unknown;
+                    grantorUserId?: string | null;
+                    grantorCaregiverId?: string | null;
+                    grantorRelationshipText?: string | null;
+                    actingConsentId?: string | null;
+                    effectiveAt?: string;
+                    expiresAt?: string | null;
+                    jurisdictionCode?: string | null;
+                    languageCode?: string | null;
+                    survivesDeath?: boolean;
+                    internalNotesPlaintext?: string | null;
                 };
             };
         };

@@ -102,7 +102,7 @@
       "mutatingNoBody": 0
     },
     "22-documents": {
-      "routes": 35,
+      "routes": 38,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -189,7 +189,7 @@
     "39-consent": {
       "routes": 27,
       "deficit": 0,
-      "mutatingNoBody": 3
+      "mutatingNoBody": 2
     },
     "40-mdm": {
       "routes": 14,

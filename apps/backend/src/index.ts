@@ -535,6 +535,7 @@ import {
   createDrizzleSaasTenantPlatformEraseStore,
   createM34ProvisionGateway,
   enableM34JobCapability,
+  getTenantKeyProvider,
   m34ProvisionGatewayConfigFromEnv,
   mountTenantPlatformRoutes,
   registerLiveM34Seams,
@@ -587,8 +588,12 @@ import {
   registerTerminologySeams,
 } from "./modules/38-terminology/index";
 import {
+  M39_OUTBOX_EVENTS,
+  buildM39ConsentRenderConsumer,
+  createConsentInternalNotesCipher,
   createDbConsentStore,
   createDrizzleConsentEraseStore,
+  getConsentPatientReader,
   mountConsentRoutes,
   registerConsentAbacPredicates,
   registerConsentErasers,
@@ -1955,6 +1960,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     M32_OUTBOX_EVENTS,
     M35_OUTBOX_EVENTS,
     M37_OUTBOX_EVENTS,
+    M39_OUTBOX_EVENTS,
     // task-11 — the m29.* decision events (accept/reject). REQUIRED for the store's §4.10 emit to
     // validate; the M5/M6 appliers consume `accepted` via the boot dispatcher.
     M29_OUTBOX_EVENTS,
@@ -1989,6 +1995,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const m27OutboxPublisher = bindCallerModule(txOutboxPublisher, "m27");
   const m35OutboxPublisher = bindCallerModule(txOutboxPublisher, "m35");
   const m37OutboxPublisher = bindCallerModule(txOutboxPublisher, "m37");
+  const m39OutboxPublisher = bindCallerModule(txOutboxPublisher, "m39");
   // M24 §8.7 — the trading-partner secret cipher port. Built once at boot so a missing/short KEK surfaces
   // here, not on the first tenant write; left undefined when no key is configured, which makes credential
   // WRITES fail closed while every other M24 route keeps working (production requires the key via env.ts).
@@ -2146,7 +2153,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           mountDocumentRoutes(app, dbHandle.db); // M22 — reads + the write lifecycle over Drizzle+RLS (no producer outbox: M22's outbox is the consumer-side render handshake)
           mountTerminologyRoutes(app, dbHandle.db); // M38 — terminology read surface + tenant value-set extensions (FB-T01)
           mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
-          mountConsentRoutes(app, dbHandle.db); // M39 — consent catalog/records/decision-audit reads (FB-T03)
+          mountConsentRoutes(app, dbHandle.db, {
+            outbox: m39OutboxPublisher,
+            cipher: createConsentInternalNotesCipher(getTenantKeyProvider()),
+            patientReader: getConsentPatientReader(),
+          }); // M39 — immutable consent lifecycle + transactional outbox/render
           mountMessagingRoutes(app, dbHandle.db); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05)
           // M34 (Phase 2D) — mount the platform-ops + tenant-scoped surfaces over the DRIZZLE route services
           // (RLS-scoped reads under withPlatformContext/withOrgContext; commands enqueue the §4.3 queue job
@@ -3231,6 +3242,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // records refusals durably + emits m6.applier.refused. Second consumer on the event so
           // m6-owned acceptances can never complete off M5's skip.
           buildM6ProposalAcceptedConsumer({ db: dbHandle.db, outbox: m6OutboxPublisher }),
+          buildM39ConsentRenderConsumer(dbHandle.db),
         ],
         eventCatalog: bootOutboxCatalog,
         options: {

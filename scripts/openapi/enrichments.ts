@@ -1251,6 +1251,7 @@ import {
   RemoveRecipientBodySchema as M39RemoveRecipientBody,
   RenewBodySchema as M39RenewBody,
   RevokeBodySchema as M39RevokeBody,
+  SignConsentBodySchema as M39SignConsentBody,
   SupersedeBodySchema as M39SupersedeBody,
   UpdateDpoaAgentBodySchema as M39UpdateDpoaAgentBody,
   UpdateDraftBodySchema as M39UpdateDraftBody,
@@ -9473,6 +9474,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/consents/:consentId/sign": {
     summary: "Sign a consent (step-up; emits m39.consent.signed)",
+    body: M39SignConsentBody,
     response: M39ConsentRecordResponse,
   },
   "POST /api/v1/consents/:consentId/supersede": {

@@ -40,6 +40,7 @@ import {
   RemoveRecipientBodySchema,
   RenewBodySchema,
   RevokeBodySchema,
+  SignConsentBodySchema,
   SupersedeBodySchema,
   UpdateDpoaAgentBodySchema,
   UpdateDraftBodySchema,
@@ -58,6 +59,18 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
   const ctx = request.context;
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
   return { organizationId: ctx.organizationId, userId: ctx.userId };
+}
+
+/** Server-authenticated command provenance. Body fields can never forge these identifiers. */
+function commandContextOf(request: FastifyRequest): {
+  stepUpSessionId?: string;
+  membershipId?: string;
+} {
+  const attrs = request.context?.attributes ?? {};
+  return {
+    ...(typeof attrs.sessionId === "string" ? { stepUpSessionId: attrs.sessionId } : {}),
+    ...(typeof attrs.membershipId === "string" ? { membershipId: attrs.membershipId } : {}),
+  };
 }
 
 const READ_CATALOG = requirePermission("consent.read_catalog") as PreHandler;
@@ -171,6 +184,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
       const { patientId } = parse(PatientIdParamsSchema, request.params);
       const body = parse(CreateDraftBodySchema, request.body);
       const draft = await service.createDraft(organizationId, {
+        ...body,
         patientId,
         typeKey: body.typeKey,
         // The TypeBox union validated these at runtime; the cast re-applies the literal types.
@@ -206,9 +220,17 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
+      const body = parse(SignConsentBodySchema, request.body);
       try {
         return {
-          data: await service.signConsent(organizationId, consentId, userId, nowIso()),
+          data: await service.signConsent(
+            organizationId,
+            consentId,
+            userId,
+            nowIso(),
+            body.captureEvidence,
+            commandContextOf(request),
+          ),
         };
       } catch (e) {
         mapError(e);
@@ -231,6 +253,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
           consentId,
           { ...body, createdById: userId } as SupersedeConsentInput,
           nowIso(),
+          commandContextOf(request),
         );
         reply.code(201);
         return { data: next };
@@ -261,6 +284,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
               revokedById: userId,
             },
             nowIso(),
+            commandContextOf(request),
           ),
         };
       } catch (e) {
@@ -461,6 +485,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
           consentId,
           { ...body, createdById: userId } as RenewConsentInput,
           nowIso(),
+          commandContextOf(request),
         );
         reply.code(201);
         return { data: next };

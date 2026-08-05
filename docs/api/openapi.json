@@ -40343,6 +40343,17 @@
                   },
                   "survivesDeath": {
                     "type": "boolean"
+                  },
+                  "internalNotesPlaintext": {
+                    "anyOf": [
+                      {
+                        "maxLength": 4000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -42373,7 +42384,8 @@
                 "required": [
                   "scopeDescriptor",
                   "captureMethod",
-                  "grantorKind"
+                  "grantorKind",
+                  "captureEvidence"
                 ],
                 "properties": {
                   "scopeDescriptor": {},
@@ -42433,6 +42445,51 @@
                       }
                     ]
                   },
+                  "grantorUserId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "grantorCaregiverId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "grantorRelationshipText": {
+                    "anyOf": [
+                      {
+                        "minLength": 2,
+                        "maxLength": 100,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "actingConsentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "expiresAt": {
                     "anyOf": [
                       {
@@ -42444,6 +42501,51 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "captureEvidence": {
+                    "type": "object",
+                    "properties": {
+                      "signedAtIso": {
+                        "minLength": 20,
+                        "type": "string"
+                      },
+                      "typedSignatureName": {
+                        "minLength": 2,
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      "typedSignatureRole": {
+                        "minLength": 2,
+                        "maxLength": 100,
+                        "type": "string"
+                      },
+                      "portalSessionId": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "uploadedPdfDocumentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "witnessName": {
+                        "minLength": 2,
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      "witnessAttestationText": {
+                        "minLength": 20,
+                        "maxLength": 4000,
+                        "type": "string"
+                      },
+                      "witnessSignatureEvidenceDocumentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "notaryCertificateDocumentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    }
                   }
                 }
               }
@@ -43175,6 +43277,66 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "captureEvidence"
+                ],
+                "properties": {
+                  "captureEvidence": {
+                    "type": "object",
+                    "properties": {
+                      "signedAtIso": {
+                        "minLength": 20,
+                        "type": "string"
+                      },
+                      "typedSignatureName": {
+                        "minLength": 2,
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      "typedSignatureRole": {
+                        "minLength": 2,
+                        "maxLength": 100,
+                        "type": "string"
+                      },
+                      "portalSessionId": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "uploadedPdfDocumentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "witnessName": {
+                        "minLength": 2,
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      "witnessAttestationText": {
+                        "minLength": 20,
+                        "maxLength": 4000,
+                        "type": "string"
+                      },
+                      "witnessSignatureEvidenceDocumentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "notaryCertificateDocumentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -43448,7 +43610,8 @@
                 "required": [
                   "scopeDescriptor",
                   "captureMethod",
-                  "grantorKind"
+                  "grantorKind",
+                  "captureEvidence"
                 ],
                 "properties": {
                   "scopeDescriptor": {},
@@ -43508,8 +43671,98 @@
                       }
                     ]
                   },
+                  "grantorUserId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "grantorCaregiverId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "grantorRelationshipText": {
+                    "anyOf": [
+                      {
+                        "minLength": 2,
+                        "maxLength": 100,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "actingConsentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "survivesDeath": {
                     "type": "boolean"
+                  },
+                  "captureEvidence": {
+                    "type": "object",
+                    "properties": {
+                      "signedAtIso": {
+                        "minLength": 20,
+                        "type": "string"
+                      },
+                      "typedSignatureName": {
+                        "minLength": 2,
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      "typedSignatureRole": {
+                        "minLength": 2,
+                        "maxLength": 100,
+                        "type": "string"
+                      },
+                      "portalSessionId": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "uploadedPdfDocumentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "witnessName": {
+                        "minLength": 2,
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      "witnessAttestationText": {
+                        "minLength": 20,
+                        "maxLength": 4000,
+                        "type": "string"
+                      },
+                      "witnessSignatureEvidenceDocumentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "notaryCertificateDocumentId": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    }
                   }
                 }
               }
@@ -108874,7 +109127,103 @@
                       }
                     ]
                   },
-                  "scopeDescriptor": {}
+                  "scopeDescriptor": {},
+                  "grantorUserId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "grantorCaregiverId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "grantorRelationshipText": {
+                    "anyOf": [
+                      {
+                        "minLength": 2,
+                        "maxLength": 100,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "actingConsentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "effectiveAt": {
+                    "minLength": 20,
+                    "type": "string"
+                  },
+                  "expiresAt": {
+                    "anyOf": [
+                      {
+                        "minLength": 20,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "jurisdictionCode": {
+                    "anyOf": [
+                      {
+                        "pattern": "^[A-Z]{2}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "languageCode": {
+                    "anyOf": [
+                      {
+                        "pattern": "^[a-z]{2}(-[A-Z]{2})?$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "survivesDeath": {
+                    "type": "boolean"
+                  },
+                  "internalNotesPlaintext": {
+                    "anyOf": [
+                      {
+                        "maxLength": 4000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
                 }
               }
             }

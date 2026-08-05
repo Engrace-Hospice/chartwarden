@@ -177,6 +177,51 @@ export function validateCaptureMethod(input: {
   return ok();
 }
 
+/** Evidence floor for each capture ceremony. The server supplies the authoritative sign timestamp and
+ * step-up provenance separately; this validates only the grantor/witness artifact supplied by the flow. */
+export function validateCaptureEvidence(input: {
+  method: ConsentCaptureMethod;
+  evidence: {
+    typedSignatureName?: string;
+    portalSessionId?: string;
+    uploadedPdfDocumentId?: string;
+    witnessName?: string;
+    witnessAttestationText?: string;
+    witnessSignatureEvidenceDocumentId?: string;
+    notaryCertificateDocumentId?: string;
+  };
+}): Decision {
+  const e = input.evidence;
+  if (input.method === "electronic_portal_signature" && !e.portalSessionId)
+    return deny(
+      "portal_signature_evidence_required",
+      "portal signature requires a portal session id",
+    );
+  if (input.method === "typed_signature_in_app" && (e.typedSignatureName ?? "").trim().length < 2)
+    return deny(
+      "typed_signature_evidence_required",
+      "typed signature requires the signer's typed name",
+    );
+  if (input.method === "uploaded_signed_pdf" && !e.uploadedPdfDocumentId)
+    return deny("uploaded_pdf_evidence_required", "uploaded signature requires an M22 document id");
+  if (
+    input.method === "witnessed_verbal_documented" &&
+    ((e.witnessName ?? "").trim().length < 2 ||
+      (e.witnessAttestationText ?? "").trim().length < 20 ||
+      !e.witnessSignatureEvidenceDocumentId)
+  )
+    return deny(
+      "witness_evidence_required",
+      "witnessed verbal consent requires witness identity, attestation, and signature evidence",
+    );
+  if (input.method === "notarized" && !e.notaryCertificateDocumentId)
+    return deny(
+      "notary_evidence_required",
+      "notarized consent requires a notary certificate document",
+    );
+  return ok();
+}
+
 /** §2.3: staff-initiated revocation requires a ≥40-char reason + an evidence document; a patient
  *  revoking via portal is not required to justify. */
 export function validateRevocation(input: {
@@ -254,6 +299,20 @@ export function validateRecipientFk(input: {
     return deny(
       "recipient_fk_kind_mismatch",
       `recipient_kind '${input.kind}' requires an entity FK`,
+    );
+  return ok();
+}
+
+/** 42 CFR Part 2 authorization is recipient-specific; it cannot become operative with no named
+ * disclosure target. Other per-recipient types may be staged active and deny until a target is added. */
+export function validateRecipientRoster(
+  typeKey: ConsentTypeKey,
+  activeRecipientCount: number,
+): Decision {
+  if (typeKey === "42_cfr_part_2_release" && activeRecipientCount < 1)
+    return deny(
+      "part2_recipient_required",
+      "42 CFR Part 2 consent requires at least one active named recipient",
     );
   return ok();
 }

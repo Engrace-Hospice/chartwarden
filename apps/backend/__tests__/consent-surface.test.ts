@@ -359,6 +359,9 @@ describe("M39 §4.1 — the surface behind the previously route-less tables", ()
           scopeDescriptor: { all: false },
           captureMethod: "notarized",
           grantorKind: "patient_self",
+          captureEvidence: {
+            notaryCertificateDocumentId: "11111111-1111-4111-8111-111111111111",
+          },
         },
       });
       expect(res.statusCode).toBe(201);
@@ -379,6 +382,9 @@ describe("M39 §4.1 — the surface behind the previously route-less tables", ()
           scopeDescriptor: {},
           captureMethod: "notarized",
           grantorKind: "patient_self",
+          captureEvidence: {
+            notaryCertificateDocumentId: "11111111-1111-4111-8111-111111111111",
+          },
         },
       });
       // 409, not 422: the request is well-formed, the RECORD is in the wrong state.
@@ -581,6 +587,7 @@ describe("M39 §4.1 — the surface behind the previously route-less tables", ()
         method: "POST",
         url: "/api/v1/consents/c-dpoa/sign",
         headers: h("signer"),
+        payload: { captureEvidence: { typedSignatureName: "Marta Reyes" } },
       });
       expect(res.statusCode).toBe(422);
       await app.close();
@@ -599,6 +606,7 @@ describe("M39 §4.1 — the surface behind the previously route-less tables", ()
         method: "POST",
         url: "/api/v1/consents/c-dpoa/sign",
         headers: h("signer"),
+        payload: { captureEvidence: { typedSignatureName: "Marta Reyes" } },
       });
 
       const res = await app.inject({
@@ -674,6 +682,7 @@ describe("M39 §4.1 — the surface behind the previously route-less tables", ()
           scopeDescriptor: { all: true },
           captureMethod: "typed_signature_in_app",
           grantorKind: "patient_self",
+          captureEvidence: { typedSignatureName: "Patient Example" },
         },
       });
       expect(res.statusCode).toBe(201);
@@ -697,6 +706,7 @@ describe("M39 §4.1 — the surface behind the previously route-less tables", ()
           scopeDescriptor: {},
           captureMethod: "typed_signature_in_app",
           grantorKind: "patient_self",
+          captureEvidence: { typedSignatureName: "Patient Example" },
         },
       });
       expect(res.statusCode).toBe(409);

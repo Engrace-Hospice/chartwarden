@@ -3,12 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   evaluatePostDeathScope,
   validateBereavementGrantor,
+  validateCaptureEvidence,
   validateCaptureMethod,
   validateDpoaAgents,
   validateEffectiveWindow,
   validateGrantorChain,
   validateParentForMinor,
   validateRecipientFk,
+  validateRecipientRoster,
   validateRenewal,
   validateRevocation,
   validateSupersession,
@@ -65,6 +67,39 @@ describe("D5 chain-of-authority (validateGrantorChain)", () => {
         actingConsent: { status: "active", typeKey: "dpoa_healthcare" },
       }).ok,
     ).toBe(false);
+  });
+});
+
+describe("capture evidence floor", () => {
+  it("requires the artifact appropriate to each capture method", () => {
+    expect(
+      validateCaptureEvidence({
+        method: "typed_signature_in_app",
+        evidence: { typedSignatureName: "Patient Example" },
+      }).ok,
+    ).toBe(true);
+    expect(validateCaptureEvidence({ method: "typed_signature_in_app", evidence: {} }).ok).toBe(
+      false,
+    );
+    expect(validateCaptureEvidence({ method: "notarized", evidence: {} }).ok).toBe(false);
+    expect(
+      validateCaptureEvidence({
+        method: "witnessed_verbal_documented",
+        evidence: {
+          witnessName: "Witness Example",
+          witnessAttestationText: "I witnessed the patient's verbal authorization.",
+          witnessSignatureEvidenceDocumentId: "doc-1",
+        },
+      }).ok,
+    ).toBe(true);
+  });
+});
+
+describe("Part 2 recipient floor", () => {
+  it("refuses an operative Part 2 release with no named recipient", () => {
+    expect(validateRecipientRoster("42_cfr_part_2_release", 0).ok).toBe(false);
+    expect(validateRecipientRoster("42_cfr_part_2_release", 1).ok).toBe(true);
+    expect(validateRecipientRoster("hipaa_release", 0).ok).toBe(true);
   });
 });
 

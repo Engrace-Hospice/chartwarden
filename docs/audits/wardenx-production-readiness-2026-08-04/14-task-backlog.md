@@ -179,6 +179,7 @@
 
 ## WX-PR-009 - Implement M39 consent lifecycle service
 
+- Status: Completed (2026-08-04).
 - Priority: P1
 - Severity addressed: High
 - Phase: 2
@@ -189,6 +190,18 @@
 - Implementation steps: Draft/edit; signer authority; sign/evidence; supersede/revoke/renew; outbox/render; evaluator cache invalidation.
 - Tests: State/concurrency, Part 2, proxy, expiry, failed render, disclosure change.
 - Acceptance criteria: All lifecycle methods are live and immutable with audit evidence.
+- Completion evidence: `createDbConsentRouteService` implements every lifecycle command
+  (draft/edit, signConsent with per-capture-method evidence floors, supersede/revoke/renew,
+  bereavement-outreach draft, document re-render, cascade retry, tenant-overlay upsert) as real
+  transactional Drizzle writes under `withOrgContext`, guarded by an optimistic version check
+  (stale writes surface as `invalid_transition`). `consent-crypto.ts` seals internal notes with
+  the tenant DEK; `render-consumer.ts` binds the M22 render handshake; boot wiring
+  (`apps/backend/src/index.ts`) injects the real outbox/cipher/patient-reader ports at
+  composition. 42 CFR Part 2 disclosures require an active named recipient
+  (`validateRecipientRoster`) before becoming operative. Unit suites pass, and the new
+  `m39-consent-lifecycle.live.test.ts` passes against live Postgres (row-lock serialization,
+  transactional outbox writes, Part 2 recipient gating, immutable signed rows, single-success
+  renewal under concurrent requests). Full gate (build, `arch:fitness`, `bun run test`) green.
 - Risks: Legal semantics and concurrent disclosures.
 - Rollback: Versioned forward fixes; never mutate signed evidence.
 - Estimated complexity: XL
