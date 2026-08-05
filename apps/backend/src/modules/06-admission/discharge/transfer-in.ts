@@ -11,6 +11,13 @@ export interface TransferInInput {
   readonly priorBenefitPeriodSequence: number;
   /** The sending hospice's election start date — anchors the inherited active period's start. */
   readonly priorElectionStartDate: string;
+  /**
+   * The RECEIVING hospice's medical director — required to draft the CTI for the `next` pending
+   * period (D9: unlike the inherited period, the next period DOES require our CTI). `planTransferIn`
+   * itself never reads this (pure period-sequencing math); the service layer uses it to draft that CTI.
+   */
+  readonly hospiceMedicalDirectorId: string;
+  readonly attendingPhysicianId?: string;
 }
 
 /** A planned election period the receiving hospice creates on the new transferred-in admission. */

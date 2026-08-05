@@ -394,6 +394,18 @@
   live-test file this pass never touched (`m6-election-cti-write.live.test.ts`): the same wrong-arity
   `acknowledgeNor` call and the same missing attending-physician CTI signature. All M6 live suites (50
   tests across 6 files) + full gate green.
+- **Follow-up, same day**: the transfer-in fix above left the `next` pending period's own CTI unwired —
+  per W-DC-03/D9 the receiving hospice DOES need its own CTI for that period (only the inherited period
+  runs on the sending hospice's certification), but `transferIn` created the period and stopped. Fixed:
+  `TransferInInput` gained `hospiceMedicalDirectorId` (required) + `attendingPhysicianId` (optional);
+  `TransferInSchema` and the route now carry them; `transferIn`'s DB and in-memory-fake implementations
+  both draft a CTI against the `next` period (`isRecert: true`) and publish `m6.cti.drafted`. No special-
+  casing needed for the attending-signature rule — `signCtiHospiceMd` derives it from the period's own
+  `sequenceNumber` (never 1 for a transfer-in), so the existing hospice-MD-only-sign-and-activate path
+  just works. Extended the live transfer-in test to assert exactly one CTI exists, points at the `next`
+  period (not the inherited one), and that signing it activates that period. `openapi.json` +
+  `packages/ui/src/core/api/schema.ts` regenerated (request schema changed). Full gate green + all 6 M6
+  live suites (50 tests).
 
   4 new unit tests (state-machine coverage already existed), 4 new HTTP-inject tests (`admission-routes.test.ts` —
   proving the real route, not just the service method, including the short-code fix), 2 new live-Postgres

@@ -290,7 +290,11 @@ describe("M6-T09 — slice: discharge cascades (§7.6)", () => {
     const res = await service.transferIn(
       ORG,
       ADMISSION,
-      { priorBenefitPeriodSequence: 3, priorElectionStartDate: "2026-04-01" },
+      {
+        priorBenefitPeriodSequence: 3,
+        priorElectionStartDate: "2026-04-01",
+        hospiceMedicalDirectorId: "md_1",
+      },
       "u1",
     );
     expect(res.currentElectionPeriodSequence).toBe(3);

@@ -253,6 +253,10 @@ export const TransferInSchema = Type.Object({
   otherHospiceCcn: Type.Optional(Type.String({ pattern: "^[0-9A-Z]{6}$" })),
   priorBenefitPeriodSequence: Type.Integer({ minimum: 1 }),
   priorElectionStartDate: Type.String({ format: "date" }),
+  // D9 — the receiving hospice's own CTI for the `next` pending period (the inherited period runs on
+  // the sending hospice's certification, no CTI required from us).
+  hospiceMedicalDirectorId: Uuid(),
+  attendingPhysicianId: Type.Optional(Uuid()),
   narrative: Reason(10, 4000),
 });
 

@@ -1966,12 +1966,40 @@ export function createDbAdmissionRouteService(
           periodKind: "ninety_day",
           status: plan.inherited.state,
         });
-        await tx.insert(EP).values({
+        const nextPeriod = firstOrThrow(
+          await tx
+            .insert(EP)
+            .values({
+              organizationId,
+              admissionId,
+              sequenceNumber: plan.next.sequence,
+              periodKind: "ninety_day",
+              status: plan.next.state,
+            })
+            .returning({ id: EP.id }),
+          "election period insert returned no row",
+        );
+        // D9 — draft OUR CTI against the next period (the inherited period runs on the sending
+        // hospice's certification; `signCtiHospiceMd` derives the no-attending-needed rule from this
+        // period's own sequenceNumber, which is never 1 for a transfer-in, so no special-casing here).
+        const cti = firstOrThrow(
+          await tx
+            .insert(CTI)
+            .values({
+              organizationId,
+              electionPeriodId: nextPeriod.id,
+              hospiceMdId: input.hospiceMedicalDirectorId,
+              attendingMdId: input.attendingPhysicianId ?? null,
+            })
+            .returning({ id: CTI.id }),
+          "cti insert returned no row",
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.cti.drafted",
+          payload: { ctiId: cti.id, electionPeriodId: nextPeriod.id, isRecert: true },
           organizationId,
-          admissionId,
-          sequenceNumber: plan.next.sequence,
-          periodKind: "ninety_day",
-          status: plan.next.state,
+          aggregateKind: "certification_of_terminal_illness",
+          aggregateId: cti.id,
         });
         const today = new Date().toISOString().slice(0, 10);
         const xfer = firstOrThrow(

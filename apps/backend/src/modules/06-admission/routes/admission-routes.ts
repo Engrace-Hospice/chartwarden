@@ -591,6 +591,8 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
         {
           priorBenefitPeriodSequence: body.priorBenefitPeriodSequence,
           priorElectionStartDate: body.priorElectionStartDate,
+          hospiceMedicalDirectorId: body.hospiceMedicalDirectorId,
+          attendingPhysicianId: body.attendingPhysicianId,
         },
         userId,
       );

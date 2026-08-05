@@ -1118,9 +1118,18 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         sequence: plan.inherited.sequence,
         periodStartDate: input.priorElectionStartDate,
       });
-      insert("election_period", organizationId, plan.next.state, {
+      const nextPeriod = insert("election_period", organizationId, plan.next.state, {
         admissionId: adm.id,
         patientId: adm.patientId,
+        sequence: plan.next.sequence,
+      });
+      // D9 — draft OUR CTI against the next period (the inherited period runs on the sending
+      // hospice's certification, no CTI required from us).
+      insert("cti", organizationId, "drafted", {
+        admissionId: adm.id,
+        electionPeriodId: nextPeriod.id,
+        hospiceMedicalDirectorId: input.hospiceMedicalDirectorId,
+        attendingPhysicianId: input.attendingPhysicianId ?? null,
         sequence: plan.next.sequence,
       });
       const rec = insert("transfer", organizationId, "created", {
@@ -1129,6 +1138,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       });
       events.push("m6.transfer.created");
       events.push("m6.election.period_started");
+      events.push("m6.cti.drafted");
       return { ...summary(rec), currentElectionPeriodSequence: plan.inherited.sequence };
     },
     async discharge(organizationId, admissionId, input, actorUserId) {

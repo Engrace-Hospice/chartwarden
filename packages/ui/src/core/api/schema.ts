@@ -23570,6 +23570,10 @@ export interface operations {
                     priorBenefitPeriodSequence: number;
                     /** Format: date */
                     priorElectionStartDate: string;
+                    /** Format: uuid */
+                    hospiceMedicalDirectorId: string;
+                    /** Format: uuid */
+                    attendingPhysicianId?: string;
                     narrative: string;
                 };
             };

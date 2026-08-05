@@ -386,19 +386,46 @@ describe.skipIf(!DB_URL)(
       const res = await svc.transferIn(
         ORG_A,
         adm.id,
-        { priorBenefitPeriodSequence: 3, priorElectionStartDate: "2026-01-01" },
+        {
+          priorBenefitPeriodSequence: 3,
+          priorElectionStartDate: "2026-01-01",
+          hospiceMedicalDirectorId: MD,
+        },
         USER,
       );
       expect(res.currentElectionPeriodSequence).toBe(3);
       const periods = await svc.listElectionPeriods(ORG_A, adm.id);
       const seqs = await admin.query(
-        "SELECT sequence_number, status FROM election_period WHERE admission_id=$1 ORDER BY sequence_number",
+        "SELECT id, sequence_number, status FROM election_period WHERE admission_id=$1 ORDER BY sequence_number",
         [adm.id],
       );
       expect(periods!.length).toBe(2);
       expect(seqs.rows.map((r: { sequence_number: number }) => r.sequence_number)).toEqual([3, 4]);
       expect(seqs.rows[0].status).toBe("active");
       expect(seqs.rows[1].status).toBe("pending");
+      // D9 — the inherited (active) period runs on the SENDING hospice's certification, so we draft NO
+      // CTI against it; the next (pending) period DOES require our own CTI.
+      const ctis = await admin.query(
+        `SELECT id, election_period_id, hospice_md_id, status, version
+           FROM certification_of_terminal_illness WHERE election_period_id = ANY($1)`,
+        [seqs.rows.map((r: { id: string }) => r.id)],
+      );
+      expect(ctis.rows).toHaveLength(1);
+      expect(ctis.rows[0].election_period_id).toBe(seqs.rows[1].id);
+      expect(ctis.rows[0].hospice_md_id).toBe(MD);
+      expect(ctis.rows[0].status).toBe("drafted");
+      // Signing it (hospice-MD alone, since sequence 4 !== 1) fully signs AND activates the period.
+      const signed = await svc.signCtiHospiceMd(
+        ORG_A,
+        ctis.rows[0].id,
+        Number(ctis.rows[0].version),
+        USER,
+      );
+      expect(signed.state).toBe("signed");
+      const nextStatus = await admin.query("SELECT status FROM election_period WHERE id=$1", [
+        seqs.rows[1].id,
+      ]);
+      expect(nextStatus.rows[0].status).toBe("active");
     });
   },
 );

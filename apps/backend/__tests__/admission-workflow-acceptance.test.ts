@@ -400,7 +400,11 @@ describe("M6-T12 §7.6 — discharge workflows (W-DC)", () => {
     const res = await svc.transferIn(
       ORG,
       "adm_ti",
-      { priorBenefitPeriodSequence: 3, priorElectionStartDate: "2026-04-01" },
+      {
+        priorBenefitPeriodSequence: 3,
+        priorElectionStartDate: "2026-04-01",
+        hospiceMedicalDirectorId: "md_1",
+      },
       U,
     );
     expect(res.currentElectionPeriodSequence).toBe(3);

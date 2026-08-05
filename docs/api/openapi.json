@@ -16253,6 +16253,7 @@
                   "otherHospiceName",
                   "priorBenefitPeriodSequence",
                   "priorElectionStartDate",
+                  "hospiceMedicalDirectorId",
                   "narrative"
                 ],
                 "properties": {
@@ -16279,6 +16280,14 @@
                   },
                   "priorElectionStartDate": {
                     "format": "date",
+                    "type": "string"
+                  },
+                  "hospiceMedicalDirectorId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "attendingPhysicianId": {
+                    "format": "uuid",
                     "type": "string"
                   },
                   "narrative": {
