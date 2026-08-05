@@ -79,11 +79,15 @@ export function createAdmissionStatusReader(store: AdmissionReaderStore): Admiss
   };
 }
 
-/** §4.7 LevelOfCareReader — current LOC for clinical screens + LOC-days by level (M26 cap). */
+/** §4.7 LevelOfCareReader — current LOC for clinical screens + LOC-days by level (M26 cap). `assigning`
+ *  periods (IRC/GIP awaiting M37 bed confirmation, confirm-handshake fix) are excluded entirely — not
+ *  yet a real period of care, so neither "current LOC" nor a cap-relevant day count. */
 export function createLevelOfCareReader(store: AdmissionReaderStore): LevelOfCareReader {
   return {
     async getCurrentLevelOfCare(admissionId) {
-      const periods = await store.levelOfCarePeriods(admissionId);
+      const periods = (await store.levelOfCarePeriods(admissionId)).filter(
+        (p) => p.status !== "assigning",
+      );
       // Prefer an OPEN period (endedAt null); else the most recent by effectiveAt (store-sorted asc).
       return periods.find((p) => p.endedAt === null) ?? periods.at(-1) ?? null;
     },
@@ -92,7 +96,10 @@ export function createLevelOfCareReader(store: AdmissionReaderStore): LevelOfCar
       const daysByLevel = Object.fromEntries(LEVELS_OF_CARE.map((l) => [l, 0])) as {
         [L in LevelOfCare]: number;
       };
-      for (const p of periods) daysByLevel[p.levelOfCare] += overlapDays(p, range);
+      for (const p of periods) {
+        if (p.status === "assigning") continue;
+        daysByLevel[p.levelOfCare] += overlapDays(p, range);
+      }
       return { admissionId, range, daysByLevel };
     },
   };

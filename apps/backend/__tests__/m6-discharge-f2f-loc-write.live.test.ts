@@ -16,6 +16,7 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
+import { buildIpuSeams } from "../src/modules/37-ipu/seams";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -72,15 +73,35 @@ describe.skipIf(!DB_URL)(
       );
       const periods = await svc.listElectionPeriods(ORG_A, admissionId);
       const periodId = periods![0].id;
-      const nor = await svc.acknowledgeNor(ORG_A, admissionId, USER);
+      // Pre-existing bug found while verifying the confirm-handshake fix: this call was missing the
+      // NorAcknowledgeInput object (USER was landing in the `input` param, `actorUserId` was undefined) —
+      // __tests__ is outside apps/backend/tsconfig.json's rootDir so tsc never typechecks this file, and
+      // vitest's esbuild transform doesn't typecheck either, so the arity mismatch was invisible until it
+      // actually ran against live Postgres (`set_config('app.user_id', undefined, true)` — malformed SQL).
+      const nor = await svc.acknowledgeNor(
+        ORG_A,
+        admissionId,
+        { deliveryMethod: "electronic_witnessed", acknowledgedByRole: "patient" },
+        USER,
+      );
       const es = await svc.draftElectionStatement(ORG_A, admissionId, periodId);
       await svc.signElection(ORG_A, es.id, es.version, USER);
+      // Second pre-existing gap found the same way: R-AC-01 (intake/activation-gate.ts) requires the
+      // ATTENDING physician's CTI signature for period 1, not just the hospice medical director's — this
+      // helper only ever called signCtiHospiceMd, so activation always threw ELECTION_STATEMENT_REQUIRED/
+      // attending_signed once the NOR bug above stopped masking it.
       const cti = await svc.draftCti(
         ORG_A,
-        { electionPeriodId: periodId, hospiceMedicalDirectorId: MD, isRecert: false },
+        {
+          electionPeriodId: periodId,
+          hospiceMedicalDirectorId: MD,
+          attendingPhysicianId: OTHER,
+          isRecert: false,
+        },
         USER,
       );
       await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
+      await svc.signCtiAttending(ORG_A, cti.id, cti.version + 1, OTHER);
       const active = await svc.activateAdmission(ORG_A, admissionId, nor.version);
       expect(active.state).toBe("active");
       return { admissionId, periodId };
@@ -105,7 +126,13 @@ describe.skipIf(!DB_URL)(
       handle = createDbClient({
         connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
       });
-      svc = createDbAdmissionRouteService(handle.db);
+      // The 3rd arg is the REAL M37 `IpuBedAssignmentProvider` seam (not a fake) — proves the confirm
+      // handshake's cross-module read works end-to-end, not just that the M6 side compiles.
+      svc = createDbAdmissionRouteService(
+        handle.db,
+        undefined,
+        buildIpuSeams(handle.db).IpuBedAssignmentProvider,
+      );
     }, 120_000);
 
     afterAll(async () => {
@@ -170,6 +197,97 @@ describe.skipIf(!DB_URL)(
       expect(open.rows[0].n).toBe(1);
       const patched = await svc.patchLoc(ORG_A, second.id, "titrating symptoms", second.version);
       expect(patched.version).toBe(second.version + 1);
+    });
+
+    it("LOC: GIP requires a real facility_id + ≥30-char documentation, lands in 'assigning'", async () => {
+      const { admissionId } = await activeAdmission(randomUUID());
+      const gipReason = "uncontrolled symptoms requiring inpatient management now";
+      await expect(
+        svc.changeLoc(ORG_A, admissionId, "general_inpatient_care", null, undefined, gipReason),
+      ).rejects.toMatchObject({ code: "IPU_FACILITY_REQUIRED" });
+      const facilityId = randomUUID();
+      const assigning = await svc.changeLoc(
+        ORG_A,
+        admissionId,
+        "general_inpatient_care",
+        facilityId,
+        undefined,
+        gipReason,
+      );
+      expect(assigning.state).toBe("assigning");
+      const row = await admin.query(
+        "SELECT status, facility_id, ended_at FROM level_of_care_period WHERE id=$1",
+        [assigning.id],
+      );
+      expect(row.rows[0].status).toBe("assigning");
+      expect(row.rows[0].facility_id).toBe(facilityId);
+      // Still open (ended_at IS NULL) but MUST NOT surface as the admission's current level of care —
+      // getCurrentLevelOfCare excludes 'assigning' (confirm-handshake fix).
+      expect(row.rows[0].ended_at).toBeNull();
+    });
+
+    it("LOC: confirm-bed handshake fails until a REAL M37 bed assignment exists, then activates", async () => {
+      const { admissionId } = await activeAdmission(randomUUID());
+      const facilityId = randomUUID();
+      const assigning = await svc.changeLoc(
+        ORG_A,
+        admissionId,
+        "general_inpatient_care",
+        facilityId,
+        undefined,
+        "uncontrolled symptoms requiring inpatient management now",
+      );
+      // No M37 bed exists yet — must fail closed, never silently confirm.
+      await expect(
+        svc.confirmLocBedAssignment(ORG_A, assigning.id, assigning.version),
+      ).rejects.toMatchObject({ code: "IPU_FACILITY_REQUIRED" });
+
+      // Seed a REAL M37 chain: unit → room → bed → ipu_admission (kind=gip, linked to THIS LOC period)
+      // → an active bed assignment — proving the cross-module read, not a fake.
+      const unit = await admin.query(
+        `INSERT INTO inpatient_unit (organization_id, facility_id, display_name, bed_count)
+         VALUES ($1,$2,'Unit A',4) RETURNING id`,
+        [ORG_A, randomUUID()],
+      );
+      const unitId = unit.rows[0].id;
+      const room = await admin.query(
+        `INSERT INTO ipu_room (organization_id, unit_id, room_number, kind, bed_count)
+         VALUES ($1,$2,'101','private',1) RETURNING id`,
+        [ORG_A, unitId],
+      );
+      const roomId = room.rows[0].id;
+      const bed = await admin.query(
+        `INSERT INTO ipu_bed (organization_id, room_id, unit_id, bed_label)
+         VALUES ($1,$2,$3,'A') RETURNING id`,
+        [ORG_A, roomId, unitId],
+      );
+      const bedId = bed.rows[0].id;
+      const ipuAdmission = await admin.query(
+        `INSERT INTO ipu_admission
+           (organization_id, provider_entity_id, patient_id, admission_id, level_of_care_period_id,
+            unit_id, kind, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,'gip',$7) RETURNING id`,
+        [ORG_A, randomUUID(), randomUUID(), admissionId, assigning.id, unitId, USER],
+      );
+      const ipuAdmissionId = ipuAdmission.rows[0].id;
+      await admin.query(
+        `INSERT INTO ipu_bed_assignment (organization_id, ipu_admission_id, bed_id, assigned_by)
+         VALUES ($1,$2,$3,$4)`,
+        [ORG_A, ipuAdmissionId, bedId, USER],
+      );
+
+      const confirmed = await svc.confirmLocBedAssignment(ORG_A, assigning.id, assigning.version);
+      expect(confirmed.state).toBe("active");
+      const row = await admin.query(
+        "SELECT status, ipu_bed_assignment_id FROM level_of_care_period WHERE id=$1",
+        [assigning.id],
+      );
+      expect(row.rows[0].status).toBe("active");
+      expect(row.rows[0].ipu_bed_assignment_id).not.toBeNull();
+      // A second confirm is now ILLEGAL_TRANSITION (already active, not assigning).
+      await expect(
+        svc.confirmLocBedAssignment(ORG_A, assigning.id, confirmed.version),
+      ).rejects.toMatchObject({ code: "ILLEGAL_TRANSITION" });
     });
 
     it("discharge (moved) → admission discharged, event completed", async () => {

@@ -15912,19 +15912,19 @@
                   "newLevel": {
                     "anyOf": [
                       {
-                        "const": "rhc",
+                        "const": "routine_home_care",
                         "type": "string"
                       },
                       {
-                        "const": "crc",
+                        "const": "continuous_home_care",
                         "type": "string"
                       },
                       {
-                        "const": "gip",
+                        "const": "inpatient_respite_care",
                         "type": "string"
                       },
                       {
-                        "const": "iri",
+                        "const": "general_inpatient_care",
                         "type": "string"
                       }
                     ]
@@ -15936,6 +15936,10 @@
                   "reason": {
                     "minLength": 10,
                     "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "facilityId": {
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -93610,6 +93614,55 @@
                     "maxLength": 1000,
                     "type": "string"
                   },
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/level-of-care/{id}/confirm-bed": {
+      "post": {
+        "operationId": "postApiV1LevelofcareByIdConfirmbed",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "The §2.3.5 confirm handshake — verifies a real M37 bed assignment, then assigning → active",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion"
+                ],
+                "properties": {
                   "ifVersion": {
                     "minimum": 0,
                     "type": "integer"

@@ -1628,6 +1628,9 @@ export const ipuBedAssignmentProviderDenyStub: IpuBedAssignmentProvider = {
   async hasActiveBedAssignment() {
     throw new NotImplementedError("IpuBedAssignmentProvider");
   },
+  async activeBedAssignmentForLevelOfCarePeriod() {
+    throw new NotImplementedError("IpuBedAssignmentProvider");
+  },
 };
 /** M37 §4.11 — unit RN-coverage-active at an instant (M17/M19). */
 export const ipuShiftCoverageReaderDenyStub: IpuShiftCoverageReader = {

@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1217,
-    "coveredRoutes": 1217,
-    "directRoutesReferenced": 1157
+    "routes": 1218,
+    "coveredRoutes": 1218,
+    "directRoutesReferenced": 1159
   },
   "modules": [
     {
@@ -59,7 +59,7 @@
     },
     {
       "module": "06-admission",
-      "routes": 47,
+      "routes": 48,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-certification.test.ts",
@@ -67,7 +67,7 @@
         "apps/backend/__tests__/admission-intake.test.ts",
         "apps/backend/__tests__/admission-routes.test.ts"
       ],
-      "directRoutesReferenced": 46
+      "directRoutesReferenced": 48
     },
     {
       "module": "07-care-plan",

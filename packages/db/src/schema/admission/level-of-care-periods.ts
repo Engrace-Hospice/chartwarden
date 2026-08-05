@@ -6,7 +6,7 @@
 // unique). RLS + the M4 write-audit trigger land in M6-T03 (§3.6–3.7).
 import { sql } from "drizzle-orm";
 import { bigint, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { levelOfCare } from "../../enums";
+import { levelOfCare, levelOfCarePeriodStatus } from "../../enums";
 import { organizations } from "../organizations";
 import { users } from "../users";
 import { admissions } from "./admissions";
@@ -22,6 +22,9 @@ export const levelOfCarePeriods = pgTable(
       .notNull()
       .references(() => admissions.id, { onDelete: "restrict" }),
     levelOfCare: levelOfCare("level_of_care").notNull(),
+    // The confirm-handshake fix (2026-08-05): persisted so "requested but bed not yet confirmed" is a
+    // real, queryable state — always kept in sync with endedAt (never independently stale).
+    status: levelOfCarePeriodStatus("status").notNull().default("active"),
     effectiveAt: timestamp("effective_at", { withTimezone: true }).notNull(),
     endedAt: timestamp("ended_at", { withTimezone: true }),
     // Nullable at create (M6L-T04): changeLoc (route 33) carries only the new level; assigned_by + reason

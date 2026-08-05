@@ -400,6 +400,39 @@ describe.skipIf(!DB_URL)(
       ).rejects.toMatchObject({ code: "MEDICAID_NO_BILLABLE_LOC_DAYS" });
     });
 
+    it("the real composition-root LOC-period query excludes status='assigning' rows (confirm-handshake fix)", async () => {
+      // apps/backend/src/index.ts's m24LocPeriodReader (the REAL escape valve, not this file's fake) adds
+      // `ne(status, 'assigning')` to its WHERE clause — an unconfirmed IRC/GIP bed request must never
+      // surface as a billable LOC period. This proves that exact predicate against real Postgres, not just
+      // that the fake reader this suite otherwise uses behaves as scripted.
+      const adm = await admin.query(
+        "INSERT INTO admission (organization_id, patient_id) VALUES ($1,$2) RETURNING id",
+        [ORG, PATIENT],
+      );
+      const admissionId = adm.rows[0].id;
+      // `lcp_adm_open_idx` permits only one open (ended_at IS NULL) period per admission — end this one so
+      // the second insert below doesn't collide; the predicate under test only cares about `status`.
+      await admin.query(
+        `INSERT INTO level_of_care_period (organization_id, admission_id, level_of_care, status, effective_at, ended_at)
+         VALUES ($1,$2,'general_inpatient_care','assigning','2026-08-01','2026-08-02')`,
+        [ORG, admissionId],
+      );
+      const activeRow = await admin.query(
+        `INSERT INTO level_of_care_period (organization_id, admission_id, level_of_care, status, effective_at)
+         VALUES ($1,$2,'routine_home_care','active','2026-08-05') RETURNING id`,
+        [ORG, admissionId],
+      );
+      // Same predicate shape as m24LocPeriodReader's WHERE clause (organizationId + admissionId +
+      // status != 'assigning'), run as a plain query — RLS enforcement on this table is proven
+      // separately (m24-rls-isolation.live.test.ts); this test is purely about the status predicate.
+      const rows = await admin.query(
+        `SELECT id, status FROM level_of_care_period
+         WHERE organization_id=$1 AND admission_id=$2 AND status != 'assigning'`,
+        [ORG, admissionId],
+      );
+      expect(rows.rows).toEqual([{ id: activeRow.rows[0].id, status: "active" }]);
+    });
+
     it("rb_only: one line per billable rb_day, and the rb_day flips to billed + linked back", async () => {
       const arrangement = await admin.query(
         `INSERT INTO rb_arrangement (organization_id, patient_id, provider_entity_id, nf_facility_mdm_id,

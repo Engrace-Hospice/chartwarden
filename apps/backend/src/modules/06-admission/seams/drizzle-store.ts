@@ -35,7 +35,7 @@ import type {
   LevelOfCare,
   LevelOfCarePeriodSummary,
 } from "@wardenx/types";
-import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import type { AdmissionReaderStore, ElectionPeriodRecord } from "./store";
 
 const ADM = schema.admissions;
@@ -186,7 +186,9 @@ const periodCols = {
 export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReaderStore {
   /** Current LOC per admission for a batch (ONE query, never N+1): the open period, else the most
    *  recent by `effective_at` — the `getCurrentLevelOfCare` rule. Admissions absent from the map have
-   *  no LOC ledger row at all. */
+   *  no LOC ledger row at all. `assigning` (IRC/GIP awaiting M37 bed confirmation, confirm-handshake
+   *  fix) is excluded entirely — it is not yet a real period of care, so it must never surface as
+   *  "current" even though it is still open (`ended_at IS NULL`). */
   async function currentLocByAdmission(
     tx: Tx,
     admissionIds: readonly string[],
@@ -200,7 +202,7 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
         endedAt: LOC.endedAt,
       })
       .from(LOC)
-      .where(inArray(LOC.admissionId, admissionIds as string[]))
+      .where(and(inArray(LOC.admissionId, admissionIds as string[]), ne(LOC.status, "assigning")))
       .orderBy(asc(LOC.effectiveAt));
     const open = new Map<string, LevelOfCare>();
     for (const r of rows) {
@@ -367,6 +369,7 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
             id: LOC.id,
             admissionId: LOC.admissionId,
             levelOfCare: LOC.levelOfCare,
+            status: LOC.status,
             effectiveAt: LOC.effectiveAt,
             endedAt: LOC.endedAt,
           })
@@ -379,6 +382,7 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
               levelOfCarePeriodId: r.id,
               admissionId: r.admissionId,
               levelOfCare: r.levelOfCare,
+              status: r.status,
               effectiveAt: localDate(r.effectiveAt),
               endedAt: localDateN(r.endedAt),
             }) as LevelOfCarePeriodSummary,

@@ -311,15 +311,12 @@
   as of the period's own start date, via a new `PatientAddressReader.residenceAt` method on M5's existing
   live seam) for RHC/CHC's home-vs-ALF/SNF disambiguation; (4) an honest LOC-based fallback only when no
   fact resolves anything (GIP→Q5006, IRC→Q5009 NOS — not Q5001 home, which was flatly wrong for inpatient
-  respite, RHC/CHC→Q5001). Researching this surfaced a real, separate, pre-existing M6 bug, deliberately
-  NOT fixed here (flagged as a new follow-up candidate): `changeLoc`
-  (`apps/backend/src/modules/06-admission/admission-route-service-db.ts`) hardcodes `facilityId: null` on
-  every call, so the state machine's `IPU_FACILITY_REQUIRED` guard makes IRC/GIP level-of-care transitions
-  fail unconditionally today — no route ever supplies a facility, and no route ever calls
-  `ipuConfirmBedAssignment` either, so the spec's "assigning → confirmed" round-trip through M37 is
-  unimplemented, not just unpopulated. M24's resolver reads `facility_id`/`ipu_bed_assignment_id` regardless
-  (they cost nothing to select and read `null` today), so it benefits automatically once that M6 gap closes
-  — no further M24 change needed. The state-rate-schedule seed (migration 0182, edited in place — not yet
+  respite, RHC/CHC→Q5001). Researching this surfaced a real, separate, pre-existing M6 bug — flagged in the
+  first pass of this follow-up, then **closed the same day (Follow-up #3 below)**: `changeLoc` hardcoded
+  `facilityId: null` on every call, so IRC/GIP level-of-care transitions failed unconditionally. M24's
+  resolver already read `facility_id`/`ipu_bed_assignment_id` regardless (they cost nothing to select and
+  read `null` until then), so it benefited automatically once M6's gap closed — no further M24 change was
+  needed. The state-rate-schedule seed (migration 0182, edited in place — not yet
   deployed anywhere) now carries the real CMS FY2026 national per-diem base rates (RHC $230.83, CHC
   $1,674.29/24hr, IRC $532.48, GIP $1,199.86; effective 2025-10-01), sourced from the CMS FY2026 Hospice
   Wage Index and Payment Rate Update Final Rule and corroborated against Oregon's own OAR 410-142-0300
@@ -333,6 +330,40 @@
   contracted-hospital facility kind). Full gate green (build + `arch:fitness` 20 sub-gates + lint +
   `bun run test` 7981 passing + live-Postgres verification: the line-assembly suite, the M24 RLS suite, and
   the M40 RLS suite, run sequentially on a throwaway pg18 cluster).
+
+  **Follow-up #3 (2026-08-05, same day): the M6 IRC/GIP confirm handshake, closed for real.** `changeLoc`
+  now accepts a real caller-supplied `facilityId` (and the already-accepted-but-silently-dropped
+  `effectiveStart`/`reason`), lands IRC/GIP in a new persisted `assigning` status
+  (`level_of_care_period.status`, migration 0184 — this state previously had no column at all, only
+  inferred from `ended_at`), and a new `confirmLocBedAssignment` write path (`POST /api/v1/level-of-care/
+  :id/confirm-bed`) drives the state machine's existing-but-previously-unreachable
+  `ipuConfirmBedAssignment` event. The "bedId verified with M37" guard is REAL: M37 already published an
+  `IpuBedAssignmentProvider` seam for exactly this handshake (its own doc comment said so) — extended with
+  one new method (`activeBedAssignmentForLevelOfCarePeriod`, keyed by the M6 LOC-period id since
+  `ipu_admission.level_of_care_period_id` is unique) rather than duplicating the read. Confirmation fails
+  closed (`IPU_FACILITY_REQUIRED`) until a real, active `ipu_bed_assignment` row exists — never trusts a
+  caller-supplied bed id. Two more consumers of "current LOC" that silently treated an unconfirmed
+  `assigning` period as real (M24's claim-line reader, and the LIVE `LevelOfCareReader` seam's
+  `getCurrentLevelOfCare`/`getLevelOfCareDays` — already consumed by other modules for census/cap reads)
+  were fixed to exclude it. Also fixed en route, once it started blocking real verification: a SECOND
+  pre-existing bug in the SAME `changeLoc` route — `LocChangeSchema` validated short codes
+  (`rhc`/`crc`/`gip`/`iri`) that never matched what the service actually checked against
+  (`routine_home_care` etc.), so the real HTTP route 422'd for every level, not just IRC/GIP; fixed to the
+  canonical strings. And three unrelated pre-existing bugs in the M6 live-test suites themselves, found only
+  because these suites had apparently never been run successfully against live Postgres before (invisible
+  to both `tsc` — `__tests__` sits outside `apps/backend/tsconfig.json`'s `rootDir` — and to vitest, which
+  doesn't typecheck): a wrong-arity `acknowledgeNor` call (a raw string landing in the `NorAcknowledgeInput`
+  param), a missing attending-physician CTI signature in the shared activation-helper (R-AC-01 requires it
+  for period 1), and an assertion checking an error `code` that path never produces. A fourth, unrelated
+  pre-existing failure (`transfer-in → inherited active + next pending period` expects 2 election periods,
+  gets 3) was found and left — it doesn't touch LOC and isn't a regression from this change. 4 new unit
+  tests (state-machine coverage already existed), 4 new HTTP-inject tests (`admission-routes.test.ts` —
+  proving the real route, not just the service method, including the short-code fix), 2 new live-Postgres
+  scenarios seeding a REAL M37 unit/room/bed/admission/bed-assignment chain
+  (`m6-discharge-f2f-loc-write.live.test.ts`), plus a live predicate-exclusion test in the M24 suite. Full
+  gate green (build + `arch:fitness` 20 sub-gates + lint + `bun run test` 7985 passing + live-Postgres: M6
+  admission-write-lifecycle, M6 LOC/discharge, M6 RLS, M24 claim-line-assembly, M24 RLS, M37 RLS — all run
+  sequentially on a throwaway pg18 cluster).
 - Risks: State variance.
 - Rollback: Disable launch-state capability and reconcile in-flight jobs.
 - Estimated complexity: XL

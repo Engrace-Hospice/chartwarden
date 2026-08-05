@@ -162,7 +162,17 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
       1,
       USER,
     );
-    const norRes = await svc.acknowledgeNor(ORG_A, admissionId, USER);
+    // Pre-existing bug found while verifying an unrelated M6 fix: this call was missing the
+    // NorAcknowledgeInput object (USER was landing in the `input` param, `actorUserId` was undefined) —
+    // __tests__ is outside apps/backend/tsconfig.json's rootDir so tsc never typechecks this file, and
+    // vitest's esbuild transform doesn't typecheck either, so the arity mismatch was invisible until it
+    // actually ran against live Postgres (`set_config('app.user_id', undefined, true)` — malformed SQL).
+    const norRes = await svc.acknowledgeNor(
+      ORG_A,
+      admissionId,
+      { deliveryMethod: "electronic_witnessed", acknowledgedByRole: "patient" },
+      USER,
+    );
     expect(norRes.state).toBe("notice_of_rights_acknowledged");
     const norWin = await admin.query(
       "SELECT status FROM compliance_window WHERE admission_id=$1 AND window_kind='notice_of_rights'",
@@ -170,9 +180,12 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
     );
     expect(norWin.rows[0].status).toBe("closed");
 
-    // Activation gate: no signed election/CTI yet → blocked.
+    // Activation gate: no signed election/CTI yet → blocked. Third pre-existing bug found the same way:
+    // ActivationPreconditionError's code is always PRECONDITION_FAILED (412) — the specific gaps live in
+    // `.missing`, there is no per-gap error code — this assertion checked a code that path never produces.
     await expect(svc.activateAdmission(ORG_A, admissionId, norRes.version)).rejects.toMatchObject({
-      code: "ELECTION_STATEMENT_REQUIRED",
+      code: "PRECONDITION_FAILED",
+      missing: ["election_signed", "cti_signed", "attending_signed"],
     });
 
     // Seed a signed election statement + hospice-MD-signed CTI on period 1 (as superuser), then activate.
@@ -185,10 +198,15 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
        VALUES ($1,$2,$3,'patient','Fred Flow','A Hospice',true, now()::date, 'electronic_witnessed')`,
       [ORG_A, period.id, PATIENT2],
     );
+    // R-AC-01 (intake/activation-gate.ts) requires the ATTENDING physician's CTI signature for period 1,
+    // not just the hospice medical director's — attending_md_id/attending_md_signed_at were missing here
+    // (a pre-existing gap, found while verifying an unrelated M6 fix — activateAdmission always threw
+    // ELECTION_STATEMENT_REQUIRED/attending_signed once the acknowledgeNor bug above stopped masking it).
     await admin.query(
       `INSERT INTO certification_of_terminal_illness (organization_id, election_period_id, hospice_md_id,
-         terminal_diagnosis_icd10, narrative, period_start, period_end, hospice_md_signed_at)
-       VALUES ($1,$2,$3,'C34.90','Terminal', now()::date, now()::date + 90, now())`,
+         attending_md_id, terminal_diagnosis_icd10, narrative, period_start, period_end,
+         hospice_md_signed_at, attending_md_signed_at)
+       VALUES ($1,$2,$3,$3,'C34.90','Terminal', now()::date, now()::date + 90, now(), now())`,
       [ORG_A, period.id, PHYSICIAN],
     );
     const active = await svc.activateAdmission(ORG_A, admissionId, norRes.version);

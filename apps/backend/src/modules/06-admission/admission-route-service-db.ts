@@ -74,6 +74,19 @@ export interface AdmissionWriteOutboxPort {
 }
 const NOOP_OUTBOX: AdmissionWriteOutboxPort = { async publish() {} };
 
+/**
+ * The real §2.3.5 "bedId verified with M37" check — M37's `IpuBedAssignmentProvider` seam narrowed to
+ * the one method `confirmLocBedAssignment` needs. Optional: an absent binding fails the confirm route
+ * closed with a precise 503 rather than silently trusting an unverified bed (matches the M24 composition-
+ * root reader posture — degrade with a message, never fake success).
+ */
+export interface IpuBedAssignmentReaderPort {
+  activeBedAssignmentForLevelOfCarePeriod(
+    organizationId: string,
+    levelOfCarePeriodId: string,
+  ): Promise<{ ipuAdmissionId: string; bedAssignmentId: string; bedId: string } | null>;
+}
+
 type ReferralSourceChannel =
   | "phone"
   | "fax"
@@ -171,6 +184,7 @@ const WINDOW_HOURS: Record<string, number> = {
 export function createDbAdmissionRouteService(
   db: DbClient,
   outbox: AdmissionWriteOutboxPort = NOOP_OUTBOX,
+  ipuBedAssignmentReader?: IpuBedAssignmentReaderPort,
 ): AdmissionRouteService {
   const now = () => new Date();
 
@@ -241,7 +255,12 @@ export function createDbAdmissionRouteService(
         // unique `lcp_adm_open_idx` enforces it). No-op when none is open.
         await tx
           .update(LOC)
-          .set({ endedAt: now(), version: sql`${LOC.version} + 1`, updatedAt: now() })
+          .set({
+            endedAt: now(),
+            status: "ended",
+            version: sql`${LOC.version} + 1`,
+            updatedAt: now(),
+          })
           .where(and(eq(LOC.admissionId, ctx.admissionId), sql`${LOC.endedAt} is null`));
       } else if (e.kind === "end_election_period") {
         // §2.3.1 discharge/revocation/transfer cascade — complete every non-terminal benefit period.
@@ -774,15 +793,11 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         if (!(await admissionExists(tx as DbClient, admissionId))) return null;
         const rows = await tx
-          .select({ id: LOC.id, endedAt: LOC.endedAt, version: LOC.version })
+          .select({ id: LOC.id, status: LOC.status, version: LOC.version })
           .from(LOC)
           .where(eq(LOC.admissionId, admissionId))
           .orderBy(desc(LOC.effectiveAt));
-        return rows.map((r) => ({
-          id: r.id,
-          state: r.endedAt ? "ended" : "active",
-          version: Number(r.version),
-        }));
+        return rows.map((r) => ({ id: r.id, state: r.status, version: Number(r.version) }));
       });
     },
     async getNor(organizationId, admissionId) {
@@ -1707,7 +1722,14 @@ export function createDbAdmissionRouteService(
     },
 
     // ── M6L-T04: level-of-care period (§2.3.5) ────────────────────────────────────────────────────
-    async changeLoc(organizationId, admissionId, newLevel): Promise<MutationResult> {
+    async changeLoc(
+      organizationId,
+      admissionId,
+      newLevel,
+      facilityId = null,
+      effectiveStart = undefined,
+      reason = "",
+    ): Promise<MutationResult> {
       if (!LEVELS_OF_CARE.includes(newLevel as LevelOfCare))
         throw new WardenXError("VALIDATION_ERROR", `unknown level of care '${newLevel}'`, 422);
       const level = newLevel as LevelOfCare;
@@ -1719,48 +1741,61 @@ export function createDbAdmissionRouteService(
           .limit(1);
         if (!adm) throw new ResourceNotFoundError(admissionId);
         // §2.3.5 requestAssign — the guards (admission active/on-hold, no overlap, GIP documentation,
-        // IRC/GIP facility). changeLoc carries no facility, so IRC/GIP fail closed here (IPU_FACILITY_
-        // REQUIRED) — those go through the fuller assign path; RHC/CHC go straight to `active`.
+        // IRC/GIP facility). IRC/GIP land in `assigning` until confirmLocBedAssignment (below) verifies a
+        // real M37 bed; RHC/CHC go straight to `active`.
         const t = transitionLevelOfCare("pending", {
           type: "requestAssign",
           level,
           admissionActiveOrOnHold: adm.status === "active" || adm.status === "on_hold",
-          facilityId: null,
+          facilityId,
           wouldOverlap: false,
-          reason: "",
+          reason,
         });
         const to: LevelOfCareState = t.to;
         // Close the prior open LOC (the §2.3.5 end_level_of_care effect) BEFORE inserting the new one —
         // the partial unique `lcp_adm_open_idx` permits only one open period per admission.
         await tx
           .update(LOC)
-          .set({ endedAt: now(), version: sql`${LOC.version} + 1`, updatedAt: now() })
+          .set({
+            endedAt: now(),
+            status: "ended",
+            version: sql`${LOC.version} + 1`,
+            updatedAt: now(),
+          })
           .where(and(eq(LOC.admissionId, admissionId), sql`${LOC.endedAt} is null`));
         const loc = firstOrThrow(
           await tx
             .insert(LOC)
-            .values({ organizationId, admissionId, levelOfCare: level, effectiveAt: now() })
-            .returning({ id: LOC.id, endedAt: LOC.endedAt, version: LOC.version }),
+            .values({
+              organizationId,
+              admissionId,
+              levelOfCare: level,
+              status: to === "assigning" ? "assigning" : "active",
+              facilityId,
+              reason,
+              effectiveAt: effectiveStart ? new Date(effectiveStart) : now(),
+            })
+            .returning({ id: LOC.id, status: LOC.status, version: LOC.version }),
           "loc insert returned no row",
         );
-        await outbox.publish(tx, {
-          eventName: "m6.loc.changed",
-          payload: { levelOfCarePeriodId: loc.id, level, state: to },
-          organizationId,
-          aggregateKind: "level_of_care_period",
-          aggregateId: loc.id,
-        });
-        return {
-          id: loc.id,
-          state: loc.endedAt ? "ended" : "active",
-          version: Number(loc.version),
-        };
+        // No outbox event while `assigning` — nothing downstream should treat an unconfirmed IPU request
+        // as a real period of care yet; confirmLocBedAssignment publishes m6.loc.changed once it's real.
+        if (to !== "assigning") {
+          await outbox.publish(tx, {
+            eventName: "m6.loc.changed",
+            payload: { levelOfCarePeriodId: loc.id, level, state: to },
+            organizationId,
+            aggregateKind: "level_of_care_period",
+            aggregateId: loc.id,
+          });
+        }
+        return { id: loc.id, state: loc.status, version: Number(loc.version) };
       });
     },
     async patchLoc(organizationId, id, reason, ifVersion): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cur] = await tx
-          .select({ version: LOC.version, endedAt: LOC.endedAt })
+          .select({ version: LOC.version, status: LOC.status })
           .from(LOC)
           .where(eq(LOC.id, id))
           .limit(1);
@@ -1771,10 +1806,65 @@ export function createDbAdmissionRouteService(
             .update(LOC)
             .set({ reason, version: sql`${LOC.version} + 1`, updatedAt: now() })
             .where(and(eq(LOC.id, id), eq(LOC.version, ifVersion)))
-            .returning({ id: LOC.id, endedAt: LOC.endedAt, version: LOC.version }),
+            .returning({ id: LOC.id, status: LOC.status, version: LOC.version }),
           "loc not found",
         );
-        return { id: r.id, state: r.endedAt ? "ended" : "active", version: Number(r.version) };
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async confirmLocBedAssignment(organizationId, locPeriodId, ifVersion): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [cur] = await tx
+          .select({ status: LOC.status, version: LOC.version })
+          .from(LOC)
+          .where(eq(LOC.id, locPeriodId))
+          .limit(1);
+        if (!cur) throw new ResourceNotFoundError(locPeriodId);
+        assertVersion(locPeriodId, Number(cur.version), ifVersion);
+        if (!ipuBedAssignmentReader) {
+          throw new WardenXError(
+            "IPU_BED_ASSIGNMENT_READER_UNBOUND",
+            "the M37 bed-assignment reader is not bound in this environment",
+            503,
+          );
+        }
+        const bed = await ipuBedAssignmentReader.activeBedAssignmentForLevelOfCarePeriod(
+          organizationId,
+          locPeriodId,
+        );
+        // The real §2.3.5 "bedId verified with M37" guard — never trusts a caller-supplied bed id.
+        // ipuConfirmBedAssignment's only legal destination is "active" (§2.3.5 graph) — transitionLevelOfCare
+        // still runs first so the ILLEGAL_TRANSITION/guard checks fire before any write.
+        transitionLevelOfCare(cur.status as LevelOfCareState, {
+          type: "ipuConfirmBedAssignment",
+          bedVerified: bed !== null,
+        });
+        const r = firstOrThrow(
+          await tx
+            .update(LOC)
+            .set({
+              status: "active",
+              ipuBedAssignmentId: bed?.bedAssignmentId ?? null,
+              version: sql`${LOC.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(LOC.id, locPeriodId), eq(LOC.version, ifVersion)))
+            .returning({
+              id: LOC.id,
+              status: LOC.status,
+              version: LOC.version,
+              levelOfCare: LOC.levelOfCare,
+            }),
+          "loc not found",
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.loc.changed",
+          payload: { levelOfCarePeriodId: r.id, level: r.levelOfCare, state: r.status },
+          organizationId,
+          aggregateKind: "level_of_care_period",
+          aggregateId: r.id,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
 

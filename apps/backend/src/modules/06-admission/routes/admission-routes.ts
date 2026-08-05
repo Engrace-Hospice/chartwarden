@@ -42,6 +42,7 @@ import {
   F2fScheduleSchema,
   IdParamsSchema,
   LocChangeSchema,
+  LocConfirmBedSchema,
   LocPatchSchema,
   NorAcknowledgeSchema,
   PatientIdParamsSchema,
@@ -511,7 +512,14 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const body = parse(LocChangeSchema, request.body);
-      const res = await service.changeLoc(organizationId, idOf(request), body.newLevel);
+      const res = await service.changeLoc(
+        organizationId,
+        idOf(request),
+        body.newLevel,
+        body.facilityId ?? null,
+        body.effectiveStart,
+        body.reason,
+      );
       return reply.code(201).send(res);
     },
   );
@@ -534,6 +542,19 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     const body = parse(LocPatchSchema, request.body);
     return service.patchLoc(organizationId, idOf(request), body.reason, body.ifVersion);
   });
+
+  // The §2.3.5 confirm handshake (M6-T04 fix, 2026-08-05): IRC/GIP periods land in `assigning` until this
+  // fires; it verifies a real M37 bed assignment exists (never trusts a caller-supplied bed id) before
+  // transitioning to `active`.
+  app.post(
+    "/api/v1/level-of-care/:id/confirm-bed",
+    { preHandler: [LOC_CHANGE] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(LocConfirmBedSchema, request.body);
+      return service.confirmLocBedAssignment(organizationId, idOf(request), body.ifVersion);
+    },
+  );
 
   // ── Revocation / transfer / discharge (routes 36–40) ─────────────────────────────────────────
   app.post(

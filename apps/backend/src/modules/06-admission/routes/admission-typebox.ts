@@ -209,18 +209,26 @@ export const F2fOverrideWindowSchema = Type.Object({
 });
 
 // ── Level of care (routes 33–35) ─────────────────────────────────────────────────────────────────
+// `newLevel` uses the SAME canonical LevelOfCare strings as everywhere else in this module (M6's own
+// `LEVELS_OF_CARE` validation, M24's `LOC_BY_M6_ENUM`) — a prior short-code scheme (rhc/crc/gip/iri) never
+// matched what the service actually validated against, so every real call 422'd regardless of level
+// (confirm-handshake fix, 2026-08-05). `facilityId` is required for IRC/GIP by the state machine's own
+// IPU_FACILITY_REQUIRED guard, not duplicated here — the schema only validates shape.
 export const LocChangeSchema = Type.Object({
   newLevel: Type.Union([
-    Type.Literal("rhc"),
-    Type.Literal("crc"),
-    Type.Literal("gip"),
-    Type.Literal("iri"),
+    Type.Literal("routine_home_care"),
+    Type.Literal("continuous_home_care"),
+    Type.Literal("inpatient_respite_care"),
+    Type.Literal("general_inpatient_care"),
   ]),
   effectiveStart: Type.String({ format: "date" }),
   reason: Reason(10, 1000),
+  facilityId: Type.Optional(Uuid()),
 });
 
 export const LocPatchSchema = Type.Object({ reason: Reason(10, 1000), ifVersion: Version() });
+
+export const LocConfirmBedSchema = Type.Object({ ifVersion: Version() });
 
 // ── Revocation / transfer / discharge (routes 36–40) ─────────────────────────────────────────────
 export const RevocationCreateSchema = Type.Object({

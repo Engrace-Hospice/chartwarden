@@ -132,6 +132,28 @@ export function buildIpuSeams(db: DbClient): {
           return ba !== undefined;
         });
       },
+      async activeBedAssignmentForLevelOfCarePeriod(organizationId, levelOfCarePeriodId) {
+        return withOrg(organizationId, async (tx) => {
+          const [adm] = await tx
+            .select({ id: schema.ipuAdmission.id })
+            .from(schema.ipuAdmission)
+            .where(eq(schema.ipuAdmission.levelOfCarePeriodId, levelOfCarePeriodId))
+            .limit(1);
+          if (!adm) return null;
+          const [ba] = await tx
+            .select({ id: schema.ipuBedAssignment.id, bedId: schema.ipuBedAssignment.bedId })
+            .from(schema.ipuBedAssignment)
+            .where(
+              and(
+                eq(schema.ipuBedAssignment.ipuAdmissionId, adm.id),
+                isNull(schema.ipuBedAssignment.endedAt),
+              ),
+            )
+            .limit(1);
+          if (!ba) return null;
+          return { ipuAdmissionId: adm.id, bedAssignmentId: ba.id, bedId: ba.bedId };
+        });
+      },
     },
 
     IpuShiftCoverageReader: {

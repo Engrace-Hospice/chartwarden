@@ -862,6 +862,17 @@ export const levelOfCare = pgEnum("level_of_care", [
   "general_inpatient_care",
 ]);
 
+/** `level_of_care_period_status` — the §2.3.5 persisted lifecycle states (M6-T04 confirm-handshake fix,
+ * 2026-08-05). `pending` is a synthetic pre-create sentinel the state machine uses and never persists.
+ * `assigning`: IRC/GIP requested but the M37 IPU bed is not yet confirmed — NOT a billable period (M24's
+ * claim assembly excludes it). `active`: RHC/CHC (always) or IRC/GIP with a confirmed bed. `ended`: closed
+ * (mirrors `ended_at IS NOT NULL`, kept in sync at every close so status is always self-describing). */
+export const levelOfCarePeriodStatus = pgEnum("level_of_care_period_status", [
+  "assigning",
+  "active",
+  "ended",
+]);
+
 /** `revocation_reason` — why a beneficiary revoked the election (§3.2). */
 export const revocationReason = pgEnum("revocation_reason", [
   "seek_curative_treatment",

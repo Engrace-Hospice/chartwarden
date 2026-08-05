@@ -57,7 +57,15 @@ const PERMISSION_SEED = [
   },
   {
     userId: "rn_1",
-    permissions: ["admission.read", "cti.read", "f2f.read", "f2f.attest", "election.read"],
+    permissions: [
+      "admission.read",
+      "cti.read",
+      "f2f.read",
+      "f2f.attest",
+      "election.read",
+      "loc.change",
+      "loc.read",
+    ],
   },
   {
     userId: "md_1",
@@ -346,5 +354,87 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
     expect(ok.statusCode).toBe(200);
     expect(ok.json().state).toBe("closed");
     await b.app.close();
+  });
+
+  // Confirm-handshake fix (2026-08-05): LocChangeSchema used to accept short codes (rhc/crc/gip/iri)
+  // that never matched what changeLoc actually validated against (routine_home_care etc.) — every real
+  // call 422'd regardless of level. These prove the REAL route now works end-to-end through Fastify
+  // inject, not just that the service method compiles.
+  it("POST /admissions/:id/level-of-care (routine_home_care) succeeds through the real route (201)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/level-of-care`,
+      headers: RN,
+      payload: {
+        newLevel: "routine_home_care",
+        effectiveStart: "2026-06-20",
+        reason: "routine home care ordered",
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().state).toBe("active");
+    await app.close();
+  });
+
+  it("denies loc.change without the key (403)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/level-of-care`,
+      headers: INTAKE, // intake_1 lacks loc.change
+      payload: {
+        newLevel: "routine_home_care",
+        effectiveStart: "2026-06-20",
+        reason: "routine home care ordered",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("POST /level-of-care (general_inpatient_care) without facilityId → 422 IPU_FACILITY_REQUIRED", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/level-of-care`,
+      headers: RN,
+      payload: {
+        newLevel: "general_inpatient_care",
+        effectiveStart: "2026-06-20",
+        reason: "uncontrolled symptoms requiring inpatient management now",
+      },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("IPU_FACILITY_REQUIRED");
+    await app.close();
+  });
+
+  it("GIP with a facilityId lands in 'assigning', then confirm-bed activates it (201 → 200)", async () => {
+    const { app } = makeServer();
+    const assigning = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/level-of-care`,
+      headers: RN,
+      payload: {
+        newLevel: "general_inpatient_care",
+        effectiveStart: "2026-06-20",
+        reason: "uncontrolled symptoms requiring inpatient management now",
+        facilityId: "99999999-9999-4999-8999-999999999999",
+      },
+    });
+    expect(assigning.statusCode).toBe(201);
+    const assigningBody = assigning.json();
+    expect(assigningBody.state).toBe("assigning");
+
+    const confirmed = await app.inject({
+      method: "POST",
+      url: `/api/v1/level-of-care/${assigningBody.id}/confirm-bed`,
+      headers: RN,
+      payload: { ifVersion: assigningBody.version },
+    });
+    expect(confirmed.statusCode).toBe(200);
+    expect(confirmed.json().state).toBe("active");
+    await app.close();
   });
 });

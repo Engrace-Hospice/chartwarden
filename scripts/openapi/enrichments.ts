@@ -114,6 +114,7 @@ import {
   F2fOverrideWindowSchema,
   F2fScheduleSchema,
   LocChangeSchema,
+  LocConfirmBedSchema,
   LocPatchSchema,
   ComplianceCloseSchema as M6ComplianceCloseSchema,
   ComplianceListQuerySchema as M6ComplianceListQuerySchema,
@@ -5583,6 +5584,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "PATCH /api/v1/level-of-care/:id": {
     summary: "Correct a level-of-care period",
     body: LocPatchSchema,
+  },
+  "POST /api/v1/level-of-care/:id/confirm-bed": {
+    summary:
+      "The §2.3.5 confirm handshake — verifies a real M37 bed assignment, then assigning → active",
+    body: LocConfirmBedSchema,
   },
   // Revocation / transfer / discharge (routes 36–40)
   "POST /api/v1/admissions/:id/revocation": {

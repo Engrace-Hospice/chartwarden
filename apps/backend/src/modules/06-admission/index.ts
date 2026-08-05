@@ -9,6 +9,7 @@ import type { FastifyInstance } from "fastify";
 import { registerAdmissionAbacPredicates as _registerM6Abac } from "./abac-predicates";
 import {
   type AdmissionWriteOutboxPort,
+  type IpuBedAssignmentReaderPort,
   createDbAdmissionAbacResolver,
   createDbAdmissionRouteService,
 } from "./admission-route-service-db";
@@ -27,9 +28,12 @@ export function mountAdmissionRoutes(
   app: FastifyInstance,
   db: DbClient,
   outbox?: AdmissionWriteOutboxPort,
+  ipuBedAssignmentReader?: IpuBedAssignmentReaderPort,
 ): void {
   _registerM6Abac({ resolver: createDbAdmissionAbacResolver(db) });
-  _registerM6Routes(app, { service: createDbAdmissionRouteService(db, outbox) });
+  _registerM6Routes(app, {
+    service: createDbAdmissionRouteService(db, outbox, ipuBedAssignmentReader),
+  });
 }
 
 // M6-T05 — the six §4.7 reader seams (ElectionPeriod/Certification/FaceToFace/LevelOfCare/

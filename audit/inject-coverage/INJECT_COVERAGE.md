@@ -4,7 +4,7 @@
 
 A module's pure-function permission/ABAC tests prove its DECISIONS are correct; they prove nothing about the route wiring, schema validation, or service composition around them (the M30 dead-`inOrg` class, the Claim Workbench 404). `covered` requires a real Fastify `.inject()` call through the module's route registrar.
 
-**Totals:** 39/39 modules covered (100%) · 1217/1217 route defs sit behind a covered module · 1157/1217 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
+**Totals:** 39/39 modules covered (100%) · 1218/1218 route defs sit behind a covered module · 1159/1218 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
 
 | Module | Routes | Covered | Direct refs | Suite file(s) |
 |---|--:|:--:|--:|---|
@@ -12,7 +12,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 03-authorization | 17 | ✅ | 16/17 | apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/authz-idor.test.ts, apps/backend/__tests__/authz-routes.test.ts, apps/backend/__tests__/authz-validation.test.ts, apps/backend/__tests__/encounter-authoring.test.ts, apps/backend/__tests__/encounter-routes.test.ts |
 | 04-audit | 4 | ✅ | 4/4 | apps/backend/__tests__/audit-accounting.test.ts, apps/backend/__tests__/audit-routes.test.ts |
 | 05-patient | 14 | ✅ | 14/14 | apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/patient-routes.test.ts |
-| 06-admission | 47 | ✅ | 46/47 | apps/backend/__tests__/admission-certification.test.ts, apps/backend/__tests__/admission-discharge.test.ts, apps/backend/__tests__/admission-intake.test.ts, apps/backend/__tests__/admission-routes.test.ts |
+| 06-admission | 48 | ✅ | 48/48 | apps/backend/__tests__/admission-certification.test.ts, apps/backend/__tests__/admission-discharge.test.ts, apps/backend/__tests__/admission-intake.test.ts, apps/backend/__tests__/admission-routes.test.ts |
 | 07-care-plan | 19 | ✅ | 18/19 | apps/backend/__tests__/care-plan-conformance.live.test.ts, apps/backend/__tests__/care-plan-routes.test.ts |
 | 08-encounters | 31 | ✅ | 26/31 | apps/backend/__tests__/encounter-authoring.test.ts, apps/backend/__tests__/encounter-routes.test.ts |
 | 09-assessments | 18 | ✅ | 13/18 | apps/backend/__tests__/assessment-routes.test.ts |

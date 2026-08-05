@@ -9830,6 +9830,23 @@ export interface paths {
         patch: operations["patchApiV1LevelofcareById"];
         trace?: never;
     };
+    "/api/v1/level-of-care/{id}/confirm-bed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The §2.3.5 confirm handshake — verifies a real M37 bed assignment, then assigning → active */
+        post: operations["postApiV1LevelofcareByIdConfirmbed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/map-view": {
         parameters: {
             query?: never;
@@ -23389,10 +23406,12 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    newLevel: "rhc" | "crc" | "gip" | "iri";
+                    newLevel: "routine_home_care" | "continuous_home_care" | "inpatient_respite_care" | "general_inpatient_care";
                     /** Format: date */
                     effectiveStart: string;
                     reason: string;
+                    /** Format: uuid */
+                    facilityId?: string;
                 };
             };
         };
@@ -44053,6 +44072,34 @@ export interface operations {
             content: {
                 "application/json": {
                     reason: string;
+                    ifVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1LevelofcareByIdConfirmbed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
                     ifVersion: number;
                 };
             };

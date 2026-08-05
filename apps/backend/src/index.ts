@@ -2015,6 +2015,24 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // publisher. M30/M33/M34 — M34's lifecycle outbox now binds too (#107; its emit is gated to the conformant
   // `m34.tenant.provisioned` event, so no mutation rolls back).
   const m6OutboxPublisher = bindCallerModule(txOutboxPublisher, "m6");
+  // M6 → M37 (confirm-handshake fix, 2026-08-05) — the LIVE `IpuBedAssignmentProvider` seam (registered
+  // by M37 at boot), resolved lazily per call (the `m24SignedEncounters`/`m24CoverageResolver` precedent)
+  // so registration order at boot never matters. This is the real "bedId verified with M37" check the
+  // §2.3.5 `ipuConfirmBedAssignment` guard has always declared but nothing implemented.
+  const m6IpuBedAssignmentReader = {
+    async activeBedAssignmentForLevelOfCarePeriod(
+      organizationId: string,
+      levelOfCarePeriodId: string,
+    ) {
+      const reader = getSeam("IpuBedAssignmentProvider") as {
+        activeBedAssignmentForLevelOfCarePeriod(
+          organizationId: string,
+          levelOfCarePeriodId: string,
+        ): Promise<{ ipuAdmissionId: string; bedAssignmentId: string; bedId: string } | null>;
+      };
+      return reader.activeBedAssignmentForLevelOfCarePeriod(organizationId, levelOfCarePeriodId);
+    },
+  };
   const m7OutboxPublisher = bindCallerModule(txOutboxPublisher, "m7");
   const m8OutboxPublisher = bindCallerModule(txOutboxPublisher, "m8");
   const m9OutboxPublisher = bindCallerModule(txOutboxPublisher, "m9");
@@ -2090,7 +2108,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       }
     : undefined;
   // M24 → M6 (WX-PR-011 line-assembly follow-up) — `level_of_care_period` is M6-owned; same escape-valve
-  // posture as `m24CcnReader` immediately above.
+  // posture as `m24CcnReader` immediately above. Excludes `status='assigning'` (confirm-handshake fix,
+  // 2026-08-05): an IRC/GIP period awaiting M37 bed confirmation is not yet a real period of care and
+  // must never generate a billable claim line.
   const m24LocPeriodReader = dbHandle
     ? {
         async periodsForAdmission(organizationId: string, admissionId: string) {
@@ -2108,6 +2128,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               and(
                 eq(schema.levelOfCarePeriods.organizationId, organizationId),
                 eq(schema.levelOfCarePeriods.admissionId, admissionId),
+                ne(schema.levelOfCarePeriods.status, "assigning"),
               ),
             )
             .orderBy(schema.levelOfCarePeriods.effectiveAt);
@@ -2313,7 +2334,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           });
           mountAuditRoutes(app, dbHandle.db); // M4 — audit-log search on the real Drizzle AuditQuery
           mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table
-          mountAdmissionRoutes(app, dbHandle.db, m6OutboxPublisher); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
+          mountAdmissionRoutes(app, dbHandle.db, m6OutboxPublisher, m6IpuBedAssignmentReader); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
           // Clinical core (M7–M14, M17, M18, M22) — reads mounted over the real Drizzle route services under
           // RLS, replacing the retired in-memory scaffold. Writes fail-closed 501 until each module's write
           // lifecycle lands. See each module's `*-route-service-db.ts`.

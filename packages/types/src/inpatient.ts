@@ -300,6 +300,21 @@ export interface IpuCensusProvider {
 /** M6 — confirms the bed assignment in the §2.3.5 handshake. */
 export interface IpuBedAssignmentProvider {
   hasActiveBedAssignment(organizationId: OrgId, ipuAdmissionId: IpuAdmissionId): Promise<boolean>;
+  /**
+   * The REAL "bedId verified with M37" check the §2.3.5 `ipuConfirmBedAssignment` guard needs, keyed by
+   * the M6 level-of-care period id (the only id M6 has at confirm-time — `ipu_admission.level_of_care_
+   * period_id` is unique, so this is a direct lookup). Null when no `ipu_admission` exists yet for that
+   * period, or it exists but has no currently-active `ipu_bed_assignment` — M6 must not confirm either
+   * way. Returns the M37 bed-assignment id to persist as `level_of_care_period.ipu_bed_assignment_id`.
+   */
+  activeBedAssignmentForLevelOfCarePeriod(
+    organizationId: OrgId,
+    levelOfCarePeriodId: string,
+  ): Promise<{
+    ipuAdmissionId: IpuAdmissionId;
+    bedAssignmentId: IpuBedAssignmentId;
+    bedId: IpuBedId;
+  } | null>;
 }
 
 /** M17 cross-check / M19 after-hours — is the unit's RN coverage active at an instant? */

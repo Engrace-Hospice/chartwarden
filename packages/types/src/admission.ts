@@ -242,11 +242,15 @@ export interface LevelOfCareDays {
   readonly daysByLevel: { readonly [L in LevelOfCare]: number };
 }
 
-/** The current/most-recent level-of-care period for an admission (§4.7 LevelOfCareReader). */
+/** The current/most-recent level-of-care period for an admission (§4.7 LevelOfCareReader). `status`
+ *  (M6-T04 confirm-handshake fix): `assigning` means an IRC/GIP period awaiting M37 bed confirmation —
+ *  NOT yet a real period of care; `getCurrentLevelOfCare`/`getLevelOfCareDays` must never treat it as
+ *  "current" or count its days. */
 export interface LevelOfCarePeriodSummary {
   readonly levelOfCarePeriodId: LevelOfCarePeriodId;
   readonly admissionId: AdmissionId;
   readonly levelOfCare: LevelOfCare;
+  readonly status: "assigning" | "active" | "ended";
   readonly effectiveAt: LocalDate;
   readonly endedAt: LocalDate | null;
 }

@@ -426,12 +426,27 @@ export interface AdmissionRouteService {
     actorUserId: string,
   ): Promise<MutationResult>;
   // LOC (routes 33–35)
-  changeLoc(organizationId: string, admissionId: string, newLevel: string): Promise<MutationResult>;
+  changeLoc(
+    organizationId: string,
+    admissionId: string,
+    newLevel: string,
+    facilityId?: string | null,
+    effectiveStart?: string,
+    reason?: string,
+  ): Promise<MutationResult>;
   listLoc(organizationId: string, admissionId: string): Promise<readonly SummaryRow[] | null>;
   patchLoc(
     organizationId: string,
     id: string,
     reason: string,
+    ifVersion: number,
+  ): Promise<MutationResult>;
+  /** The §2.3.5 confirm handshake (M6-T04 fix) — verifies a real M37 bed assignment, then
+   *  `assigning` → `active`. ILLEGAL_TRANSITION if the period isn't `assigning`; IPU_FACILITY_REQUIRED
+   *  if M37 has no active bed assignment for it yet. */
+  confirmLocBedAssignment(
+    organizationId: string,
+    locPeriodId: string,
     ifVersion: number,
   ): Promise<MutationResult>;
   // Revocation / transfer / discharge (routes 36–40)
@@ -1015,14 +1030,32 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       return transition(rec, rec.state, ifVersion, "m6.f2f.window_overridden");
     },
 
-    async changeLoc(organizationId, admissionId, newLevel) {
-      void newLevel;
+    async changeLoc(
+      organizationId,
+      admissionId,
+      newLevel,
+      facilityId,
+      effectiveStart,
+      reason = "",
+    ) {
+      void effectiveStart;
       const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
-      const rec = insert("loc", organizationId, "active", {
+      const needsIpuBed =
+        newLevel === "inpatient_respite_care" || newLevel === "general_inpatient_care";
+      if (needsIpuBed && !facilityId) {
+        throw new AdmissionStateError("IPU_FACILITY_REQUIRED", "IRC/GIP requires a facility_id");
+      }
+      if (newLevel === "general_inpatient_care" && reason.trim().length < 30) {
+        throw new AdmissionStateError(
+          "GIP_DOCUMENTATION_INSUFFICIENT",
+          "GIP requires ≥ 30 characters of uncontrolled-symptom / end-of-life documentation",
+        );
+      }
+      const rec = insert("loc", organizationId, needsIpuBed ? "assigning" : "active", {
         admissionId: adm.id,
         patientId: adm.patientId,
       });
-      events.push("m6.loc.changed");
+      if (!needsIpuBed) events.push("m6.loc.changed");
       return summary(rec);
     },
     async listLoc(organizationId, admissionId) {
@@ -1035,6 +1068,16 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       void reason;
       const rec = get(organizationId, id, "loc") ?? notFound(id);
       return transition(rec, rec.state, ifVersion);
+    },
+    async confirmLocBedAssignment(organizationId, locPeriodId, ifVersion) {
+      const rec = get(organizationId, locPeriodId, "loc") ?? notFound(locPeriodId);
+      if (rec.state !== "assigning") {
+        throw new AdmissionStateError(
+          "ILLEGAL_TRANSITION",
+          `level-of-care period cannot ipuConfirmBedAssignment from '${rec.state}'`,
+        );
+      }
+      return transition(rec, "active", ifVersion, "m6.loc.changed");
     },
 
     async createRevocation(organizationId, admissionId, actorUserId) {
