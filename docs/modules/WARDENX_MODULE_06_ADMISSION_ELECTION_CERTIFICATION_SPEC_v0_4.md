@@ -2104,6 +2104,12 @@ Type.Object({
   otherHospiceCcn: Type.Optional(Type.String({ pattern:'^[0-9A-Z]{6}$' })),
   priorBenefitPeriodSequence: Type.Integer({ minimum:1 }), // CMS rule — sequence inherited (D9)
   priorElectionStartDate: Type.String({ format:'date' }),
+  // The RECEIVING hospice's own CTI on the `next` pending period (D9: the inherited period runs on
+  // the sending hospice's certification, no CTI required from us). Earlier revisions of this section
+  // omitted both fields, leaving no way to draft that CTI; corrected 2026-08-05 to match the shipped
+  // implementation (same drift class as route 36's `revocationReason`, fixed the same day).
+  hospiceMedicalDirectorId: Type.String({ format:'uuid' }),
+  attendingPhysicianId: Type.Optional(Type.String({ format:'uuid' })),
   narrative: Type.String({ minLength:10, maxLength:4000 }),
 })
 // 201 -> { id, admissionId, currentElectionPeriodSequence }
