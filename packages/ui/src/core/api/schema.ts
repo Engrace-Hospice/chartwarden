@@ -23184,6 +23184,8 @@ export interface operations {
                     dischargeDate: string;
                     narrative: string;
                     forCauseReason?: string;
+                    /** Format: uuid */
+                    deathCertifierId?: string;
                 };
             };
         };

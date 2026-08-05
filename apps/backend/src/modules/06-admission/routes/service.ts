@@ -201,6 +201,8 @@ export interface DischargeInput {
   readonly dischargeDate: string;
   readonly narrative: string;
   readonly forCauseReason?: string;
+  /** R-DC-01 — required when `reason === 'death'` (`checkDischargeNarrative` enforces it). */
+  readonly deathCertifierId?: string;
 }
 
 /** §4.2.7 route 37 body (TransferOutSchema) — the receiving hospice's identity + the transfer narrative. */
@@ -1217,7 +1219,12 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
       // §6.3 — the per-reason narrative gates (D11 tightens no_longer_terminal/other; for_cause needs a
       // forCauseReason). The reason→permission key is already enforced at the route preHandler.
-      const issue = checkDischargeNarrative(input.reason, input.narrative, input.forCauseReason);
+      const issue = checkDischargeNarrative(
+        input.reason,
+        input.narrative,
+        input.forCauseReason,
+        input.deathCertifierId,
+      );
       if (issue) throw new AdmissionStateError(issue.code, issue.message);
       const requiresMedicalDirectorCosign = dischargeRequiresCosign(input.reason);
       events.push("m6.discharge.created");

@@ -640,6 +640,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
           dischargeDate: body.dischargeDate,
           narrative: body.narrative,
           forCauseReason: body.forCauseReason,
+          deathCertifierId: body.deathCertifierId,
         },
         userId,
       );

@@ -308,7 +308,7 @@ describe.skipIf(!DB_URL)(
       expect(adm!.state).toBe("discharged");
     });
 
-    it("discharge (death) → bereavement + bereavement_eligible", async () => {
+    it("discharge (death) → bereavement + bereavement_eligible, death certifier persisted", async () => {
       const { admissionId } = await activeAdmission(randomUUID());
       const res = await svc.discharge(
         ORG_A,
@@ -317,6 +317,7 @@ describe.skipIf(!DB_URL)(
           reason: "death",
           dischargeDate: new Date().toISOString().slice(0, 10),
           narrative: "expired peacefully",
+          deathCertifierId: MD,
         },
         USER,
       );
@@ -324,10 +325,32 @@ describe.skipIf(!DB_URL)(
       const adm = await svc.getAdmission(ORG_A, admissionId);
       expect(adm!.state).toBe("bereavement");
       const de = await admin.query(
-        "SELECT bereavement_eligible FROM discharge_event WHERE admission_id=$1",
+        "SELECT bereavement_eligible, death_certifier_id FROM discharge_event WHERE admission_id=$1",
         [admissionId],
       );
       expect(de.rows[0].bereavement_eligible).toBe(true);
+      expect(de.rows[0].death_certifier_id).toBe(MD);
+    });
+
+    it("a death discharge with no certifier identity is rejected (checkDischargeNarrative's R-DC-01 identity gate)", async () => {
+      const { admissionId } = await activeAdmission(randomUUID());
+      await expect(
+        svc.discharge(
+          ORG_A,
+          admissionId,
+          {
+            reason: "death",
+            dischargeDate: new Date().toISOString().slice(0, 10),
+            narrative: "expired peacefully",
+          },
+          USER,
+        ),
+      ).rejects.toMatchObject({ code: "DEATH_CERTIFIER_INVALID", statusCode: 422 });
+      const de = await admin.query("SELECT id FROM discharge_event WHERE admission_id=$1", [
+        admissionId,
+      ]);
+      expect(de.rows).toHaveLength(0);
+      expect((await svc.getAdmission(ORG_A, admissionId))!.state).toBe("active");
     });
 
     it("a death discharge dated in the future is rejected (planDischarge's R-DC-01 real-clock guard)", async () => {
@@ -337,7 +360,12 @@ describe.skipIf(!DB_URL)(
         svc.discharge(
           ORG_A,
           admissionId,
-          { reason: "death", dischargeDate: future, narrative: "expired peacefully" },
+          {
+            reason: "death",
+            dischargeDate: future,
+            narrative: "expired peacefully",
+            deathCertifierId: MD,
+          },
           USER,
         ),
       ).rejects.toMatchObject({ code: "DEATH_CERTIFIER_INVALID", statusCode: 422 });

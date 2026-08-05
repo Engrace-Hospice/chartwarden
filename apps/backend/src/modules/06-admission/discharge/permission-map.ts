@@ -26,6 +26,8 @@ export interface DischargePolicy {
   readonly requiresForCauseReason: boolean;
   /** `for_cause` requires a subsequent medical-director cosign via route 40 before discharge (D11). */
   readonly requiresMedicalDirectorCosign: boolean;
+  /** R-DC-01 — `death` requires an identified certifier (`death_certifier_id`); no other reason does. */
+  readonly requiresDeathCertifier: boolean;
 }
 
 /** §6.3 reason → policy. The keys are the derivation targets registered in M6_CONTRIBUTED_PERMISSIONS. */
@@ -35,30 +37,35 @@ export const DISCHARGE_POLICY: Record<DischargeReason, DischargePolicy> = {
     minNarrativeChars: 10,
     requiresForCauseReason: false,
     requiresMedicalDirectorCosign: false,
+    requiresDeathCertifier: true,
   },
   moved_out_of_service_area: {
     permissionKey: "discharge.moved",
     minNarrativeChars: 10,
     requiresForCauseReason: false,
     requiresMedicalDirectorCosign: false,
+    requiresDeathCertifier: false,
   },
   no_longer_terminal: {
     permissionKey: "discharge.no_longer_terminal",
     minNarrativeChars: 20, // D11
     requiresForCauseReason: false,
     requiresMedicalDirectorCosign: false,
+    requiresDeathCertifier: false,
   },
   for_cause: {
     permissionKey: "discharge.for_cause",
     minNarrativeChars: 10,
     requiresForCauseReason: true,
     requiresMedicalDirectorCosign: true, // D11 — admission stays active until route 40 cosign
+    requiresDeathCertifier: false,
   },
   other: {
     permissionKey: "discharge.other",
     minNarrativeChars: 40,
     requiresForCauseReason: false,
     requiresMedicalDirectorCosign: false,
+    requiresDeathCertifier: false,
   },
 };
 
@@ -88,25 +95,38 @@ export function dischargeRequiresCosign(reason: DischargeReason): boolean {
 
 /** A §6.3 narrative-gate violation (the service throws the matching §2.4 code). */
 export interface DischargeNarrativeIssue {
-  readonly code: "NARRATIVE_REQUIRED_FOR_CAUSE" | "DISCHARGE_NARRATIVE_TOO_SHORT";
+  readonly code:
+    | "NARRATIVE_REQUIRED_FOR_CAUSE"
+    | "DISCHARGE_NARRATIVE_TOO_SHORT"
+    | "DEATH_CERTIFIER_INVALID";
   readonly message: string;
 }
 
 /**
  * §6.3 — validate the discharge capture body against the per-reason gates. Returns the first issue or
- * `null`. The `for_cause` reason requires a `forCauseReason` of ≥20 chars (412); every reason requires
- * a narrative of at least the reason's minimum (D11 tightens `no_longer_terminal`/`other`) (422).
+ * `null`. The `for_cause` reason requires a `forCauseReason` of ≥20 chars (412); `death` requires an
+ * identified `deathCertifierId` (R-DC-01, reuses the same `DEATH_CERTIFIER_INVALID` code
+ * `checkDeathCertifier` uses for the date-order half of the same rule — one coherent guard, two
+ * places it can fail); every reason requires a narrative of at least the reason's minimum (D11
+ * tightens `no_longer_terminal`/`other`) (422).
  */
 export function checkDischargeNarrative(
   reason: DischargeReason,
   narrative: string,
   forCauseReason?: string,
+  deathCertifierId?: string,
 ): DischargeNarrativeIssue | null {
   const policy = DISCHARGE_POLICY[reason];
   if (policy.requiresForCauseReason && (forCauseReason ?? "").trim().length < 20) {
     return {
       code: "NARRATIVE_REQUIRED_FOR_CAUSE",
       message: "for-cause discharge requires a forCauseReason of at least 20 characters",
+    };
+  }
+  if (policy.requiresDeathCertifier && !deathCertifierId) {
+    return {
+      code: "DEATH_CERTIFIER_INVALID",
+      message: "death discharge requires an identified death certifier (deathCertifierId)",
     };
   }
   if (narrative.trim().length < policy.minNarrativeChars) {

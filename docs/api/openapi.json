@@ -15462,6 +15462,10 @@
                     "minLength": 20,
                     "maxLength": 2000,
                     "type": "string"
+                  },
+                  "deathCertifierId": {
+                    "format": "uuid",
+                    "type": "string"
                   }
                 }
               }

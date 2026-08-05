@@ -279,6 +279,9 @@ export const DischargeCreateSchema = Type.Object({
   dischargeDate: Type.String({ format: "date" }),
   narrative: Reason(10, 4000),
   forCauseReason: Type.Optional(Type.String({ minLength: 20, maxLength: 2000 })),
+  // R-DC-01 — required (service-enforced, see checkDischargeNarrative) when reason='death'; identifies
+  // who certified the death (M40 external_physician or M2 user; app-validated, not a DB FK).
+  deathCertifierId: Type.Optional(Uuid()),
 });
 
 export const DischargeCosignSchema = Type.Object({

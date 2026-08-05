@@ -307,7 +307,12 @@ describe("M6-T12 §7.6 — discharge workflows (W-DC)", () => {
     const res = await backend.service.discharge(
       ORG,
       "adm_d",
-      { reason: "death", dischargeDate: "2026-03-15", narrative: "patient passed at home" },
+      {
+        reason: "death",
+        dischargeDate: "2026-03-15",
+        narrative: "patient passed at home",
+        deathCertifierId: "md_1",
+      },
       U,
     );
     expect(res.reason).toBe("death");
@@ -347,7 +352,12 @@ describe("M6-T12 §7.6 — discharge workflows (W-DC)", () => {
     await backend.service.discharge(
       ORG,
       "adm_d2",
-      { reason: "death", dischargeDate: "2026-03-15", narrative: "patient passed at home" },
+      {
+        reason: "death",
+        dischargeDate: "2026-03-15",
+        narrative: "patient passed at home",
+        deathCertifierId: "md_1",
+      },
       U,
     );
     expect(backend.events).not.toContain("m6.bereavement.eligible");

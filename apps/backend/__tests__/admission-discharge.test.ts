@@ -98,7 +98,18 @@ describe("M6-T09 — §6.3 per-reason narrative gates", () => {
   });
 
   it("death/moved pass with the base ≥10-char narrative", () => {
-    expect(checkDischargeNarrative("death", "expired at home")).toBeNull();
+    expect(checkDischargeNarrative("death", "expired at home", undefined, "md_1")).toBeNull();
+    expect(checkDischargeNarrative("moved_out_of_service_area", "moved to FL")).toBeNull();
+  });
+
+  it("death requires an identified deathCertifierId (R-DC-01, DEATH_CERTIFIER_INVALID)", () => {
+    expect(checkDischargeNarrative("death", "expired at home")?.code).toBe(
+      "DEATH_CERTIFIER_INVALID",
+    );
+    expect(checkDischargeNarrative("death", "expired at home", undefined, "")?.code).toBe(
+      "DEATH_CERTIFIER_INVALID",
+    );
+    // No other reason requires it.
     expect(checkDischargeNarrative("moved_out_of_service_area", "moved to FL")).toBeNull();
   });
 });
@@ -216,7 +227,12 @@ describe("M6-T09 — slice: discharge cascades (§7.6)", () => {
     const res = await service.discharge(
       ORG,
       ADMISSION,
-      { reason: "death", dischargeDate: "2026-03-15", narrative: "patient expired at home" },
+      {
+        reason: "death",
+        dischargeDate: "2026-03-15",
+        narrative: "patient expired at home",
+        deathCertifierId: "md_1",
+      },
       "u1",
     );
     expect(res.requiresMedicalDirectorCosign).toBe(false);
@@ -240,7 +256,12 @@ describe("M6-T09 — slice: discharge cascades (§7.6)", () => {
     await service.discharge(
       ORG,
       ADMISSION,
-      { reason: "death", dischargeDate: "2026-03-15", narrative: "patient expired at home" },
+      {
+        reason: "death",
+        dischargeDate: "2026-03-15",
+        narrative: "patient expired at home",
+        deathCertifierId: "md_1",
+      },
       "u1",
     );
     expect(events).toContain("m6.discharge.death");

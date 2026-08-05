@@ -513,6 +513,27 @@
   (`admission-routes.test.ts`) already posted the real payload shape and now exercises the real
   4-arg service call end to end. Full gate green + all 6 M6 live suites (53 tests) + M24
   claim-line-assembly (9 tests). No open "no input param" instances remain in this file.
+- **Follow-up, same day**: closed the death-certifier half of R-DC-01 that the `planDischarge`
+  wiring left as a hardcoded `true` placeholder. Unlike `cosignDischarge`'s cosigner identity,
+  `discharge_event.death_certifier_id` DOES have a real column ready for exactly this — so the fix
+  is real, not just reachable-and-dropped. Added `deathCertifierId` (optional at the schema level,
+  service-enforced required for `reason='death'`, mirroring `forCauseReason`'s existing conditional
+  pattern) to `DischargeCreateSchema`; `permission-map.ts`'s `checkDischargeNarrative` gained a new
+  `requiresDeathCertifier` policy flag and returns `DEATH_CERTIFIER_INVALID` (reusing
+  `checkDeathCertifier`'s own code — one coherent R-DC-01 guard, two places it can fail) when a
+  death discharge omits it; `dischargeAdmissionTx` now derives `deathCertifierCredentialed` as
+  `!!deathCertifierId` instead of a bare `true`; `discharge_event.death_certifier_id` is populated
+  for real on insert. **Explicit about what this does NOT prove**: it confirms an IDENTITY was
+  captured, not that the identified person holds an MD/NP/RN license or that their license permits
+  pronouncing death under the admission's own state's rules (R-DC-01's own note: "RN can pronounce
+  in some states"). Full state-law-aware role/license verification needs an M40 physician-registry
+  role lookup plus a per-state credentialing ruleset — neither exists yet, and building both is a
+  materially larger feature than this fix, so it's flagged, not attempted. `cosignDischarge`'s
+  cosigner identity remains deliberately unpersisted (no column exists for it, unlike this field).
+  Added 2 new live tests (missing-identity → 422 before any write; existing death test extended to
+  assert the id round-trips to the DB) + 1 new unit test (`checkDischargeNarrative`'s new gate).
+  `deathCertifierId` changed a route's request schema, so `openapi.json` + the generated UI client
+  were regenerated. Full gate green + all 6 M6 live suites (54 tests) + M24 claim-line-assembly.
 
   4 new unit tests (state-machine coverage already existed), 4 new HTTP-inject tests (`admission-routes.test.ts` —
   proving the real route, not just the service method, including the short-code fix), 2 new live-Postgres

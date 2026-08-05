@@ -470,8 +470,9 @@ export function createDbAdmissionRouteService(
    * death-certifier check) → UPDATE to the target state → run the LOC/election-period end cascades +
    * the `m6.admission.discharged` outbox fan-out. Called by discharge (immediate reasons), the for-cause
    * cosign, revocation, and transfer-out. Never called on the for-cause FILING (the admission stays
-   * active until cosign). `deathCertifierCredentialed` is assumed true here — the fuller certifier gate
-   * belongs to a death-certification capture the discharge body does not yet carry.
+   * active until cosign). `deathCertifierId` identifies WHO certified a death (`checkDischargeNarrative`
+   * already required it be present for `reason === "death"` before this function is ever reached) — see
+   * that call's caveat below for what this guard does and does NOT verify.
    */
   async function dischargeAdmissionTx(
     tx: DbClient,
@@ -488,6 +489,7 @@ export function createDbAdmissionRouteService(
         | "no_longer_terminal";
       effectiveAt: string;
       forCauseCosigned: boolean;
+      deathCertifierId?: string;
     },
   ): Promise<{ state: AdmissionState; version: number }> {
     const [row] = await tx
@@ -502,19 +504,24 @@ export function createDbAdmissionRouteService(
     // §2.3.6 — the pure command guard (for_cause cosign + R-DC-01 death-certifier check), called for
     // validation ahead of `transitionAdmission`'s own equivalent inline guards below (kept as-is,
     // defense-in-depth). `forCauseCosigned` is already a real caller-supplied fact (false while a
-    // for-cause filing awaits cosign, true only from `cosignDischarge` after it happens) — this closes
-    // no new gap there. `today` uses the REAL clock rather than `ev.effectiveAt` (which made the
-    // R-DC-01 date-order half of the check trivially true by construction, comparing a value to
-    // itself). `deathCertifierCredentialed` remains hardcoded `true`: `DischargeCreateSchema` collects
-    // no certifier identity at all (unlike `DischargeCosignSchema`'s `cosignerName`/`cosignerNpi`,
-    // themselves ALSO dropped by `cosignDischarge` — a separate, larger gap, not fixed here). The
-    // credential half of this guard is therefore still a placeholder; only the date-order half is real.
+    // for-cause filing awaits cosign, true only from `cosignDischarge` after it happens). `today` uses
+    // the REAL clock rather than `ev.effectiveAt` (which made the R-DC-01 date-order half of the check
+    // trivially true by construction, comparing a value to itself). `deathCertifierCredentialed` is now
+    // a real fact too — `!!ev.deathCertifierId` — but be precise about what that proves: it confirms an
+    // IDENTITY was captured (`DischargeCreateSchema.deathCertifierId`, enforced present for `death` by
+    // `checkDischargeNarrative` before this runs), NOT that the identified person actually holds an
+    // MD/NP/RN license, nor that their license permits pronouncing death under the ADMISSION'S OWN
+    // state's rules (which vary — RN can pronounce in some states, per the spec's R-DC-01 note). Full
+    // state-law-aware role/license verification would need an M40 physician-registry role lookup plus a
+    // per-state credentialing ruleset, neither of which exists yet — a materially larger feature than
+    // this fix. `cosignDischarge`'s `cosignerName`/`cosignerNpi` remain a separate, still-unpersisted
+    // capture (no `discharge_event` column for them, by design — see `CosignDischargeInput`'s doc).
     planDischarge({
       dischargeType: ev.dischargeType,
       forCauseCosigned: ev.forCauseCosigned,
       deathAt: ev.dischargeType === "death" ? ev.effectiveAt : undefined,
       today: now().toISOString().slice(0, 10),
-      deathCertifierCredentialed: ev.dischargeType === "death" ? true : undefined,
+      deathCertifierCredentialed: ev.dischargeType === "death" ? !!ev.deathCertifierId : undefined,
     });
     const t = transitionAdmission(row.status as AdmissionState, {
       type: "executeDischarge",
@@ -524,7 +531,7 @@ export function createDbAdmissionRouteService(
       forCauseCosigned: ev.forCauseCosigned,
       deathAt: ev.dischargeType === "death" ? ev.effectiveAt : undefined,
       today: ev.effectiveAt,
-      deathCertifierCredentialed: ev.dischargeType === "death" ? true : undefined,
+      deathCertifierCredentialed: ev.dischargeType === "death" ? !!ev.deathCertifierId : undefined,
     } satisfies AdmissionEvent);
     const r = firstOrThrow(
       await tx
@@ -2129,7 +2136,12 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         // §6.3 — the per-reason narrative gates (for_cause needs a forCauseReason; D11 tightens
         // no_longer_terminal/other). The reason→permission key is enforced at the route preHandler.
-        const issue = checkDischargeNarrative(input.reason, input.narrative, input.forCauseReason);
+        const issue = checkDischargeNarrative(
+          input.reason,
+          input.narrative,
+          input.forCauseReason,
+          input.deathCertifierId,
+        );
         if (issue) throw new AdmissionStateError(issue.code, issue.message);
         const requiresMedicalDirectorCosign = dischargeRequiresCosign(input.reason);
         const dbType = REASON_TO_DB_TYPE[input.reason];
@@ -2174,6 +2186,7 @@ export function createDbAdmissionRouteService(
           dischargeType: REASON_TO_SM_TYPE[input.reason],
           effectiveAt: input.dischargeDate,
           forCauseCosigned: false,
+          deathCertifierId: input.reason === "death" ? input.deathCertifierId : undefined,
         });
         const de = firstOrThrow(
           await tx
@@ -2186,6 +2199,7 @@ export function createDbAdmissionRouteService(
               effectiveAt: input.dischargeDate,
               narrative: input.narrative,
               deathAt: input.reason === "death" ? new Date(input.dischargeDate) : null,
+              deathCertifierId: input.reason === "death" ? (input.deathCertifierId ?? null) : null,
               bereavementEligible: res.state === "bereavement",
             })
             .returning({ id: DE.id, status: DE.status, version: DE.version }),
