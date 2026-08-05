@@ -330,6 +330,25 @@ describe.skipIf(!DB_URL)(
       expect(de.rows[0].bereavement_eligible).toBe(true);
     });
 
+    it("a death discharge dated in the future is rejected (planDischarge's R-DC-01 real-clock guard)", async () => {
+      const { admissionId } = await activeAdmission(randomUUID());
+      const future = new Date(Date.now() + 30 * 24 * 3600_000).toISOString().slice(0, 10);
+      await expect(
+        svc.discharge(
+          ORG_A,
+          admissionId,
+          { reason: "death", dischargeDate: future, narrative: "expired peacefully" },
+          USER,
+        ),
+      ).rejects.toMatchObject({ code: "DEATH_CERTIFIER_INVALID", statusCode: 422 });
+      // The guard fired before any write — no discharge_event row, admission stayed active.
+      const de = await admin.query("SELECT id FROM discharge_event WHERE admission_id=$1", [
+        admissionId,
+      ]);
+      expect(de.rows).toHaveLength(0);
+      expect((await svc.getAdmission(ORG_A, admissionId))!.state).toBe("active");
+    });
+
     it("discharge (for_cause) → pending_cosign (admission stays active) → cosign → discharged", async () => {
       const { admissionId } = await activeAdmission(randomUUID());
       const filed = await svc.discharge(
@@ -446,6 +465,40 @@ describe.skipIf(!DB_URL)(
       expect(row.rows[0].receiving_or_sending_ccn).toBe("391234");
       expect(row.rows[0].receiving_or_sending_name).toBe("Sunrise Hospice");
       expect(row.rows[0].narrative).toMatch(/relocated closer to family/);
+    });
+
+    it("a second transfer-out for the same benefit period is rejected (planTransferOut's R-XFR-01 guard)", async () => {
+      const { admissionId, periodId } = await activeAdmission(randomUUID());
+      const seq = (
+        await admin.query("SELECT sequence_number FROM election_period WHERE id=$1", [periodId])
+      ).rows[0].sequence_number;
+      // Superuser-seed a prior transfer-out for this SAME period — simulates the state a genuine
+      // double-call would find (today the admission-graph transition to `discharged` blocks an
+      // obvious double API call, but nothing DB-level enforces R-XFR-01 directly).
+      await admin.query(
+        `INSERT INTO transfer_event (organization_id, admission_id, direction, effective_at,
+           period_sequence_at_transfer)
+         VALUES ($1,$2,'out','2026-05-01',$3)`,
+        [ORG_A, admissionId, seq],
+      );
+      await expect(
+        svc.transferOut(
+          ORG_A,
+          admissionId,
+          {
+            effectiveDate: "2026-06-15",
+            otherHospiceName: "Sunrise Hospice",
+            narrative: "second attempt for the same period",
+          },
+          USER,
+        ),
+      ).rejects.toMatchObject({ code: "TRANSFER_LIMIT_EXCEEDED", statusCode: 409 });
+      const rows = await admin.query(
+        "SELECT id FROM transfer_event WHERE admission_id=$1 AND direction='out'",
+        [admissionId],
+      );
+      expect(rows.rows).toHaveLength(1); // only the seeded row — the guard fired before the 2nd insert
+      expect((await svc.getAdmission(ORG_A, admissionId))!.state).toBe("active");
     });
 
     it("transfer-in → inherited active + next pending period (no counter restart)", async () => {

@@ -470,6 +470,32 @@
   write when the target period isn't active (superuser-forced to `completed`, simulating what a
   second revocation attempt would hit). No cross-module reader of `election_period.status` exists
   yet, so this was safely containable to M6. Full gate green + all 6 M6 live suites (51 tests).
+- **Follow-up, same day**: wired the two remaining unwired `commands.ts` functions,
+  `planTransferOut` and `planDischarge`, into their real write paths — same "validation only, not
+  the effects cascade" posture as `planRevocation` (the cascade is already applied via
+  `dischargeAdmissionTx`'s `transitionAdmission` duplicate). `planTransferOut`'s
+  `transferAlreadyDoneThisPeriod` (R-XFR-01, only one transfer per benefit period) is now a REAL
+  query against `transfer_event` (no DB constraint enforces this, unlike revocation's unique index;
+  the admission-graph transition to `discharged` blocks an obvious double-call today, but that was
+  always incidental, not a rule). `planDischarge` is now called from the SHARED
+  `dischargeAdmissionTx` helper (so revocation/transfer-out/discharge/cosign all benefit): its
+  `forCauseCosigned` guard was already a real, correctly-threaded fact (redundant with
+  `transitionAdmission`'s own duplicate check, wired anyway for defense-in-depth); its R-DC-01
+  death-certifier guard's date-order half is now REAL (`today` switched from `ev.effectiveAt` — which
+  made the check trivially true by construction, comparing a value to itself — to the actual server
+  clock). **The credential half of R-DC-01 remains a hardcoded `true` placeholder, explicitly
+  flagged, not silently left**: `DischargeCreateSchema` collects no certifier identity at all, even
+  though `discharge_event.death_certifier_id` exists as a real column for exactly this
+  (`packages/db/src/schema/admission/discharge-events.ts`) — populating it for real needs a new
+  schema field, not just a function call, so it's out of scope for "wire the guard." **Found the
+  same "no input param" bug a 4th time, same investigation, not fixed**: `cosignDischarge`
+  (route 40) parses `DischargeCosignSchema`'s `cosignerName`/`cosignerNpi` and drops both — same
+  class as `transferOut`/`createRevocation` before their fixes; the natural home for a real
+  certifier-identity field once collected. Added 2 new live tests: a future-dated death discharge
+  now rejects 409→422 `DEATH_CERTIFIER_INVALID` before any write (previously would have silently
+  succeeded); a second transfer-out seeded against the same benefit period now rejects 409
+  `TRANSFER_LIMIT_EXCEEDED` before any write. Full gate green + all 6 M6 live suites (53 tests) +
+  M24 claim-line-assembly (9 tests, downstream consumer of M6 discharge/transfer data).
 
   4 new unit tests (state-machine coverage already existed), 4 new HTTP-inject tests (`admission-routes.test.ts` —
   proving the real route, not just the service method, including the short-code fix), 2 new live-Postgres

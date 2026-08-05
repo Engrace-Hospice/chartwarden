@@ -55,7 +55,7 @@ import {
   type AdmissionState,
   transitionAdmission,
 } from "./state-machines/admission";
-import { planRevocation } from "./state-machines/commands";
+import { planDischarge, planRevocation, planTransferOut } from "./state-machines/commands";
 import type { SideEffect } from "./state-machines/effects";
 import { AdmissionStateError } from "./state-machines/errors";
 import { type FaceToFaceState, transitionFaceToFace } from "./state-machines/face-to-face";
@@ -498,6 +498,23 @@ export function createDbAdmissionRouteService(
     const admissionAt = row.admissionAt
       ? row.admissionAt.toISOString().slice(0, 10)
       : ev.effectiveAt;
+    // §2.3.6 — the pure command guard (for_cause cosign + R-DC-01 death-certifier check), called for
+    // validation ahead of `transitionAdmission`'s own equivalent inline guards below (kept as-is,
+    // defense-in-depth). `forCauseCosigned` is already a real caller-supplied fact (false while a
+    // for-cause filing awaits cosign, true only from `cosignDischarge` after it happens) — this closes
+    // no new gap there. `today` uses the REAL clock rather than `ev.effectiveAt` (which made the
+    // R-DC-01 date-order half of the check trivially true by construction, comparing a value to
+    // itself). `deathCertifierCredentialed` remains hardcoded `true`: `DischargeCreateSchema` collects
+    // no certifier identity at all (unlike `DischargeCosignSchema`'s `cosignerName`/`cosignerNpi`,
+    // themselves ALSO dropped by `cosignDischarge` — a separate, larger gap, not fixed here). The
+    // credential half of this guard is therefore still a placeholder; only the date-order half is real.
+    planDischarge({
+      dischargeType: ev.dischargeType,
+      forCauseCosigned: ev.forCauseCosigned,
+      deathAt: ev.dischargeType === "death" ? ev.effectiveAt : undefined,
+      today: now().toISOString().slice(0, 10),
+      deathCertifierCredentialed: ev.dischargeType === "death" ? true : undefined,
+    });
     const t = transitionAdmission(row.status as AdmissionState, {
       type: "executeDischarge",
       dischargeType: ev.dischargeType,
@@ -1962,6 +1979,22 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const period = await latestPeriod(tx, admissionId);
         if (!period) throw new ResourceNotFoundError(admissionId);
+        // §2.3.6 R-XFR-01 — only one transfer-out per benefit period (42 CFR 418.28). No DB constraint
+        // enforces this (unlike revocation_event's `revocation_period_idx` unique index), so query the
+        // real fact rather than assuming it can never happen (the admission-graph transition to
+        // `discharged` blocks an obvious double-call today, but that's incidental, not a rule).
+        const [priorTransferOut] = await tx
+          .select({ id: TE.id })
+          .from(TE)
+          .where(
+            and(
+              eq(TE.admissionId, admissionId),
+              eq(TE.periodSequenceAtTransfer, period.sequence),
+              eq(TE.direction, "out"),
+            ),
+          )
+          .limit(1);
+        planTransferOut({ transferAlreadyDoneThisPeriod: !!priorTransferOut });
         const xfer = firstOrThrow(
           await tx
             .insert(TE)
