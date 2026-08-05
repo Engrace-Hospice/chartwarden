@@ -297,7 +297,9 @@ function findTableBlock(table: string, migrations: readonly string[]): string {
     const funcRe =
       /CREATE OR REPLACE FUNCTION audit_phi_write_\w+\(\)[\s\S]*?(?=CREATE OR REPLACE FUNCTION audit_phi_write_\w+\(\)|$)/g;
     for (const b of src.match(funcRe) ?? []) {
-      const tableMatch = b.match(/CREATE (?:OR REPLACE )?TRIGGER\s+"[^"]+"\s+AFTER[^\n]*ON\s+(\w+)/);
+      const tableMatch = b.match(
+        /CREATE (?:OR REPLACE )?TRIGGER\s+"[^"]+"\s+AFTER[^\n]*ON\s+(\w+)/,
+      );
       if (tableMatch?.[1] === table) block = b;
     }
   }

@@ -83,14 +83,12 @@ if (unaccepted.length > 0) {
 
 if (stale.length > 0) {
   console.error(
-    `FAIL check-audit-exceptions: ${stale.length} accepted exception(s) no longer reported by ` +
-      "bun audit — the dependency was patched. Remove the now-obsolete entry:",
+    `FAIL check-audit-exceptions: ${stale.length} accepted exception(s) no longer reported by bun audit — the dependency was patched. Remove the now-obsolete entry:`,
   );
   for (const a of stale) console.error(`  - ${a.ghsaId}`);
   process.exit(1);
 }
 
 console.log(
-  `OK audit-exceptions: ${found.size} advisory(ies), all reviewed and accepted (see ` +
-    "scripts/check-audit-exceptions.ts)",
+  `OK audit-exceptions: ${found.size} advisory(ies), all reviewed and accepted (see scripts/check-audit-exceptions.ts)`,
 );

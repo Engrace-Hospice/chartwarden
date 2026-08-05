@@ -10304,7 +10304,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
 });
 
-
 // ── WX-PR-015 body/response gap-fill — 25-remittance ─────────────────────────────────────────
 // M25 Remittance & Denials — body-schema gap-fill for 3 routes whose handlers parse no request body
 // (ack / start / close are pure state-transition PATCH/POST routes gated by the If-Match header only,
@@ -10318,7 +10317,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
 
 const M25RemittanceEmptyBodySchema = Type.Object(
   {},
-  { additionalProperties: false, description: "No body fields are read by this route; If-Match header carries the concurrency token." },
+  {
+    additionalProperties: false,
+    description:
+      "No body fields are read by this route; If-Match header carries the concurrency token.",
+  },
 );
 
 Object.assign(ROUTE_ENRICHMENTS, {
@@ -10338,7 +10341,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M25VersionedResultSchema,
   },
 });
-
 
 // ── WX-PR-015 body/response gap-fill — 31-portal ─────────────────────────────────────────
 // M31 Portal/Telehealth (WX-PR-015) — body-schema gap fill. None of these 6 handlers actually parse a
@@ -10381,11 +10383,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
 });
 
-
 // ── WX-PR-015 body/response gap-fill — 34-saas-tenant-platform ─────────────────────────────────────────
-import {
-  ElevateSessionRequest as M34ElevateSessionRequest,
-} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/platform-typebox";
+import { ElevateSessionRequest as M34ElevateSessionRequest } from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/platform-typebox";
 import {
   DsarFulfillRequest as M34DsarFulfillRequest,
   OnboardingStartRequest as M34OnboardingStartRequest,
@@ -10409,21 +10408,21 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
 });
 
-
 // ── WX-PR-015 body/response gap-fill — 30-quality ─────────────────────────────────────────
 const M30EmptyIncidentActionBody = Type.Object({});
 
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/quality/incidents/:incidentId/submit": {
     body: M30EmptyIncidentActionBody,
-    summary: "Submit a draft incident for triage (draft to submitted; reporter-owned, no body fields consumed) (Sec 4.1 R-54)",
+    summary:
+      "Submit a draft incident for triage (draft to submitted; reporter-owned, no body fields consumed) (Sec 4.1 R-54)",
   },
   "POST /api/v1/quality/incidents/:incidentId/close": {
     body: M30EmptyIncidentActionBody,
-    summary: "Close a resolved incident (resolved to closed_followup_complete; no body fields consumed) (Sec 4.1 R-59)",
+    summary:
+      "Close a resolved incident (resolved to closed_followup_complete; no body fields consumed) (Sec 4.1 R-59)",
   },
 });
-
 
 // ── WX-PR-015 body/response gap-fill — 23-billing-medicare ─────────────────────────────────────────
 // M23 Billing — Medicare: response schemas newly authored to mirror the REAL DTOs the route handlers
@@ -10859,7 +10858,8 @@ const M23MetricsResponse = Type.Object({ buckets: Type.Array(M23MetricsBucket) }
 
 Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/billing/ar-dashboard": {
-    summary: "AR-aging dashboard - aging buckets + denial / NOE-NOTR window-breach rates (org-wide or per-PE, §4.1 #37)",
+    summary:
+      "AR-aging dashboard - aging buckets + denial / NOE-NOTR window-breach rates (org-wide or per-PE, §4.1 #37)",
     query: BillingMetricsQuerySchema,
     response: M23ArAgingDto,
   },
@@ -10869,7 +10869,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M23ClaimListResponse,
   },
   "GET /api/v1/billing/claims/:id": {
-    summary: "Single-claim detail - lines + HIPPS + SIA + latest run + submissions + acks (§4.1 #3)",
+    summary:
+      "Single-claim detail - lines + HIPPS + SIA + latest run + submissions + acks (§4.1 #3)",
     response: M23ClaimDetailResponse,
   },
   "GET /api/v1/billing/claims/:id/acknowledgments": {
@@ -10899,7 +10900,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M23EligibilityLatestResponse,
   },
   "GET /api/v1/billing/mac-credentials": {
-    summary: "List per-ProviderEntity MAC credentials - secrets masked, cursor-paginated (§4.1 #34)",
+    summary:
+      "List per-ProviderEntity MAC credentials - secrets masked, cursor-paginated (§4.1 #34)",
     query: MacCredentialListQuerySchema,
     response: M23MacCredentialListResponse,
   },
@@ -10908,12 +10910,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M23MacCredentialByProviderResponse,
   },
   "GET /api/v1/billing/metrics": {
-    summary: "Per-window claim metric buckets (the M33 reporting consumer; org-wide or per-PE, §4.1 #38)",
+    summary:
+      "Per-window claim metric buckets (the M33 reporting consumer; org-wide or per-PE, §4.1 #38)",
     query: BillingMetricsQuerySchema,
     response: M23MetricsResponse,
   },
   "GET /api/v1/billing/rule-configs": {
-    summary: "List validation-rule overlay rows - platform snapshot + tenant overlays (cursor-paginated, §4.1 #18)",
+    summary:
+      "List validation-rule overlay rows - platform snapshot + tenant overlays (cursor-paginated, §4.1 #18)",
     query: RuleConfigListQuerySchema,
     response: M23RuleConfigListResponse,
   },
@@ -10922,7 +10926,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M23RuleConfigView,
   },
   "GET /api/v1/billing/sequestration-policies": {
-    summary: "Per-ProviderEntity sequestration-percentage timeline - effective-dated rows (D11, §4.1 #32)",
+    summary:
+      "Per-ProviderEntity sequestration-percentage timeline - effective-dated rows (D11, §4.1 #32)",
     query: RequiredProviderEntityQuerySchema,
     response: M23SequestrationPolicyListResponse,
   },
@@ -10958,7 +10963,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M23NotrView,
   },
 });
-
 
 // ── WX-PR-015 body/response gap-fill — 28-fhir ─────────────────────────────────────────
 // M28 FHIR Gateway — response-contract backfill (WX-PR-015). Reuses the existing M28 import block's
@@ -11006,11 +11010,7 @@ const M28ClientSessionsResponse = Type.Object({
 const M28FhirBulkExportJobViewSchema = Type.Object({
   id: Type.String({ format: "uuid" }),
   clientId: Type.String({ format: "uuid" }),
-  requestKind: Type.Union([
-    Type.Literal("system"),
-    Type.Literal("group"),
-    Type.Literal("patient"),
-  ]),
+  requestKind: Type.Union([Type.Literal("system"), Type.Literal("group"), Type.Literal("patient")]),
   resourceTypes: Type.Array(Type.String()),
   status: Type.String(),
   initiatedByMembershipId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
@@ -11231,7 +11231,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M28ConfigResponse,
   },
 });
-
 
 // ── WX-PR-015 body/response gap-fill — 29-external-interfaces ─────────────────────────────────────────
 // ── M29 External Interfaces — response DTOs (WX-PR-015) ─────────────────────────────────────────────────
@@ -11593,7 +11592,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
 });
 
-
 // ── WX-PR-015 body/response gap-fill — 32-ai-platform ─────────────────────────────────────────
 // M32 AI Platform — WX-PR-015 response contracts for the 17 GET routes whose OpenAPI entries (added
 // earlier, see the "GET /api/v1/ai/capabilities" etc. block above) carry a summary/query but no
@@ -11614,20 +11612,20 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // overwritten) because the M32-T07 batch already populated `summary`/`query` for every one of these
 // fifteen GET routes earlier in this file — a bare `Object.assign` here would silently drop that work.
 import {
-  CapabilityLifecycleState as M32VocabLifecycleState,
-  CapabilityOwningRole as M32VocabOwningRole,
-  CapabilityRiskTier as M32VocabRiskTier,
+  LifecycleApprovalKind as M32VocabApprovalKind,
   EvaluationRunStage as M32VocabEvalStage,
   EvaluationRunStatus as M32VocabEvalStatus,
   HallucinationKind as M32VocabHallucinationKind,
   HallucinationSeverity as M32VocabHallucinationSeverity,
-  HallucinationTriageDisposition as M32VocabTriageDisposition,
-  HallucinationTriageStatus as M32VocabTriageStatus,
   InvocationStatus as M32VocabInvocationStatus,
   KillSwitchReason as M32VocabKillSwitchReason,
-  LifecycleApprovalKind as M32VocabApprovalKind,
+  CapabilityLifecycleState as M32VocabLifecycleState,
+  CapabilityOwningRole as M32VocabOwningRole,
+  CapabilityRiskTier as M32VocabRiskTier,
   RoutingOverrideReason as M32VocabRoutingOverrideReason,
   RoutingPreference as M32VocabRoutingPreference,
+  HallucinationTriageDisposition as M32VocabTriageDisposition,
+  HallucinationTriageStatus as M32VocabTriageStatus,
 } from "../../apps/backend/src/modules/32-ai-platform/routes/m32-typebox";
 
 const M32RespUuid = Type.String({ format: "uuid" });

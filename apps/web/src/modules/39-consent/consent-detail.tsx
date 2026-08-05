@@ -163,7 +163,8 @@ export function ConsentDetail(): JSX.Element {
         return true;
       }
       setBusy(false);
-      if (status === 409) setActionError("This consent changed since you opened it — reload to retry.");
+      if (status === 409)
+        setActionError("This consent changed since you opened it — reload to retry.");
       else if (status === 403) setActionError("You do not have permission for this action.");
       else if (status === 422) setActionError("Validation failed — check the values you entered.");
       else setActionError(fallback);
@@ -207,7 +208,11 @@ export function ConsentDetail(): JSX.Element {
     }
     setBusy(true);
     setActionError(null);
-    const { data, error: err, response } = await client.POST("/api/v1/consents/{consentId}/supersede", {
+    const {
+      data,
+      error: err,
+      response,
+    } = await client.POST("/api/v1/consents/{consentId}/supersede", {
       params: { path: { consentId } },
       body: {
         scopeDescriptor: record.scopeDescriptor ?? {},
@@ -244,7 +249,11 @@ export function ConsentDetail(): JSX.Element {
     }
     setBusy(true);
     setActionError(null);
-    const { data, error: err, response } = await client.POST("/api/v1/consents/{consentId}/renew", {
+    const {
+      data,
+      error: err,
+      response,
+    } = await client.POST("/api/v1/consents/{consentId}/renew", {
       params: { path: { consentId } },
       body: {
         scopeDescriptor: record.scopeDescriptor ?? {},
@@ -276,11 +285,16 @@ export function ConsentDetail(): JSX.Element {
   ]);
 
   if (loading) return <LoadingSpinner />;
-  if (error || !record) return <EmptyState title="Unavailable" description={error ?? "Not found."} />;
+  if (error || !record)
+    return <EmptyState title="Unavailable" description={error ?? "Not found."} />;
 
   const canAct = record.status === "active";
   const banner = patient ? (
-    <PatientBanner name={`${patient.firstName} ${patient.lastName}`} mrn={patient.mrn} dob={patient.dob} />
+    <PatientBanner
+      name={`${patient.firstName} ${patient.lastName}`}
+      mrn={patient.mrn}
+      dob={patient.dob}
+    />
   ) : null;
 
   return (
@@ -290,7 +304,10 @@ export function ConsentDetail(): JSX.Element {
         breadcrumb="Consents"
         actions={
           <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
-            <StatusPill tone={toneOf(CONSENT_STATUS_TONE, record.status)} label={humanize(record.status)} />
+            <StatusPill
+              tone={toneOf(CONSENT_STATUS_TONE, record.status)}
+              label={humanize(record.status)}
+            />
             {canAct ? (
               <>
                 <button type="button" onClick={() => setCeremony("renew")} style={ghostBtn}>
@@ -349,10 +366,18 @@ export function ConsentDetail(): JSX.Element {
         <section style={{ ...cardSurface, marginTop: "1rem" }}>
           <h2 style={heading}>Version history</h2>
           {chain.supersedes.length > 0 ? (
-            <ChainList title="Supersession chain (oldest first)" rows={chain.supersedes} patientId={patientId} />
+            <ChainList
+              title="Supersession chain (oldest first)"
+              rows={chain.supersedes}
+              patientId={patientId}
+            />
           ) : null}
           {chain.renewedFrom.length > 0 ? (
-            <ChainList title="Renewal chain (oldest first)" rows={chain.renewedFrom} patientId={patientId} />
+            <ChainList
+              title="Renewal chain (oldest first)"
+              rows={chain.renewedFrom}
+              patientId={patientId}
+            />
           ) : null}
         </section>
       ) : null}
@@ -363,7 +388,8 @@ export function ConsentDetail(): JSX.Element {
         attestation={
           <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
             <span style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>
-              Revocation is immediate and irreversible, and triggers the disclosure-evaluator cascade.
+              Revocation is immediate and irreversible, and triggers the disclosure-evaluator
+              cascade.
             </span>
             <label style={fieldLabel} htmlFor="revoke-reason">
               Reason (≥40 characters) *
@@ -399,8 +425,8 @@ export function ConsentDetail(): JSX.Element {
         attestation={
           <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
             <span style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>
-              Creates a NEW active version pointing at this one, which flips to superseded (D1: never
-              an in-place edit).
+              Creates a NEW active version pointing at this one, which flips to superseded (D1:
+              never an in-place edit).
             </span>
             <LifecycleFormFields
               idPrefix="supersede"
@@ -527,7 +553,9 @@ function ChainList({
 }): JSX.Element {
   return (
     <div style={{ marginTop: "0.5rem" }}>
-      <h3 style={{ margin: "0 0 0.4rem", fontSize: "0.85rem", color: t.onSurfaceVariant }}>{title}</h3>
+      <h3 style={{ margin: "0 0 0.4rem", fontSize: "0.85rem", color: t.onSurfaceVariant }}>
+        {title}
+      </h3>
       <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
         {rows.map((r) => (
           <li key={r.id} style={{ fontSize: "0.85rem" }}>
@@ -542,7 +570,9 @@ function ChainList({
 }
 
 function Dt({ children }: { children: ReactNode }): JSX.Element {
-  return <dt style={{ fontSize: "0.72rem", color: t.onSurfaceVariant, fontWeight: 600 }}>{children}</dt>;
+  return (
+    <dt style={{ fontSize: "0.72rem", color: t.onSurfaceVariant, fontWeight: 600 }}>{children}</dt>
+  );
 }
 function Dd({ children }: { children: ReactNode }): JSX.Element {
   return <dd style={{ margin: "0 0 0.5rem", fontSize: "0.85rem" }}>{children}</dd>;
@@ -567,7 +597,11 @@ const linkStyle: CSSProperties = {
   color: "var(--color-primary)",
   textDecoration: "none",
 };
-const fieldLabel: CSSProperties = { fontSize: "0.75rem", fontWeight: 600, color: t.onSurfaceVariant };
+const fieldLabel: CSSProperties = {
+  fontSize: "0.75rem",
+  fontWeight: 600,
+  color: t.onSurfaceVariant,
+};
 const input: CSSProperties = {
   padding: "0.5rem 0.625rem",
   borderRadius: "var(--radius-md)",

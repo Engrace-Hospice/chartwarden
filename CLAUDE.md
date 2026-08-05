@@ -12,11 +12,14 @@ platform services M36/M38/M39/M40. The generated **implementation-status matrix*
 (`bun run status:matrix` → `audit/implementation-status/IMPLEMENTATION_STATUS.md`) is the per-module
 truth — currently **🟢 40 · 🟡 0 · ⚪ 0** (the module set is complete; the last three placeholders —
 M29, M35, and M37 — are now merged). Every module is enrichment-complete (matrix `Enriched`
-full-ratio ✅, corpus 989/995 routes carry request/response contracts). The only remaining ⚠️ rows
-are `Live` (cross-tenant RLS proof) on the three newest modules — **M29 (0/11), M35 (3/21), M37
-(8/26)** — whose live-RLS suites are still partial. **M30 is merged (PR #106)**: 18 frozen
+full-ratio ✅, corpus 1219/1226 routes carry request/response contracts —
+`audit/openapi-coverage/OPENAPI_COVERAGE.md` is the generated, authoritative count; re-check there
+before citing a number here, since this line is hand-maintained prose and the generated report is
+not). The `Live` column (cross-tenant RLS proof) is also full-ratio ✅ across all 40 modules,
+including the three newest — **M29 (11/11), M35 (21/21), M37 (26/26)** — whose live-RLS suites
+completed in the Phase 0-2 remediation pass. **M30 is merged (PR #106)**: 18 frozen
 `quality/` tables + migrations 0062–0068; the `@wardenx/quality` domain core + `@wardenx/cahps-vendors`;
-47 routes in `apps/backend/src/modules/30-quality`; the `MEASURE_CATALOG`/measure registry (HCI 10
+60 routes in `apps/backend/src/modules/30-quality`; the `MEASURE_CATALOG`/measure registry (HCI 10
 indicators + composite, HVLDL, HOPE-derived TFP, operational); and CAHPS/QAPI/SRA/incident/mortality/
 infection surveillance — status matrix 🟢. A follow-up wiring batch (**issue #107, PRs #108–#118**) then
 made M30's cross-module seams real: the M1-T10 transactional outbox-row emit (M30+M33 events emit), the
@@ -95,7 +98,7 @@ Note: the `architecture/` directory at the repo root holds the *enforcement code
 the prose docs in `docs/architecture/`.
 
 - `architecture/module-manifest.ts` (+ `.cjs`) — single source of truth for each module's
-  `codePaths`, `dependsOn`, and `ownedTables` (453 tables across 40 modules).
+  `codePaths`, `dependsOn`, and `ownedTables` (460 tables across 40 modules).
 - `architecture/.dependency-cruiser.cjs` — import-boundary rules.
 - `scripts/check-table-ownership.ts`, `check-tenancy.ts`, `check-ddl-legality.ts`,
   `check-fitness-gaps.ts` (event-catalog `mN.` convention, seam-registry completeness, PHI
@@ -139,8 +142,8 @@ the prose docs in `docs/architecture/`.
   ship their contracts), and when it **falls** the baseline must be re-tightened
   (`bun run openapi:coverage --update`) so progress is locked in. A module absent from the
   baseline has an implied floor of **0** — a brand-new module's first unenriched route fails.
-  The 2026-08-01 sweep retro-enriched the corpus from **478 unenriched → 6** (currently **989/995
-  enriched**; only bootstrap's health/infra routes remain) and re-tightened the baseline — the gate
+  The 2026-08-01 sweep retro-enriched the corpus from **478 unenriched → 6** (currently **1219/1226
+  enriched**; only bootstrap's health/infra routes remain unenriched) and re-tightened the baseline — the gate
   never *required* that backfill, but the progress is now locked in. Writes
   `audit/openapi-coverage/OPENAPI_COVERAGE.md` (+ `.json`).
   `client:check` (generated typed client ↔ openapi.json) is now in `arch:fitness` too.

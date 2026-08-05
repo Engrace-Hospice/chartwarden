@@ -4,8 +4,8 @@
 // and that a non-session (e.g. machine-credential) mutation is left untouched.
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
-import { applyErrorHandler } from "../error-handler";
 import { type CsrfOptions, applyCsrfProtection } from "../csrf";
+import { applyErrorHandler } from "../error-handler";
 
 function buildApp(opts: CsrfOptions = {}) {
   const app = Fastify();
@@ -17,7 +17,10 @@ function buildApp(opts: CsrfOptions = {}) {
   return app;
 }
 
-function extractCookie(res: { headers: Record<string, unknown> }, name: string): string | undefined {
+function extractCookie(
+  res: { headers: Record<string, unknown> },
+  name: string,
+): string | undefined {
   const raw = res.headers["set-cookie"];
   const list = Array.isArray(raw) ? raw : raw ? [String(raw)] : [];
   for (const entry of list) {
@@ -49,7 +52,9 @@ describe("applyCsrfProtection — cookie minting", () => {
     const secureApp = buildApp({ secure: true });
     const res = await secureApp.inject({ method: "GET", url: "/ping" });
     const cookieHeader = String(
-      Array.isArray(res.headers["set-cookie"]) ? res.headers["set-cookie"][0] : res.headers["set-cookie"],
+      Array.isArray(res.headers["set-cookie"])
+        ? res.headers["set-cookie"][0]
+        : res.headers["set-cookie"],
     );
     expect(cookieHeader).toContain("Secure");
   });

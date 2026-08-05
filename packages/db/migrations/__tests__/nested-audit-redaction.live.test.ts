@@ -72,7 +72,7 @@ describe.skipIf(!DB_URL)("Nested-path audit redaction — LIVE Postgres (WX-PR-0
        VALUES ($1,$2,'Main','1 Main St','Portland','OR','97201','America/Los_Angeles')`,
       [LOCATION, PROVIDER_ENTITY],
     );
-    await admin.query(`SET session_replication_role = origin`);
+    await admin.query("SET session_replication_role = origin");
   }, 120_000);
 
   afterAll(async () => {

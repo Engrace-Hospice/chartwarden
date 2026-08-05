@@ -206,7 +206,11 @@ export function ConsentCapture(): JSX.Element {
     if (!patientId || !typeKey) return;
     setDraftBusy(true);
     setDraftError(null);
-    const { data, error: err, response } = await client.POST("/api/v1/patients/{patientId}/consents", {
+    const {
+      data,
+      error: err,
+      response,
+    } = await client.POST("/api/v1/patients/{patientId}/consents", {
       params: { path: { patientId } },
       body: {
         typeKey: typeKey as never,
@@ -219,26 +223,47 @@ export function ConsentCapture(): JSX.Element {
     });
     setDraftBusy(false);
     if (err || !data) {
-      branch(response?.status, err?.error?.message, "The draft could not be created.", setDraftError);
+      branch(
+        response?.status,
+        err?.error?.message,
+        "The draft could not be created.",
+        setDraftError,
+      );
       return;
     }
     setDraft(data.data as ConsentDraft);
-  }, [patientId, typeKey, grantorKind, captureMethod, scopeDescription, effectiveAt, expiresAt, client, branch]);
+  }, [
+    patientId,
+    typeKey,
+    grantorKind,
+    captureMethod,
+    scopeDescription,
+    effectiveAt,
+    expiresAt,
+    client,
+    branch,
+  ]);
 
   const addRecipient = useCallback(async () => {
     if (!draft || recipientName.trim().length === 0) return;
     setRecipientBusy(true);
     setRecipientError(null);
-    const { data, error: err, response } = await client.POST(
-      "/api/v1/consents/{consentId}/recipients",
-      {
-        params: { path: { consentId: draft.id } },
-        body: { recipientKind: recipientKind as never, recipientDisplayName: recipientName.trim() },
-      },
-    );
+    const {
+      data,
+      error: err,
+      response,
+    } = await client.POST("/api/v1/consents/{consentId}/recipients", {
+      params: { path: { consentId: draft.id } },
+      body: { recipientKind: recipientKind as never, recipientDisplayName: recipientName.trim() },
+    });
     setRecipientBusy(false);
     if (err || !data) {
-      branch(response?.status, err?.error?.message, "The recipient could not be added.", setRecipientError);
+      branch(
+        response?.status,
+        err?.error?.message,
+        "The recipient could not be added.",
+        setRecipientError,
+      );
       return;
     }
     setRecipients((rows) => [...rows, data.data as RecipientRow]);
@@ -249,27 +274,33 @@ export function ConsentCapture(): JSX.Element {
     if (!draft || agentName.trim().length === 0 || agentRelationship.trim().length === 0) return;
     setAgentBusy(true);
     setAgentError(null);
-    const { data, error: err, response } = await client.POST(
-      "/api/v1/consents/{consentId}/dpoa-agents",
-      {
-        params: { path: { consentId: draft.id } },
-        body: {
-          agentKind: agentKind as never,
-          agentName: agentName.trim(),
-          agentRelationship: agentRelationship.trim(),
-          agentContact: {},
-          scopeKind: agentScopeKind as never,
-          activationCondition: agentActivation as never,
-          termKind: agentTermKind as never,
-          ...(agentTermKind === "until_date" && agentTermUntil
-            ? { termUntil: new Date(agentTermUntil).toISOString() }
-            : {}),
-        },
+    const {
+      data,
+      error: err,
+      response,
+    } = await client.POST("/api/v1/consents/{consentId}/dpoa-agents", {
+      params: { path: { consentId: draft.id } },
+      body: {
+        agentKind: agentKind as never,
+        agentName: agentName.trim(),
+        agentRelationship: agentRelationship.trim(),
+        agentContact: {},
+        scopeKind: agentScopeKind as never,
+        activationCondition: agentActivation as never,
+        termKind: agentTermKind as never,
+        ...(agentTermKind === "until_date" && agentTermUntil
+          ? { termUntil: new Date(agentTermUntil).toISOString() }
+          : {}),
       },
-    );
+    });
     setAgentBusy(false);
     if (err || !data) {
-      branch(response?.status, err?.error?.message, "The DPOA agent could not be added.", setAgentError);
+      branch(
+        response?.status,
+        err?.error?.message,
+        "The DPOA agent could not be added.",
+        setAgentError,
+      );
       return;
     }
     setAgents((rows) => [...rows, data.data as AgentRow]);
@@ -292,13 +323,22 @@ export function ConsentCapture(): JSX.Element {
     if (!draft) return;
     setSignBusy(true);
     setSignError(null);
-    const { data, error: err, response } = await client.POST("/api/v1/consents/{consentId}/sign", {
+    const {
+      data,
+      error: err,
+      response,
+    } = await client.POST("/api/v1/consents/{consentId}/sign", {
       params: { path: { consentId: draft.id } },
       body: { captureEvidence: evidencePayload(captureMethod, evidence) },
     });
     setSignBusy(false);
     if (err || !data) {
-      branch(response?.status, err?.error?.message, "The consent could not be signed.", setSignError);
+      branch(
+        response?.status,
+        err?.error?.message,
+        "The consent could not be signed.",
+        setSignError,
+      );
       return;
     }
     setCeremonyOpen(false);
@@ -312,7 +352,11 @@ export function ConsentCapture(): JSX.Element {
     (!needsAgent || Boolean(activePrimaryAgent));
 
   const banner = patient ? (
-    <PatientBanner name={`${patient.firstName} ${patient.lastName}`} mrn={patient.mrn} dob={patient.dob} />
+    <PatientBanner
+      name={`${patient.firstName} ${patient.lastName}`}
+      mrn={patient.mrn}
+      dob={patient.dob}
+    />
   ) : null;
 
   if (catalogLoading) return <LoadingSpinner />;
@@ -408,7 +452,8 @@ export function ConsentCapture(): JSX.Element {
           </button>
         ) : (
           <p style={{ margin: 0, fontSize: "0.8125rem", color: t.onSurfaceVariant }}>
-            Draft {draft.id} created. Type and grantor are locked; complete the sections below to sign.
+            Draft {draft.id} created. Type and grantor are locked; complete the sections below to
+            sign.
           </p>
         )}
       </section>
@@ -569,7 +614,9 @@ export function ConsentCapture(): JSX.Element {
           <button
             type="button"
             onClick={() => void addAgent()}
-            disabled={agentBusy || agentName.trim().length === 0 || agentRelationship.trim().length === 0}
+            disabled={
+              agentBusy || agentName.trim().length === 0 || agentRelationship.trim().length === 0
+            }
             style={
               agentBusy || agentName.trim().length === 0 || agentRelationship.trim().length === 0
                 ? disabledBtn
@@ -644,7 +691,12 @@ function Alert({ children }: { children: JSX.Element | string }): JSX.Element {
   );
 }
 
-const card: CSSProperties = { ...cardSurface, display: "flex", flexDirection: "column", gap: "0.75rem" };
+const card: CSSProperties = {
+  ...cardSurface,
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+};
 const heading: CSSProperties = { margin: 0, fontSize: "1.05rem" };
 const hint: CSSProperties = { margin: 0, fontSize: "0.8125rem", color: t.onSurfaceVariant };
 const grid: CSSProperties = {
@@ -652,7 +704,11 @@ const grid: CSSProperties = {
   gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))",
   gap: "0.75rem",
 };
-const fieldLabel: CSSProperties = { fontSize: "0.75rem", fontWeight: 600, color: t.onSurfaceVariant };
+const fieldLabel: CSSProperties = {
+  fontSize: "0.75rem",
+  fontWeight: 600,
+  color: t.onSurfaceVariant,
+};
 const input: CSSProperties = {
   padding: "0.5rem 0.625rem",
   borderRadius: "var(--radius-md)",

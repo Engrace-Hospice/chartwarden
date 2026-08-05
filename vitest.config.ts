@@ -14,20 +14,43 @@ import { defineConfig } from "vitest/config";
  * stays on "node", which is faster and was already proven sufficient for ~7500 existing tests.
  * `@vitejs/plugin-react` is only needed to transform the JSX those dom tests (and the screen
  * components they render) contain — a no-op for every plain .ts test file.
+ *
+ * WX-PR-021 (TEST-003): `environmentMatchGlobs` is deprecated (every run warned); this is the
+ * `test.projects` replacement Vitest's own deprecation message points at — two projects sharing
+ * the include/exclude base, split only on which glob (dom vs. everything else) and its environment.
  */
+const EXCLUDE = ["**/node_modules/**", "**/dist/**", "scripts/__fixtures__/**"];
+const DOM_GLOB = "apps/**/*.dom.test.tsx";
+
 export default defineConfig({
-  plugins: [react()],
   test: {
-    environment: "node",
-    environmentMatchGlobs: [["apps/**/*.dom.test.tsx", "jsdom"]],
-    setupFiles: ["./vitest.setup.dom.ts"],
-    include: [
-      "scripts/__tests__/**/*.test.ts",
-      "apps/**/*.test.ts",
-      "apps/**/*.test.tsx",
-      "packages/**/*.test.ts",
+    projects: [
+      {
+        plugins: [react()],
+        test: {
+          name: "node",
+          environment: "node",
+          include: [
+            "scripts/__tests__/**/*.test.ts",
+            "apps/**/*.test.ts",
+            "apps/**/*.test.tsx",
+            "packages/**/*.test.ts",
+          ],
+          exclude: [...EXCLUDE, DOM_GLOB],
+          testTimeout: 30_000,
+        },
+      },
+      {
+        plugins: [react()],
+        test: {
+          name: "dom",
+          environment: "jsdom",
+          setupFiles: ["./vitest.setup.dom.ts"],
+          include: [DOM_GLOB],
+          exclude: EXCLUDE,
+          testTimeout: 30_000,
+        },
+      },
     ],
-    exclude: ["**/node_modules/**", "**/dist/**", "scripts/__fixtures__/**"],
-    testTimeout: 30_000,
   },
 });

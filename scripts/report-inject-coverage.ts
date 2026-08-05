@@ -50,6 +50,20 @@ interface ModuleCoverage {
   routes: number;
   covered: boolean;
   suiteFiles: string[];
+  /**
+   * WX-PR-021 (TEST-002) — ADVISORY ONLY, does not affect `covered` or the ratchet below. TEST-002's
+   * finding was exactly the risk in `covered` being a per-module boolean: "One inject suite can
+   * cause every route in a module to appear covered." This is a real, if approximate, per-ROUTE
+   * signal alongside it — how many of the module's route DEFS have their own literal path referenced
+   * somewhere in a covering suite, not just "some file in this module has an .inject( call." A
+   * static-prefix substring match (no AST), so it both under- and over-counts at the margins (a
+   * route hit only via a helper function's own literal, or a route whose path happens to be a
+   * substring of an unrelated one, several modules genuinely share slug-adjacent prefixes) — good
+   * enough to see "1 route out of 40 referenced" vs. "38 out of 40," not precise enough to ratchet
+   * on. True per-route (method+path+status+permission) coverage needs the AST-driven, multi-session
+   * rebuild this file's own header already called out; this is the cheap first step toward it.
+   */
+  directRoutesReferenced: number;
 }
 
 function modulesWithRoutesDir(): string[] {
@@ -78,12 +92,24 @@ function moduleImportRe(slug: string): RegExp {
   return new RegExp(`modules/${slug}/`);
 }
 
+/** Everything up to (not including) the first `:param` segment, kept up to its trailing slash. */
+function staticPrefixOf(path: string): string {
+  const idx = path.indexOf("/:");
+  return idx === -1 ? path : path.slice(0, idx + 1);
+}
+
+/** See `ModuleCoverage.directRoutesReferenced` — an approximate, additive, non-ratcheted signal. */
+function isRouteDirectlyReferenced(path: string, suiteSources: readonly string[]): boolean {
+  const needle = path.includes("/:") ? staticPrefixOf(path) : path;
+  return suiteSources.some((src) => src.includes(needle));
+}
+
 function collect(): ModuleCoverage[] {
   const modules = modulesWithRoutesDir();
   const routes = scanRoutes(ROOT);
-  const routeCountByModule = new Map<string, number>();
+  const routesByModule = new Map<string, string[]>();
   for (const r of routes)
-    routeCountByModule.set(r.module, (routeCountByModule.get(r.module) ?? 0) + 1);
+    routesByModule.set(r.module, [...(routesByModule.get(r.module) ?? []), r.path]);
 
   const files = testFiles();
   const fileContents = new Map<string, string>();
@@ -94,11 +120,15 @@ function collect(): ModuleCoverage[] {
       const src = fileContents.get(f)!;
       return INJECT_RE.test(src) && moduleImportRe(slug).test(src);
     });
+    const suiteSources = suiteFiles.map((f) => fileContents.get(f)!);
+    const modulePaths = routesByModule.get(slug) ?? [];
     return {
       module: slug,
-      routes: routeCountByModule.get(slug) ?? 0,
+      routes: modulePaths.length,
       covered: suiteFiles.length > 0,
       suiteFiles,
+      directRoutesReferenced: modulePaths.filter((p) => isRouteDirectlyReferenced(p, suiteSources))
+        .length,
     };
   });
 }
@@ -109,6 +139,7 @@ const totals = {
   covered: coverage.filter((c) => c.covered).length,
   routes: coverage.reduce((n, c) => n + c.routes, 0),
   coveredRoutes: coverage.filter((c) => c.covered).reduce((n, c) => n + c.routes, 0),
+  directRoutesReferenced: coverage.reduce((n, c) => n + c.directRoutesReferenced, 0),
 };
 
 // ---- baseline (known-missing modules) ----------------------------------------
@@ -160,15 +191,14 @@ function renderMarkdown(): string {
   );
   l.push("");
   l.push(
-    `**Totals:** ${totals.covered}/${totals.modules} modules covered (${pct(totals.covered, totals.modules)}) · ` +
-      `${totals.coveredRoutes}/${totals.routes} route defs sit behind a covered module`,
+    `**Totals:** ${totals.covered}/${totals.modules} modules covered (${pct(totals.covered, totals.modules)}) · ${totals.coveredRoutes}/${totals.routes} route defs sit behind a covered module · ${totals.directRoutesReferenced}/${totals.routes} route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)`,
   );
   l.push("");
-  l.push("| Module | Routes | Covered | Suite file(s) |");
-  l.push("|---|--:|:--:|---|");
+  l.push("| Module | Routes | Covered | Direct refs | Suite file(s) |");
+  l.push("|---|--:|:--:|--:|---|");
   for (const c of coverage)
     l.push(
-      `| ${c.module} | ${c.routes} | ${c.covered ? "✅" : "❌"} | ${c.suiteFiles.join(", ") || "—"} |`,
+      `| ${c.module} | ${c.routes} | ${c.covered ? "✅" : "❌"} | ${c.directRoutesReferenced}/${c.routes} | ${c.suiteFiles.join(", ") || "—"} |`,
     );
   l.push("");
   return l.join("\n");

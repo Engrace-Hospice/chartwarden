@@ -613,6 +613,7 @@
 
 ## WX-PR-021 - Tighten quality metrics and documentation truth
 
+- Status: Completed (2026-08-05).
 - Priority: P2
 - Severity addressed: Medium/Low
 - Phase: 1/3/7
@@ -625,6 +626,38 @@
 - Acceptance criteria: Clean commands and no hand-maintained release count contradicts generated truth.
 - Risks: Coverage ratio drops honestly.
 - Rollback: None; do not restore misleading metrics.
+- Completion evidence:
+  - **CODE-001 (done)**: the specific finding (`service-drizzle.ts:640`'s `pm !== null && pm.isActive`)
+    was already fixed in a prior session's lint sweep (stale finding). `bun run lint` was NOT
+    actually clean, though — 12 real formatting/lint errors had accumulated across this session's own
+    WX-PR-017/018/020 work (`csrf.ts`, `mount.ts`, `consent-capture.tsx`, `check-audit-exceptions.ts`,
+    `check-audit-denylist-sync.ts`, `enrichments.ts`, a live-test file). All fixed; `bun run lint`
+    exits 0 clean, verified as a repo-wide check, not just the files this pass touched.
+  - **TEST-003 (done)**: `vitest.config.ts` migrated `environmentMatchGlobs` (deprecated — every run
+    warned) to `test.projects` — two projects (`node` default, `dom` for `*.dom.test.tsx`) sharing the
+    same include/exclude base. Verified byte-identical test coverage before/after: 519 files / 7929
+    tests / 83 skipped / 12 todo, unchanged; no deprecation warning in the output anymore.
+  - **DOC-001 (done)**: `CLAUDE.md` had 4 stale generated-truth numbers — corpus enrichment 989/995
+    (current: 1219/1226), M29/M35/M37 `Live` coverage claimed "still partial" at 0/11, 3/21, 8/26
+    (current, and has been since the Phase 0-2 remediation pass: full-ratio 11/11, 21/21, 26/26 —
+    the doc never caught up after that work landed), M30's route count 47 (current: 60), and the
+    manifest's owned-table count 453 (current: 460). All corrected against the live generated
+    reports; added a note on the enrichment-count line pointing back at
+    `audit/openapi-coverage/OPENAPI_COVERAGE.md` as the authoritative source, since this exact class
+    of drift (hand-maintained prose outliving the generated truth it once matched) is DOC-001's whole
+    finding and will recur otherwise.
+  - **TEST-002 (done, scoped)**: full per-route (method+path+status+permission) coverage needs an
+    AST-driven rebuild the script's own header already calls "a separate, multi-session project" —
+    not attempted. Added a real, additive, NON-ratcheted signal instead:
+    `scripts/report-inject-coverage.ts` now also reports `directRoutesReferenced` per module — how
+    many of a module's route paths are literally referenced inside its covering suite file(s), vs.
+    the old boolean's "some file in this module calls `.inject(`." This immediately surfaced the gap
+    the boolean was hiding: **1157/1217 routes (95%) are directly referenced**, not the ~100% the old
+    "39/39 modules covered ✅" implied — 60 routes sit behind a module marked covered by an unrelated
+    route's test. Purely additive (new field + report column); the existing ratchet/gate logic and
+    baseline are untouched, so `arch:inject-coverage` still passes exactly as before (39/39 modules).
+  - Gate: full build + `arch:fitness` + `bun run test` (7929 passed) + `bun run lint` (0 errors) —
+    all green.
 - Estimated complexity: M
 
 ## WX-PR-022 - Establish UI fidelity, artifact, and performance gates

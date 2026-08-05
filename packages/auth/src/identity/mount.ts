@@ -56,7 +56,11 @@ export function registerIdentityAuth(
       // response would carry the new session cookie but lose the CSRF cookie in the same round trip.
       const existing = reply.getHeader("set-cookie");
       const existingList =
-        existing === undefined ? [] : Array.isArray(existing) ? existing.map(String) : [String(existing)];
+        existing === undefined
+          ? []
+          : Array.isArray(existing)
+            ? existing.map(String)
+            : [String(existing)];
       reply.header("set-cookie", [...existingList, ...setCookies]);
     }
     const body = Buffer.from(await res.arrayBuffer());

@@ -98,7 +98,12 @@ function timingSafeStringEqual(a: string, b: string): boolean {
 /** Merge a new Set-Cookie value onto any Set-Cookie header already staged on the reply. */
 function appendSetCookie(reply: FastifyReply, cookie: string): void {
   const existing = reply.getHeader("set-cookie");
-  const existingList = existing === undefined ? [] : Array.isArray(existing) ? existing.map(String) : [String(existing)];
+  const existingList =
+    existing === undefined
+      ? []
+      : Array.isArray(existing)
+        ? existing.map(String)
+        : [String(existing)];
   reply.header("set-cookie", [...existingList, cookie]);
 }
 
@@ -116,7 +121,12 @@ export function applyCsrfProtection(app: FastifyInstance, opts: CsrfOptions = {}
     let token = cookies[CSRF_COOKIE_NAME];
     if (!token) {
       token = randomBytes(32).toString("hex");
-      const attrs = [`${CSRF_COOKIE_NAME}=${token}`, "Path=/", "SameSite=Lax", ...(secure ? ["Secure"] : [])];
+      const attrs = [
+        `${CSRF_COOKIE_NAME}=${token}`,
+        "Path=/",
+        "SameSite=Lax",
+        ...(secure ? ["Secure"] : []),
+      ];
       appendSetCookie(reply, attrs.join("; "));
     }
     request.__csrfCookieToken = token;
