@@ -356,15 +356,37 @@ describe.skipIf(!DB_URL)(
       ).rejects.toMatchObject({ statusCode: 409 });
     });
 
-    it("revocation → admission discharged, benefit periods completed", async () => {
+    it("revocation → admission discharged, benefit periods completed, revocation facts persisted", async () => {
       const { admissionId } = await activeAdmission(randomUUID());
-      const rev = await svc.createRevocation(ORG_A, admissionId, USER);
+      const rev = await svc.createRevocation(
+        ORG_A,
+        admissionId,
+        {
+          revocationDate: "2026-06-10",
+          narrative: "patient elected to revoke hospice care to pursue curative treatment",
+          signingPatientName: "Pat Test",
+          signingRole: "legal_representative",
+          revocationReason: "seek_curative_treatment",
+        },
+        USER,
+      );
       expect(rev.state).toBe("created");
       expect((await svc.getAdmission(ORG_A, admissionId))!.state).toBe("discharged");
       const ep = await admin.query("SELECT status FROM election_period WHERE admission_id=$1", [
         admissionId,
       ]);
       expect(ep.rows.every((r: { status: string }) => r.status === "completed")).toBe(true);
+      const row = await admin.query(
+        `SELECT signer_kind, effective_at::text, signed_at::text, revocation_reason, narrative
+           FROM revocation_event WHERE id=$1`,
+        [rev.id],
+      );
+      // "legal_representative" (route vocabulary) maps to the DB enum's "representative".
+      expect(row.rows[0].signer_kind).toBe("representative");
+      expect(row.rows[0].effective_at).toBe("2026-06-10");
+      expect(row.rows[0].signed_at).toBe("2026-06-10");
+      expect(row.rows[0].revocation_reason).toBe("seek_curative_treatment");
+      expect(row.rows[0].narrative).toMatch(/pursue curative treatment/);
     });
 
     it("transfer-out → admission discharged, with the counterparty hospice + narrative persisted", async () => {

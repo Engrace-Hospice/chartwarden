@@ -23534,6 +23534,7 @@ export interface operations {
                     narrative: string;
                     signingPatientName: string;
                     signingRole: "patient" | "legal_representative";
+                    revocationReason: "seek_curative_treatment" | "dissatisfaction" | "transferred_out" | "other";
                 };
             };
         };

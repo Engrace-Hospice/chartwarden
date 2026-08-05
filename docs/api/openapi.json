@@ -16177,7 +16177,8 @@
                   "revocationDate",
                   "narrative",
                   "signingPatientName",
-                  "signingRole"
+                  "signingRole",
+                  "revocationReason"
                 ],
                 "properties": {
                   "revocationDate": {
@@ -16202,6 +16203,26 @@
                       },
                       {
                         "const": "legal_representative",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "revocationReason": {
+                    "anyOf": [
+                      {
+                        "const": "seek_curative_treatment",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dissatisfaction",
+                        "type": "string"
+                      },
+                      {
+                        "const": "transferred_out",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
                         "type": "string"
                       }
                     ]

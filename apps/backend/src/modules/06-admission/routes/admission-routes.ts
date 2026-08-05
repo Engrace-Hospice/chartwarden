@@ -562,8 +562,19 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     { preHandler: [REVOCATION_CREATE] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
-      parse(RevocationCreateSchema, request.body);
-      const res = await service.createRevocation(organizationId, idOf(request), userId);
+      const body = parse(RevocationCreateSchema, request.body);
+      const res = await service.createRevocation(
+        organizationId,
+        idOf(request),
+        {
+          revocationDate: body.revocationDate,
+          narrative: body.narrative,
+          signingPatientName: body.signingPatientName,
+          signingRole: body.signingRole,
+          revocationReason: body.revocationReason,
+        },
+        userId,
+      );
       return reply.code(201).send(res);
     },
   );

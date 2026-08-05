@@ -211,6 +211,24 @@ export interface TransferOutInput {
   readonly narrative: string;
 }
 
+/** §4.2.7 route 36 body (RevocationCreateSchema) — the patient-initiated hospice election revocation. */
+export interface RevocationInput {
+  readonly revocationDate: string;
+  readonly narrative: string;
+  /**
+   * Validated at the route but has no `revocation_event` column to land in today (same posture as
+   * `NorAcknowledgeInput`'s dropped fields, TASK-034) — the rendered revocation form (M22, via
+   * `revocation_event.document_id`) is the durable record of the signer's name, not this table.
+   */
+  readonly signingPatientName: string;
+  readonly signingRole: "patient" | "legal_representative";
+  readonly revocationReason:
+    | "seek_curative_treatment"
+    | "dissatisfaction"
+    | "transferred_out"
+    | "other";
+}
+
 /** The discharge outcome the route returns (§4.2 — `requiresMedicalDirectorCosign` drives route 40). */
 export interface DischargeResult extends MutationResult {
   readonly requiresMedicalDirectorCosign: boolean;
@@ -461,6 +479,7 @@ export interface AdmissionRouteService {
   createRevocation(
     organizationId: string,
     admissionId: string,
+    input: RevocationInput,
     actorUserId: string,
   ): Promise<MutationResult>;
   transferOut(
@@ -555,6 +574,11 @@ interface Rec {
   otherHospiceName?: string;
   otherHospiceCcn?: string | null;
   narrative?: string;
+  // revocation facts (§4.2.7 route 36) — what was actually submitted, not a hardcoded default.
+  signedAt?: string;
+  signerKind?: "patient" | "representative";
+  revocationReason?: RevocationInput["revocationReason"];
+  signingPatientName?: string;
 }
 
 /** A seed record for the slice (lets a test pre-populate a resource with owner facts for ABAC). */
@@ -1096,7 +1120,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       return transition(rec, "active", ifVersion, "m6.loc.changed");
     },
 
-    async createRevocation(organizationId, admissionId, actorUserId) {
+    async createRevocation(organizationId, admissionId, input, actorUserId) {
       void actorUserId;
       const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
       adm.state = "discharged";
@@ -1104,6 +1128,12 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const rec = insert("revocation", organizationId, "created", {
         admissionId: adm.id,
         patientId: adm.patientId,
+        effectiveAt: input.revocationDate,
+        signedAt: input.revocationDate,
+        signerKind: input.signingRole === "legal_representative" ? "representative" : "patient",
+        revocationReason: input.revocationReason,
+        narrative: input.narrative,
+        // signingPatientName intentionally not stored — see RevocationInput's doc comment.
       });
       events.push("m6.revocation.created");
       events.push("m6.admission.discharged");

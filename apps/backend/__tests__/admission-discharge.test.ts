@@ -308,7 +308,18 @@ describe("M6-T09 — slice: discharge cascades (§7.6)", () => {
 
   it("revocation and transfer-out discharge the admission; LOC change emits m6.loc.changed", async () => {
     const rev = seedAdmission();
-    await rev.service.createRevocation(ORG, ADMISSION, "u1");
+    await rev.service.createRevocation(
+      ORG,
+      ADMISSION,
+      {
+        revocationDate: "2026-06-20",
+        narrative: "patient revoked the hospice election in writing",
+        signingPatientName: "Pat Test",
+        signingRole: "patient",
+        revocationReason: "dissatisfaction",
+      },
+      "u1",
+    );
     expect(rev.events).toEqual(
       expect.arrayContaining(["m6.revocation.created", "m6.admission.discharged"]),
     );

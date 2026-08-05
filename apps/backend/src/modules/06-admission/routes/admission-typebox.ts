@@ -236,6 +236,14 @@ export const RevocationCreateSchema = Type.Object({
   narrative: Reason(10, 4000),
   signingPatientName: Type.String({ minLength: 1, maxLength: 200 }),
   signingRole: Type.Union([Type.Literal("patient"), Type.Literal("legal_representative")]),
+  // `revocation_event.revocation_reason` is NOT NULL — the spec's route contract never collected it, a
+  // real gap (architecture wins: the DB requires it, so the request must supply it).
+  revocationReason: Type.Union([
+    Type.Literal("seek_curative_treatment"),
+    Type.Literal("dissatisfaction"),
+    Type.Literal("transferred_out"),
+    Type.Literal("other"),
+  ]),
 });
 
 export const TransferOutSchema = Type.Object({

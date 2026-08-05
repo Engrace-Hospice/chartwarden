@@ -426,6 +426,30 @@
   (`POST .../revocation`) parses `RevocationCreateSchema` (`revocationDate`/`narrative`/
   `signingPatientName`/`signingRole`) but `createRevocation(organizationId, admissionId, actorUserId)`
   has no input parameter either — all four fields are dropped the same way `transferOut`'s were.
+- **Follow-up, same day**: fixed the revocation gap noted above, and found it was worse than
+  transferOut's twin — `revocation_event.revocation_reason` is `NOT NULL`, but
+  `RevocationCreateSchema` never collected it at all (a genuine spec gap; architecture's DB
+  requirement wins), so `createRevocation` hardcoded `revocationReason: "other"`, `signerKind:
+  "patient"`, and `effectiveAt = signedAt = now()` unconditionally, discarding every real field the
+  client sent. Fixed: added `revocationReason` (the 4 real `revocation_reason` enum values) to
+  `RevocationCreateSchema`; new `RevocationInput` type; `AdmissionRouteService.createRevocation`
+  signature now takes it. `signingRole` maps to the DB's `signer_kind` enum (`"legal_representative"`
+  → `"representative"`, matching the DB's different vocabulary — the route and DB enums were never
+  the same strings). `revocationDate` drives BOTH `effective_at`/`signed_at` (the route contract, per
+  spec, carries only one date; R-RV-01's `effective >= signed` check is trivially satisfied by
+  construction). `signingPatientName` is validated but NOT persisted — no `revocation_event` column
+  exists for it, same posture as `NorAcknowledgeInput`'s already-documented TASK-034 precedent (the
+  rendered M22 form is the durable signer-name record, not this table). Extended the live test to
+  read back `signer_kind`/`effective_at`/`signed_at`/`revocation_reason`/`narrative` and assert they
+  match what was submitted. Updated the 1 fake-service call site this broke.
+  **Also noted, not fixed, found while investigating**: `createRevocation`'s DB implementation never
+  calls the existing pure `planRevocation` (`state-machines/commands.ts`) — R-RV-01's validation is
+  fully built and unit-tested in isolation but never wired to the real write path, the same
+  unwired-validation class of bug found repeatedly this session. Currently harmless (the route
+  contract only carries one date, so `effective_at`/`signed_at` can never diverge through the API
+  today), but would become a real gap if the two dates were ever split. A separate, deeper fix; left
+  for a dedicated pass rather than folded into a field-persistence fix. OpenAPI + client schema
+  regenerated (new required field). Full gate green + all 6 M6 live suites (50 tests).
 
   4 new unit tests (state-machine coverage already existed), 4 new HTTP-inject tests (`admission-routes.test.ts` —
   proving the real route, not just the service method, including the short-code fix), 2 new live-Postgres

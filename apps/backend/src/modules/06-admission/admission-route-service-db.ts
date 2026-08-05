@@ -31,6 +31,7 @@ import type {
   CtiDraftInput,
   DischargeInput,
   DischargeResult,
+  RevocationInput,
   TransferOutInput,
 } from "./routes/service";
 import {
@@ -1882,11 +1883,18 @@ export function createDbAdmissionRouteService(
     },
 
     // ── M6L-T04: revocation / transfer / discharge (§2.3.1) ───────────────────────────────────────
-    async createRevocation(organizationId, admissionId, actorUserId): Promise<MutationResult> {
+    async createRevocation(
+      organizationId,
+      admissionId,
+      input: RevocationInput,
+      actorUserId,
+    ): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const period = await latestPeriod(tx, admissionId);
         if (!period) throw new ResourceNotFoundError(admissionId);
-        const today = new Date().toISOString().slice(0, 10);
+        // R-RV-01 (effective >= signed) is trivially satisfied: the route contract carries one date, so
+        // both columns are set from it (mirrors the spec's own §4.2.7 request shape — it never split
+        // signed-vs-effective either). `signingPatientName` has no column — see RevocationInput's doc.
         const rev = firstOrThrow(
           await tx
             .insert(RE)
@@ -1894,10 +1902,12 @@ export function createDbAdmissionRouteService(
               organizationId,
               admissionId,
               electionPeriodId: period.id,
-              signerKind: "patient",
-              effectiveAt: today,
-              signedAt: today,
-              revocationReason: "other",
+              signerKind:
+                input.signingRole === "legal_representative" ? "representative" : "patient",
+              effectiveAt: input.revocationDate,
+              signedAt: input.revocationDate,
+              revocationReason: input.revocationReason,
+              narrative: input.narrative,
             })
             .returning({ id: RE.id, version: RE.version }),
           "revocation insert returned no row",
@@ -1905,7 +1915,7 @@ export function createDbAdmissionRouteService(
         // §2.3.1 — a revocation discharges the admission (end LOC + complete every benefit period).
         await dischargeAdmissionTx(tx, organizationId, admissionId, {
           dischargeType: "revocation",
-          effectiveAt: today,
+          effectiveAt: input.revocationDate,
           forCauseCosigned: false,
         });
         await outbox.publish(tx, {
