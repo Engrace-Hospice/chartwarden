@@ -60,6 +60,9 @@ const {
   EligibilityCheckRepository,
   NoeRepository,
   NotrRepository,
+  ValidationRunRepository,
+  ValidationResultRepository,
+  ValidationOverrideRepository,
 } = repositories;
 
 /** The package-kernel Drizzle handle (a `withOrgContext` tx satisfies it structurally). */
@@ -537,6 +540,45 @@ function nextClaimState(from: ClaimState, event: ClaimTransitionEvent): ClaimSta
   return result.state;
 }
 
+/**
+ * The unresolved BLOCKING (error-severity, un-overridden) failures of a claim's latest validation run
+ * (§2.3) — the SAME query `routes/write-service-drizzle.ts`'s `submitClaim` runs before enqueueing the
+ * `claim.submit` job. Duplicated rather than imported: the route slice and the worker slice don't share a
+ * module, and the guard the pure reducer enforces on `submit` needs this recomputed HERE too, at the
+ * moment the worker is about to actually transition READY → SUBMITTED (not just at enqueue time).
+ */
+async function unresolvedBlockingFailuresForClaim(tx: BillingDb, claimId: string): Promise<number> {
+  const run = await new ValidationRunRepository(tx).findLatestForClaim(claimId);
+  if (!run) return Number.POSITIVE_INFINITY; // never validated → cannot be READY-clean
+  const failures = await new ValidationResultRepository(tx).listFailuresForRun(run.id);
+  if (failures.length === 0) return 0;
+  const overrides = await new ValidationOverrideRepository(tx).listByResultIds(
+    failures.map((f) => f.id),
+  );
+  const overridden = new Set(overrides.map((o) => o.resultId));
+  return failures.filter((f) => f.severity === "error" && !overridden.has(f.id)).length;
+}
+
+/**
+ * Preflight the pure §2.3 `submit` guard against the claim's LIVE unresolved-blocking-failure count
+ * BEFORE the worker physically transmits anything to the MAC. Without this, `nextClaimState(claim.state,
+ * "submit")` always fails `GUARD_FAILED` (the guard is fail-closed on an omitted context — see
+ * `packages/billing/src/machines/claim.ts`), which used to throw only AFTER the real 837I upload had
+ * already happened, rolling back the terminalize write inside the same tx with no retry and no alert
+ * (the claim stayed stuck in `ready` forever while the MAC had already received it). Returns the
+ * post-submit state on success, or the reducer's error code when the claim is no longer submit-eligible
+ * (a concurrent `revalidate` moved it out of `ready`, or a new blocking failure appeared since the route
+ * enqueued the job) — callers MUST check this before calling the x12/MAC-portal ports.
+ */
+async function preflightClaimSubmit(
+  tx: BillingDb,
+  claim: repositories.ClaimRecord,
+): Promise<{ readonly to: ClaimState } | { readonly error: string }> {
+  const unresolvedBlockingFailures = await unresolvedBlockingFailuresForClaim(tx, claim.id);
+  const result = reduceClaim(claim.state, "submit", { unresolvedBlockingFailures });
+  return result.error ? { error: result.error } : { to: result.state };
+}
+
 /** Whole-day count from `now` to a `yyyy-mm-dd` window target (negative when past). */
 function daysToTarget(targetDate: string, now: Date): number {
   const target = new Date(`${targetDate}T00:00:00.000Z`).getTime();
@@ -552,7 +594,7 @@ function daysToTarget(targetDate: string, now: Date): number {
  * `m23.claim.submitted`. On a portal failure emit `m23.claim.submission_failed` (the retry queue pickup signal)
  * and rethrow so BullMQ records the failed attempt. All x12/portal calls sit behind the fail-closed binds.
  */
-async function runClaimSubmit(
+export async function runClaimSubmit(
   tx: BillingDb,
   deps: M23WorkerDeps,
   job: ClaimSubmitJob,
@@ -564,6 +606,33 @@ async function runClaimSubmit(
 
   const claim = await claims.findById(job.claimId);
   if (!claim) throw new Error(`claim ${job.claimId} not found`);
+
+  // Preflight the §2.3 submit guard BEFORE transmitting anything — never physically upload a claim that
+  // is no longer submit-eligible (see {@link preflightClaimSubmit}).
+  const preflight = await preflightClaimSubmit(tx, claim);
+  if ("error" in preflight) {
+    const reason = `claim is no longer submit-eligible (${preflight.error}, state=${claim.state})`;
+    await submissions.terminalize(job.submissionId, {
+      outcome: "failed_worker",
+      outcomeReason: reason,
+      generatedFileUri: null,
+      submittedAt: null,
+      workerCorrelationId: null,
+    });
+    await outbox.publish(tx, {
+      eventName: "m23.claim.submission_failed",
+      organizationId: job.organizationId,
+      aggregateKind: "claim",
+      aggregateId: job.claimId,
+      payload: {
+        claimId: job.claimId,
+        submissionId: job.submissionId,
+        attemptIndex: job.attemptIndex,
+        reason,
+      },
+    });
+    return;
+  }
 
   let generated: { readonly x12: string; readonly correlationId: string } | null = null;
   let uploaded: { readonly accepted: boolean; readonly generatedFileUri: string } | null = null;
@@ -639,8 +708,7 @@ async function runClaimSubmit(
     workerCorrelationId: generated.correlationId,
   });
 
-  const to = nextClaimState(claim.state, "submit");
-  const result = await claims.transitionToState(job.claimId, claim.version, to);
+  const result = await claims.transitionToState(job.claimId, claim.version, preflight.to);
   if (!result.ok)
     throw new Error(`claim ${job.claimId} version conflict on submit (${result.currentVersion})`);
 
@@ -665,7 +733,7 @@ async function runClaimSubmit(
  * success transitions the claim. When the attempt budget is exhausted it emits `m23.claim.submission_stalled`
  * (severity=critical) so the §4.9 stalled alert fires. Mirrors {@link runClaimSubmit}'s submit path.
  */
-async function runClaimSubmitRetry(
+export async function runClaimSubmitRetry(
   tx: BillingDb,
   deps: M23WorkerDeps,
   job: ClaimSubmitRetryJob,
@@ -705,6 +773,41 @@ async function runClaimSubmitRetry(
       severity: "critical",
       organizationId: job.organizationId,
       payload: { claimId: job.claimId, submissionId: job.submissionId, attemptIndex },
+    });
+    return;
+  }
+
+  // Preflight the §2.3 submit guard BEFORE transmitting anything — mirrors {@link runClaimSubmit}. A
+  // concurrent `revalidate` (or a new blocking failure) since the last attempt means this claim must not
+  // be re-transmitted; fail this attempt instead (the retry budget check above still applies on the next
+  // delivery, so a permanently-ineligible claim eventually stalls+alerts rather than retrying forever).
+  const preflight = await preflightClaimSubmit(tx, claim);
+  if ("error" in preflight) {
+    const reason = `claim is no longer submit-eligible (${preflight.error}, state=${claim.state})`;
+    await submissions.append({
+      organizationId: job.organizationId,
+      providerEntityId: claim.providerEntityId,
+      kind: "claim_837i",
+      claimId: job.claimId,
+      claimControlNumber: priorSubmission.claimControlNumber,
+      attemptIndex,
+      outcome: "failed_worker",
+      outcomeReason: reason,
+      generatedFileUri: null,
+      submittedAt: null,
+      workerCorrelationId: null,
+    });
+    await outbox.publish(tx, {
+      eventName: "m23.claim.submission_failed",
+      organizationId: job.organizationId,
+      aggregateKind: "claim",
+      aggregateId: job.claimId,
+      payload: {
+        claimId: job.claimId,
+        submissionId: job.submissionId,
+        attemptIndex,
+        reason,
+      },
     });
     return;
   }
@@ -771,8 +874,7 @@ async function runClaimSubmitRetry(
     return;
   }
 
-  const to = nextClaimState(claim.state, "submit");
-  const result = await claims.transitionToState(job.claimId, claim.version, to);
+  const result = await claims.transitionToState(job.claimId, claim.version, preflight.to);
   if (!result.ok) throw new Error(`claim ${job.claimId} version conflict on retry submit`);
   await outbox.publish(tx, {
     eventName: "m23.claim.submitted",

@@ -122,6 +122,32 @@
   X12/M23 unit suites, 13-test live RLS/terminalization suite, clean migration chain, and full
   repository test suite pass. Real MAC sandbox upload and acknowledgment remain unverified because
   credentials and an external sandbox were unavailable.
+- Follow-up (2026-08-05, same day): a "fix it thoroughly" pass (mirroring the WX-PR-011 M6
+  confirm-handshake pass) found the internal reducer wiring was NOT actually complete — every real
+  `claim.submit` / `claim.submit.retry` job threw `GUARD_FAILED` and rolled back its own terminalize
+  write AFTER the 837I had already been physically transmitted to the MAC, because the worker called
+  the pure `submit` guard with no context (the guard is fail-closed on an omitted context) while the
+  route had already checked-and-dropped that same guard before enqueueing. `claim.submit` has
+  `attempts: 1`, so no BullMQ retry ever fired, and the failure path that fires
+  `m23.claim.submission_failed` (the only route into the retry queue) was never reached — so a
+  claim that a MAC portal genuinely accepted stayed stuck in `ready` forever with no visible trace.
+  Fixed in `apps/backend/src/modules/23-billing-medicare/jobs/m23-jobs.ts`: both
+  `runClaimSubmit`/`runClaimSubmitRetry` now preflight the §2.3 zero-unresolved-blocking-failures
+  guard (recomputed live, the same query `routes/write-service-drizzle.ts`'s `submitClaim` runs)
+  BEFORE calling the x12/MAC-portal ports — never physically transmits a claim that is no longer
+  submit-eligible (a concurrent `revalidate`), and routes a preflight failure through the existing
+  `submission_failed` → retry-queue path instead of throwing. The 13-test live suite never caught
+  this because it manipulates `claim_submission` via raw SQL and never drives the reducer or the
+  worker function; added a new live suite
+  (`apps/backend/__tests__/m23-claim-submit-worker.live.test.ts`, 3 tests) that calls the exported
+  `runClaimSubmit`/`runClaimSubmitRetry` directly against real Postgres with fake x12/MAC ports,
+  proving both the fixed happy path (READY → SUBMITTED) and the preflight-abort path (a claim with
+  an unresolved blocking failure is never uploaded and stays READY) — confirmed regression-catching
+  by temporarily reintroducing the bug and watching 2 of 3 tests fail. NOE/NOTR submit paths were
+  checked and are NOT affected (their only guarded event is `cancel`, not `submit`). Full gate green
+  (build, `arch:fitness`, lint, 7985 tests) plus all 3 M23 live-Postgres suites (17 tests total) on a
+  throwaway cluster. The "external MAC sandbox certification pending" framing is now honest — only
+  the external MAC leg is unverified; the internal round trip is proven end to end.
 - Risks: Payer-specific behavior and duplicate claims.
 - Rollback: Disable new submissions, continue acknowledgment/reconciliation for in-flight work.
 - Estimated complexity: XL
