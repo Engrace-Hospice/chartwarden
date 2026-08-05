@@ -2,8 +2,8 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1218,
-    "coveredRoutes": 1218,
+    "routes": 1219,
+    "coveredRoutes": 1219,
     "directRoutesReferenced": 1159
   },
   "modules": [
@@ -238,7 +238,7 @@
     },
     {
       "module": "25-remittance",
-      "routes": 31,
+      "routes": 32,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/remittance-inject.test.ts"

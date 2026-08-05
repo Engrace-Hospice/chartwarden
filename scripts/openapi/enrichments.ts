@@ -915,6 +915,8 @@ import {
   ManualMatchRequestSchema as M25ManualMatchRequestSchema,
   ManualMatchResponseSchema as M25ManualMatchResponseSchema,
   PrLedgerItemsResponseSchema as M25PrLedgerItemsResponseSchema,
+  ReceiveAdviceRequestSchema as M25ReceiveAdviceRequestSchema,
+  ReceiveAdviceResponseSchema as M25ReceiveAdviceResponseSchema,
   RemittanceAdviceReaderResponseSchema as M25RemittanceAdviceReaderResponseSchema,
   RemittanceAdviceSummaryPageSchema as M25RemittanceAdviceSummaryPageSchema,
   RemittanceAdviceSummarySchema as M25RemittanceAdviceSummarySchema,
@@ -8384,6 +8386,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/internal/patient-responsibility": {
     summary: "Internal PatientResponsibilityReader seam — PR ledger rows (§17 system principal)",
     response: M25PrLedgerItemsResponseSchema,
+  },
+  "POST /api/v1/internal/remittance/advices": {
+    summary:
+      "Receive a raw 835 already staged in MinIO; dedups + emits m25.edi.835_received (§17 system principal, WX-PR-012)",
+    body: M25ReceiveAdviceRequestSchema,
+    response: M25ReceiveAdviceResponseSchema,
   },
 });
 

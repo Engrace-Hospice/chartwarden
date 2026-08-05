@@ -21,6 +21,7 @@ import { type DbClient, createDbClient, schema } from "@wardenx/db";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import { registerPlatformJob, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
 import { DegradedError, WardenXError } from "@wardenx/types";
+import { createX12835Client } from "@wardenx/x12-835-client";
 import { type ConnectionOptions, Queue, type Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
@@ -385,8 +386,10 @@ import {
   M25_OUTBOX_EVENTS,
   M25_PLATFORM_JOB_ID,
   type TerminologyLookupPort,
+  buildDrizzleM25IngestService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
+  buildM25EdiReceivedConsumer,
   buildM25WorkerDeps,
   createDrizzleRemittanceEraseStore,
   mountM25Routes,
@@ -2552,9 +2555,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               };
             },
           };
+          // WX-PR-012 — the 835 receive/post pipeline. `createX12835Client()` defaults to the fail-closed
+          // `NO_X12_835_PORT` (no Python x12-worker sidecar transport is wired yet — the same "unwired
+          // until Phase 3" posture every other M25 forward seam already documents); wiring a live transport
+          // is a separate follow-up, not a blocker for the pipeline itself (receive/dedup/post/denial-seed
+          // are fully real and exercised end-to-end against an injected fake client in the live tests).
+          const m25IngestService = buildDrizzleM25IngestService(dbHandle.db, {
+            client: createX12835Client(),
+            outbox: m25OutboxPublisher,
+            terminology: m25Terminology,
+          });
           mountM25Routes(app, {
             readService: buildDrizzleM25ReadService(dbHandle.db, m25Terminology),
             writeService: buildDrizzleM25WriteService(dbHandle.db, m25OutboxPublisher),
+            ingestService: m25IngestService,
           });
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the
           // §4.10 `m26.cap.*` transactional outbox publisher binds here (events persist on the mutation's tx).
@@ -3479,6 +3493,36 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // m6-owned acceptances can never complete off M5's skip.
           buildM6ProposalAcceptedConsumer({ db: dbHandle.db, outbox: m6OutboxPublisher }),
           buildM39ConsentRenderConsumer(dbHandle.db),
+          // WX-PR-012 — the LIVE `m25.parse-and-post` consumer: M25 self-pulls (no other module produces
+          // `m25.edi.835_received`), so this drives the parse + transactional-post + denial-seed half of
+          // the pipeline the `remittance.receive` route's `receiveAdvice` emits into. The same
+          // fail-closed `NO_X12_835_PORT` client posture as the routes-mount binding above (no sidecar
+          // transport wired yet); the terminology lookup is reconstructed here (getSeam is resolved
+          // lazily per call, so a duplicate binding across two composition-root scopes is harmless).
+          buildM25EdiReceivedConsumer(
+            buildDrizzleM25IngestService(dbHandle.db, {
+              client: createX12835Client(),
+              outbox: m25OutboxPublisher,
+              terminology: {
+                async lookup(carcCode) {
+                  const concept = await (
+                    getSeam("TerminologyProvider") as {
+                      lookup(
+                        system: string,
+                        code: string,
+                      ): Promise<{ display: string; properties?: Record<string, unknown> } | null>;
+                    }
+                  ).lookup("carc", carcCode);
+                  if (!concept) return null;
+                  const props = concept.properties;
+                  return {
+                    category: typeof props?.category === "string" ? props.category : "unmapped",
+                    plainLanguage: concept.display,
+                  };
+                },
+              },
+            }),
+          ),
         ],
         eventCatalog: bootOutboxCatalog,
         options: {

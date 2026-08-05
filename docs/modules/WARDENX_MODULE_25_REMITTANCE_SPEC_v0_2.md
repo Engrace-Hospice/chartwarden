@@ -991,8 +991,22 @@ The eraser registration is the M4 destruction-cert workflow's contract. The comp
 | 29 | GET | `/api/v1/internal/remittance/reader` | `remittance.read_internal` (system principal) | `RemittanceReader` seam endpoint | n/a | 200 |
 | 30 | GET | `/api/v1/internal/denials/metrics` | `denial.read_internal` (system principal) | `DenialMetricsProvider` seam endpoint | n/a | 200 |
 | 31 | GET | `/api/v1/internal/patient-responsibility` | `pr.read_internal` (system principal) | `PatientResponsibilityReader` seam endpoint | n/a | 200 |
+| 32 | POST | `/api/v1/internal/remittance/advices` | `remittance.ingest_internal` (system principal) | Receive a raw 835 already staged in MinIO; dedups on ISA/ST + emits `m25.edi.835_received` (Task #7's receive half, WX-PR-012) | n/a | 202 |
 
-The internal seam endpoints (29–31) require the `m25.system_principal` actor (per architecture §17 internal-seam pattern — a service-to-service token issued to specific consumer modules at boot). They are not exposed in the user-facing API gateway.
+The internal seam endpoints (29–32) require the `m25.system_principal` actor (per architecture §17 internal-seam pattern — a service-to-service token issued to specific consumer modules at boot). They are not exposed in the user-facing API gateway.
+
+> **2026-08-05 correction (WX-PR-012):** route 32 was added post-spec — the spec never described a
+> receive entrypoint at all (§10 Task #7's "835-pull worker" was written as a literal
+> clearinghouse-polling worker, which this environment cannot build or test against real payer/SFTP
+> infrastructure). The implemented shape instead treats "receive" as: the raw file is ALREADY staged in
+> MinIO by an out-of-scope transport, and this route derives the dedup key locally (a new, real,
+> fixed-width ISA/ST envelope-header parser — no sidecar round-trip needed just for the header) and
+> inserts the `remittance_advice` envelope row. §10 Task #8's `ingest-835.ts` worker is real and
+> live-dispatcher-wired (`m25.parse-and-post`, consuming M25's own `m25.edi.835_received`); the D3
+> auto-match candidate lookup and the PR-ledger patient-id resolution both depend on the M23 claim-owner
+> cross-module seam BIND, which remains unbound (same posture as M27's HCI/cap seams) — until it binds,
+> lines route to the manual-match worklist and PR-group adjustments honestly degrade to
+> `flagged_review` rather than fabricating a match or a ledger patient id.
 
 ### 4.2 Representative TypeBox Schemas
 

@@ -19,6 +19,31 @@ export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   return converted as Static<T>;
 }
 
+/**
+ * POST /internal/remittance/advices (route #32, WX-PR-012, system-principal only) — receive a raw 835
+ * ALREADY staged in MinIO by the (unbuilt) clearinghouse-pull transport; `rawEdi` is used only to derive
+ * the ISA/ST dedup key locally, never persisted verbatim.
+ */
+export const ReceiveAdviceRequestSchema = Type.Object({
+  providerEntityId: Type.String({ format: "uuid" }),
+  payerId: Type.String({ format: "uuid" }),
+  payerKind: Type.Union([
+    Type.Literal("medicare"),
+    Type.Literal("medicaid"),
+    Type.Literal("commercial"),
+  ]),
+  minioObjectKey: Type.String({ minLength: 1 }),
+  fileSha256: Type.String({ minLength: 64, maxLength: 64 }),
+  rawEdi: Type.String({ minLength: 1 }),
+});
+
+/** POST /internal/remittance/advices — the 202/409/422 receive outcome (route #32, WX-PR-012). */
+export const ReceiveAdviceResponseSchema = Type.Union([
+  Type.Object({ outcome: Type.Literal("queued"), adviceId: Type.String() }),
+  Type.Object({ outcome: Type.Literal("duplicate"), existingAdviceId: Type.String() }),
+  Type.Object({ outcome: Type.Literal("malformed"), reason: Type.String() }),
+]);
+
 /** POST /remittance/lines/:id/manual-match — bind an unmatched line to a claim with a documented reason. */
 export const ManualMatchRequestSchema = Type.Object({
   proposedClaimId: Type.String({ format: "uuid" }),

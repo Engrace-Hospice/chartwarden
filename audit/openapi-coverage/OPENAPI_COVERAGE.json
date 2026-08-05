@@ -1,9 +1,9 @@
 {
   "totals": {
-    "routes": 1227,
-    "enriched": 1220,
+    "routes": 1228,
+    "enriched": 1221,
     "deficit": 7,
-    "mutating": 700,
+    "mutating": 701,
     "mutatingNoBody": 87,
     "gets": 496,
     "getsNoResponse": 8
@@ -241,10 +241,10 @@
     },
     {
       "module": "25-remittance",
-      "routes": 31,
-      "enriched": 31,
+      "routes": 32,
+      "enriched": 32,
       "deficit": 0,
-      "mutating": 18,
+      "mutating": 19,
       "mutatingNoBody": 2,
       "gets": 13,
       "getsNoResponse": 0

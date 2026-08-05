@@ -548,6 +548,7 @@
 
 ## WX-PR-012 - Bind X12-835 ingestion and posting
 
+- Status: Implementation complete (2026-08-05); real x12-worker sidecar transport + real M23 claim-match/patient-resolution seam remain unbound (pre-existing platform-wide postures, not new gaps)
 - Priority: P1
 - Severity addressed: High
 - Phase: 4
@@ -558,6 +559,57 @@
 - Implementation steps: Secure receive; validate; dedup; parse; transactionally post; create denial; surface partial failure.
 - Tests: Fixture matrix, duplicate, malformed, unmatched claim, rollback, cross-tenant collision.
 - Acceptance criteria: One ERA produces one reconciled posting/denial trail.
+- Completion evidence: prior to this pass, M25's 835 pipeline was pure scaffolding — a fail-closed
+  parser client, a dedup unique index, and pure domain functions (auto-match D3, adjustment routing
+  D4/D5, posting-outcome classification), but literally no code ever inserted a
+  `remittance_advice`/`remittance_line` row or posted a payment; every M25-owned gap the module's own
+  comments already admitted ("Phase 3 adds... services", "NOT wired into the dispatcher subscription
+  yet"). Built the real pipeline in two service methods
+  (`apps/backend/src/modules/25-remittance/ingest/service-drizzle.ts`):
+  `receiveAdvice` derives the ISA13/ST02 dedup key via a new local, pure, real X12 envelope-header
+  parser (`@wardenx/x12-835-client`'s `parseX12EnvelopeHeader` — fixed-width ISA segment + terminator-
+  delimited ST segment, no sidecar round-trip needed just for the header), inserts the
+  `remittance_advice` row with `onConflictDoNothing` on the existing `ux_remittance_envelope_dedupe`
+  index (a caught conflict resolves to the EXISTING row id, never a second row, never a thrown/poisoned
+  tx), and emits `m25.edi.835_received` in the same tx. `postAdvice` calls the injected
+  `X12835WorkerClient.parse835` for the CLP-level detail, then in ONE transaction inserts every
+  line/service-line/adjustment/remark row, auto-matches each line (D3), routes each adjustment (D4/D5)
+  through the M38 terminology lookup, seeds `denial_case`/`patient_responsibility_ledger` rows,
+  classifies each line's posting outcome (§2.4) and emits the matching `m25.remittance.claim_*` event —
+  either the WHOLE batch commits (posted/partial_posted) or NOTHING does (any error rolls back the
+  entire batch, including claims that would have succeeded alone), with a separate short transaction
+  then marking the advice `failed` so it stays operator-actionable via the EXISTING `remittance.replay`
+  route (which already re-emits the same event — no new replay code needed). Wired the LIVE dispatcher
+  consumer (`outbox-consumers/live-binding.ts`, the M6 admission-event-applier precedent) so a real
+  `m25.edi.835_received` delivery drives `postAdvice` automatically, registered into
+  `apps/backend/src/index.ts`'s outbox-dispatcher `consumers` array. Added the "receive" entrypoint as
+  a new internal system-principal route (`POST /api/v1/internal/remittance/advices`, route #32,
+  `remittance.ingest_internal` permission key — the 23rd M25 key) rather than inventing a literal
+  clearinghouse/SFTP poller (unbuildable/untestable in this environment; matches the existing "M25
+  self-pulls, transport unwired" posture the spec's own boot.ts already documents for every other M25
+  forward seam). Two deliberate, explicitly-flagged degrades rather than fabrication: (1) the D3
+  auto-match candidate lookup and the PR-ledger patient-id resolution are both a NEW, narrow
+  `ClaimMatchCandidateProvider` port defaulting to "no candidates / no patient" — not the full M23
+  `ClaimReader` seam, which stays a cross-module foundation BIND out of scope here (same posture as
+  M27's HCI/cap seams); a PR-group adjustment whose patient can't be resolved honestly degrades to
+  `flagged_review` rather than claiming a ledger entry was recorded when it wasn't. (2) the real
+  Python x12-worker sidecar has no transport wired (`createX12835Client()` defaults to the existing
+  fail-closed `NO_X12_835_PORT`) — every code path from receive through denial-seeding is real and
+  proven end-to-end against an injected FAKE client with real fixture data; only the actual sidecar
+  HTTP call is a follow-up. New live-Postgres suite
+  (`apps/backend/__tests__/m25-835-ingestion.live.test.ts`, 7 tests) proves: a multi-claim happy path
+  (matched/auto_posted, matched/denied+denial-seeded mapped AND unmapped, PR-ledger resolved AND
+  honestly-degraded-unresolved, unmatched→manual worklist) landing `partial_posted`; a CLP02=22
+  reversal landing `posted` with `match_state='reversed'`; a duplicate ISA/ST rejected with zero second
+  rows; a malformed (non-X12) file persisting nothing; a forced mid-batch failure rolling back EVERY
+  line (including the one that would have succeeded alone) and marking the advice `failed`; a
+  degraded-sidecar failure at post time recovering cleanly on replay; and cross-tenant RLS isolation
+  (proven via `SET ROLE wardenx_app`, the `rls-isolation.live.test.ts` precedent — a superuser
+  connection bypasses RLS and would pass this assertion vacuously). New OpenAPI enrichment for both the
+  new route and pre-existing coverage regenerated (1219/1226 → 1221/1228 enriched, ratchet held). Full
+  gate green (build, `arch:fitness`, lint, 7986 tests) plus the new live suite (7/7) and the
+  pre-existing M25→M27 `ClaimSettlementProvider` live seam suite, run standalone against a throwaway
+  pg18 cluster.
 - Risks: Financial double posting.
 - Rollback: Stop intake and reverse via explicit accounting adjustment, not row deletion.
 - Estimated complexity: L

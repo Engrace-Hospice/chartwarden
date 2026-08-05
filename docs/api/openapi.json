@@ -88690,6 +88690,140 @@
         }
       }
     },
+    "/api/v1/internal/remittance/advices": {
+      "post": {
+        "operationId": "postApiV1InternalRemittanceAdvices",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Receive a raw 835 already staged in MinIO; dedups + emits m25.edi.835_received (§17 system principal, WX-PR-012)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "outcome",
+                        "adviceId"
+                      ],
+                      "properties": {
+                        "outcome": {
+                          "const": "queued",
+                          "type": "string"
+                        },
+                        "adviceId": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "outcome",
+                        "existingAdviceId"
+                      ],
+                      "properties": {
+                        "outcome": {
+                          "const": "duplicate",
+                          "type": "string"
+                        },
+                        "existingAdviceId": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "outcome",
+                        "reason"
+                      ],
+                      "properties": {
+                        "outcome": {
+                          "const": "malformed",
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "payerId",
+                  "payerKind",
+                  "minioObjectKey",
+                  "fileSha256",
+                  "rawEdi"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "payerId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "payerKind": {
+                    "anyOf": [
+                      {
+                        "const": "medicare",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medicaid",
+                        "type": "string"
+                      },
+                      {
+                        "const": "commercial",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "minioObjectKey": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "fileSha256": {
+                    "minLength": 64,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "rawEdi": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/remittance/reader": {
       "get": {
         "operationId": "getApiV1InternalRemittanceReader",

@@ -6,3 +6,4 @@ export * from "./types";
 export * from "./parse-835";
 export * from "./parse-277ca";
 export * from "./client";
+export * from "./envelope-header";

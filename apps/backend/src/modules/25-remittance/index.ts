@@ -10,7 +10,7 @@ export * as domain from "./domain";
 // composition root merges this into the platform event catalog at boot.
 export { M25_OUTBOX_EVENTS } from "./events-by-m25";
 
-// §4.6 — the twenty-two permission keys M25 contributes to M3's catalog (the auth-package mirror-row
+// §4.6 — the twenty-three permission keys M25 contributes to M3's catalog (the auth-package mirror-row
 // projector consumes `M25_CONTRIBUTED_PERMISSIONS`; routes gate on these keys via requirePermission).
 export {
   type M25ContributedPermissionKey,
@@ -102,6 +102,26 @@ export {
   runDenialAging,
   scheduleM25Jobs,
 } from "./jobs/index";
+
+// WX-PR-012 — the 835 receive → parse → post pipeline (spec Tasks #7/#8). `receiveAdvice` (dedup insert +
+// `m25.edi.835_received` emit) and `postAdvice` (parse + transactional post + denial-seed + PR-ledger +
+// posting-outcome events) — the latter driven by the LIVE dispatcher consumer below, which the EXISTING
+// `remittance.replay` route naturally re-triggers (it already re-emits the same event).
+export {
+  type M25IngestActor,
+  type M25IngestService,
+  type ReceiveAdviceInput,
+  type ReceiveAdviceResult,
+  type PostAdviceResult,
+  type ClaimMatchCandidateProvider,
+  type TerminologyLookupPort as IngestTerminologyLookupPort,
+  NO_CLAIM_MATCH_CANDIDATES,
+} from "./ingest/service";
+export { type M25IngestDrizzleDeps, buildDrizzleM25IngestService } from "./ingest/service-drizzle";
+export {
+  type M25EdiReceivedConsumerBinding,
+  buildM25EdiReceivedConsumer,
+} from "./outbox-consumers/live-binding";
 
 // §3.7 / §8.4 — the M4 `remittance` destruction eraser (PR-ledger per-patient erase; the line history rolls
 // off via the M4 partition manager). Registered over the Phase-0 deny-stub via the injected registerEraser

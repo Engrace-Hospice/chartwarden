@@ -1,6 +1,6 @@
 // apps/backend/src/modules/25-remittance/permission-keys.ts — M25 (§4.6).
 //
-// The twenty-two permission keys Module 25 (Remittance & Denials) registers into Module 3's catalog. The
+// The twenty-three permission keys Module 25 (Remittance & Denials) registers into Module 3's catalog. The
 // canonical map is `M25_CONTRIBUTED_PERMISSIONS` in @wardenx/auth (the single source merged into the
 // platform mirror via allPermissionMirrorRows); this module-local surface re-exports it + the ordered key
 // list so the §4.1 routes gate on `requirePermission(key)` without re-declaring the map (no drift — unlike

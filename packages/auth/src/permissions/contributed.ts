@@ -2906,7 +2906,7 @@ export const M23_CONTRIBUTED_PERMISSIONS = {
 export type M23ContributedPermissionKey = keyof typeof M23_CONTRIBUTED_PERMISSIONS;
 
 /**
- * The twenty-two permission keys Module 25 (Remittance & Denials) registers into M3's catalog (§4.6).
+ * The twenty-three permission keys Module 25 (Remittance & Denials) registers into M3's catalog (§4.6).
  * Grouped under the `billing` category (the revenue-cycle surface, alongside M23). The `abac` default is
  * the dominant §4.7 predicate per key; M25 owns `claim_assigned_to_actor` + `appeal_within_deadline` (the
  * two new predicates, registered at boot) and reuses `provider_entity_scope` / `caseload_or_scope` /
@@ -2943,6 +2943,12 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
   "remittance.read_internal": {
     resource: "remittance_advice",
     action: "read_internal",
+    category: "billing",
+    abac: "none",
+  },
+  "remittance.ingest_internal": {
+    resource: "remittance_advice",
+    action: "ingest_internal",
     category: "billing",
     abac: "none",
   },
@@ -3054,7 +3060,7 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
   },
 } as const satisfies Record<string, PermissionDef>;
 
-/** Union of the M25 contributed permission keys (twenty-two). */
+/** Union of the M25 contributed permission keys (twenty-three). */
 export type M25ContributedPermissionKey = keyof typeof M25_CONTRIBUTED_PERMISSIONS;
 
 // M26 — Module 26's fourteen Cap Management permission keys registered into M3's catalog (§4.6). The

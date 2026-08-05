@@ -23,10 +23,10 @@ export { registerInternalRoutes, type InternalRouteDeps } from "./internal.route
 
 /** Mount every M25 §4.1 route plugin over the Drizzle-backed (or in-memory slice) read + write services. */
 export function mountM25Routes(app: FastifyInstance, services: M25RouteServices): void {
-  const { readService, writeService } = services;
+  const { readService, writeService, ingestService } = services;
   registerRemittanceRoutes(app, { readService, writeService });
   registerDenialRoutes(app, { readService, writeService });
   registerAppealRoutes(app, { readService, writeService });
   registerTaxonomyRoutes(app, { readService, writeService });
-  registerInternalRoutes(app, { readService });
+  registerInternalRoutes(app, { readService, ingestService });
 }

@@ -5,13 +5,17 @@
 // permission key PLUS a server-side `systemPrincipal` attribute assertion (a request-borne actor is refused).
 import { ForbiddenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { M25IngestService } from "../ingest/service";
 import { actorOf } from "./actor";
 import type { PreHandler } from "./actor";
 import { P } from "./guards";
+import { ReceiveAdviceRequestSchema, parse } from "./m25-typebox";
 import type { M25ReadService } from "./read-service";
 
 export interface InternalRouteDeps {
   readonly readService: M25ReadService;
+  /** WX-PR-012 — the 835 receive route (#32) mounts only when a real ingest service is supplied. */
+  readonly ingestService?: M25IngestService;
 }
 
 /** Refuse any caller that is not a server-assembled system principal (§17). */
@@ -27,7 +31,7 @@ function qStr(q: unknown, key: string): string | undefined {
 }
 
 export function registerInternalRoutes(app: FastifyInstance, deps: InternalRouteDeps): void {
-  const { readService } = deps;
+  const { readService, ingestService } = deps;
 
   app.get(
     "/api/v1/internal/remittance/reader",
@@ -70,4 +74,35 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
       });
     },
   );
+
+  // WX-PR-012 (route #32) — receive a raw 835 already staged in MinIO by the (unbuilt) clearinghouse-pull
+  // transport. Only mounted when a real ingest service is supplied (M25RouteServices.ingestService) —
+  // never a deny-stub 501, simply absent, matching the "not wired yet" posture the rest of the module
+  // already documents for its other unwired forward seams.
+  if (ingestService) {
+    app.post(
+      "/api/v1/internal/remittance/advices",
+      {
+        preHandler: [P("remittance.ingest_internal"), SYSTEM_PRINCIPAL],
+        config: { auditRead: { none: "envelope receive — no line/claim detail read here" } },
+      },
+      async (request, reply) => {
+        const actor = actorOf(request);
+        const body = parse(ReceiveAdviceRequestSchema, request.body);
+        const result = await ingestService.receiveAdvice(
+          { organizationId: actor.organizationId },
+          body,
+        );
+        if (result.outcome === "malformed") {
+          return reply.code(422).send({ outcome: result.outcome, reason: result.reason });
+        }
+        if (result.outcome === "duplicate") {
+          return reply
+            .code(409)
+            .send({ outcome: result.outcome, existingAdviceId: result.existingAdviceId });
+        }
+        return reply.code(202).send({ outcome: result.outcome, adviceId: result.adviceId });
+      },
+    );
+  }
 }
