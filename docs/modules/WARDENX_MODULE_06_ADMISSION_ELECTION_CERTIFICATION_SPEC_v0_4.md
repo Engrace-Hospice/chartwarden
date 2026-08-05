@@ -2068,6 +2068,16 @@ Type.Object({
   narrative: Type.String({ minLength:10, maxLength:4000 }),
   signingPatientName: Type.String({ minLength:1, maxLength:200 }),
   signingRole: Type.Union([Type.Literal('patient'),Type.Literal('legal_representative')]),
+  // `revocation_event.revocation_reason` is NOT NULL (§3.2/§3.3 below) — this route body must
+  // collect it. Earlier revisions of this section omitted the field entirely, so the original
+  // implementation had no way to populate a required column; corrected 2026-08-05 to match the
+  // real `revocation_reason` enum (§3.2) and the shipped implementation.
+  revocationReason: Type.Union([
+    Type.Literal('seek_curative_treatment'),
+    Type.Literal('dissatisfaction'),
+    Type.Literal('transferred_out'),
+    Type.Literal('other'),
+  ]),
 })
 // 201 -> { id, admissionState:'discharged' } // emits admission.revoked
 // 409 ADMISSION_NOT_ACTIVE
