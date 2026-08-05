@@ -1984,6 +1984,22 @@
       "app": "web",
       "module": "39-consent",
       "moduleId": 39,
+      "id": "consent.capture",
+      "path": "/patients/:patientId/consents/new",
+      "permission": "consent.author"
+    },
+    {
+      "app": "web",
+      "module": "39-consent",
+      "moduleId": 39,
+      "id": "consent.detail",
+      "path": "/patients/:patientId/consents/:consentId",
+      "permission": "consent.read"
+    },
+    {
+      "app": "web",
+      "module": "39-consent",
+      "moduleId": 39,
       "id": "consent.expiration-renewal",
       "path": "/patients/:patientId/consents/expiring",
       "permission": "consent.read"

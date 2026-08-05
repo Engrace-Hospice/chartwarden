@@ -208,6 +208,7 @@
 
 ## WX-PR-010 - Build consent capture and lifecycle screens
 
+- Status: Completed (2026-08-04).
 - Priority: P1
 - Severity addressed: High
 - Phase: 5
@@ -218,6 +219,23 @@
 - Implementation steps: Capture ceremony; detail/history; revoke/supersede/renew; states/focus/feedback.
 - Tests: Component, axe, Playwright main/denied/concurrent/render-failure.
 - Acceptance criteria: Screen definition-of-complete and mini-spec criteria pass.
+- Completion evidence: `consent-capture.tsx` (route `/patients/:patientId/consents/new`) runs the
+  draft → conditional recipient/DPOA-agent → sign ceremony over the real WX-PR-009 writes, gated
+  per catalog `scopeDiscriminator`; `consent-detail.tsx` (route
+  `/patients/:patientId/consents/:consentId`) presents the record, version-chain history, and
+  renewal-cycle status, with revoke/supersede/renew as optimistic-version-guarded ceremonies.
+  `consent-evidence-fields.tsx` shares the per-capture-method evidence sub-form (mirrors the
+  backend's `validateCaptureEvidence` floor) across all three sign ceremonies. `screens.ts` and
+  `consent-record-manager.tsx` wire the new routes in. Driven live in Chrome against local
+  Postgres: draft creation, conditional-section gating, and the step-up redirect all verified
+  working end-to-end (full ceremony completion needs a real passkey, unavailable in this
+  environment). Along the way, fixed two real bugs found by live-driving rather than only
+  typechecking: `write-workflow.ts`'s step-up detection used a `STEP_UP_REQUIRED` error *code*
+  that `requireStepUp()` (an ABAC `step_up_recent` predicate) never actually emits — routes on
+  `error.message` instead; and `consent-routes.ts`'s create-draft route was the only mutation
+  route missing the `try/catch → mapError` wrapping every sibling route has, so "patient not
+  found" surfaced as a raw 500 instead of 404. Full gate (build, `arch:fitness`, `bun run test`)
+  green.
 - Risks: UI can imply legal effect before backend completion.
 - Rollback: Feature flag route; preserve records.
 - Estimated complexity: L

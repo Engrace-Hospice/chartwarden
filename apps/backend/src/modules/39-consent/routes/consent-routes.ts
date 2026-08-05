@@ -183,18 +183,22 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
       const { organizationId, userId } = actorOf(request);
       const { patientId } = parse(PatientIdParamsSchema, request.params);
       const body = parse(CreateDraftBodySchema, request.body);
-      const draft = await service.createDraft(organizationId, {
-        ...body,
-        patientId,
-        typeKey: body.typeKey,
-        // The TypeBox union validated these at runtime; the cast re-applies the literal types.
-        grantorKind: body.grantorKind as ConsentGrantorKind,
-        captureMethod: body.captureMethod as ConsentCaptureMethod,
-        scopeDescriptor: body.scopeDescriptor,
-        createdById: userId,
-      });
-      reply.code(201);
-      return { data: draft };
+      try {
+        const draft = await service.createDraft(organizationId, {
+          ...body,
+          patientId,
+          typeKey: body.typeKey,
+          // The TypeBox union validated these at runtime; the cast re-applies the literal types.
+          grantorKind: body.grantorKind as ConsentGrantorKind,
+          captureMethod: body.captureMethod as ConsentCaptureMethod,
+          scopeDescriptor: body.scopeDescriptor,
+          createdById: userId,
+        });
+        reply.code(201);
+        return { data: draft };
+      } catch (e) {
+        mapError(e);
+      }
     },
   );
 

@@ -15,14 +15,12 @@ import {
 // Reads GET /api/v1/patients/:patientId/consents (+ the patient summary for the banner) through the typed
 // client — M39's read responses are enriched, so there is no `as unknown as` cast here.
 //
-// HONEST SCOPE: this is the READ surface. The spec's capture wizard is a WRITE flow that requires step-up
-// re-auth (§4.1) and M39's Drizzle lifecycle writes still answer 501 (the §2.2.1 capture/step-up evidence +
-// per-tenant DEK are unwired), so a capture button here would open a form that cannot save. The screen names
-// that instead of pretending — the same posture the M13 eMAR and M14 IDG screens take toward their unbuilt
-// write paths.
+// WX-PR-010: the capture and lifecycle-detail write screens now exist (`consent-capture.tsx`,
+// `consent-detail.tsx`) over the real WX-PR-009 Drizzle lifecycle, so this row links out to them
+// instead of naming the writes as unavailable.
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { CONSENT_STATUS_TONE, humanize, readErrorMessage, toneOf } from "./consent-status";
 
 interface ConsentRow {
@@ -59,6 +57,18 @@ const head: CSSProperties = {
   fontWeight: 600,
 };
 const row: CSSProperties = { borderTop: `1px solid ${t.surfaceContainer}` };
+const primaryBtn: CSSProperties = {
+  alignSelf: "flex-start",
+  padding: "0.45rem 0.9rem",
+  borderRadius: "9999px",
+  background: "var(--color-primary)",
+  color: "var(--color-on-primary)",
+  fontSize: "0.8125rem",
+  fontWeight: 600,
+  textDecoration: "none",
+  whiteSpace: "nowrap",
+};
+const rowLink: CSSProperties = { color: "var(--color-on-surface)", textDecoration: "none" };
 
 /** ISO instant → a plain date. A consent's operative dates are dates; the time is noise here. */
 function day(iso: string | null): string {
@@ -108,13 +118,29 @@ export function ConsentRecordManager(): JSX.Element {
   return (
     <PatientWorkspaceLayout banner={banner}>
       <section style={cardSurface}>
-        <h2 style={{ margin: 0, fontSize: "1.05rem" }}>Consents on file</h2>
-        <p style={{ margin: "0.25rem 0 1rem", color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
-          Active consent records for this patient.
-          {survivingCount > 0
-            ? ` ${survivingCount} survive${survivingCount === 1 ? "s" : ""} death (D13).`
-            : ""}
-        </p>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: "1rem",
+          }}
+        >
+          <div>
+            <h2 style={{ margin: 0, fontSize: "1.05rem" }}>Consents on file</h2>
+            <p style={{ margin: "0.25rem 0 0", color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
+              Active consent records for this patient.
+              {survivingCount > 0
+                ? ` ${survivingCount} survive${survivingCount === 1 ? "s" : ""} death (D13).`
+                : ""}
+            </p>
+          </div>
+          {patientId ? (
+            <Link to={`/patients/${patientId}/consents/new`} style={primaryBtn}>
+              + New consent
+            </Link>
+          ) : null}
+        </div>
 
         {loading ? (
           <LoadingSpinner />
@@ -126,7 +152,7 @@ export function ConsentRecordManager(): JSX.Element {
             description="Nothing has been captured for this patient yet. Capture runs through the consent flow, which requires step-up re-authentication."
           />
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "1rem" }}>
             <thead>
               <tr>
                 <th style={head}>Type</th>
@@ -141,7 +167,11 @@ export function ConsentRecordManager(): JSX.Element {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} style={row}>
-                  <td style={cell}>{humanize(r.typeKey)}</td>
+                  <td style={cell}>
+                    <Link to={`/patients/${patientId}/consents/${r.id}`} style={rowLink}>
+                      {humanize(r.typeKey)}
+                    </Link>
+                  </td>
                   <td style={cell}>
                     <StatusPill
                       tone={toneOf(CONSENT_STATUS_TONE, r.status)}

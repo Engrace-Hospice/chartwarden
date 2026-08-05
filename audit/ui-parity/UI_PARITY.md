@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 37 module screen-sets registered · 271 screens wired across web/portal/admin.
+**Coverage:** 113 documented screen specs · 37 module screen-sets registered · 273 screens wired across web/portal/admin.
 - **admin**: 14 screen(s)
 - **portal**: 13 screen(s)
-- **web**: 244 screen(s)
+- **web**: 246 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -270,6 +270,8 @@
 | web | 37-ipu | `ipu.equipment` | `/ipu/equipment` | `m37.equipment.read` | ✅ |
 | web | 38-terminology | `terminology.admin` | `/terminology` | `(none)` | ✅ |
 | web | 39-consent | `consent.record-manager` | `/patients/:patientId/consents` | `consent.read` | ✅ |
+| web | 39-consent | `consent.capture` | `/patients/:patientId/consents/new` | `consent.author` | ✅ |
+| web | 39-consent | `consent.detail` | `/patients/:patientId/consents/:consentId` | `consent.read` | ✅ |
 | web | 39-consent | `consent.expiration-renewal` | `/patients/:patientId/consents/expiring` | `consent.read` | ✅ |
 | web | 39-consent | `consent.recipients-dpoa` | `/consents/:consentId/recipients` | `consent.read` | ✅ |
 | web | 40-mdm | `mdm.console` | `/mdm` | `(none)` | ✅ |
