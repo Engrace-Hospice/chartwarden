@@ -39,6 +39,7 @@
     "lint:fix": "biome check --write .",
     "test": "vitest run",
     "test:db:migrate:live": "vitest run scripts/__tests__/db-migrate.live.test.ts",
+    "test:audit:nested-redaction:live": "vitest run packages/db/migrations/__tests__/nested-audit-redaction.live.test.ts",
     "test:rls:live": "vitest run packages/db/migrations/__tests__/rls-isolation.live.test.ts",
     "test:rls:live:m31": "vitest run packages/db/migrations/__tests__/m31-rls-isolation.live.test.ts",
     "test:rls:live:m29": "vitest run packages/db/migrations/__tests__/m29-rls-isolation.live.test.ts",

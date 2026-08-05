@@ -15,26 +15,27 @@
  * exactly (not a subset in either direction). Adding a column to a constant without updating the
  * trigger (or vice versa) now fails CI, satisfying ARCH-020's acceptance criteria.
  *
- * TWO KINDS OF ENTRY THIS GATE DELIBERATELY DOES NOT ENFORCE, both by design, not oversight:
+ * NESTED JSONB-PATH ENTRIES (any string containing `->`, e.g. `data->>infusionDilution`,
+ * `payload->>narrative`) — WX-PR-016 finding: `audit_scrub(jsonb, text[])` only redacts whole
+ * TOP-LEVEL keys of whatever jsonb object it's given, but every table that declares a nested-path
+ * denylist entry ALREADY redacts it correctly, by calling `audit_scrub()` a SECOND time on the
+ * extracted nested object and writing the result back with `jsonb_set` — e.g.
+ * `jsonb_set(v_before, '{data}', audit_scrub(v_before->'data', v_data_keys))`. The mechanism was never
+ * missing; this gate just didn't verify it, so a real regression (someone deleting the `jsonb_set` call,
+ * or dropping a key from the nested array) would have passed silently. `verifyNestedPaths()` below
+ * checks the migration's function-block TEXT for that pattern per declared nested path, mirroring the
+ * `CONDITIONAL_REDACTIONS` marker-string approach — it is not a full SQL parser, but it fails loudly if
+ * the extract/scrub/write-back shape disappears.
  *
- *   1. NESTED JSONB-PATH ENTRIES (any string containing `->`, e.g. `data->>infusionDilution`,
- *      `payload->>narrative`). `audit_scrub(jsonb, text[])` only redacts whole TOP-LEVEL keys — it has
- *      no mechanism to strip a single nested path inside a jsonb column, so no migration trigger could
- *      ever satisfy one of these literally. Several tables' own schema comments explicitly say so (e.g.
- *      discipline_assessment: "a top-level column denylist would miss them"). Building nested-path-aware
- *      redaction is a real, separate engineering task — this gate does not silently ignore these
- *      entries, it prints them every run so they stay visible, but it cannot fail a check the mechanism
- *      structurally cannot pass.
- *
- *   2. KNOWN_UNRESOLVED_DISAGREEMENTS below — a small, explicit, reviewed allowlist of PLAIN-column
- *      cases where the constant and the migration disagree and this gate is NOT the place to pick a
- *      winner. Each one was investigated during TASK-063: in every case at least one authoritative
- *      source (the module's own ratified spec, or the migration's own cross-checked header comment)
- *      agrees with the CURRENT migration behavior, not the constant — but the constant's claim also has
- *      a real, documented PHI/compliance rationale behind it. Silently "fixing" either side would either
- *      erase a legitimate compliance flag or force a redaction change with real audit-trail-visibility
- *      consequences, neither of which is a hygiene-gate's call to make unilaterally. See the task
- *      backlog entry for TASK-063 for the full writeup of each one.
+ * KNOWN_UNRESOLVED_DISAGREEMENTS below is a small, explicit, reviewed allowlist of PLAIN-column cases
+ * where the constant and the migration disagree and this gate is NOT the place to pick a winner. Each
+ * one was investigated during TASK-063: in every case at least one authoritative source (the module's
+ * own ratified spec, or the migration's own cross-checked header comment) agrees with the CURRENT
+ * migration behavior, not the constant — but the constant's claim also has a real, documented
+ * PHI/compliance rationale behind it. Silently "fixing" either side would either erase a legitimate
+ * compliance flag or force a redaction change with real audit-trail-visibility consequences, neither of
+ * which is a hygiene-gate's call to make unilaterally. See the task backlog entry for TASK-063 for the
+ * full writeup of each one.
  */
 import { readFileSync } from "node:fs";
 import { M6_AUDIT_DENYLIST } from "../packages/types/src/admission";
@@ -205,14 +206,15 @@ const MODULES: ReadonlyArray<{
  *
  *  `M7.care_plan_version` RESOLVED (post-TASK-066 follow-up): migration 0163 now redacts
  *  `state_snapshot` too — the constant, migration, and this gate agree, so it's a normal checked
- *  table now, not an exemption. */
-const KNOWN_UNRESOLVED_DISAGREEMENTS = new Set<string>([
-  // Constant claims `payload_schema`; the migration uses M1's generic platform-baseline trigger (this
-  // table is platform-shared, not org-scoped, and has no per-table redaction mechanism at all). Also
-  // genuinely unclear whether a form's serialized TypeBox render schema is PHI at all (it describes
-  // FIELD STRUCTURE, not patient data) — needs a decision, not a default.
-  "M22.form_template_version",
-]);
+ *  table now, not an exemption.
+ *
+ *  `M22.form_template_version` RESOLVED (WX-PR-016): the constant was the side that disagreed with
+ *  reality — `payload_schema` is a serialized TypeBox render CONTRACT (field structure), not patient
+ *  data, per the table's own schema-file comment ("structural, not PHI"). Removed from
+ *  `M22_AUDIT_DENYLIST`; the platform-shared `wardenx_audit_trigger()` this table uses correctly has no
+ *  redaction at all, which is now what the constant claims too. Normal checked table now, not an
+ *  exemption. */
+const KNOWN_UNRESOLVED_DISAGREEMENTS = new Set<string>([]);
 
 /**
  * Row-conditional redactions (AUDIT_DENYLIST_CATALOG, packages/audit/src/triggers/catalog.ts) —
@@ -273,9 +275,62 @@ function parseMigrations(paths: readonly string[]): Record<string, string[]> {
   return out;
 }
 
+/** Split a nested-path denylist entry ("data->>infusionDilution" or "built_snapshot->discipline_views")
+ *  into [topLevelColumn, nestedKey]. `->>` (text) and `->` (jsonb) extraction are treated identically —
+ *  the established redaction pattern replaces the whole nested value with `"<changed>"` regardless of
+ *  its original type, so the distinction doesn't matter for what this checks. */
+function splitNestedPath(entry: string): [string, string] {
+  const idx = entry.indexOf("->");
+  const top = entry.slice(0, idx);
+  const rest = entry.slice(idx + 2);
+  const nested = rest.startsWith(">") ? rest.slice(1) : rest;
+  return [top, nested];
+}
+
+/** Find the LAST (CREATE OR REPLACE wins) `audit_phi_write_<table>()` function block across the given
+ *  migration files, keyed by its trigger's real table name — same block-extraction parseMigrations()
+ *  uses, kept separate so a change to one doesn't risk the other. */
+function findTableBlock(table: string, migrations: readonly string[]): string {
+  let block = "";
+  for (const path of migrations) {
+    const src = readFileSync(path, "utf8");
+    const funcRe =
+      /CREATE OR REPLACE FUNCTION audit_phi_write_\w+\(\)[\s\S]*?(?=CREATE OR REPLACE FUNCTION audit_phi_write_\w+\(\)|$)/g;
+    for (const b of src.match(funcRe) ?? []) {
+      const tableMatch = b.match(/CREATE (?:OR REPLACE )?TRIGGER\s+"[^"]+"\s+AFTER[^\n]*ON\s+(\w+)/);
+      if (tableMatch?.[1] === table) block = b;
+    }
+  }
+  return block;
+}
+
+/** WX-PR-016: verify a table's trigger actually redacts each declared nested path, by checking its
+ *  function-block text for the established extract -> audit_scrub -> jsonb_set-back shape, e.g.
+ *  `jsonb_set(v_before, '{data}', audit_scrub(v_before->'data', v_data_keys))` with `'infusionDilution'`
+ *  somewhere in that nested-keys array. Not a SQL parser — a regression that deletes the jsonb_set call,
+ *  or drops a key from the nested array, makes one of these four substring checks fail, which is the
+ *  same fidelity CONDITIONAL_REDACTIONS already relies on for the row-conditional case. */
+function verifyNestedPaths(
+  table: string,
+  nestedCols: readonly string[],
+  migrations: readonly string[],
+): string[] {
+  const block = findTableBlock(table, migrations);
+  const missing: string[] = [];
+  for (const entry of nestedCols) {
+    const [top, nested] = splitNestedPath(entry);
+    const hasExtract = block.includes(`->'${top}'`);
+    const hasWriteback = block.includes(`'{${top}}'`) && block.includes("jsonb_set(");
+    const hasScrubCall = block.includes("audit_scrub(");
+    const hasNestedKey = block.includes(`'${nested}'`);
+    if (!(hasExtract && hasWriteback && hasScrubCall && hasNestedKey)) missing.push(entry);
+  }
+  return missing;
+}
+
 const violations: string[] = [];
 let tablesChecked = 0;
-let nestedPathEntries = 0;
+let nestedPathEntriesVerified = 0;
 
 for (const { mod, denylist, migrations } of MODULES) {
   const migCols = parseMigrations(migrations);
@@ -283,9 +338,16 @@ for (const { mod, denylist, migrations } of MODULES) {
   for (const [table, cols] of Object.entries(denylist)) {
     const plain = cols.filter((c) => !c.includes("->"));
     const nested = cols.filter((c) => c.includes("->"));
-    nestedPathEntries += nested.length;
     if (nested.length > 0) {
-      console.log(`  [nested-path, not enforced] ${mod}.${table}: ${JSON.stringify(nested)}`);
+      const missingNested = verifyNestedPaths(table, nested, migrations);
+      if (missingNested.length > 0) {
+        violations.push(
+          `${mod}.${table}: nested path(s) ${JSON.stringify(missingNested)} declared in the TS constant, but the migration trigger (${migrationLabel}) doesn't visibly redact them (the extract -> audit_scrub -> jsonb_set-back pattern wasn't found) — add the redaction, or fix the constant`,
+        );
+      } else {
+        nestedPathEntriesVerified += nested.length;
+        console.log(`  [nested-path, verified] ${mod}.${table}: ${JSON.stringify(nested)}`);
+      }
     }
     if (KNOWN_UNRESOLVED_DISAGREEMENTS.has(`${mod}.${table}`)) {
       console.log(`  [known unresolved disagreement, see TASK-063] ${mod}.${table}`);
@@ -323,7 +385,7 @@ for (const { key, migration, mustContain } of CONDITIONAL_REDACTIONS) {
 
 if (violations.length === 0) {
   console.log(
-    `OK audit-denylist-sync: ${tablesChecked} table(s) across ${MODULES.length} module(s) match verbatim (${nestedPathEntries} nested-path entries not enforced, ${KNOWN_UNRESOLVED_DISAGREEMENTS.size} known unresolved disagreements, ${CONDITIONAL_REDACTIONS.length} row-conditional redaction(s) verified — see above)`,
+    `OK audit-denylist-sync: ${tablesChecked} table(s) across ${MODULES.length} module(s) match verbatim (${nestedPathEntriesVerified} nested-path entries verified, ${KNOWN_UNRESOLVED_DISAGREEMENTS.size} known unresolved disagreements, ${CONDITIONAL_REDACTIONS.length} row-conditional redaction(s) verified — see above)`,
   );
   process.exit(0);
 }

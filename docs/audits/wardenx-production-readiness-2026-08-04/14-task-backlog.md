@@ -322,6 +322,7 @@
 
 ## WX-PR-016 - Enforce nested audit redaction
 
+- Status: Completed (2026-08-05).
 - Priority: P1
 - Severity addressed: High
 - Phase: 2
@@ -332,6 +333,29 @@
 - Implementation steps: Choose structured DB redaction/prohibit snapshots; add forward migration; remove allowlists.
 - Tests: Live audit rows for every path/array/case.
 - Acceptance criteria: Gate reports zero exceptions and values are absent in DB.
+- Completion evidence: Investigation found the DB-level mechanism was never missing — every one of the 6
+  tables declaring nested-path denylist entries (M13.administration_record, M14.idg_decision,
+  M14.idg_patient_packet, M15.discipline_care_plan_version, M15.discipline_assessment,
+  M16.bereavement_risk_score) already redacts them correctly in its live migration trigger, via
+  `audit_scrub()` applied a second time to the extracted nested object and written back with
+  `jsonb_set` (e.g. `jsonb_set(v_before, '{data}', audit_scrub(v_before->'data', v_data_keys))`).
+  `check-audit-denylist-sync.ts` just never verified it — it printed "not enforced" and skipped
+  checking, so a real regression (a deleted `jsonb_set` call, a dropped key) would have passed
+  silently. Added `verifyNestedPaths()`, which checks each declared nested path's migration
+  function-block text for the extract/scrub/write-back pattern (same text-presence philosophy as the
+  existing `CONDITIONAL_REDACTIONS` check) — confirmed it fails correctly against a deliberately
+  broken copy before landing. All 25 nested-path entries across the 6 tables now read
+  `[nested-path, verified]`. The M22 disagreement resolved the other way: `payload_schema` on
+  `form_template_version` was DENYLISTED in the TS constant, but the table's own schema-file comment
+  says "structural, not PHI" (it's a serialized TypeBox render contract — field structure, not patient
+  data) and the migration correctly runs it through the platform-shared `wardenx_audit_trigger()`
+  with no redaction at all — so the constant was the side that disagreed with reality; removed
+  `payload_schema` from `M22_AUDIT_DENYLIST`, `KNOWN_UNRESOLVED_DISAGREEMENTS` is now empty. Added
+  `packages/db/migrations/__tests__/nested-audit-redaction.live.test.ts`
+  (`test:audit:nested-redaction:live`), proving at runtime — against a real Postgres trigger, not just
+  static text — that two representative tables (one `->>` scalar path, one `->` object/array path)
+  redact the denylisted nested key while a SIBLING key in the same jsonb column stays visible (selective
+  redaction, not blanket column wipe). Full gate (build, `arch:fitness`, `bun run test`) green.
 - Risks: Over-redaction reduces forensic usefulness.
 - Rollback: Forward adjust redaction metadata; never reintroduce stored PHI.
 - Estimated complexity: L

@@ -234,7 +234,13 @@ export const M22_AUDIT_DENYLIST: { readonly [K in M22TableName]: readonly string
   document_access_log: ["purpose", "recipient_class"],
   document_legal_hold: [],
   form_template: [],
-  form_template_version: ["payload_schema"],
+  // `payload_schema` is a serialized TypeBox RENDER CONTRACT (field structure — types/labels/validation
+  // rules), not patient data — the table's own schema comment (packages/db/src/schema/documents/
+  // form-template-version.ts) says so explicitly: "DENYLISTED in the audit trigger (§3.6 — structural,
+  // not PHI)". TASK-063/WX-PR-016 resolution: the constant was the one that disagreed, not the migration
+  // (which correctly runs this platform-shared table through the plain `wardenx_audit_trigger()`, no
+  // redaction). Was previously listed here in error.
+  form_template_version: [],
   tenant_template_overlay: ["branding", "state_addendum"],
   form_fill: ["render_payload"],
   intake_upload_batch: ["source_metadata"],
