@@ -15,6 +15,7 @@ import {
   DEFAULT_MEDICAID_RULES,
   DEFAULT_MEDICAID_RULE_SET_VERSION,
   type MedicaidValidationContext,
+  buildHospiceLines,
   deriveMedicaidControlNumber,
   medicaidClaimMachine,
   parseMedicaidControlNumber,
@@ -114,12 +115,61 @@ export interface ProviderEntityCcnReader {
   ccnForProviderEntity(organizationId: string, providerEntityId: string): Promise<string | null>;
 }
 
+/** M6's `level_of_care_period` raw list (per-line assembly follow-up). `level_of_care_period` is M6-owned —
+ * same "composition-root escape valve" posture as `ProviderEntityCcnReader` (the read lives outside every
+ * module's codePaths in apps/backend/src/index.ts, injected here as a narrow port). */
+export interface LevelOfCarePeriodReaderPort {
+  periodsForAdmission(
+    organizationId: string,
+    admissionId: string,
+  ): Promise<
+    ReadonlyArray<{
+      id: string;
+      levelOfCare:
+        | "routine_home_care"
+        | "continuous_home_care"
+        | "inpatient_respite_care"
+        | "general_inpatient_care";
+      effectiveAt: Date;
+      endedAt: Date | null;
+    }>
+  >;
+}
+
+/** M8's LIVE `SignedEncountersReader` seam, narrowed to what claim assembly needs (backing-encounter
+ * evidence for a line, not the full digest). Bound at the composition root via `getSeam`. Optional: an
+ * absent binding degrades to zero linked encounters rather than blocking assembly — the LOC period is the
+ * authoritative billing basis; encounter linkage is supplementary audit evidence, not a NOT-NULL input. */
+export interface SignedEncounterWindowReaderPort {
+  encountersInWindow(
+    organizationId: string,
+    patientId: string,
+    from: string,
+    to: string,
+  ): Promise<ReadonlyArray<{ encounterId: string; serviceDate: string }>>;
+}
+
+const LOC_BY_M6_ENUM: Record<
+  | "routine_home_care"
+  | "continuous_home_care"
+  | "inpatient_respite_care"
+  | "general_inpatient_care",
+  "RHC" | "CHC" | "IRC" | "GIP"
+> = {
+  routine_home_care: "RHC",
+  continuous_home_care: "CHC",
+  inpatient_respite_care: "IRC",
+  general_inpatient_care: "GIP",
+};
+
 export function buildDrizzleM24WriteService(
   db: DbClient,
   outbox: WriteOutboxPort = NOOP_OUTBOX,
   cipher: CredentialCipherPort = UNBOUND_CIPHER,
   coverage?: CoverageResolverPort,
   ccnReader?: ProviderEntityCcnReader,
+  locPeriodReader?: LevelOfCarePeriodReaderPort,
+  signedEncounters?: SignedEncounterWindowReaderPort,
 ): M24WriteService {
   const C = schema.medicaidClaim;
   const SUB = schema.medicaidSubmission;
@@ -132,6 +182,9 @@ export function buildDrizzleM24WriteService(
   const TP = schema.stateMedicaidTradingPartnerCredential;
   const SH = schema.medicaidClaimStateHistory;
   const SPC = schema.medicaidStatePlanCode;
+  const SRS = schema.medicaidStateRateSchedule;
+  const L = schema.medicaidClaimLine;
+  const LE = schema.medicaidClaimLineEncounter;
   const RULES_BY_KEY = new Map(DEFAULT_MEDICAID_RULES.map((r) => [r.key, r]));
 
   async function loadClaim(tx: Tx, claimId: string) {
@@ -219,12 +272,14 @@ export function buildDrizzleM24WriteService(
     // entity's own active trading-partner credential (an M24-owned row: you cannot bill a state you hold
     // no credential for, which makes it the authoritative source, not a guess).
     //
-    // HEADER-ONLY (WX-PR-011 scope cut, documented): this creates a real DRAFT claim row — control number,
-    // TOB, patient payer, service state, and state-plan-code all resolve and persist — but with ZERO
-    // `medicaid_claim_line` rows. Populating lines requires walking M6 LOC periods + M8 signed encounters
-    // into per-day billable lines (the M23 claim-assembly-service scale of effort); that walk is a separate,
-    // still-open follow-up. A DRAFT claim with no lines is a legitimate interim state — it is NOT
-    // submission-ready until lines exist, but it is no longer permanently unassemblable.
+    // PER-LINE ASSEMBLY (WX-PR-011 follow-up, closed): walks M6 LOC periods into hospice-LOC lines
+    // (RHC/CHC/IRC/GIP, one line per contiguous same-LOC segment clipped to the claim window, rate from
+    // the M24-owned `medicaid_state_rate_schedule` platform catalog) and M24's own `rb_day` sweep output
+    // into R&B lines (NF_RB, one line per billable day, rate = the facility's own contracted per-diem —
+    // never the state schedule, per audit finding M24-F02). `kind` gates which family runs
+    // (`hospice_only`/`rb_only` skip the other). Backing M8 encounter evidence links via
+    // `medicaid_claim_line_encounter` when the signed-encounters reader is bound (optional — supplementary
+    // audit evidence, not a structural input).
     async assembleClaim(actor: M24WriteActor, input: AssembleClaimInput): Promise<ClaimView> {
       if (!coverage) {
         throw new DegradedError(
@@ -330,6 +385,157 @@ export function buildDrizzleM24WriteService(
             updatedByMembershipId: actor.userId,
           })
           .returning();
+
+        // ── per-line assembly (WX-PR-011 follow-up): walk M6 LOC periods into hospice-LOC lines
+        // (RHC/CHC/IRC/GIP) and M24's own `rb_day` sweep output into R&B lines (NF_RB). Header-only
+        // assembly (zero lines) was the prior scope cut; this closes it for real for both line families.
+        let nextLineNumber = 1;
+        if (input.kind !== "rb_only") {
+          if (!locPeriodReader) {
+            throw new DegradedError(
+              "MEDICAID_LOC_PERIOD_READER_UNBOUND",
+              "claim assembly requires the M6 level-of-care period reader (not bound in this environment)",
+            );
+          }
+          const rawPeriods = await locPeriodReader.periodsForAdmission(
+            actor.organizationId,
+            input.admissionId,
+          );
+          const locPeriods = rawPeriods.map((p) => ({
+            levelOfCarePeriodId: p.id,
+            levelOfCare: LOC_BY_M6_ENUM[p.levelOfCare],
+            from: day(p.effectiveAt),
+            to: p.endedAt ? day(p.endedAt) : null,
+          }));
+          const encounters = signedEncounters
+            ? await signedEncounters.encountersInWindow(
+                actor.organizationId,
+                input.patientId,
+                input.serviceFrom,
+                input.serviceTo,
+              )
+            : [];
+          const rateRows = await tx
+            .select({
+              id: SRS.id,
+              levelOfCare: SRS.levelOfCare,
+              rateCents: SRS.rateCents,
+              effectiveFrom: SRS.effectiveFrom,
+            })
+            .from(SRS)
+            .where(
+              and(
+                eq(SRS.stateCode, serviceState),
+                isNull(SRS.countyCode),
+                lte(SRS.effectiveFrom, from),
+                or(isNull(SRS.effectiveTo), gte(SRS.effectiveTo, from)),
+              ),
+            )
+            .orderBy(desc(SRS.effectiveFrom));
+          const rateByLoc = new Map<string, { rateCents: number; scheduleId: string }>();
+          for (const r of rateRows) {
+            if (!rateByLoc.has(r.levelOfCare)) {
+              rateByLoc.set(r.levelOfCare, { rateCents: r.rateCents, scheduleId: r.id });
+            }
+          }
+          const { lines: hospiceLines, missingRateSegments } = buildHospiceLines({
+            serviceFrom: day(input.serviceFrom),
+            serviceTo: day(input.serviceTo),
+            locPeriods,
+            rateFor: (loc) => rateByLoc.get(loc) ?? null,
+            encounters,
+            startingLineNumber: nextLineNumber,
+          });
+          if (missingRateSegments.length > 0) {
+            throw new DegradedError(
+              "MEDICAID_STATE_RATE_SCHEDULE_MISSING",
+              `no active medicaid_state_rate_schedule row for ${missingRateSegments
+                .map((s) => `${s.levelOfCare} ${s.from}..${s.to}`)
+                .join(", ")} — load the platform rate schedule before assembling this claim`,
+            );
+          }
+          if (hospiceLines.length === 0) {
+            throw new ConflictError(
+              "MEDICAID_NO_BILLABLE_LOC_DAYS",
+              "no M6 level-of-care period overlaps this claim's service window — nothing to bill",
+            );
+          }
+          for (const ln of hospiceLines) {
+            const insertedLine = await tx
+              .insert(L)
+              .values({
+                organizationId: actor.organizationId,
+                providerEntityId: input.providerEntityId,
+                medicaidClaimId: claimId,
+                lineNumber: ln.lineNumber,
+                serviceDate: new Date(ln.serviceDate),
+                revenueCode: ln.revenueCode,
+                qCode: ln.qCode,
+                levelOfCare: ln.levelOfCare,
+                locPeriodId: ln.locPeriodId,
+                units: ln.units,
+                rateAtAssemblyCents: ln.rateCents,
+                stateRateScheduleIdSnapshot: ln.stateRateScheduleId,
+                chargesCents: ln.chargesCents,
+                isRb: false,
+              })
+              .returning({ id: L.id });
+            for (const encounterId of ln.backingEncounterIds) {
+              await tx.insert(LE).values({
+                medicaidClaimLineId: insertedLine[0]!.id,
+                encounterId,
+                organizationId: actor.organizationId,
+              });
+            }
+          }
+          nextLineNumber += hospiceLines.length;
+        }
+        if (input.kind !== "hospice_only" && input.rbArrangementId) {
+          const rbDays = await tx
+            .select()
+            .from(RD)
+            .where(
+              and(
+                eq(RD.organizationId, actor.organizationId),
+                eq(RD.rbArrangementId, input.rbArrangementId),
+                eq(RD.status, "billable"),
+                gte(RD.serviceDate, from),
+                lte(RD.serviceDate, new Date(input.serviceTo)),
+              ),
+            )
+            .orderBy(RD.serviceDate);
+          for (const rbd of rbDays) {
+            const insertedLine = await tx
+              .insert(L)
+              .values({
+                organizationId: actor.organizationId,
+                providerEntityId: input.providerEntityId,
+                medicaidClaimId: claimId,
+                lineNumber: nextLineNumber++,
+                serviceDate: rbd.serviceDate,
+                revenueCode: "0658",
+                qCode: "Q5003",
+                levelOfCare: "NF_RB",
+                locPeriodId: rbd.locPeriodIdSnapshot,
+                units: 1,
+                rateAtAssemblyCents: rbd.perDiemCentsSnapshot,
+                stateRateScheduleIdSnapshot: null,
+                chargesCents: rbd.perDiemCentsSnapshot,
+                isRb: true,
+                rbDayId: rbd.id,
+              })
+              .returning({ id: L.id });
+            await tx
+              .update(RD)
+              .set({
+                status: "billed",
+                medicaidClaimLineId: insertedLine[0]!.id,
+                updatedAt: new Date(),
+              })
+              .where(eq(RD.id, rbd.id));
+          }
+        }
+
         await recordHistory(
           tx,
           actor.organizationId,

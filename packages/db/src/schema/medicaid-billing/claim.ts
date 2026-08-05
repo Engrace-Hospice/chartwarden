@@ -138,7 +138,9 @@ export const medicaidClaimLine = pgTable(
     units: integer("units").notNull(),
 
     rateAtAssemblyCents: integer("rate_at_assembly_cents").notNull(),
-    stateRateScheduleIdSnapshot: uuid("state_rate_schedule_id_snapshot").notNull(), // logical FK → M40
+    // logical FK → medicaid_state_rate_schedule; NULL for an R&B line (rb_day.per_diem_cents_snapshot is
+    // the rate source there, not a per-county schedule — see 0178 / the rateScheduleRequiresNonRb CHECK).
+    stateRateScheduleIdSnapshot: uuid("state_rate_schedule_id_snapshot"),
 
     chargesCents: integer("charges_cents").notNull(),
     cobPaidCents: integer("cob_paid_cents"),
@@ -162,6 +164,10 @@ export const medicaidClaimLine = pgTable(
     rbLineRequiresRbDay: check(
       "medicaid_claim_line_rb_requires_rb_day",
       sql`(is_rb = false) OR (is_rb = true AND rb_day_id IS NOT NULL)`,
+    ),
+    rateScheduleRequiresNonRb: check(
+      "medicaid_claim_line_rate_schedule_requires_non_rb",
+      sql`(is_rb = true) OR (is_rb = false AND state_rate_schedule_id_snapshot IS NOT NULL)`,
     ),
     unitsPositive: check("medicaid_claim_line_units_positive", sql`units > 0`),
     ratePositive: check("medicaid_claim_line_rate_positive", sql`rate_at_assembly_cents > 0`),

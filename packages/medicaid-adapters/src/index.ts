@@ -32,6 +32,8 @@ export * from "./registry";
 export * from "./oregon";
 // WX-PR-011 the Oregon launch-gateway (real+fake transport) + its env config loader.
 export * from "./oregon/launch-gateway";
+// WX-PR-011 follow-up — the pure per-line hospice claim-line segment builder.
+export * from "./line-assembly";
 // D14 the WA/ID/CA/NV Phase-1 deny-stub adapters + the shared factory.
 export * from "./deny-stub";
 export * from "./deny-stub-states";

@@ -242,8 +242,8 @@
 
 ## WX-PR-011 - Bind launch-state Medicaid adapter
 
-- Status: Implementation complete (adapter + worker layer); external OHA sandbox certification pending;
-  per-line claim assembly (M6/M8 walk) is a separate, still-open follow-up (2026-08-05)
+- Status: Implementation complete (adapter + worker layer + per-line claim assembly); external OHA sandbox
+  certification pending (2026-08-05)
 - Priority: P1
 - Severity addressed: High
 - Phase: 4
@@ -279,6 +279,32 @@
   for every tenant, write-denied for `wardenx_app`) extending `m24-rls-isolation.live.test.ts` (19/19
   passing on a throwaway pg18 cluster, full 0001→0177 migration chain validated). Full gate green (build +
   `arch:fitness` 20 sub-gates + lint + `bun run test` 7955 passing).
+
+  **Follow-up (2026-08-05): per-line claim assembly closed too.** `assembleClaim` now walks M6 LOC periods
+  into hospice-LOC lines (RHC/CHC/IRC/GIP — one line per contiguous same-LOC run clipped to the claim
+  window, revenue/Q-code assigned per LOC, rate resolved from a new self-owned `medicaid_state_rate_schedule`
+  platform table, migrations 0179-0182, mirroring `medicaid_state_plan_code`'s precedent) and M24's own
+  `rb_day` sweep output into R&B lines (one line per billable day, priced from the facility's own contracted
+  per-diem — never a state schedule). This closes audit finding M24-F02 (BLOCKER): `medicaid_claim_line
+  .state_rate_schedule_id_snapshot` was unconditionally NOT NULL, which made an R&B line's schema-correct
+  rate source (the per-diem it actually prices from) structurally impossible to record; migration 0178 makes
+  the column nullable with a symmetric CHECK against `is_rb`. Backing M8 encounter evidence links via
+  `medicaid_claim_line_encounter` through the LIVE `SignedEncountersReader` seam (optional — supplementary
+  audit evidence, not a structural input); the M6 LOC-period raw list has no live seam yet, so it's read at
+  the composition root (the same "escape valve outside every module's `codePaths`" pattern already used for
+  the provider-entity CCN lookup). A pure, unit-tested segment builder
+  (`packages/medicaid-adapters/src/line-assembly.ts`, 8 tests) does the day-walk/collapse math; a new
+  6-test live-Postgres integration suite (`apps/backend/__tests__/m24-claim-line-assembly.live.test.ts`)
+  drives the real production write-service against real Postgres and caught a real migration bug (an
+  un-cast enum literal in the rate-schedule seed) that build/typecheck could not — the exact failure mode
+  live coverage exists to catch. Live RLS extended to the new rate table (2 more tests + a CHECK-constraint
+  test forbidding an NF_RB schedule row). Full gate green again (build + `arch:fitness` 20 sub-gates + lint
+  + `bun run test` 7963 passing + 28 live tests across 2 files, run sequentially — vitest defaults to
+  parallel test files, which races two suites' `DROP SCHEMA`/`CREATE SCHEMA public` on one shared cluster).
+  **Remaining, still out of scope**: real place-of-service modeling (Q-code is currently derived directly
+  from level of care, a documented Phase-1 simplification) and the real OHA-published rate/plan-code data
+  (both seeds carry a `TODO(state-fixture)` marker — round placeholder cents, not authoritative payment
+  rates).
 - Risks: State variance.
 - Rollback: Disable launch-state capability and reconcile in-flight jobs.
 - Estimated complexity: XL

@@ -2087,6 +2087,51 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         },
       }
     : undefined;
+  // M24 → M6 (WX-PR-011 line-assembly follow-up) — `level_of_care_period` is M6-owned; same escape-valve
+  // posture as `m24CcnReader` immediately above.
+  const m24LocPeriodReader = dbHandle
+    ? {
+        async periodsForAdmission(organizationId: string, admissionId: string) {
+          return dbHandle.db
+            .select({
+              id: schema.levelOfCarePeriods.id,
+              levelOfCare: schema.levelOfCarePeriods.levelOfCare,
+              effectiveAt: schema.levelOfCarePeriods.effectiveAt,
+              endedAt: schema.levelOfCarePeriods.endedAt,
+            })
+            .from(schema.levelOfCarePeriods)
+            .where(
+              and(
+                eq(schema.levelOfCarePeriods.organizationId, organizationId),
+                eq(schema.levelOfCarePeriods.admissionId, admissionId),
+              ),
+            )
+            .orderBy(schema.levelOfCarePeriods.effectiveAt);
+        },
+      }
+    : undefined;
+  // M24 → M8 (WX-PR-011 line-assembly follow-up) — the LIVE `SignedEncountersReader` seam (registered by
+  // M8 at boot), narrowed to the encounter-window shape claim assembly needs. Resolved lazily per call
+  // (the M24 coverage-resolver precedent) so registration order at boot never matters.
+  const m24SignedEncounters = {
+    async encountersInWindow(organizationId: string, patientId: string, from: string, to: string) {
+      const reader = getSeam("SignedEncountersReader") as {
+        signedEncountersForPatientSince(
+          organizationId: string,
+          patientId: string,
+          since: string,
+        ): Promise<ReadonlyArray<{ encounterId: string; serviceDate: string }>>;
+      };
+      const digests = await reader.signedEncountersForPatientSince(
+        organizationId,
+        patientId,
+        new Date(from).toISOString(),
+      );
+      return digests
+        .filter((d) => d.serviceDate <= to)
+        .map((d) => ({ encounterId: d.encounterId, serviceDate: d.serviceDate }));
+    },
+  };
   const m30OutboxPublisher = bindCallerModule(txOutboxPublisher, "m30");
   const m33OutboxPublisher = bindCallerModule(txOutboxPublisher, "m33");
   const m34OutboxPublisher = bindCallerModule(txOutboxPublisher, "m34");
@@ -2475,6 +2520,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               m24CredentialCipher,
               m24CoverageResolver,
               m24CcnReader,
+              m24LocPeriodReader,
+              m24SignedEncounters,
             ),
           });
           // M15 (Discipline Care Plans) — mount the §4.1 route plugins over the Drizzle READ + WRITE

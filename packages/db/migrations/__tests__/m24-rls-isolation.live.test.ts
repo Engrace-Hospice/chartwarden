@@ -344,5 +344,43 @@ describe.skipIf(!DB_URL)(
         ),
       ).rejects.toThrow();
     });
+
+    // ── WX-PR-011 line-assembly follow-up — `medicaid_state_rate_schedule` is PLATFORM-SHARED, same
+    // posture as `medicaid_state_plan_code` above. Proves 0182's four Oregon LOC seed rows are real +
+    // readable, and that wardenx_app cannot write it.
+    it("medicaid_state_rate_schedule: every org reads all four Oregon LOC seed rows", async () => {
+      const seenByA = await withOrg(ORG_A, () =>
+        db.query(
+          "SELECT count(*)::int AS n FROM medicaid_state_rate_schedule WHERE state_code='OR'",
+        ),
+      );
+      expect(seenByA.rows[0].n).toBe(4);
+      const seenByB = await withOrg(ORG_B, () =>
+        db.query(
+          "SELECT count(*)::int AS n FROM medicaid_state_rate_schedule WHERE state_code='OR'",
+        ),
+      );
+      expect(seenByB.rows[0].n).toBe(4);
+    });
+
+    it("medicaid_state_rate_schedule: wardenx_app cannot INSERT (platform-loader-only write)", async () => {
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            `INSERT INTO medicaid_state_rate_schedule (state_code, level_of_care, rate_cents, effective_from, load_source_ref)
+           VALUES ('OR','RHC',1,now(),'test')`,
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("medicaid_state_rate_schedule: the NF_RB CHECK forbids a schedule row for Room & Board", async () => {
+      await expect(
+        db.query(
+          `INSERT INTO medicaid_state_rate_schedule (state_code, level_of_care, rate_cents, effective_from, load_source_ref)
+         VALUES ('OR','NF_RB',1,now(),'test')`,
+        ),
+      ).rejects.toThrow(/medicaid_state_rate_schedule_no_rb/);
+    });
   },
 );

@@ -166,6 +166,12 @@ const NON_ORG_SCOPED = new Set<string>([
   // sized for physician/facility/payer resolution, not a static reference list). The other fourteen M24
   // tables carry organization_id and get standard app.org_id RLS.
   "medicaid_state_plan_code",
+  // M24 Billing — Medicaid (WX-PR-011 follow-up): medicaid_state_rate_schedule is PLATFORM-shared
+  // per-state per-LOC per-county rate data with NO organization_id BY DESIGN, same posture as
+  // medicaid_state_plan_code immediately above — see that entry's rationale (self-owned billing-module
+  // reference table, not routed through M40). Snapshotted onto medicaid_claim_line.state_rate_schedule_id_
+  // snapshot at assembly for the RHC/CHC/IRC/GIP lines only (never NF_RB — see the schema file's CHECK).
+  "medicaid_state_rate_schedule",
   // M26 Cap Management (§3.3 / D3): cap_period_platform_constant is PLATFORM-shared CMS-published cap data
   // with NO organization_id BY DESIGN — one row per cap year ('FY2026'), published by the platform admin on
   // the annual CMS Hospice Wage Index Final Rule and snapshotted (immutable copy) into each tenant's
