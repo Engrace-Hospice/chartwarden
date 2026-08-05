@@ -33,12 +33,8 @@ test.describe("Tenant operations", () => {
     await signInAs(page, ADMIN_ACCOUNT());
     await page.goto("/admin/staff");
     await expect(page.getByText(ADMIN_ACCOUNT().email, { exact: true })).toBeVisible();
-    // KNOWN, TRACKED gap (not silenced blanket): the "success" tone StatusPill
-    // (@wardenx/ui status-pill.tsx) fails color-contrast (~3.7:1, needs 4.5:1) — its fg/bg both
-    // derive from the shared `--color-success` brand token, so fixing it means retuning a semantic
-    // brand color used across the whole app, which is WX-PR-022's UI-fidelity/accessibility pass,
-    // not a one-line token swap like the nav-group toggle fix below it. Excluded ONLY for this one
-    // class; everything else on the page is still fully scanned.
-    await expectNoAxeViolations(page, [".wx-status-pill"]);
+    // The "success" tone StatusPill contrast gap flagged here during WX-PR-018 is fixed (WX-PR-022,
+    // --color-success-pill-fg) — no exclusion needed anymore.
+    await expectNoAxeViolations(page);
   });
 });

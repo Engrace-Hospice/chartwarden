@@ -1,4 +1,5 @@
 import { SESSION_POLICY } from "@wardenx/types";
+import { Modal } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — Idle Screen-Lock overlay (M2 Auth, AUTH polish).
 // Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "Screen-lock overlay" — after 5 minutes idle, a soft
 // re-auth (password); the SESSION STAYS ALIVE (lifecycle active → screen_locked → active, M2 §2.2.4).
@@ -89,8 +90,10 @@ export function ScreenLock(): JSX.Element | null {
   if (!locked) return null;
 
   return (
-    // biome-ignore lint/a11y/useSemanticElements: native <dialog> needs imperative showModal(); role="dialog" overlay is the intended pattern.
-    <div role="dialog" aria-modal="true" aria-label="Screen locked" style={overlay}>
+    // WX-PR-022 (UI-002): was a bespoke `role="dialog"` div with no focus trap/Escape/restore —
+    // migrated to the canonical Modal. `alertdialog` (not `dialog`) + no `onClose`: this is an
+    // invariant blocker, not a dismissible dialog — the only way out is unlocking or signing out.
+    <Modal open role="alertdialog" ariaLabel="Screen locked" width="22rem">
       <form onSubmit={unlock} style={card}>
         <strong style={{ fontSize: "1rem" }}>WardenX</strong>
         <h1 style={{ margin: 0, fontSize: "1.05rem" }}>Locked</h1>
@@ -131,29 +134,15 @@ export function ScreenLock(): JSX.Element | null {
           Sign out instead
         </button>
       </form>
-    </div>
+    </Modal>
   );
 }
 
-const overlay = {
-  position: "fixed" as const,
-  inset: 0,
-  zIndex: 1000,
-  background: "var(--color-scrim)",
-  backdropFilter: "blur(4px)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-} as const;
 const card = {
   display: "flex",
   flexDirection: "column" as const,
   gap: "0.75rem",
-  width: "min(22rem, 92vw)",
   padding: "1.5rem",
-  background: "var(--color-surface-lowest)",
-  borderRadius: "0.75rem",
-  boxShadow: "var(--shadow-float)",
 } as const;
 const field = {
   padding: "0.5rem 0.625rem",

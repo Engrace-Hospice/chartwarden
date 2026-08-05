@@ -15,5 +15,8 @@ export default defineConfig({
       "/webhooks": { target: "http://localhost:3000", changeOrigin: true },
     },
   },
-  build: { outDir: "dist/app", sourcemap: true, emptyOutDir: true },
+  // WX-PR-022 (PERF-001): source maps were unconditionally public — a real source/stack-trace
+  // disclosure surface with no error-tracking service currently configured to consume them
+  // privately. Off until one is (then: 'hidden' + private upload).
+  build: { outDir: "dist/app", sourcemap: false, emptyOutDir: true },
 });

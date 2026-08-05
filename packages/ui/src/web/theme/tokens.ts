@@ -21,6 +21,11 @@ export const t = {
   warning: "var(--color-warning)",
   error: "var(--color-error)",
   alert: "var(--color-alert)",
+  // WX-PR-022 (UI-002 follow-up from WX-PR-018's axe scan): `success` on its own 12%-tint
+  // background (StatusPill) fails WCAG AA color-contrast in light mode (~3.7:1, needs 4.5:1) — a
+  // darker text-only variant for that one failing case. Dark mode's `--color-success` already
+  // passes comfortably (~7.35:1) so its pill-fg value is identical to `success`, not a new color.
+  successPillFg: "var(--color-success-pill-fg)",
 
   // Surfaces — warm paper hierarchy (§2.5)
   background: "var(--color-background)",

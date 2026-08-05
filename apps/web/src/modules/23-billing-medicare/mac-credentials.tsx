@@ -4,6 +4,7 @@ import {
   EmptyState,
   LoadingSpinner,
   MaskedIdentifier,
+  Modal,
   PageHeader,
   StatusPill,
   ghostBorder,
@@ -429,9 +430,11 @@ function UpsertCeremony({
   }, [client, draft, onSaved]);
 
   return (
-    // biome-ignore lint/a11y/useSemanticElements: a React-conditionally-mounted drawer, not the native <dialog> (would need imperative showModal()/close() wiring)
-    <div role="dialog" aria-label="MAC credential upsert" style={drawerStyle}>
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", maxWidth: "30rem" }}>
+    // WX-PR-022 (UI-002): was a bespoke `role="dialog"` div with no focus trap/Escape/restore —
+    // migrated to the canonical Modal (packages/ui/src/web/system/modal.tsx), same accessible shell
+    // every other blocking dialog in the app uses.
+    <Modal open onClose={onCancel} ariaLabel="MAC credential upsert" width="34rem">
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", padding: "1.5rem" }}>
         <h2
           style={{ margin: 0, fontFamily: t.fontDisplay, fontSize: "1.25rem", color: t.onSurface }}
         >
@@ -555,7 +558,7 @@ function UpsertCeremony({
         onCommit={() => void commit()}
         onCancel={() => setCeremonyOpen(false)}
       />
-    </div>
+    </Modal>
   );
 }
 
@@ -627,15 +630,3 @@ const ghostButtonStyle = {
   fontWeight: 600,
 };
 const disabledButtonStyle = { ...ghostButtonStyle, cursor: "not-allowed", opacity: 0.5 };
-const drawerStyle = {
-  position: "fixed" as const,
-  top: 0,
-  right: 0,
-  bottom: 0,
-  width: "min(34rem, 100vw)",
-  background: t.surfaceLowest,
-  boxShadow: t.shadowFloat,
-  padding: "1.5rem",
-  overflow: "auto",
-  zIndex: 40,
-};

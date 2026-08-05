@@ -33,6 +33,10 @@
   --color-warning: #9a5b00;
   --color-error: #c12b3b;
   --color-alert: #e0413f;
+  /* WX-PR-022: StatusPill "success" text on its own 12%-tint bg fails WCAG AA at #1f8a5b
+     (~3.7:1, needs 4.5:1) — this darker variant gives ~6.1:1. Text-only; the pill's background
+     tint still derives from --color-success unchanged. */
+  --color-success-pill-fg: #14653f;
 
   /* Surfaces — warm paper hierarchy */
   --color-background: #f6f5f2;
@@ -115,6 +119,8 @@
   --color-accent: #e7b35a;
   --color-accent-tint: #3a2f16;
   --color-success: #5fd6a0;
+  /* Dark mode's --color-success already passes WCAG AA on its own pill tint (~7.35:1) — same value. */
+  --color-success-pill-fg: #5fd6a0;
   --color-warning: #e0a24a;
   --color-error: #f2939e;
   --color-alert: #ff6b68;

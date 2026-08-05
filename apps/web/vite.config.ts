@@ -17,5 +17,8 @@ export default defineConfig({
     },
   },
   // Output under dist/ (already git-ignored); tsc -b emits the type graph into dist/ alongside.
-  build: { outDir: "dist/app", sourcemap: true, emptyOutDir: true },
+  // WX-PR-022 (PERF-001): source maps were unconditionally public (`sourcemap: true`) on every
+  // build — a real source/stack-trace disclosure surface with no error-tracking service currently
+  // configured to consume them privately. Off until one is (then: 'hidden' + private upload).
+  build: { outDir: "dist/app", sourcemap: false, emptyOutDir: true },
 });

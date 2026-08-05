@@ -15,7 +15,9 @@ export type StatusTone =
   | "neutral"; // draft / closed / inactive
 
 const TONE: Record<StatusTone, { fg: string; bg: string; glyph: GlyphName }> = {
-  success: { fg: t.success, bg: tint(t.success), glyph: "check-circle" },
+  // fg uses the pill-safe darker variant (WX-PR-022) — WCAG AA contrast against this tinted bg;
+  // `bg` still tints from the raw `t.success` token, unaffected.
+  success: { fg: t.successPillFg, bg: tint(t.success), glyph: "check-circle" },
   progress: { fg: t.primary, bg: t.primaryTint, glyph: "dot" },
   warning: { fg: t.warning, bg: tint(t.warning), glyph: "clock" },
   error: { fg: t.error, bg: tint(t.error), glyph: "block" },

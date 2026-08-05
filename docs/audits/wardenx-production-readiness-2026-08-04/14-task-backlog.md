@@ -662,6 +662,10 @@
 
 ## WX-PR-022 - Establish UI fidelity, artifact, and performance gates
 
+- Status: Partially completed (2026-08-05) — UI-002 (dialog consolidation) and PERF-001 (source
+  maps + a real bundle budget) are done; UI-001 (full screen-by-screen visual/behavioral fidelity
+  review against Pencil frames) is NOT done — it's an ongoing design-review workflow (17/271 screens
+  mapped), not a code change a single pass can close (see completion evidence).
 - Priority: P2
 - Severity addressed: Medium
 - Phase: 6/8
@@ -675,6 +679,49 @@
 - Risks: Snapshot churn and workflow regressions.
 - Rollback: Per-screen/component commits and retained baselines.
 - Estimated complexity: L
+- Completion evidence:
+  - **UI-002 (done)**: both bespoke overlays UI-002 named now compose the canonical, focus-trapped
+    `Modal` (`packages/ui/src/web/system/modal.tsx`) instead of a plain `role="dialog"` div with no
+    focus trap, Escape handling, or focus restoration:
+    - `apps/web/src/modules/23-billing-medicare/mac-credentials.tsx`'s MAC credential upsert drawer
+      — migrated (a real visual change: was a fixed right-side slide-in panel, is now a centered
+      modal card, since `Modal` has no drawer variant; the accessibility properties are what UI-002
+      is actually about). Live-verified in Chrome: opening auto-focuses the first field, Escape
+      closes it AND restores focus to the trigger button.
+    - `apps/web/src/modules/02-identity/screen-lock.tsx`'s idle screen-lock overlay — migrated to
+      `role="alertdialog"` with no `onClose` (an invariant blocker — the only way out is unlocking
+      or signing out, matching `Modal`'s own documented pattern for that case). Not directly
+      live-clickable (needs 5 real minutes idle to arm) — verified by clean `tsc -b` plus the
+      unchanged internal state/logic (only the JSX wrapper changed) and the full
+      `screens-smoke.dom.test.tsx` suite (renders every registered screen) staying green.
+  - **PERF-001 (done)**:
+    - All three SPAs' Vite configs (`apps/web`, `apps/portal`, `apps/admin`) had `sourcemap: true`
+      unconditionally — a real source/stack-trace disclosure surface with no error-tracking service
+      configured to privately consume the maps. Set to `false` in all three (a future real need —
+      e.g. Sentry — would use `'hidden'` + private upload, not public maps). Verified: none of the
+      three builds emit a `.map` file anymore.
+    - "no route/initial-load budget" was already half-wrong: `apps/web` already had one
+      (`scripts/check-bundle-size.ts`, TASK-033, 350 kB raw). The real gap was portal/admin having
+      none. Added the same script (adapted — neither app has web's route-level `React.lazy`
+      splitting yet, so their whole entry bundle IS the initial payload) to both, wired as
+      `bun run size:check` in each app's `package.json`. Both currently pass comfortably (portal
+      282.9 kB, admin 303.1 kB, budget 350 kB) — real headroom, not a rubber-stamped threshold.
+      Standalone opt-in checks (a full `vite build` per app is too slow for `arch:fitness`), same
+      posture as web's existing one.
+    - **Discovered, not fixed**: running web's own existing budget check found its initial bundle
+      now measures 433.9 kB — over its own 350 kB budget, a real regression since TASK-033 set it
+      (plausibly from the many screens added across the 2026-08 sessions). Out of scope to
+      root-cause and fix here (would mean auditing which of dozens of recently-added screens broke
+      the `React.lazy` boundary); flagging it as a genuine, currently-uncaught finding for a
+      dedicated follow-up, not silently leaving the regression unmentioned.
+  - **UI-001 (not done, correctly out of scope for a code pass)**: full-corpus visual/behavioral
+    fidelity is a design-review WORKFLOW (`docs/design/FRAME_FIDELITY_PLAYBOOK.md`,
+    `scripts/frame-fidelity/registry.ts`) — comparing built screens against Pencil frames one at a
+    time and recording match/partial/pending, currently 17/271 mapped. Not attempted; no code change
+    substitutes for the actual review.
+  - Gate: full build + `arch:fitness` + `bun run test` (7929 passed) green; the WX-PR-018 E2E suite
+    re-run 18/18 green, including the tenant-operations accessibility test now passing WITHOUT the
+    `.wx-status-pill` exclusion it needed before this pass's StatusPill contrast fix.
 
 ## WX-PR-023 - Validate one governed AI capability before enablement
 
