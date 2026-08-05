@@ -13,6 +13,7 @@
     "integration": 2
   },
   "registeredModules": [
+    "admin/01-ops",
     "admin/35-subscription-billing",
     "portal/31-portal",
     "web/02-identity",
@@ -2019,6 +2020,22 @@
       "id": "mdm.console",
       "path": "/mdm",
       "permission": "(none)"
+    },
+    {
+      "app": "admin",
+      "module": "01-ops",
+      "moduleId": 1,
+      "id": "admin.ops.outbox",
+      "path": "/admin/ops/outbox",
+      "permission": "member.manage"
+    },
+    {
+      "app": "admin",
+      "module": "01-ops",
+      "moduleId": 1,
+      "id": "admin.ops.outbox-detail",
+      "path": "/admin/ops/outbox/:id",
+      "permission": "member.manage"
     },
     {
       "app": "admin",

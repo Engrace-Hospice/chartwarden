@@ -22,6 +22,7 @@ import { applyReadAuditCoverage } from "./plugins/read-audit";
 import { applyRequestContext } from "./plugins/request-context";
 import { type SecurityOptions, applySecurityBaseline } from "./plugins/security";
 import { type ReadinessProbe, defaultReadinessProbe, registerHealthRoutes } from "./routes/health";
+import { registerOpsOutboxRoutes } from "./routes/ops-outbox";
 import {
   type FeatureFlagReader,
   type SystemStatusReader,
@@ -234,6 +235,9 @@ export const DEFAULT_READ_AUDIT_PREFIXES: readonly string[] = [
   // via FhirDisclosureAuditPort/FhirReadDisclosureEnvelope (§164.528) — this prefix-based gate cannot
   // reach it, and is not meant to.
   "/api/v1/fhir",
+  // WX-PR-020 (OPS-004) — the operator outbox view. A row's `payload`/`aggregateId` can reference
+  // clinical/patient aggregates depending on event type, so this is covered like any other read.
+  "/api/v1/ops",
 ];
 
 /**
@@ -312,6 +316,10 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
     statusReader: deps.systemStatusReader ?? createInMemorySystemStatusReader(),
     flagReader: deps.featureFlagReader ?? createDefaultFeatureFlagReader(),
   });
+  // WX-PR-020 (OPS-004) — operator outbox visibility. `outbox_event` is HELPER_ONLY (M1-owned), so
+  // this route lives here rather than in a feature module; read-only (the dispatcher already retries
+  // on its own backoff clock).
+  registerOpsOutboxRoutes(app, { db: deps.db });
   // Module REST routes (M2..M40) — mounted by the composition root behind the same auth/security chain.
   deps.registerModuleRoutes?.(app);
 

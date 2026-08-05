@@ -12102,3 +12102,48 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M32TokenLedgerResponse,
   },
 });
+
+// WX-PR-020 (OPS-004) — M1 operator outbox visibility (apps/backend/src/bootstrap/routes/ops-outbox.ts).
+const OpsOutboxStatus = Type.Union([
+  Type.Literal("pending"),
+  Type.Literal("dispatching"),
+  Type.Literal("dispatched"),
+  Type.Literal("failed"),
+]);
+const OpsOutboxRowSummary = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  eventType: Type.String(),
+  aggregateKind: Type.String(),
+  aggregateId: Type.String({ format: "uuid" }),
+  status: OpsOutboxStatus,
+  attemptCount: Type.Integer(),
+  createdAt: Type.String({ format: "date-time" }),
+  dispatchedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  nextAttemptAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+});
+const OpsOutboxListQuery = Type.Object({
+  status: Type.Optional(OpsOutboxStatus),
+  before: Type.Optional(Type.String({ format: "date-time" })),
+  limit: Type.Optional(Type.String()),
+});
+const OpsOutboxListResponse = Type.Object({
+  data: Type.Array(OpsOutboxRowSummary),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+});
+const OpsOutboxDetailResponse = Type.Object({
+  ...OpsOutboxRowSummary.properties,
+  lastError: Type.Union([Type.String(), Type.Null()]),
+  payload: Type.Unknown(),
+});
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/ops/outbox": {
+    summary: "List outbox events (operator recovery view, WX-PR-020)",
+    query: OpsOutboxListQuery,
+    response: OpsOutboxListResponse,
+  },
+  "GET /api/v1/ops/outbox/:id": {
+    summary: "Outbox event detail — full payload + last error (operator recovery view, WX-PR-020)",
+    response: OpsOutboxDetailResponse,
+  },
+});

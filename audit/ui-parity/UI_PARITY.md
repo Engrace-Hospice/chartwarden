@@ -5,8 +5,8 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 37 module screen-sets registered · 273 screens wired across web/portal/admin.
-- **admin**: 14 screen(s)
+**Coverage:** 113 documented screen specs · 38 module screen-sets registered · 275 screens wired across web/portal/admin.
+- **admin**: 16 screen(s)
 - **portal**: 13 screen(s)
 - **web**: 246 screen(s)
 
@@ -275,6 +275,8 @@
 | web | 39-consent | `consent.expiration-renewal` | `/patients/:patientId/consents/expiring` | `consent.read` | ✅ |
 | web | 39-consent | `consent.recipients-dpoa` | `/consents/:consentId/recipients` | `consent.read` | ✅ |
 | web | 40-mdm | `mdm.console` | `/mdm` | `(none)` | ✅ |
+| admin | 01-ops | `admin.ops.outbox` | `/admin/ops/outbox` | `member.manage` | ✅ |
+| admin | 01-ops | `admin.ops.outbox-detail` | `/admin/ops/outbox/:id` | `member.manage` | ✅ |
 | admin | 35-subscription-billing | `admin.plans` | `/admin/plans` | `plan.admin.read` | ✅ |
 | admin | 35-subscription-billing | `admin.plan-edit` | `/admin/plans/:id/edit` | `plan.admin.write` | ✅ |
 | admin | 35-subscription-billing | `admin.promos` | `/admin/promos` | `promo.admin.read` | ✅ |

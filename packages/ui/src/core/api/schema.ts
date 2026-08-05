@@ -11188,6 +11188,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ops/outbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List outbox events (operator recovery view, WX-PR-020) */
+        get: operations["getApiV1OpsOutbox"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ops/outbox/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Outbox event detail — full payload + last error (operator recovery view, WX-PR-020) */
+        get: operations["getApiV1OpsOutboxById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/optimize-day": {
         parameters: {
             query?: never;
@@ -47705,6 +47739,87 @@ export interface operations {
                         m17VisitAssignmentRef: string | null;
                         cancellationReason: string | null;
                         version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OpsOutbox: {
+        parameters: {
+            query?: {
+                status?: "pending" | "dispatching" | "dispatched" | "failed";
+                before?: string;
+                limit?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            /** Format: uuid */
+                            id: string;
+                            eventType: string;
+                            aggregateKind: string;
+                            /** Format: uuid */
+                            aggregateId: string;
+                            status: "pending" | "dispatching" | "dispatched" | "failed";
+                            attemptCount: number;
+                            /** Format: date-time */
+                            createdAt: string;
+                            dispatchedAt: string | null;
+                            nextAttemptAt: string | null;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OpsOutboxById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        eventType: string;
+                        aggregateKind: string;
+                        /** Format: uuid */
+                        aggregateId: string;
+                        status: "pending" | "dispatching" | "dispatched" | "failed";
+                        attemptCount: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        dispatchedAt: string | null;
+                        nextAttemptAt: string | null;
+                        lastError: string | null;
+                        payload: unknown;
                     };
                 };
             };

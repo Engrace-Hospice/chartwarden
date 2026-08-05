@@ -553,6 +553,9 @@
 
 ## WX-PR-020 - Operational telemetry and recovery UI
 
+- Status: Partially completed (2026-08-05) — outbox operator visibility (a core slice of the
+  acceptance criterion) is done; distributed tracing, dashboards/alert rules, and BullMQ job/queue
+  visibility are NOT done (see completion evidence for why each was scoped out this pass).
 - Priority: P2
 - Severity addressed: Medium/High
 - Phase: 5/8
@@ -566,6 +569,47 @@
 - Risks: Cross-tenant operations and PHI in telemetry.
 - Rollback: Disable operator mutations; preserve read-only telemetry.
 - Estimated complexity: XL
+- Completion evidence:
+  - **Outbox operator visibility (done)**: `apps/backend/src/bootstrap/routes/ops-outbox.ts` —
+    `GET /api/v1/ops/outbox` (list, filterable by status, cursor-paginated) and
+    `GET /api/v1/ops/outbox/:id` (full payload + last error). `outbox_event` is HELPER_ONLY
+    (architecture/module-manifest.ts) — owned by M1's dispatcher — so this route lives beside
+    `outbox-dispatcher.ts` rather than a feature module, and is org-scoped like every other
+    authenticated read (`withOrgContextFromRequest`, RLS-enforced), not a cross-tenant platform view.
+    Read-only by design: the dispatcher already retries `pending`/`failed` rows on its own backoff
+    clock, so an operator needs visibility into what's stuck and why, not a manual "retry now"
+    button. Added `/api/v1/ops` to the M4 §2.5 read-audit-coverage prefix list (a row's payload can
+    reference clinical/patient aggregates depending on event type) and a proper OpenAPI enrichment
+    (kept the `bootstrap` module's coverage ratchet from regressing). Gated on `member.manage` — the
+    same admin-only bar Staff Management uses — a pragmatic reuse rather than minting a new `ops.*`
+    permission category for a first, single-screen ops surface.
+  - **Admin UI** (`apps/admin/src/modules/01-ops/`): an Outbox list screen (status filter,
+    `StatusPill` per row) and a detail screen (full JSON payload + last error), registered into the
+    M34 admin shell the same way M35's subscription-billing slice is. Live-verified in Chrome against
+    the real local stack with real data (outbox rows from this session's own E2E test runs) — list
+    and detail both render correctly.
+  - **6 real unit tests** (`apps/backend/src/bootstrap/routes/__tests__/ops-outbox.test.ts`) —
+    permission gate (403 without `member.manage`), the no-DB slice fallback, and status-filter
+    validation. Found a real bug while writing them: the no-DB early return short-circuited BEFORE
+    the status-filter validation ran, so an invalid `?status=` value against a DB-less slice boot
+    silently returned 200 with an empty list instead of 422 — fixed by validating first.
+  - **NOT done — deliberate scope cuts, not oversights**:
+    - **Distributed tracing / OpenAPI export**: genuinely greenfield (grepped — zero
+      `opentelemetry`/`otel`/`traceparent` hits anywhere in the repo before this pass). What exists
+      and is reusable: M1's `request-context.ts` already does correlation-id generation/propagation
+      via `AsyncLocalStorage`, echoed in every log line — a real foundation, just not a span/trace
+      pipeline. Wiring a real OTel SDK + exporter (even to a local Jaeger container, no external
+      credentials needed) is a substantial, separate piece of work, not a few-hour addition on top of
+      an already-large pass.
+    - **BullMQ job/queue visibility**: 11+ modules (M7/M9/M10/M23–M27/M30/M33/M34) each own their own
+      `Queue`/`Worker` construction in the composition root's ~500-line worker-runner block — there is
+      no existing single point to list "every queue." `dlq-alerts.ts`'s `attachDlqPromotionAlert` is
+      fire-and-forget (log + optional webhook), not persisted/queryable, so there's nothing to read
+      from without either enumerating every module's queue reference or adding a new persistent
+      DLQ-promotion-log table (a genuine follow-on task, not a quick extension).
+    - **Deployed dashboards/alert rules, external alert-delivery exercise**: needs a real
+      observability/alerting provider decision (same category as WX-PR-019's deployment-target
+      blocker), not a code change.
 
 ## WX-PR-021 - Tighten quality metrics and documentation truth
 
