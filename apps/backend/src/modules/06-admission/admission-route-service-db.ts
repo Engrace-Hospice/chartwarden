@@ -1054,7 +1054,15 @@ export function createDbAdmissionRouteService(
             },
           },
         );
-        // Seed benefit period 1 (mirrors acceptReferral's §7.1 cascade).
+        // Seed benefit period 1 (mirrors acceptReferral's §7.1 cascade) — EXCEPT for a transfer-in
+        // intake (W-DC-03/D9): that admission never has a "period 1" at all, since the receiving
+        // hospice inherits the sending hospice's carried sequence via the dedicated `transferIn` call
+        // (42 CFR 418.28, the benefit-period counter never restarts). Seeding period 1 here for a
+        // transfer-in unconditionally created a spurious extra election_period row (+ a spurious CTI
+        // attached to it) ahead of `transferIn`'s own inherited/next pair.
+        if (input.intakeMethod === "transfer_in") {
+          return { id: adm.id, state: adm.status, version: Number(adm.version) };
+        }
         const period = firstOrThrow(
           await tx
             .insert(EP)

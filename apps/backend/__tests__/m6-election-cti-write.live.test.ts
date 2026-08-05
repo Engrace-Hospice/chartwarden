@@ -149,15 +149,37 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
 
   it("full activation via the real write path (no superuser-seeded ES/CTI)", async () => {
     const { admissionId, periodId } = await admitFor(randomUUID());
-    const nor = await svc.acknowledgeNor(ORG_A, admissionId, USER);
+    // Pre-existing bug found while fixing the transfer-in period-count bug: this call was missing the
+    // NorAcknowledgeInput object entirely (USER was landing in the `input` param, `actorUserId` was
+    // undefined) — __tests__ sits outside apps/backend/tsconfig.json's rootDir so tsc never typechecks
+    // this file, and vitest's esbuild transform doesn't typecheck either, so the arity mismatch compiled
+    // clean and only broke at runtime against a real DB (a malformed `set_config('app.user_id', , true)`).
+    // Same class of bug already fixed in m6-admission-write-lifecycle.live.test.ts and
+    // m6-discharge-f2f-loc-write.live.test.ts this session — this file was never touched in that pass.
+    const nor = await svc.acknowledgeNor(
+      ORG_A,
+      admissionId,
+      { deliveryMethod: "electronic_witnessed", acknowledgedByRole: "patient" },
+      USER,
+    );
     const es = await svc.draftElectionStatement(ORG_A, admissionId, periodId);
     await svc.signElection(ORG_A, es.id, es.version, USER);
+    // Second pre-existing gap, same class: R-AC-01 (intake/activation-gate.ts) requires the ATTENDING
+    // physician's CTI signature for period 1, not just the hospice medical director's — this test only
+    // ever signed the hospice-MD side, so activation always threw PRECONDITION_FAILED/attending_signed
+    // once the NOR bug above stopped masking it.
     const cti = await svc.draftCti(
       ORG_A,
-      { electionPeriodId: periodId, hospiceMedicalDirectorId: MD, isRecert: false },
+      {
+        electionPeriodId: periodId,
+        hospiceMedicalDirectorId: MD,
+        attendingPhysicianId: ATTENDING,
+        isRecert: false,
+      },
       USER,
     );
     await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
+    await svc.signCtiAttending(ORG_A, cti.id, cti.version + 1, ATTENDING);
     const active = await svc.activateAdmission(ORG_A, admissionId, nor.version);
     expect(active.state).toBe("active");
   });

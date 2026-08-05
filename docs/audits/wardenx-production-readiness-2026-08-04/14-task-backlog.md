@@ -382,8 +382,20 @@
   param), a missing attending-physician CTI signature in the shared activation-helper (R-AC-01 requires it
   for period 1), and an assertion checking an error `code` that path never produces. A fourth, unrelated
   pre-existing failure (`transfer-in → inherited active + next pending period` expects 2 election periods,
-  gets 3) was found and left — it doesn't touch LOC and isn't a regression from this change. 4 new unit
-  tests (state-machine coverage already existed), 4 new HTTP-inject tests (`admission-routes.test.ts` —
+  gets 3) was found and left — it doesn't touch LOC and isn't a regression from this change. **Closed
+  separately the same day**: `createAdmission`'s DB implementation unconditionally seeded election period 1
+  (+ a CTI drafted against it) regardless of `intakeMethod` — for a `transfer_in` intake this was always
+  wrong (W-DC-03/D9, 42 CFR 418.28: the receiving hospice inherits the sending hospice's carried benefit-
+  period sequence via the dedicated `transferIn` call and never has a "period 1" of its own), producing a
+  spurious 3rd election_period row alongside `transferIn`'s own correct inherited-active + next-pending
+  pair. `intakeMethod` was accepted by the schema/interface but silently never read by the DB service.
+  Fixed by skipping the period-1/CTI seed when `intakeMethod === "transfer_in"`; the in-memory fake service
+  never had this bug (it doesn't seed a period at all). Also fixed, same class as above, in a THIRD M6
+  live-test file this pass never touched (`m6-election-cti-write.live.test.ts`): the same wrong-arity
+  `acknowledgeNor` call and the same missing attending-physician CTI signature. All M6 live suites (50
+  tests across 6 files) + full gate green.
+
+  4 new unit tests (state-machine coverage already existed), 4 new HTTP-inject tests (`admission-routes.test.ts` —
   proving the real route, not just the service method, including the short-code fix), 2 new live-Postgres
   scenarios seeding a REAL M37 unit/room/bed/admission/bed-assignment chain
   (`m6-discharge-f2f-loc-write.live.test.ts`), plus a live predicate-exclusion test in the M24 suite. Full

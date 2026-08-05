@@ -380,7 +380,7 @@ describe.skipIf(!DB_URL)(
       const patientId = randomUUID();
       const adm = await svc.createAdmission(
         ORG_A,
-        { patientId, intakeMethod: "transfer", hospiceMedicalDirectorId: MD },
+        { patientId, intakeMethod: "transfer_in", hospiceMedicalDirectorId: MD },
         USER,
       );
       const res = await svc.transferIn(
