@@ -33,11 +33,13 @@ export class OutboxEventValidationError extends Error {
   }
 }
 
-/** The validated record the dispatcher hands to the injected persister. */
+/** The validated record the dispatcher hands to the injected persister. `organizationId` is `null` only
+ *  for a genuinely platform-wide event (no single tenant it belongs to, e.g. a cross-tenant MV refresh or
+ *  the replica-lag probe) — never a stand-in for "unknown" or "not yet resolved." */
 export interface OutboxRecord {
   readonly eventName: string;
   readonly payload: unknown;
-  readonly organizationId: string;
+  readonly organizationId: string | null;
   readonly aggregateKind: string;
   readonly aggregateId: string;
   readonly occurredAt: Date;
@@ -53,7 +55,7 @@ export type OutboxPersister = (record: OutboxRecord) => Promise<void>;
 export interface PublishOutboxEventInput {
   readonly eventName: string;
   readonly payload: unknown;
-  readonly organizationId: string;
+  readonly organizationId: string | null;
   readonly aggregateKind: string;
   readonly aggregateId: string;
   readonly occurredAt: Date;

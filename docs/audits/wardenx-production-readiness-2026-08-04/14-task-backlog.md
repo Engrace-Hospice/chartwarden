@@ -692,11 +692,14 @@
 
 ## WX-PR-014 - Complete M30 and M33 launch jobs
 
-- Status: Done (2026-08-06, M33 follow-up) — the M30 §4.8 CRON → WORK-QUEUE background-job path (nightly
+- Status: Done (2026-08-06, M33 follow-up ×2) — the M30 §4.8 CRON → WORK-QUEUE background-job path (nightly
   measure-recompute + daily risk-register-refresh) is bound for real and live-tested end-to-end
   against real Postgres + real BullMQ (see the original M30 note below); a same-day follow-up closed
-  the M33 slice this task's first pass deliberately left untouched — see "M33 follow-up (2026-08-06)"
-  below the M30 write-up.
+  the M33 slice this task's first pass deliberately left untouched (see "M33 follow-up (2026-08-06)"
+  below the M30 write-up); a SECOND same-day follow-up then closed the two gaps THAT pass left open
+  (mvRefresh/lagProbe's outbox emits + the exportRender schema mismatch) — see "M33 follow-up #2
+  (2026-08-06)" — and, verifying the fix under REAL RLS (not a superuser test connection), surfaced a
+  severe, codebase-wide, pre-existing bug now tracked separately as **WX-PR-024**.
   Research (before writing code) found the two cron enqueue ports (`nightlyRecompute.enqueue .enqueueForOrg`, `riskRegisterRefreshCron.enqueue.enqueueRefresh`) were hardcoded fail-closed
   thunks with NO fan-out logic at all — meaning the 03:15 nightly recompute and 04:00 daily
   risk-register refresh were silent no-ops in production, forever, even though their downstream
@@ -770,6 +773,47 @@
   compute live either way). Proven via a new live suite (4/4) against real Postgres + a dedicated
   throwaway Redis. Full gate green (build/arch:fitness/lint/full test suite, 7995 passing, live suite
   gated).
+
+  **M33 follow-up #2 (2026-08-06)** — closed the two gaps the M33 follow-up above left explicitly
+  unbound. (a) The `m33.scheduled_report.render_requested` catalog schema now marks `scheduleId`/`runId`
+  Optional so BOTH real producer payloads validate (the scheduled-run cron path's, already bound, and the
+  ad-hoc PDF/XLSX export route path's, now bound too) — a genuine package-level event-catalog gap (one
+  wire name, two producers, only one previously conformant), fixed at the schema, not by fabricating
+  fields on either payload. (b) `mvRefresh`/`lagProbe`'s outbox emits are bound for real: `outbox_event.
+  organization_id` is now nullable (migration 0186), gated not by a second RLS-policy session variable
+  (ADR-0010 D2 bans any GUC beyond `app.org_id`, so that first attempt was reverted) but by a NEW
+  SECURITY DEFINER writer surface reusing the EXISTING `report_writer` role (M33's own platform-catalog
+  writer, migration 0056) — the `wardenx_audit_writer`/`audit_writer_insert` precedent (migration 0013),
+  not a novel pattern: `report_writer_insert_platform_outbox_event` (the publish path) plus
+  `report_writer_{claim,finalize_*,reclaim,purge}_platform_outbox` (an additive `pollPlatform()` pass in
+  `apps/backend/src/bootstrap/outbox-dispatcher.ts`, alongside the existing per-org `pollOrg()` — the
+  shared `DispatchableOutboxEvent`/`OutboxConsumerBinding` types, used by ~150 existing org-scoped
+  consumer bindings, were deliberately left untouched). A live-test-caught regression in THIS pass's own
+  first draft repeated [[wx-pr-014-m30-scheduled-jobs]]'s exact bug class a second time in the same
+  session: `mvRefresh`/`lagProbe`'s outbox emits were initially left as fail-closed throws for the
+  "genuinely can't bind yet" reason, but both are called unconditionally on their worker's success path,
+  so the throw turned a real successful REFRESH into a run recorded FAILED — caught immediately, fixed to
+  bind for real once the nullable-org path existed. A second, separate live-test-caught bug: the
+  `m33.mv.refresh_succeeded` schema required `rowsAffected` as a non-null integer, but
+  `REFRESH MATERIALIZED VIEW CONCURRENTLY`'s own executor always returns `rowsAffected: null` (Postgres
+  reports no row count for a REFRESH) — the schema had never been validated against a real payload before
+  this pass actually bound the emit; fixed to accept `integer | null`.
+
+  Verifying under REAL RLS (`SET ROLE wardenx_app`, NOBYPASSRLS — not the superuser test connection this
+  pass's own first draft used, which bypasses RLS entirely and proves nothing about it) surfaced a
+  SEVERE, codebase-wide, pre-existing bug, NOT fixed here and tracked separately as **WX-PR-024**: every
+  `withPlatformContext` call anywhere in the codebase (not just M33) throws under a properly-hardened,
+  NOBYPASSRLS production deployment, because its mandatory `platform.bypass_invoked` audit write has no
+  RLS policy admitting a null-org row for `wardenx_app`. `report_run` and `materialized_view_metadata`
+  were also found to have the IDENTICAL "no wardenx_app write policy for a platform-wide row" gap this
+  task fixed for `outbox_event` — both pre-existing, both left unfixed here (see WX-PR-024).
+
+  Proven via the SAME live suite, now hardened to connect as `wardenx_app` (bootstrapping the role's
+  LOGIN/password/NOBYPASSRLS itself) rather than a superuser — 4/4 passing under genuine RLS enforcement,
+  with a direct `psql` verification (insert → claim → finalize → reclaim → purge, all through the
+  SECURITY DEFINER path, and a raw direct INSERT confirmed REJECTED outside it) as the conclusive proof
+  the new outbox mechanism is correct. Full gate green (build/arch:fitness/lint/full test suite, 7995
+  passing).
 - Priority: P1
 - Severity addressed: High
 - Phase: 4
@@ -1217,3 +1261,84 @@
 - Risks: Clinical harm, PHI disclosure, cost.
 - Rollback: Kill switch and binding disable; preserve audit/provenance.
 - Estimated complexity: XL
+
+## WX-PR-024 - withPlatformContext throws under real (NOBYPASSRLS) RLS codebase-wide
+
+- Status: Discovered, NOT fixed (2026-08-06) — found while verifying WX-PR-014's M33 outbox fix under
+  REAL RLS enforcement (`SET ROLE wardenx_app`, NOBYPASSRLS — the production posture the boot guard
+  enforces) instead of a superuser test connection, which had masked this since `withPlatformContext`
+  first shipped. Confirmed by direct `psql`:
+  ```
+  SET ROLE wardenx_app;
+  INSERT INTO audit_event (organization_id, actor_kind, event_type, resource_kind, outcome,
+                            correlation_id, severity)
+  VALUES (NULL, 'system', 'platform.bypass_invoked', 'tenant', 'success', 'x', 'warn');
+  ERROR:  new row violates row-level security policy for table "audit_event"
+  ```
+  `withPlatformContext` (`packages/tenancy/src/context.ts`) calls its injected `auditBypass`
+  UNCONDITIONALLY on every entry — the load-bearing "every cross-tenant bypass is audited" guarantee
+  the whole mechanism exists to provide. The composition root binds this to the shared
+  `m34PlatformBypassAuditor` (`apps/backend/src/index.ts`), which writes a `platform.bypass_invoked`
+  `audit_event` row with `organizationId: null`. But `audit_event`'s only null-org write path is
+  `audit_writer_insert FOR INSERT TO wardenx_audit_writer` (migration 0013) — a role `wardenx_app` does
+  not hold — and migration 0119's own org-scoped fix (`audit_event_org_append`, the "WITHOUT THIS, EVERY
+  APPLICATION-LEVEL AUDIT WRITE FAILS IN PRODUCTION" migration) explicitly, deliberately excludes null-org
+  rows: its own comment says platform-scoped rows "must continue to go through the M34 bypass auditor
+  under withPlatformContext" — but nothing ever built the role/policy path FOR that auditor. The gap
+  0119 fixed for the org-scoped `audit()` path was never separately verified for the platform-bypass
+  path, and it was invisible locally for the identical reason 0119 names: `scripts/db/migrate.ts` grants
+  the dev role BYPASSRLS unless `WARDENX_DEV_BYPASSRLS` is deliberately unset — every prior session's
+  live-RLS testing (this codebase has an extensive `rls-isolation.live.test.ts` suite, 109+ tests) has
+  evidently always run either with that dev bypass, or via a superuser test connection for the
+  app-facing client specifically (the mistake WX-PR-014's M33 pass itself made on its first draft,
+  before catching it here).
+
+  BLAST RADIUS: since every `withPlatformContext` call executes this same unconditional audit write as
+  its first step, EVERY platform-scoped cron/worker/route in the codebase that uses it — at minimum
+  M7, M9, M10, M25, M27, M30, M33, M34, and the shared `active-org-enumerator.ts` helper seven-plus
+  modules already depend on — throws immediately on entry in a properly-hardened (NOBYPASSRLS)
+  production deployment. This is not new code from any single recent task; it has been latent since
+  `withPlatformContext` first shipped and every module that adopted it inherited the same gap silently.
+
+  RELATED, SAME ROOT CAUSE, ALSO DISCOVERED (also NOT fixed): `report_run` and
+  `materialized_view_metadata` (M33) have the identical "no wardenx_app RLS policy admits a
+  platform-wide/no-org write" shape — `report_run.organization_id` has been documented nullable since
+  M33 shipped for exactly this purpose ("cross-tenant platform-wide refreshes") but no writer path was
+  ever built for it. `outbox_event` had the same shape and WAS fixed as part of WX-PR-014's second
+  follow-up (migration 0186, a SECURITY DEFINER `report_writer_*` function surface reusing the
+  `wardenx_audit_writer`/`audit_writer_insert` precedent) — the SAME pattern would close `report_run`'s
+  and `materialized_view_metadata`'s gaps, and a `report_writer`-owned (or a new dedicated
+  `wardenx_platform_writer`-style role) SECURITY DEFINER function for `audit_event`'s
+  `platform.bypass_invoked` write would close this finding's own root cause. NOT attempted here: this is
+  a foundational M1 (`@wardenx/tenancy`) + M4 (`audit_event`) change with a blast radius spanning the
+  whole codebase, well beyond one task's charter — it needs its own scoped pass, ideally with a
+  companion live-RLS test (`SET ROLE wardenx_app`, NOBYPASSRLS) added to the existing
+  `rls-isolation.live.test.ts` suite so this class of gap cannot silently regress again.
+- Priority: P0
+- Severity addressed: Critical
+- Phase: unassigned (cross-cutting, discovered mid-task — needs its own scoping pass)
+- Objective: Every `withPlatformContext` entry succeeds (including its mandatory audit write) under a
+  real, NOBYPASSRLS `wardenx_app` connection — the production posture the boot guard already enforces.
+- Evidence: Direct `psql` reproduction above; this finding's own discovery inside WX-PR-014's M33
+  follow-up #2 live-RLS hardening.
+- Files/modules affected: `packages/tenancy/src/context.ts` (`withPlatformContext`), `apps/backend/src/index.ts` (`m34PlatformBypassAuditor`), `audit_event` RLS (a new migration), and — same root cause,
+  separately — `report_run` + `materialized_view_metadata` RLS (M33).
+- Dependencies: None technical; needs an owner decision on the writer-role shape (reuse
+  `wardenx_audit_writer` vs. a new dedicated platform-writer role) before implementation.
+- Implementation steps: Add a SECURITY DEFINER `audit_event` platform-write function (mirroring
+  migration 0186's `outbox_event` pattern) + EXECUTE grant to `wardenx_app`; repoint
+  `m34PlatformBypassAuditor` (or `withPlatformContext` itself) at it; add the `report_run`/
+  `materialized_view_metadata` equivalents; add a `SET ROLE wardenx_app`-based regression test to
+  `rls-isolation.live.test.ts` (or a new dedicated live suite) so `WARDENX_DEV_BYPASSRLS`/superuser
+  test connections can never mask this class of bug again.
+- Tests: A live-RLS `withPlatformContext` entry (any module) succeeds under `SET ROLE wardenx_app`,
+  NOBYPASSRLS, with a real `platform.bypass_invoked` row landing; a direct-INSERT attempt outside the
+  SECURITY DEFINER path is still rejected (proving the fix doesn't over-widen access).
+- Acceptance criteria: No `withPlatformContext` call throws under NOBYPASSRLS in any module that uses it;
+  the audit guarantee ("every bypass is audited") is verified true, not merely coded.
+- Risks: Every platform-scoped cron/worker across ~8 modules is silently non-functional in a properly
+  hardened production deployment until this is fixed — this is not a theoretical risk, it is the CURRENT
+  state of the code on `main` as of this writing.
+- Rollback: N/A (discovery only; no code changed for this finding).
+- Estimated complexity: M (the SECURITY DEFINER pattern is now proven and repeatable; the audit is
+  scoping which of the ~8 dependent modules need their own live-RLS regression coverage added too).

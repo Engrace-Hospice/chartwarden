@@ -73,10 +73,10 @@ export const M33_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m33.scheduled_report.render_requested",
     moduleOwner: "m33",
     description:
-      "The schedule runner reached a due occurrence and requested a PDF/XLSX render; M22 renders the snapshot and wires the document back (the §1.1 render handshake). Carries the idempotency key for at-most-once render.",
+      'The schedule runner reached a due occurrence and requested a PDF/XLSX render; M22 renders the snapshot and wires the document back (the §1.1 render handshake). Carries the idempotency key for at-most-once render. TWO producers share this wire name: the scheduled-run cron path (carries scheduleId+runId) and the ad-hoc "export now" route path (carries exportId+aggregateType instead, TypeBox permits the extra properties) — scheduleId/runId are Optional so both validate; a consumer must not assume either is present.',
     payloadSchema: Type.Object({
-      scheduleId: id,
-      runId: id,
+      scheduleId: Type.Optional(id),
+      runId: Type.Optional(id),
       viewId: id,
       format: Type.Union([Type.Literal("pdf"), Type.Literal("xlsx"), Type.Literal("csv")]),
       organizationId: id,
@@ -120,12 +120,12 @@ export const M33_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m33.mv.refresh_succeeded",
     moduleOwner: "m33",
     description:
-      "An MV-refresh worker refreshed a `report_mv` materialized view; M33 invalidates the dependent tile cache (self-subscriber). `organizationId` is null for cross-tenant platform-wide refreshes.",
+      "An MV-refresh worker refreshed a `report_mv` materialized view; M33 invalidates the dependent tile cache (self-subscriber). `organizationId` is null for cross-tenant platform-wide refreshes. `rowsAffected` is null: `REFRESH MATERIALIZED VIEW CONCURRENTLY` reports no row count (the executor's own return type says so — this schema required a non-null integer before this event was ever actually emitted, which Value.Check would have rejected on the very first real refresh).",
     payloadSchema: Type.Object({
       mvKey: id,
       organizationId: nullableId,
       durationMs: Type.Integer({ minimum: 0 }),
-      rowsAffected: Type.Integer({ minimum: 0 }),
+      rowsAffected: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]),
       refreshedAt: isoInstant,
     }),
     declaredConsumers: ["m33"],

@@ -3,6 +3,10 @@
 // written exclusively by the packages/shared outbox dispatcher — never a direct
 // insert/select from a feature module (HELPER_ONLY_TABLES, manifest). org-scoped:
 // carries organization_id (no PHI columns → three-column PE/location not required).
+// organization_id is NULLABLE (migration 0186): a genuinely platform-wide event (no single
+// tenant it belongs to) persists with organization_id IS NULL, gated by the companion
+// `outbox_event_platform` RLS policy (requires the caller's tx to have entered
+// withPlatformContext) — the same pattern report_run's own nullable organization_id documents.
 import { sql } from "drizzle-orm";
 import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { outboxEventStatus } from "../enums";
@@ -12,9 +16,9 @@ export const outboxEvents = pgTable(
   "outbox_event",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+    organizationId: uuid("organization_id").references(() => organizations.id, {
+      onDelete: "cascade",
+    }),
     eventType: text("event_type").notNull(),
     aggregateKind: text("aggregate_kind").notNull(),
     aggregateId: uuid("aggregate_id").notNull(),

@@ -38,6 +38,23 @@
   (the identical `unbound()`-on-an-unconditional-call bug class WX-PR-014's M30 slice fixed) — corrected to
   documented no-ops.
 
+- **Implementation note (WX-PR-014 M33 follow-up #2, 2026-08-06)** — closed the two gaps the note above
+  left explicitly unbound. `mvRefresh`/`lagProbe`'s outbox emits are bound for real: `outbox_event.
+  organization_id` is now nullable (migration 0186), admitted not by a second RLS-policy session
+  variable (ADR-0010 D2 forbids one — a first attempt was reverted) but by a SECURITY DEFINER writer
+  surface on the EXISTING `report_writer` role (the `wardenx_audit_writer`/`audit_writer_insert`
+  precedent, migration 0013). The `m33.scheduled_report.render_requested` catalog schema now marks
+  `scheduleId`/`runId` Optional so the ad-hoc PDF/XLSX export path's payload validates too (the schema
+  mismatch was the actual bug, not either producer). Verifying under REAL RLS (`SET ROLE wardenx_app`,
+  NOBYPASSRLS — this pass's own first test draft used a superuser connection and caught nothing) surfaced
+  a SEVERE, codebase-wide, pre-existing bug tracked separately as **WX-PR-024**:
+  `packages/tenancy/src/context.ts`'s `withPlatformContext` throws under real RLS in EVERY module that
+  calls it (not just M33), because its mandatory `platform.bypass_invoked` audit write has no RLS policy
+  admitting a null-org row for `wardenx_app`. `report_run` and `materialized_view_metadata` were found to
+  have the identical gap `outbox_event` had — neither is fixed here (see WX-PR-024 for the full writeup
+  and blast radius). Full gate green; the M33 live suite now runs 4/4 under genuine, hardened RLS
+  enforcement rather than a superuser bypass.
+
 | Finding | Sev | Resolution |
 |---|---|---|
 | **M33 RLS variable** | BLOCKER | Canonical RLS session variable corrected **`app.current_org_id` → `app.org_id`** throughout (ADR-0010 D2). The prior variable was never set by `withOrgContext()`, so every M33 policy failed closed. |

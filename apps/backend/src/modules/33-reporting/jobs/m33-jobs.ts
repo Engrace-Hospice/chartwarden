@@ -181,6 +181,20 @@ function systemAuditContext(organizationId: string | null = null): AuditContext 
   return { organizationId, userId: null, actorKind: "system", correlationId: randomUUID() };
 }
 
+/** `outbox_event.aggregate_id` is a real `uuid` NOT NULL column; the replica-lag probe is a genuine
+ *  platform singleton with no natural entity id, so its outbox emits use this fixed, stable uuid rather
+ *  than inventing a fake per-run identity. */
+const LAG_PROBE_SINGLETON_AGGREGATE_ID = "00000000-0000-4000-8000-000000000001";
+
+/** Resolves `materialized_view_metadata.mv_key`'s real `uuid` PK for `outbox_event.aggregate_id`
+ *  (a real uuid column — `mvKey` is a text business key, never a valid uuid itself). */
+async function mvAggregateId(catalogRepo: ReportCatalogRepository, mvKey: string): Promise<string> {
+  const mv = await catalogRepo.findMvByKey(mvKey);
+  if (!mv)
+    throw new Error(`materialized_view_metadata '${mvKey}' not found for outbox aggregateId`);
+  return mv.id;
+}
+
 // ── the per-queue port bundles (bind what we can; throw-on-call for the genuinely-missing infra) ────────
 
 /** The bound port bundles `registerM33Workers` drives the §4.8 workers with. */
@@ -280,30 +294,53 @@ export function buildM33WorkerPorts(deps: M33WorkerDeps): M33WorkerPortBundles {
         return tileRepo.deleteByOrg(organizationId);
       },
     },
-    // GENUINE INFRA BLOCK (found while wiring this pass, not a plain "not yet bound" gap): `report_mv.*`
-    // views are platform-global (§2.4 — every `report.mv_refresh` job runs under `withPlatformContext`,
-    // `organizationId: null`), but `OutboxPublishPort.publish`'s own contract
-    // (apps/backend/src/bootstrap/outbox-persister.ts `OutboxPublishInput.organizationId: string`) requires a
-    // NON-NULL tenant uuid — its doc comment says so explicitly: "platform-wide/org-null events are NOT
-    // persistable here". `deps.outboxPublisher` (the SAME tx-scoped `m33` publisher the command routes use)
-    // therefore CANNOT carry these three events no matter how it is bound; fabricating a placeholder org id
-    // to satisfy the type would misattribute a platform-wide refresh to one random tenant (`outbox_event` is
-    // itself RLS-scoped by `organization_id` — a fabricated id would make the row invisible to every real
-    // consumer, or worse, attribute it to the wrong tenant's audit trail). Closing this needs an M1-level
-    // change (a nullable-organizationId persist path for platform-scoped outbox events), not a wiring change.
+    // BOUND for real over `deps.outboxPublisher` with `organizationId: null` — the platform-wide-event
+    // persist path (migration 0186's `report_writer_insert_platform_outbox_event` SECURITY DEFINER
+    // function, invoked transparently inside `buildTxOutboxPublisher`'s persist step when
+    // `organizationId === null`) makes this a real, durable write now, not a permanent block. `report_mv.*`
+    // views are platform-global (§2.4 — every `report.mv_refresh` job runs under `withPlatformContext`),
+    // so `organizationId: null` on every one of these three emits is correct, not a placeholder.
     //
-    // A DOCUMENTED NO-OP, NOT A THROW (live-test-caught bug in THIS pass's own first draft): `refresh-
-    // worker.ts`'s `handleMvRefresh` calls `outbox.emitRefreshSucceeded` UNCONDITIONALLY on the SUCCESS path,
-    // right after settling the run "succeeded" — the exact `unbound()`-on-an-unconditional-call bug class
-    // WX-PR-014 fixed in M30 (`measure_recompute.outbox.emitValueEmitted`). Throwing here turned every
-    // successful REFRESH into a run recorded as FAILED (caught by `handleMvRefresh`'s own catch block, which
-    // re-settles the run "failed" and increments the consecutive-failure counter) — a real, live-test-caught
-    // regression, not a hypothetical. `emitRefreshFailed`/`emitRefreshExhausted` are unconditional on their
-    // own (failure) path for the identical reason, so all three are no-ops, not throws.
+    // Called UNCONDITIONALLY on the success/failure paths inside `handleMvRefresh` (refresh-worker.ts) —
+    // this pass's OWN first draft left these as fail-closed throws instead, and a live test immediately
+    // caught the exact `unbound()`-on-an-unconditional-call bug class WX-PR-014 fixed in M30
+    // (`measure_recompute.outbox.emitValueEmitted`): a throw here turns a successful REFRESH into a run
+    // recorded as FAILED. Binding for real (rather than leaving the no-op fallback) closes that
+    // permanently — a publish failure now surfaces as the real error it is, not a synthetic one.
     outbox: {
-      async emitRefreshSucceeded() {},
-      async emitRefreshFailed() {},
-      async emitRefreshExhausted() {},
+      // `outbox_event.aggregate_id` is a real `uuid` column — `mvKey` is a text business key
+      // (`materialized_view_metadata.mv_key`), not the row's own `uuid` PK, so each emit resolves the
+      // real PK first (one extra lookup, on the already-open `catalogRepo`/`primaryDb`).
+      emitRefreshSucceeded: async (payload) => {
+        const aggregateId = await mvAggregateId(catalogRepo, payload.mvKey);
+        await deps.outboxPublisher!.publish(db, {
+          eventName: "m33.mv.refresh_succeeded",
+          payload: { ...payload },
+          organizationId: null,
+          aggregateKind: "materialized_view_metadata",
+          aggregateId,
+        });
+      },
+      emitRefreshFailed: async (payload) => {
+        const aggregateId = await mvAggregateId(catalogRepo, payload.mvKey);
+        await deps.outboxPublisher!.publish(db, {
+          eventName: "m33.mv.refresh_failed",
+          payload: { ...payload },
+          organizationId: null,
+          aggregateKind: "materialized_view_metadata",
+          aggregateId,
+        });
+      },
+      emitRefreshExhausted: async (payload) => {
+        const aggregateId = await mvAggregateId(catalogRepo, payload.mvKey);
+        await deps.outboxPublisher!.publish(db, {
+          eventName: "m33.mv.refresh_exhausted",
+          payload: { ...payload },
+          organizationId: null,
+          aggregateKind: "materialized_view_metadata",
+          aggregateId,
+        });
+      },
     },
   };
 
@@ -470,26 +507,41 @@ export function buildM33WorkerPorts(deps: M33WorkerDeps): M33WorkerPortBundles {
   };
 
   // ── report.export_render (withOrgContext) — the PDF/XLSX → M22 render handshake ───────────────────────
-  // GENUINE PAYLOAD/SCHEMA MISMATCH (found while wiring, not invented): both `exportRender` (this queue) and
-  // `scheduledRun` (above) emit the SAME wire event name `m33.scheduled_report.render_requested`, but they
-  // are built by two DIFFERENT package producers with two DIFFERENT payload shapes —
-  // `ExportRenderRequestPayload` (packages/reporting/src/export/render-request.ts, this ad-hoc PDF/XLSX path:
+  // BOUND: both `exportRender` (this queue) and `scheduledRun` (above) emit the SAME wire event name
+  // `m33.scheduled_report.render_requested`, built by two DIFFERENT package producers with two DIFFERENT
+  // payload shapes — `ExportRenderRequestPayload` (the ad-hoc PDF/XLSX route path:
   // `exportId/viewId/format/organizationId/snapshotQuery/idempotencyKey/aggregateType/aggregateId`) vs
-  // `RunnerOutboxPort`'s payload (scheduled/runner.ts, the cron path bound above:
-  // `scheduleId/runId/viewId/format/organizationId/snapshotQuery/idempotencyKey`). The catalog's ONE
-  // `payloadSchema` for this event name (events-by-m33.ts) requires `scheduleId`+`runId` — fields the ad-hoc
-  // export payload does not carry at all. Binding this to the SAME `deps.outboxPublisher` would throw
-  // `Value.Check` on every single ad-hoc PDF/XLSX request (missing required properties), which would be
-  // WORSE than the pre-existing unbound throw (a fail that looks like "the publisher is broken" instead of
-  // "this port isn't bound yet"). This is a package-level event-catalog gap (one wire name serving two
-  // non-conformant payload shapes) that predates this task and needs a schema/package fix, not a wiring
-  // change — left unbound, not papered over.
-  const exportRenderOutbox = {
-    emitRenderRequested: () =>
-      unbound(
-        "exportRender.outbox.emitRenderRequested",
-        "ExportRenderRequestPayload does not satisfy the m33.scheduled_report.render_requested catalog schema (missing scheduleId/runId, which only the scheduled-run path carries) — needs a package-level payload/schema reconciliation before this can bind, not just a wiring change",
-      ),
+  // `RunnerOutboxPort`'s payload (the scheduled-run cron path, bound above:
+  // `scheduleId/runId/viewId/format/organizationId/snapshotQuery/idempotencyKey`). The catalog's schema
+  // (events-by-m33.ts) now marks `scheduleId`/`runId` Optional specifically so BOTH real payload shapes
+  // validate — this was a genuine package-level event-catalog gap (one wire name serving two producers, only
+  // one of which conformed), fixed at the schema, not by fabricating fields on either payload.
+  const exportRenderOutbox: {
+    emitRenderRequested(payload: {
+      readonly exportId: string;
+      readonly viewId: string;
+      readonly format: "pdf" | "xlsx";
+      readonly organizationId: string;
+      readonly snapshotQuery: string;
+      readonly idempotencyKey: string;
+      readonly aggregateType: string;
+      readonly aggregateId: string;
+    }): Promise<void>;
+  } = {
+    emitRenderRequested: deps.outboxPublisher
+      ? (payload) =>
+          deps.outboxPublisher!.publish(db, {
+            eventName: "m33.scheduled_report.render_requested",
+            payload,
+            organizationId: payload.organizationId,
+            aggregateKind: payload.aggregateType,
+            aggregateId: payload.aggregateId,
+          })
+      : () =>
+          unbound(
+            "exportRender.outbox.emitRenderRequested",
+            "bind `deps.outboxPublisher` (bindCallerModule(txOutboxPublisher, 'm33')) — m33.scheduled_report.render_requested → M22 §1.1",
+          ),
   };
   const pdf: PdfRenderRequestPorts = { outbox: exportRenderOutbox };
   const xlsx: XlsxRenderRequestPorts = { outbox: exportRenderOutbox };
@@ -535,20 +587,29 @@ export function buildM33WorkerPorts(deps: M33WorkerDeps): M33WorkerPortBundles {
               "bind `deps.lagProbeRedis` (a connected ioredis client) — no Valkey connection configured for the degraded-tile advisory flag",
             ),
         },
-    // GENUINE INFRA BLOCK (same finding as mvRefresh.outbox above): the lag probe is an org-agnostic
-    // platform singleton — `LagExceededPayload`/`LagRecoveredPayload` carry NO organizationId field at all —
-    // but `OutboxPublishPort.publish` requires a non-null tenant uuid. There is no org id to supply, real or
-    // fabricated; this needs the same M1 nullable-org outbox path mvRefresh's emits need, not a wiring bind.
-    //
-    // A DOCUMENTED NO-OP, NOT A THROW: `lag-probe.ts`'s `runLagProbe` calls these with no surrounding
-    // try/catch — unlike mvRefresh's emits (unconditional on every tick), these fire only on an actual
-    // exceeded/recovered STATE TRANSITION, but a throw on that path would still fail the whole probe tick
-    // (BullMQ retries/DLQs a `report.lag_probe` job) the very first time replica lag crosses the D14
-    // threshold in production — the identical bug class the mvRefresh fix above documents, just latent
-    // until a transition actually occurs. No-op, matching that fix.
+    // BOUND for real over `deps.outboxPublisher` with `organizationId: null` (the platform-wide-event
+    // persist path, migration 0186). The lag probe is an org-agnostic platform SINGLETON —
+    // `LagExceededPayload`/`LagRecoveredPayload` carry no natural entity id at all, so `aggregateId` uses
+    // a fixed, documented sentinel uuid identifying "the one replica-lag-probe singleton" (not fabricated
+    // data — there is genuinely only ever one of these, so a stable identifier for it is correct, not a
+    // placeholder standing in for something real that's missing).
     outbox: {
-      async emitLagExceeded() {},
-      async emitLagRecovered() {},
+      emitLagExceeded: (payload) =>
+        deps.outboxPublisher!.publish(db, {
+          eventName: "m33.lag.exceeded",
+          payload: { ...payload },
+          organizationId: null,
+          aggregateKind: "replica_lag_probe",
+          aggregateId: LAG_PROBE_SINGLETON_AGGREGATE_ID,
+        }),
+      emitLagRecovered: (payload) =>
+        deps.outboxPublisher!.publish(db, {
+          eventName: "m33.lag.recovered",
+          payload: { ...payload },
+          organizationId: null,
+          aggregateKind: "replica_lag_probe",
+          aggregateId: LAG_PROBE_SINGLETON_AGGREGATE_ID,
+        }),
     },
   };
 
@@ -918,22 +979,28 @@ export function buildM33WorkerDeps(deps: {
 //     on the un-scoped base client before this; FORCE RLS silently denied/empty'd every org-scoped write/read.
 //   • the nightly MV-refresh orchestrator — the cron sentinel used to land directly on the per-MV worker
 //     (job.name mismatch never checked); now branches to the real `runNightlyRefresh` fan-out.
-//   • the scheduled_run / export_render / drilldown_audit_flush outbox emits, `scheduledRun.recipients`
-//     (M2 active-membership re-validation), `scheduledRun.snapshot.build` (the real translateSpec chain),
-//     `scheduledRun.pause.autoPause`, `scheduledRun.audit.*` (the M4 audit() helper), the Valkey-backed
-//     `lagProbe.state`/`lagProbe.advisory`, and `mvRefresh.tileCache.invalidateForMv`'s org=null no-op.
+//   • the scheduled_run / export_render / drilldown_audit_flush / mvRefresh / lagProbe outbox emits — ALL
+//     nine now bind for real over `deps.outboxPublisher`, `scheduledRun.recipients` (M2 active-membership
+//     re-validation), `scheduledRun.snapshot.build` (the real translateSpec chain), `scheduledRun.
+//     pause.autoPause`, `scheduledRun.audit.*` (the M4 audit() helper), the Valkey-backed `lagProbe.state`/
+//     `lagProbe.advisory`, and `mvRefresh.tileCache.invalidateForMv`'s org=null no-op.
 //   • the same BullMQ "jobId cannot contain ':'" bug class (WX-PR-013/014) in the new nightly-orchestrator
 //     producer (`buildM33MvRefreshEnqueue`).
+//   • (follow-up pass, same day) the M1 nullable-organizationId outbox persist path: `outbox_event.
+//     organization_id` is now nullable, gated by a NEW SECURITY DEFINER writer surface (migration 0186,
+//     `report_writer_*` functions — the `wardenx_audit_writer`/`audit_writer_insert` precedent, NOT a
+//     second RLS-policy GUC — ADR-0010 D2 bans any session variable beyond `app.org_id`, so a policy keyed
+//     on a new GUC was reverted and replaced with this role+function pattern instead). The dispatcher
+//     (apps/backend/src/bootstrap/outbox-dispatcher.ts) gained an additive `pollPlatform()` pass over the
+//     same functions — `mvRefresh`/`lagProbe`'s outbox emits are genuinely live now, not just unblocked in
+//     theory (their `aggregateId` resolves the real `materialized_view_metadata.id` uuid / a fixed
+//     lag-probe-singleton sentinel uuid, since `outbox_event.aggregate_id` is a real uuid column and
+//     neither `mvKey` nor "the one lag probe" naturally is one).
+//   • (follow-up pass) `exportRender.outbox.emitRenderRequested` — the `m33.scheduled_report.
+//     render_requested` catalog schema now marks `scheduleId`/`runId` Optional so both real producer
+//     payloads (the cron path's + the ad-hoc export path's) validate; bound for real.
 //
-// Still explicitly OUT OF SCOPE (genuine infra gaps found while wiring, not silently routed around):
-//   • `mvRefresh.outbox.*` (3) and `lagProbe.outbox.*` (2) — these are platform-wide (organizationId=null or
-//     absent) events, but `OutboxPublishPort.publish` (apps/backend/src/bootstrap/outbox-persister.ts)
-//     requires a non-null tenant uuid by design ("platform-wide/org-null events are NOT persistable here").
-//     Needs an M1-level nullable-org outbox persist path, not a wiring change.
-//   • `exportRender.outbox.emitRenderRequested` — `ExportRenderRequestPayload` (the ad-hoc PDF/XLSX route
-//     path) does not satisfy the `m33.scheduled_report.render_requested` catalog schema (missing
-//     scheduleId/runId, which only the scheduled-run cron path carries) — a package-level payload/schema
-//     mismatch between two producers sharing one wire event name.
+// Still explicitly OUT OF SCOPE (genuine gaps, not silently routed around):
 //   • `drilldownAuditFlush.encryption.encryptFilters` — still blocked on the M1 envelope-DEK/KMS provider,
 //     which does not exist anywhere in the codebase yet (same as WX-PR-013/014's M23/M30 CAHPS-PHI gap).
 //   • `scheduledRun.snapshot.build`'s returned `snapshotQuery` still carries unresolved `$1, $2, …`
@@ -943,3 +1010,43 @@ export function buildM33WorkerDeps(deps: {
 //     the M4 destruction registry (already wired), and tile-warming is an unbuilt caching optimization.
 //   • the M33 cron-parser adapter (`FAIL_CLOSED_CRON` in wiring.ts) — schedule create/update `next_run_at`
 //     math is a separate library integration, out of the §4.8 background-job charter this task covers.
+//   • no M33 self-invalidate / M36 alert CONSUMER is registered yet for `m33.mv.*`/`m33.lag.*` — the events
+//     now persist durably (this pass's whole point) and correctly report "deferred" pending a consumer, but
+//     `pollPlatform()` deliberately does not deliver to `deps.consumers` (the shared `DispatchableOutboxEvent`
+//     type is non-null-organizationId, used by ~150 existing org-scoped bindings — widening it, or adding a
+//     parallel `PlatformOutboxConsumerBinding` type, was out of scope for this pass). Building the actual
+//     consumer logic for these two event families is separate work.
+//
+// TWO GENUINE, SEVERE, PRE-EXISTING BUGS DISCOVERED WHILE VERIFYING THIS FIX UNDER REAL RLS (found via
+// direct `psql`, `SET ROLE wardenx_app`, NOBYPASSRLS — this codebase's own `rls-isolation.live.test.ts`
+// precedent; a superuser test connection, this pass's OWN first draft included, bypasses RLS entirely and
+// proves nothing about it). NEITHER is fixed by this pass — both are pre-existing, orthogonal to the
+// outbox emits this task was asked to close, and each is its own, comparably-sized fix:
+//   1. `report_run` (this file's `runs.open`/`runs.settle`, called by every mvRefresh job) and
+//     `materialized_view_metadata` (`metadataWrite.stamp`) have the IDENTICAL "no wardenx_app RLS policy
+//     admits a platform-wide (organizationId IS NULL / no-org) write" gap this pass fixed for
+//     `outbox_event` (migration 0186) — `report_run.organization_id` has been documented nullable since
+//     M33 shipped ("cross-tenant platform-wide refreshes"), but no SECURITY DEFINER writer path was ever
+//     built for it, so this INSERT has never once succeeded under real (non-BYPASSRLS) RLS. Confirmed:
+//     `SET ROLE wardenx_app; INSERT INTO report_run (..., organization_id, ...) VALUES (..., NULL, ...)`
+//     → `ERROR: new row violates row-level security policy for table "report_run"`. In today's
+//     production posture this means `handleMvRefresh` throws on its OWN run-ledger open, before ever
+//     reaching this pass's outbox fix — this test's `platformDb: seedDb.db` (superuser) works around it
+//     for the test only; production is NOT worked around.
+//   2. `withPlatformContext` (packages/tenancy/src/context.ts) calls its injected `auditBypass` (the
+//     shared `m34PlatformBypassAuditor`, apps/backend/src/index.ts) UNCONDITIONALLY on every entry, and
+//     THAT writes a `platform.bypass_invoked` audit_event row with `organizationId: null` — but
+//     `audit_event`'s ONLY null-org write path is `audit_writer_insert FOR INSERT TO wardenx_audit_writer`
+//     (a role `wardenx_app` does not hold), and migration 0119's own org-scoped fix
+//     (`audit_event_org_append`) explicitly excludes null-org rows by design ("Platform-scoped rows...
+//     must continue to go through the M34 bypass auditor under withPlatformContext" — but nothing ever
+//     built that role/policy path for the auditor itself). Confirmed: `SET ROLE wardenx_app; INSERT INTO
+//     audit_event (organization_id, ...) VALUES (NULL, ...)` → the identical RLS violation. Since EVERY
+//     `withPlatformContext` call in the ENTIRE codebase (not just M33 — M7/M9/M10/M25/M27/M30/M33/M34 and
+//     beyond) executes this same audit write as its first unconditional step, this means EVERY
+//     `withPlatformContext` call throws under a properly-hardened, NOBYPASSRLS production deployment
+//     today — a severe, previously-undiscovered, codebase-wide bug, not an M33-scoped one. This pass's own
+//     live test only avoids hitting it because `platformDb: seedDb.db` (superuser) sidesteps it the same
+//     way as finding #1. Reported to the user directly, not silently fixed inline — the fix (an
+//     `audit_event` SECURITY DEFINER platform-write path, mirroring `outbox_event`'s migration 0186) is a
+//     foundational M1/M34 change with a much larger blast radius than this task's charter.

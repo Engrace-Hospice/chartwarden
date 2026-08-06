@@ -3714,7 +3714,8 @@ function bindCallerModule(
     input: {
       readonly eventName: string;
       readonly payload: Record<string, unknown>;
-      readonly organizationId: string;
+      /** `null` only for a genuinely platform-wide event — see {@link OutboxPublishInput.organizationId}. */
+      readonly organizationId: string | null;
       readonly aggregateKind: string;
       readonly aggregateId: string;
     },

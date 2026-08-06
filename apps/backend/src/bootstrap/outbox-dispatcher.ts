@@ -313,7 +313,11 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
 
     // ── deliver + finalize (per event; each finalize is its own short org tx) ─────────────────────
     for (const row of claimed) {
-      const event: DispatchableOutboxEvent = { ...row, payload: row.payload };
+      // `row.organizationId` types as `string | null` post-migration-0186 (the column is now nullable
+      // for the SEPARATE platform-event path, `pollPlatform()` below) — but every row THIS function claims
+      // is scoped `WHERE organization_id = ${organizationId}` (a real, non-null uuid), so the outer loop
+      // variable is the true, narrowed value.
+      const event: DispatchableOutboxEvent = { ...row, organizationId, payload: row.payload };
       const finalize = (patch: Partial<typeof OUTBOX.$inferInsert>) =>
         withOrgContext(deps.db, { organizationId, userId: DISPATCHER_USER_ID }, (tx) =>
           tx
@@ -472,6 +476,114 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
     return summary;
   }
 
+  // ── the platform-wide (organization_id IS NULL) pass — mirrors pollOrg's shape exactly, but every
+  // claim/finalize/reclaim/purge step routes through the SECURITY DEFINER `report_writer_*` functions
+  // (migration 0186) instead of a direct table statement: `wardenx_app` has no RLS policy admitting a
+  // `organization_id IS NULL` row (ADR-0010 D2/D3 forbid one), so a plain `tx.update(OUTBOX)...` would be
+  // silently denied by RLS for these rows. EXECUTE on each function is granted directly to `wardenx_app`
+  // — no `withOrgContext`/`withPlatformContext` envelope is needed here (the function body, not the
+  // caller's session, carries the elevated privilege).
+  //
+  // SCOPED DOWN, DELIBERATELY: this pass claims + routes + finalizes (unknown-event / deferred /
+  // record-only), the same three outcomes a NEWLY-EMITTED, not-yet-consumed platform event can reach
+  // today. It does NOT deliver to `deps.consumers` (the `DispatchableOutboxEvent`/`OutboxConsumerBinding`
+  // types are non-null-organizationId by design — used by ~150 existing org-scoped bindings — widening
+  // them was out of scope for this pass). In practice this is a no-op distinction right now: NO platform
+  // consumer is registered for any `m33.mv.*`/`m33.lag.*` event yet (no M33 self-invalidate binding, no
+  // M36 alert binding built), so every platform event the dispatcher sees today lands in `deferred`
+  // regardless — durably persisted, honestly reported as awaiting a consumer, never silently dropped.
+  // Building the actual M33/M36 consumer logic for these events is separate, not-yet-built work.
+  async function pollPlatform(): Promise<Omit<OutboxTickSummary, "orgsPolled">> {
+    const summary = {
+      delivered: 0,
+      retried: 0,
+      deadLettered: 0,
+      deferred: 0,
+      recordOnly: 0,
+      reclaimed: 0,
+      purged: 0,
+    };
+    const now = new Date(clock());
+
+    const reclaimResult = await deps.db.execute(
+      sql`SELECT * FROM report_writer_reclaim_platform_outbox(${now}, ${visibilityTimeoutMs})`,
+    );
+    summary.reclaimed += ((reclaimResult as unknown as { rows?: unknown[] }).rows ?? []).length;
+
+    const claimResult = await deps.db.execute(
+      sql`SELECT * FROM report_writer_claim_platform_outbox(${now}, ${batchSize})`,
+    );
+    const claimed = (
+      (
+        claimResult as unknown as {
+          rows?: Array<{
+            id: string;
+            event_type: string;
+            aggregate_kind: string;
+            aggregate_id: string;
+            payload: unknown;
+            attempt_count: number;
+            created_at: string | Date;
+          }>;
+        }
+      ).rows ?? []
+    ).map((r) => ({
+      id: r.id,
+      eventType: r.event_type,
+      aggregateKind: r.aggregate_kind,
+      aggregateId: r.aggregate_id,
+      payload: r.payload,
+      attemptCount: r.attempt_count,
+      createdAt: new Date(r.created_at),
+    }));
+
+    for (const row of claimed) {
+      if (!deps.eventCatalog.has(row.eventType)) {
+        await deps.db.execute(
+          sql`SELECT report_writer_finalize_platform_outbox_deferred(${row.id}, ${row.attemptCount - 1}, ${new Date(now.getTime() + deferredRetryMs)}, ${"deferred: event type is absent from the boot catalog"})`,
+        );
+        summary.deferred += 1;
+        continue;
+      }
+
+      const bindings = routing.live.get(row.eventType);
+      if (!bindings || bindings.length === 0) {
+        if (routing.deferred.has(row.eventType)) {
+          await deps.db.execute(
+            sql`SELECT report_writer_finalize_platform_outbox_deferred(${row.id}, ${row.attemptCount - 1}, ${new Date(now.getTime() + deferredRetryMs)}, ${"deferred: one or more declared consumers are not live"})`,
+          );
+          summary.deferred += 1;
+          continue;
+        }
+        if (!routing.recordOnly.has(row.eventType)) {
+          throw new Error(`outbox event '${row.eventType}' has no routing classification`);
+        }
+        await deps.db.execute(
+          sql`SELECT report_writer_finalize_platform_outbox_dispatched(${row.id}, ${now})`,
+        );
+        summary.recordOnly += 1;
+        continue;
+      }
+
+      // Reachable once a real PlatformOutboxConsumerBinding lands (none exist yet — see the doc comment
+      // above); until then `routing.live` never carries a platform-org event type, so this never runs.
+      log(
+        `⚠️  outbox-dispatcher: '${row.eventType}' (${row.id}) has live bindings but pollPlatform() cannot deliver to them yet (no PlatformOutboxConsumerBinding type built) — deferring`,
+      );
+      await deps.db.execute(
+        sql`SELECT report_writer_finalize_platform_outbox_deferred(${row.id}, ${row.attemptCount - 1}, ${new Date(now.getTime() + deferredRetryMs)}, ${"deferred: platform-event consumer delivery is not yet implemented"})`,
+      );
+      summary.deferred += 1;
+    }
+
+    const purgeResult = await deps.db.execute(
+      sql`SELECT * FROM report_writer_purge_platform_outbox(${new Date(now.getTime() - retentionMs)})`,
+    );
+    summary.purged += ((purgeResult as unknown as { rows?: unknown[] }).rows ?? []).length;
+
+    return summary;
+  }
+
   // TASK-040B — a plain per-org COUNT under the same RLS-scoped org enumeration `tick()` uses. Not
   // folded into `pollOrg()`: this is a READ for the readiness probe, never claims/mutates rows.
   async function pendingDepth(): Promise<number> {
@@ -490,6 +602,11 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
       const row = (result as unknown as { rows?: Array<{ count?: number }> }).rows?.[0];
       total += row?.count ?? 0;
     }
+    // NOTE: this does NOT include platform-wide (organization_id IS NULL) pending rows — `wardenx_app`
+    // has no RLS policy admitting them (by design, ADR-0010 D2/D3), so a plain SELECT would silently
+    // undercount rather than error. Exposing that count would need its own SECURITY DEFINER read
+    // function; left out of this pass (the readiness probe is an operational nicety, not the outbox
+    // emit-path fix this task covers).
     return total;
   }
 
@@ -520,6 +637,14 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
       (total as { reclaimed: number }).reclaimed += s.reclaimed;
       (total as { purged: number }).purged += s.purged;
     }
+    const platform = await pollPlatform();
+    (total as { delivered: number }).delivered += platform.delivered;
+    (total as { retried: number }).retried += platform.retried;
+    (total as { deadLettered: number }).deadLettered += platform.deadLettered;
+    (total as { deferred: number }).deferred += platform.deferred;
+    (total as { recordOnly: number }).recordOnly += platform.recordOnly;
+    (total as { reclaimed: number }).reclaimed += platform.reclaimed;
+    (total as { purged: number }).purged += platform.purged;
     onTick(total, clock() - startedAt);
     return total;
   }

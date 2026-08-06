@@ -24,6 +24,7 @@ import {
   toOutboxCatalogRows,
 } from "@wardenx/shared";
 import type { ModuleEventContribution, OutboxEventEntry } from "@wardenx/types";
+import { sql } from "drizzle-orm";
 
 /**
  * The structural transaction handle a write service hands the publisher: the `withOrgContext` tx the
@@ -39,8 +40,13 @@ export interface OutboxPublishInput {
   readonly eventName: string;
   /** The event payload — Value.Check'd against the registered TypeBox `payloadSchema` (refuse-on-failure). */
   readonly payload: unknown;
-  /** Non-null tenant uuid the `outbox_event` row is keyed on (platform-wide/org-null events are NOT persistable here). */
-  readonly organizationId: string;
+  /** The tenant uuid the `outbox_event` row is keyed on. `null` ONLY for a genuinely platform-wide event
+   *  (no single tenant it belongs to) — persisted with `organization_id IS NULL` under the
+   *  `outbox_event_platform` RLS policy, which requires the caller's tx to have entered
+   *  `withPlatformContext` (the `app.platform_context` GUC it sets, packages/tenancy/src/context.ts) —
+   *  an org-scoped `withOrgContext` tx cannot satisfy that policy, so a caller cannot accidentally publish
+   *  a platform-wide event from an ordinary tenant request. */
+  readonly organizationId: string | null;
   /** Aggregate kind the event is about (e.g. `incident`, `report_schedule`). */
   readonly aggregateKind: string;
   /** Non-null aggregate uuid. */
@@ -76,6 +82,13 @@ export function buildBootOutboxCatalog(
  * injected persister inserts the `outbox_event` row through the caller's `tx` (`event_type` = the event
  * name). Mapping: OutboxRecord → outbox_event insert. `status`/`attempt_count`/`created_at` take their
  * table defaults (`pending`/0/now()).
+ *
+ * A NULL `organizationId` (a genuinely platform-wide event — no single tenant it belongs to) does NOT go
+ * through the plain Drizzle insert: `wardenx_app` has no RLS policy admitting a `organization_id IS NULL`
+ * write (ADR-0010 D2/D3 forbid one — see migration 0186's own comment for why). It calls the SECURITY
+ * DEFINER `report_writer_insert_platform_outbox_event` function instead (migration 0186) — owned by
+ * `report_writer`, EXECUTE granted directly to `wardenx_app`, touches `organization_id IS NULL` rows only
+ * (hardcoded in the function body, never a caller-supplied parameter).
  */
 export function buildTxOutboxPublisher(
   catalog: ReadonlyMap<string, OutboxEventEntry>,
@@ -93,6 +106,17 @@ export function buildTxOutboxPublisher(
           occurredAt: input.occurredAt ?? new Date(),
         },
         async (record) => {
+          if (record.organizationId === null) {
+            await tx.execute(sql`
+              SELECT report_writer_insert_platform_outbox_event(
+                ${record.eventName},
+                ${record.aggregateKind},
+                ${record.aggregateId},
+                ${JSON.stringify(record.payload)}::jsonb
+              )
+            `);
+            return;
+          }
           await tx.insert(schema.outboxEvents).values({
             eventType: record.eventName,
             organizationId: record.organizationId,
