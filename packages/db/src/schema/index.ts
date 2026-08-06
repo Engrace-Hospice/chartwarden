@@ -30,6 +30,9 @@ export * from "./outbox-events";
 export * from "./outbox-consumer-receipts";
 export * from "./organization-settings-registry";
 export * from "./outbox-event-catalog";
+// WX-PR-014 — the §4.8 BullMQ worker consumer-idempotency ledger (M30's first bindable consumer; any
+// future background worker binds the same ProcessingLogPort shape over this one table).
+export * from "./processing-log";
 // M2-T02 — Identity & Org tables (M2 spec §3.3–3.7). two_factor + passkey are user-owned
 // auth credentials (NON_ORG_SCOPED, user-ownership RLS); organization_invitation +
 // tenant_step_up_policy_override are org-scoped (app.org_id RLS + audit trigger).

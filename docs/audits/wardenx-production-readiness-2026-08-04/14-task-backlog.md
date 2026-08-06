@@ -311,8 +311,7 @@
   window, revenue/Q-code assigned per LOC, rate resolved from a new self-owned `medicaid_state_rate_schedule`
   platform table, migrations 0179-0182, mirroring `medicaid_state_plan_code`'s precedent) and M24's own
   `rb_day` sweep output into R&B lines (one line per billable day, priced from the facility's own contracted
-  per-diem — never a state schedule). This closes audit finding M24-F02 (BLOCKER): `medicaid_claim_line
-  .state_rate_schedule_id_snapshot` was unconditionally NOT NULL, which made an R&B line's schema-correct
+  per-diem — never a state schedule). This closes audit finding M24-F02 (BLOCKER): `medicaid_claim_line .state_rate_schedule_id_snapshot` was unconditionally NOT NULL, which made an R&B line's schema-correct
   rate source (the per-diem it actually prices from) structurally impossible to record; migration 0178 makes
   the column nullable with a symmetric CHECK against `is_rb`. Backing M8 encounter evidence links via
   `medicaid_claim_line_encounter` through the LIVE `SignedEncountersReader` seam (optional — supplementary
@@ -325,44 +324,43 @@
   un-cast enum literal in the rate-schedule seed) that build/typecheck could not — the exact failure mode
   live coverage exists to catch. Live RLS extended to the new rate table (2 more tests + a CHECK-constraint
   test forbidding an NF_RB schedule row). Full gate green again (build + `arch:fitness` 20 sub-gates + lint
+
   + `bun run test` 7963 passing + 28 live tests across 2 files, run sequentially — vitest defaults to
-  parallel test files, which races two suites' `DROP SCHEMA`/`CREATE SCHEMA public` on one shared cluster).
-  **Follow-up #2 (2026-08-05): real place-of-service modeling + real CMS rate data.** The Q-code is no
-  longer derived from level-of-care alone. `resolvePlaceOfServiceQCode` (`packages/medicaid-adapters/src/
-  line-assembly.ts`) resolves the real CMS Q5001-Q5009 space from actual facts, priority order: (1) a
-  confirmed own-IPU bed (`level_of_care_period.ipu_bed_assignment_id` set) → Q5006 unconditionally; (2) the
-  LOC period's own `facility_id` → `facility.kind` (extended with `nf`/`ltch`/`psych`, migration 0183, so
-  all 9 Q-codes are representable — the original 6-value enum could not distinguish skilled/non-skilled
-  nursing or express LTCH/psych at all); (3) the patient's residence (`patient_address.kind`/`facility_id`
-  as of the period's own start date, via a new `PatientAddressReader.residenceAt` method on M5's existing
-  live seam) for RHC/CHC's home-vs-ALF/SNF disambiguation; (4) an honest LOC-based fallback only when no
-  fact resolves anything (GIP→Q5006, IRC→Q5009 NOS — not Q5001 home, which was flatly wrong for inpatient
-  respite, RHC/CHC→Q5001). Researching this surfaced a real, separate, pre-existing M6 bug — flagged in the
-  first pass of this follow-up, then **closed the same day (Follow-up #3 below)**: `changeLoc` hardcoded
-  `facilityId: null` on every call, so IRC/GIP level-of-care transitions failed unconditionally. M24's
-  resolver already read `facility_id`/`ipu_bed_assignment_id` regardless (they cost nothing to select and
-  read `null` until then), so it benefited automatically once M6's gap closed — no further M24 change was
-  needed. The state-rate-schedule seed (migration 0182, edited in place — not yet
-  deployed anywhere) now carries the real CMS FY2026 national per-diem base rates (RHC $230.83, CHC
-  $1,674.29/24hr, IRC $532.48, GIP $1,199.86; effective 2025-10-01), sourced from the CMS FY2026 Hospice
-  Wage Index and Payment Rate Update Final Rule and corroborated against Oregon's own OAR 410-142-0300
-  ("no lower than... Medicare") floor rule — still a documented simplification (unadjusted for the CBSA
-  wage index, the same geographic layer M23's own `wage_index_factor` table exists for but has never been
-  seeded with real data either). `medicaid_state_plan_code`'s "OHP-PLUS" plan code stays a placeholder —
-  unlike the rate table, it is blocked on a genuinely different, upstream problem (no per-patient OHP
-  benefit-package tracking exists yet to select among plan codes), not on public data availability. 26 new
-  unit tests (`resolvePlaceOfServiceQCode` across every facility-kind combination + fallback path) plus 2
-  new live-Postgres scenarios (ALF residence → real Q5002; confirmed own-IPU-bed → Q5006 regardless of a
-  contracted-hospital facility kind). Full gate green (build + `arch:fitness` 20 sub-gates + lint +
-  `bun run test` 7981 passing + live-Postgres verification: the line-assembly suite, the M24 RLS suite, and
-  the M40 RLS suite, run sequentially on a throwaway pg18 cluster).
+    parallel test files, which races two suites' `DROP SCHEMA`/`CREATE SCHEMA public` on one shared cluster).
+    **Follow-up #2 (2026-08-05): real place-of-service modeling + real CMS rate data.** The Q-code is no
+    longer derived from level-of-care alone. `resolvePlaceOfServiceQCode` (`packages/medicaid-adapters/src/ line-assembly.ts`) resolves the real CMS Q5001-Q5009 space from actual facts, priority order: (1) a
+    confirmed own-IPU bed (`level_of_care_period.ipu_bed_assignment_id` set) → Q5006 unconditionally; (2) the
+    LOC period's own `facility_id` → `facility.kind` (extended with `nf`/`ltch`/`psych`, migration 0183, so
+    all 9 Q-codes are representable — the original 6-value enum could not distinguish skilled/non-skilled
+    nursing or express LTCH/psych at all); (3) the patient's residence (`patient_address.kind`/`facility_id`
+    as of the period's own start date, via a new `PatientAddressReader.residenceAt` method on M5's existing
+    live seam) for RHC/CHC's home-vs-ALF/SNF disambiguation; (4) an honest LOC-based fallback only when no
+    fact resolves anything (GIP→Q5006, IRC→Q5009 NOS — not Q5001 home, which was flatly wrong for inpatient
+    respite, RHC/CHC→Q5001). Researching this surfaced a real, separate, pre-existing M6 bug — flagged in the
+    first pass of this follow-up, then **closed the same day (Follow-up #3 below)**: `changeLoc` hardcoded
+    `facilityId: null` on every call, so IRC/GIP level-of-care transitions failed unconditionally. M24's
+    resolver already read `facility_id`/`ipu_bed_assignment_id` regardless (they cost nothing to select and
+    read `null` until then), so it benefited automatically once M6's gap closed — no further M24 change was
+    needed. The state-rate-schedule seed (migration 0182, edited in place — not yet
+    deployed anywhere) now carries the real CMS FY2026 national per-diem base rates (RHC $230.83, CHC
+    $1,674.29/24hr, IRC $532.48, GIP $1,199.86; effective 2025-10-01), sourced from the CMS FY2026 Hospice
+    Wage Index and Payment Rate Update Final Rule and corroborated against Oregon's own OAR 410-142-0300
+    ("no lower than... Medicare") floor rule — still a documented simplification (unadjusted for the CBSA
+    wage index, the same geographic layer M23's own `wage_index_factor` table exists for but has never been
+    seeded with real data either). `medicaid_state_plan_code`'s "OHP-PLUS" plan code stays a placeholder —
+    unlike the rate table, it is blocked on a genuinely different, upstream problem (no per-patient OHP
+    benefit-package tracking exists yet to select among plan codes), not on public data availability. 26 new
+    unit tests (`resolvePlaceOfServiceQCode` across every facility-kind combination + fallback path) plus 2
+    new live-Postgres scenarios (ALF residence → real Q5002; confirmed own-IPU-bed → Q5006 regardless of a
+    contracted-hospital facility kind). Full gate green (build + `arch:fitness` 20 sub-gates + lint +
+    `bun run test` 7981 passing + live-Postgres verification: the line-assembly suite, the M24 RLS suite, and
+    the M40 RLS suite, run sequentially on a throwaway pg18 cluster).
 
   **Follow-up #3 (2026-08-05, same day): the M6 IRC/GIP confirm handshake, closed for real.** `changeLoc`
   now accepts a real caller-supplied `facilityId` (and the already-accepted-but-silently-dropped
   `effectiveStart`/`reason`), lands IRC/GIP in a new persisted `assigning` status
   (`level_of_care_period.status`, migration 0184 — this state previously had no column at all, only
-  inferred from `ended_at`), and a new `confirmLocBedAssignment` write path (`POST /api/v1/level-of-care/
-  :id/confirm-bed`) drives the state machine's existing-but-previously-unreachable
+  inferred from `ended_at`), and a new `confirmLocBedAssignment` write path (`POST /api/v1/level-of-care/ :id/confirm-bed`) drives the state machine's existing-but-previously-unreachable
   `ipuConfirmBedAssignment` event. The "bedId verified with M37" guard is REAL: M37 already published an
   `IpuBedAssignmentProvider` seam for exactly this handshake (its own doc comment said so) — extended with
   one new method (`activeBedAssignmentForLevelOfCarePeriod`, keyed by the M6 LOC-period id since
@@ -429,8 +427,7 @@
 - **Follow-up, same day**: fixed the revocation gap noted above, and found it was worse than
   transferOut's twin — `revocation_event.revocation_reason` is `NOT NULL`, but
   `RevocationCreateSchema` never collected it at all (a genuine spec gap; architecture's DB
-  requirement wins), so `createRevocation` hardcoded `revocationReason: "other"`, `signerKind:
-  "patient"`, and `effectiveAt = signedAt = now()` unconditionally, discarding every real field the
+  requirement wins), so `createRevocation` hardcoded `revocationReason: "other"`, `signerKind: "patient"`, and `effectiveAt = signedAt = now()` unconditionally, discarding every real field the
   client sent. Fixed: added `revocationReason` (the 4 real `revocation_reason` enum values) to
   `RevocationCreateSchema`; new `RevocationInput` type; `AdmissionRouteService.createRevocation`
   signature now takes it. `signingRole` maps to the DB's `signer_kind` enum (`"legal_representative"`
@@ -695,6 +692,48 @@
 
 ## WX-PR-014 - Complete M30 and M33 launch jobs
 
+- Status: Partial (2026-08-06) — the M30 §4.8 CRON → WORK-QUEUE background-job path (nightly
+  measure-recompute + daily risk-register-refresh) is bound for real and live-tested end-to-end
+  against real Postgres + real BullMQ; M33 is untouched this pass (see justification below).
+  Research (before writing code) found the two cron enqueue ports (`nightlyRecompute.enqueue
+  .enqueueForOrg`, `riskRegisterRefreshCron.enqueue.enqueueRefresh`) were hardcoded fail-closed
+  thunks with NO fan-out logic at all — meaning the 03:15 nightly recompute and 04:00 daily
+  risk-register refresh were silent no-ops in production, forever, even though their downstream
+  work-queue processors were otherwise live-bound. Binding them surfaced FOUR more real,
+  previously-undetected blocking bugs (no M30 live test existed before this task) that also had to
+  be fixed for "enabled jobs complete" to be true at all, not just for the cron path specifically:
+  (1) `processing_log` had no TABLE at all (migration 0185 adds it, M1-owned) — every one of the
+  four §4.8 work-queue processors threw on their very first line, on every job, always; (2)
+  `measure_recompute`/`risk_register_refresh` call their `outbox.emit*` port UNCONDITIONALLY before
+  `processingLog.markProcessed` — with it unbound, every otherwise-successful run threw on its last
+  line and rolled the WHOLE per-job transaction back, discarding the already-computed value; bound
+  over the same tx-scoped `m30` outbox publisher the command routes already use; (3)
+  `risk_register_refresh`'s worker never actually ran inside `withOrgContext`, despite its own
+  repository's doc comment saying it must — FORCE RLS silently returned zero rows from every source
+  table on every run; (4) `refreshConcurrently` ran `REFRESH MATERIALIZED VIEW CONCURRENTLY
+  risk_register_view`, but migration 0067 DELIBERATELY made that view a plain (non-materialized)
+  view — its own comment explains why (a precomputed matview cannot re-filter per reading session
+  and would leak cross-org rows) — so Postgres has rejected this statement outright since M30
+  shipped; fixed to a documented no-op (a plain view has nothing to refresh). Also fixed the same
+  class of BullMQ "jobId cannot contain ':'" bug WX-PR-013 found in M27's producer, present in
+  M30's `buildM30RecomputeEnqueue` too (also never live-tested before now), and fixed a genuine
+  R-96 route payload-shape mismatch (`{orgId}` sent, `{organizationId, force}` expected) that would
+  have made every manually-triggered risk-register refresh fail identically. Proven via a new live
+  suite (3/3) that constructs the REAL `registerM30Workers` (not a hand-rolled copy) against a real
+  throwaway Redis — `Job.waitUntilFinished` awaits actual BullMQ consumption, including a DLQ-replay
+  idempotency check (`processing_log`, not BullMQ's own dedup, must short-circuit a re-delivered
+  job). Full gate green (build/arch:fitness/lint/full test suite). **M33 deliberately NOT touched**:
+  a dedicated research pass found M33's gap is an order of magnitude larger than M30's — nearly
+  every `m33-jobs.ts` port is unbound (nearly all `outbox.emit*` ports, the M39 consent
+  re-validation, the M1 envelope-DEK for drilldown-audit, the M22 render handshake, the Valkey
+  lag-probe state), not a single isolated enqueue-producer gap — closing it well is a separate,
+  comparably-sized task, not a corner of this one. Also explicitly out of scope, unchanged from
+  WX-PR-013's precedent: the M1 DEK/KMS provider (still hard-throws, blocks CAHPS PHI + M33
+  drilldown-audit encrypt), live CAHPS vendor OAuth (Deyta/HealthCareFirst/PressGaney/SHP stay
+  deliberate `vendor_adapter_not_implemented` placeholders — the `manual` adapter is real), and
+  `measure_recompute`'s `emitThresholdBreached` (a genuine, separate payload/schema mismatch vs the
+  `m30.measure.threshold_breached` catalog entry — missing `indicatorId`/`threshold` — found but not
+  papered over with invented values).
 - Priority: P1
 - Severity addressed: High
 - Phase: 4
@@ -817,8 +856,7 @@
     dedicated tests; added 9 covering tiers, IP bucketing, clock-driven window reset, the disable
     flag, fail-open, the CORS allow-list, and response headers.
   - **Audit-exception gate (done)**: `bun audit` had no CI check at all — added
-    `check-audit-exceptions.ts` (ratcheted, wired into `arch:fitness`) requiring every advisory `bun
-    audit` reports to be in a reviewed, written allowlist, and flagging an allowlist entry as STALE
+    `check-audit-exceptions.ts` (ratcheted, wired into `arch:fitness`) requiring every advisory `bun audit` reports to be in a reviewed, written allowlist, and flagging an allowlist entry as STALE
     once the underlying advisory clears (so an accepted exception can't quietly outlive the
     vulnerability). This IS the "clean audit/approved exception" acceptance criterion.
   - **Router advisory (documented, not upgraded)**: SEC-003 is GHSA-qwww-vcr4-c8h2 (react-router RSC

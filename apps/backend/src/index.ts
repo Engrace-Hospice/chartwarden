@@ -3131,6 +3131,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // without M30 touching M6/M8 schema directly.
     const m30DeathDischargeReader = getSeam("DeathDischargeReader");
     const m30SignedEncounters = getSeam("SignedEncountersReader");
+    // WX-PR-014 — a second `buildM30RecomputeEnqueue` instance for the CRON fan-out (the route-scoped
+    // `m30Recompute` built for `mountM30Routes` above is a different block's `const`, not reachable here).
+    // Same producer, same queue names — BullMQ allows multiple `Queue` client handles per named queue, so
+    // this is a second independent connection, not a duplicate queue; its `.queues` close on shutdown below
+    // alongside the worker set.
+    const m30CronRecompute = buildM30RecomputeEnqueue(queueConnection);
     const m30WorkerDeps = buildM30WorkerDeps({
       connection: queueConnection,
       db: dbHandle.db,
@@ -3138,6 +3144,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       activeOrgs: m30ActiveOrgs,
       deathDischargeReader: m30DeathDischargeReader,
       signedEncounters: m30SignedEncounters,
+      // WX-PR-014 — the nightly-recompute + risk-register-refresh cron fan-outs: the per-org provider-entity
+      // lister (already used for M30's published seams) + the real BullMQ producer + the SAME tx-scoped
+      // outbox publisher the M30 routes already use (`m30.measure.value_emitted` / `m30.risk_register
+      // .refreshed` are called UNCONDITIONALLY by their workers — without this every recompute/refresh job
+      // throws on its last line and rolls back, see M30WorkerDeps' doc comment).
+      providerEntities: buildOrgProviderEntityLister(dbHandle.db),
+      recomputeEnqueue: m30CronRecompute.enqueue,
+      outboxPublisher: m30OutboxPublisher,
     });
     const m30Workers = [
       ...registerM30Workers(m30WorkerDeps),
@@ -3145,7 +3159,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     ];
     attachDlqAlertsToAll(m30Workers, "m30");
     app.addHook("onClose", async () => {
-      await Promise.all(m30Workers.map((w) => w.close()));
+      await Promise.all([
+        ...m30Workers.map((w) => w.close()),
+        ...m30CronRecompute.queues.map((q) => q.close()),
+      ]);
     });
     // Register the four §4.8 repeatable cron schedules + their close hook BEFORE app.listen() (the M34
     // FST_ERR_INSTANCE_ALREADY_LISTENING gotcha — await here so the hook is added while pre-listen).

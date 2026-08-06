@@ -174,6 +174,8 @@ export const MODULES: ModuleDef[] = [
       "feature_flag_evaluation",
       "organization_settings_registry",
       "outbox_event_catalog",
+      // WX-PR-014: the §4.8 BullMQ worker consumer-idempotency ledger (ProcessingLogPort).
+      "processing_log",
     ],
   },
   {

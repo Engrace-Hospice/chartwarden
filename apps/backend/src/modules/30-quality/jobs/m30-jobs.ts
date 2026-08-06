@@ -56,6 +56,10 @@ import {
   M30_JOB_SCHEDULES,
   M30_QUEUES,
   M30_QUEUE_PARAMS,
+  MEASURE_FY_BOUNDARY_v2025,
+  MEASURE_FY_BOUNDARY_v2026,
+  MEASURE_FY_BOUNDARY_v2028,
+  type MeasureFyBoundary,
   type MeasureRecomputeJob,
   type MeasureRecomputePorts,
   MeasureRecomputeQueueRepository,
@@ -67,6 +71,7 @@ import {
   type QualityHopeConsumer,
   QualityMeasureValueRepository,
   type RiskRegisterRefreshCronPorts,
+  type RiskRegisterRefreshJob,
   type RiskRegisterRefreshPorts,
   RiskRegisterRepository,
   type SraRemindersCronPorts,
@@ -76,9 +81,12 @@ import {
   buildMeasureRegistry,
   cahpsExportProcessor,
   cahpsMonthlySampleCronProcessor,
+  isoDate,
   measureRecomputeProcessor,
   nightlyRecomputeCronProcessor,
   outbreakDetectionProcessor,
+  resolvePeriodRule,
+  resolvePeriodWindow,
   riskRegisterRefreshCronProcessor,
   riskRegisterRefreshProcessor,
   sraRemindersCronProcessor,
@@ -91,8 +99,8 @@ import type {
   SignedEncountersReader,
 } from "@wardenx/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
+import { buildProcessingLogPort } from "../../../bootstrap/processing-log";
 
 // ── the dep bag the composition root injects (the bindable infra + the still-missing seams) ────────────
 
@@ -125,10 +133,71 @@ export interface M30WorkerDeps {
    *  for an org with no live binding 503s (degraded, not 404). Fail-closed thunk when absent. */
   readonly cahpsAdapters?: CahpsAdapterResolvePort;
   /** The §4.8 `processing_log` consumer-idempotency guard (bindable over the M1-owned table; fail-closed
-   *  until that accessor lands — bindable, not platform-deferred). */
+   *  until that accessor lands — bindable, not platform-deferred). Used ONLY by `cahpsExport` (the one
+   *  work-queue processor this file does not per-job-rebuild); the other three take `processingLogFactory`. */
   readonly processingLog?: ProcessingLogPort;
+  /**
+   * Builds a job-scoped `ProcessingLogPort` bound to the caller's own `db` (the per-job `withOrgContext` tx,
+   * so the idempotency-ledger write commits/rolls back atomically WITH the job's actual effects — the
+   * WX-PR-013 lesson: a mark-processed write that survives outside the job's own transaction is worse than
+   * not having one), the job's `organizationId`, and the fixed queue name (telemetry). WX-PR-014 —
+   * `buildProcessingLogPort` (bootstrap/processing-log.ts) over the M1-owned `processing_log` table
+   * (migration 0185). Absent ⇒ `processingLog` (or its fail-closed default) stands unchanged.
+   */
+  readonly processingLogFactory?: (
+    db: DbClient,
+    organizationId: string,
+    queueName: string,
+  ) => ProcessingLogPort;
   /** The platform active-org enumerator the crons fan out across (M2 org reader under `withPlatformContext`). */
   readonly activeOrgs?: ActiveOrgListPort;
+  /**
+   * Lists every provider-entity id for an org — the per-PE fan-out grain the nightly-recompute cron walks
+   * (§7.1). Bound over `buildOrgProviderEntityLister` (bootstrap/provider-entity-resolver.ts, already used
+   * for M30's published seams) — opens its OWN `withOrgContext` per call. Fail-closed thunk when absent
+   * (WX-PR-014).
+   */
+  readonly providerEntities?: (organizationId: string) => Promise<readonly string[]>;
+  /**
+   * The §4.8 BullMQ recompute/refresh producer (`buildM30RecomputeEnqueue`, wiring.ts — the SAME producer
+   * the R-04/R-96 command routes enqueue through). The nightly-recompute + risk-register-refresh crons
+   * enqueue their per-org fan-out onto `m30.measure_recompute` / `m30.risk_register_refresh` through this
+   * port (WX-PR-014). Structurally typed (not imported from routes/write-service) to keep jobs/ free of a
+   * routes/ dependency; `RecomputeEnqueuePort` there satisfies this shape.
+   */
+  readonly recomputeEnqueue?: {
+    enqueue(
+      queue: "m30.measure_recompute" | "m30.risk_register_refresh",
+      jobKey: string,
+      payload: Record<string, unknown>,
+    ): Promise<{ readonly jobId: string }>;
+  };
+  /**
+   * The transactional-outbox publisher (`bindCallerModule(txOutboxPublisher, "m30")`, the SAME instance the
+   * R-04/etc command routes already publish through) — WX-PR-014 binds ONLY the two `m30.*` emits this
+   * task's slice needs to actually complete a job: `measure_recompute`'s `emitValueEmitted` and
+   * `risk_register_refresh`'s `emitRefreshed`. Both are called UNCONDITIONALLY on every successful run (not
+   * best-effort), so without this a real recompute/refresh throws on its very last step and its whole
+   * per-job transaction rolls back — this port is not optional infrastructure for THIS slice, it is required
+   * for "enabled jobs complete" to be true at all. `emitThresholdBreached` stays unbound: its payload
+   * (`{orgId, measureId, periodEnd, rate, severityBand}`) does not satisfy the catalog's declared
+   * `m30.measure.threshold_breached` schema (`indicatorId` + `threshold` are required and simply are not
+   * available at this port — a genuine, separate, pre-existing mismatch this task does not invent values to
+   * paper over). `cahps_export` / `outbreak_detection` / `cahps_monthly_sample` / `sra_reminders` outbox
+   * ports are untouched — out of scope, see the module-level TODO block.
+   */
+  readonly outboxPublisher?: {
+    publish(
+      tx: DbClient,
+      input: {
+        readonly eventName: string;
+        readonly payload: Record<string, unknown>;
+        readonly organizationId: string;
+        readonly aggregateKind: string;
+        readonly aggregateId: string;
+      },
+    ): Promise<void>;
+  };
   /**
    * The platform measure registry keyed by measure code (each catalog descriptor bound to its concrete pure
    * calculator). Defaults to the FULL `buildMeasureRegistry()` (HCI ten indicators + composite, HVLDL, the
@@ -859,15 +928,32 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
       },
     },
     outbox: {
-      emitValueEmitted: () =>
-        unboundWorkerPort(
-          "measureRecompute.outbox.emitValueEmitted",
-          "bind to the live transactional-outbox dispatcher (m30.measure.value_emitted → M28 FHIR / M33 dashboard)",
-        ),
+      // WX-PR-014 — bound for real over `deps.outboxPublisher` (the SAME tx-scoped `m30` publisher the
+      // command routes already use). This is called UNCONDITIONALLY on every successful recompute, so
+      // without it every job throws on its last line and rolls back — see the M30WorkerDeps doc comment.
+      emitValueEmitted: deps.outboxPublisher
+        ? (payload) =>
+            deps.outboxPublisher!.publish(db, {
+              eventName: "m30.measure.value_emitted",
+              payload,
+              organizationId: payload.orgId,
+              aggregateKind: "quality_measure_value",
+              aggregateId: payload.valueId,
+            })
+        : () =>
+            unboundWorkerPort(
+              "measureRecompute.outbox.emitValueEmitted",
+              "bind `deps.outboxPublisher` (bindCallerModule(txOutboxPublisher, 'm30')) — m30.measure.value_emitted → M28 FHIR / M33 dashboard",
+            ),
+      // NOT bound (WX-PR-014 leaves this exactly as it was): the payload this port hands the publisher
+      // (`{orgId, measureId, periodEnd, rate, severityBand}`) does not satisfy the catalog's declared
+      // `m30.measure.threshold_breached` schema (`indicatorId` + `threshold` are required and are simply
+      // not available here) — a genuine, separate, pre-existing mismatch; binding it would either crash the
+      // dispatcher on the first real breach or require inventing values, so it stays fail-closed instead.
       emitThresholdBreached: () =>
         unboundWorkerPort(
           "measureRecompute.outbox.emitThresholdBreached",
-          "bind to the live transactional-outbox dispatcher (m30.qapi.indicator_threshold_breached → M36)",
+          "payload/schema mismatch vs the m30.measure.threshold_breached catalog entry (missing indicatorId/threshold) — needs a package-level fix before this can bind, not just a wiring change",
         ),
     },
     hashSnapshot: (snapshot) => hashSnapshot(snapshot),
@@ -973,21 +1059,48 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
   const riskRegisterRefresh: RiskRegisterRefreshPorts = {
     processingLog,
     refresh: {
-      // D3/D13 — the one write path: REFRESH on the PRIMARY (CONCURRENTLY keeps R-95 reads live). The MV is
-      // migration-owned + platform-global; the per-org serialization is the queue's concern, not the SQL's.
+      // WX-PR-014 — a genuine, previously-undetected mismatch: `risk_register_view` (migration 0067) is
+      // DELIBERATELY a plain (non-materialized) view, not the "the §3.3 MV" the spec / this port's own name
+      // describe. The migration's own comment explains why: "a precomputed matview cannot enforce per-session
+      // org scope, so RLS correctness wins (architecture authority)" — a materialized view is a single
+      // physical snapshot computed under WHATEVER `app.org_id` was active at refresh time, so it cannot
+      // re-filter per reading session the way a plain view's live query does; making it materialized would
+      // be a cross-tenant data leak, not a performance win. This port's original body
+      // (`REFRESH MATERIALIZED VIEW CONCURRENTLY risk_register_view`) has therefore NEVER been able to
+      // succeed — Postgres rejects it outright ("is not a materialized view") — meaning this cron/route path
+      // has failed on its very first write since M30 shipped (no live test had ever exercised it). Since a
+      // plain view has nothing to refresh (every read is already live, D3/D13's "keeps R-95 reads live" goal
+      // is met unconditionally by the view NOT being materialized), the correct fix is to make this a
+      // documented no-op rather than invent a materialized view that would violate the schema's own RLS
+      // rationale. `_orgId`/`primaryDb` stay as parameters (kept for interface/signature stability and for a
+      // future genuinely-materialized, RLS-safe implementation — e.g. one MV per org — to slot in without an
+      // interface change) but neither is used by a no-op.
       async refreshConcurrently(_orgId) {
-        await primaryDb.execute(sql`REFRESH MATERIALIZED VIEW CONCURRENTLY risk_register_view`);
+        void primaryDb;
       },
     },
     sources: {
       loadOpenRiskSources: (orgId) => riskRepo.loadOpenRiskSources(orgId),
     },
     outbox: {
-      emitRefreshed: () =>
-        unboundWorkerPort(
-          "riskRegisterRefresh.outbox.emitRefreshed",
-          "bind to the live transactional-outbox dispatcher (m30.risk_register.refreshed → M33 unified-risk view)",
-        ),
+      // WX-PR-014 — bound for real (same rationale as measureRecompute.outbox.emitValueEmitted above: this
+      // is called UNCONDITIONALLY before markProcessed, so an unbound throw here rolls the whole per-job
+      // tx back, including the processing_log write). No natural per-row aggregate exists for a
+      // platform-wide MV refresh, so `aggregateId` is the triggering org (matches the event's own `orgId`).
+      emitRefreshed: deps.outboxPublisher
+        ? (payload) =>
+            deps.outboxPublisher!.publish(db, {
+              eventName: "m30.risk_register.refreshed",
+              payload,
+              organizationId: payload.orgId,
+              aggregateKind: "risk_register_view",
+              aggregateId: payload.orgId,
+            })
+        : () =>
+            unboundWorkerPort(
+              "riskRegisterRefresh.outbox.emitRefreshed",
+              "bind `deps.outboxPublisher` (bindCallerModule(txOutboxPublisher, 'm30')) — m30.risk_register.refreshed → M33 unified-risk view",
+            ),
     },
     now,
   };
@@ -996,13 +1109,27 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
 }
 
 /**
+ * Resolve the {@link MeasureFyBoundary} in effect for a reference date (WX-PR-014). Mirrors the fiscal-year
+ * proxy `read-service-drizzle.ts` already uses for the catalog-listing route (`now().getUTCFullYear()` — no
+ * federal-FY vs calendar-year distinction exists elsewhere in the codebase either): the boundary constants
+ * are versioned by the calendar year they activate in, so the LATEST constant whose year has arrived wins.
+ */
+function resolveFyBoundary(asOf: Date): MeasureFyBoundary {
+  const year = asOf.getUTCFullYear();
+  if (year >= MEASURE_FY_BOUNDARY_v2028.fiscalYear) return MEASURE_FY_BOUNDARY_v2028;
+  if (year >= MEASURE_FY_BOUNDARY_v2026.fiscalYear) return MEASURE_FY_BOUNDARY_v2026;
+  return MEASURE_FY_BOUNDARY_v2025;
+}
+
+/**
  * Build every §4.8 CRON processor's port bundle from {@link M30WorkerDeps}. All four crons run a PLATFORM-
  * scoped enumeration of active orgs, then fan ORG-scoped jobs out onto the §4.8 work queues (or, for the SRA
- * reminders, dispatch the §4.9 M36 alert). BOUND: the read-only CAHPS active-vendor-binding probe. UNBOUND
- * (lazy): the platform active-org enumerator (no boot accessor here — supplied by the integrator over the M2
- * org reader under `withPlatformContext`), the per-org recompute/refresh ENQUEUE producers (the BullMQ
- * `Queue.add` fan-out — bound by the integrator over `buildM30RecomputeEnqueue`, never constructed here so
- * this stays `Queue`-free), the death-feed decedent reader + the PHI sample WRITE (RULE 3b — DEK), the
+ * reminders, dispatch the §4.9 M36 alert). BOUND (WX-PR-014): the read-only CAHPS active-vendor-binding
+ * probe, the per-org recompute/refresh ENQUEUE producers (over `deps.recomputeEnqueue` /
+ * `deps.providerEntities` — the integrator binds `buildM30RecomputeEnqueue` / `buildOrgProviderEntityLister`
+ * at the composition root; fail-closed thunks when absent). UNBOUND (lazy): the platform active-org
+ * enumerator (no boot accessor here — supplied by the integrator over the M2 org reader under
+ * `withPlatformContext`), the death-feed decedent reader + the PHI sample WRITE (RULE 3b — DEK), the
  * platform open-SRA-cycle scan, and the §4.9 SRA alert dispatch (RULE 3e — the M36 router).
  */
 export function buildM30CronPorts(deps: M30WorkerDeps): M30CronPortBundles {
@@ -1018,14 +1145,61 @@ export function buildM30CronPorts(deps: M30WorkerDeps): M30CronPortBundles {
   };
 
   // ── m30.nightly_recompute (03:15 daily) — §7.1 / WF-01 ─────────────────────────────────────────────────
+  // The fan-out grain is (active provider entity) × (measure active at asOf's FY) — each gets its OWN
+  // `m30.measure_recompute` job, resolved to its concrete `MeasurePeriod` via the SAME pure period math the
+  // measure catalog itself carries (`resolvePeriodRule`/`resolvePeriodWindow` — never re-derived ad hoc).
+  // The BullMQ jobId embeds the calendar-day bucket (not just the period) so EVERY nightly tick re-enqueues
+  // a fresh job even when the resolved period is unchanged within a quarter (the risk-register-refresh cron's
+  // own `(orgId, dateBucket)` precedent) — the whole point of a NIGHTLY recompute is to re-run daily against
+  // fresh source data, not to dedupe itself into silence for the rest of the quarter.
   const nightlyRecompute: NightlyRecomputeCronPorts = {
     orgs,
     enqueue: {
-      enqueueForOrg: () =>
-        unboundWorkerPort(
-          "nightlyRecompute.enqueue.enqueueForOrg",
-          "bind to the per-org recompute fan-out (M40 provider list × active measure catalog × resolved periods → `m30.measure_recompute` `Queue.add` via buildM30RecomputeEnqueue)",
-        ),
+      async enqueueForOrg(orgId, asOf) {
+        if (!deps.recomputeEnqueue) {
+          return unboundWorkerPort(
+            "nightlyRecompute.enqueue.enqueueForOrg",
+            "bind `recomputeEnqueue` (buildM30RecomputeEnqueue, wiring.ts) — the cron cannot fan out without a real BullMQ producer",
+          );
+        }
+        if (!deps.providerEntities) {
+          return unboundWorkerPort(
+            "nightlyRecompute.enqueue.enqueueForOrg",
+            "bind `providerEntities` (buildOrgProviderEntityLister) — the per-PE fan-out grain",
+          );
+        }
+        const providerEntityIds = await deps.providerEntities(orgId);
+        const registrations = deps.registrations ?? buildMeasureRegistry();
+        const boundary = resolveFyBoundary(asOf);
+        const dateBucket = isoDate(asOf);
+        let enqueued = 0;
+        for (const providerEntityId of providerEntityIds) {
+          for (const registration of registrations.values()) {
+            if (registration.activatesFy > boundary.fiscalYear) continue; // not yet ACTIVE at this FY
+            const rule = resolvePeriodRule(boundary, registration.code);
+            const period = resolvePeriodWindow(rule, asOf);
+            const jobKey = `${orgId}:${registration.code}:${providerEntityId}:${period.start}:${dateBucket}`;
+            const job: MeasureRecomputeJob = {
+              jobId: jobKey,
+              organizationId: orgId,
+              providerEntityId,
+              measureCode: registration.code,
+              periodStart: period.start,
+              periodEnd: period.end,
+              reason: "nightly_cron",
+              computeVersion: registration.calculatorVersion,
+              enqueuedBy: null,
+            };
+            await deps.recomputeEnqueue.enqueue(
+              M30_QUEUES.measureRecompute,
+              jobKey,
+              job as unknown as Record<string, unknown>,
+            );
+            enqueued += 1;
+          }
+        }
+        return { enqueued };
+      },
     },
     now,
   };
@@ -1069,11 +1243,22 @@ export function buildM30CronPorts(deps: M30WorkerDeps): M30CronPortBundles {
   const riskRegisterRefresh: RiskRegisterRefreshCronPorts = {
     orgs,
     enqueue: {
-      enqueueRefresh: () =>
-        unboundWorkerPort(
-          "riskRegisterRefreshCron.enqueue.enqueueRefresh",
-          "bind to the force-refresh `Queue.add` onto `m30.risk_register_refresh` (jobId `(orgId, dateBucket)`) via buildM30RecomputeEnqueue",
-        ),
+      async enqueueRefresh(orgId, dateBucket) {
+        if (!deps.recomputeEnqueue) {
+          return unboundWorkerPort(
+            "riskRegisterRefreshCron.enqueue.enqueueRefresh",
+            "bind `recomputeEnqueue` (buildM30RecomputeEnqueue, wiring.ts) — the cron cannot fan out without a real BullMQ producer",
+          );
+        }
+        const jobKey = `${orgId}:${dateBucket}`;
+        const job: RiskRegisterRefreshJob = { jobId: jobKey, organizationId: orgId, force: true };
+        await deps.recomputeEnqueue.enqueue(
+          M30_QUEUES.riskRegisterRefresh,
+          jobKey,
+          job as unknown as Record<string, unknown>,
+        );
+        return { enqueued: true };
+      },
     },
     now,
   };
@@ -1170,7 +1355,16 @@ export function registerM30Workers(deps: M30WorkerDeps): Worker[] {
         { organizationId: data.organizationId, userId: M30_WORKER_SYSTEM_USER_ID },
         (tx) =>
           measureRecomputeProcessor(
-            buildM30WorkerPorts({ ...deps, db: tx as unknown as DbClient }).measureRecompute,
+            buildM30WorkerPorts({
+              ...deps,
+              db: tx as unknown as DbClient,
+              processingLog:
+                deps.processingLogFactory?.(
+                  tx as unknown as DbClient,
+                  data.organizationId,
+                  M30_QUEUES.measureRecompute,
+                ) ?? deps.processingLog,
+            }).measureRecompute,
           )(data),
       );
     },
@@ -1188,25 +1382,65 @@ export function registerM30Workers(deps: M30WorkerDeps): Worker[] {
         { organizationId: data.organizationId, userId: M30_WORKER_SYSTEM_USER_ID },
         (tx) =>
           outbreakDetectionProcessor(
-            buildM30WorkerPorts({ ...deps, db: tx as unknown as DbClient }).outbreakDetection,
+            buildM30WorkerPorts({
+              ...deps,
+              db: tx as unknown as DbClient,
+              processingLog:
+                deps.processingLogFactory?.(
+                  tx as unknown as DbClient,
+                  data.organizationId,
+                  M30_QUEUES.outbreakDetection,
+                ) ?? deps.processingLog,
+            }).outbreakDetection,
           )(data),
       );
     },
     { connection, concurrency: M30_QUEUE_PARAMS.outbreakDetection.concurrency },
   );
 
+  // WX-PR-014 — risk_register_refresh now runs inside the SAME per-job `withOrgContext` envelope as the two
+  // workers above. `RiskRegisterRepository.loadOpenRiskSources`'s own doc comment says "the register read
+  // worker wraps these in withOrgContext" — it never actually did: this worker ran on the base (un-scoped)
+  // client via `mk()`, so `app.org_id` was never set and FORCE RLS silently returned ZERO rows from every
+  // source table on every single run (a confirmed, previously-undetected bug — no M30 live test existed
+  // before this task). `primaryDb` is captured from the ORIGINAL `deps` (before the per-job `db` override) so
+  // `REFRESH MATERIALIZED VIEW CONCURRENTLY` still runs on its own untransacted connection — Postgres forbids
+  // CONCURRENTLY inside a transaction block, so nesting it in `tx` would break the refresh outright.
+  const riskRegisterRefreshPrimaryDb = deps.primaryDb ?? deps.db;
+  const riskRegisterRefreshWorker = new Worker(
+    M30_QUEUES.riskRegisterRefresh,
+    async (job) => {
+      const data = job.data as RiskRegisterRefreshJob;
+      return withOrgContext(
+        deps.db,
+        { organizationId: data.organizationId, userId: M30_WORKER_SYSTEM_USER_ID },
+        (tx) =>
+          riskRegisterRefreshProcessor(
+            buildM30WorkerPorts({
+              ...deps,
+              db: tx as unknown as DbClient,
+              primaryDb: riskRegisterRefreshPrimaryDb,
+              processingLog:
+                deps.processingLogFactory?.(
+                  tx as unknown as DbClient,
+                  data.organizationId,
+                  M30_QUEUES.riskRegisterRefresh,
+                ) ?? deps.processingLog,
+            }).riskRegisterRefresh,
+          )(data),
+      );
+    },
+    { connection, concurrency: M30_QUEUE_PARAMS.riskRegisterRefresh.concurrency },
+  );
+
   return [
     measureRecomputeWorker,
     outbreakDetectionWorker,
+    riskRegisterRefreshWorker,
     mk(
       M30_QUEUES.cahpsExport,
       cahpsExportProcessor(ports.cahpsExport),
       M30_QUEUE_PARAMS.cahpsExport.concurrency,
-    ),
-    mk(
-      M30_QUEUES.riskRegisterRefresh,
-      riskRegisterRefreshProcessor(ports.riskRegisterRefresh),
-      M30_QUEUE_PARAMS.riskRegisterRefresh.concurrency,
     ),
   ];
 }
@@ -1272,7 +1506,15 @@ export function buildM30WorkerDeps(deps: {
   primaryDb?: DbClient;
   cahpsAdapters?: CahpsAdapterResolvePort;
   processingLog?: ProcessingLogPort;
+  processingLogFactory?: (
+    db: DbClient,
+    organizationId: string,
+    queueName: string,
+  ) => ProcessingLogPort;
   activeOrgs?: ActiveOrgListPort;
+  providerEntities?: (organizationId: string) => Promise<readonly string[]>;
+  recomputeEnqueue?: M30WorkerDeps["recomputeEnqueue"];
+  outboxPublisher?: M30WorkerDeps["outboxPublisher"];
   registrations?: ReadonlyMap<string, MeasureRegistration>;
   /** The M6 HVLDL death-census reader + the M8 signed-encounter reader (resolved via `getSeam`). */
   deathDischargeReader?: DeathDischargeReader;
@@ -1285,7 +1527,13 @@ export function buildM30WorkerDeps(deps: {
     hope: deps.hopeProvider,
     cahpsAdapters: deps.cahpsAdapters,
     processingLog: deps.processingLog,
+    // Defaults to `buildProcessingLogPort` (bootstrap/processing-log.ts) — its signature already matches
+    // this factory's exactly, so the integrator need not wire it explicitly at the composition root.
+    processingLogFactory: deps.processingLogFactory ?? buildProcessingLogPort,
     activeOrgs: deps.activeOrgs,
+    providerEntities: deps.providerEntities,
+    recomputeEnqueue: deps.recomputeEnqueue,
+    outboxPublisher: deps.outboxPublisher,
     deathDischargeReader: deps.deathDischargeReader,
     signedEncounters: deps.signedEncounters,
     // Default to the FULL catalog→calculator registry (the integrator may still override). With this the
@@ -1295,9 +1543,41 @@ export function buildM30WorkerDeps(deps: {
   };
 }
 
-// TODO(integrator — the still-missing infra seams the typed throws above name):
-//   • the live transactional-outbox dispatcher accessor (every `emit*` / cron `outbox` port) — bind it and
-//     the measure-value / cahps-export / outbreak / risk-refresh / sample-ready emits light up.
+// WX-PR-014 closed (bound for real, live-tested against real Postgres + real BullMQ):
+//   • the per-org recompute/refresh ENQUEUE producers (`nightlyRecompute.enqueue.enqueueForOrg` — a real
+//     provider-entity × active-measure × resolved-period fan-out; `riskRegisterRefreshCron.enqueue
+//     .enqueueRefresh`) — both over `deps.recomputeEnqueue` (`buildM30RecomputeEnqueue`, wiring.ts; also
+//     fixed a real BullMQ "jobId cannot contain ':'" bug in that producer, the same class of bug WX-PR-013
+//     found in M27's — this one was ALSO never live-tested before now).
+//   • `deps.providerEntities` (`buildOrgProviderEntityLister`, bootstrap/provider-entity-resolver.ts — already
+//     used for M30's published seams, now also the cron fan-out grain).
+//   • the M1-owned `processing_log` table (migration 0185) + `deps.processingLogFactory`
+//     (`buildProcessingLogPort`, bootstrap/processing-log.ts) — previously this port had NO accessor at all
+//     (not merely unbound wiring — the table did not exist), so every one of the four §4.8 work-queue
+//     processors threw on its very first line, on every job, always. Bound for `measure_recompute` /
+//     `outbreak_detection` / `risk_register_refresh` (each rebuilds its port fresh inside the per-job
+//     `withOrgContext` tx, so the idempotency-ledger write commits/rolls back atomically with the job's real
+//     effects, the WX-PR-013 lesson); `cahps_export` still takes the plain `deps.processingLog` override
+//     (unbound by default) since it is not part of this pass's proven slice.
+//   • `risk_register_refresh` now wraps its per-job body in `withOrgContext` (mirroring `measure_recompute`/
+//     `outbreak_detection`) — `RiskRegisterRepository.loadOpenRiskSources`'s own doc comment always said this
+//     was required; it never actually was, so FORCE RLS silently returned zero rows from every source table
+//     on every run. `primaryDb` is captured OUTSIDE the tx so `REFRESH MATERIALIZED VIEW CONCURRENTLY` still
+//     runs untransacted (Postgres forbids CONCURRENTLY inside a transaction block).
+//   • `deps.outboxPublisher` (the SAME tx-scoped `m30` publisher the command routes use) — bound ONLY for
+//     `measure_recompute.outbox.emitValueEmitted` and `risk_register_refresh.outbox.emitRefreshed`, the two
+//     emits their processors call UNCONDITIONALLY before `processingLog.markProcessed`: without a binding,
+//     EVERY successful run threw on its last line and rolled its whole per-job tx back (nothing persisted,
+//     not even the value/refresh that already computed) — this was the actual reason no M30 work-queue job
+//     could ever complete before this task, on top of the missing `processing_log` table. `emitThresholdBreached`
+//     stays deliberately unbound — its payload doesn't satisfy the catalog's `m30.measure.threshold_breached`
+//     schema (missing `indicatorId`/`threshold`), a genuine separate mismatch this task found but does not
+//     paper over with invented values.
+//
+// Still TODO(integrator — the still-missing infra seams the typed throws above name), all explicitly OUT OF
+// SCOPE for WX-PR-014 (see docs/audits/…/14-task-backlog.md for the full justification per item):
+//   • the REMAINING `emit*` / cron `outbox` ports (cahps-export / outbreak-detection / cahps-monthly-sample /
+//     sra-reminders, plus measure-recompute's `emitThresholdBreached`) — bind them and those emits light up.
 //   • the M1 envelope-DEK helper (the CAHPS `decrypt` / `bindingConfig` ports + the cron `insertSampled`) —
 //     until bound, CAHPS export denies (terminal export_failed) and the monthly sample write denies; register
 //     it in bootstrap/seams so the DEK resolves (never plaintext caregiver PHI at rest, §3.6/§8).
@@ -1306,15 +1586,12 @@ export function buildM30WorkerDeps(deps: {
 //   • the per-family measure-input provider (`measureRecompute.data.resolveInput`) — the HOPE-derived four +
 //     HVLDL are now bound; shape the REMAINING measures' calculator input from the M5–M18 read seams, and
 //     pass the measure registry (`deps.registrations`, each catalog descriptor bound to its pure calculator).
-//   • the HVLDL seams (`deps.deathDischargeReader` = M6 DeathDischargeReader; `deps.signedEncounters` = M8
-//     SignedEncountersReader) — bind both via `getSeam` at boot so the HVLDL recompute resolves its census
-//     (each self-scopes on its own connection); until then an `hvldl` recompute denies fail-closed on run.
-//   • the M2 platform active-org enumerator (`cron.orgs`), the death-feed decedent reader (cahps candidates),
-//     and the platform open-SRA-cycle scan (`sraReminders.cycles`) under `withPlatformContext`.
-//   • the per-org recompute/refresh ENQUEUE producers (`nightlyRecompute.enqueue` / `riskRegisterRefreshCron
-//     .enqueue`) — bind over `buildM30RecomputeEnqueue` (wiring.ts) so the crons fan `Queue.add` jobs out.
-//   • the M1-owned `processing_log` table accessor (`deps.processingLog`) — bindable, not platform-deferred.
-//   • the dedicated primary pool (`deps.primaryDb`) for the risk-register MV REFRESH + registering the M30
-//     cron jobIds in the @wardenx/tenancy PLATFORM_CONTEXT_ALLOWLIST so the platform-scoped scans are admitted.
-//   • wrap each WORK processor body (or thread a per-job scoped DB handle) in `withOrgContext(orgId)` per
-//     M30_QUEUE_SCOPE (F09) before mounting — `registerM30Workers` builds the shells.
+//   • the M2 platform active-org enumerator (`cron.orgs` — bound at the composition root, unchanged by this
+//     task), the death-feed decedent reader (cahps candidates), and the platform open-SRA-cycle scan
+//     (`sraReminders.cycles`) under `withPlatformContext`.
+//   • the dedicated primary pool (`deps.primaryDb`) for the risk-register MV REFRESH — a single-pool dev boot
+//     still works (see the risk_register_refresh worker's doc comment above); a genuinely separate primary
+//     pool is a later infra step, not part of this fix.
+//   • `cahps_export` remains entirely untouched by WX-PR-014 (still unbound `processingLog`, no per-job
+//     `withOrgContext` wrap) — its vendor-I/O + PHI-decrypt shape needs its own pass, not folded into the
+//     cron-enqueue slice this task proves.

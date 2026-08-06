@@ -1797,10 +1797,18 @@ export function buildDrizzleM30WriteService(
 
     // ── risk register (R-96) ──
     async refreshRiskRegister(actor): Promise<RiskRegisterRefreshAcceptedView> {
+      // The payload MUST match `RiskRegisterRefreshJob` (organizationId + force) — the worker reads these
+      // exact field names off `job.data`, not `orgId` (WX-PR-014: this mismatch meant every R-96-triggered
+      // refresh would have failed with `organizationId` undefined the moment the worker actually ran; no
+      // live test had ever exercised this route end-to-end before).
       const { jobId } = await recompute.enqueue(
         "m30.risk_register_refresh",
         `${actor.organizationId}:risk_register`,
-        { orgId: actor.organizationId },
+        {
+          jobId: `${actor.organizationId}:risk_register`,
+          organizationId: actor.organizationId,
+          force: true,
+        },
       );
       return { jobId, enqueuedAt: now().toISOString() };
     },

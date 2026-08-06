@@ -87,12 +87,18 @@ export function buildM30RecomputeEnqueue(connection: ConnectionOptions | undefin
   };
   const enqueue: RecomputeEnqueuePort = {
     async enqueue(queue, jobKey, payload) {
+      // BullMQ rejects a custom jobId containing ':' ("Custom Id cannot contain :"), but M30's own
+      // dedupe keys ARE colon-delimited (`${orgId}:${scopeKey}`, `${orgId}:risk_register`, …) — the naive
+      // `${queue}:${jobKey}` id collided with that reserved character (WX-PR-013 found the identical bug
+      // in M27's producer; M30's was never live-tested either, so it shipped unnoticed). Sanitize the
+      // FINAL id only — jobKey itself (and the dedupe semantics it encodes) is untouched.
+      const jobId = `${queue}:${jobKey}`.replace(/:/g, "__");
       const job = await queueFor(queue).add(queue, payload, {
-        jobId: `${queue}:${jobKey}`,
+        jobId,
         removeOnComplete: { count: 500 },
         removeOnFail: false,
       });
-      return { jobId: job.id ?? `${queue}:${jobKey}` };
+      return { jobId: job.id ?? jobId };
     },
   };
   return { enqueue, queues: [...cache.values()] };

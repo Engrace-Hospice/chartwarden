@@ -30,6 +30,22 @@ actions already conform to the `m30.` namespace (`m30.measure.*`, `m30.cahps.*`,
 
 ## Changelog
 
+- **Implementation note (WX-PR-014, 2026-08-06)** — bound the §7.1/§7.9 nightly-recompute and
+  daily risk-register-refresh CRON → WORK-QUEUE fan-out for real (previously hardcoded fail-closed
+  thunks with no fan-out logic at all — both crons were silent no-ops in production). Live-tested
+  against real Postgres + real BullMQ (`registerM30Workers`, not a hand-rolled copy), which surfaced
+  and fixed four further real, previously-undetected bugs: the M1 `processing_log` idempotency table
+  did not exist at all (migration 0185); `measure_recompute`/`risk_register_refresh` called their
+  outbox emit unconditionally, so an unbound outbox rolled back the whole per-job transaction on
+  every otherwise-successful run; `risk_register_refresh` never actually ran inside `withOrgContext`
+  despite its own repository requiring it, so FORCE RLS silently returned zero source rows on every
+  run; and `refreshConcurrently` issued `REFRESH MATERIALIZED VIEW CONCURRENTLY risk_register_view`
+  against a view migration 0067 deliberately made NON-materialized (RLS correctness over
+  precomputation — a materialized view cannot re-filter per session), so that statement had failed
+  outright since M30 shipped — fixed to a documented no-op. See
+  [`docs/audits/wardenx-production-readiness-2026-08-04/14-task-backlog.md`](../audits/wardenx-production-readiness-2026-08-04/14-task-backlog.md)
+  WX-PR-014 for full detail, including what stayed explicitly out of scope (M33, the M1 DEK/KMS
+  provider, live CAHPS vendor OAuth, `measure_recompute`'s `emitThresholdBreached`).
 - **v0.4 (Consolidated)** — Rolls the v0.2 base and v0.3 delta into a single self-contained specification. No scope change; no decision reversals.
 - **v0.3 (Locked)** — Integrates the v0.3 cascade impacts on the HQRP measure computation surfaces and the governance-workflow data model:
   - **External-source death handling for HVLDL, CAHPS, and mortality review.** M6 v0.3 D6 introduced the `source` discriminator on `m6.discharge.death` (values: `internal_clinician_recorded` v0.2-default, `hl7_external` v0.3-new). M30 consumes this event in three different surfaces; the handling per surface is:
