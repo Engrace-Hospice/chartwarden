@@ -448,6 +448,11 @@ export const fhirInboundProposalReaderDenyStub: FhirInboundProposalReader = {
  *  is required so a boot without M23's D1 unlock fails CLOSED rather than serving a Phase-2 resource. */
 export const claimReaderDenyStub: unknown = denyingSeamProxy("ClaimReader");
 
+/** M23 — the 835-to-claim match-candidate + claim->patient lookup M25's ingest pipeline CONSUMES
+ *  (WX-PR-012). Opaque rich-seam; M25's adapter catches this deny-stub throw and degrades to "no
+ *  candidates" (every line queues for manual match) rather than fabricating a match. */
+export const claimSubmissionReaderDenyStub: unknown = denyingSeamProxy("ClaimSubmissionReader");
+
 /** M29 — the §4.11 DiagnosticReport result-value read M28 CONSUMES. Opaque rich-seam; M29 is a Phase-1
  *  placeholder, so this stays fail-closed and M28's DiagnosticReport projection refuses at egress until
  *  M29 registers the real reader. */

@@ -13,7 +13,7 @@
 //
 // No PHI / no MBI is ever read or written here (D13 / §3.6 / §8.7).
 import * as schema from "@wardenx/db/schema";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { ClaimState } from "../contracts";
 import {
   type BillingDb,
@@ -76,6 +76,16 @@ function toClaimRecord(row: schema.Claim): ClaimRecord {
   return { ...row, state: claimStateCodec.fromDb(row.state) };
 }
 
+/** WX-PR-012 — M25's D3 auto-match candidate projection (no PHI: no MBI, no patient row). */
+export interface ClaimMatchCandidateRow {
+  readonly claimId: string;
+  readonly claimControlNumber: string;
+  readonly payerClaimControlNumber: string | null;
+  readonly serviceFrom: string;
+  readonly serviceTo: string;
+  readonly totalChargeCents: number;
+}
+
 /** Data port for `claim` (the exemplar org-scoped read + version-checked write repo). */
 export class ClaimRepository {
   constructor(private readonly db: BillingDb) {}
@@ -111,6 +121,54 @@ export class ClaimRepository {
       )
       .limit(1);
     return row ? toClaimRecord(row) : null;
+  }
+
+  /**
+   * WX-PR-012 — M25's 835-to-claim D3 auto-match candidates: claims in this org+provider entity whose
+   * `claim_control_number` (CLP01) or `payer_claim_control_number` (CLP07/ICN) matches one of the line's
+   * keys. Returns the UNION of both — `autoMatch`'s own precedence/ambiguity logic (payer-ICN first, then
+   * claim-control-number, each requiring an UNAMBIGUOUS single hit) decides which strategy, if any, binds.
+   * Neither key present → empty (never scans the whole provider entity).
+   */
+  async findMatchCandidates(
+    organizationId: string,
+    providerEntityId: string,
+    keys: { readonly payerClaimControlNumber?: string; readonly claimControlNumber?: string },
+  ): Promise<ClaimMatchCandidateRow[]> {
+    if (!keys.payerClaimControlNumber && !keys.claimControlNumber) return [];
+    const rows = await this.db
+      .select({
+        claimId: C.id,
+        claimControlNumber: C.claimControlNumber,
+        payerClaimControlNumber: C.payerClaimControlNumber,
+        serviceFrom: C.serviceFrom,
+        serviceTo: C.serviceTo,
+        totalChargeCents: C.totalChargeCents,
+      })
+      .from(C)
+      .where(
+        and(
+          eq(C.organizationId, organizationId),
+          eq(C.providerEntityId, providerEntityId),
+          or(
+            keys.payerClaimControlNumber
+              ? eq(C.payerClaimControlNumber, keys.payerClaimControlNumber)
+              : undefined,
+            keys.claimControlNumber ? eq(C.claimControlNumber, keys.claimControlNumber) : undefined,
+          ),
+        ),
+      );
+    return rows;
+  }
+
+  /** WX-PR-012 — the claim's `patient_id` only (PR-ledger seeding), narrower than {@link findById}. */
+  async patientIdForId(claimId: string): Promise<string | null> {
+    const [row] = await this.db
+      .select({ patientId: C.patientId })
+      .from(C)
+      .where(eq(C.id, claimId))
+      .limit(1);
+    return row?.patientId ?? null;
   }
 
   /**

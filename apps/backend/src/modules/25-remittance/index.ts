@@ -118,6 +118,13 @@ export {
   NO_CLAIM_MATCH_CANDIDATES,
 } from "./ingest/service";
 export { type M25IngestDrizzleDeps, buildDrizzleM25IngestService } from "./ingest/service-drizzle";
+export { buildM23BackedClaimMatchCandidateProvider } from "./ingest/claim-match-adapter";
+export {
+  type M25X12WorkerConfig,
+  createFetchX12835HttpPort,
+  m25X12WorkerConfigFromEnv,
+  m25X12WorkerPortFromEnv,
+} from "./ingest/x12-worker-transport";
 export {
   type M25EdiReceivedConsumerBinding,
   buildM25EdiReceivedConsumer,

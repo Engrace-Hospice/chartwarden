@@ -548,7 +548,7 @@
 
 ## WX-PR-012 - Bind X12-835 ingestion and posting
 
-- Status: Implementation complete (2026-08-05); real x12-worker sidecar transport + real M23 claim-match/patient-resolution seam remain unbound (pre-existing platform-wide postures, not new gaps)
+- Status: Implementation complete (2026-08-05); follow-up same day bound the real M23 claim-match/patient-resolution seam and a real fetch-based x12-worker transport — no Python x12-worker sidecar is deployed anywhere (M23's own x12-837-client transport is in the same unwired state), so the transport has nothing to call yet, but is genuinely real code, not a stub
 - Priority: P1
 - Severity addressed: High
 - Phase: 4
@@ -610,6 +610,34 @@
   gate green (build, `arch:fitness`, lint, 7986 tests) plus the new live suite (7/7) and the
   pre-existing M25→M27 `ClaimSettlementProvider` live seam suite, run standalone against a throwaway
   pg18 cluster.
+- Follow-up (2026-08-05, same day): closed both explicitly-flagged gaps for real, not by relaxing the
+  original honest framing. (1) M23 claim-match seam: added `ClaimRepository.findMatchCandidates`
+  (payer-ICN/claim-control-number union) + `patientIdForId` in `packages/billing/src/repositories/claim.ts`
+  (a NEW query — nothing pre-existing exposed this), published as M23's third seam via
+  `cost-report-seams.ts`'s `registerM23PublishedSeams` (already called at boot) under a new
+  `ClaimSubmissionReader` registry key (`packages/types/src/seams.ts` + `bootstrap/seams/registry.ts`,
+  `phi:true`, deny-stub default). M25 consumes it via a new adapter
+  (`ingest/claim-match-adapter.ts`) that degrades to empty/null on ANY failure (the M30
+  `consumed-seam-adapters.ts` `degradeToSuppressed` precedent), bound at both `index.ts` construction
+  sites in place of `NO_CLAIM_MATCH_CANDIDATES`. Along the way found a SECOND, unused, more elaborate
+  seam-declaration system (`@wardenx/billing/seam-registration.ts`) that already had an almost-identical
+  `ClaimSubmissionReader` design but is never wired into the real registry — reused its name, not its
+  dead wiring. New live test (`m23-m25-claim-match-seam.live.test.ts`, 4 tests) proves the pre-bind
+  degrade, the post-bind real match + real patient id + RLS isolation, and a full 835 auto-matching to a
+  genuinely seeded `claim` row end-to-end. (2) x12-worker transport: no Python sidecar service exists
+  anywhere in this repository (confirmed by survey — no `services/` dir, no Dockerfile; ADR-0029
+  describes it as not-yet-built); built a real `fetch`-based `X12835HttpPort`
+  (`ingest/x12-worker-transport.ts`) mirroring M23's own already-established
+  `launch-gateway.ts` pattern exactly (env-gated `M25_X12_WORKER_URL`/`_TOKEN`/`_TIMEOUT_MS`, graceful
+  `null` when unconfigured), wired into both `createX12835Client()` call sites. This closes "the
+  transport code doesn't exist," not "there is a sidecar to talk to" — there still isn't one, for either
+  M23 or M25; standing up a real pyx12/FastAPI service is a separate infrastructure project. Unit-tested
+  with `vi.stubGlobal("fetch", ...)` (7 tests — more thorough than the codebase's existing convention,
+  which doesn't test M23's analogous `fetchHttp` at that level). Full gate green (build, `arch:fitness`,
+  lint, 7993 tests, up from 7986) plus both new live/unit suites plus the original two live suites,
+  each standalone. `arch:fitness`'s seam-registry count moved 150→151 (confirms real registration);
+  table-ownership stayed green (confirms the seam indirection satisfied the boundary rule rather than a
+  direct cross-module schema import).
 - Risks: Financial double posting.
 - Rollback: Stop intake and reverse via explicit accounting adjustment, not row deletion.
 - Estimated complexity: L

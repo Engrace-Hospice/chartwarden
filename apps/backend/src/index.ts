@@ -389,9 +389,11 @@ import {
   buildDrizzleM25IngestService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
+  buildM23BackedClaimMatchCandidateProvider,
   buildM25EdiReceivedConsumer,
   buildM25WorkerDeps,
   createDrizzleRemittanceEraseStore,
+  m25X12WorkerPortFromEnv,
   mountM25Routes,
   registerM25AbacPredicates,
   registerM25CronWorkers,
@@ -1847,6 +1849,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   );
   const m23LaunchConfig = m23LaunchGatewayConfigFromEnv(process.env);
   const m23LaunchGateway = m23LaunchConfig ? createM23LaunchGateway(m23LaunchConfig) : null;
+  // WX-PR-012 — the M25 x12-worker sidecar transport, gated the same way (unset in dev/test/CI so
+  // nothing calls out by accident; `undefined` falls through to `createX12835Client()`'s fail-closed
+  // default). No sidecar is deployed anywhere yet, so this stays undefined in every environment today.
+  const m25X12Port = m25X12WorkerPortFromEnv(process.env);
   const m23SubmissionQueues =
     queueConnection && m23LaunchGateway ? buildM23SubmissionQueuePort(queueConnection) : null;
   // M24 (WX-PR-011) — the Oregon launch-gateway, gated the same way as M23's (unset in dev/test/CI so
@@ -2555,15 +2561,18 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               };
             },
           };
-          // WX-PR-012 — the 835 receive/post pipeline. `createX12835Client()` defaults to the fail-closed
-          // `NO_X12_835_PORT` (no Python x12-worker sidecar transport is wired yet — the same "unwired
-          // until Phase 3" posture every other M25 forward seam already documents); wiring a live transport
-          // is a separate follow-up, not a blocker for the pipeline itself (receive/dedup/post/denial-seed
-          // are fully real and exercised end-to-end against an injected fake client in the live tests).
+          // WX-PR-012 — the 835 receive/post pipeline. `m25X12Port` is undefined (fail-closed
+          // `NO_X12_835_PORT`) unless M25_X12_WORKER_URL is configured — no Python x12-worker sidecar is
+          // deployed anywhere yet, so this stays unreachable in every environment today, same as M23's own
+          // `x12-837-client` transport; the CODE is real and will call out for real once ops points it at a
+          // live sidecar. `claims` binds M23's real ClaimSubmissionReader seam (degrades to "no
+          // candidates"/"no patient id" — never fabricates a match — until M23 registers it, which now
+          // happens automatically at this same boot via `registerM23PublishedSeams`).
           const m25IngestService = buildDrizzleM25IngestService(dbHandle.db, {
-            client: createX12835Client(),
+            client: createX12835Client(m25X12Port),
             outbox: m25OutboxPublisher,
             terminology: m25Terminology,
+            claims: buildM23BackedClaimMatchCandidateProvider(),
           });
           mountM25Routes(app, {
             readService: buildDrizzleM25ReadService(dbHandle.db, m25Terminology),
@@ -3496,13 +3505,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // WX-PR-012 — the LIVE `m25.parse-and-post` consumer: M25 self-pulls (no other module produces
           // `m25.edi.835_received`), so this drives the parse + transactional-post + denial-seed half of
           // the pipeline the `remittance.receive` route's `receiveAdvice` emits into. The same
-          // fail-closed `NO_X12_835_PORT` client posture as the routes-mount binding above (no sidecar
-          // transport wired yet); the terminology lookup is reconstructed here (getSeam is resolved
-          // lazily per call, so a duplicate binding across two composition-root scopes is harmless).
+          // env-gated `m25X12Port` posture as the routes-mount binding above; the terminology lookup and
+          // the M23 claim-match adapter are both reconstructed here (each resolves its seam lazily per
+          // call, so a duplicate binding across two composition-root scopes is harmless).
           buildM25EdiReceivedConsumer(
             buildDrizzleM25IngestService(dbHandle.db, {
-              client: createX12835Client(),
+              client: createX12835Client(m25X12Port),
               outbox: m25OutboxPublisher,
+              claims: buildM23BackedClaimMatchCandidateProvider(),
               terminology: {
                 async lookup(carcCode) {
                   const concept = await (

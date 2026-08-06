@@ -1235,6 +1235,17 @@ import type { DocumentRenderProvider } from '@wardenx/documents/seams'          
 import type { DenialOutcomePredictionProvider } from '@wardenx/ai-platform/seams'           // M32 — forward, deny-stub
 ```
 
+> **2026-08-05 correction (WX-PR-012 follow-up):** the shipped D3 auto-match + PR-ledger patient-id bind
+> does not use `ClaimReader` (that interface's other five methods — FHIR projection, HCI feature sets,
+> GIP census, Medicare-secondary context — are unrelated to 835 matching and remain fully unbuilt). It
+> registers a new, narrower `ClaimSubmissionReader` seam (`packages/types/src/seams.ts` +
+> `apps/backend/src/bootstrap/seams/registry.ts`, `ownerModule: 23, phi: true`) sized to exactly two
+> methods: `candidatesForLine` (payer-ICN / claim-control-number exact-match candidates) and
+> `patientIdForClaim`. Published by M23's `cost-report-seams.ts` (`registerM23PublishedSeams`, its third
+> seam — despite the filename, that file is now M23's general published-seams entrypoint), consumed by
+> M25's `ingest/claim-match-adapter.ts`. `ClaimReader` itself stays exactly as declared here — unbound,
+> deny-stub only — for whichever module first needs the FHIR/HCI/GIP/Medicare-secondary methods.
+
 At M25 init:
 
 ```typescript

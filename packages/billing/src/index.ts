@@ -71,6 +71,7 @@ export {
   type BilledDaysAggregate,
   type BilledDaysByLevel,
   type ClaimLineRollup,
+  type ClaimMatchCandidateRow,
   type BillingDb,
   type CursorKeyset,
   type CursorPage,

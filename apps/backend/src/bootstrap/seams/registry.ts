@@ -40,6 +40,7 @@ import {
   claimLineReaderDenyStub,
   claimReaderDenyStub,
   claimSettlementProviderDenyStub,
+  claimSubmissionReaderDenyStub,
   comfortKitDispatchProviderDenyStub,
   complianceStatusProviderDenyStub,
   consentEvaluatorDenyStub,
@@ -386,6 +387,16 @@ export const REQUIRED_SEAMS = [
     ownerModule: 23,
     phi: false,
     denyStub: claimLineReaderDenyStub,
+  },
+  // M23 → M25 — the 835-to-claim match-candidate lookup (D3 auto-match: payer ICN / claim control
+  // number exact-match candidates) + claim->patient id resolution (PR-ledger seeding). PHI (patient id).
+  // Fail-closed until M23 registers the real reader — M25's adapter degrades the deny-stub throw to "no
+  // candidates" (every line queues for manual match) rather than fabricating a match (WX-PR-012).
+  {
+    key: "ClaimSubmissionReader",
+    ownerModule: 23,
+    phi: true,
+    denyStub: claimSubmissionReaderDenyStub,
   },
   // M27 → M30 — the cost-report filing posture per FY. M27's FIRST M1 publish (it was a pure consumer
   // before). CoP 418.310 makes failure to file grounds for termination, so M30's compliance indicator needs

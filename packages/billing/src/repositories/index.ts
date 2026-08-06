@@ -49,6 +49,7 @@ export {
 export {
   ClaimRepository,
   type ClaimListFilter,
+  type ClaimMatchCandidateRow,
   type ClaimRecord,
   type ClaimTransitionPatch,
   type NewClaimInput,
