@@ -13,6 +13,7 @@
 // packages/audit is a FOUNDATION_HELPER_PACKAGE and may import the @wardenx/db schema TYPES
 // (ADR-0005 D4); table ownership for audit_event is satisfied by the helper-package rule.
 import { schema } from "@wardenx/db";
+import { type SQL, sql } from "drizzle-orm";
 import { redactSnapshot } from "./denylist";
 import { type RetentionClass, resolveRetention } from "./retention";
 
@@ -123,4 +124,62 @@ export async function auditRead(
   input: Omit<AuditEventInput, "before" | "after" | "outcome"> & { outcome?: AuditOutcome },
 ): Promise<void> {
   await audit(tx, ctx, { ...input, outcome: input.outcome ?? "success" });
+}
+
+/** Structural view of the tx `auditPlatformEvent` needs — just enough to run a raw SQL statement
+ *  (the SECURITY DEFINER function call). Satisfied by a plain `DbClient` or any `withOrgContext`/
+ *  `withPlatformContext` transaction handle. */
+export interface PlatformAuditExecutor {
+  execute(query: SQL): Promise<unknown>;
+}
+
+/** What happened — the per-event payload for a platform-scoped (no single org) audit row. Narrower
+ *  than {@link AuditEventInput}: `before`/`after` are omitted (a platform-scoped event records a
+ *  system action, not a tenant record's before/after state). */
+export interface PlatformAuditEventInput {
+  /** Dotted event type, e.g. `platform.bypass_invoked`. */
+  readonly eventType: string;
+  readonly resourceKind: string;
+  readonly resourceId?: string;
+  readonly outcome: AuditOutcome;
+  readonly severity?: AuditSeverity;
+  readonly correlationId: string;
+  readonly context?: Record<string, unknown>;
+  readonly retentionClass?: RetentionClass;
+}
+
+/**
+ * Write one PLATFORM-SCOPED (`organization_id IS NULL`, `actor_kind = 'system'`) `audit_event` row.
+ * `wardenx_app` holds no INSERT policy admitting a null-org row (ADR-0010 D2/D3 ban a second
+ * RLS-policy GUC or an org-alternative disjunct on a tenant-writable policy — see migration 0186's
+ * own comment for why), so a plain `tx.insert(schema.auditEvents)...` — the path `audit()` takes —
+ * fails under real RLS the same way `outbox_event`'s platform-wide insert did before migration 0186.
+ * This instead calls the SECURITY DEFINER `audit_writer_insert_platform_event` function (migration
+ * 0187) — owned by `wardenx_audit_writer` (which already holds the unconditional `audit_writer_insert`
+ * policy, migration 0013), EXECUTE granted directly to `wardenx_app`. `organization_id`/`actor_kind`
+ * are hardcoded inside the function body, never caller-supplied, so there is no way to widen scope
+ * through an argument — the same shape as `outbox_event`'s platform-writer functions.
+ *
+ * This is the ONLY sanctioned way to write a platform-scoped audit_event row — `withPlatformContext`'s
+ * mandatory `platform.bypass_invoked` write (the sole caller today) uses it via
+ * `m34PlatformBypassAuditor` (apps/backend/src/index.ts).
+ */
+export async function auditPlatformEvent(
+  tx: PlatformAuditExecutor,
+  input: PlatformAuditEventInput,
+): Promise<void> {
+  const context = redactSnapshot(input.context) ?? {};
+  const retentionClass = resolveRetention(input.eventType, input.retentionClass);
+  await tx.execute(sql`
+    SELECT audit_writer_insert_platform_event(
+      ${input.eventType},
+      ${input.resourceKind},
+      ${input.resourceId ?? null},
+      ${input.outcome},
+      ${input.severity ?? "info"},
+      ${input.correlationId},
+      ${JSON.stringify(context)}::jsonb,
+      ${retentionClass}
+    )
+  `);
 }

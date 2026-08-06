@@ -30,6 +30,7 @@
  * The URL must be a SUPERUSER connection to a THROWAWAY database (the suite drops and recreates
  * the public schema + roles). For a local PG without pgvector, set WARDENX_TEST_NO_PGVECTOR=1.
  */
+import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "pg";
@@ -377,6 +378,90 @@ describe.skipIf(!DB_URL)(
       );
       expect(byA.rows[0].n).toBe(0);
       expect(byB.rows[0].n).toBe(0);
+    });
+
+    // ── WX-PR-024: the platform-wide WRITE path (migration 0188) ─────────────────────────────────
+    // `report_run_org`/the (missing) materialized_view_metadata write policy hide/refuse a null-org
+    // row to `wardenx_app` — but until migration 0188, that meant `wardenx_app` could not WRITE one
+    // either (a real INSERT rejected under NOBYPASSRLS, discovered live-testing WX-PR-014's M33
+    // follow-up). These prove the raw path is STILL correctly rejected (no new write hole opened)
+    // and the SECURITY DEFINER `report_writer_*` functions succeed through it.
+    describe("WX-PR-024 — report_run / materialized_view_metadata platform-wide write path", () => {
+      it("a raw wardenx_app INSERT of a NULL-org report_run row is still rejected", async () => {
+        await expect(
+          withOrg(ORG_A, () =>
+            db.query(
+              `INSERT INTO report_run (mv_key, organization_id, trigger_kind, started_at, status)
+             VALUES ('mv_census_org_daily', NULL, 'nightly_cron', now(), 'running')`,
+            ),
+          ),
+        ).rejects.toThrow(/row-level security/i);
+      });
+
+      it("report_writer_insert_platform_report_run succeeds as wardenx_app and lands organization_id NULL", async () => {
+        const row = await withOrg(ORG_A, async () => {
+          const r = await db.query(
+            `SELECT * FROM report_writer_insert_platform_report_run($1,$2,$3,$4,$5,$6,$7)`,
+            [randomUUID(), "mv_census_org_daily", "nightly_cron", null, new Date(), "running", 0],
+          );
+          return r.rows[0] as { id: string; organization_id: string | null; mv_key: string };
+        });
+        expect(row.organization_id).toBeNull();
+        expect(row.mv_key).toBe("mv_census_org_daily");
+      });
+
+      it("report_writer_update_platform_report_run settles the platform-wide run and a raw UPDATE cannot", async () => {
+        const startedAt = new Date();
+        const runId = (
+          await db.query(
+            `INSERT INTO report_run (mv_key, organization_id, trigger_kind, started_at, status)
+           VALUES ('mv_census_org_daily', NULL, 'nightly_cron', $1, 'running') RETURNING id`,
+            [startedAt],
+          )
+        ).rows[0].id as string;
+
+        // A raw wardenx_app UPDATE cannot even SEE the row (RLS hides it), let alone change it.
+        const rawUpdate = await withOrg(ORG_A, () =>
+          db.query("UPDATE report_run SET status = 'succeeded' WHERE id = $1", [runId]),
+        );
+        expect(rawUpdate.rowCount).toBe(0);
+
+        const settled = await withOrg(ORG_A, async () => {
+          const r = await db.query(
+            `SELECT * FROM report_writer_update_platform_report_run($1,$2,$3::jsonb)`,
+            [runId, startedAt, JSON.stringify({ status: "succeeded", durationMs: 42 })],
+          );
+          return r.rows[0] as { status: string; duration_ms: number };
+        });
+        expect(settled.status).toBe("succeeded");
+        expect(settled.duration_ms).toBe(42);
+      });
+
+      it("a raw wardenx_app UPDATE of materialized_view_metadata is rejected (no write policy)", async () => {
+        await expect(
+          withOrg(ORG_A, () =>
+            db.query(
+              "UPDATE materialized_view_metadata SET refresh_failure_count = 1 WHERE mv_key = $1",
+              ["mv_census_org_daily"],
+            ),
+          ),
+        ).rejects.toThrow(/row-level security|permission denied/i);
+      });
+
+      it("report_writer_update_platform_mv_metadata stamps refresh telemetry as wardenx_app", async () => {
+        const stamped = await withOrg(ORG_A, async () => {
+          const r = await db.query(
+            `SELECT * FROM report_writer_update_platform_mv_metadata($1,$2::jsonb)`,
+            [
+              "mv_census_org_daily",
+              JSON.stringify({ lastRefreshDurationMs: 7, refreshFailureCount: 0 }),
+            ],
+          );
+          return r.rows[0] as { last_refresh_duration_ms: number; refresh_failure_count: number };
+        });
+        expect(stamped.last_refresh_duration_ms).toBe(7);
+        expect(stamped.refresh_failure_count).toBe(0);
+      });
     });
 
     // ── Platform catalogs read-all cross-org (§3.5) ──────────────────────────────────────────────

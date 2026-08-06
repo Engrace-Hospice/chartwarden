@@ -317,4 +317,53 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
     );
     expect(r.rows[0].n).toBeGreaterThan(0);
   });
+
+  // ── WX-PR-024: withPlatformContext's mandatory platform.bypass_invoked write (migration 0187) ────
+  // `audit_event_org_append` (0119) deliberately excludes NULL-org rows, and `wardenx_app` holds no
+  // membership in `wardenx_audit_writer` (the only role with a null-org INSERT policy) — so, until
+  // migration 0187, EVERY `withPlatformContext` entry codebase-wide threw on its own mandatory audit
+  // write under real (NOBYPASSRLS) RLS. These prove the raw path is STILL correctly rejected (no new
+  // write hole opened for `wardenx_app`) and the SECURITY DEFINER `audit_writer_insert_platform_event`
+  // function (the path `auditPlatformEvent` / `m34PlatformBypassAuditor` now use) succeeds through it.
+  describe("WX-PR-024 — audit_event platform-wide (organization_id IS NULL) write path", () => {
+    it("a raw wardenx_app INSERT of a NULL-org audit_event row is still rejected", async () => {
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            `INSERT INTO audit_event (organization_id, actor_kind, event_type, resource_kind, outcome, correlation_id, severity)
+             VALUES (NULL, 'system', 'platform.bypass_invoked', 'tenant', 'success', 'wx-pr-024-raw', 'warn')`,
+          ),
+        ),
+      ).rejects.toThrow(/row-level security/i);
+    });
+
+    it("audit_writer_insert_platform_event succeeds as wardenx_app and lands organization_id NULL / actor_kind system", async () => {
+      // RETURNS void (no RETURNING inside the function — see migration 0187's own comment: the
+      // append-only `wardenx_audit_writer` role holds INSERT only on `audit_event`, so a RETURNING
+      // would need a SELECT policy that role deliberately doesn't have). Success is "did not throw";
+      // the actual row is verified via the superuser read below.
+      await withOrg(ORG_A, () =>
+        db.query(`SELECT audit_writer_insert_platform_event($1,$2,$3,$4,$5,$6,$7::jsonb,$8)`, [
+          "platform.bypass_invoked",
+          "tenant",
+          null,
+          "success",
+          "warn",
+          "wx-pr-024-fn",
+          JSON.stringify({ jobId: "m33.mv_refresh", reason: "test" }),
+          "compliance",
+        ]),
+      );
+
+      const persisted = await db.query(
+        "SELECT organization_id, actor_kind, event_type, severity FROM audit_event WHERE correlation_id = $1",
+        ["wx-pr-024-fn"],
+      );
+      expect(persisted.rows).toHaveLength(1);
+      expect(persisted.rows[0].organization_id).toBeNull();
+      expect(persisted.rows[0].actor_kind).toBe("system");
+      expect(persisted.rows[0].event_type).toBe("platform.bypass_invoked");
+      expect(persisted.rows[0].severity).toBe("warn");
+    });
+  });
 });

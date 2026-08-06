@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { audit } from "@wardenx/audit";
+import { auditPlatformEvent } from "@wardenx/audit";
 // @wardenx/backend — Fastify host entry + COMPOSITION ROOT (not in any module codePath, so
 // exempt from the module-boundary import rules — it may import every module's init). It builds
 // the server, runs the seam/eraser boot gate, and registers each Phase-1 module's real seams
@@ -1337,28 +1337,27 @@ export function wireModuleSeams(
 /**
  * M34 `platform.bypass_invoked` auditor (audit #9). M1's @wardenx/tenancy requires a `PlatformBypassAuditor`
  * for EVERY `withPlatformContext` entry, so "every cross-tenant read is audited" is a type-level guarantee.
- * This binds M4's audit helper over the platform tx the bypass runs on: it writes one `platform.bypass_invoked`
- * row (organizationId null — a cross-tenant action has no single org; actorKind `system`; the caller's jobId +
- * reason in context) at the event's own severity, atomically with the platform work. If the write fails it
- * propagates, so the cross-tenant read fails rather than serving an UNAUDITED bypass (the fail-closed posture).
+ * This binds M4's PLATFORM-SCOPED audit helper over the platform tx the bypass runs on: it writes one
+ * `platform.bypass_invoked` row (organizationId null — a cross-tenant action has no single org; actorKind
+ * `system`; the caller's jobId + reason in context) at the event's own severity, atomically with the platform
+ * work. If the write fails it propagates, so the cross-tenant read fails rather than serving an UNAUDITED
+ * bypass (the fail-closed posture).
+ *
+ * Uses `auditPlatformEvent` (NOT the plain `audit()` helper, WX-PR-024): `audit()`'s `tx.insert(...)` runs as
+ * the caller's own role — `wardenx_app` in production — which holds no INSERT policy admitting a null-org
+ * `audit_event` row (ADR-0010 bans a policy shaped to allow it). `auditPlatformEvent` instead calls the
+ * SECURITY DEFINER `audit_writer_insert_platform_event` function (migration 0187), so this write actually
+ * succeeds under real RLS instead of throwing on every `withPlatformContext` entry codebase-wide.
  */
 export const m34PlatformBypassAuditor: PlatformBypassAuditor<DbClient> = async (tx, event) => {
-  await audit(
-    tx,
-    {
-      organizationId: null,
-      userId: null,
-      actorKind: "system",
-      correlationId: `platform-bypass:${event.jobId}:${randomUUID()}`,
-    },
-    {
-      eventType: "platform.bypass_invoked",
-      resourceKind: "tenant",
-      outcome: "success",
-      severity: event.severity,
-      context: { jobId: event.jobId, reason: event.reason },
-    },
-  );
+  await auditPlatformEvent(tx, {
+    eventType: "platform.bypass_invoked",
+    resourceKind: "tenant",
+    outcome: "success",
+    severity: event.severity,
+    correlationId: `platform-bypass:${event.jobId}:${randomUUID()}`,
+    context: { jobId: event.jobId, reason: event.reason },
+  });
 };
 
 /**

@@ -7,12 +7,52 @@
 // reads the base catalog to whitelist dimensions/measures (D4); the MV-refresh worker stamps the
 // telemetry.
 import { schema } from "@wardenx/db";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { ReportingDb } from "./db";
 
 const BASE = schema.reportBaseCatalog;
 const METRIC = schema.reportMetricCatalog;
 const MV = schema.materializedViewMetadata;
+
+/**
+ * One raw row back from `report_writer_update_platform_mv_metadata` (`SELECT * FROM fn(...)` unnests
+ * the composite `materialized_view_metadata` return type into its own columns).
+ *
+ * `last_refreshed_at` comes back as a STRING, not a `Date`: `db.execute(sql\`...\`)` is a raw/untyped
+ * query, so Drizzle's `PgTimestamp.mapFromDriverValue` conversion (which normal typed `.select()`/
+ * `.update()` calls get automatically) never runs. `fromPlatformMvRow` does the conversion explicitly.
+ */
+interface RawPlatformMvMetadataRow {
+  id: string;
+  mv_key: string;
+  schema_name: string;
+  refresh_strategy: schema.MaterializedViewMetadata["refreshStrategy"];
+  debounce_window_seconds: number;
+  depends_on_mv_keys: string[];
+  outbox_topics_subscribed: string[];
+  expected_freshness_seconds: number;
+  status: schema.MaterializedViewMetadata["status"];
+  last_refreshed_at: string | null;
+  last_refresh_duration_ms: number | null;
+  refresh_failure_count: number;
+}
+
+function fromPlatformMvRow(row: RawPlatformMvMetadataRow): schema.MaterializedViewMetadata {
+  return {
+    id: row.id,
+    mvKey: row.mv_key,
+    schemaName: row.schema_name,
+    refreshStrategy: row.refresh_strategy,
+    debounceWindowSeconds: row.debounce_window_seconds,
+    dependsOnMvKeys: row.depends_on_mv_keys,
+    outboxTopicsSubscribed: row.outbox_topics_subscribed,
+    expectedFreshnessSeconds: row.expected_freshness_seconds,
+    status: row.status,
+    lastRefreshedAt: row.last_refreshed_at === null ? null : new Date(row.last_refreshed_at),
+    lastRefreshDurationMs: row.last_refresh_duration_ms,
+    refreshFailureCount: row.refresh_failure_count,
+  };
+}
 
 /** Data port for the three platform-global reporting catalogs. */
 export class ReportCatalogRepository {
@@ -124,6 +164,13 @@ export class ReportCatalogRepository {
    * Stamp MV-refresh telemetry after a refresh (last-refreshed timestamp + duration; the failure
    * counter is set absolutely so the worker can reset it to 0 on success or raise it on failure) and
    * optionally transition the MV's lifecycle status (e.g. → `suspended` after exhausted retries).
+   *
+   * `materialized_view_metadata` has NO `organization_id` column at all — every row is
+   * platform-global — and `wardenx_app` holds SELECT only (migration 0058), no INSERT/UPDATE grant or
+   * policy whatsoever. A plain Drizzle UPDATE therefore fails outright under real RLS (WX-PR-024,
+   * "found adjacent" to the `report_run`/`audit_event` gap this pass fixed). This always calls the
+   * SECURITY DEFINER `report_writer_update_platform_mv_metadata` function instead (migration 0188) —
+   * owned by `report_writer`, EXECUTE granted directly to `wardenx_app`.
    */
   async updateMvRefreshTelemetry(
     mvKey: string,
@@ -134,9 +181,15 @@ export class ReportCatalogRepository {
       >
     >,
   ): Promise<schema.MaterializedViewMetadata> {
-    const [row] = await this.db.update(MV).set(patch).where(eq(MV.mvKey, mvKey)).returning();
+    const result = await this.db.execute(sql`
+      SELECT * FROM report_writer_update_platform_mv_metadata(
+        ${mvKey},
+        ${JSON.stringify(patch)}::jsonb
+      )
+    `);
+    const row = (result as unknown as { rows: RawPlatformMvMetadataRow[] }).rows[0];
     if (!row) throw new Error(`materialized_view_metadata ${mvKey} not found for telemetry update`);
-    return row;
+    return fromPlatformMvRow(row);
   }
 
   /** The bases bound to a given MV (the "where used" admin surface for an MV). */

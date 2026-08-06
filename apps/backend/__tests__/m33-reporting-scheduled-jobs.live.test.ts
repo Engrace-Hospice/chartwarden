@@ -33,17 +33,35 @@
  *   5. mvRefresh/lagProbe's outbox emits, bound for real over the migration-0186 SECURITY DEFINER
  *      `report_writer_*` functions (`outbox_event.organization_id` is nullable now; ADR-0010 bans a second
  *      RLS-policy GUC, so this reuses the `wardenx_audit_writer`/`audit_writer_insert` role+function
- *      pattern instead). Test 1 constructs `registerM33Workers` with `platformDb: seedDb.db` (superuser) —
- *      NOT because the outbox fix needs it, but because `report_run` and `materialized_view_metadata` have
- *      the IDENTICAL pre-existing "no wardenx_app write policy for a platform-wide row" gap this pass fixed
- *      for `outbox_event`, discovered as a side effect of hardening this test and left unfixed (out of
- *      scope — see the module TODO in m33-jobs.ts). Using superuser there lets test 1 still exercise the
- *      REAL `handleMvRefresh` code path end-to-end without being blocked by that unrelated, pre-existing
- *      gap. The outbox SECURITY DEFINER mechanism's OWN real-RLS correctness was separately, conclusively
- *      verified by hand first: a direct `psql` session, `SET ROLE wardenx_app`, confirms a raw
+ *      pattern instead). The outbox SECURITY DEFINER mechanism's OWN real-RLS correctness was separately,
+ *      conclusively verified by hand first: a direct `psql` session, `SET ROLE wardenx_app`, confirms a raw
  *      `organization_id IS NULL` INSERT is REJECTED outside the function, and the full insert → claim →
  *      finalize_dispatched → reclaim → purge cycle succeeds THROUGH it.
- *   6. The ad-hoc PDF/XLSX exportRender outbox — the `m33.scheduled_report.render_requested` catalog schema
+ *   6. WX-PR-024's THREE platform-wide write gaps are FIXED and conclusively proven — but NOT by this file.
+ *      `audit_event`'s `platform.bypass_invoked` write (`auditPlatformEvent` → the SECURITY DEFINER
+ *      `audit_writer_insert_platform_event`, migration 0187) and `report_run`/`materialized_view_metadata`'s
+ *      write paths (migration 0188's `report_writer_*` functions) are each proven directly at the SQL level,
+ *      as `wardenx_app`, in `packages/db/migrations/__tests__/m1-rls-isolation.live.test.ts` and
+ *      `m33-rls-isolation.live.test.ts` — including the raw-path-still-rejected check (no new write hole).
+ *      `testAuditBypass` below now calls `auditPlatformEvent` (matching production's
+ *      `m34PlatformBypassAuditor`) rather than the plain `audit()` helper, so this integration test still
+ *      exercises the REAL fixed code path even though `platformDb` stays `seedDb.db` (superuser) — see the
+ *      NEW, SEPARATE finding below for why that superuser connection is still needed here.
+ *
+ *      NEW, SEPARATE, UNFIXED finding from hardening this test to try `platformDb: handle.db` (wardenx_app):
+ *      `wardenx_app` holds NO privilege to `REFRESH MATERIALIZED VIEW CONCURRENTLY` on any `report_mv.*` view
+ *      (`ERROR: permission denied for materialized view ...`) — refresh requires being the MV owner (or a
+ *      PG17+ MAINTAIN grant, unusable here since CI's `rls-live` jobs run pgvector/pg**16**). Reassigning MV
+ *      ownership to a non-superuser writer role doesn't fix it either: `REFRESH` re-executes the MV's
+ *      defining query under a role with NO cross-tenant read access (no role in this codebase's migrations
+ *      actually holds BYPASSRLS in production — `wardenx_app`'s BYPASSRLS is a `WARDENX_DEV_BYPASSRLS=1`
+ *      dev-only opt-in that `scripts/db/migrate.ts` explicitly refuses when `NODE_ENV=production`), so a
+ *      genuinely cross-tenant nightly MV refresh may be unable to read across orgs at all under a
+ *      properly-hardened production posture. This is a DIFFERENT root cause than WX-PR-024 (MV-refresh
+ *      privilege/architecture, not an audit/RLS-write-policy gap) — discovered here, NOT fixed, NOT
+ *      WX-PR-024's charter; tracked separately. `platformDb: seedDb.db` (superuser) below is unchanged from
+ *      before for exactly this reason, not because of anything WX-PR-024 touches.
+ *   7. The ad-hoc PDF/XLSX exportRender outbox — the `m33.scheduled_report.render_requested` catalog schema
  *      now marks `scheduleId`/`runId` Optional so both real producer payloads validate (not exercised by a
  *      dedicated test here — `requestExport`'s HTTP route isn't part of this job-focused suite — but the
  *      binding is real and the schema fix is covered by the passing `scheduled_run` tests above, which use
@@ -61,7 +79,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { audit } from "@wardenx/audit";
+import { auditPlatformEvent } from "@wardenx/audit";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
 import {
   ReportDefinitionRepository,
@@ -127,22 +145,21 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
 
     /** The SAME `platform.bypass_invoked` write `m34PlatformBypassAuditor` (apps/backend/src/index.ts) makes
      *  — reimplemented here (it is a private, unexported function) rather than faked, so the test proves a
-     *  REAL audited platform-context entry, not a stub. */
+     *  REAL audited platform-context entry, not a stub. Uses `auditPlatformEvent` (WX-PR-024), NOT the plain
+     *  `audit()` helper: `audit()`'s `tx.insert(...)` runs as the caller's own role — `wardenx_app` here,
+     *  matching production — which holds no INSERT policy admitting a null-org `audit_event` row. */
     const testAuditBypass = async (
       tx: DbClient,
       event: { jobId: string; reason: string; severity: "warn" | "critical" },
     ): Promise<void> => {
-      await audit(
-        tx,
-        { organizationId: null, userId: null, actorKind: "system", correlationId: randomUUID() },
-        {
-          eventType: "platform.bypass_invoked",
-          resourceKind: "tenant",
-          outcome: "success",
-          severity: event.severity,
-          context: { jobId: event.jobId, reason: event.reason },
-        },
-      );
+      await auditPlatformEvent(tx, {
+        eventType: "platform.bypass_invoked",
+        resourceKind: "tenant",
+        outcome: "success",
+        severity: event.severity,
+        correlationId: randomUUID(),
+        context: { jobId: event.jobId, reason: event.reason },
+      });
     };
 
     beforeAll(async () => {
@@ -218,14 +235,11 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
           connection,
           db: handle.db,
           // `platformDb` (mvRefresh/lagProbe's withPlatformContext base) stays the superuser `seedDb`
-          // connection, NOT `handle.db` — see the "genuine, pre-existing, separate RLS gaps" note above
-          // test 1 below: report_run's + materialized_view_metadata's own write paths have the IDENTICAL
-          // "no wardenx_app policy admits this platform-wide write" gap this pass fixed for outbox_event,
-          // but fixing THOSE tables was not this task's ask. Using superuser here means test 1 still
-          // exercises the REAL `handleMvRefresh` code path end-to-end (proving THIS fix's outbox binding
-          // actually runs inside it) without being blocked by the unrelated, pre-existing gap. The outbox
-          // SECURITY DEFINER mechanism's own real-RLS correctness is separately, conclusively proven by
-          // direct `psql` (`SET ROLE wardenx_app`) — see this file's header comment.
+          // connection — NOT because of WX-PR-024 (its 3 write-path gaps are fixed and proven at the SQL
+          // level, see this file's header comment), but because of the NEW, separate, unfixed finding also
+          // in the header: `wardenx_app` has no privilege to REFRESH a report_mv.* materialized view at
+          // all, and no role in this codebase's migrations holds BYPASSRLS in production, so a genuinely
+          // cross-tenant nightly refresh may not be able to read across orgs as `wardenx_app` regardless.
           platformDb: seedDb.db,
           auditBypass: testAuditBypass,
           outboxPublisher,
@@ -281,8 +295,8 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
 
     it("nightly orchestrator fans out a REAL per-MV refresh (withPlatformContext, real REFRESH, real outbox emit)", async () => {
       // Force a fresh refresh regardless of the MV's 24h debounce window / any prior test run today.
-      // `materialized_view_metadata`'s own UPDATE has no wardenx_app RLS policy either (the same
-      // pre-existing, separate gap noted above) — a fixture reset, so superuser is correct regardless.
+      // A fixture reset (not the code path under test), so superuser is correct regardless of the
+      // migration-0188 `wardenx_app` write path this pass added for the worker's own telemetry stamp.
       await seedDb.db
         .update(schema.materializedViewMetadata)
         .set({ lastRefreshedAt: null, status: "active", refreshFailureCount: 0 })
@@ -321,10 +335,11 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       expect(result.outcome).toBe("refreshed");
       expect(result.mvKey).toBe("mv_census_org_daily");
 
-      // The real report_run ledger row — read via `seedDb` (superuser): report_run's own NULL-org SELECT
-      // policy has the same pre-existing gap (wardenx_app cannot read a NULL-org row either), so this is
-      // the "read as superuser" pattern the codebase's own rls-isolation.live.test.ts uses for
-      // superuser-only-visible assertions, not a workaround for anything THIS fix touches.
+      // The real report_run ledger row — read via `seedDb` (superuser): `report_run_org`'s canonical
+      // `app.org_id` predicate hides a NULL-org row from `wardenx_app` reads BY DESIGN (only the WRITE
+      // path was ever the bug, closed by migration 0188 — there is deliberately no read policy admitting
+      // a platform-wide row to a tenant connection), so this is the "read as superuser" pattern the
+      // codebase's own rls-isolation.live.test.ts uses for superuser-only-visible assertions.
       const lastRun = await new ReportRunRepository(seedDb.db).findLastRunForMv(
         "mv_census_org_daily",
       );

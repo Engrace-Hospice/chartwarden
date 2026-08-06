@@ -5,11 +5,53 @@
 // the partition-key value (partition pruning). The schedule-runner / MV-refresh workers wrap these in
 // `withOrgContext` / `withPlatformContext`.
 import { schema } from "@wardenx/db";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { ReportingDb } from "./db";
 
 const SR = schema.reportScheduleRun;
 const RR = schema.reportRun;
+
+/**
+ * One raw row back from `report_writer_insert_platform_report_run` / `..._update_platform_report_run`
+ * (`SELECT * FROM fn(...)` unnests the composite `report_run` return type into its own columns).
+ *
+ * Timestamps come back as STRINGS, not `Date` objects: `db.execute(sql\`...\`)` is a raw/untyped query,
+ * so Drizzle's `PgTimestamp.mapFromDriverValue` conversion (which normal typed `.select()`/`.insert()`
+ * calls get automatically) never runs — the pg driver hands back whatever its (Drizzle-configured) type
+ * parser produces for `timestamptz`, which is a plain string here. `fromPlatformRow` below does the
+ * string→Date conversion explicitly.
+ */
+interface RawPlatformReportRunRow {
+  id: string;
+  mv_key: string;
+  organization_id: string | null;
+  trigger_kind: schema.ReportRun["triggerKind"];
+  trigger_outbox_event_id: string | null;
+  started_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+  rows_affected: number | null;
+  status: schema.ReportRun["status"];
+  failure_reason: string | null;
+  retry_attempt: number;
+}
+
+function fromPlatformRow(row: RawPlatformReportRunRow): schema.ReportRun {
+  return {
+    id: row.id,
+    mvKey: row.mv_key,
+    organizationId: row.organization_id,
+    triggerKind: row.trigger_kind,
+    triggerOutboxEventId: row.trigger_outbox_event_id,
+    startedAt: new Date(row.started_at),
+    finishedAt: row.finished_at === null ? null : new Date(row.finished_at),
+    durationMs: row.duration_ms,
+    rowsAffected: row.rows_affected,
+    status: row.status,
+    failureReason: row.failure_reason,
+    retryAttempt: row.retry_attempt,
+  };
+}
 
 /** Data port for the two partitioned run ledgers. */
 export class ReportRunRepository {
@@ -89,8 +131,34 @@ export class ReportRunRepository {
 
   // ── report_run (MV-refresh ledger) ───────────────────────────────────────────────────────────
 
-  /** Insert an MV-refresh row (defaults to `queued`). Returns the inserted row. */
+  /**
+   * Insert an MV-refresh row (defaults to `queued`). Returns the inserted row.
+   *
+   * A NULL `organizationId` (a genuinely platform-wide refresh — no single tenant it belongs to)
+   * does NOT go through the plain Drizzle insert below: `wardenx_app` has no RLS policy admitting an
+   * `organization_id IS NULL` row (WX-PR-024 — same ADR-0010 D2/D3 reasoning `outbox_event`'s
+   * migration 0186 already documents). It calls the SECURITY DEFINER
+   * `report_writer_insert_platform_report_run` function instead (migration 0188) — owned by
+   * `report_writer`, EXECUTE granted directly to `wardenx_app`, touches `organization_id IS NULL` rows
+   * only (hardcoded in the function body, never a caller-supplied parameter).
+   */
   async createMvRun(values: schema.NewReportRun): Promise<schema.ReportRun> {
+    if (values.organizationId === null || values.organizationId === undefined) {
+      const result = await this.db.execute(sql`
+        SELECT * FROM report_writer_insert_platform_report_run(
+          ${values.id},
+          ${values.mvKey},
+          ${values.triggerKind},
+          ${values.triggerOutboxEventId ?? null},
+          ${values.startedAt},
+          ${values.status ?? "queued"},
+          ${values.retryAttempt ?? 0}
+        )
+      `);
+      const row = (result as unknown as { rows: RawPlatformReportRunRow[] }).rows[0];
+      if (!row) throw new Error("report_run platform-wide insert returned no row");
+      return fromPlatformRow(row);
+    }
     const [row] = await this.db.insert(RR).values(values).returning();
     if (!row) throw new Error("report_run insert returned no row");
     return row;
@@ -130,6 +198,15 @@ export class ReportRunRepository {
   /**
    * Transition an MV-refresh row (queued → running → succeeded / failed), stamping finish telemetry +
    * retry attempt. Scoped by the composite PK.
+   *
+   * This method doesn't know the row's `organizationId` up front (the caller only has the `(id,
+   * startedAt)` handle `createMvRun`/`open` returned), so it tries the plain, RLS-covered
+   * `wardenx_app` UPDATE first — the only shape that can ever match an ORG-SCOPED row. A
+   * platform-wide (`organization_id IS NULL`) row can never satisfy `report_run_org`'s
+   * `organization_id = current_setting('app.org_id', true)::uuid` predicate (WX-PR-024), so that
+   * UPDATE silently matches zero rows for one; the fallback then calls the SECURITY DEFINER
+   * `report_writer_update_platform_report_run` function (migration 0188), which scopes explicitly to
+   * `organization_id IS NULL` and raises if the row genuinely doesn't exist there either.
    */
   async updateMvRunStatus(
     id: string,
@@ -146,7 +223,17 @@ export class ReportRunRepository {
       .set(patch)
       .where(and(eq(RR.id, id), eq(RR.startedAt, startedAt)))
       .returning();
-    if (!row) throw new Error(`report_run ${id}@${startedAt.toISOString()} not found`);
-    return row;
+    if (row) return row;
+
+    const result = await this.db.execute(sql`
+      SELECT * FROM report_writer_update_platform_report_run(
+        ${id},
+        ${startedAt},
+        ${JSON.stringify(patch)}::jsonb
+      )
+    `);
+    const platformRow = (result as unknown as { rows: RawPlatformReportRunRow[] }).rows[0];
+    if (!platformRow) throw new Error(`report_run ${id}@${startedAt.toISOString()} not found`);
+    return fromPlatformRow(platformRow);
   }
 }

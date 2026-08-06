@@ -1264,10 +1264,32 @@
 
 ## WX-PR-024 - withPlatformContext throws under real (NOBYPASSRLS) RLS codebase-wide
 
-- Status: Discovered, NOT fixed (2026-08-06) — found while verifying WX-PR-014's M33 outbox fix under
-  REAL RLS enforcement (`SET ROLE wardenx_app`, NOBYPASSRLS — the production posture the boot guard
-  enforces) instead of a superuser test connection, which had masked this since `withPlatformContext`
-  first shipped. Confirmed by direct `psql`:
+- Status: **FIXED (2026-08-06)**. All three platform-wide write gaps closed:
+  `audit_writer_insert_platform_event` (migration 0187, owned by the existing `wardenx_audit_writer`
+  role, `RETURNS void` — no RETURNING, since that role deliberately holds INSERT only on `audit_event`
+  and a RETURNING clause needs a SELECT-shaped RLS check that role doesn't have); `packages/audit`'s new
+  `auditPlatformEvent()` calls it, and `m34PlatformBypassAuditor` (`apps/backend/src/index.ts`) now uses
+  `auditPlatformEvent` instead of the plain `audit()` helper. `report_run` (open/settle) and
+  `materialized_view_metadata` (telemetry stamp) got the identical SECURITY DEFINER treatment via
+  migration `0188_m33_report_run_and_mv_metadata_platform_writer.sql` (`report_writer`-owned functions +
+  new `report_run_platform_writer`/`materialized_view_metadata_platform_writer` policies), consumed by
+  `packages/reporting/src/repositories/{runs,catalogs}.ts`. Verified live: two new live-RLS `describe`
+  blocks (`m1-rls-isolation.live.test.ts`, `m33-rls-isolation.live.test.ts`) prove, as real `wardenx_app`
+  (NOBYPASSRLS) against a throwaway PG18 container, that (a) the raw direct-INSERT/UPDATE path is STILL
+  rejected (no new write hole opened) and (b) the SECURITY DEFINER functions succeed and land the correct
+  rows. The full BullMQ integration suite
+  (`apps/backend/__tests__/m33-reporting-scheduled-jobs.live.test.ts`) was hardened to call
+  `auditPlatformEvent` for its `testAuditBypass`, proven for real via the `scheduled_run`/`lag_probe`
+  tests running fully on `wardenx_app`. Full gate green (build/`arch:fitness`/full test suite, 7995
+  passing). **NEW finding surfaced while verifying this fix, NOT fixed, tracked separately as
+  WX-PR-025**: `wardenx_app` has zero privilege to `REFRESH MATERIALIZED VIEW CONCURRENTLY` on any
+  `report_mv.*` view, and no role in this codebase's migrations holds BYPASSRLS in production — a
+  genuinely cross-tenant nightly MV refresh may be architecturally unable to read across tenants at all.
+  See WX-PR-025 below.
+- Status (superseded, kept for history): Discovered, NOT fixed (2026-08-06) — found while verifying
+  WX-PR-014's M33 outbox fix under REAL RLS enforcement (`SET ROLE wardenx_app`, NOBYPASSRLS — the
+  production posture the boot guard enforces) instead of a superuser test connection, which had masked
+  this since `withPlatformContext` first shipped. Confirmed by direct `psql`:
   ```
   SET ROLE wardenx_app;
   INSERT INTO audit_event (organization_id, actor_kind, event_type, resource_kind, outcome,
@@ -1339,6 +1361,66 @@
 - Risks: Every platform-scoped cron/worker across ~8 modules is silently non-functional in a properly
   hardened production deployment until this is fixed — this is not a theoretical risk, it is the CURRENT
   state of the code on `main` as of this writing.
+- Rollback: N/A (fixed; migrations 0187/0188 are additive-only — new functions/policies, no existing
+  grant or policy removed).
+- Estimated complexity: M (the SECURITY DEFINER pattern is now proven and repeatable; done).
+
+## WX-PR-025 - wardenx_app cannot REFRESH a report_mv.* materialized view; no role holds BYPASSRLS
+
+- Status: Discovered, NOT fixed (2026-08-06) — found while verifying WX-PR-024's fix, hardening
+  `m33-reporting-scheduled-jobs.live.test.ts` to run `registerM33Workers`'s `platformDb` on the real
+  `wardenx_app` connection instead of a superuser workaround. With WX-PR-024's three write gaps fixed,
+  the nightly-orchestrate → per-MV `report.mv_refresh` job got further than ever before and hit a NEW
+  wall: `REFRESH MATERIALIZED VIEW CONCURRENTLY report_mv.mv_census_org_daily` throws `ERROR: permission
+  denied for materialized view mv_census_org_daily` as `wardenx_app`.
+
+  Confirmed this is NOT a missing-GRANT problem, by direct experiment against a throwaway PG18 container:
+  (1) `GRANT MAINTAIN ON ... TO wardenx_app` (PG17+) does work, but CI's `rls-live-*` jobs run
+  `pgvector/pgvector:pg16` (`.github/workflows/ci.yml`), where `MAINTAIN` doesn't exist — not usable. (2)
+  Reassigning MV ownership to a non-superuser role (`report_writer`) lets `wardenx_app` issue the REFRESH
+  command, but `REFRESH` re-executes the MV's defining query under a role subject to the SAME RLS as
+  everyone else, and `report_writer` has no grant on the MV's source tables (e.g. `admission`) at all —
+  fails one level deeper (`permission denied for table admission`). (3) The real blocker: a genuinely
+  CROSS-TENANT rollup MV (spanning every org in one query) needs BYPASSRLS or an explicit cross-org read
+  grant to compute correctly — and **no role in this codebase's migrations holds BYPASSRLS in
+  production**. `wardenx_app`'s only BYPASSRLS path is `scripts/db/migrate.ts`'s
+  `WARDENX_DEV_BYPASSRLS=1` dev-convenience toggle, which the same script explicitly revokes when
+  `NODE_ENV=production`. `wardenx_admin` — despite the name — is NOT a BYPASSRLS role either (confirmed
+  via `pg_roles.rolbypassrls`).
+
+  Net effect: in a properly-hardened (NOBYPASSRLS) production deployment, the nightly cross-tenant
+  MV-refresh path may be UNABLE TO REFRESH AT ALL — or, if some future fix grants read access naively,
+  could silently compute an EMPTY or WRONG (single-org-scoped) rollup instead of a genuine cross-tenant
+  one. This needs a real architecture decision (a dedicated, narrowly-scoped platform credential with
+  BYPASSRLS reserved for whitelisted cross-tenant refresh/reporting jobs — mirroring the M35 admin
+  surface's already-documented `DATABASE_PLATFORM_URL` "+ BYPASSRLS" pattern — wired as M33's own
+  `platformDb`, or some other mechanism), not a quick GRANT. NOT attempted here — reported, not silently
+  patched, per this codebase's established practice for a finding whose fix needs its own scoped design
+  pass. `m33-reporting-scheduled-jobs.live.test.ts` keeps `platformDb: seedDb.db` (superuser) for exactly
+  this reason now (unrelated to WX-PR-024, which is fixed and separately proven).
+- Priority: P1
+- Severity addressed: High
+- Phase: unassigned (cross-cutting, discovered mid-task — needs its own scoping/design pass)
+- Objective: A genuinely cross-tenant M33 MV refresh (`report.mv_refresh`, nightly-cron trigger) succeeds
+  under the real production role posture and demonstrably reads across MULTIPLE tenants' data, not just
+  "doesn't throw."
+- Evidence: Direct `psql`/live-container reproduction above; discovered inside WX-PR-024's own live-RLS
+  hardening pass.
+- Files/modules affected: `report_mv.*` materialized views + their owning role (migration 0056/0060),
+  `packages/reporting/src/refresh/ports.ts` (`MvRefreshExecutionPort.refreshConcurrently`), M33's
+  `platformDb` wiring (`apps/backend/src/index.ts`), possibly a new dedicated platform credential.
+- Dependencies: An owner decision on the platform-credential shape (reuse the M35
+  `DATABASE_PLATFORM_URL`-style BYPASSRLS credential vs. a new M33-specific one).
+- Implementation steps: Decide the credential model; provision it; wire M33's `platformDb` to it (NOT the
+  tenant `wardenx_app` pool); add a live-RLS regression test that seeds MULTIPLE tenants' source rows and
+  asserts the refreshed MV contains ALL of them (not just "refresh didn't throw").
+- Tests: A live-RLS MV refresh, seeded with 2+ tenants' rows, produces a rollup containing rows from
+  BOTH tenants under the real production role/credential posture.
+- Acceptance criteria: The nightly MV-refresh path works in a properly-hardened (NOBYPASSRLS) production
+  deployment and is proven, not assumed, to span every tenant.
+- Risks: Every platform-wide reporting rollup depends on this; currently either fails loudly (permission
+  denied) or — if naively "fixed" with a broader grant that doesn't also address the RLS-scoping half of
+  the problem — could silently compute wrong (single-tenant) data instead of failing, which is worse.
 - Rollback: N/A (discovery only; no code changed for this finding).
-- Estimated complexity: M (the SECURITY DEFINER pattern is now proven and repeatable; the audit is
-  scoping which of the ~8 dependent modules need their own live-RLS regression coverage added too).
+- Estimated complexity: L (needs an actual architecture decision on the platform-credential model, not
+  just a migration).
