@@ -38,6 +38,14 @@ export {
   deadlineTierFor,
   registerM27CronWorkers,
   registerM27Workers,
+  // The §4.8 processor functions, exported for direct live-test invocation (no BullMQ transport precedent
+  // exists in this codebase — see m27-cost-report-workflow-slice.live.test.ts). Each runs the SAME logic
+  // `registerM27Workers` wraps in a `Worker`; calling it directly still exercises the real repos/pure-domain/
+  // outbox emit inside a real `withOrgContext` tx, just without standing up an actual BullMQ consumer.
+  runCostAllocationRecompute,
+  runEcrGeneration,
+  runTrialBalancePull,
+  runValidationRun,
   scheduleM27Jobs,
   unboundWorkerPort,
 } from "./m27-jobs";

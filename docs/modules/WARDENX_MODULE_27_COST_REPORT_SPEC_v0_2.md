@@ -37,6 +37,21 @@
 
 ## Changelog
 
+- **Implementation note (WX-PR-013, 2026-08-05) — the §4.8 recompute-enqueue producer + outbox/alerts/
+  active-org worker ports are now bound for real** (`apps/backend/src/modules/27-cost-report/wiring.ts`).
+  Before this, `RecomputeEnqueuePort` had no bound implementation, so `refresh-inputs`/`allocate`/
+  `compute-worksheet`/`validate`/submit's ecr-generation trigger enqueued nothing (a safe no-op returning a
+  fake jobId) — the fully-live `cost-allocation-recompute`/`validation-run` processors were consequently
+  untriggerable from the API. The proven slice (manual trial-balance/wage-data import → allocation-recompute
+  → validation-run → submit → snapshot → ecr-generation) is live-tested end-to-end
+  (`m27-cost-report-workflow-slice.live.test.ts`). Also fixed a real bug the test caught:
+  `runTrialBalancePull`/`runWageDataPull` used to re-throw after marking their import row `failed`, which —
+  since the whole call runs inside one `withOrgContext` transaction — rolled back that very bookkeeping, so
+  the documented reconnect-prompt recovery path never actually persisted. Still explicit deny-stub forward
+  work, not fabricated: the M1 per-tenant DEK envelope-encrypt (no platform-wide KMS provider exists), the
+  live Xero/Gusto OAuth pull (needs M34 tenant-onboarding token storage that doesn't exist), and the M6/M8
+  statistics aggregate seams (`LevelOfCarePeriodReader`/`EncounterStatisticsProvider` don't exist as
+  M1-registered seams at all yet — new seam surface, not just an unbind).
 - **v0.4 (2026-06-28) — Worksheet model realigned to Form CMS-1984-14.** The line-by-line CMS certification
   (`audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md`) found the proposed 21-worksheet taxonomy diverged from the
   real hospice form. Retired Worksheets D, E-1, G/G-1/2/3, H, S-3, S-4, A-7; added A-2/A-3/A-4, A-8-1, F-1, F-2;

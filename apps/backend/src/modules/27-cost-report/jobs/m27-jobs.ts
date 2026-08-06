@@ -469,9 +469,16 @@ function daysToDeadline(deadlineDate: string, now: Date): number {
  * `trial-balance-pull` (§4.5 / §4.8): create the in-flight `trial_balance_import`, pull from Xero via the
  * seam, DEK-encrypt the raw payload, persist the normalized accounts, and emit `m27.trial_balance.pulled`.
  * On any failure (seam unbound, Xero 5xx, DEK unbound) the row goes `status='failed'` + `m27.trial_balance
- * .pull_failed` is emitted (the §4.5 reconnect-prompt path).
+ * .pull_failed` is emitted (the §4.5 reconnect-prompt path) and the JOB COMPLETES rather than re-throwing —
+ * this whole function runs inside the caller's `withOrgContext` transaction (`registerM27Workers`'s
+ * `orgScoped` wrapper), so a re-thrown error would roll back the very "failed" bookkeeping this catch block
+ * just wrote (WX-PR-013, caught by `m27-cost-report-workflow-slice.live.test.ts`'s "missing seam" case — the
+ * row never actually persisted). Retrying via BullMQ would not help anyway while the seam is unbound (every
+ * attempt fails identically); the durable, discoverable "failed + reconnect" state IS the terminal outcome
+ * a human acts on, matching the M25 `postAdvice` precedent (mark-failed must survive the failure, not be
+ * undone by it).
  */
-async function runTrialBalancePull(
+export async function runTrialBalancePull(
   tx: DbClient,
   deps: M27WorkerDeps,
   job: TrialBalancePullJob,
@@ -532,11 +539,12 @@ async function runTrialBalancePull(
         requiresReconnect: true,
       },
     });
-    throw err;
+    // Deliberately NOT re-thrown — see the doc comment above (WX-PR-013).
   }
 }
 
-/** `wage-data-pull` (§4.5 / §4.8): the Gusto twin of {@link runTrialBalancePull} (Worksheet S-3 Part II). */
+/** `wage-data-pull` (§4.5 / §4.8): the Gusto twin of {@link runTrialBalancePull} — same "mark failed and
+ *  complete the job rather than re-throw" fix applies here for the identical reason (WX-PR-013). */
 async function runWageDataPull(
   tx: DbClient,
   deps: M27WorkerDeps,
@@ -592,7 +600,7 @@ async function runWageDataPull(
       aggregateId: job.costReportId,
       payload: { costReportId: job.costReportId, failureReason, requiresReconnect: true },
     });
-    throw err;
+    // Deliberately NOT re-thrown — see runTrialBalancePull's doc comment (WX-PR-013).
   }
 }
 
@@ -678,7 +686,7 @@ async function runStatisticsRefresh(
  * narrows to the one requested. The whole run is one org-scoped tx — writes + outbox emit commit together
  * (D8 / RULE 3a).
  */
-async function runCostAllocationRecompute(
+export async function runCostAllocationRecompute(
   tx: DbClient,
   deps: M27WorkerDeps,
   job: CostAllocationRecomputeJob,
@@ -774,7 +782,7 @@ async function upsertDerivedWorksheet(
  * `validation_complete_fail` → populating), and emit the completed/ready/failed-to-run events. On a build/
  * run failure the run is marked `failed_to_run` (distinct from a rule failure) + `validation_failed_to_run`.
  */
-async function runValidationRun(
+export async function runValidationRun(
   tx: DbClient,
   deps: M27WorkerDeps,
   job: ValidationRunJob,
@@ -932,7 +940,7 @@ async function runSnapshotBuilder(
  * strings via the pure {@link buildEcrArtifacts}, advance the `ecr_submission` to `generated`, and emit
  * `m27.artifact.render_requested` ×2 (ecr, pi) so M22 stores the bytes in MinIO + back-references the doc id.
  */
-async function runEcrGeneration(
+export async function runEcrGeneration(
   tx: DbClient,
   deps: M27WorkerDeps,
   job: EcrGenerationJob,
@@ -1171,18 +1179,31 @@ export function buildM27WorkerDeps(deps: {
   };
 }
 
-// TODO(integrator — the still-missing infra/seam ports the typed throws above name):
-//   • the live transactional-outbox dispatcher (`deps.outbox`) — bind it and every §4.10 m27.* emit lights up.
-//   • the M1 per-tenant DEK envelope-encrypt (`deps.dek`) — until bound, trial-balance/wage pulls mark
-//     `status='failed'` + emit *.pull_failed rather than persisting an un-encrypted raw payload (§3.6).
-//   • the M27 Xero/Gusto pull seams (`deps.trialBalanceSeam`/`deps.wageDataSeam`) — resolve the published
-//     XeroClientFactory/GustoClientFactory via getSeam (the adapters land in @wardenx/xero-client/gusto-client).
-//   • the M6/M8 statistics seams (`deps.statisticsSeams`) — resolve LevelOfCarePeriodReader/AdmissionCensusReader
-//     + EncounterStatisticsProvider via getSeam; set `patientDaysProviderBound`/`capProviderBound` as M23/M26 lock.
-//   • the ValidationContext + allocation-input shapers (`deps.validationContext`/`deps.allocationInputs`) — the
-//     pure runValidation/step-down/apportionment/settlement fns are wired; bind the materialized-state shapers.
-//   • the M2 active-org enumerator (`deps.activeOrgs`) under withPlatformContext (the filing-deadline cron fan-out)
-//     + register the M27 cron jobId in the @wardenx/tenancy PLATFORM_CONTEXT_ALLOWLIST.
-//   • the M36 alert router (`deps.alerts`) — the §4.9 filing-deadline tier alerts ship as defs + fire through M36.
-//   • patch the RecomputeEnqueuePort adapter to enrich each §4.8 job payload with `organizationId` (the producer's
-//     dedupe key carries it) so the worker's per-job withOrgContext resolves the org.
+// WX-PR-013 (2026-08-05) closed six of these seven items for real — see wiring.ts + index.ts:
+//   • the live transactional-outbox dispatcher (`deps.outbox`) — BOUND (the pre-existing `m27OutboxPublisher`
+//     is now passed into `buildM27WorkerDeps`; every §4.10 m27.* emit from a §4.8 processor lights up).
+//   • the ValidationContext + allocation-input shapers — were already bound before this pass.
+//   • the M2 active-org enumerator (`deps.activeOrgs`) — BOUND (`buildActiveOrgEnumerator` under
+//     `withPlatformContext`, `wireM27Tenancy()` registers `M27_PLATFORM_JOB_ID` on the allowlist at boot).
+//   • the M36 alert router (`deps.alerts`) — BOUND (the M25 `getSeam("AlertEmitter")` adapter pattern).
+//   • the RecomputeEnqueuePort organizationId enrichment — DONE in `wiring.ts`'s `buildM27RecomputeEnqueue`
+//     (parses the org id off the producer's existing dedupe-key convention; the producer call sites in
+//     write-service-drizzle.ts were not touched).
+// Still genuinely unbound (out of this slice's scope — see docs/audits/.../14-task-backlog.md WX-PR-013):
+//   • the M1 per-tenant DEK envelope-encrypt (`deps.dek`) — no platform-wide live KMS-backed provider exists
+//     yet anywhere (M34's `TenantKeyProvider` is a hard always-throw slice deny-stub); needed only for the
+//     live Xero/Gusto pull path (this slice's proven path — manual trial-balance/wage-data import — never
+//     sets `raw_payload_cipher`, so it does not need DEK). A real (non-KMS) template exists at M24's
+//     `credential-crypto.ts` if a future pass wants to unblock the live-pull path specifically.
+//   • the M27 Xero/Gusto pull seams (`deps.trialBalanceSeam`/`deps.wageDataSeam`) — the @wardenx/xero-client
+//     / @wardenx/gusto-client packages are real, structured clients, but binding a LIVE pull additionally
+//     requires OAuth token storage (M34 tenant-onboarding infra) that does not exist yet — a separate,
+//     larger project. `triggerTrialBalancePull`/`triggerWageDataPull` now enqueue for real (WX-PR-013) and
+//     the worker fails closed with a typed `M27WorkerPortUnbound` + `status='failed'` + `*.pull_failed` when
+//     it runs — never silently fabricating a pull (see `m27-cost-report-workflow-slice.live.test.ts`).
+//   • the M6/M8 statistics seams (`deps.statisticsSeams`) — per research, `LevelOfCarePeriodReader`/
+//     `EncounterStatisticsProvider` do not exist as M1-registered seams at all (M6/M8 have no org-wide
+//     monthly-aggregate projection today); this is new seam surface, not just an unbind. The A→B→C
+//     allocation chain does NOT hard-depend on this (`buildM27AllocationInputs` tolerates a null
+//     `statistic_data` row), so the proven slice supplies statistics via direct `StatisticDataRepository`
+//     writes (the same shape `statistics-refresh` would persist) rather than waiting on this larger seam.

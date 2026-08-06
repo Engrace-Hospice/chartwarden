@@ -657,6 +657,41 @@
 - Risks: Regulatory calculation correctness.
 - Rollback: Superseding version/adjustment only.
 - Estimated complexity: XL
+- Status: Done (2026-08-05, `apps/backend/src/modules/27-cost-report/wiring.ts`,
+  `apps/backend/__tests__/m27-cost-report-workflow-slice.live.test.ts`). Selected slice: manual
+  trial-balance/wage-data import (the already-live "approved input adapter" path — Xero/Gusto OAuth
+  pull is out of scope, see below) → the real BullMQ `RecomputeEnqueuePort` producer
+  (`buildM27RecomputeEnqueue`) → the §4320/§4330 step-down/per-diem allocation → the §11.B validation
+  rule engine → a real content-hashed snapshot on submit → ECR/PI artifact generation. Before this
+  task, `buildDrizzleM27WriteService` was never given a `recompute` port, so `refresh-inputs` /
+  `allocate` / `compute-worksheet` / `validate` / submit's ecr-generation trigger all enqueued NOTHING
+  (a safe no-op default returning a fake jobId) — even the two §4.8 processors that were otherwise
+  fully live-bound (`cost-allocation-recompute`, `validation-run`) were untriggerable from the API.
+  Bound for real: the recompute-enqueue producer (dedupe-key-derived `organizationId` enrichment, since
+  every §4.8 work queue is org-scoped but the producer's payloads never carried it), the transactional
+  outbox (the pre-existing `m27OutboxPublisher` simply wasn't passed into `buildM27WorkerDeps`), the M36
+  alert router (the M25 `getSeam("AlertEmitter")` pattern), and the M2 active-org enumerator for the
+  `filing-deadline-scan` cron fan-out. Found and fixed a real bug the new live test caught: both
+  `runTrialBalancePull`/`runWageDataPull` re-threw after marking their import row `failed`, but that
+  whole call runs inside the caller's `withOrgContext` transaction — the re-throw rolled back the very
+  "failed" bookkeeping the catch block just wrote, so the documented "reconnect-prompt" recovery path
+  was dead code. Fixed by not re-throwing (retrying against a permanently-unbound seam would fail
+  identically anyway; the durable, discoverable `failed` state is the intended terminal outcome).
+  Explicitly OUT of this slice (deny-stub, not fabricated): the M1 per-tenant DEK envelope-encrypt (no
+  platform-wide live KMS provider exists yet; only needed for the live Xero/Gusto payload cipher, which
+  the proven manual-import path never touches); the live Xero/Gusto OAuth pull itself (the
+  `@wardenx/xero-client`/`@wardenx/gusto-client` packages are real but binding a live pull needs M34
+  tenant-onboarding OAuth-token storage that does not exist — a separate, larger project); the M6/M8
+  statistics aggregate seams (`LevelOfCarePeriodReader`/`EncounterStatisticsProvider` do not exist as
+  M1-registered seams at all — new seam surface, not just an unbind; the allocation chain does not
+  hard-depend on them, so the proven slice seeds `statistic_data` directly via the repository instead).
+  New live suite (6/6, real Postgres + a throwaway Redis) proves: known-worksheet-fixture allocation
+  math (hand-verified step-down/per-diem penny-exact), a real regulatory-blocking validation failure
+  with every M23/M25/M12/M40/M26-gated rule correctly SKIPping (never fabricating), a real correction
+  (fix the defect, re-validate, pass), a real content-hashed snapshot + ECR/PI generation on submit, the
+  M4 write-audit trail carrying the real actor, the missing-seam fail-closed path (now durable), and
+  BullMQ's own jobId-dedupe preventing a duplicate trigger from double-enqueuing. Full gate green
+  (build, `arch:fitness`, lint, 7994 tests) plus the new live suite, run standalone.
 
 ## WX-PR-014 - Complete M30 and M33 launch jobs
 

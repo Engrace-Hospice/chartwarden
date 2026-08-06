@@ -420,17 +420,20 @@ import {
 } from "./modules/26-cap/index";
 // M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
 // over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
-// (the M30 precedent). Worker infra/seam ports stay fail-closed-unbound at boot (RULE 4); the recompute
-// enqueue + the live Xero/Gusto + M6/M8 statistics seam binds are P4 follow-ups (jobs/m27-jobs.ts TODO).
+// (the M30 precedent). WX-PR-013 bound the recompute-enqueue producer + the outbox/alerts/active-org worker
+// ports for real; the live Xero/Gusto pull + the M6/M8 statistics aggregate seams remain explicit deny-stub
+// forward work (see the wiring.ts / jobs/m27-jobs.ts TODO comments for why).
 import {
   type ClaimSettlementSeam as M27ClaimSettlementSeam,
   type DrugCostSeam as M27DrugCostSeam,
   type PatientDaysSeam as M27PatientDaysSeam,
   type ProviderEntityResolver as M27ProviderEntityResolver,
   M27_OUTBOX_EVENTS,
+  M27_PLATFORM_JOB_ID,
   buildDrizzleM27ReadService,
   buildDrizzleM27WriteService,
   buildM27AllocationInputs,
+  buildM27RecomputeEnqueue,
   buildM27ValidationContext,
   buildM27WorkerDeps,
   createDrizzleCostReportEraseStore,
@@ -442,6 +445,7 @@ import {
   registerM27PublishedSeams,
   registerM27Workers,
   scheduleM27Jobs,
+  wireM27Tenancy,
 } from "./modules/27-cost-report/index";
 // M28 (FHIR Gateway) boot surface — the §4.3 published read seams (M28-T06). The three impls register over
 // their M1 deny-stubs ONLY when a Drizzle store is supplied; M28's routes/repos (the store's home) land in
@@ -1152,6 +1156,7 @@ export function wireModuleSeams(
   // wireM33Tenancy / wireM34Tenancy precedent.
   wireM30Tenancy();
   wireM25Tenancy(); // M25 — allowlist the cron job id so the denial-aging/appeal-deadline fan-outs may enter withPlatformContext
+  wireM27Tenancy(); // M27 (WX-PR-013) — allowlist the cron job id so filing-deadline-scan may enter withPlatformContext
   // TASK-040D — allowlist M7/M9/M10's cron platform job ids (same fail-closed posture as M25/M30/M33/M34).
   wireM7Tenancy();
   wireM9Tenancy();
@@ -2064,6 +2069,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const m25OutboxPublisher = bindCallerModule(txOutboxPublisher, "m25");
   const m26OutboxPublisher = bindCallerModule(txOutboxPublisher, "m26");
   const m27OutboxPublisher = bindCallerModule(txOutboxPublisher, "m27");
+  // WX-PR-013 — the real §4.8 BullMQ producer the M27 write-service's mutating routes call (refresh-inputs /
+  // allocate / compute-worksheet / validate / submit's ecr-generation trigger). Fails closed (never a silent
+  // no-op) when no Valkey connection is configured. `m27Recompute.queues` is closed on shutdown alongside the
+  // worker/cron-schedule queues (see the §4.8 worker-registration block below, where `app` is in scope).
+  const m27Recompute = buildM27RecomputeEnqueue(queueConnection);
   const m35OutboxPublisher = bindCallerModule(txOutboxPublisher, "m35");
   const m37OutboxPublisher = bindCallerModule(txOutboxPublisher, "m37");
   const m39OutboxPublisher = bindCallerModule(txOutboxPublisher, "m39");
@@ -2445,12 +2455,15 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // M27 (Cost Report) — mount the §4.1 route plugins over the Drizzle READ + WRITE services. Each
           // mutation opens its own withOrgContext (RLS scopes every statement to app.org_id) and emits its
           // §4.10 m27.* event through the catalog-validating tx publisher (callerModule `m27`) in the same
-          // unit of work. The §4.8 recompute enqueue is left on its safe no-op default (the refresh/validate/
-          // allocate routes still succeed; the BullMQ producer-adapter binds in P4 — m27-jobs.ts TODO).
+          // unit of work. WX-PR-013 — the §4.8 recompute enqueue is now the REAL BullMQ producer
+          // (`buildM27RecomputeEnqueue`, `wiring.ts`): refresh-inputs/allocate/compute-worksheet/validate/
+          // submit's ecr-generation trigger now enqueue for real onto the queue names `registerM27Workers`
+          // constructs `Worker`s against, instead of the prior fail-open synthetic-jobId no-op default.
           mountM27Routes(app, {
             readService: buildDrizzleM27ReadService(dbHandle.db),
             writeService: buildDrizzleM27WriteService(dbHandle.db, {
               outbox: m27OutboxPublisher,
+              recompute: m27Recompute.enqueue,
             }),
           });
           // M35 (Subscription Billing) — mount the §4.1 tenant + §4.2 platform-ops + §4.3 webhook route
@@ -3146,13 +3159,48 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     }
     app.log.info({ queues: m30Workers.length }, "M30 §4.8 BullMQ HQRP/quality workers constructed");
     // ── M27 §4.8 Cost-Report workers + the filing-deadline cron (same worker-runner shape) ──────────────
-    // buildM27WorkerDeps binds only the connection + db; every infra/seam port stays fail-closed-unbound at
-    // boot (RULE 4 — the typed thunks in m27-jobs.ts throw only when a JOB RUNS, so boot stays green). The
-    // live binds (transactional outbox, M1 DEK, Xero/Gusto pull seams, M6/M8 statistics seams, the M2
-    // active-org enumerator for the filing-deadline cron fan-out, the M36 alert router) are P4 follow-ups.
+    // WX-PR-013 bound the outbox/alerts/active-org ports for real (the M25 alert/active-org-enumerator
+    // pattern); the M1 DEK + Xero/Gusto pull seams + M6/M8 statistics seams remain explicit deny-stub
+    // forward work (see wiring.ts / jobs/m27-jobs.ts for why — RULE 4 still applies: those typed thunks
+    // throw only when a JOB RUNS, so boot stays green).
+    const m27ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M27_PLATFORM_JOB_ID,
+      reason: "M27 §4.8 cron fan-out (active-org enumeration)",
+    });
+    const m27AlertEmitter = getSeam("AlertEmitter") as {
+      emit(
+        orgId: string,
+        input: {
+          eventType: string;
+          payload: Record<string, unknown>;
+          severity: string;
+          correlationId: string;
+        },
+      ): Promise<unknown>;
+    };
     const m27WorkerDeps = buildM27WorkerDeps({
       connection: queueConnection,
       db: dbHandle.db,
+      // WX-PR-013 — the pre-existing catalog-validating tx publisher (callerModule `m27`), now bound so every
+      // §4.10 m27.* emit from a §4.8 processor (allocation-recompute / validation-run / ecr-generation / …)
+      // actually lights up instead of throwing `M27WorkerPortUnbound` when the job runs.
+      outbox: m27OutboxPublisher,
+      // WX-PR-013 — the §4.9 filing-deadline tier alerts, routed through the live M36 AlertEmitter seam.
+      alerts: {
+        dispatch: async ({ alertCode, severity, organizationId, payload }) => {
+          await m27AlertEmitter.emit(organizationId, {
+            eventType: alertCode,
+            payload,
+            severity,
+            correlationId: `m27-cron:${alertCode}`,
+          });
+        },
+      },
+      // WX-PR-013 — the filing-deadline-scan cron fan-out source (under withPlatformContext, allowlisted by
+      // wireM27Tenancy() at boot).
+      activeOrgs: m27ActiveOrgs,
       // M26's CapAccrualReader is registered live above (registerM26PublishedSeams) — flag the cap provider
       // bound so the cost-report cap rules evaluate against the live aggregate (per-org availability still
       // comes from the cap-context resolver, which fail-closes when an org has no cap period). D13.
@@ -3181,6 +3229,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     attachDlqAlertsToAll(m27Workers, "m27");
     app.addHook("onClose", async () => {
       await Promise.all(m27Workers.map((w) => w.close()));
+    });
+    app.addHook("onClose", async () => {
+      await Promise.all(m27Recompute.queues.map((q) => q.close()));
     });
     try {
       const m27ScheduleQueues = await scheduleM27Jobs(queueConnection);

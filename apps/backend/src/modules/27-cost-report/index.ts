@@ -95,8 +95,23 @@ export {
   buildM27AllocationInputs,
   registerM27CronWorkers,
   registerM27Workers,
+  runCostAllocationRecompute,
+  runEcrGeneration,
+  runTrialBalancePull,
+  runValidationRun,
   scheduleM27Jobs,
 } from "./jobs/index";
+
+// WX-PR-013 — the composition-glue the M25/M30/M33/M34 wiring.ts precedent establishes: the platform-tenancy
+// registration for the §4.8 `filing-deadline-scan` cron fan-out, plus the real `RecomputeEnqueuePort` BullMQ
+// producer the write-service's mutating routes call (refresh-inputs / allocate / compute-worksheet / validate
+// / submit's ecr-generation trigger).
+export {
+  M27_PLATFORM_JOB_ID,
+  M27InfraPortUnbound,
+  buildM27RecomputeEnqueue,
+  wireM27Tenancy,
+} from "./wiring";
 
 // D13 — the M26 cost-report cap bind: the fail-closed cap-context resolver (the cap portion of the eventual
 // ValidationContextBuilder) + the live-seam-bound production resolver. `resolveCapContext` reads M26's
