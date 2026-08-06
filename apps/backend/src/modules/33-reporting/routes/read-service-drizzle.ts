@@ -51,12 +51,18 @@ import type {
  * Executes a translated, parameterized tile SELECT on the read replica (P2C binds it over the
  * `withReportSession` handle + the result-shaper). Deny-stub-safe: when unbound the Drizzle backend
  * serves the forward-seam empty tile rather than fabricating rows (D6).
+ *
+ * Takes the ACTIVE `ReportingDb` handle as its first argument rather than capturing one at construction:
+ * the executor is built ONCE at wiring time, but every call must run on the SAME per-request
+ * `withReportSession` transaction the caller already opened (that tx carries the `SET LOCAL app.org_id` /
+ * `default_transaction_read_only` / `statement_timeout` GUCs, §8.1.2) — a statically-captured connection
+ * would run outside that scope and FORCE RLS would silently return zero rows instead of the real tile.
  */
 export interface TileSqlExecutor {
-  execute(input: {
-    sql: string;
-    params: readonly unknown[];
-  }): Promise<{ rows: readonly unknown[]; rowCount: number }>;
+  execute(
+    db: ReportingDb,
+    input: { sql: string; params: readonly unknown[] },
+  ): Promise<{ rows: readonly unknown[]; rowCount: number }>;
 }
 
 /** Composition deps the Drizzle read backend binds at boot (P2C). */
@@ -214,7 +220,7 @@ export function createDrizzleM33ReadBackend(deps: M33ReadDrizzleDeps): {
           // forward-seam (MV not materialized) OR the executor is not yet bound → "Not yet available".
           return emptyTile(base.drilldownUrlTemplate ?? undefined);
         }
-        const { rows, rowCount } = await deps.tiles.execute({
+        const { rows, rowCount } = await deps.tiles.execute(db, {
           sql: translation.sql,
           params: translation.params,
         });

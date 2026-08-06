@@ -208,12 +208,15 @@ export function createInMemoryM33ExportDrilldownBackend(seed: M33ExportDrilldown
 
 // ── Drizzle backend (port-injected, deny-stub-safe) ─────────────────────────────────────────────────────
 
-/** Executes a translated, parameterized export SELECT on the read replica (bound at P2C; deny-stub-safe). */
+/** Executes a translated, parameterized export SELECT on the read replica (bound at P2C; deny-stub-safe).
+ *  Takes the ACTIVE `ReportingDb` (the caller's open `withReportSession` tx) as its first argument — see
+ *  `TileSqlExecutor`'s doc comment (read-service-drizzle.ts) for why a statically-captured connection would
+ *  run outside the RLS-scoped session. */
 export interface ExportSqlExecutor {
-  execute(input: {
-    sql: string;
-    params: readonly unknown[];
-  }): Promise<{ rows: readonly SqlRow[]; rowCount: number }>;
+  execute(
+    db: ReportingDb,
+    input: { sql: string; params: readonly unknown[] },
+  ): Promise<{ rows: readonly SqlRow[]; rowCount: number }>;
 }
 
 /** Composition deps the Drizzle export/drilldown backend binds at boot (P2C). */
@@ -269,46 +272,62 @@ export function createDrizzleM33ExportDrilldownBackend(deps: M33ExportDrilldownD
   const read = <T>(orgId: string, fn: (db: ReportingDb) => Promise<T>): Promise<T> =>
     withReportSession<T>({ orgId, tier: "export" }, { replica: deps.replica, lag: deps.lag }, fn);
 
-  /** Resolve a saved view → its spec + the translator base catalog + the translated snapshot (read session). */
-  const translateView = async (
+  /**
+   * Resolve a saved view → its spec + the translator base catalog + the translated snapshot, given an
+   * ALREADY-OPEN session `db`. Split out from `translateView` below so `streamCsvExport` can keep ONE
+   * `read()` session open across translate → execute → stream (the actual `tiles.execute` call must run on
+   * the SAME tx that carries the RLS/read-only/statement_timeout GUCs `read()` sets — running it after that
+   * session already closed, as a two-step translate-then-execute would, means FORCE RLS sees no scope at
+   * all).
+   */
+  const translateViewOn = async (
+    db: ReportingDb,
+    actor: M33WriteActor,
+    viewId: string,
+    query: ExportQuery,
+  ): Promise<{ translation: Translation; rowLimit: number }> => {
+    const view = await new ReportViewRepository(db).findById(viewId);
+    if (!view || view.organizationId !== actor.organizationId)
+      throw new NotFoundError("report view");
+    const defRepo = new ReportDefinitionRepository(db);
+    const version = await defRepo.findVersionById(view.definitionVersionId);
+    if (!version) throw new NotFoundError("report definition version");
+    const spec = version.spec as schema.ReportDefinitionSpec;
+    const definition = await defRepo.findDefinitionById(version.definitionId);
+    if (!definition) throw new NotFoundError("report definition");
+    const catalog = new ReportCatalogRepository(db);
+    const base = await catalog.findBaseByKey(definition.baseKey);
+    if (!base) throw new NotFoundError("report base");
+    const mv = await catalog.findMvByKey(base.mvKey);
+    const rowLimit = spec.rowLimit ?? base.maxRowLimit;
+    const filters = (query.filters as schema.ReportFilter[] | undefined) ?? spec.filters ?? [];
+    const translatorBase: TranslatorBaseCatalog = {
+      baseKey: base.baseKey,
+      status: base.status,
+      mvKey: base.mvKey,
+      mvSchemaName: mv?.schemaName ?? base.mvKey,
+      mvStatus: mv?.status ?? "registered",
+      dimensions: base.dimensions,
+      measures: base.measures,
+      maxRowLimit: base.maxRowLimit,
+      drilldownUrlTemplate: base.drilldownUrlTemplate,
+    };
+    const translation = translateSpec(
+      { ...spec, filters },
+      translatorBase,
+      scopeEnvelope(actor, query),
+    );
+    return { translation, rowLimit };
+  };
+
+  /** `translateViewOn` over its own freshly-opened read session (used where the session need not stay open
+   *  past the translation itself — `estimateCsvExport`/`requestExport` never execute the translated SQL). */
+  const translateView = (
     actor: M33WriteActor,
     viewId: string,
     query: ExportQuery,
   ): Promise<{ translation: Translation; rowLimit: number }> =>
-    read(actor.organizationId, async (db) => {
-      const view = await new ReportViewRepository(db).findById(viewId);
-      if (!view || view.organizationId !== actor.organizationId)
-        throw new NotFoundError("report view");
-      const defRepo = new ReportDefinitionRepository(db);
-      const version = await defRepo.findVersionById(view.definitionVersionId);
-      if (!version) throw new NotFoundError("report definition version");
-      const spec = version.spec as schema.ReportDefinitionSpec;
-      const definition = await defRepo.findDefinitionById(version.definitionId);
-      if (!definition) throw new NotFoundError("report definition");
-      const catalog = new ReportCatalogRepository(db);
-      const base = await catalog.findBaseByKey(definition.baseKey);
-      if (!base) throw new NotFoundError("report base");
-      const mv = await catalog.findMvByKey(base.mvKey);
-      const rowLimit = spec.rowLimit ?? base.maxRowLimit;
-      const filters = (query.filters as schema.ReportFilter[] | undefined) ?? spec.filters ?? [];
-      const translatorBase: TranslatorBaseCatalog = {
-        baseKey: base.baseKey,
-        status: base.status,
-        mvKey: base.mvKey,
-        mvSchemaName: mv?.schemaName ?? base.mvKey,
-        mvStatus: mv?.status ?? "registered",
-        dimensions: base.dimensions,
-        measures: base.measures,
-        maxRowLimit: base.maxRowLimit,
-        drilldownUrlTemplate: base.drilldownUrlTemplate,
-      };
-      const translation = translateSpec(
-        { ...spec, filters },
-        translatorBase,
-        scopeEnvelope(actor, query),
-      );
-      return { translation, rowLimit };
-    });
+    read(actor.organizationId, (db) => translateViewOn(db, actor, viewId, query));
 
   const service: M33ExportDrilldownRouteService = {
     async estimateCsvExport(actor, viewId, query) {
@@ -317,30 +336,33 @@ export function createDrizzleM33ExportDrilldownBackend(deps: M33ExportDrilldownD
       return { estimatedRowCount: 0, isDenyStub: translation.kind === "deny_stub" };
     },
 
-    async streamCsvExport(actor, viewId, query, sink) {
-      const { translation } = await translateView(actor, viewId, query);
+    streamCsvExport(actor, viewId, query, sink) {
       const tiles = deps.tiles;
-      // The cursor source: one execute → one chunk. UNBOUND executor (or a deny-stub base) → no rows
-      // (handleCsvExport streams a header-only/empty CSV — the forward-seam path, never fabricated rows).
-      const source = {
-        async *fetchChunks(): AsyncIterable<readonly SqlRow[]> {
-          if (translation.kind !== "sql" || !tiles) return;
-          const { rows } = await tiles.execute({
-            sql: translation.sql,
-            params: translation.params,
-          });
-          yield rows;
-        },
-      };
-      return handleCsvExport(
-        {
-          translation,
-          viewId,
-          organizationId: actor.organizationId,
-          actorMembershipId: actor.membershipId,
-        },
-        { source, sink, outbox: deps.csvOutbox ?? NOOP_CSV_OUTBOX },
-      );
+      // ONE read() session spans translate → execute → stream (see translateViewOn's doc comment) — the
+      // cursor source's `fetchChunks` closes over the SAME `db` the translation ran on. UNBOUND executor (or
+      // a deny-stub base) → no rows (handleCsvExport streams a header-only/empty CSV, never fabricated rows).
+      return read(actor.organizationId, async (db) => {
+        const { translation } = await translateViewOn(db, actor, viewId, query);
+        const source = {
+          async *fetchChunks(): AsyncIterable<readonly SqlRow[]> {
+            if (translation.kind !== "sql" || !tiles) return;
+            const { rows } = await tiles.execute(db, {
+              sql: translation.sql,
+              params: translation.params,
+            });
+            yield rows;
+          },
+        };
+        return handleCsvExport(
+          {
+            translation,
+            viewId,
+            organizationId: actor.organizationId,
+            actorMembershipId: actor.membershipId,
+          },
+          { source, sink, outbox: deps.csvOutbox ?? NOOP_CSV_OUTBOX },
+        );
+      });
     },
 
     async requestExport(actor, viewId, format, idempotencyKey) {

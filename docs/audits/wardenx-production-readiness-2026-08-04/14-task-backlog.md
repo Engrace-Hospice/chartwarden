@@ -692,11 +692,12 @@
 
 ## WX-PR-014 - Complete M30 and M33 launch jobs
 
-- Status: Partial (2026-08-06) — the M30 §4.8 CRON → WORK-QUEUE background-job path (nightly
+- Status: Done (2026-08-06, M33 follow-up) — the M30 §4.8 CRON → WORK-QUEUE background-job path (nightly
   measure-recompute + daily risk-register-refresh) is bound for real and live-tested end-to-end
-  against real Postgres + real BullMQ; M33 is untouched this pass (see justification below).
-  Research (before writing code) found the two cron enqueue ports (`nightlyRecompute.enqueue
-  .enqueueForOrg`, `riskRegisterRefreshCron.enqueue.enqueueRefresh`) were hardcoded fail-closed
+  against real Postgres + real BullMQ (see the original M30 note below); a same-day follow-up closed
+  the M33 slice this task's first pass deliberately left untouched — see "M33 follow-up (2026-08-06)"
+  below the M30 write-up.
+  Research (before writing code) found the two cron enqueue ports (`nightlyRecompute.enqueue .enqueueForOrg`, `riskRegisterRefreshCron.enqueue.enqueueRefresh`) were hardcoded fail-closed
   thunks with NO fan-out logic at all — meaning the 03:15 nightly recompute and 04:00 daily
   risk-register refresh were silent no-ops in production, forever, even though their downstream
   work-queue processors were otherwise live-bound. Binding them surfaced FOUR more real,
@@ -710,8 +711,7 @@
   over the same tx-scoped `m30` outbox publisher the command routes already use; (3)
   `risk_register_refresh`'s worker never actually ran inside `withOrgContext`, despite its own
   repository's doc comment saying it must — FORCE RLS silently returned zero rows from every source
-  table on every run; (4) `refreshConcurrently` ran `REFRESH MATERIALIZED VIEW CONCURRENTLY
-  risk_register_view`, but migration 0067 DELIBERATELY made that view a plain (non-materialized)
+  table on every run; (4) `refreshConcurrently` ran `REFRESH MATERIALIZED VIEW CONCURRENTLY risk_register_view`, but migration 0067 DELIBERATELY made that view a plain (non-materialized)
   view — its own comment explains why (a precomputed matview cannot re-filter per reading session
   and would leak cross-org rows) — so Postgres has rejected this statement outright since M30
   shipped; fixed to a documented no-op (a plain view has nothing to refresh). Also fixed the same
@@ -734,6 +734,42 @@
   `measure_recompute`'s `emitThresholdBreached` (a genuine, separate payload/schema mismatch vs the
   `m30.measure.threshold_breached` catalog entry — missing `indicatorId`/`threshold` — found but not
   papered over with invented values).
+
+  **M33 follow-up (2026-08-06)** — closed the gap the M30 pass above deliberately left untouched. Bound
+  for real: the per-job `withOrgContext`/`withPlatformContext` tenancy envelope (previously ABSENT on
+  every one of the five §4.8 workers — FORCE RLS silently denied/emptied every org-scoped read/write,
+  a bigger version of the M30 risk_register_refresh bug found above); the nightly MV-refresh
+  orchestrator (the cron sentinel used to land directly on the per-MV worker with no dedicated
+  consumer — now branches on the BullMQ job name and runs the real `runNightlyRefresh` fan-out, which
+  really `REFRESH MATERIALIZED VIEW CONCURRENTLY`s `report_mv.mv_census_org_daily`); `scheduledRun`'s
+  M2 active-membership recipient re-validation, the real `translateSpec` view→version→definition→base
+  snapshot-build chain, `pause.autoPause`, the M4 `audit()` writes, and the outbox emits that satisfy
+  their catalog schema; the Valkey-backed lag-probe hysteresis state + degraded-tile advisory flag
+  (previously hardcoded throws that would have crashed the 30-second singleton probe on its first
+  tick); and — beyond the job-wiring charter — a real `db.execute`-backed tile/export SQL executor for
+  the READ + EXPORT route services, since `deps.tiles` was never passed at the composition root at
+  all: no M33 tile read or CSV export had ever returned real data in production, independent of the
+  background-job gap (found while tracing the same `translateSpec` chain `scheduledRun.snapshot.build`
+  needed). A live-test-caught regression in this pass's own first draft: `mvRefresh`/`lagProbe`'s
+  outbox emit ports were initially bound as fail-closed *throws*, but `handleMvRefresh`/`runLagProbe`
+  call them UNCONDITIONALLY on the success path — the identical `unbound()`-on-an-unconditional-call
+  bug class the M30 write-up above fixed (`emitValueEmitted`) — so a real successful REFRESH was
+  recorded as a FAILED run until the live test caught it; corrected to documented no-ops. Two genuine,
+  NOT-closeable infra gaps found while wiring (left unbound, not routed around): `mvRefresh`/`lagProbe`'s
+  outbox emits, because `OutboxPublishPort.publish` (M1, `apps/backend/src/bootstrap/outbox-persister.ts`)
+  requires a non-null `organizationId` by design and these are platform-wide
+  (`organizationId=null`/absent) events — needs an M1-level nullable-org outbox persist path; and the
+  ad-hoc PDF/XLSX `exportRender` outbox, because `ExportRenderRequestPayload` does not satisfy the
+  `m33.scheduled_report.render_requested` catalog schema (missing `scheduleId`/`runId`, which only the
+  separate scheduled-run cron producer's payload carries) — two producers sharing one wire event name
+  with incompatible payloads, a package-level gap. Still explicitly out of scope, unchanged: the M1
+  DEK/KMS provider (drilldown-audit encryption still denies), the M33 cron-parser adapter (schedule
+  `next_run_at` math — a separate library integration), and `report.tile_warm_cache`/
+  `report.tenant_eraser` (no BullMQ producer anywhere enqueues onto either — the real tenant-erase path
+  is the already-wired M4 destruction registry; tile-warming is an unbuilt caching optimization, reads
+  compute live either way). Proven via a new live suite (4/4) against real Postgres + a dedicated
+  throwaway Redis. Full gate green (build/arch:fitness/lint/full test suite, 7995 passing, live suite
+  gated).
 - Priority: P1
 - Severity addressed: High
 - Phase: 4

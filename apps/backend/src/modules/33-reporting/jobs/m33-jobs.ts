@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-import type { DbClient } from "@wardenx/db";
 // apps/backend/src/modules/33-reporting/jobs/m33-jobs.ts — M33 Phase 2C LIVE BullMQ wiring for the §4.8 jobs.
 // The thin, infra-touching adapter that turns the @wardenx/reporting pure workers (catalog in ./index.ts)
 // into running BullMQ `Worker`s + the cron-schedule `Queue`s. All job LOGIC lives in the package (unit-tested
@@ -29,24 +27,46 @@ import type { DbClient } from "@wardenx/db";
 //     the replica. `report_mv.*` views are platform-global (org=null), so the refresh runs platform-scoped.
 //   • the drilldown-audit writer ENVELOPE-ENCRYPTS the filter context FIRST — the encryption port is unbound
 //     here, so a run fails closed (DrilldownDekUnavailable) and writes NOTHING (never plaintext at rest, §3.6).
+import { randomUUID } from "node:crypto";
+import { type AuditContext, audit } from "@wardenx/audit";
+import { type DbClient, schema } from "@wardenx/db";
 import {
   type CsvExportPorts,
   DashboardTileCacheRepository,
+  type DrilldownAuditInput,
   type DrilldownAuditPorts,
   type LagProbePorts,
+  type MvRefreshEnqueueOutcome,
+  type MvRefreshJob,
+  type MvRefreshQueuePort,
   type MvRefreshWorkerPorts,
+  type NightlyRefreshPorts,
   type PdfRenderRequestPorts,
   ReportCatalogRepository,
+  ReportDefinitionRepository,
   ReportDrilldownAuditRepository,
   ReportRunRepository,
   ReportScheduleRepository,
+  ReportViewRepository,
+  type ReportableScopeEnvelope,
+  type ReportingConsentConsumer,
+  type ScheduledRunJob,
   type ScheduledRunPorts,
+  type TranslatorBaseCatalog,
   type XlsxRenderRequestPorts,
+  runNightlyRefresh,
+  translateSpec,
 } from "@wardenx/reporting";
+import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import type Redis from "ioredis";
+import { getSeam } from "../../../bootstrap/index";
+import { M33_PLATFORM_JOB_ID } from "../wiring";
 import {
+  type ExportRenderJob,
   type ExportRenderProcessorPorts,
+  type LagProbeJob,
   M33_JOB_SCHEDULES,
   M33_QUEUES,
   M33_QUEUE_PARAMS,
@@ -56,6 +76,7 @@ import {
   mvRefreshProcessor,
   scheduledRunProcessor,
 } from "./index";
+import { createRedisLagProbeAdvisoryPort, createRedisLagProbeStatePort } from "./lag-probe-state";
 
 // ── the dep bag the composition root injects (the bindable infra + the still-missing seams) ────────────
 
@@ -81,8 +102,62 @@ export interface M33WorkerDeps {
    * refresh/probe use `db` (fine in a single-pool dev boot, but NOT the dedicated primary the spec mandates).
    */
   readonly primaryDb?: DbClient;
+  /**
+   * The separately-pooled platform login role `withPlatformContext` opens its tx on (NOT the tenant pool —
+   * `mvRefresh`/`lagProbe` are platform-scoped, {@link M33_QUEUE_SCOPE}). Defaults to `db` when absent,
+   * matching the M30/M27/M25/M7/M9/M10 `buildActiveOrgEnumerator` call sites in the composition root today
+   * (a genuinely separate platform pool is architecturally intended but not yet provisioned — every other
+   * platform-scoped cron in this codebase reuses the tenant pool the same way).
+   */
+  readonly platformDb?: DbClient;
+  /**
+   * Audits every `withPlatformContext` entry (fail-closed: absent ⇒ a platform-scoped job throws when it
+   * runs, never silently skips the audit). The composition root passes the SAME shared
+   * `m34PlatformBypassAuditor` (apps/backend/src/index.ts) every other platform-scoped module uses — despite
+   * the name, it is module-agnostic (its event records the caller's own jobId).
+   */
+  readonly auditBypass?: PlatformBypassAuditor<DbClient>;
   /** Injected clock (deterministic in tests; the package workers stamp every instant through this). */
   now?: () => Date;
+  /**
+   * The SAME tx-scoped `m33` outbox publisher the write-service command routes already use
+   * (`bindCallerModule(txOutboxPublisher, "m33")`). Bound over this, every §4.10 `m33.*` job emit lights up
+   * (M22 render handshake, M36 alerts, M1 system_status, the self-subscriber cache-invalidate/audit-flush
+   * events) — all of them are plain outbox publishes once a tx-scoped publisher exists; there is no separate
+   * per-event infra to build. `drilldownAuditFlush.encryption.encryptFilters` is the one M33 port this does
+   * NOT unblock (it needs the M1 envelope-DEK helper, which still does not exist — see the module TODO).
+   */
+  readonly outboxPublisher?: {
+    publish(
+      tx: DbClient,
+      input: {
+        readonly eventName: string;
+        readonly payload: Record<string, unknown>;
+        readonly organizationId: string | null;
+        readonly aggregateKind: string;
+        readonly aggregateId: string;
+      },
+    ): Promise<void>;
+  };
+  /**
+   * A dedicated Valkey/Redis client for the `report.lag_probe` singleton's mutable state (hysteresis +
+   * degraded-tile advisory, §2.4/D14) — see `./lag-probe-state.ts`. Separate from `connection` (BullMQ's
+   * broad `ConnectionOptions` union isn't necessarily a live ioredis instance) so the probe's two Redis keys
+   * work over a plain, already-connected `ioredis` client the composition root constructs once.
+   */
+  readonly lagProbeRedis?: Redis;
+  /**
+   * The `report.mv_refresh` producer the nightly orchestrator (`runNightlyRefresh`) fans per-MV refresh jobs
+   * out onto — a SEPARATE BullMQ `Queue` handle from the `connection` a `Worker` opens (a producer needs its
+   * own `Queue.add`). Built by `buildM33MvRefreshEnqueue` below; the composition root constructs one instance
+   * and passes it here (mirrors the M27/M30 recompute-enqueue precedent, including the same BullMQ
+   * "jobId cannot contain ':'" sanitization the dispatcher's `mv_refresh:<mvKey>:<floorMs>` jobId needs).
+   */
+  readonly mvRefreshEnqueue?: MvRefreshQueuePort;
+  /** The CURRENT job's organizationId (set on each per-job port rebuild in `registerM33Workers`) — threaded
+   *  through to `systemAuditContext()` since `RunnerAuditPort`'s methods don't carry an orgId parameter of
+   *  their own. `null` outside a per-job rebuild (platform-scoped jobs; the audit context omits org scope). */
+  readonly jobOrganizationId?: string | null;
 }
 
 /** Raised when a worker port could not be bound to a real adapter (the missing-infra fail-closed signal).
@@ -98,6 +173,13 @@ export class M33WorkerPortUnbound extends Error {
 const unbound = (port: string, reason: string): never => {
   throw new M33WorkerPortUnbound(port, reason);
 };
+
+/** The audit() actor context for a background job — no acting user, so `userId: null` / `actorKind:
+ *  "system"` (mirrors the M30 §4.8 system-sentinel precedent). A fresh `correlationId` per call: a job's
+ *  audit rows are not part of an HTTP request's correlation chain. */
+function systemAuditContext(organizationId: string | null = null): AuditContext {
+  return { organizationId, userId: null, actorKind: "system", correlationId: randomUUID() };
+}
 
 // ── the per-queue port bundles (bind what we can; throw-on-call for the genuinely-missing infra) ────────
 
@@ -184,33 +266,44 @@ export function buildM33WorkerPorts(deps: M33WorkerDeps): M33WorkerPortBundles {
     },
     tileCache: {
       // BOUND for the org-scoped case (DashboardTileCacheRepository.deleteByOrg). The platform-global refresh
-      // (org=null) needs a `deleteByMvKey` the repo does not expose yet → lazy-unbound (fail-closed, not no-op).
+      // (org=null) is a documented NO-OP, not a throw: `dashboard_tile_cache` has no producer wiring anywhere
+      // in the backend today (`report.tile_warm_cache` carries no BullMQ consumer or enqueue call — WX-PR-014
+      // leaves it dormant, see the module TODO; `readTile` computes tiles live off `deps.tiles`, it never
+      // upserts into the cache) — the table is unconditionally empty in production, so a platform-wide refresh
+      // has nothing to invalidate. Throwing here would be the SAME bug class WX-PR-014 fixed in M30's
+      // `risk_register_refresh`: an unconditional throw on the SUCCESS path of `handleMvRefresh` (this call
+      // sits inside its `try`, after the run is already settled "succeeded") turns every successful
+      // platform-wide refresh into a recorded FAILURE and, after enough consecutive "failures", suspends the
+      // MV — over a cache table that was never going to have a row to delete either way.
       async invalidateForMv({ organizationId }) {
-        if (organizationId === null) {
-          return unbound(
-            "mvRefresh.tileCache.invalidateForMv",
-            "DashboardTileCacheRepository has no deleteByMvKey for the platform-global (org=null) refresh yet",
-          );
-        }
+        if (organizationId === null) return 0;
         return tileRepo.deleteByOrg(organizationId);
       },
     },
+    // GENUINE INFRA BLOCK (found while wiring this pass, not a plain "not yet bound" gap): `report_mv.*`
+    // views are platform-global (§2.4 — every `report.mv_refresh` job runs under `withPlatformContext`,
+    // `organizationId: null`), but `OutboxPublishPort.publish`'s own contract
+    // (apps/backend/src/bootstrap/outbox-persister.ts `OutboxPublishInput.organizationId: string`) requires a
+    // NON-NULL tenant uuid — its doc comment says so explicitly: "platform-wide/org-null events are NOT
+    // persistable here". `deps.outboxPublisher` (the SAME tx-scoped `m33` publisher the command routes use)
+    // therefore CANNOT carry these three events no matter how it is bound; fabricating a placeholder org id
+    // to satisfy the type would misattribute a platform-wide refresh to one random tenant (`outbox_event` is
+    // itself RLS-scoped by `organization_id` — a fabricated id would make the row invisible to every real
+    // consumer, or worse, attribute it to the wrong tenant's audit trail). Closing this needs an M1-level
+    // change (a nullable-organizationId persist path for platform-scoped outbox events), not a wiring change.
+    //
+    // A DOCUMENTED NO-OP, NOT A THROW (live-test-caught bug in THIS pass's own first draft): `refresh-
+    // worker.ts`'s `handleMvRefresh` calls `outbox.emitRefreshSucceeded` UNCONDITIONALLY on the SUCCESS path,
+    // right after settling the run "succeeded" — the exact `unbound()`-on-an-unconditional-call bug class
+    // WX-PR-014 fixed in M30 (`measure_recompute.outbox.emitValueEmitted`). Throwing here turned every
+    // successful REFRESH into a run recorded as FAILED (caught by `handleMvRefresh`'s own catch block, which
+    // re-settles the run "failed" and increments the consecutive-failure counter) — a real, live-test-caught
+    // regression, not a hypothetical. `emitRefreshFailed`/`emitRefreshExhausted` are unconditional on their
+    // own (failure) path for the identical reason, so all three are no-ops, not throws.
     outbox: {
-      emitRefreshSucceeded: () =>
-        unbound(
-          "mvRefresh.outbox.emitRefreshSucceeded",
-          "bind to the live transactional-outbox dispatcher (m33.mv.refresh_succeeded)",
-        ),
-      emitRefreshFailed: () =>
-        unbound(
-          "mvRefresh.outbox.emitRefreshFailed",
-          "bind to the live transactional-outbox dispatcher (m33.mv.refresh_failed → M36 warn)",
-        ),
-      emitRefreshExhausted: () =>
-        unbound(
-          "mvRefresh.outbox.emitRefreshExhausted",
-          "bind to the live transactional-outbox dispatcher (m33.mv.refresh_exhausted → M36 critical)",
-        ),
+      async emitRefreshSucceeded() {},
+      async emitRefreshFailed() {},
+      async emitRefreshExhausted() {},
     },
   };
 
@@ -228,61 +321,174 @@ export function buildM33WorkerPorts(deps: M33WorkerDeps): M33WorkerPortBundles {
         await runRepo.updateScheduleRunStatus(runId, scheduledFor, patch);
       },
     },
+    // BOUND: an M2 active-membership re-validation (the recipient's membership must still be ACTIVE in the
+    // SAME org the schedule was created under). This is narrower than the doc-comment's original aspiration
+    // ("M39 ConsentEvaluator.evaluateForReporting") — that method takes a PATIENT-identifier cohort for
+    // drilldown PHI narrowing (packages/reporting/src/seams/consumed/m39-consent.ts); a scheduled report's
+    // recipient list carries membership ids, not patient ids, so that method is the wrong shape for THIS
+    // re-validation and is not called here. What IS re-validated is exactly the scenario W-R-04 names — "a
+    // recipient may have lost access between schedule creation and this run" — for the membership-active
+    // fact; it does not re-run the full `reportable_scope` ABAC permission check (that needs a live
+    // request-context evaluator with no established background-job binding pattern in this codebase).
     recipients: {
-      isRecipientEntitled: () =>
-        unbound(
-          "scheduledRun.recipients.isRecipientEntitled",
-          "bind to getSeam('ConsentEvaluator').evaluateForReporting + the M2 active-membership reader (W-R-04 re-validation)",
-        ),
+      async isRecipientEntitled(membershipId, organizationId) {
+        const [row] = await db
+          .select({
+            status: schema.memberships.status,
+            organizationId: schema.memberships.organizationId,
+          })
+          .from(schema.memberships)
+          .where(eq(schema.memberships.id, membershipId))
+          .limit(1);
+        return (
+          row !== undefined && row.status === "active" && row.organizationId === organizationId
+        );
+      },
     },
+    // BOUND: reuses the SAME view→version→definition→base→translateSpec chain
+    // `export-drilldown-service.ts`'s `translateView` already runs in production for CSV/PDF/XLSX exports —
+    // no new translation logic invented here. A `deny_stub` translation (the MV isn't materialized yet)
+    // throws rather than emitting a fabricated snapshot query (D6 — never fail open).
+    //
+    // ONE FLAGGED, NOT-INVENTED GAP: `SnapshotQueryPort.build` returns `snapshotQuery: string` alone (no
+    // separate params channel), and the `m33.scheduled_report.render_requested` wire event
+    // (events-by-m33.ts) mirrors that — `snapshotQuery: Type.String()`, nothing else. But `translateSpec`
+    // deliberately keeps SQL text and bound params SEPARATE (D4 — no raw-SQL / no string-interpolated
+    // values); the text this port returns still carries literal `$1, $2, …` placeholders with no
+    // accompanying params array in the wire contract. That is a pre-existing gap in the package's own
+    // interface + event schema (predates this task), not something introduced here — M22's eventual
+    // render consumer will need either a `params` field added to the event schema or a safe literal-inliner
+    // before it can actually execute this query. Flagged, not silently worked around.
     snapshot: {
-      build: () =>
-        unbound(
-          "scheduledRun.snapshot.build",
-          "bind to the M33 report-builder translator over a withReportSession replica session (the saved view's spec → SELECT)",
-        ),
+      async build({ reportViewId, organizationId }) {
+        const view = await new ReportViewRepository(db).findById(reportViewId);
+        if (!view || view.organizationId !== organizationId) {
+          throw new Error(`report_view ${reportViewId} not found for org ${organizationId}`);
+        }
+        const defRepo = new ReportDefinitionRepository(db);
+        const version = await defRepo.findVersionById(view.definitionVersionId);
+        if (!version) {
+          throw new Error(`report_definition_version ${view.definitionVersionId} not found`);
+        }
+        const definition = await defRepo.findDefinitionById(version.definitionId);
+        if (!definition) throw new Error(`report_definition ${version.definitionId} not found`);
+        const base = await catalogRepo.findBaseByKey(definition.baseKey);
+        if (!base) throw new Error(`report_base_catalog ${definition.baseKey} not found`);
+        const mv = await catalogRepo.findMvByKey(base.mvKey);
+        const spec = version.spec as schema.ReportDefinitionSpec;
+        const filters = [...(spec.filters ?? []), ...(view.pinnedFilters ?? [])];
+        const translatorBase: TranslatorBaseCatalog = {
+          baseKey: base.baseKey,
+          status: base.status,
+          mvKey: base.mvKey,
+          mvSchemaName: mv?.schemaName ?? base.mvKey,
+          mvStatus: mv?.status ?? "registered",
+          dimensions: base.dimensions,
+          measures: base.measures,
+          maxRowLimit: base.maxRowLimit,
+          drilldownUrlTemplate: base.drilldownUrlTemplate,
+        };
+        const scope: ReportableScopeEnvelope = {
+          scopeKind: "org",
+          organizationId,
+          membershipIds: [],
+          locationIds: [],
+        };
+        const translation = translateSpec({ ...spec, filters }, translatorBase, scope);
+        if (translation.kind === "deny_stub") {
+          throw new Error(
+            `report base '${base.baseKey}' MV '${base.mvKey}' is not yet materialized (status='registered') — cannot build a scheduled-run snapshot`,
+          );
+        }
+        return { snapshotQuery: translation.sql, viewId: view.id, viewName: view.displayName };
+      },
     },
+    // BOUND over `deps.outboxPublisher` (the SAME tx-scoped `m33` publisher the write-service command routes
+    // already use). Unlike mvRefresh/lagProbe above, every `report.scheduled_run` job carries a real,
+    // non-null `organizationId` (§4.8 — this queue is `withOrgContext`-scoped, F09), so
+    // `OutboxPublishPort.publish`'s non-null-organizationId contract is satisfied — no infra block here.
     outbox: {
-      emitRenderRequested: () =>
-        unbound(
-          "scheduledRun.outbox.emitRenderRequested",
-          "bind to the live transactional-outbox dispatcher (m33.scheduled_report.render_requested → M22 §1.1)",
-        ),
-      emitFailed: () =>
-        unbound(
-          "scheduledRun.outbox.emitFailed",
-          "bind to the live transactional-outbox dispatcher (m33.scheduled_report.failed → M36 warn)",
-        ),
+      emitRenderRequested: deps.outboxPublisher
+        ? (payload) =>
+            deps.outboxPublisher!.publish(db, {
+              eventName: "m33.scheduled_report.render_requested",
+              payload,
+              organizationId: payload.organizationId,
+              aggregateKind: "report_schedule_run",
+              aggregateId: payload.runId,
+            })
+        : () =>
+            unbound(
+              "scheduledRun.outbox.emitRenderRequested",
+              "bind `deps.outboxPublisher` (bindCallerModule(txOutboxPublisher, 'm33')) — m33.scheduled_report.render_requested → M22 §1.1",
+            ),
+      emitFailed: deps.outboxPublisher
+        ? (payload) =>
+            deps.outboxPublisher!.publish(db, {
+              eventName: "m33.scheduled_report.failed",
+              payload,
+              organizationId: payload.organizationId,
+              aggregateKind: "report_schedule_run",
+              aggregateId: payload.runId,
+            })
+        : () =>
+            unbound(
+              "scheduledRun.outbox.emitFailed",
+              "bind `deps.outboxPublisher` (bindCallerModule(txOutboxPublisher, 'm33')) — m33.scheduled_report.failed → M36 warn",
+            ),
     },
+    // BOUND: ReportScheduleRepository.update already exists and is the write-service's own mechanism for
+    // every other schedule mutation — no new repo method needed.
     pause: {
-      autoPause: () =>
-        unbound(
-          "scheduledRun.pause.autoPause",
-          "bind to ReportScheduleRepository.update(status='paused') under withOrgContext (§2.5 all-revoked)",
-        ),
+      async autoPause(scheduleId, _reason) {
+        await scheduleRepo.update(scheduleId, { status: "paused" });
+      },
     },
+    // BOUND over the M4 audit() helper (packages/audit) — the SAME sanctioned audit_event writer every
+    // module uses; a background job has no acting user, so `userId: null` / `actorKind: "system"` (the M30
+    // §4.8 system-sentinel precedent, mirrored here as an explicit audit actor rather than a NULLed GUC —
+    // audit() takes its actor from the AuditContext directly, not from a session-scoped `app.user_id`).
     audit: {
-      recordRecipientLostAccess: () =>
-        unbound(
-          "scheduledRun.audit.recordRecipientLostAccess",
-          "bind to the M4 audit() helper (§164.528)",
-        ),
-      recordAllRecipientsRevoked: () =>
-        unbound(
-          "scheduledRun.audit.recordAllRecipientsRevoked",
-          "bind to the M4 audit() helper (§164.528)",
-        ),
+      async recordRecipientLostAccess(scheduleId, membershipId) {
+        await audit(db, systemAuditContext(deps.jobOrganizationId ?? null), {
+          eventType: "m33.scheduled_report.recipient_lost_access",
+          resourceKind: "report_schedule",
+          resourceId: scheduleId,
+          outcome: "success",
+          context: { membershipId },
+        });
+      },
+      async recordAllRecipientsRevoked(scheduleId) {
+        await audit(db, systemAuditContext(deps.jobOrganizationId ?? null), {
+          eventType: "m33.scheduled_report.all_recipients_revoked",
+          resourceKind: "report_schedule",
+          resourceId: scheduleId,
+          outcome: "success",
+        });
+      },
     },
   };
 
   // ── report.export_render (withOrgContext) — the PDF/XLSX → M22 render handshake ───────────────────────
-  // Both formats emit `m33.scheduled_report.render_requested` through the live outbox; UNBOUND (lazy) until
-  // the dispatcher lands. The PDF row gate runs inside `requestPdfRender` before the emit (fail-closed 413).
+  // GENUINE PAYLOAD/SCHEMA MISMATCH (found while wiring, not invented): both `exportRender` (this queue) and
+  // `scheduledRun` (above) emit the SAME wire event name `m33.scheduled_report.render_requested`, but they
+  // are built by two DIFFERENT package producers with two DIFFERENT payload shapes —
+  // `ExportRenderRequestPayload` (packages/reporting/src/export/render-request.ts, this ad-hoc PDF/XLSX path:
+  // `exportId/viewId/format/organizationId/snapshotQuery/idempotencyKey/aggregateType/aggregateId`) vs
+  // `RunnerOutboxPort`'s payload (scheduled/runner.ts, the cron path bound above:
+  // `scheduleId/runId/viewId/format/organizationId/snapshotQuery/idempotencyKey`). The catalog's ONE
+  // `payloadSchema` for this event name (events-by-m33.ts) requires `scheduleId`+`runId` — fields the ad-hoc
+  // export payload does not carry at all. Binding this to the SAME `deps.outboxPublisher` would throw
+  // `Value.Check` on every single ad-hoc PDF/XLSX request (missing required properties), which would be
+  // WORSE than the pre-existing unbound throw (a fail that looks like "the publisher is broken" instead of
+  // "this port isn't bound yet"). This is a package-level event-catalog gap (one wire name serving two
+  // non-conformant payload shapes) that predates this task and needs a schema/package fix, not a wiring
+  // change — left unbound, not papered over.
   const exportRenderOutbox = {
     emitRenderRequested: () =>
       unbound(
         "exportRender.outbox.emitRenderRequested",
-        "bind to the live transactional-outbox dispatcher (m33.scheduled_report.render_requested → M22 PDF/XLSX)",
+        "ExportRenderRequestPayload does not satisfy the m33.scheduled_report.render_requested catalog schema (missing scheduleId/runId, which only the scheduled-run path carries) — needs a package-level payload/schema reconciliation before this can bind, not just a wiring change",
       ),
   };
   const pdf: PdfRenderRequestPorts = { outbox: exportRenderOutbox };
@@ -302,33 +508,47 @@ export function buildM33WorkerPorts(deps: M33WorkerDeps): M33WorkerPortBundles {
         return Number(res.rows[0]?.lag_seconds ?? 0);
       },
     },
-    state: {
-      load: () =>
-        unbound(
-          "lagProbe.state.load",
-          "bind to the Valkey-backed lag-probe hysteresis state (the singleton's only mutable state)",
-        ),
-      save: () =>
-        unbound("lagProbe.state.save", "bind to the Valkey-backed lag-probe hysteresis state"),
-    },
-    advisory: {
-      setAdvisory: () =>
-        unbound(
-          "lagProbe.advisory.setAdvisory",
-          "bind to the Valkey degraded-tile advisory flag (D14 — the tile 'Data as of' badge)",
-        ),
-    },
+    // BOUND: a dedicated Valkey connection (`deps.lagProbeRedis`, see ./lag-probe-state.ts) — the singleton
+    // probe's only mutable state (§2.4). Unbound (lazy) when no Redis client is configured, matching every
+    // other lazy-bind port here (never a silent no-op — a probe that can't persist its hysteresis state
+    // must not pretend it did).
+    state: deps.lagProbeRedis
+      ? createRedisLagProbeStatePort(deps.lagProbeRedis)
+      : {
+          load: () =>
+            unbound(
+              "lagProbe.state.load",
+              "bind `deps.lagProbeRedis` (a connected ioredis client) — no Valkey connection configured for the lag-probe state",
+            ),
+          save: () =>
+            unbound(
+              "lagProbe.state.save",
+              "bind `deps.lagProbeRedis` (a connected ioredis client) — no Valkey connection configured for the lag-probe state",
+            ),
+        },
+    advisory: deps.lagProbeRedis
+      ? createRedisLagProbeAdvisoryPort(deps.lagProbeRedis)
+      : {
+          setAdvisory: () =>
+            unbound(
+              "lagProbe.advisory.setAdvisory",
+              "bind `deps.lagProbeRedis` (a connected ioredis client) — no Valkey connection configured for the degraded-tile advisory flag",
+            ),
+        },
+    // GENUINE INFRA BLOCK (same finding as mvRefresh.outbox above): the lag probe is an org-agnostic
+    // platform singleton — `LagExceededPayload`/`LagRecoveredPayload` carry NO organizationId field at all —
+    // but `OutboxPublishPort.publish` requires a non-null tenant uuid. There is no org id to supply, real or
+    // fabricated; this needs the same M1 nullable-org outbox path mvRefresh's emits need, not a wiring bind.
+    //
+    // A DOCUMENTED NO-OP, NOT A THROW: `lag-probe.ts`'s `runLagProbe` calls these with no surrounding
+    // try/catch — unlike mvRefresh's emits (unconditional on every tick), these fire only on an actual
+    // exceeded/recovered STATE TRANSITION, but a throw on that path would still fail the whole probe tick
+    // (BullMQ retries/DLQs a `report.lag_probe` job) the very first time replica lag crosses the D14
+    // threshold in production — the identical bug class the mvRefresh fix above documents, just latent
+    // until a transition actually occurs. No-op, matching that fix.
     outbox: {
-      emitLagExceeded: () =>
-        unbound(
-          "lagProbe.outbox.emitLagExceeded",
-          "bind to the live transactional-outbox dispatcher (m33.lag.exceeded → M1 system_status + M36 warn)",
-        ),
-      emitLagRecovered: () =>
-        unbound(
-          "lagProbe.outbox.emitLagRecovered",
-          "bind to the live transactional-outbox dispatcher (m33.lag.recovered → M1 system_status + M36 info)",
-        ),
+      async emitLagExceeded() {},
+      async emitLagRecovered() {},
     },
   };
 
@@ -353,12 +573,37 @@ export function buildM33WorkerPorts(deps: M33WorkerDeps): M33WorkerPortBundles {
         await drilldownRepo.append(row);
       },
     },
+    // BOUND over `deps.outboxPublisher`. One deliberate field-name adaptation at THIS wiring boundary (not a
+    // package change): the events-by-m33.ts catalog schema for `m33.drilldown.emitted` declares
+    // `targetModule` (an integer), but `DrilldownEmittedPayload` (packages/reporting) names the same value
+    // `drilldownTargetModule` — the wiring layer's job is exactly this kind of port↔wire adaptation, so the
+    // publish payload below is built explicitly with the catalog's field names rather than spreading the
+    // port payload as-is (which would fail `Value.Check` on a missing required `targetModule`).
     outbox: {
-      emitDrilldown: () =>
-        unbound(
-          "drilldownAuditFlush.outbox.emitDrilldown",
-          "bind to the live transactional-outbox dispatcher (m33.drilldown.* → M36 drilldownConsentNarrowed)",
-        ),
+      emitDrilldown: deps.outboxPublisher
+        ? (payload) =>
+            deps.outboxPublisher!.publish(db, {
+              eventName: "m33.drilldown.emitted",
+              payload: {
+                drilldownTraceId: payload.drilldownTraceId,
+                actorMembershipId: payload.actorMembershipId,
+                sourceTileKey: payload.sourceTileKey,
+                targetModule: payload.drilldownTargetModule,
+                isConsentNarrowed: payload.isConsentNarrowed,
+                organizationId: payload.organizationId,
+                drilldownTargetSurface: payload.drilldownTargetSurface,
+                consentNarrowingReason: payload.consentNarrowingReason,
+                outcome: payload.outcome,
+              },
+              organizationId: payload.organizationId,
+              aggregateKind: "report_drilldown_audit",
+              aggregateId: payload.drilldownTraceId,
+            })
+        : () =>
+            unbound(
+              "drilldownAuditFlush.outbox.emitDrilldown",
+              "bind `deps.outboxPublisher` (bindCallerModule(txOutboxPublisher, 'm33')) — m33.drilldown.emitted → M36 drilldownConsentNarrowed",
+            ),
     },
   };
 
@@ -400,76 +645,232 @@ export function buildM33WorkerPorts(deps: M33WorkerDeps): M33WorkerPortBundles {
 
 // ── live worker construction (the M34 saas-jobs.ts template) ─────────────────────────────────────────────
 
+/** Fail-closed default when `deps.auditBypass` is absent — a platform-scoped job (mvRefresh/lagProbe) cannot
+ *  enter `withPlatformContext` without a real `PlatformBypassAuditor` (every bypass MUST be audited); this
+ *  throws only when a platform-scoped job actually RUNS, never at `registerM33Workers` construction (the M34
+ *  eager-bind gotcha). */
+const FAIL_CLOSED_AUDIT_BYPASS: PlatformBypassAuditor<DbClient> = async () => {
+  throw new M33WorkerPortUnbound(
+    "platformContext.auditBypass",
+    "bind `deps.auditBypass` (the shared m34PlatformBypassAuditor, apps/backend/src/index.ts) — a platform-scoped M33 job cannot enter withPlatformContext without it",
+  );
+};
+
+/** The system-actor sentinel `withOrgContext`'s tenant-scoped jobs run under — no acting user (the M30 §4.8
+ *  precedent; the M4 write-audit trigger NULLIFs an empty user-id GUC). */
+const M33_WORKER_SYSTEM_USER_ID = "";
+
+/**
+ * Run one `report.mv_refresh` job's PRIMARY-pool body inside an already-open `withPlatformContext` tx
+ * (called from the mvRefresh worker below — see its own doc comment for why `mv_refresh` and `nightly-
+ * orchestrate` share one queue/worker). Branches on the BullMQ job NAME: `"nightly-orchestrate"` (the cron
+ * repeatable `scheduleM33Jobs` registers, carrying no payload) runs the real §2.5 orchestrator
+ * (`runNightlyRefresh`), fanning a per-MV refresh job out for every ACTIVE `nightly`-strategy MV through
+ * `deps.mvRefreshEnqueue`; any other job name is a fanned-out per-MV refresh (`MvRefreshJob` payload) and
+ * runs the per-MV `mvRefreshProcessor`. This is the "dedicated consumer" the original TODO asked for — a
+ * sentinel reaching the per-MV processor by mistake would throw `MvRefreshMetadataMissing` (no `mvKey` on
+ * its payload), so the branch is load-bearing, not cosmetic.
+ */
+async function runMvRefreshJob(
+  deps: M33WorkerDeps,
+  tx: DbClient,
+  job: { readonly name: string; readonly data: unknown },
+): Promise<unknown> {
+  if (job.name === "nightly-orchestrate") {
+    const catalogRepo = new ReportCatalogRepository(tx);
+    const enqueue =
+      deps.mvRefreshEnqueue ??
+      ({
+        enqueue: () =>
+          unbound(
+            "nightlyOrchestrate.queue.enqueue",
+            "bind `deps.mvRefreshEnqueue` (buildM33MvRefreshEnqueue over a live Valkey connection) — the nightly orchestrator cannot fan per-MV jobs out without a producer",
+          ),
+      } satisfies MvRefreshQueuePort);
+    const ports: NightlyRefreshPorts = {
+      metadata: { listActiveByStrategy: (strategy) => catalogRepo.listActiveByStrategy(strategy) },
+      queue: enqueue,
+      now: deps.now ?? (() => new Date()),
+    };
+    return runNightlyRefresh(ports);
+  }
+  const data = job.data as MvRefreshJob;
+  return mvRefreshProcessor(buildM33WorkerPorts({ ...deps, db: tx, primaryDb: tx }).mvRefresh)(
+    data,
+  );
+}
+
 /**
  * Construct one BullMQ `Worker` per §4.8 worker-backed queue (mv_refresh / scheduled_run / export_render /
- * drilldown_audit_flush / lag_probe), each driving the matching pure processor with the bound ports. Returns
- * the workers so the composition root can `close()` them on shutdown — the caller owns the lifecycle; nothing
- * here runs at import (constructing a Worker opens the Valkey connection, which must happen only in production
- * wiring, never in tests).
+ * drilldown_audit_flush / lag_probe), each driving the matching pure processor INSIDE the tenancy envelope
+ * {@link M33_QUEUE_SCOPE} names for that queue (F09) — the SEPARATE integration concern the original TODO
+ * left open. `scheduled_run` / `export_render` / `drilldown_audit_flush` are org-scoped: each job opens its
+ * own `withOrgContext(job.data.organizationId)` tx and rebuilds the port bundle over it (the M30 §4.8
+ * precedent — RLS's `WITH CHECK app.org_id` denies an insert on the un-scoped base client). `mv_refresh` /
+ * `lag_probe` are platform-scoped: each opens `withPlatformContext` (audited, allowlist-gated under
+ * {@link M33_PLATFORM_JOB_ID}, registered by `wireM33Tenancy()` at boot).
  *
- * The per-job tenancy envelope (withReportSession / withOrgContext / withPlatformContext per
- * {@link M33_QUEUE_SCOPE}) is the SEPARATE integration concern: the ports built above expect to be invoked
- * inside that envelope, so the integrator either wraps the processor body or threads a per-job scoped DB
- * handle. This function constructs the worker shells; binding the envelope + supplying the still-missing infra
- * seams is the integrator's remaining step (the typed throws above name each missing seam).
+ * Returns the workers so the composition root can `close()` them on shutdown — the caller owns the lifecycle;
+ * nothing here runs at import (constructing a Worker is what opens the Valkey connection).
  *
- * The `report.tile_warm_cache` and `report.tenant_eraser` workers are NOT constructed here — tile-warming is a
- * thin `DashboardTileCacheRepository.upsert` the integrator binds, and the offboarding erase is driven through
- * the M4 destruction-registry eraseFn (`registerM33Erasers`), not a standalone package worker. They land with
- * those deps (the M34 precedent — the sweep workers scheduled but constructed alongside their per-run inputs).
+ * The `report.tile_warm_cache` and `report.tenant_eraser` queues are NOT constructed here — NEITHER has any
+ * producer anywhere in the backend (no route/outbox-subscriber ever calls `Queue.add` on either name):
+ * tile-warming is an unbuilt caching optimization (`dashboard_tile_cache` has zero writers today — reads
+ * always compute live), and the REAL tenant-offboarding erase already runs through the M4 destruction-
+ * registry `registerReportingErasers` (wired at boot, apps/backend/src/index.ts) — the BullMQ queue name is
+ * declared in the §4.8 spec table but was never the actual erase mechanism. Building idle consumers for two
+ * queues nothing ever enqueues onto would be dead code, not a real gap closed.
  */
 export function registerM33Workers(deps: M33WorkerDeps): Worker[] {
-  const ports = buildM33WorkerPorts(deps);
   const { connection } = deps;
-  const mk = <D, R>(
-    queue: string,
-    processor: (data: D) => Promise<R>,
-    concurrency: number,
-  ): Worker =>
-    new Worker(queue, async (job) => processor(job.data as D), { connection, concurrency });
+  const platformDb = deps.platformDb ?? deps.db;
+  const auditBypass = deps.auditBypass ?? FAIL_CLOSED_AUDIT_BYPASS;
+
+  const platformCaller = (reason: string) =>
+    ({ jobId: M33_PLATFORM_JOB_ID, reason, crossTenant: true }) as const;
+
+  const mvRefreshWorker = new Worker(
+    M33_QUEUES.mvRefresh,
+    (job) =>
+      withPlatformContext(
+        platformDb,
+        platformCaller("M33 §2.4/§2.5 MV refresh (per-MV or the nightly orchestrator tick)"),
+        auditBypass,
+        (tx) => runMvRefreshJob(deps, tx as unknown as DbClient, job),
+      ),
+    { connection, concurrency: M33_QUEUE_PARAMS.mvRefresh.concurrency },
+  );
+
+  const scheduledRunWorker = new Worker(
+    M33_QUEUES.scheduledRun,
+    (job) => {
+      const data = job.data as ScheduledRunJob;
+      return withOrgContext(
+        deps.db,
+        { organizationId: data.organizationId, userId: M33_WORKER_SYSTEM_USER_ID },
+        (tx) =>
+          scheduledRunProcessor(
+            buildM33WorkerPorts({
+              ...deps,
+              db: tx as unknown as DbClient,
+              jobOrganizationId: data.organizationId,
+            }).scheduledRun,
+          )(data),
+      );
+    },
+    { connection, concurrency: M33_QUEUE_PARAMS.scheduledRun.concurrency },
+  );
+
+  const exportRenderWorker = new Worker(
+    M33_QUEUES.exportRender,
+    (job) => {
+      const data = job.data as ExportRenderJob;
+      return withOrgContext(
+        deps.db,
+        { organizationId: data.organizationId, userId: M33_WORKER_SYSTEM_USER_ID },
+        (tx) =>
+          exportRenderProcessor(
+            buildM33WorkerPorts({ ...deps, db: tx as unknown as DbClient }).exportRender,
+          )(data),
+      );
+    },
+    { connection, concurrency: M33_QUEUE_PARAMS.exportRender.concurrency },
+  );
+
+  const drilldownAuditFlushWorker = new Worker(
+    M33_QUEUES.drilldownAuditFlush,
+    (job) => {
+      const data = job.data as DrilldownAuditInput;
+      return withOrgContext(
+        deps.db,
+        { organizationId: data.organizationId, userId: M33_WORKER_SYSTEM_USER_ID },
+        (tx) =>
+          drilldownAuditFlushProcessor(
+            buildM33WorkerPorts({ ...deps, db: tx as unknown as DbClient }).drilldownAuditFlush,
+          )(data),
+      );
+    },
+    { connection, concurrency: M33_QUEUE_PARAMS.drilldownAuditFlush.concurrency },
+  );
+
+  const lagProbeWorker = new Worker(
+    M33_QUEUES.lagProbe,
+    (job) =>
+      withPlatformContext(
+        platformDb,
+        platformCaller("M33 §2.4/D14 replica-lag probe tick"),
+        auditBypass,
+        (tx) =>
+          lagProbeProcessor(
+            buildM33WorkerPorts({ ...deps, db: tx as unknown as DbClient }).lagProbe,
+          )(job.data as LagProbeJob),
+      ),
+    { connection, concurrency: M33_QUEUE_PARAMS.lagProbe.concurrency },
+  );
 
   return [
-    mk(
-      M33_QUEUES.mvRefresh,
-      mvRefreshProcessor(ports.mvRefresh),
-      M33_QUEUE_PARAMS.mvRefresh.concurrency,
-    ),
-    mk(
-      M33_QUEUES.scheduledRun,
-      scheduledRunProcessor(ports.scheduledRun),
-      M33_QUEUE_PARAMS.scheduledRun.concurrency,
-    ),
-    mk(
-      M33_QUEUES.exportRender,
-      exportRenderProcessor(ports.exportRender),
-      M33_QUEUE_PARAMS.exportRender.concurrency,
-    ),
-    mk(
-      M33_QUEUES.drilldownAuditFlush,
-      drilldownAuditFlushProcessor(ports.drilldownAuditFlush),
-      M33_QUEUE_PARAMS.drilldownAuditFlush.concurrency,
-    ),
-    mk(
-      M33_QUEUES.lagProbe,
-      lagProbeProcessor(ports.lagProbe),
-      M33_QUEUE_PARAMS.lagProbe.concurrency,
-    ),
+    mvRefreshWorker,
+    scheduledRunWorker,
+    exportRenderWorker,
+    drilldownAuditFlushWorker,
+    lagProbeWorker,
   ];
+}
+
+/**
+ * Build the `report.mv_refresh` producer the nightly orchestrator (`runMvRefreshJob` above) fans per-MV
+ * refresh jobs out onto — a SEPARATE `Queue` handle from the one `registerM33Workers`' `mvRefreshWorker`
+ * consumes (a producer needs its own `Queue.add`; a `Worker` only consumes). Fails closed (no silent no-op)
+ * when no Valkey connection is configured — mirrors `buildM33ReadEnqueue` (wiring.ts).
+ *
+ * SANITIZES the dispatcher's jobId (`mv_refresh:<mvKey>:<floorEpochMs>`, packages/reporting's
+ * `dispatcher.ts` `mvRefreshJobId`) by replacing `:` with `__` — BullMQ rejects a custom jobId containing
+ * `:` (`Error: Custom Id cannot contain :`), the SAME bug class WX-PR-013/WX-PR-014 found and fixed in the
+ * M27/M30 recompute producers. The sanitization is deterministic (identical input → identical output), so
+ * the §2.6 debounce-collapse dedup property is preserved.
+ */
+export function buildM33MvRefreshEnqueue(connection: ConnectionOptions | undefined): {
+  readonly enqueue: MvRefreshQueuePort;
+  readonly queue: Queue | null;
+} {
+  if (!connection) {
+    return {
+      enqueue: {
+        enqueue: () =>
+          unbound(
+            "mvRefreshEnqueue.enqueue",
+            "no Valkey connection configured — cannot enqueue onto report.mv_refresh (set the queue connection at boot)",
+          ),
+      },
+      queue: null,
+    };
+  }
+  const queue = new Queue(M33_QUEUES.mvRefresh, { connection });
+  const enqueue: MvRefreshQueuePort = {
+    async enqueue(job, opts): Promise<MvRefreshEnqueueOutcome> {
+      const jobId = opts.jobId.replace(/:/g, "__");
+      const existing = await queue.getJob(jobId);
+      if (existing) return { enqueued: false, jobId };
+      await queue.add(M33_QUEUES.mvRefresh, job, {
+        jobId,
+        delay: opts.debounceMs,
+        removeOnComplete: { count: 200 },
+        removeOnFail: false,
+      });
+      return { enqueued: true, jobId };
+    },
+  };
+  return { enqueue, queue };
 }
 
 /**
  * Register the two §4.8 repeatable cron schedules: the 30-second replica-lag probe (on `report.lag_probe`,
  * consumed by the lag-probe worker `registerM33Workers` builds) and the nightly MV-refresh orchestrator tick
- * (02:00 tenant-local, on `report.mv_refresh`). Returns the schedule `Queue`s so the composition root can
- * `close()` them. Mirrors `scheduleM34Jobs` (the repeatable-registration template): one `Queue` per cron,
- * `add('scheduled', {}, { repeat: { … } })`.
- *
- * TODO(integrator): the nightly repeatable enqueues a SENTINEL tick onto `report.mv_refresh` — its intended
- * consumer is the §2.5 nightly ORCHESTRATOR (`runNightlyRefresh`, which fans a per-MV `report.mv_refresh` job
- * out across the active nightly-strategy MVs through the `MvRefreshQueuePort` producer), NOT the per-MV
- * refresh worker built above (that handles the fanned-out per-MV jobs). Wire the orchestrator on a dedicated
- * consumer before this fires in prod; until then a sentinel that reaches the per-MV worker fails closed
- * (MvRefreshMetadataMissing → DLQ), never a silent mis-refresh.
+ * (02:00 tenant-local, on `report.mv_refresh`, job name `"nightly-orchestrate"` — the `mvRefreshWorker`
+ * above branches on this exact name to run the real orchestrator instead of the per-MV processor). Returns
+ * the schedule `Queue`s so the composition root can `close()` them. Mirrors `scheduleM34Jobs` (the
+ * repeatable-registration template): one `Queue` per cron, `add('scheduled'|'nightly-orchestrate', {},
+ * { repeat: { … } })`.
  */
 export async function scheduleM33Jobs(connection: ConnectionOptions): Promise<Queue[]> {
   const lagProbe = new Queue(M33_QUEUES.lagProbe, { connection });
@@ -492,27 +893,53 @@ export function buildM33WorkerDeps(deps: {
   connection: ConnectionOptions;
   db: DbClient;
   primaryDb?: DbClient;
+  platformDb?: DbClient;
+  auditBypass?: PlatformBypassAuditor<DbClient>;
+  outboxPublisher?: M33WorkerDeps["outboxPublisher"];
+  lagProbeRedis?: Redis;
+  mvRefreshEnqueue?: MvRefreshQueuePort;
+  now?: () => Date;
 }): M33WorkerDeps {
   return {
     connection: deps.connection,
     db: deps.db,
     primaryDb: deps.primaryDb,
-    now: () => new Date(),
+    platformDb: deps.platformDb,
+    auditBypass: deps.auditBypass,
+    outboxPublisher: deps.outboxPublisher,
+    lagProbeRedis: deps.lagProbeRedis,
+    mvRefreshEnqueue: deps.mvRefreshEnqueue,
+    now: deps.now ?? (() => new Date()),
   };
 }
 
-// TODO(integrator — the still-missing infra seams the typed throws above name):
-//   • the live transactional-outbox dispatcher accessor (every `emit*` / `publishOutbox` port) — bind it and
-//     the MV-refresh / scheduled-run / export-render / lag-probe / drilldown emits light up.
-//   • the M1 envelope-DEK encrypt helper (the drilldown `encryption` port) — until bound, drilldown audit
-//     fails closed (DrilldownDekUnavailable); register it in bootstrap/seams so `getSeam` resolves it.
-//   • the M39 `ConsentEvaluator.evaluateForReporting` + the M2 active-membership reader (the scheduled-run
-//     `recipients` re-validation, W-R-04) and the report-builder translator (`snapshot.build`).
-//   • the Valkey-backed lag-probe hysteresis state + the degraded-tile advisory flag (the `lagProbe.state` /
-//     `lagProbe.advisory` ports, D14).
-//   • the dedicated primary pool (`deps.primaryDb`) + registering the M33 platform jobIds in the
-//     @wardenx/tenancy PLATFORM_CONTEXT_ALLOWLIST so withPlatformContext admits the refresh/probe/eraser jobs.
-//   • the report.tile_warm_cache + report.tenant_eraser Workers (the tile-cache upsert / the M4 eraseFn) and
-//     the nightly MV-refresh orchestrator consumer — built alongside `registerM33Workers` once their deps land.
-//   • wrap each processor body (or thread a per-job scoped DB handle) in withReportSession/withOrgContext/
-//     withPlatformContext per M33_QUEUE_SCOPE (F09) before mounting — `registerM33Workers` builds the shells.
+// WX-PR-014 (M33 slice) closed:
+//   • the tenancy envelope (withOrgContext / withPlatformContext per M33_QUEUE_SCOPE) — EVERY M33 worker ran
+//     on the un-scoped base client before this; FORCE RLS silently denied/empty'd every org-scoped write/read.
+//   • the nightly MV-refresh orchestrator — the cron sentinel used to land directly on the per-MV worker
+//     (job.name mismatch never checked); now branches to the real `runNightlyRefresh` fan-out.
+//   • the scheduled_run / export_render / drilldown_audit_flush outbox emits, `scheduledRun.recipients`
+//     (M2 active-membership re-validation), `scheduledRun.snapshot.build` (the real translateSpec chain),
+//     `scheduledRun.pause.autoPause`, `scheduledRun.audit.*` (the M4 audit() helper), the Valkey-backed
+//     `lagProbe.state`/`lagProbe.advisory`, and `mvRefresh.tileCache.invalidateForMv`'s org=null no-op.
+//   • the same BullMQ "jobId cannot contain ':'" bug class (WX-PR-013/014) in the new nightly-orchestrator
+//     producer (`buildM33MvRefreshEnqueue`).
+//
+// Still explicitly OUT OF SCOPE (genuine infra gaps found while wiring, not silently routed around):
+//   • `mvRefresh.outbox.*` (3) and `lagProbe.outbox.*` (2) — these are platform-wide (organizationId=null or
+//     absent) events, but `OutboxPublishPort.publish` (apps/backend/src/bootstrap/outbox-persister.ts)
+//     requires a non-null tenant uuid by design ("platform-wide/org-null events are NOT persistable here").
+//     Needs an M1-level nullable-org outbox persist path, not a wiring change.
+//   • `exportRender.outbox.emitRenderRequested` — `ExportRenderRequestPayload` (the ad-hoc PDF/XLSX route
+//     path) does not satisfy the `m33.scheduled_report.render_requested` catalog schema (missing
+//     scheduleId/runId, which only the scheduled-run cron path carries) — a package-level payload/schema
+//     mismatch between two producers sharing one wire event name.
+//   • `drilldownAuditFlush.encryption.encryptFilters` — still blocked on the M1 envelope-DEK/KMS provider,
+//     which does not exist anywhere in the codebase yet (same as WX-PR-013/014's M23/M30 CAHPS-PHI gap).
+//   • `scheduledRun.snapshot.build`'s returned `snapshotQuery` still carries unresolved `$1, $2, …`
+//     placeholders with no params channel in the wire event — a pre-existing package/event-schema gap, not
+//     introduced here (M22's eventual render consumer will need a fix before it can execute this query).
+//   • `report.tile_warm_cache` / `report.tenant_eraser` — no producer anywhere; the real tenant-erase path is
+//     the M4 destruction registry (already wired), and tile-warming is an unbuilt caching optimization.
+//   • the M33 cron-parser adapter (`FAIL_CLOSED_CRON` in wiring.ts) — schedule create/update `next_run_at`
+//     math is a separate library integration, out of the §4.8 background-job charter this task covers.

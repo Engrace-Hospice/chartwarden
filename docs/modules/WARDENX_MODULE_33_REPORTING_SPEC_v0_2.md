@@ -11,6 +11,33 @@
 
 ## Remediation Changelog — Phase 2 (2026-06-11)
 
+- **Implementation note (WX-PR-014 M33 slice, 2026-08-06)** — closed the M33 §4.8 background-job gap
+  WX-PR-014's original pass deliberately left untouched ("M33's gap is an order of magnitude larger than
+  M30's"). Bound for real: the per-job `withOrgContext`/`withPlatformContext` tenancy envelope (previously
+  absent on every worker — FORCE RLS silently denied/emptied every org-scoped read/write); the nightly
+  MV-refresh orchestrator (the cron sentinel now branches to the real `runNightlyRefresh` fan-out instead of
+  landing on the per-MV worker with no dedicated consumer); `scheduledRun`'s M2 active-membership
+  re-validation, the real `translateSpec` snapshot-build chain, `pause.autoPause`, the M4 `audit()` writes,
+  and the outbox emits; the Valkey-backed lag-probe hysteresis state + degraded-tile advisory flag; and a
+  real `db.execute`-backed tile/export SQL executor for the READ + EXPORT route services (previously always
+  forward-seam-empty — no M33 tile or CSV export had ever returned real data in production, independent of
+  the job-wiring gap). Two genuine, NOT-closeable infra gaps were found and left explicitly unbound
+  (documented, not routed around): `mvRefresh`/`lagProbe`'s outbox emits, since `OutboxPublishPort.publish`
+  (M1) requires a non-null `organizationId` and these are platform-wide (`organizationId=null`/absent)
+  events by design — needs an M1-level nullable-org outbox persist path; and the ad-hoc PDF/XLSX
+  `exportRender` outbox, since `ExportRenderRequestPayload` does not satisfy the
+  `m33.scheduled_report.render_requested` catalog schema (missing `scheduleId`/`runId`, which only the
+  scheduled-run cron path's payload carries) — a package-level payload/schema mismatch between two
+  producers sharing one wire event name. The M1 envelope-DEK/KMS provider (drilldown-audit encryption) and
+  the cron-parser adapter (schedule `next_run_at` math) remain out of scope, unchanged. Proven by a new live
+  suite (4/4) against real Postgres + Redis that constructs the REAL `registerM33Workers` and really
+  `REFRESH MATERIALIZED VIEW CONCURRENTLY`s `report_mv.mv_census_org_daily`. A live-test-caught regression
+  in this same pass's first draft: `mvRefresh.outbox.emitRefreshSucceeded`/`emitLagExceeded` etc. were
+  initially left as fail-closed *throws* — but `handleMvRefresh`/`runLagProbe` call them unconditionally on
+  the success path, so a throw there turned every successful refresh/probe tick into a recorded FAILURE
+  (the identical `unbound()`-on-an-unconditional-call bug class WX-PR-014's M30 slice fixed) — corrected to
+  documented no-ops.
+
 | Finding | Sev | Resolution |
 |---|---|---|
 | **M33 RLS variable** | BLOCKER | Canonical RLS session variable corrected **`app.current_org_id` → `app.org_id`** throughout (ADR-0010 D2). The prior variable was never set by `withOrgContext()`, so every M33 policy failed closed. |

@@ -54,6 +54,7 @@ export {
 export {
   type M33WorkerDeps,
   M33WorkerPortUnbound,
+  buildM33MvRefreshEnqueue,
   buildM33WorkerDeps,
   buildM33WorkerPorts,
   registerM33Workers,

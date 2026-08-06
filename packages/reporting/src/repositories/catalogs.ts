@@ -99,6 +99,18 @@ export class ReportCatalogRepository {
     return row ?? null;
   }
 
+  /** The ACTIVE MVs on a given refresh tier (the nightly/incremental orchestrator's work-set, §2.5). Backs
+   *  {@link MvMetadataReadPort.listActiveByStrategy}. */
+  async listActiveByStrategy(
+    strategy: schema.MaterializedViewMetadata["refreshStrategy"],
+  ): Promise<readonly schema.MaterializedViewMetadata[]> {
+    return this.db
+      .select()
+      .from(MV)
+      .where(and(eq(MV.refreshStrategy, strategy), eq(MV.status, "active")))
+      .orderBy(asc(MV.mvKey));
+  }
+
   /** Register an MV (platform-ops / migration). Returns the inserted row. */
   async createMvMetadata(
     values: schema.NewMaterializedViewMetadata,

@@ -534,6 +534,7 @@ import {
   buildDrizzleM33ExportDrilldownService,
   buildDrizzleM33ReadService,
   buildDrizzleM33WriteService,
+  buildM33MvRefreshEnqueue,
   buildM33ReadEnqueue,
   buildM33WorkerDeps,
   createDrizzleReportingEraseStore,
@@ -2412,8 +2413,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // route services. Reads run under withReportSession (replica-over-primary, RLS-scoped, read-only,
           // tiered statement_timeout); writes run under withOrgContext on the primary. The MV-admin command
           // routes enqueue the on-PRIMARY `report.mv_refresh` job through the SAME Valkey connection the
-          // workers run on. Deny-stub-safe infra ports (tile/export SQL executor, M22 render outbox, the
-          // per-tenant DEK encrypt, the cron-parser adapter) forward-seam or fail closed until they bind.
+          // workers run on. WX-PR-014 bound the tile/export SQL executor (real translateSpec results now
+          // execute for real — no more forward-seam-empty tiles/CSVs) and the M39 ConsentEvaluator seam for
+          // drilldown narrowing. Still deny-stub-safe (genuine infra gaps, not this pass's to invent): the
+          // M22 render outbox (a package-level payload/schema mismatch), the per-tenant DEK encrypt (no M1
+          // envelope-DEK/KMS provider exists yet), and the cron-parser adapter (a separate library
+          // integration, out of the §4.8 background-job charter).
           const m33ReadEnqueue = buildM33ReadEnqueue(queueConnection);
           mountM33ReadRoutes(
             app,
@@ -2429,7 +2434,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           );
           mountM33ExportDrilldownRoutes(
             app,
-            buildDrizzleM33ExportDrilldownService({ db: dbHandle.db }).service,
+            buildDrizzleM33ExportDrilldownService({ db: dbHandle.db, outbox: m33OutboxPublisher })
+              .service,
           );
           // M30 (HQRP & Quality) — mount the nine §4.1 route plugins (measures / CAHPS / risk-register /
           // QAPI / SRA / CoP / incidents / mortality / infection) over the DRIZZLE READ + WRITE services.
@@ -3057,15 +3063,39 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
 
     // ── M33 §4.8 reporting workers + cron schedules (the same worker-runner shape) ──────────────────────
     // Construct the §4.8 BullMQ Workers (mv_refresh / scheduled_run / export_render / drilldown_audit_flush /
-    // lag_probe) + the two repeatable cron schedules (the 30s lag probe + the nightly MV-refresh tick). The
-    // worker ports bind their bindable adapters (the M33 repos + the on-PRIMARY REFRESH / lag sample) and
-    // fail closed on the still-missing cross-module infra (outbox dispatcher / envelope-DEK / replica session).
+    // lag_probe) + the two repeatable cron schedules (the 30s lag probe + the nightly MV-refresh tick).
+    // WX-PR-014 bound: the per-job tenancy envelope (withOrgContext/withPlatformContext, previously absent —
+    // every M33 worker ran on the un-scoped base client), the §4.10 outbox emits that satisfy their catalog
+    // schema, the Valkey-backed lag-probe state (a DEDICATED connection — separate from `queueConnection`'s
+    // BullMQ-broad `ConnectionOptions` union, the same `rateLimitRedisClient` precedent above), and the
+    // nightly MV-refresh orchestrator's real per-MV fan-out producer (`m33MvRefreshEnqueue`, a SEPARATE
+    // `Queue` handle from the one the worker below consumes — a producer needs its own `Queue.add`).
+    const m33LagProbeRedis = queueConnection
+      ? new Redis({
+          ...(queueConnection as RedisOptions),
+          lazyConnect: true,
+          maxRetriesPerRequest: 1,
+          connectTimeout: 2_000,
+          retryStrategy: (times) => Math.min(times * 200, 2_000),
+        })
+      : undefined;
+    m33LagProbeRedis?.on("error", () => {});
+    const m33MvRefreshEnqueue = buildM33MvRefreshEnqueue(queueConnection);
     const m33Workers = registerM33Workers(
-      buildM33WorkerDeps({ connection: queueConnection, db: dbHandle.db }),
+      buildM33WorkerDeps({
+        connection: queueConnection,
+        db: dbHandle.db,
+        platformDb: dbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        outboxPublisher: m33OutboxPublisher,
+        lagProbeRedis: m33LagProbeRedis,
+        mvRefreshEnqueue: m33MvRefreshEnqueue.enqueue,
+      }),
     );
     attachDlqAlertsToAll(m33Workers, "m33");
     app.addHook("onClose", async () => {
       await Promise.all(m33Workers.map((w) => w.close()));
+      await Promise.all([m33LagProbeRedis?.quit(), m33MvRefreshEnqueue.queue?.close()]);
     });
     // Register the repeatable cron schedules + their close hook BEFORE app.listen() (the M34
     // FST_ERR_INSTANCE_ALREADY_LISTENING gotcha — await here so the hook is added while pre-listen).

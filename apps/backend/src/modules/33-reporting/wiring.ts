@@ -26,20 +26,25 @@ import { sql } from "drizzle-orm";
 
 import type { DbClient } from "@wardenx/db";
 import {
+  type CsvExportOutboxPort,
+  type DrilldownAuditOutboxPort,
   MetricsProviderImpl,
   type ReadReplicaSessionPort,
   type ReplicaLagGatePort,
+  type ReportingConsentConsumer,
   type ReportingDb,
 } from "@wardenx/reporting";
 import { registerPlatformJob } from "@wardenx/tenancy";
 
-import { registerSeam } from "../../bootstrap/index";
+import { getSeam, registerSeam } from "../../bootstrap/index";
 import {
   type CronPort,
+  type ExportSqlExecutor,
   type M33ExportDrilldownRouteService,
   type M33ReadEnqueuePort,
   type M33ReadRouteService,
   type M33WriteRouteService,
+  type TileSqlExecutor,
   type WriteOutboxPort,
   createDrizzleM33ExportDrilldownBackend,
   createDrizzleM33ReadBackend,
@@ -192,11 +197,57 @@ const FAIL_CLOSED_CRON: CronPort = {
 // ── (2) the Drizzle-backed route services (READ + WRITE + EXPORT/DRILLDOWN) ───────────────────────────
 
 /**
+ * Reconstruct `translateSpec`'s parameterized SQL text (literal `$1, $2, … $n` placeholders + a matching
+ * `params` array, kept SEPARATE by design — D4, no raw-SQL/string-interpolated values) as a real
+ * drizzle-orm `SQL` object `db.execute` can run. drizzle-orm's public API has no "text + params array"
+ * constructor (`sql.raw(str)` is TEXT-ONLY, no param binding), so this splits the text on its `$<n>`
+ * markers and rebuilds the query as a `sql.join` of alternating raw-text `sql.raw()` chunks and bound
+ * `` sql`${value}` `` param chunks, in the SAME left-to-right order the text already encodes — drizzle then
+ * re-numbers those chunks into `$1, $2, …` on render, which is identical to the input numbering because the
+ * chunk order matches it exactly. Every bound value still passes through drizzle's own parameter binding
+ * (a real `pg` driver parameter, never string-interpolated) — this is a re-encoding of the SAME
+ * already-safe parameterized query, not a new SQL-construction surface.
+ */
+function toParameterizedSql(text: string, params: readonly unknown[]) {
+  const parts = text.split(/\$(\d+)/);
+  const chunks: ReturnType<typeof sql.raw>[] = [];
+  for (let i = 0; i < parts.length; i += 1) {
+    const part = parts[i];
+    if (part === undefined) continue;
+    if (i % 2 === 0) {
+      if (part.length > 0) chunks.push(sql.raw(part));
+    } else {
+      const value = params[Number(part) - 1];
+      chunks.push(sql`${value}`);
+    }
+  }
+  return sql.join(chunks);
+}
+
+/**
+ * The real Drizzle-backed {@link TileSqlExecutor} / {@link ExportSqlExecutor} — executes a `translateSpec`
+ * result on the CALLER-SUPPLIED `db` (the active `withReportSession` tx), never a statically-captured
+ * connection (see both interfaces' doc comments for why that would silently defeat RLS). Shared by the READ
+ * service's tile reads and the EXPORT service's CSV stream / row-count paths — one executor, two ports with
+ * the same shape.
+ */
+function buildDrizzleTileSqlExecutor(): TileSqlExecutor & ExportSqlExecutor {
+  return {
+    async execute(db, { sql: text, params }) {
+      const result = await db.execute(toParameterizedSql(text, params));
+      const rows = result.rows;
+      return { rows, rowCount: result.rowCount ?? rows.length };
+    },
+  };
+}
+
+/**
  * Build the production READ route service (§4.1 #1–#7, #37–#42) over the read-replica-over-primary
  * session. Tile/metric/dashboard reads run under `withReportSession` (RLS-scoped, read-only, tiered
  * statement_timeout); the MV-admin commands enqueue the on-PRIMARY `report.mv_refresh` job through the
- * injected producer. The dashboard/metrics/tile SQL executor ports are unbound (deny-stub-safe → the
- * forward-seam empty tile, never fabricated rows — D6).
+ * injected producer. `tiles` runs the translated SELECT for real (`buildDrizzleTileSqlExecutor`) — a
+ * `registered`-status base still forward-seams to the empty tile (D6; that gate is inside `translateSpec`
+ * itself, not this executor).
  */
 export function buildDrizzleM33ReadService(deps: {
   db: DbClient;
@@ -206,6 +257,7 @@ export function buildDrizzleM33ReadService(deps: {
     replica: buildLiveReplicaSession(deps.db),
     lag: HEALTHY_SINGLE_POOL_LAG_GATE,
     enqueue: deps.enqueue,
+    tiles: buildDrizzleTileSqlExecutor(),
   });
 }
 
@@ -232,17 +284,86 @@ export function buildDrizzleM33WriteService(deps: {
 
 /**
  * Build the production EXPORT + DRILLDOWN route service (§4.1 #32–#36) over the read-replica-over-primary
- * session (the drilldown audit append writes under its own `withOrgContext` on the primary). Deny-stub-safe:
- * the M22 render outbox (PDF/XLSX → 503 ExportRenderUnbound), the per-tenant DEK encrypt (drilldown →
- * DrilldownDekUnavailable deny), the M39 consent evaluator (maximal-narrow), and the export SQL executor
- * (header-only CSV) are all unbound — each fails closed / forward-seams, never fails open (D6/D13/§3.6).
+ * session (the drilldown audit append writes under its own `withOrgContext` on the primary).
+ *
+ * BOUND for real: the export SQL executor (`tiles`, the SAME `buildDrizzleTileSqlExecutor` the read service
+ * uses — CSV streams real rows now, not a header-only forward-seam); the M39 consent evaluator (`consent`,
+ * lazily resolved via `getSeam("ConsentEvaluator")` at CALL time, RULE 4 — never captured eagerly at wiring
+ * time, since M39 registers its real seam later in the same boot sequence); the §4.10 CSV/drilldown
+ * telemetry outboxes (`csvOutbox`/`drilldownOutbox`) when `deps.outbox` is supplied — `drilldownOutbox`
+ * remaps `DrilldownEmittedPayload`'s `drilldownTargetModule` field to the catalog's `targetModule` name (the
+ * SAME field-name adaptation `apps/backend/src/modules/33-reporting/jobs/m33-jobs.ts` makes for the
+ * `report.drilldown_audit_flush` worker's identical emit).
+ *
+ * STILL fail-closed/forward-seam (genuine infra gaps, not this file's to invent): `exportOutbox` (PDF/XLSX →
+ * 503 `ExportRenderUnbound` — `ExportRenderRequestPayload` does not satisfy the
+ * `m33.scheduled_report.render_requested` catalog schema, the same package-level mismatch the jobs file
+ * documents) and `drilldownEncryption` (→ `DrilldownDekUnavailable` deny — the M1 envelope-DEK/KMS provider
+ * does not exist anywhere in this codebase yet).
  */
-export function buildDrizzleM33ExportDrilldownService(deps: { db: DbClient }): {
+export function buildDrizzleM33ExportDrilldownService(deps: {
+  db: DbClient;
+  outbox?: {
+    publish(
+      tx: DbClient,
+      input: {
+        readonly eventName: string;
+        readonly payload: Record<string, unknown>;
+        readonly organizationId: string;
+        readonly aggregateKind: string;
+        readonly aggregateId: string;
+      },
+    ): Promise<void>;
+  };
+}): {
   service: M33ExportDrilldownRouteService;
 } {
+  const tiles = buildDrizzleTileSqlExecutor();
+  const consent: Pick<ReportingConsentConsumer, "evaluateForReporting"> = {
+    evaluateForReporting: (input) =>
+      (getSeam("ConsentEvaluator") as ReportingConsentConsumer).evaluateForReporting(input),
+  };
+  const csvOutbox: CsvExportOutboxPort | undefined = deps.outbox
+    ? {
+        emitCsvStreamed: (payload) =>
+          deps.outbox!.publish(deps.db, {
+            eventName: "m33.export.csv_streamed",
+            payload,
+            organizationId: payload.organizationId,
+            aggregateKind: "report_view",
+            aggregateId: payload.viewId,
+          }),
+      }
+    : undefined;
+  const drilldownOutbox: DrilldownAuditOutboxPort | undefined = deps.outbox
+    ? {
+        emitDrilldown: (payload) =>
+          deps.outbox!.publish(deps.db, {
+            eventName: "m33.drilldown.emitted",
+            payload: {
+              drilldownTraceId: payload.drilldownTraceId,
+              actorMembershipId: payload.actorMembershipId,
+              sourceTileKey: payload.sourceTileKey,
+              targetModule: payload.drilldownTargetModule,
+              isConsentNarrowed: payload.isConsentNarrowed,
+              organizationId: payload.organizationId,
+              drilldownTargetSurface: payload.drilldownTargetSurface,
+              consentNarrowingReason: payload.consentNarrowingReason,
+              outcome: payload.outcome,
+            },
+            organizationId: payload.organizationId,
+            aggregateKind: "report_drilldown_audit",
+            aggregateId: payload.drilldownTraceId,
+          }),
+      }
+    : undefined;
   return createDrizzleM33ExportDrilldownBackend({
     db: deps.db,
     replica: buildLiveReplicaSession(deps.db),
     lag: HEALTHY_SINGLE_POOL_LAG_GATE,
+    tiles,
+    consent,
+    csvOutbox,
+    drilldownOutbox,
   });
 }
