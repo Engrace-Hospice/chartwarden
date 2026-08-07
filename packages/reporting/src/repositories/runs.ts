@@ -36,6 +36,13 @@ interface RawPlatformReportRunRow {
   retry_attempt: number;
 }
 
+/** The Postgres SQLSTATE off a (possibly Drizzle-wrapped) query error, or `undefined`. */
+function pgErrorCode(err: unknown): string | undefined {
+  const cause = (err as { cause?: { code?: unknown } } | null)?.cause;
+  const code = (cause?.code ?? (err as { code?: unknown } | null)?.code) as unknown;
+  return typeof code === "string" ? code : undefined;
+}
+
 function fromPlatformRow(row: RawPlatformReportRunRow): schema.ReportRun {
   return {
     id: row.id,
@@ -200,13 +207,25 @@ export class ReportRunRepository {
    * retry attempt. Scoped by the composite PK.
    *
    * This method doesn't know the row's `organizationId` up front (the caller only has the `(id,
-   * startedAt)` handle `createMvRun`/`open` returned), so it tries the plain, RLS-covered
-   * `wardenx_app` UPDATE first — the only shape that can ever match an ORG-SCOPED row. A
-   * platform-wide (`organization_id IS NULL`) row can never satisfy `report_run_org`'s
-   * `organization_id = current_setting('app.org_id', true)::uuid` predicate (WX-PR-024), so that
-   * UPDATE silently matches zero rows for one; the fallback then calls the SECURITY DEFINER
-   * `report_writer_update_platform_report_run` function (migration 0188), which scopes explicitly to
-   * `organization_id IS NULL` and raises if the row genuinely doesn't exist there either.
+   * startedAt)` handle `createMvRun`/`open` returned), so it tries the plain, RLS-covered UPDATE
+   * first — the only shape that can ever match an ORG-SCOPED row. A platform-wide
+   * (`organization_id IS NULL`) row can never satisfy `report_run_org`'s `organization_id =
+   * current_setting('app.org_id', true)::uuid` predicate (WX-PR-024), so that UPDATE silently matches
+   * zero rows for one when the caller holds an ordinary base UPDATE grant (`wardenx_app`); the
+   * fallback then calls the SECURITY DEFINER `report_writer_update_platform_report_run` function
+   * (migration 0188), which scopes explicitly to `organization_id IS NULL` and raises if the row
+   * genuinely doesn't exist there either.
+   *
+   * A DIFFERENT platform credential (WX-PR-025's `wardenx_platform`, least-privilege by design — no
+   * base UPDATE grant on `report_run` at all, only EXECUTE on the platform-writer function) doesn't
+   * silently return zero rows on the plain path — it throws `insufficient_privilege` (SQLSTATE
+   * 42501) outright, which ALSO poisons the rest of the enclosing transaction ("current transaction
+   * is aborted") until rolled back — `handleMvRefresh` runs this inside the SAME `withPlatformContext`
+   * tx as everything else (the outbox emit, the metadata stamp), so a bare try/catch here isn't
+   * enough. The plain attempt runs inside a SAVEPOINT: on success it's released; on a 42501 it's
+   * rolled BACK TO (restoring the transaction to a usable state, discarding only the failed attempt)
+   * before falling through to the SECURITY DEFINER path. Any OTHER error still propagates unrolled-back
+   * — this isn't a blanket catch-and-retry.
    */
   async updateMvRunStatus(
     id: string,
@@ -218,11 +237,19 @@ export class ReportRunRepository {
       >
     >,
   ): Promise<schema.ReportRun> {
-    const [row] = await this.db
-      .update(RR)
-      .set(patch)
-      .where(and(eq(RR.id, id), eq(RR.startedAt, startedAt)))
-      .returning();
+    let row: schema.ReportRun | undefined;
+    await this.db.execute(sql`SAVEPOINT report_run_update_attempt`);
+    try {
+      [row] = await this.db
+        .update(RR)
+        .set(patch)
+        .where(and(eq(RR.id, id), eq(RR.startedAt, startedAt)))
+        .returning();
+      await this.db.execute(sql`RELEASE SAVEPOINT report_run_update_attempt`);
+    } catch (err) {
+      if (pgErrorCode(err) !== "42501") throw err;
+      await this.db.execute(sql`ROLLBACK TO SAVEPOINT report_run_update_attempt`);
+    }
     if (row) return row;
 
     const result = await this.db.execute(sql`

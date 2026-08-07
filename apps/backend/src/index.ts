@@ -3080,11 +3080,18 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       : undefined;
     m33LagProbeRedis?.on("error", () => {});
     const m33MvRefreshEnqueue = buildM33MvRefreshEnqueue(queueConnection);
+    // WX-PR-025: `platformDb` prefers the separate `platformDbHandle` (DATABASE_PLATFORM_URL) over the
+    // tenant `wardenx_app` pool when configured — `mvRefresh`'s nightly cross-tenant REFRESH needs the
+    // `wardenx_platform` credential's ownership + BYPASSRLS over the report_mv.* views (provisioned by
+    // `scripts/db/provision-runtime-roles.ts`) to genuinely span every tenant; `wardenx_app` has no
+    // privilege to REFRESH those views at all. Falls back to `dbHandle.db` when the platform credential
+    // isn't configured (dev/CI without DATABASE_PLATFORM_URL) — `lagProbe`'s own `platform.bypass_invoked`
+    // audit write and `scheduledRun`'s ordinary org-scoped work are unaffected either way.
     const m33Workers = registerM33Workers(
       buildM33WorkerDeps({
         connection: queueConnection,
         db: dbHandle.db,
-        platformDb: dbHandle.db,
+        platformDb: platformDbHandle?.db ?? dbHandle.db,
         auditBypass: m34PlatformBypassAuditor,
         outboxPublisher: m33OutboxPublisher,
         lagProbeRedis: m33LagProbeRedis,

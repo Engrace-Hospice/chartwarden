@@ -1367,60 +1367,58 @@
 
 ## WX-PR-025 - wardenx_app cannot REFRESH a report_mv.* materialized view; no role holds BYPASSRLS
 
-- Status: Discovered, NOT fixed (2026-08-06) — found while verifying WX-PR-024's fix, hardening
-  `m33-reporting-scheduled-jobs.live.test.ts` to run `registerM33Workers`'s `platformDb` on the real
-  `wardenx_app` connection instead of a superuser workaround. With WX-PR-024's three write gaps fixed,
-  the nightly-orchestrate → per-MV `report.mv_refresh` job got further than ever before and hit a NEW
-  wall: `REFRESH MATERIALIZED VIEW CONCURRENTLY report_mv.mv_census_org_daily` throws `ERROR: permission
-  denied for materialized view mv_census_org_daily` as `wardenx_app`.
+- Status: **FIXED (2026-08-07)**. Reused the ALREADY-EXISTING platform credential
+  (`scripts/db/provision-runtime-roles.ts`'s `wardenx_platform`/`wardenx_platform_login`, provisioned for
+  the M35 admin console/M34 eraser/enumerators via `DATABASE_PLATFORM_URL`) rather than inventing a new
+  one — it just wasn't wired to M33. Three changes: (1) the provisioning script now makes
+  `wardenx_platform` OWN all 3 `report_mv.*` views, grants it SELECT on their source tables
+  (`admission`/`encounter`/`evv_event`) + `materialized_view_metadata`, EXECUTE on the 5 SECURITY DEFINER
+  platform-writer functions M33 needs, and — the non-obvious fix — puts `BYPASSRLS` on the CARRIER role
+  itself (`wardenx_platform`), not just the login role: `REFRESH MATERIALIZED VIEW CONCURRENTLY`
+  re-executes its defining query under privileges resolved through the MV's OWNER (view-owner-style
+  semantics), confirmed empirically against a throwaway PG18 container, so the login role's own BYPASSRLS
+  (sufficient for every OTHER platform query it issues directly) does not by itself make a refresh see
+  other tenants' rows. (2) `apps/backend/src/index.ts` now wires M33's `platformDb` to
+  `platformDbHandle?.db ?? dbHandle.db` (falls back to the tenant pool when `DATABASE_PLATFORM_URL` isn't
+  configured). (3) `packages/reporting/src/repositories/runs.ts`'s `updateMvRunStatus` — its WX-PR-024
+  "try plain UPDATE, fall back to the SECURITY DEFINER function on failure" pattern broke for this MORE
+  restrictive credential: `wardenx_platform` has no base UPDATE grant on `report_run` at all
+  (least-privilege — EXECUTE on the writer function only), so the plain attempt throws
+  `insufficient_privilege` (42501) instead of silently returning zero rows, which ALSO poisons the rest of
+  the enclosing `withPlatformContext` transaction until rolled back. Fixed with a `SAVEPOINT` around the
+  plain attempt (`RELEASE` on success, `ROLLBACK TO SAVEPOINT` on 42501, any other error still propagates).
 
-  Confirmed this is NOT a missing-GRANT problem, by direct experiment against a throwaway PG18 container:
-  (1) `GRANT MAINTAIN ON ... TO wardenx_app` (PG17+) does work, but CI's `rls-live-*` jobs run
-  `pgvector/pgvector:pg16` (`.github/workflows/ci.yml`), where `MAINTAIN` doesn't exist — not usable. (2)
-  Reassigning MV ownership to a non-superuser role (`report_writer`) lets `wardenx_app` issue the REFRESH
-  command, but `REFRESH` re-executes the MV's defining query under a role subject to the SAME RLS as
-  everyone else, and `report_writer` has no grant on the MV's source tables (e.g. `admission`) at all —
-  fails one level deeper (`permission denied for table admission`). (3) The real blocker: a genuinely
-  CROSS-TENANT rollup MV (spanning every org in one query) needs BYPASSRLS or an explicit cross-org read
-  grant to compute correctly — and **no role in this codebase's migrations holds BYPASSRLS in
-  production**. `wardenx_app`'s only BYPASSRLS path is `scripts/db/migrate.ts`'s
-  `WARDENX_DEV_BYPASSRLS=1` dev-convenience toggle, which the same script explicitly revokes when
-  `NODE_ENV=production`. `wardenx_admin` — despite the name — is NOT a BYPASSRLS role either (confirmed
-  via `pg_roles.rolbypassrls`).
-
-  Net effect: in a properly-hardened (NOBYPASSRLS) production deployment, the nightly cross-tenant
-  MV-refresh path may be UNABLE TO REFRESH AT ALL — or, if some future fix grants read access naively,
-  could silently compute an EMPTY or WRONG (single-org-scoped) rollup instead of a genuine cross-tenant
-  one. This needs a real architecture decision (a dedicated, narrowly-scoped platform credential with
-  BYPASSRLS reserved for whitelisted cross-tenant refresh/reporting jobs — mirroring the M35 admin
-  surface's already-documented `DATABASE_PLATFORM_URL` "+ BYPASSRLS" pattern — wired as M33's own
-  `platformDb`, or some other mechanism), not a quick GRANT. NOT attempted here — reported, not silently
-  patched, per this codebase's established practice for a finding whose fix needs its own scoped design
-  pass. `m33-reporting-scheduled-jobs.live.test.ts` keeps `platformDb: seedDb.db` (superuser) for exactly
-  this reason now (unrelated to WX-PR-024, which is fixed and separately proven).
+  Verified live and genuinely cross-tenant, not just "didn't throw":
+  `m33-reporting-scheduled-jobs.live.test.ts` bootstraps `wardenx_platform`/`wardenx_platform_login`
+  inline (mirroring the provisioning script), seeds a real `admission` row for TWO separate tenants, runs
+  the real nightly-orchestrate → per-MV refresh with `platformDb` = the real `wardenx_platform_login`
+  connection, and asserts the refreshed `mv_census_org_daily` contains BOTH tenants. Also directly
+  verified running the REAL `provision-runtime-roles.ts` script (not hand-replicated SQL) against a
+  throwaway PG18 container. `wardenx_app` still cannot refresh (unchanged, correct — verified in
+  `m33-rls-isolation.live.test.ts`); a raw `wardenx_platform_login` write to `report_run` outside the
+  SECURITY DEFINER function is still rejected (no new hole opened). Full gate green (build/`arch:fitness`/
+  full test suite, 7995 passing).
 - Priority: P1
 - Severity addressed: High
-- Phase: unassigned (cross-cutting, discovered mid-task — needs its own scoping/design pass)
+- Phase: unassigned (cross-cutting, discovered mid-task; fixed same-week in a scoped follow-up)
 - Objective: A genuinely cross-tenant M33 MV refresh (`report.mv_refresh`, nightly-cron trigger) succeeds
   under the real production role posture and demonstrably reads across MULTIPLE tenants' data, not just
-  "doesn't throw."
-- Evidence: Direct `psql`/live-container reproduction above; discovered inside WX-PR-024's own live-RLS
-  hardening pass.
-- Files/modules affected: `report_mv.*` materialized views + their owning role (migration 0056/0060),
-  `packages/reporting/src/refresh/ports.ts` (`MvRefreshExecutionPort.refreshConcurrently`), M33's
-  `platformDb` wiring (`apps/backend/src/index.ts`), possibly a new dedicated platform credential.
-- Dependencies: An owner decision on the platform-credential shape (reuse the M35
-  `DATABASE_PLATFORM_URL`-style BYPASSRLS credential vs. a new M33-specific one).
-- Implementation steps: Decide the credential model; provision it; wire M33's `platformDb` to it (NOT the
-  tenant `wardenx_app` pool); add a live-RLS regression test that seeds MULTIPLE tenants' source rows and
-  asserts the refreshed MV contains ALL of them (not just "refresh didn't throw").
-- Tests: A live-RLS MV refresh, seeded with 2+ tenants' rows, produces a rollup containing rows from
-  BOTH tenants under the real production role/credential posture.
-- Acceptance criteria: The nightly MV-refresh path works in a properly-hardened (NOBYPASSRLS) production
-  deployment and is proven, not assumed, to span every tenant.
-- Risks: Every platform-wide reporting rollup depends on this; currently either fails loudly (permission
-  denied) or — if naively "fixed" with a broader grant that doesn't also address the RLS-scoping half of
-  the problem — could silently compute wrong (single-tenant) data instead of failing, which is worse.
-- Rollback: N/A (discovery only; no code changed for this finding).
-- Estimated complexity: L (needs an actual architecture decision on the platform-credential model, not
-  just a migration).
+  "doesn't throw." — MET.
+- Evidence: Direct `psql`/live-container reproduction (discovery) and re-verification (fix) above.
+- Files/modules affected: `scripts/db/provision-runtime-roles.ts` (MV ownership + carrier BYPASSRLS +
+  EXECUTE grants), `apps/backend/src/index.ts` (M33 `platformDb` wiring),
+  `packages/reporting/src/repositories/runs.ts` (`updateMvRunStatus` SAVEPOINT).
+- Dependencies: None remaining — reused the existing M35 `DATABASE_PLATFORM_URL` credential model rather
+  than a new one.
+- Implementation steps: Done — see Status above.
+- Tests: A live-RLS MV refresh, seeded with 2 tenants' rows, produces a rollup containing rows from BOTH
+  tenants under the real production role/credential posture. DONE, passing.
+- Acceptance criteria: MET — the nightly MV-refresh path works in a properly-hardened (NOBYPASSRLS)
+  production deployment and is proven, not assumed, to span every tenant.
+- Risks: An operator who hasn't run `bun run db:provision-roles` (or set `DATABASE_PLATFORM_URL`) simply
+  falls back to the pre-fix behavior (`platformDb: dbHandle.db`, refresh throws `permission denied`) — a
+  loud, fail-closed failure mode, not a silent wrong-data one. Documented in the provisioning script.
+- Rollback: Revert the 3 files; `wardenx_platform`'s new grants are additive-only (no existing grant or
+  policy removed), so no separate DB rollback is needed even if the code revert lands after a deploy.
+- Estimated complexity: L as scoped (an actual architecture decision was needed) — M in practice, since
+  the M35 precedent already existed and only needed extending.

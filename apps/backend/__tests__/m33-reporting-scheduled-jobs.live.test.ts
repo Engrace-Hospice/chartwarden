@@ -43,25 +43,21 @@
  *      write paths (migration 0188's `report_writer_*` functions) are each proven directly at the SQL level,
  *      as `wardenx_app`, in `packages/db/migrations/__tests__/m1-rls-isolation.live.test.ts` and
  *      `m33-rls-isolation.live.test.ts` — including the raw-path-still-rejected check (no new write hole).
- *      `testAuditBypass` below now calls `auditPlatformEvent` (matching production's
- *      `m34PlatformBypassAuditor`) rather than the plain `audit()` helper, so this integration test still
- *      exercises the REAL fixed code path even though `platformDb` stays `seedDb.db` (superuser) — see the
- *      NEW, SEPARATE finding below for why that superuser connection is still needed here.
- *
- *      NEW, SEPARATE, UNFIXED finding from hardening this test to try `platformDb: handle.db` (wardenx_app):
- *      `wardenx_app` holds NO privilege to `REFRESH MATERIALIZED VIEW CONCURRENTLY` on any `report_mv.*` view
- *      (`ERROR: permission denied for materialized view ...`) — refresh requires being the MV owner (or a
- *      PG17+ MAINTAIN grant, unusable here since CI's `rls-live` jobs run pgvector/pg**16**). Reassigning MV
- *      ownership to a non-superuser writer role doesn't fix it either: `REFRESH` re-executes the MV's
- *      defining query under a role with NO cross-tenant read access (no role in this codebase's migrations
- *      actually holds BYPASSRLS in production — `wardenx_app`'s BYPASSRLS is a `WARDENX_DEV_BYPASSRLS=1`
- *      dev-only opt-in that `scripts/db/migrate.ts` explicitly refuses when `NODE_ENV=production`), so a
- *      genuinely cross-tenant nightly MV refresh may be unable to read across orgs at all under a
- *      properly-hardened production posture. This is a DIFFERENT root cause than WX-PR-024 (MV-refresh
- *      privilege/architecture, not an audit/RLS-write-policy gap) — discovered here, NOT fixed, NOT
- *      WX-PR-024's charter; tracked separately. `platformDb: seedDb.db` (superuser) below is unchanged from
- *      before for exactly this reason, not because of anything WX-PR-024 touches.
- *   7. The ad-hoc PDF/XLSX exportRender outbox — the `m33.scheduled_report.render_requested` catalog schema
+ *      `testAuditBypass` below calls `auditPlatformEvent` (matching production's `m34PlatformBypassAuditor`).
+ *   7. WX-PR-025 CLOSED: `platformDb` (mvRefresh/lagProbe's `withPlatformContext` base) is now a REAL
+ *      `wardenx_platform_login` connection — the SAME credential shape `scripts/db/provision-runtime-roles.ts`
+ *      provisions for production (`DATABASE_PLATFORM_URL`), bootstrapped inline here for the SAME reason
+ *      `wardenx_app` is: reusing the script directly would pull in its CLI/env-var surface. `wardenx_platform`
+ *      OWNS the 3 `report_mv.*` views AND carries `BYPASSRLS` directly on the CARRIER role (not just the
+ *      login role) — confirmed empirically that `REFRESH MATERIALIZED VIEW CONCURRENTLY` re-executes its
+ *      defining query under privileges resolved through the MV's OWNER, not the issuing session role, so
+ *      `wardenx_platform_login`'s own BYPASSRLS (sufficient for ordinary queries) does NOT by itself make a
+ *      refresh see other tenants' rows. The "nightly orchestrator" test below now seeds TWO tenants'
+ *      `admission` rows and asserts the refreshed MV contains BOTH — proving the refresh is genuinely
+ *      cross-tenant, not merely "didn't throw". `wardenx_app` itself still cannot REFRESH any `report_mv.*`
+ *      view directly (unchanged, correct — verified in `m33-rls-isolation.live.test.ts`); only the dedicated,
+ *      narrowly-scoped platform credential can.
+ *   8. The ad-hoc PDF/XLSX exportRender outbox — the `m33.scheduled_report.render_requested` catalog schema
  *      now marks `scheduleId`/`runId` Optional so both real producer payloads validate (not exercised by a
  *      dedicated test here — `requestExport`'s HTTP route isn't part of this job-focused suite — but the
  *      binding is real and the schema fix is covered by the passing `scheduled_run` tests above, which use
@@ -90,7 +86,7 @@ import {
 import { registerPlatformJob, resetPlatformJobRegistry } from "@wardenx/tenancy";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, QueueEvents, type Worker } from "bullmq";
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, like, sql } from "drizzle-orm";
 import IORedis from "ioredis";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -107,10 +103,32 @@ import { M33_QUEUES } from "../src/modules/33-reporting/jobs/index";
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = [
+  "wardenx_app",
+  "wardenx_admin",
+  "wardenx_readonly",
+  "wardenx_audit_writer",
+  "wardenx_platform_login",
+  "wardenx_platform",
+];
 
 const ORG = "44444444-4444-4444-4444-444444444444";
 const USER = "44444444-4444-4444-4444-444444444401";
+/** WX-PR-025 — a SECOND tenant, seeded with its own `admission` row (no other fixtures this suite's
+ *  scheduled_run/lag_probe tests need), so the nightly MV-refresh test can prove the refreshed
+ *  `mv_census_org_daily` genuinely spans multiple tenants, not just "didn't throw". */
+const ORG_B = "44444444-4444-4444-4444-444444444402";
+
+/** WX-PR-025 — the SECURITY DEFINER platform-writer functions M33's mvRefresh/lagProbe workers reach
+ *  when `platformDb` is `wardenx_platform_login` (mirrors `scripts/db/provision-runtime-roles.ts`'s
+ *  `PLATFORM_WRITER_FUNCTIONS`, scoped down to just what THIS suite's workers call). */
+const PLATFORM_WRITER_FUNCTIONS = [
+  "audit_writer_insert_platform_event(text, text, uuid, text, text, text, jsonb, text)",
+  "report_writer_insert_platform_outbox_event(text, text, uuid, jsonb)",
+  "report_writer_insert_platform_report_run(uuid, text, text, uuid, timestamptz, text, int)",
+  "report_writer_update_platform_report_run(uuid, timestamptz, jsonb)",
+  "report_writer_update_platform_mv_metadata(text, jsonb)",
+] as const;
 
 function parseRedisUrl(url: string): ConnectionOptions {
   const u = new URL(url);
@@ -123,6 +141,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
     let admin: Client;
     let handle: { db: DbClient; close: () => Promise<void> };
     let seedDb: { db: DbClient; close: () => Promise<void> };
+    let platformHandle: { db: DbClient; close: () => Promise<void> };
     let connection: ConnectionOptions;
     let lagProbeRedis: IORedis;
     let mvRefreshEnqueue: ReturnType<typeof buildM33MvRefreshEnqueue>;
@@ -187,9 +206,36 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       await admin.query("ALTER ROLE wardenx_app WITH LOGIN PASSWORD 'm33-live-test-pw'");
       await admin.query("ALTER ROLE wardenx_app WITH NOBYPASSRLS");
 
+      // ── WX-PR-025: bootstrap wardenx_platform / wardenx_platform_login (mirrors
+      // scripts/db/provision-runtime-roles.ts, NOT reused directly to avoid pulling in its CLI/env-var
+      // surface — the SAME reason wardenx_app is bootstrapped inline above rather than via
+      // scripts/db/migrate.ts). `wardenx_platform` OWNS the 3 report_mv.* views AND carries BYPASSRLS
+      // on the CARRIER itself (not just the login role) — see this file's header comment for why both
+      // are required for a genuinely cross-tenant REFRESH.
+      await admin.query("CREATE ROLE wardenx_platform NOLOGIN");
+      await admin.query("GRANT USAGE ON SCHEMA public TO wardenx_platform");
+      await admin.query("GRANT USAGE ON SCHEMA report_mv TO wardenx_platform");
+      await admin.query('GRANT SELECT ON "admission" TO wardenx_platform');
+      await admin.query('GRANT SELECT ON "materialized_view_metadata" TO wardenx_platform');
+      await admin.query('GRANT INSERT ON "audit_event" TO wardenx_platform');
+      for (const mv of [
+        "mv_census_org_daily",
+        "mv_encounter_productivity_membership_day",
+        "mv_evv_compliance_org_week",
+      ]) {
+        await admin.query(`ALTER MATERIALIZED VIEW report_mv.${mv} OWNER TO wardenx_platform`);
+      }
+      await admin.query("ALTER ROLE wardenx_platform WITH BYPASSRLS");
+      for (const fn of PLATFORM_WRITER_FUNCTIONS) {
+        await admin.query(`GRANT EXECUTE ON FUNCTION ${fn} TO wardenx_platform`);
+      }
       await admin.query(
-        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-m33-close-gap','A','A')",
-        [ORG],
+        "CREATE ROLE wardenx_platform_login LOGIN IN ROLE wardenx_platform BYPASSRLS PASSWORD 'm33-platform-test-pw'",
+      );
+
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-m33-close-gap','A','A'),($2,'org-m33-close-gap-b','B','B')",
+        [ORG, ORG_B],
       );
       await admin.query('INSERT INTO "user" (id,email) VALUES ($1,$2)', [
         USER,
@@ -210,6 +256,12 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       appDbUrl.password = "m33-live-test-pw";
       handle = createDbClient({ connectionString: appDbUrl.toString() });
       seedDb = createDbClient({ connectionString: DB_URL! });
+      // `platformHandle` (WX-PR-025) — the real `wardenx_platform_login` credential, the SAME shape
+      // `mvRefresh`/`lagProbe`'s `platformDb` uses in production when DATABASE_PLATFORM_URL is set.
+      const platformDbUrl = new URL(DB_URL!);
+      platformDbUrl.username = "wardenx_platform_login";
+      platformDbUrl.password = "m33-platform-test-pw";
+      platformHandle = createDbClient({ connectionString: platformDbUrl.toString() });
       connection = parseRedisUrl(REDIS_URL!);
       // Deterministic jobIds (org × mvKey × today's debounce-floor bucket) — flush so a same-day rerun never
       // collides with a stale job from an earlier run (the WX-PR-014 M30 precedent).
@@ -234,13 +286,9 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         buildM33WorkerDeps({
           connection,
           db: handle.db,
-          // `platformDb` (mvRefresh/lagProbe's withPlatformContext base) stays the superuser `seedDb`
-          // connection — NOT because of WX-PR-024 (its 3 write-path gaps are fixed and proven at the SQL
-          // level, see this file's header comment), but because of the NEW, separate, unfixed finding also
-          // in the header: `wardenx_app` has no privilege to REFRESH a report_mv.* materialized view at
-          // all, and no role in this codebase's migrations holds BYPASSRLS in production, so a genuinely
-          // cross-tenant nightly refresh may not be able to read across orgs as `wardenx_app` regardless.
-          platformDb: seedDb.db,
+          // `platformDb` (mvRefresh/lagProbe's withPlatformContext base) is the real `wardenx_platform_login`
+          // credential (WX-PR-025) — see this file's header comment.
+          platformDb: platformHandle.db,
           auditBypass: testAuditBypass,
           outboxPublisher,
           lagProbeRedis,
@@ -281,6 +329,11 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         displayName: "Daily Census view (test)",
       });
       viewId = view.id;
+
+      // WX-PR-025 — TWO tenants' admission rows, so the nightly refresh test can prove the resulting
+      // mv_census_org_daily genuinely spans multiple tenants (not just "didn't throw").
+      await seedCensusAdmission(ORG, "a");
+      await seedCensusAdmission(ORG_B, "b");
     }, 180_000);
 
     afterAll(async () => {
@@ -290,8 +343,33 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       if (lagProbeRedis) await lagProbeRedis.quit();
       if (handle) await handle.close();
       if (seedDb) await seedDb.close();
+      if (platformHandle) await platformHandle.close();
       if (admin) await admin.end();
     });
+
+    /** WX-PR-025 — one `admission` row for `org` (the census MV's source table), so a refresh has
+     *  something real to roll up. Superuser: fixture setup, not the code path under test. */
+    async function seedCensusAdmission(org: string, label: string): Promise<void> {
+      const providerEntity = (
+        await admin.query(
+          `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+           VALUES ($1,$2,$3,$4,'enc','12-31') RETURNING id`,
+          [org, `CCN-M33${label}`, `M33 Provider ${label}`, `NPI-M33${label}`],
+        )
+      ).rows[0].id as string;
+      const location = (
+        await admin.query(
+          `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
+           VALUES ($1,$2,'1 St','Town','OR','97000','America/Los_Angeles') RETURNING id`,
+          [providerEntity, `Loc-M33${label}`],
+        )
+      ).rows[0].id as string;
+      await admin.query(
+        `INSERT INTO admission (organization_id, provider_entity_id, location_id, patient_id, admitted_by_physician_id, status, activated_at)
+         VALUES ($1,$2,$3, gen_random_uuid(), gen_random_uuid(),'active', now())`,
+        [org, providerEntity, location],
+      );
+    }
 
     it("nightly orchestrator fans out a REAL per-MV refresh (withPlatformContext, real REFRESH, real outbox emit)", async () => {
       // Force a fresh refresh regardless of the MV's 24h debounce window / any prior test run today.
@@ -358,6 +436,17 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       expect(mvOutboxRows).toHaveLength(1);
       expect(mvOutboxRows[0]?.eventType).toBe("m33.mv.refresh_succeeded");
       expect((mvOutboxRows[0]?.payload as { mvKey?: string })?.mvKey).toBe("mv_census_org_daily");
+
+      // WX-PR-025 — the refresh genuinely spans BOTH seeded tenants, not just "didn't throw". Read via
+      // `seedDb` (superuser): `wardenx_app` has no MV SELECT grant at all (§3.5's "no direct MV SELECT"
+      // rule), and `wardenx_platform` — while it OWNS the view — isn't what this assertion is proving.
+      const mvRows = await seedDb.db.execute(
+        sql`SELECT organization_id, active_patient_count FROM report_mv.mv_census_org_daily`,
+      );
+      const orgIds = (mvRows as unknown as { rows: { organization_id: string }[] }).rows
+        .map((r) => r.organization_id)
+        .sort();
+      expect(orgIds).toEqual([ORG, ORG_B].sort());
     }, 60_000);
 
     it("scheduled_run: real M2 recipient re-validation + real translateSpec snapshot + real outbox emit", async () => {

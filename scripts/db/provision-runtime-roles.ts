@@ -15,6 +15,20 @@
  *     orgs for the outbox relay + crons; the M36 D9 sole-tenant membership read), the M34
  *     org-offboarding eraser, and the `platform.bypass_invoked` audit INSERT every
  *     withPlatformContext entry writes.
+ *
+ *     WX-PR-025 (M33 §2.4 nightly MV refresh — genuinely cross-tenant): `report_mv.*` materialized
+ *     views are also OWNED by `wardenx_platform` here, and — UNLIKE every other use above —
+ *     `wardenx_platform` (the CARRIER, not just the login role) is ALSO given BYPASSRLS directly.
+ *     Confirmed empirically: `REFRESH MATERIALIZED VIEW CONCURRENTLY` re-executes the MV's defining
+ *     query under privileges resolved through the MV's OWNER (view-owner-style semantics), not the
+ *     session role that issues the REFRESH command — so `wardenx_platform_login`'s own BYPASSRLS
+ *     attribute (sufficient for every ordinary query above, issued directly as that role) does NOT
+ *     make a refresh see other tenants' rows; only the OWNER's own BYPASSRLS does. This is narrowly
+ *     scoped to REFRESH's internal owner-context execution — `wardenx_platform` stays NOLOGIN, so
+ *     nothing can connect directly as it, and nothing in this codebase does `SET ROLE
+ *     wardenx_platform` (ordinary queries against `wardenx_platform`'s grants already work correctly
+ *     via automatic privilege INHERITANCE through `wardenx_platform_login`, which needs no `SET
+ *     ROLE`) — it does not widen what any session can read through the normal connection path.
  *   · `wardenx_destruction_login` → DATABASE_DESTRUCTION_URL. Plain `IN ROLE wardenx_destruction`
  *     (0157 already enumerates its DELETE/UPDATE grants + org-pinned RLS policies). NO BYPASSRLS —
  *     destruction is org-scoped by design.
@@ -100,6 +114,42 @@ const PLATFORM_READ_TABLES = [
   "usage_period_aggregate",
   "patient_active_period",
   "user_active_period",
+  // WX-PR-025 — M33 §2.4 nightly MV refresh source tables (see MV_REFRESH_MATERIALIZED_VIEWS below):
+  // the refresh's re-executed defining query needs a real SELECT grant on each MV's source table,
+  // independent of (in addition to) the owner-role BYPASSRLS that lets it see every tenant's rows.
+  "admission", // mv_census_org_daily
+  "encounter", // mv_encounter_productivity_membership_day
+  "evv_event", // mv_evv_compliance_org_week
+] as const;
+
+/**
+ * WX-PR-025 — the `report_mv.*` materialized views `wardenx_platform` must OWN so the nightly
+ * `report.mv_refresh` job (M33 §2.4) can genuinely `REFRESH MATERIALIZED VIEW CONCURRENTLY` a
+ * cross-tenant rollup. Enumerated like everything else in this script (not a catalog-driven loop) —
+ * a new MV added to `materialized_view_metadata` needs its schema-qualified name added here too, or
+ * its own nightly refresh will hit the identical `permission denied` this migration fixes.
+ */
+const MV_REFRESH_MATERIALIZED_VIEWS = [
+  "report_mv.mv_census_org_daily",
+  "report_mv.mv_encounter_productivity_membership_day",
+  "report_mv.mv_evv_compliance_org_week",
+] as const;
+
+/**
+ * WX-PR-025 — the SECURITY DEFINER platform-writer functions (migrations 0186/0187/0188) that M33's
+ * `mvRefresh`/`lagProbe` workers reach when `platformDb` is `wardenx_platform_login`: the mandatory
+ * `platform.bypass_invoked` audit write every `withPlatformContext` entry makes, the nullable-org
+ * outbox emit (mvRefresh's 3 lifecycle events + lagProbe's threshold-transition events), and the
+ * report_run/materialized_view_metadata platform writes WX-PR-024 added. Each is already narrowly
+ * scoped in its own migration (organization_id hardcoded, never caller-supplied) — this only extends
+ * WHO may call them, not what they can do.
+ */
+const PLATFORM_WRITER_FUNCTIONS = [
+  "audit_writer_insert_platform_event(text, text, uuid, text, text, text, jsonb, text)",
+  "report_writer_insert_platform_outbox_event(text, text, uuid, jsonb)",
+  "report_writer_insert_platform_report_run(uuid, text, text, uuid, timestamptz, text, int)",
+  "report_writer_update_platform_report_run(uuid, timestamptz, jsonb)",
+  "report_writer_update_platform_mv_metadata(text, jsonb)",
 ] as const;
 
 /** The M35 platform-only tables (migration 0143 — RLS with no wardenx_app grant): full write. */
@@ -194,6 +244,34 @@ async function main(): Promise<void> {
       }
       // Every withPlatformContext entry writes its `platform.bypass_invoked` audit row.
       await run(`GRANT INSERT ON "audit_event" TO wardenx_platform;`);
+
+      // ── WX-PR-025: report_mv.* ownership + BYPASSRLS on the CARRIER (not just the login role) ──
+      // `wardenx_platform` must OWN each MV for `REFRESH MATERIALIZED VIEW CONCURRENTLY` to be a
+      // permitted command at all — and, because REFRESH re-executes the defining query under
+      // privileges resolved through the OWNER (not the issuing session role), the OWNER itself needs
+      // BYPASSRLS for that re-executed query to see every tenant's rows. Without this second
+      // BYPASSRLS grant, refresh either fails outright (no SELECT on the source table) or silently
+      // "succeeds" with an EMPTY/wrong result (SELECT granted but RLS still filters every row) — see
+      // this file's header comment for the full reasoning.
+      await run("GRANT USAGE ON SCHEMA report_mv TO wardenx_platform;");
+      for (const mv of MV_REFRESH_MATERIALIZED_VIEWS) {
+        await run(`ALTER MATERIALIZED VIEW ${mv} OWNER TO wardenx_platform;`);
+      }
+      await run("ALTER ROLE wardenx_platform WITH BYPASSRLS;");
+      // wardenx_platform reads materialized_view_metadata directly (not through wardenx_app's
+      // materialized_view_metadata_read_all policy — BYPASSRLS skips RLS entirely, but the base
+      // table GRANT is still required regardless of BYPASSRLS).
+      await run(`GRANT SELECT ON "materialized_view_metadata" TO wardenx_platform;`);
+
+      // ── the SECURITY DEFINER platform-writer functions M33's mvRefresh/lagProbe workers call when
+      //    `platformDb` = wardenx_platform_login (apps/backend/src/index.ts, WX-PR-025) — migrations
+      //    0186/0187/0188 grant EXECUTE to `wardenx_app` only (every OTHER module's withPlatformContext
+      //    caller still runs on the tenant pool), so `wardenx_platform` needs its own EXECUTE grant on
+      //    each one it can reach. `wardenx_platform` doesn't exist at migration time, so — like every
+      //    other grant in this script — this can't live in a migration file either.
+      for (const fn of PLATFORM_WRITER_FUNCTIONS) {
+        await run(`GRANT EXECUTE ON FUNCTION ${fn} TO wardenx_platform;`);
+      }
 
       // ── the login role (BYPASSRLS is an attribute — it lives HERE, not on the carrier) ───────
       await run(`DO $$ BEGIN
