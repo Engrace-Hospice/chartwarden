@@ -24,6 +24,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { PatientChartBail } from "../../shell/chart-module-rail";
 import { ASSESSMENT_TONE, stateLabel } from "./assessment-status";
 
 interface AssessmentRow {
@@ -100,9 +101,6 @@ export function AssessmentTimeline(): JSX.Element {
     if (scale === null && scales.length > 0) setScale(scales[0]!.scaleType);
   }, [scale, scales]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-
   const banner = patient ? (
     <PatientBanner
       name={`${patient.firstName} ${patient.lastName}`}
@@ -120,6 +118,21 @@ export function AssessmentTimeline(): JSX.Element {
   ) : (
     <PatientBanner name="Assessments" />
   );
+
+  if (loading) {
+    return (
+      <PatientChartBail banner={banner}>
+        <LoadingSpinner />
+      </PatientChartBail>
+    );
+  }
+  if (error) {
+    return (
+      <PatientChartBail banner={banner}>
+        <EmptyState title="Unavailable" description={error} />
+      </PatientChartBail>
+    );
+  }
 
   if (items.length === 0) {
     return (

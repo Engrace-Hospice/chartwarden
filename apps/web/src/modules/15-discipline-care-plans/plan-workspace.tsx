@@ -22,7 +22,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ChartModuleRail } from "../../shell/chart-module-rail";
+import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
 import {
   type PlanDetail,
   type RequiredSignerSlot,
@@ -157,19 +157,47 @@ export function DisciplinePlanWorkspace({
     setSigning({ version, signerSet: normalizeSignerSet(version.requiredSignerSet) });
   }
 
-  if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (!plan)
+  const bailBanner = patient ? (
+    <PatientBanner
+      name={`${patient.firstName} ${patient.lastName}`}
+      meta={`DOB ${patient.dob}`}
+      chips={
+        <span style={{ fontFamily: t.fontMono, fontSize: "0.75rem", color: t.onSurfaceVariant }}>
+          {patient.mrn}
+        </span>
+      }
+    />
+  ) : (
+    <PatientBanner name={kindLabel(kind)} />
+  );
+  if (loading) {
     return (
-      <EmptyState
-        title={`No ${kindLabel(kind)} yet`}
-        description={
-          kind === "volunteer_plan"
-            ? "A volunteer plan is created with this patient's first volunteer assignment."
-            : "This plan is created when the admission is activated."
-        }
-      />
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="discipline-plans">
+        <LoadingSpinner />
+      </PatientChartBail>
     );
+  }
+  if (error) {
+    return (
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="discipline-plans">
+        <EmptyState title="Unavailable" description={error} />
+      </PatientChartBail>
+    );
+  }
+  if (!plan) {
+    return (
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="discipline-plans">
+        <EmptyState
+          title={`No ${kindLabel(kind)} yet`}
+          description={
+            kind === "volunteer_plan"
+              ? "A volunteer plan is created with this patient's first volunteer assignment."
+              : "This plan is created when the admission is activated."
+          }
+        />
+      </PatientChartBail>
+    );
+  }
 
   const redaction = redactionLabel(plan.redacted_categories ?? []);
   const signedVersion = plan.versions.find((v) => v.status === "signed") ?? null;

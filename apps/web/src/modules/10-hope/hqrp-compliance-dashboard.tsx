@@ -81,9 +81,8 @@ export function HqrpComplianceDashboard(): JSX.Element {
             }}
           >
             Rates reflect the{" "}
-            {row.providerEntityId ? "selected ProviderEntity" : "whole organization"}. The 90-day
-            trend sparklines and the late-completion-reason distribution chart fill in as the HQRP
-            analytics surface (M30) lands.
+            {row.providerEntityId ? "selected ProviderEntity" : "whole organization"}. Historical
+            trend charts and the late-completion-reason breakdown are not built for this screen yet.
           </p>
         )
       }

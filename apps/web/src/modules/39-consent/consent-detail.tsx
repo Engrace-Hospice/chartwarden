@@ -23,6 +23,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { PatientChartBail } from "../../shell/chart-module-rail";
 import {
   CaptureEvidenceFields,
   STAFF_CAPTURE_METHODS,
@@ -284,9 +285,29 @@ export function ConsentDetail(): JSX.Element {
     patientId,
   ]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error || !record)
-    return <EmptyState title="Unavailable" description={error ?? "Not found."} />;
+  const bailBanner = patient ? (
+    <PatientBanner
+      name={`${patient.firstName} ${patient.lastName}`}
+      mrn={patient.mrn}
+      dob={patient.dob}
+    />
+  ) : (
+    <PatientBanner name="Consent" />
+  );
+  if (loading) {
+    return (
+      <PatientChartBail banner={bailBanner}>
+        <LoadingSpinner />
+      </PatientChartBail>
+    );
+  }
+  if (error || !record) {
+    return (
+      <PatientChartBail banner={bailBanner}>
+        <EmptyState title="Unavailable" description={error ?? "Not found."} />
+      </PatientChartBail>
+    );
+  }
 
   const canAct = record.status === "active";
   const banner = patient ? (

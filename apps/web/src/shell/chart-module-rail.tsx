@@ -1,5 +1,5 @@
-import { LeftNavRail, t } from "@wardenx/ui";
-import type { CSSProperties, JSX } from "react";
+import { LeftNavRail, PatientWorkspaceLayout, t } from "@wardenx/ui";
+import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 // apps/web/src/shell — the patient-chart module nav rail, shared by the clinical workspace screens
 // (Care Plan, Orders, Assessments, …) so the rail is defined once. Mirrors the P1 Pencil frames'
@@ -153,6 +153,37 @@ export function ChartModuleRail({
         })}
       </ul>
     </LeftNavRail>
+  );
+}
+
+/**
+ * A patient/case-chart tab screen's loading/error/empty bail-out — keeps the same banner + module
+ * rail mounted that the screen's success path renders, instead of a bare spinner/empty state that
+ * drops them (live-browser audit #4: a user landing on an empty-state tab, or any tab mid-load, was
+ * stranded with no in-chart way back). `current`/`patientId` are optional because not every chart
+ * tab screen renders `ChartModuleRail` on its success path either — this only ever restores what
+ * that screen already shows once loaded, never adds a rail a screen doesn't otherwise have.
+ */
+export function PatientChartBail({
+  banner,
+  patientId,
+  current,
+  children,
+}: {
+  banner: ReactNode;
+  patientId?: string;
+  current?: ChartSection;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <PatientWorkspaceLayout banner={banner}>
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+        {current && patientId ? <ChartModuleRail patientId={patientId} current={current} /> : null}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {children}
+        </div>
+      </div>
+    </PatientWorkspaceLayout>
   );
 }
 

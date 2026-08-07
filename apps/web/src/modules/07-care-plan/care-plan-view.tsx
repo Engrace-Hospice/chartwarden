@@ -24,7 +24,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ChartModuleRail } from "../../shell/chart-module-rail";
+import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
 import { cap, toneFor } from "./care-plan-status";
 
 interface Version {
@@ -143,15 +143,39 @@ export function CarePlanView(): JSX.Element {
   const activeVersion = plan?.versions.find((v) => v.id === plan.activeVersionId) ?? null;
   const draftVersion = plan?.versions.find((v) => v.status === "draft") ?? null;
 
-  if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (empty || !plan)
+  const bailBanner = patient ? (
+    <PatientBanner
+      name={`${patient.firstName} ${patient.lastName}`}
+      meta={`DOB ${patient.dob}`}
+      chips={<MonoChip title="Medical record number">{patient.mrn}</MonoChip>}
+    />
+  ) : (
+    <PatientBanner name="Care Plan" />
+  );
+  if (loading) {
     return (
-      <EmptyState
-        title="No care plan yet"
-        description="An initial IPOC is created when the patient is admitted; problems, goals, and interventions appear here."
-      />
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="care-plan">
+        <LoadingSpinner />
+      </PatientChartBail>
     );
+  }
+  if (error) {
+    return (
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="care-plan">
+        <EmptyState title="Unavailable" description={error} />
+      </PatientChartBail>
+    );
+  }
+  if (empty || !plan) {
+    return (
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="care-plan">
+        <EmptyState
+          title="No care plan yet"
+          description="An initial IPOC is created when the patient is admitted; problems, goals, and interventions appear here."
+        />
+      </PatientChartBail>
+    );
+  }
 
   const age = patient ? ageYears(patient.dob) : null;
   const versionBadge = activeVersion

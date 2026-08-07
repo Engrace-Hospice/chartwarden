@@ -139,21 +139,23 @@ export function TriageQueueScreen(): JSX.Element {
         }
       />
 
+      {/* §7.2: while an escalation is unacknowledged, no disposition other than hand-off is permitted. */}
       {unresolved > 0 ? (
         <Notice tone="error" assertive>
           {unresolved} call{unresolved === 1 ? " is" : "s are"} parked in{" "}
           <strong>escalated — unresolved</strong>: a named human has been paged and has not
-          answered. Until the escalation is acknowledged, §7.2 permits no disposition other than the
+          answered. Until the escalation is acknowledged, the only disposition allowed is a
           hand-off.
         </Notice>
       ) : null}
 
+      {/* §4.1 publishes no aggregate route and §4.1.1 forbids a total count on a PHI list (a count is an
+          enumeration oracle), so every tile below counts only the page it was given, never the tenant. */}
       {truncated ? (
         <Notice tone="info">
           More than {QUEUE_PAGE} calls match this filter. The counts below are therefore "at least"
-          — §4.1 publishes no aggregate route and §4.1.1 forbids a total count on a PHI list, so a
-          tile counts the page it was given, never the whole tenant. Narrow the filter for an exact
-          figure.
+          — each tile counts only the calls on this page, not the full list. Narrow the filter for
+          an exact figure.
         </Notice>
       ) : null}
 
@@ -180,10 +182,12 @@ export function TriageQueueScreen(): JSX.Element {
             },
           ]}
         />
+        {/* M19-F06 / ADR-0022: a call whose encounter can't be reached yet (M8 seam down) must stay
+            visible to the supervisor rather than silently drop off the board once a disposition is
+            picked — hence "Documented — pending encounter" staying on the board deliberately. */}
         <span style={mutedStyle}>
-          "Documented — pending encounter" stays ON the board deliberately (M19-F06 / ADR-0022): a
-          call stranded by an unreachable M8 encounter seam must remain visible to the supervisor,
-          not drop off because its disposition was picked.
+          Calls stay on the board until their encounter note is signed off — even after a
+          disposition has been picked — so nothing gets lost if that note is delayed.
         </span>
       </Card>
 
@@ -254,15 +258,11 @@ export function TriageQueueScreen(): JSX.Element {
         )}
       </Card>
 
-      <Card title="What this board does not offer">
-        <span style={mutedStyle}>
-          §5.1 sketches "ack / take / re-route" row actions. None is built, because §4.1 publishes
-          no assign, claim or re-route route and `triage_call` has no assignee column: the covering
-          SHIFT is the assignment and the server resolves it at open. A row action here would have
-          had to invent a write nobody can audit. Acknowledging an escalation is a real write and
-          lives on the escalation inbox, where the row it acts on is.
-        </span>
-      </Card>
+      {/* §5.1 sketches "ack / take / re-route" row actions here; none is built, because §4.1
+          publishes no assign/claim/re-route route and `triage_call` has no assignee column — the
+          covering SHIFT is the assignment, resolved server-side at open. A row action here would
+          have had to invent a write nobody can audit. Acknowledging an escalation is a real write,
+          so that action lives on the Escalations inbox (linked above) instead. */}
     </div>
   );
 }

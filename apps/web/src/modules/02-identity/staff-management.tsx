@@ -68,6 +68,13 @@ export function StaffManagement(): JSX.Element {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [pendingInvites, setPendingInvites] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // Distinct from `error` (which is reused for invite/resend/rescind/status-change failures too):
+  // this only tracks whether the roster itself failed to load, so the KPI strip can tell "0 staff"
+  // (a legitimately empty org) apart from "unknown" (the fetch 403'd/failed) instead of rendering
+  // the same literal 0 for both (live-browser audit #8 — a Clinician hitting the 403 on
+  // /admin/staff saw "0 Active staff" etc., indistinguishable from a real empty roster short of
+  // reading the small inline error string).
+  const [loadFailed, setLoadFailed] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -81,11 +88,13 @@ export function StaffManagement(): JSX.Element {
       ]);
       if (membersRes.error) {
         setError("Could not load staff. You may not have permission to manage members.");
+        setLoadFailed(true);
         // `members === null` is the "still loading" state (drives the spinner below) — leaving it
         // null on a load error kept the spinner spinning forever alongside the error message.
         setMembers([]);
         return;
       }
+      setLoadFailed(false);
       setMembers((membersRes.data?.members ?? []) as Member[]);
       setPendingInvites(membersRes.data?.pendingInvitations ?? 0);
       // Non-fatal: the invitation roster is an enhancement on top of the roster load above.
@@ -104,6 +113,7 @@ export function StaffManagement(): JSX.Element {
       if (org) void load(org);
       else {
         setError("No active organization is bound to your session.");
+        setLoadFailed(true);
         setMembers([]); // same "don't spin forever on a resolved-but-unusable state" fix as load()
       }
     });
@@ -229,14 +239,21 @@ export function StaffManagement(): JSX.Element {
     void load(orgId);
   }
 
-  const active = members?.filter((m) => m.status === "active").length ?? 0;
-  const suspended = members?.filter((m) => m.status === "suspended").length ?? 0;
-  const admins = members?.filter((m) => m.isAdmin && m.status === "active").length ?? 0;
+  // `null` (not 0) when the roster failed to load — the Kpi component renders that as "—" rather
+  // than a literal 0, so a 403 doesn't read as "this org has no staff" (live-browser audit #8).
+  const active = loadFailed ? null : (members?.filter((m) => m.status === "active").length ?? 0);
+  const suspended = loadFailed
+    ? null
+    : (members?.filter((m) => m.status === "suspended").length ?? 0);
+  const admins = loadFailed
+    ? null
+    : (members?.filter((m) => m.isAdmin && m.status === "active").length ?? 0);
   // "Locked accounts": the underlying user account is suspended/deactivated (can't sign in), distinct
   // from a suspended *membership*. Surfaced from the joined M1 user.status (FB-T12).
-  const locked =
-    members?.filter((m) => m.accountStatus === "suspended" || m.accountStatus === "deactivated")
-      .length ?? 0;
+  const locked = loadFailed
+    ? null
+    : (members?.filter((m) => m.accountStatus === "suspended" || m.accountStatus === "deactivated")
+        .length ?? 0);
 
   return (
     <>
@@ -247,7 +264,7 @@ export function StaffManagement(): JSX.Element {
             <Kpi label="Active staff" value={active} />
             <Kpi label="Suspended" value={suspended} />
             <Kpi label="Admins" value={admins} />
-            <Kpi label="Pending invites" value={pendingInvites} />
+            <Kpi label="Pending invites" value={loadFailed ? null : pendingInvites} />
             <Kpi label="Locked accounts" value={locked} />
           </div>
         }
@@ -494,11 +511,11 @@ function PendingInvitations({
   );
 }
 
-function Kpi({ label, value }: { label: string; value: number }): JSX.Element {
+function Kpi({ label, value }: { label: string; value: number | null }): JSX.Element {
   return (
     <div style={kpiCard}>
       <div className="tabular-nums" style={{ fontSize: "1.5rem", fontWeight: 700 }}>
-        {value}
+        {value ?? "—"}
       </div>
       <div style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>{label}</div>
     </div>

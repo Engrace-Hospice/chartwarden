@@ -35,6 +35,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { PatientChartBail } from "../../shell/chart-module-rail";
 import { COSIGN_TONE, ENCOUNTER_TONE, lateEntryTone, stateLabel } from "./encounter-status";
 import { authFailureRedirect } from "./write-workflow";
 
@@ -187,9 +188,29 @@ export function EncounterRead(): JSX.Element {
     [encounterId, reason, client, navigate, closeCeremony, load],
   );
 
-  if (loading) return <LoadingSpinner />;
-  if (error || !encounter)
-    return <EmptyState title="Unavailable" description={error ?? "Not found."} />;
+  const bailBanner = patient ? (
+    <PatientBanner
+      name={`${patient.firstName} ${patient.lastName}`}
+      meta={`DOB ${patient.dob}`}
+      chips={<MonoChip>{patient.mrn}</MonoChip>}
+    />
+  ) : (
+    <PatientBanner name="Encounter" />
+  );
+  if (loading) {
+    return (
+      <PatientChartBail banner={bailBanner}>
+        <LoadingSpinner />
+      </PatientChartBail>
+    );
+  }
+  if (error || !encounter) {
+    return (
+      <PatientChartBail banner={bailBanner}>
+        <EmptyState title="Unavailable" description={error ?? "Not found."} />
+      </PatientChartBail>
+    );
+  }
 
   const e = encounter;
   const canSign = e.status === "finalized";

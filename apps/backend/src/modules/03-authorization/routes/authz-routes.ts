@@ -21,7 +21,7 @@
 // route's existing existence lookup, so the §9.3 IDOR semantics are unchanged: an unauthorized
 // actor still sees 403 (never 422) and an authorized actor still sees 404 for an absent object.
 import type { AuditContext } from "@wardenx/audit";
-import { permissionMirrorRows, requirePermission, requireSession } from "@wardenx/auth";
+import { allPermissionMirrorRows, requirePermission, requireSession } from "@wardenx/auth";
 import {
   ForbiddenError,
   type HttpRequestContext,
@@ -117,7 +117,7 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
   app.get(
     "/api/v1/permissions",
     { preHandler: [requirePermission("role.read") as PreHandler] },
-    async () => ({ permissions: permissionMirrorRows() }),
+    async () => ({ permissions: allPermissionMirrorRows() }),
   );
 
   app.get(
