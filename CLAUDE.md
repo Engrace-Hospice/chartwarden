@@ -26,11 +26,18 @@ made M30's cross-module seams real: the M1-T10 transactional outbox-row emit (M3
 M40-free provider-entity resolver, the M33 `MetricsProvider` registration, the HOPE-rollup + HVLDL measure
 inputs (computing end-to-end, incl. a new M6 `DeathDischargeReader` + a Drizzle-backed M8
 `SignedEncountersReader`), per-job `withOrgContext` RLS on the recompute/outbreak workers, and the cron
-allowlist + active-org enumerator. M23 and M27 are now **merged** (no longer placeholders), so the
-**HCI/operational measure families' remaining blocker is the cross-module seam BIND** — M27 consuming the
-M23/M26 forward-seams (`CapAccrualReader`/`CapSettlementProvider` for the CMS-1984-14 cap calc) and M30's HCI
-consuming M27; those reach live as deny-stubs today, so `hci_composite` stays fail-closed until they flip
-live.
+allowlist + active-org enumerator. M23 and M27 are now **merged** (no longer placeholders); the M23/M26→M27
+forward-seam binds for the CMS-1984-14 cap calc (`CapAccrualReader` et al.) and M27's own forward seam into
+M30 (`CostReportFilingStatusReader`) are **live and tested**, not deny-stubs (`m30-forward-seam-binds.test.ts`,
+`m26-cost-report-cap-seam.live.test.ts`, `m27-validation-context.live.test.ts`) — this un-suppresses the CoP
+418.310 failure-to-file indicator and half of HCI 5/6/7's inputs. **`hci_composite`'s real remaining blocker
+is DATA, not wiring**: 9 of its 10 indicators need M6/M8 aggregate seams
+(per-election-period LOC-days, discharge timing, cross-setting transition sequences, per-day
+skilled-nursing minutes) that were never built — only `hci_indicator_10` computes. Two operational
+measures are similarly blocked on an M15 producer-shape gap (`volunteer_compliance_gate_rate`,
+`supervisory_visit_on_time` return a pre-divided rate, not a count pair); `bereavement_coverage_rate`
+(M16) is bound. `opioid_on_admission_rate` needs an M38 RxCUI→therapeutic-class capability that doesn't
+exist yet.
 
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104, see
 [`audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md`](./audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md)):

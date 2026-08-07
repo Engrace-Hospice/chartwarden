@@ -428,6 +428,14 @@ const OPERATIONAL_MEASURE_THRESHOLDS: Readonly<Record<string, ThresholdRule>> = 
     direction: "gte",
     label: "IDG meeting-cadence adherence (CoP 418.56; platform default)",
   },
+  // CoP 418.64(d) — bereavement services must be offered to the family for up to 1 year post-death;
+  // higher is better. CMS publishes no numeric floor for this measure (unlike the 15-day/cadence CoPs
+  // above), so this is a platform default, not a regulatory figure.
+  bereavement_coverage_rate: {
+    value: 0.9,
+    direction: "gte",
+    label: "bereavement coverage rate (CoP 418.64(d); platform default)",
+  },
 };
 
 /** The M17 on-time counts read, as this resolver uses it (the registry holds the seam opaquely). */
@@ -482,6 +490,17 @@ interface IdgCadenceCountsView {
   ): Promise<{ numerator: number; denominator: number }>;
 }
 
+/** The M16 CoP 418.64(d) outreach-compliance tally, as this resolver uses it (a scope object, not the
+ *  (orgId, window) shape the other producers above take — mirrors M16's own `BereavementScope`). */
+interface BereavementCoverageCountsView {
+  copOutreachCounts(scope: {
+    orgId: string;
+    providerEntityId?: string;
+    fromIso?: string;
+    toIso?: string;
+  }): Promise<{ numerator: number; denominator: number }>;
+}
+
 /** The M18 compliance counts read, as this resolver uses it. */
 interface EvvComplianceCountsView {
   getComplianceCounts(
@@ -500,12 +519,14 @@ export const OPERATIONAL_BOUND_MEASURE_CODES = new Set([
   "missed_dose_rate",
   "prn_effectiveness_documented_rate",
   "idg_cadence_adherence",
+  "bereavement_coverage_rate",
 ]);
 
 /**
- * Shape the live M17/M18 org-level count pairs into their calculator inputs. Aggregate-only — no patient
- * row crosses (D6). A producer whose seam is still the M1 deny-stub throws, and the worker's existing
- * fail-closed handling records the recompute as failed rather than writing a fabricated value.
+ * Shape the live org-level count pairs (M17/M18/M8/M11/M7/M13/M14/M16) into their calculator inputs.
+ * Aggregate-only — no patient row crosses (D6). A producer whose seam is still the M1 deny-stub throws,
+ * and the worker's existing fail-closed handling records the recompute as failed rather than writing a
+ * fabricated value.
  */
 export async function resolveOperationalMeasureInput(
   request: {
@@ -523,6 +544,7 @@ export async function resolveOperationalMeasureInput(
     readonly carePlan: CarePlanCycleCountsView;
     readonly administrations: MissedDoseCountsView;
     readonly idg: IdgCadenceCountsView;
+    readonly bereavementCompliance: BereavementCoverageCountsView;
   },
 ): Promise<unknown> {
   const { organizationId, providerEntityId, periodStart, periodEnd } = request;
@@ -589,6 +611,15 @@ export async function resolveOperationalMeasureInput(
         cyclesUpdatedWithin15Days: c.numerator,
         threshold,
       };
+    }
+    case "bereavement_coverage_rate": {
+      const c = await seams.bereavementCompliance.copOutreachCounts({
+        orgId: organizationId,
+        providerEntityId,
+        fromIso: periodStart,
+        toIso: periodEnd,
+      });
+      return { ...base, eligibleBereaved: c.denominator, bereavedWithPlan: c.numerator, threshold };
     }
     default:
       return unboundWorkerPort(
@@ -895,8 +926,9 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
             deathDischargeReader,
             encounters: signedEncounters,
           });
-        // BOUND (operational): the two measures whose producers tally ORG-LEVEL counts. M17/M18 now expose
-        // the count PAIR beside their rate methods, so the CMS small-N floor can be applied honestly.
+        // BOUND (operational): the measures whose producers tally ORG-LEVEL counts (M17/M18/M8/M11/M7/M13/
+        // M14/M16) — each exposes the count PAIR beside (or instead of) a rate method, so the CMS small-N
+        // floor can be applied honestly.
         if (OPERATIONAL_BOUND_MEASURE_CODES.has(request.registration.code))
           return resolveOperationalMeasureInput(request, {
             visitMetrics: getSeam("VisitMetricsProvider") as never,
@@ -908,6 +940,7 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
             carePlan: getSeam("CarePlanReader") as never,
             administrations: getSeam("MedicationAdministrationProvider") as never,
             idg: getSeam("IdgScheduleProvider") as never,
+            bereavementCompliance: getSeam("BereavementComplianceProvider") as never,
           });
         return resolveHopeMeasureInput(request, seams);
       },

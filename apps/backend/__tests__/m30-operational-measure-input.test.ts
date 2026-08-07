@@ -1,4 +1,5 @@
 import {
+  computeBereavementCoverageRate,
   computeCarePlan15DayAdherence,
   computeEvvComplianceRate,
   computeIdgCadenceAdherence,
@@ -71,6 +72,11 @@ const seamsWith = (
   },
   idg: {
     async getCadenceCountsForOrg() {
+      return lateEntry;
+    },
+  },
+  bereavementCompliance: {
+    async copOutreachCounts() {
       return lateEntry;
     },
   },
@@ -223,6 +229,26 @@ describe("M30 operational measure inputs — counts, not rates", () => {
     expect(result.denominator).toBe(0);
     expect(result.bandColor).toBe("insufficient_n");
     expect(result.rate).toBeNull();
+  });
+
+  it("shapes M16's CoP 418.64(d) outreach-compliance tally into its calculator input", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("bereavement_coverage_rate"),
+      seamsWith({ numerator: 0, denominator: 0 }, undefined, { numerator: 27, denominator: 30 }),
+    );
+    expect(input).toMatchObject({ eligibleBereaved: 30, bereavedWithPlan: 27 });
+    expect(computeBereavementCoverageRate(input as never).rate).toBeCloseTo(0.9);
+  });
+
+  it("no eligible bereaved caregivers in the window suppresses rather than scoring perfect", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("bereavement_coverage_rate"),
+      seamsWith({ numerator: 0, denominator: 0 }),
+    );
+    const result = computeBereavementCoverageRate(input as never);
+    expect(result.denominator).toBe(0);
+    expect(result.rate).toBeNull();
+    expect(result.bandColor).toBe("insufficient_n");
   });
 
   it("refuses a measure code it does not shape rather than computing on an empty input", async () => {
