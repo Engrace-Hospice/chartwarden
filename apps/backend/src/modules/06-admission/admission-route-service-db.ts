@@ -490,10 +490,17 @@ export function createDbAdmissionRouteService(
       effectiveAt: string;
       forCauseCosigned: boolean;
       deathCertifierId?: string;
+      // Required to fire `m6.discharge.created`/`m6.discharge.death` (both need `dischargeEventId`;
+      // `m6.discharge.created` also needs the original §4.2.7 `DischargeReason` string, not this
+      // function's own broader `dischargeType` discriminator — see callers). Omitted by
+      // revocation/transferOut, which never create a `discharge_event` row and, per the state-machine
+      // fix above, no longer need to.
+      dischargeEventId?: string;
+      reason?: string;
     },
   ): Promise<{ state: AdmissionState; version: number }> {
     const [row] = await tx
-      .select({ status: ADM.status, admissionAt: ADM.admissionAt })
+      .select({ status: ADM.status, admissionAt: ADM.admissionAt, patientId: ADM.patientId })
       .from(ADM)
       .where(eq(ADM.id, admissionId))
       .limit(1);
@@ -541,10 +548,38 @@ export function createDbAdmissionRouteService(
         .returning({ status: ADM.status, version: ADM.version }),
       "admission not found",
     );
+    // `m6.admission.discharged`'s `reason`/`dischargeDate` were previously never supplied (`runEffects`'
+    // base payload is just `{aggregateId, admissionId}`) — 500ing on EVERY discharge/revocation/
+    // transfer-out. `m6.discharge.created`/`.death` need `dischargeEventId` too, but only real discharge
+    // reasons still fire that effect (state-machine fix above); revocation/transfer never provide one.
     await runEffects(
       tx,
       { organizationId, aggregateKind: "admission", aggregateId: admissionId, admissionId },
       t.effects,
+      {
+        "m6.admission.discharged": {
+          reason: ev.reason ?? ev.dischargeType,
+          dischargeDate: ev.effectiveAt,
+        },
+        ...(ev.dischargeEventId
+          ? {
+              "m6.discharge.created": {
+                dischargeEventId: ev.dischargeEventId,
+                reason: ev.reason ?? ev.dischargeType,
+                dischargeDate: ev.effectiveAt,
+                requiresMedicalDirectorCosign: false,
+              },
+              "m6.discharge.death": {
+                dischargeEventId: ev.dischargeEventId,
+                dischargeDate: ev.effectiveAt,
+              },
+            }
+          : {}),
+        // Fires only when `t.effects` actually includes it (death → 'bereavement'), but
+        // `dischargeAdmissionTx` never supplied `patientId`/`eligibleAt` either — same bug class,
+        // one more event, same 500 on every death discharge.
+        "m6.bereavement.eligible": { patientId: row.patientId, eligibleAt: ev.effectiveAt },
+      },
     );
     return { state: r.status as AdmissionState, version: Number(r.version) };
   }
@@ -1249,6 +1284,12 @@ export function createDbAdmissionRouteService(
           .where(eq(ADM.id, admissionId))
           .limit(1);
         if (!adm) throw new ResourceNotFoundError(admissionId);
+        const [period] = await tx
+          .select({ sequence: EP.sequenceNumber, effectiveAt: EP.effectiveAt, scheduledEndAt: EP.scheduledEndAt })
+          .from(EP)
+          .where(eq(EP.id, electionPeriodId))
+          .limit(1);
+        if (!period) throw new ResourceNotFoundError(electionPeriodId);
         const es = firstOrThrow(
           await tx
             .insert(ES)
@@ -1263,7 +1304,14 @@ export function createDbAdmissionRouteService(
         );
         await outbox.publish(tx, {
           eventName: "m6.election.drafted",
-          payload: { electionStatementId: es.id },
+          payload: {
+            electionPeriodId,
+            sequence: period.sequence,
+            // Same TASK-031 precedent as `m6.election.period_started` — omitted rather than
+            // fabricated when the period hasn't been dated yet (see events-by-m6.ts).
+            ...(period.effectiveAt ? { startDate: period.effectiveAt } : {}),
+            ...(period.scheduledEndAt ? { endDate: period.scheduledEndAt } : {}),
+          },
           organizationId,
           aggregateKind: "election_statement",
           aggregateId: es.id,
@@ -1275,7 +1323,7 @@ export function createDbAdmissionRouteService(
       void actorUserId;
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cur] = await tx
-          .select({ status: ES.status, version: ES.version })
+          .select({ status: ES.status, version: ES.version, electionPeriodId: ES.electionPeriodId })
           .from(ES)
           .where(eq(ES.id, id))
           .limit(1);
@@ -1283,11 +1331,12 @@ export function createDbAdmissionRouteService(
         assertVersion(id, Number(cur.version), ifVersion);
         if (cur.status !== "drafted")
           throw conflict(`election statement ${id} is not draftable from '${cur.status}'`);
+        const signedAt = new Date().toISOString().slice(0, 10);
         const [r] = await tx
           .update(ES)
           .set({
             status: "signed",
-            signedAt: new Date().toISOString().slice(0, 10),
+            signedAt,
             signatureMethod: "electronic_witnessed",
             curativeCareAcknowledgment: true,
             version: sql`${ES.version} + 1`,
@@ -1298,7 +1347,10 @@ export function createDbAdmissionRouteService(
         if (!r) throw new ResourceNotFoundError(id);
         await outbox.publish(tx, {
           eventName: "m6.election.signed",
-          payload: { electionStatementId: id },
+          // Same payload-schema-drift bug class as `m6.election.drafted` (fixed above) — this call
+          // used to send only `electionStatementId`, throwing `payload_schema_violation` on every
+          // single call (`electionPeriodId`/`signedAt` are non-optional).
+          payload: { electionStatementId: id, electionPeriodId: cur.electionPeriodId, signedAt },
           organizationId,
           aggregateKind: "election_statement",
           aggregateId: id,
@@ -1434,7 +1486,7 @@ export function createDbAdmissionRouteService(
         if (cti.status === "signed" || cti.status === "voided")
           throw conflict(`cti ${id} cannot be hospice-MD-signed from '${cti.status}'`);
         const [period] = await tx
-          .select({ seq: EP.sequenceNumber })
+          .select({ seq: EP.sequenceNumber, admissionId: EP.admissionId })
           .from(EP)
           .where(eq(EP.id, cti.epId))
           .limit(1);
@@ -1463,7 +1515,13 @@ export function createDbAdmissionRouteService(
             .where(and(eq(EP.id, cti.epId), ne(EP.status, "active")));
           await outbox.publish(tx, {
             eventName: "m6.election.period_started",
-            payload: { electionPeriodId: cti.epId },
+            // `sequence`/`admissionId` are non-optional on this schema — this path (recert,
+            // MD-only sign) previously sent only `electionPeriodId` and 500'd every time it fired.
+            payload: {
+              electionPeriodId: cti.epId,
+              sequence: period?.seq ?? 1,
+              ...(period?.admissionId ? { admissionId: period.admissionId } : {}),
+            },
             organizationId,
             aggregateKind: "election_period",
             aggregateId: cti.epId,
@@ -1472,7 +1530,8 @@ export function createDbAdmissionRouteService(
         if (outcome.fullySigned) {
           await outbox.publish(tx, {
             eventName: "m6.cti.signed",
-            payload: { ctiId: id },
+            // Same class of bug as above — `electionPeriodId`/`signedAt` are required, previously omitted.
+            payload: { ctiId: id, electionPeriodId: cti.epId, signedAt: now().toISOString() },
             organizationId,
             aggregateKind: "certification_of_terminal_illness",
             aggregateId: id,
@@ -1485,7 +1544,7 @@ export function createDbAdmissionRouteService(
       void actorUserId;
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cti] = await tx
-          .select({ status: CTI.status, version: CTI.version })
+          .select({ status: CTI.status, version: CTI.version, epId: CTI.electionPeriodId })
           .from(CTI)
           .where(eq(CTI.id, id))
           .limit(1);
@@ -1495,15 +1554,22 @@ export function createDbAdmissionRouteService(
           throw conflict(
             `cti ${id} is not awaiting an attending signature (state '${cti.status}')`,
           );
+        const attendingSignedAt = now();
         const [r] = await tx
           .update(CTI)
-          .set({ status: "signed", attendingMdSignedAt: now(), version: sql`${CTI.version} + 1` })
+          .set({
+            status: "signed",
+            attendingMdSignedAt: attendingSignedAt,
+            version: sql`${CTI.version} + 1`,
+          })
           .where(and(eq(CTI.id, id), eq(CTI.version, ifVersion)))
           .returning({ id: CTI.id, status: CTI.status, version: CTI.version });
         if (!r) throw new ResourceNotFoundError(id);
         await outbox.publish(tx, {
           eventName: "m6.cti.signed",
-          payload: { ctiId: id },
+          // Same payload-schema-drift bug — `electionPeriodId`/`signedAt` are required (confirmed live:
+          // this exact call 500'd with `payload_schema_violation` on every attempt before this fix).
+          payload: { ctiId: id, electionPeriodId: cti.epId, signedAt: attendingSignedAt.toISOString() },
           organizationId,
           aggregateKind: "certification_of_terminal_illness",
           aggregateId: id,
@@ -1512,7 +1578,6 @@ export function createDbAdmissionRouteService(
       });
     },
     async voidCti(organizationId, id, reason, ifVersion): Promise<MutationResult> {
-      void reason;
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cti] = await tx
           .select({ version: CTI.version })
@@ -1529,7 +1594,9 @@ export function createDbAdmissionRouteService(
         if (!r) throw new ResourceNotFoundError(id);
         await outbox.publish(tx, {
           eventName: "m6.cti.voided",
-          payload: { ctiId: id },
+          // `reason` is required by the schema — this call used to discard it entirely (`void reason`)
+          // and 500 on every void.
+          payload: { ctiId: id, reason },
           organizationId,
           aggregateKind: "certification_of_terminal_illness",
           aggregateId: id,
@@ -1556,16 +1623,19 @@ export function createDbAdmissionRouteService(
           .where(and(eq(CTI.id, id), eq(CTI.version, ifVersion)))
           .returning({ id: CTI.id, status: CTI.status, version: CTI.version });
         if (!r) throw new ResourceNotFoundError(id);
+        // D4: written-cert deadline = period_start + 2 calendar days at 23:59 org-TZ. Computed before
+        // the publish below — `writtenCertDeadlineAt` is a required field on this event's schema, and
+        // this call previously omitted it entirely (the computation ran only after the now-failed
+        // publish), 500ing on every call.
+        const periodStart = cti.periodStart ?? new Date().toISOString().slice(0, 10);
+        const writtenCertDeadlineAt = computeWrittenCertDeadline(periodStart, DEFAULT_ORG_TZ);
         await outbox.publish(tx, {
           eventName: "m6.cti.late_flagged",
-          payload: { ctiId: id },
+          payload: { ctiId: id, writtenCertDeadlineAt },
           organizationId,
           aggregateKind: "certification_of_terminal_illness",
           aggregateId: id,
         });
-        // D4: written-cert deadline = period_start + 2 calendar days at 23:59 org-TZ.
-        const periodStart = cti.periodStart ?? new Date().toISOString().slice(0, 10);
-        const writtenCertDeadlineAt = computeWrittenCertDeadline(periodStart, DEFAULT_ORG_TZ);
         return { id: r.id, state: r.status, version: Number(r.version), writtenCertDeadlineAt };
       });
     },
@@ -1595,7 +1665,15 @@ export function createDbAdmissionRouteService(
         );
         await outbox.publish(tx, {
           eventName: "m6.f2f.scheduled",
-          payload: { f2fId: f2f.id },
+          // `electionPeriodId`/`scheduledDate` are required — previously omitted, 500ing on every
+          // call. `scheduledDate` comes straight off `input` since the `face_to_face_encounter` table
+          // has no column for it today (a separate, pre-existing gap — the schedule route accepts and
+          // validates the date but never persists it; out of scope for this fix).
+          payload: {
+            f2fId: f2f.id,
+            electionPeriodId: input.electionPeriodId,
+            scheduledDate: String(input.scheduledDate),
+          },
           organizationId,
           aggregateKind: "face_to_face_encounter",
           aggregateId: f2f.id,
@@ -1835,7 +1913,14 @@ export function createDbAdmissionRouteService(
         if (to !== "assigning") {
           await outbox.publish(tx, {
             eventName: "m6.loc.changed",
-            payload: { levelOfCarePeriodId: loc.id, level, state: to },
+            // Field names must match the schema exactly (`newLevel`, not `level`; `state` isn't a
+            // declared field at all) — previously sent `{level, state}`, both wrong, 500ing every call.
+            payload: {
+              levelOfCarePeriodId: loc.id,
+              newLevel: level,
+              effectiveStart: (effectiveStart ? new Date(effectiveStart) : now()).toISOString(),
+              admissionId,
+            },
             organizationId,
             aggregateKind: "level_of_care_period",
             aggregateId: loc.id,
@@ -1867,7 +1952,12 @@ export function createDbAdmissionRouteService(
     async confirmLocBedAssignment(organizationId, locPeriodId, ifVersion): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cur] = await tx
-          .select({ status: LOC.status, version: LOC.version })
+          .select({
+            status: LOC.status,
+            version: LOC.version,
+            admissionId: LOC.admissionId,
+            effectiveAt: LOC.effectiveAt,
+          })
           .from(LOC)
           .where(eq(LOC.id, locPeriodId))
           .limit(1);
@@ -1911,7 +2001,14 @@ export function createDbAdmissionRouteService(
         );
         await outbox.publish(tx, {
           eventName: "m6.loc.changed",
-          payload: { levelOfCarePeriodId: r.id, level: r.levelOfCare, state: r.status },
+          // Same field-name bug as `changeLoc` above (`newLevel` not `level`, no `state` field; plus
+          // the missing `effectiveStart`/`admissionId`).
+          payload: {
+            levelOfCarePeriodId: r.id,
+            newLevel: r.levelOfCare,
+            effectiveStart: (cur.effectiveAt ?? now()).toString(),
+            admissionId: cur.admissionId,
+          },
           organizationId,
           aggregateKind: "level_of_care_period",
           aggregateId: r.id,
@@ -1970,7 +2067,13 @@ export function createDbAdmissionRouteService(
         });
         await outbox.publish(tx, {
           eventName: "m6.revocation.created",
-          payload: { revocationId: rev.id, admissionId },
+          // Field name must be `revocationEventId` (schema), not `revocationId`; `revocationDate` is
+          // also required and was previously omitted.
+          payload: {
+            revocationEventId: rev.id,
+            admissionId,
+            revocationDate: input.revocationDate,
+          },
           organizationId,
           aggregateKind: "revocation_event",
           aggregateId: rev.id,
@@ -2027,7 +2130,8 @@ export function createDbAdmissionRouteService(
         });
         await outbox.publish(tx, {
           eventName: "m6.transfer.created",
-          payload: { transferId: xfer.id, admissionId, direction: "out" },
+          // Field name must be `transferEventId` (schema), not `transferId`.
+          payload: { transferEventId: xfer.id, admissionId, direction: "out" },
           organizationId,
           aggregateKind: "transfer_event",
           aggregateId: xfer.id,
@@ -2047,13 +2151,19 @@ export function createDbAdmissionRouteService(
         // W-DC-03 / D9 — inherit the carried sequence as the ACTIVE period (no CTI required from us) and
         // open the next PENDING period (our CTI required). The sequence counter never restarts.
         const plan = planTransferIn(input);
-        await tx.insert(EP).values({
-          organizationId,
-          admissionId,
-          sequenceNumber: plan.inherited.sequence,
-          periodKind: "ninety_day",
-          status: plan.inherited.state,
-        });
+        const inheritedPeriod = firstOrThrow(
+          await tx
+            .insert(EP)
+            .values({
+              organizationId,
+              admissionId,
+              sequenceNumber: plan.inherited.sequence,
+              periodKind: "ninety_day",
+              status: plan.inherited.state,
+            })
+            .returning({ id: EP.id }),
+          "election period insert returned no row",
+        );
         const nextPeriod = firstOrThrow(
           await tx
             .insert(EP)
@@ -2107,14 +2217,21 @@ export function createDbAdmissionRouteService(
         );
         await outbox.publish(tx, {
           eventName: "m6.transfer.created",
-          payload: { transferId: xfer.id, admissionId, direction: "in" },
+          // Field name must be `transferEventId` (schema), not `transferId`.
+          payload: { transferEventId: xfer.id, admissionId, direction: "in" },
           organizationId,
           aggregateKind: "transfer_event",
           aggregateId: xfer.id,
         });
         await outbox.publish(tx, {
           eventName: "m6.election.period_started",
-          payload: { admissionId, sequence: plan.inherited.sequence },
+          // `electionPeriodId` is required and was previously omitted entirely — the inherited
+          // period's own insert didn't even `.returning()` its id, so there was nothing to send.
+          payload: {
+            electionPeriodId: inheritedPeriod.id,
+            admissionId,
+            sequence: plan.inherited.sequence,
+          },
           organizationId,
           aggregateKind: "transfer_event",
           aggregateId: xfer.id,
@@ -2167,7 +2284,16 @@ export function createDbAdmissionRouteService(
           );
           await outbox.publish(tx, {
             eventName: "m6.discharge.created",
-            payload: { dischargeId: de.id, admissionId },
+            // Field name must be `dischargeEventId` (schema), not `dischargeId`; `reason`/
+            // `dischargeDate`/`requiresMedicalDirectorCosign` are also required and were previously
+            // omitted entirely.
+            payload: {
+              dischargeEventId: de.id,
+              admissionId,
+              reason: input.reason,
+              dischargeDate: input.dischargeDate,
+              requiresMedicalDirectorCosign,
+            },
             organizationId,
             aggregateKind: "discharge_event",
             aggregateId: de.id,
@@ -2182,12 +2308,12 @@ export function createDbAdmissionRouteService(
         }
         // Every other reason discharges immediately: death → bereavement (§2.3.1) + the M6 bereavement-
         // eligibility rule (emitted by the state machine); the rest → discharged.
-        const res = await dischargeAdmissionTx(tx, organizationId, admissionId, {
-          dischargeType: REASON_TO_SM_TYPE[input.reason],
-          effectiveAt: input.dischargeDate,
-          forCauseCosigned: false,
-          deathCertifierId: input.reason === "death" ? input.deathCertifierId : undefined,
-        });
+        // The discharge_event row is created FIRST, not after (as it used to be) — `dischargeAdmissionTx`
+        // fires `m6.discharge.created`/`m6.discharge.death` synchronously inside itself, and both require
+        // a real `dischargeEventId`; creating the row afterward meant that id could never exist in time,
+        // so this call 500'd with `payload_schema_violation` on every single non-cosign discharge.
+        // `bereavementEligible` is knowable up front too — `dischargeTarget` is a pure function of
+        // `dischargeType`, so `input.reason === "death"` already decides it without waiting on the result.
         const de = firstOrThrow(
           await tx
             .insert(DE)
@@ -2200,11 +2326,19 @@ export function createDbAdmissionRouteService(
               narrative: input.narrative,
               deathAt: input.reason === "death" ? new Date(input.dischargeDate) : null,
               deathCertifierId: input.reason === "death" ? (input.deathCertifierId ?? null) : null,
-              bereavementEligible: res.state === "bereavement",
+              bereavementEligible: input.reason === "death",
             })
             .returning({ id: DE.id, status: DE.status, version: DE.version }),
           "discharge insert returned no row",
         );
+        await dischargeAdmissionTx(tx, organizationId, admissionId, {
+          dischargeType: REASON_TO_SM_TYPE[input.reason],
+          effectiveAt: input.dischargeDate,
+          forCauseCosigned: false,
+          deathCertifierId: input.reason === "death" ? input.deathCertifierId : undefined,
+          dischargeEventId: de.id,
+          reason: input.reason,
+        });
         return {
           id: de.id,
           state: de.status,
@@ -2258,10 +2392,17 @@ export function createDbAdmissionRouteService(
           dischargeType: "for_cause",
           effectiveAt: cur.effectiveAt,
           forCauseCosigned: true,
+          // Same fix as the immediate-discharge path — the discharge_event row already exists (it was
+          // created `pending_cosign` by the original filing), so its id is available here to satisfy
+          // `m6.discharge.created`'s required `dischargeEventId`.
+          dischargeEventId: id,
+          reason: "for_cause",
         });
         await outbox.publish(tx, {
           eventName: "m6.discharge.cosigned",
-          payload: { dischargeId: id, admissionId: cur.admissionId },
+          // Field name must be `dischargeEventId` (schema), not `dischargeId`; `medicalDirectorCosignedAt`
+          // is required and was previously omitted (and `admissionId` isn't a declared field at all).
+          payload: { dischargeEventId: id, medicalDirectorCosignedAt: now().toISOString() },
           organizationId,
           aggregateKind: "discharge_event",
           aggregateId: id,
@@ -2341,12 +2482,13 @@ export function createDbAdmissionRouteService(
         if (!cur) throw new ResourceNotFoundError(id);
         assertVersion(id, Number(cur.version), ifVersion);
         if (cur.status === "closed") throw conflict(`compliance window ${id} is already closed`);
+        const closedAt = now();
         const r = firstOrThrow(
           await tx
             .update(CW)
             .set({
               status: "closed",
-              closedAt: now(),
+              closedAt,
               version: sql`${CW.version} + 1`,
               updatedAt: now(),
             })
@@ -2356,7 +2498,9 @@ export function createDbAdmissionRouteService(
         );
         await outbox.publish(tx, {
           eventName: "m6.compliance.window.closed",
-          payload: { complianceWindowId: id },
+          // `closedAt`/`closedVia` are required and were previously omitted. This route is the
+          // direct-close path (no override reason involved), hence `closedVia: "manual"`.
+          payload: { complianceWindowId: id, closedAt: closedAt.toISOString(), closedVia: "manual" },
           organizationId,
           aggregateKind: "compliance_window",
           aggregateId: id,

@@ -189,6 +189,14 @@ export function transitionAdmission(
         });
       }
       const to = dischargeTarget(event.dischargeType);
+      // `m6.discharge.created`/`m6.discharge.death` are keyed to a real `discharge_event` row
+      // (payload requires `dischargeEventId`) — revocation/transfer never create one (they have their
+      // own `m6.revocation.created`/`m6.transfer.created`, keyed to `revocation_event`/`transfer_event`
+      // instead). Firing a second "discharge" event for those types claimed an aggregate that doesn't
+      // exist, and unconditionally including it here made `payload_schema_violation` unavoidable for
+      // every revocation/transfer (there is no discharge_event id the caller could ever supply). Only
+      // "real" discharge reasons (the DischargeReason-derived types) get this effect.
+      const isRealDischarge = event.dischargeType !== "revocation" && event.dischargeType !== "transfer";
       const effects: AdmissionTransition["effects"] = [
         { kind: "end_level_of_care" },
         {
@@ -202,10 +210,14 @@ export function transitionAdmission(
         },
         { kind: "audit" },
         { kind: "outbox", event: "m6.admission.discharged" },
-        {
-          kind: "outbox",
-          event: event.dischargeType === "death" ? "m6.discharge.death" : "m6.discharge.created",
-        },
+        ...(isRealDischarge
+          ? ([
+              {
+                kind: "outbox",
+                event: event.dischargeType === "death" ? "m6.discharge.death" : "m6.discharge.created",
+              },
+            ] as AdmissionTransition["effects"])
+          : []),
       ];
       return result(from, event.type, to, [
         ...effects,

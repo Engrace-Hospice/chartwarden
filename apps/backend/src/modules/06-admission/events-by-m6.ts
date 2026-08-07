@@ -199,12 +199,18 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m6.election.drafted",
     moduleOwner: "m6",
-    description: "An election period was drafted (route 15/20).",
+    description: "An election statement was drafted for a period (route 15/20).",
     payloadSchema: Type.Object({
       electionPeriodId: Type.String({ minLength: 1 }),
       sequence: Type.Integer({ minimum: 1 }),
-      startDate: Type.String({ minLength: 1 }),
-      endDate: Type.String({ minLength: 1 }),
+      // Same TASK-031 reasoning as the sibling `m6.election.period_started` schema just below:
+      // `election_period.effective_at`/`scheduled_end_at` aren't populated at draft time (the
+      // statement is drafted before the period is ever activated), so these stay optional rather
+      // than fabricated — the only call site (`draftElectionStatement`) never had a source of truth
+      // for them and previously omitted all four fields outright, which threw on every single call
+      // (payload_schema_violation, since this schema demanded them non-optional).
+      startDate: Type.Optional(Type.String({ minLength: 1 })),
+      endDate: Type.Optional(Type.String({ minLength: 1 })),
     }),
     declaredConsumers: ["m22"],
     isOutboxOnly: true,
