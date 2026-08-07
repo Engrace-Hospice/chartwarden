@@ -52,6 +52,9 @@ const HCI_INDICATOR_KEYS: readonly HciIndicatorKey[] = [
  * Compute the HCI composite score (0–10) from the ten indicator results. The numerator is the met-count,
  * the denominator is 10, the rate is `met / 10`, and the band is green at/above the above-average cut,
  * yellow at/above {@link HCI_MID_BAND_SCORE}, else red. Pure.
+ *
+ * This is an approximation of CMS's real composite, not a reproduction of it — see the threshold-table
+ * note in `./thresholds.ts` for why (national-percentile scoring, not fixed cuts).
  */
 export function computeHciScore(input: HciCompositeInput): QualityMeasureValueResult {
   const perIndicator: Record<string, boolean | null> = {};

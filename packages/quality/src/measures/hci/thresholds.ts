@@ -35,6 +35,15 @@ export interface HciThresholdTable {
 // NOTE: the numeric cut values below are the platform-shipped FY2025 defaults; a CMS technical-spec
 // refresh updates them in a single reviewed constant PR. Directions encode the CMS "better" sense:
 // `gte` = higher-is-better (more care delivered), `lte` = lower-is-better (fewer adverse events).
+//
+// IMPORTANT — these are fixed-value APPROXIMATIONS, not CMS-exact cuts. CMS actually scores each real
+// HCI indicator by where a hospice's rate falls in the NATIONAL PERCENTILE distribution across all
+// Medicare-certified hospices for the period (e.g. "below the 90th percentile" for early live
+// discharges), computed centrally from 100% Medicare FFS claims. No single-tenant EHR — WardenX
+// included — has that cross-hospice national distribution, so a true CMS-faithful score can never be
+// computed here regardless of how these constants are tuned; this table is the platform's best static
+// stand-in, not a spec-pinned value (verified against CMS/secondary sources 2026-08-07, see
+// `m30-hci-research-2026-08-07` memory).
 export const HCI_THRESHOLDS_v2025: HciThresholdTable = {
   fiscalYear: 2025,
   compositeAboveAverageScore: 7,
