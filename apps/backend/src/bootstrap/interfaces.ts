@@ -40,6 +40,7 @@ export type {
   ComfortKitDispatchProvider,
   DataClass,
   DataEraser,
+  AdmissionOnsetReader,
   DeathDischargeReader,
   DischargeReader,
   DisciplineComplianceProvider,

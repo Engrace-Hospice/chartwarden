@@ -1,5 +1,6 @@
 import type {
   AdmissionCensusReader,
+  AdmissionOnsetReader,
   AdmissionStatusReader,
   CertificationReader,
   DeathDischargeReader,
@@ -189,6 +190,7 @@ export type SeamName =
   | "DeathDischargeReader" // M6 — death-discharge census for a period (M30 HVLDL measure denominator, §4.11)
   | "LevelOfCarePeriodReader" // M6 — election-period × CHC/GIP-day coverage counts (M30 HCI indicator 1)
   | "DischargeReader" // M6 — ALL-discharge-type census + early/late live-discharge counts (M30 HCI 3/4)
+  | "AdmissionOnsetReader" // M6 — admissions started in a period (M30 opioid_on_admission_rate denominator)
   // M7 (Care Plan / IPOC) reader seam (§7.8) — also leaf-typed (interface in ./care-plan), so it is
   // typed here like M6's readers. M8 (encounter authoring + sign gate), M14 (IDG packet), M15
   // (discipline care plans) consume it instead of importing M7's schema.
@@ -749,6 +751,7 @@ export interface SeamContracts {
   // posture as DeathDischargeReader above (self-scoping, org-aggregate-only, no schema import edge).
   LevelOfCarePeriodReader: LevelOfCarePeriodReader;
   DischargeReader: DischargeReader;
+  AdmissionOnsetReader: AdmissionOnsetReader;
   // M7's reader seam (§7.8) is LEAF-TYPED too — its interface lives in ./care-plan (this package), so
   // the registry is statically typed against the real contract. M7 registers the real Drizzle-backed
   // reader over the deny-stub; consumers that list `7` in their manifest `dependsOn` resolve it through

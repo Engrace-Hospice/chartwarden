@@ -3173,6 +3173,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // via getSeam, RULE 4).
     const m30LevelOfCarePeriodReader = getSeam("LevelOfCarePeriodReader");
     const m30DischargeReader = getSeam("DischargeReader");
+    // opioid_on_admission_rate's two consumed seams — M6's admission-onset census (same self-scoping
+    // posture as above) + M12's ALREADY-published MedicationOrderProvider (no new M12 seam surface).
+    const m30AdmissionOnsetReader = getSeam("AdmissionOnsetReader");
+    const m30MedicationOrders = getSeam("MedicationOrderProvider");
     // WX-PR-014 — a second `buildM30RecomputeEnqueue` instance for the CRON fan-out (the route-scoped
     // `m30Recompute` built for `mountM30Routes` above is a different block's `const`, not reachable here).
     // Same producer, same queue names — BullMQ allows multiple `Queue` client handles per named queue, so
@@ -3188,6 +3192,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       signedEncounters: m30SignedEncounters,
       levelOfCarePeriodReader: m30LevelOfCarePeriodReader,
       dischargeReader: m30DischargeReader,
+      admissionOnsetReader: m30AdmissionOnsetReader,
+      medicationOrders: m30MedicationOrders,
       // WX-PR-014 — the nightly-recompute + risk-register-refresh cron fan-outs: the per-org provider-entity
       // lister (already used for M30's published seams) + the real BullMQ producer + the SAME tx-scoped
       // outbox publisher the M30 routes already use (`m30.measure.value_emitted` / `m30.risk_register

@@ -16,6 +16,7 @@
 import type { RequiredSeam, SeamContracts, SeamName } from "../interfaces";
 import {
   admissionCensusReaderDenyStub,
+  admissionOnsetReaderDenyStub,
   admissionStatusReaderDenyStub,
   aiPromptRegistryDenyStub,
   aiTokenMeterProviderDenyStub,
@@ -637,6 +638,12 @@ export const REQUIRED_SEAMS = [
     ownerModule: 6,
     phi: false,
     denyStub: dischargeReaderDenyStub,
+  },
+  {
+    key: "AdmissionOnsetReader",
+    ownerModule: 6,
+    phi: false,
+    denyStub: admissionOnsetReaderDenyStub,
   },
   // M7 (Care Plan / IPOC) reader seam (§7.8). A read-only DTO surface over M7's PHI tables
   // (problems/goals/interventions + the version clock), consumed by M8 (encounter authoring + sign

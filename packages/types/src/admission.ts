@@ -430,3 +430,24 @@ export interface DischargeReader {
     readonly lateLiveDischarges: number;
   }>;
 }
+
+/** One admission-onset row for M30's `opioid_on_admission_rate` denominator (§4.11-style). */
+export interface AdmissionOnsetRow {
+  readonly admissionId: string;
+  /** ISO instant — the anchor M30's resolver windows an opioid medication-order check around. */
+  readonly admissionAt: string;
+}
+
+/**
+ * M30 `opioid_on_admission_rate` denominator — admissions whose `admissionAt` falls in a reporting
+ * window. Same self-scoping / aggregate-only posture as {@link DeathDischargeReader}: the M30 resolver
+ * combines this LIST with M12's EXISTING per-admission `MedicationOrderProvider.listForAdmission` read
+ * (the HVLDL/HCI-10 precedent — a per-item loop over an M6 list calling into a SIBLING module's
+ * per-entity read, never a bulk cross-module join), so no new M12 seam surface is needed.
+ */
+export interface AdmissionOnsetReader {
+  listAdmissionsStartedInPeriod(
+    organizationId: string,
+    period: { from: string; to: string },
+  ): Promise<ReadonlyArray<AdmissionOnsetRow>>;
+}

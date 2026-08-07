@@ -13,6 +13,7 @@ export * from "./missed_dose_rate";
 export * from "./prn_effectiveness_documented_rate";
 export * from "./comfort_kit_deployment_to_admin_minutes";
 export * from "./opioid_on_admission_rate";
+export * from "./opioid-classification";
 export * from "./late_encounter_entry_rate";
 export * from "./hope_submission_acceptance_rate";
 export * from "./hope_sfv_on_time_rate";

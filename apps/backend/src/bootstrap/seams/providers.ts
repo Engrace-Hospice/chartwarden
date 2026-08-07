@@ -33,6 +33,7 @@ import type {
   CaseloadProvider,
   CertificationReader,
   ComfortKitDispatchProvider,
+  AdmissionOnsetReader,
   DeathDischargeReader,
   DischargeReader,
   LevelOfCarePeriodReader,
@@ -550,6 +551,13 @@ export const levelOfCarePeriodReaderDenyStub: LevelOfCarePeriodReader = {
 export const dischargeReaderDenyStub: DischargeReader = {
   liveDischargeTimingCounts() {
     throw new NotImplementedError("DischargeReader");
+  },
+};
+
+/** M6 — admissions started in a period (M30 opioid_on_admission_rate denominator). Denies until M6 registers it. */
+export const admissionOnsetReaderDenyStub: AdmissionOnsetReader = {
+  listAdmissionsStartedInPeriod() {
+    throw new NotImplementedError("AdmissionOnsetReader");
   },
 };
 

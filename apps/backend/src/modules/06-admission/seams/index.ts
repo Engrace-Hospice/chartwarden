@@ -9,6 +9,7 @@
 import type { DbClient } from "@wardenx/db";
 import type {
   AdmissionCensusReader,
+  AdmissionOnsetReader,
   AdmissionStatusReader,
   CertificationReader,
   DeathDischargeReader,
@@ -19,6 +20,7 @@ import type {
   LevelOfCareReader,
 } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
+import { createAdmissionOnsetReader } from "./admission-onset-reader";
 import { createDeathDischargeReader } from "./death-discharge-reader";
 import { createDischargeReader } from "./discharge-reader";
 import { createLevelOfCarePeriodReader } from "./level-of-care-period-reader";
@@ -35,6 +37,7 @@ import { type AdmissionReaderStore, createInMemoryAdmissionReaderStore } from ".
 export { createDeathDischargeReader } from "./death-discharge-reader";
 export { createDischargeReader } from "./discharge-reader";
 export { createLevelOfCarePeriodReader } from "./level-of-care-period-reader";
+export { createAdmissionOnsetReader } from "./admission-onset-reader";
 export {
   type ActiveAdmissionDraftContext,
   AdmissionSeamDataGapError,
@@ -78,6 +81,9 @@ export interface AdmissionSeamDeps {
   /** Explicit discharge reader (an in-memory double in tests). Takes precedence over {@link db}; when
    * neither is supplied M30's HCI indicator 3/4 seam falls through to the fail-closed boot deny-stub. */
   dischargeReader?: DischargeReader;
+  /** Explicit admission-onset reader (an in-memory double in tests). Takes precedence over {@link db}; when
+   * neither is supplied M30's opioid_on_admission_rate seam falls through to the fail-closed boot deny-stub. */
+  admissionOnsetReader?: AdmissionOnsetReader;
 }
 
 /**
@@ -113,6 +119,12 @@ export function registerAdmissionSeams(deps: AdmissionSeamDeps = {}): void {
     deps.dischargeReader ?? (deps.db ? createDischargeReader(deps.db) : undefined);
   if (dischargeReader) {
     registerSeam("DischargeReader", dischargeReader);
+  }
+
+  const admissionOnsetReader =
+    deps.admissionOnsetReader ?? (deps.db ? createAdmissionOnsetReader(deps.db) : undefined);
+  if (admissionOnsetReader) {
+    registerSeam("AdmissionOnsetReader", admissionOnsetReader);
   }
 }
 
@@ -159,4 +171,9 @@ export function getLevelOfCarePeriodReader(): LevelOfCarePeriodReader {
 /** Typed resolver for M6's DischargeReader (registered when a db/reader is present; M30 HCI-03/04). */
 export function getDischargeReader(): DischargeReader {
   return getSeam("DischargeReader");
+}
+
+/** Typed resolver for M6's AdmissionOnsetReader (registered when a db/reader is present; M30 opioid rate). */
+export function getAdmissionOnsetReader(): AdmissionOnsetReader {
+  return getSeam("AdmissionOnsetReader");
 }

@@ -81,6 +81,7 @@ import {
   buildMeasureRegistry,
   cahpsExportProcessor,
   cahpsMonthlySampleCronProcessor,
+  isOpioidDrugName,
   isoDate,
   measureRecomputeProcessor,
   nightlyRecomputeCronProcessor,
@@ -94,10 +95,12 @@ import {
 } from "@wardenx/quality";
 import { withOrgContext } from "@wardenx/tenancy";
 import type {
+  AdmissionOnsetReader,
   DeathDischargeReader,
   DischargeReader,
   HopeRollupPeriod,
   LevelOfCarePeriodReader,
+  MedicationOrderProvider,
   SignedEncountersReader,
 } from "@wardenx/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
@@ -232,6 +235,17 @@ export interface M30WorkerDeps {
    * absent.
    */
   readonly dischargeReader?: DischargeReader;
+  /**
+   * The M6 admission-onset census `opioid_on_admission_rate` reads for its denominator. Resolved via
+   * `getSeam` at the composition root; the impl self-scopes each call. Fail-closed thunk when absent.
+   */
+  readonly admissionOnsetReader?: AdmissionOnsetReader;
+  /**
+   * The M12 medication-order reader `opioid_on_admission_rate` reads per-admission (the SAME provider
+   * M13/M14/M19/M28/M30/M31/M33 already consume — no new M12 seam surface). Resolved via `getSeam`.
+   * Fail-closed thunk when absent.
+   */
+  readonly medicationOrders?: MedicationOrderProvider;
   /** Injected clock (deterministic in tests; the package processors stamp every instant through this). */
   now?: () => Date;
 }
@@ -463,6 +477,16 @@ const OPERATIONAL_MEASURE_THRESHOLDS: Readonly<Record<string, ThresholdRule>> = 
     value: 0.95,
     direction: "gte",
     label: "volunteer compliance-gate rate (CoP 418.78; platform default)",
+  },
+  // INFORMATIONAL surveillance measure (the calculator's own doc comment: "neither inherently good nor
+  // bad") — there is no CMS floor to encode, so `lte 1.0` is a deliberate no-op threshold (a rate can
+  // never exceed 1.0, so this measure never fails a compliance gate on its own); the value exists purely
+  // to trend opioid-on-admission prevalence on the QAPI dashboard. A tenant may still set a real internal
+  // target via `qapi_indicator.tenant_target_value` (D15).
+  opioid_on_admission_rate: {
+    value: 1.0,
+    direction: "lte",
+    label: "opioid-on-admission rate (informational surveillance; no CMS floor; platform default)",
   },
 };
 
@@ -950,6 +974,82 @@ export async function resolveHciLiveDischargeTimingInput(
   };
 }
 
+/** How long after `admissionAt` an opioid medication order still counts as "at admission" (the admission
+ *  medication-reconciliation window) — flagged the same way the discharge-timing day cutoffs are: not
+ *  independently pinned by CMS (this measure is platform-informational, not CMS-scored), a reasonable
+ *  reading of "the admission med rec," reviewable/adjustable in one place. */
+const OPIOID_ON_ADMISSION_WINDOW_HOURS = 48;
+const MS_PER_HOUR = 60 * 60 * 1000;
+
+/** The fail-closed reason every unbound `MedicationOrderProvider` fallback method throws — the composition
+ *  root binds the real M12 seam via `getSeam("MedicationOrderProvider")`; absent that, only
+ *  `opioid_on_admission_rate` (this resolver's only caller in M30) is affected. */
+const UNBOUND_M12_REASON =
+  "bind the M12 MedicationOrderProvider (opioid_on_admission_rate's per-admission read) via getSeam at the composition root";
+
+/** The narrow slice of M12's `MedicationOrderProvider` this resolver needs (the registry holds the seam
+ *  opaquely — mirrors `VisitOnTimeCountsView`/`BereavementCoverageCountsView`'s local-view convention). */
+interface MedicationOrderListView {
+  listForAdmission(
+    orgId: string,
+    admissionId: string,
+  ): Promise<ReadonlyArray<{ readonly activatedAt: string | null; readonly drugName: string }>>;
+}
+
+/**
+ * Shape M6's admission-onset census + M12's EXISTING per-admission medication-order read into
+ * `opioid_on_admission_rate`'s calculator input. Mirrors the HVLDL/HCI-10 shape exactly: M6 supplies the
+ * LIST (this resolver never bulk-joins), M30 loops it and calls the SIBLING module's per-entity read —
+ * no new M12 seam surface needed. Classification is by drug NAME (see `isOpioidDrugName`'s own header for
+ * why, not RxCUI), matched against orders `activatedAt` inside the admission's own med-rec window.
+ */
+export async function resolveOpioidOnAdmissionInput(
+  request: {
+    readonly registration: MeasureRegistration;
+    readonly organizationId: string;
+    readonly providerEntityId: string;
+    readonly periodStart: string;
+    readonly periodEnd: string;
+  },
+  seams: {
+    readonly admissionOnsetReader: AdmissionOnsetReader;
+    readonly medicationOrders: MedicationOrderListView;
+  },
+): Promise<unknown> {
+  const { organizationId, providerEntityId, periodStart, periodEnd } = request;
+
+  const admissions = await seams.admissionOnsetReader.listAdmissionsStartedInPeriod(organizationId, {
+    from: periodStart,
+    to: periodEnd,
+  });
+
+  let admissionsWithOpioid = 0;
+  for (const admission of admissions) {
+    const orders = await seams.medicationOrders.listForAdmission(organizationId, admission.admissionId);
+    const windowEndMs = new Date(admission.admissionAt).getTime() + OPIOID_ON_ADMISSION_WINDOW_HOURS * MS_PER_HOUR;
+    const hasOpioidAtAdmission = orders.some((o) => {
+      // Only an ACTIVATED order counts — a draft/never-activated order was never actually given.
+      if (o.activatedAt === null) return false;
+      const activatedMs = new Date(o.activatedAt).getTime();
+      if (activatedMs < new Date(admission.admissionAt).getTime() || activatedMs > windowEndMs) {
+        return false;
+      }
+      return isOpioidDrugName(o.drugName);
+    });
+    if (hasOpioidAtAdmission) admissionsWithOpioid += 1;
+  }
+
+  return {
+    organizationId,
+    providerEntityId,
+    periodStart,
+    periodEnd,
+    admissions: admissions.length,
+    admissionsWithOpioid,
+    threshold: OPERATIONAL_MEASURE_THRESHOLDS.opioid_on_admission_rate,
+  };
+}
+
 // ── the per-queue port bundles (bind what we can; throw-on-call for the genuinely-missing infra) ────────
 
 /** The bound port bundles `registerM30Workers` drives the four §4.8 work-queue processors with. */
@@ -1046,6 +1146,23 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
         "bind the M6 DischargeReader (HCI indicators 3/4's live-discharge timing counts) via getSeam at the composition root",
       ),
   };
+  const admissionOnsetReader: AdmissionOnsetReader = deps.admissionOnsetReader ?? {
+    listAdmissionsStartedInPeriod: () =>
+      unboundWorkerPort(
+        "measureRecompute.opioidOnAdmission.admissionOnsetReader",
+        "bind the M6 AdmissionOnsetReader (opioid_on_admission_rate's denominator) via getSeam at the composition root",
+      ),
+  };
+  // `MedicationOrderProvider` carries 10 methods; this resolver's ONLY call is `listForAdmission` (see
+  // `MedicationOrderListView`), so the fallback stubs just that one and casts — mirroring this file's own
+  // `getSeam("X") as never` convention for the operational-measure seams below, rather than 9 pointless
+  // identical-body stubs for methods this code path never calls.
+  const medicationOrders: MedicationOrderProvider =
+    deps.medicationOrders ??
+    ({
+      listForAdmission: () =>
+        unboundWorkerPort("measureRecompute.opioidOnAdmission.medicationOrders", UNBOUND_M12_REASON),
+    } as unknown as MedicationOrderProvider);
 
   // ── m30.measure_recompute (withOrgContext) — §7.1 / V-8 ────────────────────────────────────────────────
   // BOUND: the `quality_measure_value` store + the debounce-queue drain + the LIVE M10 HOPE consumer + the
@@ -1087,6 +1204,8 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
           request.registration.code === "hci_indicator_04"
         )
           return resolveHciLiveDischargeTimingInput(request, { dischargeReader });
+        if (request.registration.code === "opioid_on_admission_rate")
+          return resolveOpioidOnAdmissionInput(request, { admissionOnsetReader, medicationOrders });
         // BOUND (operational): the measures whose producers tally ORG-LEVEL counts (M17/M18/M8/M11/M7/M13/
         // M14/M16) — each exposes the count PAIR beside (or instead of) a rate method, so the CMS small-N
         // floor can be applied honestly.
@@ -1717,6 +1836,10 @@ export function buildM30WorkerDeps(deps: {
   /** The M6 HCI indicator 1 / 3 / 4 readers (resolved via `getSeam`). */
   levelOfCarePeriodReader?: LevelOfCarePeriodReader;
   dischargeReader?: DischargeReader;
+  /** The M6 admission-onset reader + the M12 medication-order reader `opioid_on_admission_rate` needs
+   *  (resolved via `getSeam`). */
+  admissionOnsetReader?: AdmissionOnsetReader;
+  medicationOrders?: MedicationOrderProvider;
 }): M30WorkerDeps {
   return {
     connection: deps.connection,
@@ -1736,6 +1859,8 @@ export function buildM30WorkerDeps(deps: {
     signedEncounters: deps.signedEncounters,
     levelOfCarePeriodReader: deps.levelOfCarePeriodReader,
     dischargeReader: deps.dischargeReader,
+    admissionOnsetReader: deps.admissionOnsetReader,
+    medicationOrders: deps.medicationOrders,
     // Default to the FULL catalog→calculator registry (the integrator may still override). With this the
     // measure-recompute worker resolves a calculator by measure code instead of failing closed on an empty map.
     registrations: deps.registrations ?? buildMeasureRegistry(),
