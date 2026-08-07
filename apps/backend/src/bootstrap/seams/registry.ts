@@ -50,6 +50,7 @@ import {
   denialOutcomePredictionProviderDenyStub,
   disciplineComplianceProviderDenyStub,
   disciplinePlanReaderDenyStub,
+  dischargeReaderDenyStub,
   docLensClassifierDenyStub,
   docLensExtractorDenyStub,
   docLensSudDetectorDenyStub,
@@ -96,6 +97,7 @@ import {
   ipuVisitorReaderDenyStub,
   labObservationReaderDenyStub,
   latestAssessmentProviderDenyStub,
+  levelOfCarePeriodReaderDenyStub,
   levelOfCareReaderDenyStub,
   mdmEntityProviderDenyStub,
   medicationAdministrationProviderDenyStub,
@@ -620,6 +622,21 @@ export const REQUIRED_SEAMS = [
     ownerModule: 6,
     phi: true,
     denyStub: deathDischargeReaderDenyStub,
+  },
+  // M6 (Admission) HCI aggregate readers — org-level COUNTS ONLY (no patient id ever returned, unlike
+  // DeathDischargeReader above), consumed by M30's HCI indicator 1 / 3 / 4 measure-recompute worker.
+  // phi: false matches the BereavementComplianceProvider precedent (aggregate-only rollups).
+  {
+    key: "LevelOfCarePeriodReader",
+    ownerModule: 6,
+    phi: false,
+    denyStub: levelOfCarePeriodReaderDenyStub,
+  },
+  {
+    key: "DischargeReader",
+    ownerModule: 6,
+    phi: false,
+    denyStub: dischargeReaderDenyStub,
   },
   // M7 (Care Plan / IPOC) reader seam (§7.8). A read-only DTO surface over M7's PHI tables
   // (problems/goals/interventions + the version clock), consumed by M8 (encounter authoring + sign

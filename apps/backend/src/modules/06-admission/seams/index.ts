@@ -12,12 +12,16 @@ import type {
   AdmissionStatusReader,
   CertificationReader,
   DeathDischargeReader,
+  DischargeReader,
   ElectionPeriodReader,
   FaceToFaceReader,
+  LevelOfCarePeriodReader,
   LevelOfCareReader,
 } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import { createDeathDischargeReader } from "./death-discharge-reader";
+import { createDischargeReader } from "./discharge-reader";
+import { createLevelOfCarePeriodReader } from "./level-of-care-period-reader";
 import {
   createAdmissionCensusReader,
   createAdmissionStatusReader,
@@ -29,6 +33,8 @@ import {
 import { type AdmissionReaderStore, createInMemoryAdmissionReaderStore } from "./store";
 
 export { createDeathDischargeReader } from "./death-discharge-reader";
+export { createDischargeReader } from "./discharge-reader";
+export { createLevelOfCarePeriodReader } from "./level-of-care-period-reader";
 export {
   type ActiveAdmissionDraftContext,
   AdmissionSeamDataGapError,
@@ -66,6 +72,12 @@ export interface AdmissionSeamDeps {
   /** Explicit death-discharge reader (an in-memory double in tests). Takes precedence over {@link db}; when
    * neither is supplied the §4.11 seam falls through to the fail-closed boot deny-stub. */
   deathDischargeReader?: DeathDischargeReader;
+  /** Explicit LOC-period reader (an in-memory double in tests). Takes precedence over {@link db}; when
+   * neither is supplied M30's HCI indicator 1 seam falls through to the fail-closed boot deny-stub. */
+  levelOfCarePeriodReader?: LevelOfCarePeriodReader;
+  /** Explicit discharge reader (an in-memory double in tests). Takes precedence over {@link db}; when
+   * neither is supplied M30's HCI indicator 3/4 seam falls through to the fail-closed boot deny-stub. */
+  dischargeReader?: DischargeReader;
 }
 
 /**
@@ -89,6 +101,18 @@ export function registerAdmissionSeams(deps: AdmissionSeamDeps = {}): void {
     deps.deathDischargeReader ?? (deps.db ? createDeathDischargeReader(deps.db) : undefined);
   if (deathDischargeReader) {
     registerSeam("DeathDischargeReader", deathDischargeReader);
+  }
+
+  const levelOfCarePeriodReader =
+    deps.levelOfCarePeriodReader ?? (deps.db ? createLevelOfCarePeriodReader(deps.db) : undefined);
+  if (levelOfCarePeriodReader) {
+    registerSeam("LevelOfCarePeriodReader", levelOfCarePeriodReader);
+  }
+
+  const dischargeReader =
+    deps.dischargeReader ?? (deps.db ? createDischargeReader(deps.db) : undefined);
+  if (dischargeReader) {
+    registerSeam("DischargeReader", dischargeReader);
   }
 }
 
@@ -125,4 +149,14 @@ export function getAdmissionCensusReader(): AdmissionCensusReader {
 /** Typed resolver for M6's §4.11 DeathDischargeReader (registered when a db/reader is present; M30 HVLDL). */
 export function getDeathDischargeReader(): DeathDischargeReader {
   return getSeam("DeathDischargeReader");
+}
+
+/** Typed resolver for M6's LevelOfCarePeriodReader (registered when a db/reader is present; M30 HCI-01). */
+export function getLevelOfCarePeriodReader(): LevelOfCarePeriodReader {
+  return getSeam("LevelOfCarePeriodReader");
+}
+
+/** Typed resolver for M6's DischargeReader (registered when a db/reader is present; M30 HCI-03/04). */
+export function getDischargeReader(): DischargeReader {
+  return getSeam("DischargeReader");
 }

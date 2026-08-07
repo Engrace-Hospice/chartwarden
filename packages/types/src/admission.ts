@@ -391,3 +391,42 @@ export interface DeathDischargeReader {
     period: { from: string; to: string },
   ): Promise<ReadonlyArray<DeathDischargeRow>>;
 }
+
+/**
+ * M30 HCI indicator 1 (Continuous Home Care or General Inpatient provided) — an org-level aggregate over
+ * `election_period` × `level_of_care_period`. Resolved within the worker's tenant context; the Drizzle impl
+ * self-scopes each call to `organizationId` (the same pattern as {@link DeathDischargeReader} — it reads on
+ * a different connection than the M30 worker). Aggregate-only: no patient row crosses (D6).
+ */
+export interface LevelOfCarePeriodReader {
+  /**
+   * Election periods with `effectiveAt` in `[period.from, period.to)` (denominator) and, among those, the
+   * count with at least one `continuous_home_care` or `general_inpatient_care` LOC day overlapping the
+   * period's own window (numerator).
+   */
+  chcOrGipCoverageCounts(
+    organizationId: string,
+    period: { from: string; to: string },
+  ): Promise<{ readonly numerator: number; readonly denominator: number }>;
+}
+
+/**
+ * M30 HCI indicators 3/4 (Early / Late Live Discharges) — an org-level aggregate over `discharge_event`
+ * (ALL discharge types, unlike {@link DeathDischargeReader}'s death-only census) joined to `admission` for
+ * the days-since-admission classification. Same self-scoping / aggregate-only posture as the readers above.
+ */
+export interface DischargeReader {
+  /**
+   * All discharges (live + death) with `effectiveAt` in `[period.from, period.to)` (denominator), and,
+   * among the LIVE ones (`dischargeType !== 'death'`), how many were "early" (CMS: on or before day 7 since
+   * admission) vs. "late" (CMS: on or after day 180 since admission).
+   */
+  liveDischargeTimingCounts(
+    organizationId: string,
+    period: { from: string; to: string },
+  ): Promise<{
+    readonly totalDischarges: number;
+    readonly earlyLiveDischarges: number;
+    readonly lateLiveDischarges: number;
+  }>;
+}

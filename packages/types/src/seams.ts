@@ -3,9 +3,11 @@ import type {
   AdmissionStatusReader,
   CertificationReader,
   DeathDischargeReader,
+  DischargeReader,
   ElectionPeriodReader,
   FaceToFaceReader,
   LevelOfCareReader,
+  LevelOfCarePeriodReader,
 } from "./admission";
 import type { LatestAssessmentProvider, ScaleSeriesProvider } from "./assessment";
 import type {
@@ -185,6 +187,8 @@ export type SeamName =
   | "AdmissionStatusReader" // M6 — admission state projection (M14 queues, M30 dashboard)
   | "AdmissionCensusReader" // M6 — active-admission census/list (M30 dashboards, M22 form prep)
   | "DeathDischargeReader" // M6 — death-discharge census for a period (M30 HVLDL measure denominator, §4.11)
+  | "LevelOfCarePeriodReader" // M6 — election-period × CHC/GIP-day coverage counts (M30 HCI indicator 1)
+  | "DischargeReader" // M6 — ALL-discharge-type census + early/late live-discharge counts (M30 HCI 3/4)
   // M7 (Care Plan / IPOC) reader seam (§7.8) — also leaf-typed (interface in ./care-plan), so it is
   // typed here like M6's readers. M8 (encounter authoring + sign gate), M14 (IDG packet), M15
   // (discipline care plans) consume it instead of importing M7's schema.
@@ -741,6 +745,10 @@ export interface SeamContracts {
   // real Drizzle-backed reader over the deny-stub; M30's HVLDL measure-recompute worker (which lists `6` in its
   // manifest `dependsOn`) resolves it through the typed accessor with no schema import edge.
   DeathDischargeReader: DeathDischargeReader;
+  // M6's HCI aggregate readers (§4.11-style, M30-only consumers) — same leaf-typed, DEDICATED-connection
+  // posture as DeathDischargeReader above (self-scoping, org-aggregate-only, no schema import edge).
+  LevelOfCarePeriodReader: LevelOfCarePeriodReader;
+  DischargeReader: DischargeReader;
   // M7's reader seam (§7.8) is LEAF-TYPED too — its interface lives in ./care-plan (this package), so
   // the registry is statically typed against the real contract. M7 registers the real Drizzle-backed
   // reader over the deny-stub; consumers that list `7` in their manifest `dependsOn` resolve it through

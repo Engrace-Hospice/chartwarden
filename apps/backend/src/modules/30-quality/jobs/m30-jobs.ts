@@ -95,7 +95,9 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import type {
   DeathDischargeReader,
+  DischargeReader,
   HopeRollupPeriod,
+  LevelOfCarePeriodReader,
   SignedEncountersReader,
 } from "@wardenx/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
@@ -218,6 +220,18 @@ export interface M30WorkerDeps {
    * root; the impl self-scopes each call. Fail-closed thunk when absent.
    */
   readonly signedEncounters?: SignedEncountersReader;
+  /**
+   * The M6 election-period × CHC/GIP-day coverage reader HCI indicator 1 reads (§4.11-style aggregate).
+   * Resolved via `getSeam` at the composition root; the impl self-scopes each call. Fail-closed thunk when
+   * absent (HCI indicator 1 recompute denies until bound).
+   */
+  readonly levelOfCarePeriodReader?: LevelOfCarePeriodReader;
+  /**
+   * The M6 all-discharge-type census + early/late live-discharge reader HCI indicators 3/4 read.
+   * Resolved via `getSeam` at the composition root; the impl self-scopes each call. Fail-closed thunk when
+   * absent.
+   */
+  readonly dischargeReader?: DischargeReader;
   /** Injected clock (deterministic in tests; the package processors stamp every instant through this). */
   now?: () => Date;
 }
@@ -867,6 +881,75 @@ export async function resolveHciIndicator10Input(
   };
 }
 
+/**
+ * Shape M6's live `LevelOfCarePeriodReader` org-aggregate into HCI indicator 1's calculator input
+ * (Continuous Home Care or General Inpatient provided). Aggregate-only (D6): the reader already returns
+ * the counts pair, no per-period detail crosses this boundary.
+ */
+export async function resolveHciIndicator01Input(
+  request: {
+    readonly registration: MeasureRegistration;
+    readonly organizationId: string;
+    readonly providerEntityId: string;
+    readonly periodStart: string;
+    readonly periodEnd: string;
+  },
+  seams: { readonly levelOfCarePeriodReader: LevelOfCarePeriodReader },
+): Promise<unknown> {
+  const { organizationId, providerEntityId, periodStart, periodEnd } = request;
+  const c = await seams.levelOfCarePeriodReader.chcOrGipCoverageCounts(organizationId, {
+    from: periodStart,
+    to: periodEnd,
+  });
+  return {
+    organizationId,
+    providerEntityId,
+    periodStart,
+    periodEnd,
+    totalElectionPeriods: c.denominator,
+    periodsWithChcOrGipDay: c.numerator,
+    threshold: HCI_THRESHOLDS_v2025.indicators.indicator_01,
+  };
+}
+
+/**
+ * Shape M6's live `DischargeReader` org-aggregate into BOTH HCI indicator 3 (early live discharges) and
+ * indicator 4 (late live discharges) calculator inputs — one reader call covers both (the same
+ * `totalDischarges` denominator drives both indicators, so the worker's per-measure recompute for either
+ * code re-reads the SAME aggregate rather than needing a shared cache).
+ */
+export async function resolveHciLiveDischargeTimingInput(
+  request: {
+    readonly registration: MeasureRegistration;
+    readonly organizationId: string;
+    readonly providerEntityId: string;
+    readonly periodStart: string;
+    readonly periodEnd: string;
+  },
+  seams: { readonly dischargeReader: DischargeReader },
+): Promise<unknown> {
+  const { organizationId, providerEntityId, periodStart, periodEnd } = request;
+  const c = await seams.dischargeReader.liveDischargeTimingCounts(organizationId, {
+    from: periodStart,
+    to: periodEnd,
+  });
+  const base = { organizationId, providerEntityId, periodStart, periodEnd };
+  if (request.registration.code === "hci_indicator_03") {
+    return {
+      ...base,
+      totalDischarges: c.totalDischarges,
+      earlyLiveDischarges: c.earlyLiveDischarges,
+      threshold: HCI_THRESHOLDS_v2025.indicators.indicator_03,
+    };
+  }
+  return {
+    ...base,
+    totalDischarges: c.totalDischarges,
+    lateLiveDischarges: c.lateLiveDischarges,
+    threshold: HCI_THRESHOLDS_v2025.indicators.indicator_04,
+  };
+}
+
 // ── the per-queue port bundles (bind what we can; throw-on-call for the genuinely-missing infra) ────────
 
 /** The bound port bundles `registerM30Workers` drives the four §4.8 work-queue processors with. */
@@ -949,6 +1032,20 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
         "bind the M8 SignedEncountersReader (the org-level late-entry tally) via getSeam at the composition root",
       ),
   };
+  const levelOfCarePeriodReader: LevelOfCarePeriodReader = deps.levelOfCarePeriodReader ?? {
+    chcOrGipCoverageCounts: () =>
+      unboundWorkerPort(
+        "measureRecompute.hciIndicator01.levelOfCarePeriodReader",
+        "bind the M6 LevelOfCarePeriodReader (HCI indicator 1's CHC/GIP coverage counts) via getSeam at the composition root",
+      ),
+  };
+  const dischargeReader: DischargeReader = deps.dischargeReader ?? {
+    liveDischargeTimingCounts: () =>
+      unboundWorkerPort(
+        "measureRecompute.hciLiveDischargeTiming.dischargeReader",
+        "bind the M6 DischargeReader (HCI indicators 3/4's live-discharge timing counts) via getSeam at the composition root",
+      ),
+  };
 
   // ── m30.measure_recompute (withOrgContext) — §7.1 / V-8 ────────────────────────────────────────────────
   // BOUND: the `quality_measure_value` store + the debounce-queue drain + the LIVE M10 HOPE consumer + the
@@ -983,6 +1080,13 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
             deathDischargeReader,
             encounters: signedEncounters,
           });
+        if (request.registration.code === "hci_indicator_01")
+          return resolveHciIndicator01Input(request, { levelOfCarePeriodReader });
+        if (
+          request.registration.code === "hci_indicator_03" ||
+          request.registration.code === "hci_indicator_04"
+        )
+          return resolveHciLiveDischargeTimingInput(request, { dischargeReader });
         // BOUND (operational): the measures whose producers tally ORG-LEVEL counts (M17/M18/M8/M11/M7/M13/
         // M14/M16) — each exposes the count PAIR beside (or instead of) a rate method, so the CMS small-N
         // floor can be applied honestly.
@@ -1610,6 +1714,9 @@ export function buildM30WorkerDeps(deps: {
   /** The M6 HVLDL death-census reader + the M8 signed-encounter reader (resolved via `getSeam`). */
   deathDischargeReader?: DeathDischargeReader;
   signedEncounters?: SignedEncountersReader;
+  /** The M6 HCI indicator 1 / 3 / 4 readers (resolved via `getSeam`). */
+  levelOfCarePeriodReader?: LevelOfCarePeriodReader;
+  dischargeReader?: DischargeReader;
 }): M30WorkerDeps {
   return {
     connection: deps.connection,
@@ -1627,6 +1734,8 @@ export function buildM30WorkerDeps(deps: {
     outboxPublisher: deps.outboxPublisher,
     deathDischargeReader: deps.deathDischargeReader,
     signedEncounters: deps.signedEncounters,
+    levelOfCarePeriodReader: deps.levelOfCarePeriodReader,
+    dischargeReader: deps.dischargeReader,
     // Default to the FULL catalog→calculator registry (the integrator may still override). With this the
     // measure-recompute worker resolves a calculator by measure code instead of failing closed on an empty map.
     registrations: deps.registrations ?? buildMeasureRegistry(),

@@ -723,11 +723,12 @@ export function wireModuleSeams(
   );
   // M6 — the six §4.7 admission reader seams (election/CTI/F2F/LOC/status/census). Slice/tests keep the
   // in-memory store; the Drizzle-backed store lands with M6's routes/repos (M6-T06+). PLUS the §4.11
-  // DeathDischargeReader the M30 measure-recompute worker consumes for the HVLDL denominator — registered over
-  // a DEDICATED Drizzle reader when a db is present (it self-scopes each call, HARD RULE 3); slice/tests
-  // without a db keep it on the fail-closed deny-stub.
+  // DeathDischargeReader the M30 measure-recompute worker consumes for the HVLDL denominator, and the
+  // LevelOfCarePeriodReader / DischargeReader the same worker consumes for HCI indicators 1/3/4 —
+  // registered over DEDICATED Drizzle readers when a db is present (each self-scopes its own call, HARD
+  // RULE 3); slice/tests without a db keep them all on their fail-closed deny-stubs.
   // TASK-002 — the six §4.7 admission readers bind the Drizzle store on a db boot (deps.db also
-  // keeps the §4.11 DeathDischargeReader live, as before).
+  // keeps the §4.11 DeathDischargeReader + the HCI aggregate readers live, as before).
   registerAdmissionSeams(
     deps.db ? { db: deps.db, store: createDrizzleAdmissionReaderStore(deps.db) } : {},
   );
@@ -3167,6 +3168,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // without M30 touching M6/M8 schema directly.
     const m30DeathDischargeReader = getSeam("DeathDischargeReader");
     const m30SignedEncounters = getSeam("SignedEncountersReader");
+    // HCI indicators 1 / 3 / 4's consumed seams — same M6-owned, leaf-typed, dedicated-Drizzle-reader
+    // posture as DeathDischargeReader above (registered by wireModuleSeams; self-scoping; resolved here
+    // via getSeam, RULE 4).
+    const m30LevelOfCarePeriodReader = getSeam("LevelOfCarePeriodReader");
+    const m30DischargeReader = getSeam("DischargeReader");
     // WX-PR-014 — a second `buildM30RecomputeEnqueue` instance for the CRON fan-out (the route-scoped
     // `m30Recompute` built for `mountM30Routes` above is a different block's `const`, not reachable here).
     // Same producer, same queue names — BullMQ allows multiple `Queue` client handles per named queue, so
@@ -3180,6 +3186,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       activeOrgs: m30ActiveOrgs,
       deathDischargeReader: m30DeathDischargeReader,
       signedEncounters: m30SignedEncounters,
+      levelOfCarePeriodReader: m30LevelOfCarePeriodReader,
+      dischargeReader: m30DischargeReader,
       // WX-PR-014 — the nightly-recompute + risk-register-refresh cron fan-outs: the per-org provider-entity
       // lister (already used for M30's published seams) + the real BullMQ producer + the SAME tx-scoped
       // outbox publisher the M30 routes already use (`m30.measure.value_emitted` / `m30.risk_register

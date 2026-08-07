@@ -34,6 +34,8 @@ import type {
   CertificationReader,
   ComfortKitDispatchProvider,
   DeathDischargeReader,
+  DischargeReader,
+  LevelOfCarePeriodReader,
   DisciplineComplianceProvider,
   DisciplinePlanReader,
   DocumentReader,
@@ -534,6 +536,20 @@ export const admissionCensusReaderDenyStub: AdmissionCensusReader = {
 export const deathDischargeReaderDenyStub: DeathDischargeReader = {
   listDeathDischargesInPeriod() {
     throw new NotImplementedError("DeathDischargeReader");
+  },
+};
+
+/** M6 — election-period × CHC/GIP coverage counts (M30 HCI indicator 1). Denies until M6 registers it. */
+export const levelOfCarePeriodReaderDenyStub: LevelOfCarePeriodReader = {
+  chcOrGipCoverageCounts() {
+    throw new NotImplementedError("LevelOfCarePeriodReader");
+  },
+};
+
+/** M6 — ALL-discharge-type census + early/late live-discharge counts (M30 HCI 3/4). Denies until M6 registers it. */
+export const dischargeReaderDenyStub: DischargeReader = {
+  liveDischargeTimingCounts() {
+    throw new NotImplementedError("DischargeReader");
   },
 };
 
