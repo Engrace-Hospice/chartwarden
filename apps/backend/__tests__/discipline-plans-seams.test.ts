@@ -412,6 +412,27 @@ describe("DisciplineComplianceProvider (§4.3) — an empty scope is null, never
     expect(await provider.chaplainInitialOnTimeRate(scope)).toBeNull();
   });
 
+  it("also exposes the raw counts behind the rate (M30's supervisory/volunteer-gate measure inputs)", async () => {
+    // The rate methods above THROW the denominator away, which is fine for a dashboard tile but wrong for
+    // a CMS-reportable measure (`ratioResult()` suppresses on a denominator under the small-N floor, and a
+    // rate has already discarded it). These sibling methods are the fix — same store round-trip, no division.
+    const { store } = createInMemoryDisciplinePlanSeamStore({
+      complianceCounts: {
+        supervisoryOnTime: { numerator: 9, denominator: 10 },
+        mswInitialOnTime: { numerator: 3, denominator: 4 },
+        chaplainInitialOnTime: { numerator: 0, denominator: 0 },
+        volunteerGateCompliance: { numerator: 5, denominator: 5 },
+      },
+    });
+    const provider = createDisciplineComplianceProvider(store);
+    const scope = { orgId: ORG };
+    expect(await provider.supervisoryOnTimeCounts(scope)).toEqual({ numerator: 9, denominator: 10 });
+    expect(await provider.volunteerGateComplianceCounts(scope)).toEqual({
+      numerator: 5,
+      denominator: 5,
+    });
+  });
+
   it("badges the 418.78(e) ratio `unavailable` while the M27 hours denominator is unbound", async () => {
     const { store } = createInMemoryDisciplinePlanSeamStore({
       hourTotals: [

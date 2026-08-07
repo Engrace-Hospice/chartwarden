@@ -436,6 +436,20 @@ const OPERATIONAL_MEASURE_THRESHOLDS: Readonly<Record<string, ThresholdRule>> = 
     direction: "gte",
     label: "bereavement coverage rate (CoP 418.64(d); platform default)",
   },
+  // CoP 418.76(h) — the aide supervisory visit must occur at least every 14 days (the M15 clock's floor).
+  supervisory_visit_on_time: {
+    value: 0.95,
+    direction: "gte",
+    label: "aide supervisory-visit on-time rate (CoP 418.76(h); platform default)",
+  },
+  // CoP 418.78 — the volunteer-compliance ("blocking gate") requirement; higher is better. Distinct from
+  // the separate 418.78(e) 5%-of-patient-care-hours ratio (`volunteerHourCostRatio`, still unbound on the
+  // M27 hours seam) — this measures per-volunteer onboarding/screening gate clearance, not hours.
+  volunteer_compliance_gate_rate: {
+    value: 0.95,
+    direction: "gte",
+    label: "volunteer compliance-gate rate (CoP 418.78; platform default)",
+  },
 };
 
 /** The M17 on-time counts read, as this resolver uses it (the registry holds the seam opaquely). */
@@ -509,6 +523,23 @@ interface EvvComplianceCountsView {
   ): Promise<{ numerator: number; denominator: number }>;
 }
 
+/** The M15 supervisory + volunteer-gate compliance tallies, as this resolver uses it (a scope object,
+ *  the same shape M16's `BereavementCoverageCountsView` above takes). */
+interface DisciplineComplianceCountsView {
+  supervisoryOnTimeCounts(scope: {
+    orgId: string;
+    providerEntityId?: string;
+    fromIso?: string;
+    toIso?: string;
+  }): Promise<{ numerator: number; denominator: number }>;
+  volunteerGateComplianceCounts(scope: {
+    orgId: string;
+    providerEntityId?: string;
+    fromIso?: string;
+    toIso?: string;
+  }): Promise<{ numerator: number; denominator: number }>;
+}
+
 /** The measure codes {@link resolveOperationalMeasureInput} can shape (the routing predicate). */
 export const OPERATIONAL_BOUND_MEASURE_CODES = new Set([
   "visit_on_time_rate",
@@ -520,10 +551,12 @@ export const OPERATIONAL_BOUND_MEASURE_CODES = new Set([
   "prn_effectiveness_documented_rate",
   "idg_cadence_adherence",
   "bereavement_coverage_rate",
+  "supervisory_visit_on_time",
+  "volunteer_compliance_gate_rate",
 ]);
 
 /**
- * Shape the live org-level count pairs (M17/M18/M8/M11/M7/M13/M14/M16) into their calculator inputs.
+ * Shape the live org-level count pairs (M17/M18/M8/M11/M7/M13/M14/M15/M16) into their calculator inputs.
  * Aggregate-only — no patient row crosses (D6). A producer whose seam is still the M1 deny-stub throws,
  * and the worker's existing fail-closed handling records the recompute as failed rather than writing a
  * fabricated value.
@@ -545,6 +578,7 @@ export async function resolveOperationalMeasureInput(
     readonly administrations: MissedDoseCountsView;
     readonly idg: IdgCadenceCountsView;
     readonly bereavementCompliance: BereavementCoverageCountsView;
+    readonly disciplineCompliance: DisciplineComplianceCountsView;
   },
 ): Promise<unknown> {
   const { organizationId, providerEntityId, periodStart, periodEnd } = request;
@@ -620,6 +654,29 @@ export async function resolveOperationalMeasureInput(
         toIso: periodEnd,
       });
       return { ...base, eligibleBereaved: c.denominator, bereavedWithPlan: c.numerator, threshold };
+    }
+    case "supervisory_visit_on_time": {
+      const c = await seams.disciplineCompliance.supervisoryOnTimeCounts({
+        orgId: organizationId,
+        providerEntityId,
+        fromIso: periodStart,
+        toIso: periodEnd,
+      });
+      return {
+        ...base,
+        requiredSupervisoryVisits: c.denominator,
+        supervisoryVisitsOnTime: c.numerator,
+        threshold,
+      };
+    }
+    case "volunteer_compliance_gate_rate": {
+      const c = await seams.disciplineCompliance.volunteerGateComplianceCounts({
+        orgId: organizationId,
+        providerEntityId,
+        fromIso: periodStart,
+        toIso: periodEnd,
+      });
+      return { ...base, evaluatedPeriods: c.denominator, periodsMeetingGate: c.numerator, threshold };
     }
     default:
       return unboundWorkerPort(
@@ -941,6 +998,7 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
             administrations: getSeam("MedicationAdministrationProvider") as never,
             idg: getSeam("IdgScheduleProvider") as never,
             bereavementCompliance: getSeam("BereavementComplianceProvider") as never,
+            disciplineCompliance: getSeam("DisciplineComplianceProvider") as never,
           });
         return resolveHopeMeasureInput(request, seams);
       },

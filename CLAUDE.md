@@ -33,11 +33,14 @@ M30 (`CostReportFilingStatusReader`) are **live and tested**, not deny-stubs (`m
 418.310 failure-to-file indicator and half of HCI 5/6/7's inputs. **`hci_composite`'s real remaining blocker
 is DATA, not wiring**: 9 of its 10 indicators need M6/M8 aggregate seams
 (per-election-period LOC-days, discharge timing, cross-setting transition sequences, per-day
-skilled-nursing minutes) that were never built — only `hci_indicator_10` computes. Two operational
-measures are similarly blocked on an M15 producer-shape gap (`volunteer_compliance_gate_rate`,
-`supervisory_visit_on_time` return a pre-divided rate, not a count pair); `bereavement_coverage_rate`
-(M16) is bound. `opioid_on_admission_rate` needs an M38 RxCUI→therapeutic-class capability that doesn't
-exist yet.
+skilled-nursing minutes) that were never built — only `hci_indicator_10` computes. All 10 of the
+remaining operational measures are now bound, including `bereavement_coverage_rate` (M16) and the two
+that needed an M15 producer-side fix first — `volunteer_compliance_gate_rate` /
+`supervisory_visit_on_time` used to return a pre-divided rate (no denominator, so CMS small-N suppression
+couldn't apply); M15's `DisciplineComplianceProvider` now exposes the count pair beside each rate method
+(`supervisoryOnTimeCounts`/`volunteerGateComplianceCounts`), the same store round-trip, no new query.
+`opioid_on_admission_rate` remains genuinely blocked — it needs an M38 RxCUI→therapeutic-class capability
+that doesn't exist yet.
 
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104, see
 [`audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md`](./audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md)):

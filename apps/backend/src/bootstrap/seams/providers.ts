@@ -1075,6 +1075,9 @@ export const disciplineComplianceProviderDenyStub: DisciplineComplianceProvider 
   supervisoryOnTimeRate() {
     throw new NotImplementedError("DisciplineComplianceProvider");
   },
+  supervisoryOnTimeCounts() {
+    throw new NotImplementedError("DisciplineComplianceProvider");
+  },
   mswInitialOnTimeRate() {
     throw new NotImplementedError("DisciplineComplianceProvider");
   },
@@ -1082,6 +1085,9 @@ export const disciplineComplianceProviderDenyStub: DisciplineComplianceProvider 
     throw new NotImplementedError("DisciplineComplianceProvider");
   },
   volunteerGateComplianceRate() {
+    throw new NotImplementedError("DisciplineComplianceProvider");
+  },
+  volunteerGateComplianceCounts() {
     throw new NotImplementedError("DisciplineComplianceProvider");
   },
   volunteerHourCostRatio() {

@@ -644,9 +644,23 @@ export interface SupervisoryCadencePlanReader {
  *  CMS small-N suppression downstream stays honest. */
 export interface DisciplineComplianceProvider {
   supervisoryOnTimeRate(scope: ComplianceScope): Promise<number | null>;
+  /**
+   * The supervisory population behind {@link supervisoryOnTimeRate} — M30's `supervisory_visit_on_time`
+   * input. A rate alone cannot drive a CMS-reportable measure: `ratioResult()` suppresses to
+   * `insufficient_n` when the DENOMINATOR is under the small-N floor, and a rate has already discarded
+   * it. The store already tallies both; the rate method was where the denominator was being thrown away.
+   */
+  supervisoryOnTimeCounts(
+    scope: ComplianceScope,
+  ): Promise<{ readonly numerator: number; readonly denominator: number }>;
   mswInitialOnTimeRate(scope: ComplianceScope): Promise<number | null>;
   chaplainInitialOnTimeRate(scope: ComplianceScope): Promise<number | null>;
   volunteerGateComplianceRate(scope: ComplianceScope): Promise<number | null>;
+  /** The volunteer population behind {@link volunteerGateComplianceRate} — M30's
+   *  `volunteer_compliance_gate_rate` input. Same reasoning as {@link supervisoryOnTimeCounts}. */
+  volunteerGateComplianceCounts(
+    scope: ComplianceScope,
+  ): Promise<{ readonly numerator: number; readonly denominator: number }>;
   volunteerHourCostRatio(
     orgId: string,
     providerEntityId: ProviderEntityId,

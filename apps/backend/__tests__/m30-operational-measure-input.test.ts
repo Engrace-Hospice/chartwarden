@@ -6,8 +6,10 @@ import {
   computeLateEncounterEntryRate,
   computeMissedDoseRate,
   computePrnEffectivenessDocumentedRate,
+  computeSupervisoryVisitOnTime,
   computeVerbalOrderSignatureOnTime,
   computeVisitOnTimeRate,
+  computeVolunteerComplianceGateRate,
 } from "@wardenx/quality";
 // apps/backend/__tests__/m30-operational-measure-input.test.ts — the counts-not-rates measure inputs.
 //
@@ -77,6 +79,14 @@ const seamsWith = (
   },
   bereavementCompliance: {
     async copOutreachCounts() {
+      return lateEntry;
+    },
+  },
+  disciplineCompliance: {
+    async supervisoryOnTimeCounts() {
+      return lateEntry;
+    },
+    async volunteerGateComplianceCounts() {
       return lateEntry;
     },
   },
@@ -246,6 +256,46 @@ describe("M30 operational measure inputs — counts, not rates", () => {
       seamsWith({ numerator: 0, denominator: 0 }),
     );
     const result = computeBereavementCoverageRate(input as never);
+    expect(result.denominator).toBe(0);
+    expect(result.rate).toBeNull();
+    expect(result.bandColor).toBe("insufficient_n");
+  });
+
+  it("shapes M15's supervisory-visit timeliness tally into its calculator input", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("supervisory_visit_on_time"),
+      seamsWith({ numerator: 0, denominator: 0 }, undefined, { numerator: 19, denominator: 20 }),
+    );
+    expect(input).toMatchObject({ requiredSupervisoryVisits: 20, supervisoryVisitsOnTime: 19 });
+    expect(computeSupervisoryVisitOnTime(input as never).rate).toBeCloseTo(0.95);
+  });
+
+  it("no required supervisory visits in the window suppresses rather than scoring perfect", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("supervisory_visit_on_time"),
+      seamsWith({ numerator: 0, denominator: 0 }),
+    );
+    const result = computeSupervisoryVisitOnTime(input as never);
+    expect(result.denominator).toBe(0);
+    expect(result.rate).toBeNull();
+    expect(result.bandColor).toBe("insufficient_n");
+  });
+
+  it("shapes M15's volunteer-gate compliance tally into its calculator input", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("volunteer_compliance_gate_rate"),
+      seamsWith({ numerator: 0, denominator: 0 }, undefined, { numerator: 18, denominator: 19 }),
+    );
+    expect(input).toMatchObject({ evaluatedPeriods: 19, periodsMeetingGate: 18 });
+    expect(computeVolunteerComplianceGateRate(input as never).rate).toBeCloseTo(18 / 19);
+  });
+
+  it("no volunteers with an open assignment in the window suppresses rather than scoring perfect", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("volunteer_compliance_gate_rate"),
+      seamsWith({ numerator: 0, denominator: 0 }),
+    );
+    const result = computeVolunteerComplianceGateRate(input as never);
     expect(result.denominator).toBe(0);
     expect(result.rate).toBeNull();
     expect(result.bandColor).toBe("insufficient_n");

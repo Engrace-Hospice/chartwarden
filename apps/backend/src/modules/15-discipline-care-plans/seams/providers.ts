@@ -246,6 +246,9 @@ export function createDisciplineComplianceProvider(
     async supervisoryOnTimeRate(scope) {
       return rateOf((await counts(scope)).supervisoryOnTime);
     },
+    async supervisoryOnTimeCounts(scope) {
+      return (await counts(scope)).supervisoryOnTime;
+    },
     async mswInitialOnTimeRate(scope) {
       return rateOf((await counts(scope)).mswInitialOnTime);
     },
@@ -254,6 +257,9 @@ export function createDisciplineComplianceProvider(
     },
     async volunteerGateComplianceRate(scope) {
       return rateOf((await counts(scope)).volunteerGateCompliance);
+    },
+    async volunteerGateComplianceCounts(scope) {
+      return (await counts(scope)).volunteerGateCompliance;
     },
     async volunteerHourCostRatio(
       _orgId: string,
