@@ -615,6 +615,9 @@ export function buildDrizzleM24WriteService(
         );
         await outbox.publish(tx, {
           eventName: "m24.medicaid_claim.draft_created",
+          organizationId: actor.organizationId,
+          aggregateKind: "medicaid_claim",
+          aggregateId: claimId,
           payload: {
             organizationId: actor.organizationId,
             claimId,
@@ -806,6 +809,9 @@ export function buildDrizzleM24WriteService(
 
         await outbox.publish(tx, {
           eventName: "m24.medicaid_claim.validation_started",
+          organizationId: actor.organizationId,
+          aggregateKind: "medicaid_claim",
+          aggregateId: claimId,
           payload: {
             organizationId: actor.organizationId,
             claimId,
@@ -818,10 +824,16 @@ export function buildDrizzleM24WriteService(
           nextState === "READY"
             ? {
                 eventName: "m24.medicaid_claim.ready_for_submission",
+                organizationId: actor.organizationId,
+                aggregateKind: "medicaid_claim",
+                aggregateId: claimId,
                 payload: { organizationId: actor.organizationId, claimId, validationRunId: runId },
               }
             : {
                 eventName: "m24.medicaid_claim.validation_failed",
+                organizationId: actor.organizationId,
+                aggregateKind: "medicaid_claim",
+                aggregateId: claimId,
                 payload: {
                   organizationId: actor.organizationId,
                   claimId,
@@ -884,6 +896,9 @@ export function buildDrizzleM24WriteService(
         );
         await outbox.publish(tx, {
           eventName: "m24.medicaid_claim.submit_requested",
+          organizationId: actor.organizationId,
+          aggregateKind: "medicaid_claim",
+          aggregateId: claimId,
           payload: {
             organizationId: actor.organizationId,
             claimId,
@@ -896,6 +911,9 @@ export function buildDrizzleM24WriteService(
         });
         await outbox.publish(tx, {
           eventName: "m24.medicaid_claim.submitted",
+          organizationId: actor.organizationId,
+          aggregateKind: "medicaid_claim",
+          aggregateId: claimId,
           payload: {
             organizationId: actor.organizationId,
             claimId,
@@ -973,6 +991,9 @@ export function buildDrizzleM24WriteService(
         });
         await outbox.publish(tx, {
           eventName: "m24.medicaid_claim.override_applied",
+          organizationId: actor.organizationId,
+          aggregateKind: "medicaid_claim",
+          aggregateId: claimId,
           payload: {
             organizationId: actor.organizationId,
             claimId,
@@ -1121,6 +1142,9 @@ export function buildDrizzleM24WriteService(
         // publisher throws on a mismatch and rolls this insert back with it.
         await outbox.publish(tx, {
           eventName: "m24.medicaid_eligibility.checked",
+          organizationId: actor.organizationId,
+          aggregateKind: "medicaid_eligibility_check",
+          aggregateId: checkId,
           payload: {
             organizationId: actor.organizationId,
             checkId,
@@ -1214,6 +1238,9 @@ export function buildDrizzleM24WriteService(
         const row = updated[0]!;
         await outbox.publish(tx, {
           eventName: "m24.rb_arrangement.activated",
+          organizationId: actor.organizationId,
+          aggregateKind: "rb_arrangement",
+          aggregateId: row.id,
           payload: {
             organizationId: actor.organizationId,
             rbArrangementId: row.id,
@@ -1252,6 +1279,9 @@ export function buildDrizzleM24WriteService(
         const row = updated[0]!;
         await outbox.publish(tx, {
           eventName: "m24.rb_arrangement.ended",
+          organizationId: actor.organizationId,
+          aggregateKind: "rb_arrangement",
+          aggregateId: row.id,
           payload: {
             organizationId: actor.organizationId,
             rbArrangementId: row.id,
@@ -1358,6 +1388,9 @@ export function buildDrizzleM24WriteService(
         }
         await outbox.publish(tx, {
           eventName: "m24.medicaid_trading_partner.updated",
+          organizationId: actor.organizationId,
+          aggregateKind: "state_medicaid_trading_partner_credential",
+          aggregateId: id,
           payload: {
             organizationId: actor.organizationId,
             providerEntityId: input.providerEntityId,

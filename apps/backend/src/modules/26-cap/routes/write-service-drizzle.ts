@@ -136,6 +136,9 @@ export function buildDrizzleM26WriteService(
         }
         await outbox.publish(tx, {
           eventName: "m26.cap.year_opened",
+          organizationId: actor.organizationId,
+          aggregateKind: "cap_period",
+          aggregateId: period.id,
           payload: {
             organizationId: actor.organizationId,
             capPeriodId: period.id,
@@ -183,6 +186,9 @@ export function buildDrizzleM26WriteService(
           .returning();
         await outbox.publish(tx, {
           eventName: "m26.cap.year_closing",
+          organizationId: actor.organizationId,
+          aggregateKind: "cap_period",
+          aggregateId: periodId,
           payload: {
             organizationId: actor.organizationId,
             capPeriodId: periodId,
@@ -425,6 +431,9 @@ export function buildDrizzleM26WriteService(
         const row = upserted[0]!;
         await outbox.publish(tx, {
           eventName: "m26.cap.settlement_proposed",
+          organizationId: actor.organizationId,
+          aggregateKind: "cap_period",
+          aggregateId: periodId,
           payload: {
             organizationId: actor.organizationId,
             capPeriodId: periodId,
@@ -465,6 +474,9 @@ export function buildDrizzleM26WriteService(
         const row = updated[0]!;
         await outbox.publish(tx, {
           eventName: "m26.cap.settlement_finalized",
+          organizationId: actor.organizationId,
+          aggregateKind: "cap_period",
+          aggregateId: periodId,
           payload: {
             organizationId: actor.organizationId,
             capPeriodId: periodId,
@@ -475,6 +487,9 @@ export function buildDrizzleM26WriteService(
         });
         await outbox.publish(tx, {
           eventName: "m26.cap.year_closed",
+          organizationId: actor.organizationId,
+          aggregateKind: "cap_period",
+          aggregateId: periodId,
           payload: {
             organizationId: actor.organizationId,
             capPeriodId: periodId,
@@ -487,34 +502,34 @@ export function buildDrizzleM26WriteService(
     },
 
     async publishConstant(actor, input: PublishConstantInput) {
-      // Platform-shared write — requires the cap_platform_loader (or wardenx_admin) connection in prod (the
-      // wardenx_app GRANT is revoked, §3.5/0089). The composition root binds the elevated handle; locally the
-      // BYPASSRLS dev role suffices. No org context (platform table).
-      await db
-        .insert(PC)
-        .values({
-          capYear: input.capYear,
-          aggregateCapAmountCents: input.aggregateCapAmountCents,
-          inpatientCapPct: String(input.inpatientCapPct ?? 0.2),
-          sourceUrl: input.sourceUrl ?? null,
-          recordedBy: actor.userId,
-        })
-        .onConflictDoNothing({ target: PC.capYear });
+      // Platform-shared write — §3.5/0089 REVOKEs INSERT/UPDATE/DELETE on this table from wardenx_app
+      // (BYPASSRLS bypasses row-level security, not this separate GRANT-level revoke), so the write
+      // routes through the SECURITY DEFINER function migration 0189 grants wardenx_app EXECUTE on —
+      // the same platform-writer pattern migrations 0186-0188 use for outbox_event/audit_event/
+      // report_run/materialized_view_metadata. No org context (platform table).
+      await db.execute(sql`
+        SELECT cap_platform_loader_publish_constant(
+          ${input.capYear},
+          ${input.aggregateCapAmountCents},
+          ${String(input.inpatientCapPct ?? 0.2)},
+          ${input.sourceUrl ?? null},
+          ${actor.userId}
+        )
+      `);
     },
 
     async amendConstant(actor, capYear, input: AmendConstantInput) {
-      // Amend allowed ONLY before first tenant use (D3) — guard on first_tenant_use_at IS NULL.
-      const updated = await db
-        .update(PC)
-        .set({
-          aggregateCapAmountCents: input.aggregateCapAmountCents,
-          sourceUrl: input.sourceUrl ?? null,
-          recordedBy: actor.userId,
-          recordedAt: new Date(),
-        })
-        .where(and(eq(PC.capYear, capYear), sql`${PC.firstTenantUseAt} IS NULL`))
-        .returning({ capYear: PC.capYear });
-      if (!updated[0])
+      // Amend allowed ONLY before first tenant use (D3) — guard lives in the SECURITY DEFINER function
+      // (migration 0189), same reason as publishConstant above.
+      const updated = await db.execute<{ cap_year: string }>(sql`
+        SELECT cap_year FROM cap_platform_loader_amend_constant(
+          ${capYear},
+          ${input.aggregateCapAmountCents},
+          ${input.sourceUrl ?? null},
+          ${actor.userId}
+        )
+      `);
+      if (!updated.rows[0])
         throw new ConflictError(
           "CONSTANT_IN_USE",
           "cannot amend a cap amount already referenced by a tenant period",
@@ -578,6 +593,9 @@ async function persistSnapshot(
   const snap = inserted[0]!;
   await outbox.publish(tx, {
     eventName: "m26.cap.projection_updated",
+    organizationId,
+    aggregateKind: "cap_period",
+    aggregateId: capPeriodId,
     payload: {
       organizationId,
       capPeriodId,
@@ -604,6 +622,9 @@ async function persistSnapshot(
     if (ev[0]) {
       await outbox.publish(tx, {
         eventName: "m26.cap.threshold_crossed",
+        organizationId,
+        aggregateKind: "cap_period",
+        aggregateId: capPeriodId,
         payload: {
           organizationId,
           capPeriodId,

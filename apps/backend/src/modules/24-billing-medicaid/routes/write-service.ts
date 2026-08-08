@@ -15,10 +15,17 @@ import type { ClaimView, RbArrangementView } from "./read-service";
 export interface OutboxEmission {
   readonly eventName: string;
   readonly payload: Record<string, unknown>;
+  readonly organizationId: string;
+  readonly aggregateKind: string;
+  readonly aggregateId: string;
 }
 
 /** The transactional-outbox port (the composition root binds the catalog-validating M1 publisher pinned to
- * callerModule `m24`); `publish` writes the outbox_event row on the CALLER'S tx (same unit of work). No-op default. */
+ * callerModule `m24`); `publish` writes the outbox_event row on the CALLER'S tx (same unit of work). No-op default.
+ * `organizationId`/`aggregateKind`/`aggregateId` are REQUIRED here (not previously — every call site omitted
+ * them, which type-checked ONLY because interface method-shorthand parameters are checked bivariantly, a
+ * long-standing TS soundness hole; the real bound publisher at boot, `bindCallerModule` in `index.ts`,
+ * always required them and every write 500'd `null value in column "aggregate_kind"` at the actual insert). */
 export interface WriteOutboxPort {
   publish(tx: unknown, emission: OutboxEmission): Promise<void>;
 }

@@ -52,8 +52,17 @@ function actorOf(request: FastifyRequest): {
   roles: readonly string[];
 } {
   const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
+  // `userId` here is the codebase-wide convention of "the acting MEMBERSHIP id" (matches
+  // `signingActorOf` below, and every `authored_by_membership_id`/`created_by_membership_id`
+  // column this module's service layer writes it into — see encounters-route-service-db.ts:472's
+  // own comment: "stored as the authoring membership"). This used to read `ctx.userId` (the raw
+  // Better Auth user id, set unconditionally by the M2 authenticate hook — a DIFFERENT id from the
+  // org membership), which meant `POST /encounters` FK-violated on `authored_by_membership_id`
+  // every single call, and `GET /encounters/my-drafts` silently returned zero rows for everyone
+  // (filtering by a value no draft's `authored_by_membership_id` could ever equal).
+  const membershipId = ctx?.attributes.membershipId;
+  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
+  return { organizationId: ctx.organizationId, userId: membershipId, roles: ctx.roles };
 }
 
 /** The real caller signing an encounter/cosignature/addendum (§3.3/D13) — membership id + M2 session

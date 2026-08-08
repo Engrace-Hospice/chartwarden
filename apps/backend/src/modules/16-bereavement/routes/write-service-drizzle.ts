@@ -821,7 +821,10 @@ export function buildDrizzleM16WriteService(
             "m16.bereavement.outreach_artifact_requested": {
               planId: plan.id,
               contactId: existing[0]?.id ?? "",
-              outreachId: "",
+              // No `bereavement_outreach` row exists yet at plan-open — those materialize per-contact in
+              // the loop below, after this effects call. See the schema's own comment for why this is
+              // genuinely null here rather than a placeholder.
+              outreachId: null,
               templateKey: "bereavement_welcome_packet",
               payloadJsonb: { deathDate: localDate(plan.deathDate) },
             },
