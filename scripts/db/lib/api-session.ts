@@ -30,8 +30,8 @@ export interface WxSession {
 }
 
 /**
- * Read a seeded user's generated password out of the gitignored CREDENTIALS.local.md. Two things a
- * naive `includes(email)` gets wrong, both confirmed live:
+ * Read a seeded user's generated password out of the gitignored CREDENTIALS.local.md. Three things a
+ * naive `includes(email)` gets wrong, all confirmed live:
  *   1. Substring collision: `"orgadmin@wardenx.local".includes("admin@wardenx.local")` is TRUE — a plain
  *      substring search for `admin@wardenx.local` also matches `orgadmin@wardenx.local`'s row. Matching
  *      the backtick-delimited exact cell (`` `${email}` ``) avoids this.
@@ -40,17 +40,22 @@ export interface WxSession {
  *      prior orgadmin@wardenx.local first, then re-creates it") — in `db:reset`'s pipeline order the base
  *      block is written first and is stale (that user no longer exists) by the time any script signs in,
  *      so the LAST matching line is always the authoritative one for any persona recreated by a later step.
+ *   3. Not every line containing the needle is a credentials-table row — a prose note elsewhere in the
+ *      file can legitimately mention an account by its exact backtick-quoted email (e.g. explaining a
+ *      role grant) without being the `| Persona | Email | Password | ... |` row itself. Taking the
+ *      literal last needle-matching line unconditionally threw on exactly that case; matching against
+ *      every needle-line and keeping the LAST one that actually fits the two-backtick-cells pipe-table
+ *      shape (skipping any that don't) is robust to prose lines landing after the real row.
  */
 function readPassword(email: string): string {
   const md = readFileSync(join(process.cwd(), "CREDENTIALS.local.md"), "utf8");
   const needle = `\`${email}\``;
   const lines = md.split("\n").filter((l) => l.includes(needle));
-  const line = lines[lines.length - 1];
-  const m = line?.match(/`([^`]+)`\s*\|\s*`([^`]+)`/);
-  if (!m) {
-    throw new Error(`could not read password for ${email} from CREDENTIALS.local.md (run db:seed first)`);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = lines[i].match(/`([^`]+)`\s*\|\s*`([^`]+)`/);
+    if (m) return m[2];
   }
-  return m[2];
+  throw new Error(`could not read password for ${email} from CREDENTIALS.local.md (run db:seed first)`);
 }
 
 function absorbSetCookie(jar: Map<string, string>, res: Response): void {

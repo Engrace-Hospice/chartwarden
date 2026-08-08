@@ -98,38 +98,6 @@ describe("FB-T15 canSeeScreen — role-scoped nav/tile gating", () => {
     expect(canSeeScreen({ requiredPermission: "audit.read" }, noPerms)).toBe(false);
   });
 
-  it("the 'Platform' navGroup stays hidden from an org-scoped actor even holding the RBAC key (live-browser audit #2)", () => {
-    // Mirrors a real org Administrator: RBAC grants tenant.list_platform at their own org, but
-    // the underlying route also enforces the platform_ops-only ABAC predicate — the nav must not
-    // advertise a section that 403s for every non-platform-ops actor.
-    expect(
-      canSeeScreen({ navGroup: "Platform", requiredPermission: "tenant.list_platform" }, session),
-    ).toBe(false);
-  });
-
-  it("the 'Platform' navGroup shows once the actor holds the platform_ops role AND the permission key", () => {
-    const platformOps: Session = toSession({
-      ...ORG_BOUND,
-      roles: ["platform_ops"],
-      permissions: ["tenant.list_platform"],
-    });
-    expect(
-      canSeeScreen(
-        { navGroup: "Platform", requiredPermission: "tenant.list_platform" },
-        platformOps,
-      ),
-    ).toBe(true);
-  });
-
-  it("holding platform_ops alone doesn't bypass a missing permission key", () => {
-    const platformOpsNoPerm: Session = toSession({ ...ORG_BOUND, roles: ["platform_ops"] });
-    expect(
-      canSeeScreen(
-        { navGroup: "Platform", requiredPermission: "tenant.list_platform" },
-        platformOpsNoPerm,
-      ),
-    ).toBe(false);
-  });
 });
 
 describe("guardChromedRoute — chromed-route session guard (audit #6)", () => {

@@ -9,14 +9,21 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { AdminApp } from "./app";
 import { opsAdminScreens } from "./modules/01-ops";
+import { saasPlatformAdminScreens } from "./modules/34-saas-platform";
 import { subscriptionAdminScreens } from "./modules/35-subscription-billing";
+import { adminAuthScreens } from "./shell/auth-screens";
 import { createAdminRegistry } from "./shell/registry";
+import { adminSystemScreens } from "./shell/system-pages";
 
 const registry = createAdminRegistry();
 const client = createApiClient();
 
+registry.register(adminSystemScreens); // M1 system/utility pages (403/404/500 — the app's own, not React Router's default)
+registry.register(adminAuthScreens); // M1 shell — the console's own login flow (platform_ops accounts only)
+
 // Platform-module admin slices register here as they land.
 registry.register(opsAdminScreens); // WX-PR-020 (OPS-004) operator recovery — outbox status
+registry.register(saasPlatformAdminScreens); // M34 §5.1 platform-ops control plane (migrated from apps/web)
 registry.register(subscriptionAdminScreens); // M35 §5.2 subscription-billing (M35A-T04)
 
 const rootEl = document.getElementById("root");

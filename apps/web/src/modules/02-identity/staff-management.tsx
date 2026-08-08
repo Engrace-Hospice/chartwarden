@@ -2,6 +2,8 @@ import {
   ConfirmDialog,
   EmptyState,
   Glyph,
+  KpiCard,
+  KpiStrip,
   LoadingSpinner,
   PageHeader,
   StatusPill,
@@ -260,13 +262,13 @@ export function StaffManagement(): JSX.Element {
       <WorkQueueLayout
         header={<PageHeader title="Staff Management" />}
         kpis={
-          <div style={kpiStrip}>
-            <Kpi label="Active staff" value={active} />
-            <Kpi label="Suspended" value={suspended} />
-            <Kpi label="Admins" value={admins} />
-            <Kpi label="Pending invites" value={loadFailed ? null : pendingInvites} />
-            <Kpi label="Locked accounts" value={locked} />
-          </div>
+          <KpiStrip>
+            <KpiCard label="Active staff" value={active ?? "—"} />
+            <KpiCard label="Suspended" value={suspended ?? "—"} />
+            <KpiCard label="Admins" value={admins ?? "—"} />
+            <KpiCard label="Pending invites" value={loadFailed ? "—" : pendingInvites} />
+            <KpiCard label="Locked accounts" value={locked ?? "—"} />
+          </KpiStrip>
         }
         filters={
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -511,17 +513,6 @@ function PendingInvitations({
   );
 }
 
-function Kpi({ label, value }: { label: string; value: number | null }): JSX.Element {
-  return (
-    <div style={kpiCard}>
-      <div className="tabular-nums" style={{ fontSize: "1.5rem", fontWeight: 700 }}>
-        {value ?? "—"}
-      </div>
-      <div style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>{label}</div>
-    </div>
-  );
-}
-
 // Display name falls back to email, then a short membership id — never a blank cell. A locked account
 // (user.status suspended/deactivated) is badged inline so it's visible even when the membership is active.
 function MemberName({ member }: { member: Member }): JSX.Element {
@@ -545,14 +536,6 @@ function formatDate(iso: string | null): string {
 const cap = (s: string): string => s.replace(/\b\w/g, (c) => c.toUpperCase());
 
 const tabular = { fontVariantNumeric: "tabular-nums" } as const;
-const kpiStrip = { display: "flex", gap: "1rem", padding: "0.75rem 1.5rem" } as const;
-const kpiCard = {
-  padding: "0.75rem 1rem",
-  border: "1px solid var(--color-outline-variant)",
-  borderRadius: "0.5rem",
-  minWidth: "7rem",
-  background: "var(--color-surface-lowest)",
-} as const;
 const inviteLinkField = {
   padding: "0.25rem 0.5rem",
   border: "1px solid var(--color-outline-variant)",

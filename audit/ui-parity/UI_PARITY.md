@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 38 module screen-sets registered · 275 screens wired across web/portal/admin.
-- **admin**: 16 screen(s)
+**Coverage:** 113 documented screen specs · 39 module screen-sets registered · 275 screens wired across web/portal/admin.
+- **admin**: 26 screen(s)
 - **portal**: 13 screen(s)
-- **web**: 246 screen(s)
+- **web**: 236 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -241,16 +241,6 @@
 | web | 33-reporting | `reporting.role-dashboard` | `/reports/role/:roleKey` | `report.dashboard.read` | ✅ |
 | web | 33-reporting | `reporting.schedules` | `/reports/schedules` | `report.schedule.list` | ✅ |
 | web | 33-reporting | `reporting.admin` | `/reports/admin` | `report.admin.mv_list` | ✅ |
-| web | 34-saas | `saas.tenants` | `/tenants` | `tenant.list_platform` | ✅ |
-| web | 34-saas | `saas.tenant-overview` | `/tenants/:orgSlug` | `tenant.read_platform` | ✅ |
-| web | 34-saas | `saas.support-sessions` | `/support/sessions` | `support_session.list_platform` | ✅ |
-| web | 34-saas | `saas.dsar-queue` | `/exports/dsar` | `dsar_export.list_own` | ✅ |
-| web | 34-saas | `saas.tenant-export-queue` | `/exports/tenant` | `tenant_export.list_own` | ✅ |
-| web | 34-saas | `saas.onboarding-templates` | `/onboarding/templates` | `onboarding_template.list` | ✅ |
-| web | 34-saas | `saas.feature-flags` | `/feature-flags` | `feature_flag.read_platform` | ✅ |
-| web | 34-saas | `saas.baa-register` | `/baa` | `platform_tenant_baa.read_platform` | ✅ |
-| web | 34-saas | `saas.signups` | `/signups` | `signup_intent.list_platform` | ✅ |
-| web | 34-saas | `saas.key-rings` | `/key-rings` | `tenant.read_platform` | ✅ |
 | web | 34-saas | `saas.account` | `/admin/account` | `tenant.read_own` | ✅ |
 | web | 34-saas | `saas.onboarding` | `/admin/onboarding` | `onboarding.read_own` | ✅ |
 | web | 34-saas | `saas.support-grants` | `/admin/support-grants` | `support_consent_grant.list_own` | ✅ |
@@ -277,6 +267,16 @@
 | web | 40-mdm | `mdm.console` | `/mdm` | `(none)` | ✅ |
 | admin | 01-ops | `admin.ops.outbox` | `/admin/ops/outbox` | `member.manage` | ✅ |
 | admin | 01-ops | `admin.ops.outbox-detail` | `/admin/ops/outbox/:id` | `member.manage` | ✅ |
+| admin | 34-saas-platform | `saas.tenants` | `/tenants` | `tenant.list_platform` | ✅ |
+| admin | 34-saas-platform | `saas.tenant-overview` | `/tenants/:orgSlug` | `tenant.read_platform` | ✅ |
+| admin | 34-saas-platform | `saas.support-sessions` | `/support/sessions` | `support_session.list_platform` | ✅ |
+| admin | 34-saas-platform | `saas.dsar-queue` | `/exports/dsar` | `dsar_export.list_own` | ✅ |
+| admin | 34-saas-platform | `saas.tenant-export-queue` | `/exports/tenant` | `tenant_export.list_own` | ✅ |
+| admin | 34-saas-platform | `saas.onboarding-templates` | `/onboarding/templates` | `onboarding_template.list` | ✅ |
+| admin | 34-saas-platform | `saas.feature-flags` | `/feature-flags` | `feature_flag.read_platform` | ✅ |
+| admin | 34-saas-platform | `saas.baa-register` | `/baa` | `platform_tenant_baa.read_platform` | ✅ |
+| admin | 34-saas-platform | `saas.signups` | `/signups` | `signup_intent.list_platform` | ✅ |
+| admin | 34-saas-platform | `saas.key-rings` | `/key-rings` | `tenant.read_platform` | ✅ |
 | admin | 35-subscription-billing | `admin.plans` | `/admin/plans` | `plan.admin.read` | ✅ |
 | admin | 35-subscription-billing | `admin.plan-edit` | `/admin/plans/:id/edit` | `plan.admin.write` | ✅ |
 | admin | 35-subscription-billing | `admin.promos` | `/admin/promos` | `promo.admin.read` | ✅ |

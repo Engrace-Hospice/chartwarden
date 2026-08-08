@@ -129,7 +129,9 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
           .filter(Boolean)
       : process.env.NODE_ENV === "production"
         ? []
-        : ["http://localhost:5173"],
+        : // The three local-dev SPAs: web (:5173), portal (:5174), the admin/platform-ops console
+          // (:5175) — each proxies /api to this backend at a different Vite dev-server origin.
+          ["http://localhost:5173", "http://localhost:5174", "http://localhost:5175"],
     // M1's identity PKs are `uuid` (defaultRandom) — Better Auth's default id generator emits non-UUID
     // strings, which fail to insert into a uuid column (AUTH-T06 live finding). Generate UUIDs instead;
     // a UUID string is valid for the uuid PKs (user/session/account/passkey) AND for verification's

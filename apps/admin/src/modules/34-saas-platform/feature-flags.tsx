@@ -124,7 +124,7 @@ export function FeatureFlags(): JSX.Element {
     <>
       <WorkQueueLayout
         header={<PageHeader title="Feature Flags" />}
-        kpis={<FlagKpis flags={flags} />}
+        kpis={<FlagKpis flags={flags} loadFailed={error !== null} />}
         filters={
           <FilterBar
             actions={
@@ -211,18 +211,27 @@ export function FeatureFlags(): JSX.Element {
 
 // §4.7 KPI strip (frame `bxUqf`) — counts derived from the loaded page (no separate count endpoint;
 // the loaded set is the platform flag inventory). Enabled = a truthy boolean flag not kill-switched.
-function FlagKpis({ flags }: { flags: FeatureFlagView[] }): JSX.Element {
-  const total = flags.length;
-  const enabled = flags.filter(
-    (f) => f.valueType === "boolean" && f.value === true && !f.killSwitchActive,
-  ).length;
-  const killed = flags.filter((f) => f.killSwitchActive).length;
-  const perTenant = flags.filter((f) => f.organizationId !== null).length;
+// `loadFailed` renders every tile "—" instead of a misleading literal 0 when the GET errored (the
+// same live-browser-audit misleading-zeros pattern already fixed for Staff Management).
+function FlagKpis({
+  flags,
+  loadFailed,
+}: {
+  flags: FeatureFlagView[];
+  loadFailed: boolean;
+}): JSX.Element {
+  const total = loadFailed ? null : flags.length;
+  const enabled = loadFailed
+    ? null
+    : flags.filter((f) => f.valueType === "boolean" && f.value === true && !f.killSwitchActive)
+        .length;
+  const killed = loadFailed ? null : flags.filter((f) => f.killSwitchActive).length;
+  const perTenant = loadFailed ? null : flags.filter((f) => f.organizationId !== null).length;
   return (
     <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", padding: "0 1.5rem 0.5rem" }}>
       <KpiCard label="Total flags" value={total} sub="loaded" />
       <KpiCard label="Enabled" value={enabled} sub="boolean · on" />
-      <KpiCard label="Kill switches" value={killed} sub="armed" alert={killed > 0} />
+      <KpiCard label="Kill switches" value={killed} sub="armed" alert={Boolean(killed)} />
       <KpiCard label="Per-tenant" value={perTenant} sub="org-scoped" />
     </div>
   );
@@ -233,7 +242,12 @@ function KpiCard({
   value,
   sub,
   alert,
-}: { label: string; value: number; sub?: string; alert?: boolean }): JSX.Element {
+}: {
+  label: string;
+  value: number | null;
+  sub?: string;
+  alert?: boolean;
+}): JSX.Element {
   return (
     <div
       style={{
@@ -267,7 +281,7 @@ function KpiCard({
           color: alert ? t.alert : t.onSurface,
         }}
       >
-        {value}
+        {value ?? "—"}
       </span>
       {sub ? <span style={{ fontSize: "0.72rem", color: t.onSurfaceVariant }}>{sub}</span> : null}
     </div>

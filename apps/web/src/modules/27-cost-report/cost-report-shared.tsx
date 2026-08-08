@@ -5,6 +5,7 @@
 import { useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
+import { useSearchParams } from "react-router-dom";
 import { humanize, shortDate } from "./cost-report-status";
 
 export const cellStyle: CSSProperties = {
@@ -21,6 +22,11 @@ export const headStyle: CSSProperties = {
   fontWeight: 600,
 };
 export const rowStyle: CSSProperties = { borderTop: "1px solid var(--color-surface-container)" };
+export const rowLinkStyle: CSSProperties = {
+  color: "var(--color-primary)",
+  textDecoration: "none",
+  fontVariantNumeric: "tabular-nums",
+};
 export const numStyle: CSSProperties = {
   ...cellStyle,
   textAlign: "right",
@@ -53,6 +59,7 @@ export function useReportPicker(): {
   error: boolean;
 } {
   const client = useApiClient();
+  const [searchParams] = useSearchParams();
   const [reports, setReports] = useState<ReportRef[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,9 +77,13 @@ export function useReportPicker(): {
     const d = res.data as unknown as { items?: ReportRef[] };
     const list = d.items ?? (res.data as unknown as ReportRef[]) ?? [];
     setReports(list);
-    setSelectedId((prev) => prev ?? list[0]?.costReportId ?? null);
+    // Honor a `?reportId=` deep link (e.g. from the Cost Reports list) if it names a report in this
+    // org's list; otherwise fall back to the first report, same as before.
+    const wanted = searchParams.get("reportId");
+    const wantedIsValid = wanted != null && list.some((r) => r.costReportId === wanted);
+    setSelectedId((prev) => prev ?? (wantedIsValid ? wanted : list[0]?.costReportId ?? null));
     setLoading(false);
-  }, [client]);
+  }, [client, searchParams]);
 
   useEffect(() => {
     void load();

@@ -14,7 +14,8 @@ import {
 // Lantern: WorkQueueLayout + KpiStrip + No-Line table + §6.6 StatusPill via cost-report-status.ts.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { cellStyle, headStyle, numStyle, rowStyle, tableStyle } from "./cost-report-shared";
+import { Link } from "react-router-dom";
+import { cellStyle, headStyle, numStyle, rowLinkStyle, rowStyle, tableStyle } from "./cost-report-shared";
 import { STATE_TONE, humanize, shortDate, toneOf } from "./cost-report-status";
 
 interface ReportRow {
@@ -100,8 +101,13 @@ export function CostReportList(): JSX.Element {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.costReportId} style={rowStyle}>
-                  <td style={{ ...cellStyle, fontVariantNumeric: "tabular-nums" }}>
-                    {shortDate(r.fiscalYearEndDate)}
+                  <td style={cellStyle}>
+                    <Link
+                      to={`/cost-reports/workspace?reportId=${r.costReportId}`}
+                      style={rowLinkStyle}
+                    >
+                      {shortDate(r.fiscalYearEndDate)}
+                    </Link>
                   </td>
                   <td style={{ ...cellStyle, fontVariantNumeric: "tabular-nums" }}>
                     {r.providerEntityId.slice(0, 8)}

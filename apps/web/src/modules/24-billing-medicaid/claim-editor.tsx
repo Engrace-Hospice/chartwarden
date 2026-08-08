@@ -77,6 +77,11 @@ interface ClaimDetail {
   updatedAt: string;
 }
 
+interface PatientSummary {
+  firstName: string;
+  lastName: string;
+}
+
 interface ClaimLine {
   id: string;
   lineNumber: number;
@@ -104,6 +109,7 @@ export function MedicaidClaimEditor(): JSX.Element {
   const client = useApiClient();
   const { claimId } = useParams<{ claimId: string }>();
   const [claim, setClaim] = useState<ClaimDetail | null>(null);
+  const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [lines, setLines] = useState<ClaimLine[]>([]);
   const [linesDegraded, setLinesDegraded] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -128,10 +134,18 @@ export function MedicaidClaimEditor(): JSX.Element {
       setLoading(false);
       return;
     }
-    setClaim(detailRes.data as unknown as ClaimDetail);
+    const detail = detailRes.data as unknown as ClaimDetail;
+    setClaim(detail);
     if (linesRes.error) setLinesDegraded(true);
     else setLines((linesRes.data as unknown as ClaimLine[]) ?? []);
     setLoading(false);
+    // Fetched after (not alongside) the claim, since the patient id only becomes known once the
+    // claim loads — resolves the "Patient" field to a name instead of a raw id (§5.1's own
+    // convention elsewhere, e.g. the M14 IDG History patient banner).
+    const pRes = await client.GET("/api/v1/patients/{id}", {
+      params: { path: { id: detail.patientId } },
+    });
+    if (pRes.data) setPatient(pRes.data as unknown as PatientSummary);
   }, [client, claimId]);
 
   useEffect(() => {
@@ -327,7 +341,11 @@ export function MedicaidClaimEditor(): JSX.Element {
             mono={Boolean(claim.mcoId)}
           />
           <Field label="Total charges" value={money(totalCharges)} />
-          <Field label="Patient" value={shortId(claim.patientId)} mono />
+          <Field
+            label="Patient"
+            value={patient ? `${patient.firstName} ${patient.lastName}` : shortId(claim.patientId)}
+            mono={!patient}
+          />
           <Field label="Version" value={String(claim.version)} />
         </SummaryGrid>
 

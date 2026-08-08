@@ -137,6 +137,27 @@ async function main(): Promise<void> {
     [orgId, roleId],
   );
 
+  // Additionally bind `platform_ops` to orgadmin@ ONLY (not admin@) — the ABAC role the M34
+  // platform-ops console (apps/admin) requires on top of a permission key, per
+  // `tenant_lifecycle_platform_ops` (apps/backend/.../34-saas-tenant-platform/abac-predicates.ts).
+  // No separate role_permission grants needed: org_admin (bound above) already carries the full
+  // catalog, and `context.roles` is the union of every role bound to the membership — this role
+  // exists purely to add the `platform_ops` key to that union. Gives the local dev environment one
+  // account that can actually sign into and use the admin console (none could before).
+  const platformOpsRole = await db.query<{ id: string }>(
+    `INSERT INTO role (organization_id, key, name, category, scope_level, enabled, description)
+     VALUES ($1,'platform_ops','Platform Operations','admin_executive'::role_category,'organization', true,
+             'Platform-ops console access (dev seed)')
+     ON CONFLICT (organization_id, key) DO UPDATE SET name = EXCLUDED.name
+     RETURNING id`,
+    [orgId],
+  );
+  await db.query(
+    `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)
+     ON CONFLICT (membership_id, role_id) DO NOTHING`,
+    [orgId, membershipId, platformOpsRole.rows[0].id],
+  );
+
   await db.end();
 
   // Append to CREDENTIALS.local.md (marker-based replace, same idempotent pattern
@@ -157,7 +178,10 @@ async function main(): Promise<void> {
     "",
     "| Persona | Email | Password | Role key(s) |",
     "|---|---|---|---|",
-    `| Organization Administrator | \`${USER.email}\` | \`${password}\` | ${USER.roleKey} |`,
+    `| Organization Administrator | \`${USER.email}\` | \`${password}\` | ${USER.roleKey}, platform_ops |`,
+    "",
+    "> This account also carries `platform_ops` — the ABAC role the admin console (apps/admin,",
+    "> `:5175`) requires. It's the only local account that can sign into it.",
     "",
   ];
   writeFileSync(credsPath, lines.join("\n"));
@@ -165,7 +189,7 @@ async function main(): Promise<void> {
   console.log("\n✓ org_admin user created");
   console.log(`  email:    ${USER.email}`);
   console.log(`  password: ${password}`);
-  console.log(`  role:     ${USER.roleKey} (${keys.length} perms, full catalog)`);
+  console.log(`  role:     ${USER.roleKey} (${keys.length} perms, full catalog) + platform_ops`);
   console.log(
     `  admin@wardenx.local bound to org_admin: ${bound.rowCount ? "yes" : "already bound"}`,
   );
