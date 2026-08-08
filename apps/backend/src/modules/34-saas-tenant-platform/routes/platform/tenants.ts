@@ -142,9 +142,14 @@ export function registerTenantPlatformRoutes(
     "/api/v1/platform/tenants/:orgSlug/status",
     { preHandler: [TRANSITION, ABAC_TRANSITION, STEPUP_TRANSITION] },
     async (request, reply) => {
-      const { userId } = actorOf(request);
+      // membershipId (not userId) to match the sibling provisionTenant/requestShred/
+      // requestDekRotate calls in this file — the service currently discards this parameter
+      // (`void actorUserId` in service-drizzle.ts) and hardcodes `actorMembershipId: null` on the
+      // status-event row, but the moment that plumbing is wired up it must receive a membership id,
+      // not the raw Better Auth user id.
+      const { membershipId } = actorOf(request);
       const body = parse(StatusTransitionRequest, request.body);
-      const res = await service.transitionStatus(orgSlugOf(request), userId, {
+      const res = await service.transitionStatus(orgSlugOf(request), membershipId, {
         toStatus: body.toStatus,
         transitionReason: body.transitionReason,
       });
@@ -157,9 +162,10 @@ export function registerTenantPlatformRoutes(
     "/api/v1/platform/tenants/:orgSlug/offboard",
     { preHandler: [OFFBOARD, ABAC_OFFBOARD, STEPUP_OFFBOARD] },
     async (request, reply) => {
-      const { userId } = actorOf(request);
+      // membershipId (not userId) — same reasoning as the status-transition route above.
+      const { membershipId } = actorOf(request);
       const body = parse(OffboardTenantRequest, request.body);
-      const res = await service.offboardTenant(orgSlugOf(request), userId, {
+      const res = await service.offboardTenant(orgSlugOf(request), membershipId, {
         transitionReason: body.transitionReason,
         exportPurpose: body.exportPurpose,
       });

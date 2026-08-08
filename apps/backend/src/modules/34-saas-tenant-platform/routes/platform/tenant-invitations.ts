@@ -25,8 +25,13 @@ export interface TenantInvitationRouteDeps {
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
   const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
+  // `userId` here is the acting MEMBERSHIP id — `issueInvitation()` writes it straight into
+  // `tenant_invitation.inviter_membership_id` ("M2 membership (app-validated)"). This used to read
+  // `ctx.userId` (the raw Better Auth user id, a different id space); matches the fail-closed
+  // pattern in the sibling `tenants.ts` `actorOf`.
+  const membershipId = ctx?.attributes.membershipId;
+  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
+  return { organizationId: ctx.organizationId, userId: membershipId };
 }
 
 // §4.5 permission + §4.6 ABAC (`tenant_lifecycle_platform_ops`) + §6 step-up (issue only).

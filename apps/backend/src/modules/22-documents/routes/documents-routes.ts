@@ -67,8 +67,12 @@ function actorOf(request: FastifyRequest): {
   roles: readonly string[];
 } {
   const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
+  // `userId` here is the acting MEMBERSHIP id — `openReview()` writes it straight into
+  // `reviewer_membership_id` (documents-route-service-db.ts). This used to read `ctx.userId` (the
+  // raw Better Auth user id, a different id space), landing the wrong id in that FK.
+  const membershipId = ctx?.attributes.membershipId;
+  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
+  return { organizationId: ctx.organizationId, userId: membershipId, roles: ctx.roles };
 }
 
 const docIdOf = (request: FastifyRequest): string => parse(DocumentParamsSchema, request.params).id;
