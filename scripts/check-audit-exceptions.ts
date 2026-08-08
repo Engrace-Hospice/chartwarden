@@ -31,19 +31,10 @@ const ACCEPTED_ADVISORIES: ReadonlyArray<{
   readonly reason: string;
   readonly until: string;
 }> = [
-  {
-    ghsaId: "GHSA-qwww-vcr4-c8h2",
-    reason:
-      "react-router 'RSC Mode CSRF Bypass' (CVSS 7.1, CWE-352) is scoped to React Server Components " +
-      "mode. WardenX's three SPAs (apps/web, apps/portal, apps/admin) are plain Vite client-rendered " +
-      "apps built on react-router-dom — no RSC/framework-mode usage anywhere in the codebase (verified " +
-      "2026-08-05: no `@react-router/dev`, `unstable_RSCStaticRouter`, or `renderToReadableStream` " +
-      "usage). The vulnerable code path is not reachable.",
-    until:
-      "react-router-dom publishes a patched >=8.3.0 release (as of 2026-08-05 the latest published " +
-      "version is still 7.18.2 — no fixed version exists yet to upgrade to). Re-run `bun audit` after " +
-      "any react-router-dom bump and remove this entry once the range no longer matches.",
-  },
+  // GHSA-qwww-vcr4-c8h2 (react-router RSC Mode CSRF Bypass) was removed 2026-08-08: `bun audit`
+  // no longer reports it against react-router-dom@7.18.2 (advisory range narrowed upstream), so
+  // this gate's own stale-entry check flagged the exception as obsolete. Re-add only if `bun
+  // audit` starts reporting it again.
 ];
 
 const result = spawnSync("bun", ["audit", "--json"], { encoding: "utf8" });
