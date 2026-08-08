@@ -109,6 +109,7 @@ import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction
 import {
   M5_OUTBOX_EVENTS,
   buildM29ProposalApplierConsumer,
+  buildM5DeathCascadeConsumer,
   createDrizzlePatientEraseStore,
   createDrizzlePatientMutatorStore,
   createDrizzlePatientReaderStore,
@@ -2043,6 +2044,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // requires `organizationId` on every publish (`OutboxPublishInput`), which `registerLegalHoldsRoutes`
   // supplies explicitly (see legal-holds.ts's `M4OutboxPort`).
   const m4OutboxPublisher = bindCallerModule(txOutboxPublisher, "m4");
+  // GAP-004 — the M5 §7.8 death-cascade `m5.patient.deceased` emit (deceased-db.ts).
+  const m5OutboxPublisher = bindCallerModule(txOutboxPublisher, "m5");
   const m6OutboxPublisher = bindCallerModule(txOutboxPublisher, "m6");
   // M6 → M37 (confirm-handshake fix, 2026-08-05) — the LIVE `IpuBedAssignmentProvider` seam (registered
   // by M37 at boot), resolved lazily per call (the `m24SignedEncounters`/`m24CoverageResolver` precedent)
@@ -3628,6 +3631,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // M5 §4.10 — the proposal applier (LIVE end-to-end now that M29's accept path publishes
           // the event; skips everything not m5-owned).
           buildM29ProposalApplierConsumer(),
+          // M5 §7.8 (GAP-004) — the death cascade: resolves the decedent through M6's
+          // DeathDischargeReader seam and flips patient.status='deceased' + emits
+          // m5.patient.deceased (seeds M16 bereavement / M23 final claim / M28 FHIR / M36 IDG alert).
+          buildM5DeathCascadeConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
           // M6 §4.8.3 — the LIVE admission-event applier (task-15): resolves facts + executes
           // through the Drizzle gateway (external death / HL7 withdrawal / compliance windows),
           // records refusals durably + emits m6.applier.refused. Second consumer on the event so

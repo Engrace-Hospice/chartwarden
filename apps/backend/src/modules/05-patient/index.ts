@@ -109,6 +109,21 @@ export {
   buildM29ProposalApplierConsumer,
 } from "./outbox-consumers/live-binding";
 
+// GAP-004 — the real DB-backed §7.8 death-cascade port + the LIVE `m6.discharge.death` consumer
+// binding the boot outbox dispatcher registers (mountPatientRoutes never covered "record death";
+// M6's discharge flow is the actual source of a hospice death — see the consumer file header).
+export {
+  type DeathCascadeOutcome,
+  type M5OutboxEmission,
+  type M5OutboxPort,
+  InvalidDeceasedTransitionError,
+  recordDeathFromDischarge,
+} from "./deceased-db";
+export {
+  M5_DEATH_CASCADE_CONSUMER,
+  buildM5DeathCascadeConsumer,
+} from "./outbox-consumers/m6-discharge-death";
+
 // M5-T12 — the `clinical_record` destruction eraser (§8/§10, D7/D8). Screens DEFER (no apps/web
 // codePath in the M5 manifest — the entity/admit/merge screens are tracked for the ADR-0030 UI
 // follow-up). DR Tier 1 (the patient spine is on every clinical/billing critical path) — see
