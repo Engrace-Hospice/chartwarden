@@ -413,14 +413,15 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m6.discharge.death",
     moduleOwner: "m6",
     description:
-      "Discharge reason was death (route 39 / recordExternalDeath) — seeds bereavement (D6).",
+      "Discharge reason was death (route 39 / recordExternalDeath) — seeds bereavement (D6) and, via " +
+      "M5's §7.8 death cascade (GAP-004), flips patient.status='deceased'.",
     payloadSchema: Type.Object({
       dischargeEventId: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
       dischargeDate: Type.String({ minLength: 1 }),
       source: applierSource,
     }),
-    declaredConsumers: ["m16"],
+    declaredConsumers: ["m16", "m5"],
     isOutboxOnly: true,
   },
   {
