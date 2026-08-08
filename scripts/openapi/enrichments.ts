@@ -737,11 +737,26 @@ import {
 import {
   AccountingQuerySchema as M4EAccountingQuerySchema,
   AccountingResponseSchema as M4EAccountingResponseSchema,
+  ApproveDestructionCertificateResponseSchema as M4EApproveDestructionCertificateResponseSchema,
   AuditEventSchema as M4EAuditEventSchema,
   AuditEventsQuerySchema as M4EAuditEventsQuerySchema,
   AuditEventsResponseSchema as M4EAuditEventsResponseSchema,
+  AuditExportResponseSchema as M4EAuditExportResponseSchema,
+  CreateAuditExportBodySchema as M4ECreateAuditExportBodySchema,
+  CreateAuditExportResponseSchema as M4ECreateAuditExportResponseSchema,
+  CreateLegalHoldBodySchema as M4ECreateLegalHoldBodySchema,
+  CreateLegalHoldResponseSchema as M4ECreateLegalHoldResponseSchema,
+  DestructionCertificateListQuerySchema as M4EDestructionCertificateListQuerySchema,
+  DestructionCertificateListResponseSchema as M4EDestructionCertificateListResponseSchema,
+  HoldDestructionCertificateBodySchema as M4EHoldDestructionCertificateBodySchema,
+  HoldDestructionCertificateResponseSchema as M4EHoldDestructionCertificateResponseSchema,
+  IntegrityReportResponseSchema as M4EIntegrityReportResponseSchema,
+  LegalHoldListQuerySchema as M4ELegalHoldListQuerySchema,
+  LegalHoldListResponseSchema as M4ELegalHoldListResponseSchema,
   PatientAccessQuerySchema as M4EPatientAccessQuerySchema,
   PatientAccessResponseSchema as M4EPatientAccessResponseSchema,
+  ReleaseLegalHoldBodySchema as M4EReleaseLegalHoldBodySchema,
+  ReleaseLegalHoldResponseSchema as M4EReleaseLegalHoldResponseSchema,
 } from "../../apps/backend/src/modules/04-audit/routes/audit-typebox";
 
 // M05 Patient & Demographics — OpenAPI enrichment imports. EVERY symbol is M5E-aliased because the
@@ -7202,6 +7217,57 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Patient accounting of disclosures — §164.528 / 42 CFR §2.13, scope-gated (§7.1)",
     query: M4EAccountingQuerySchema,
     response: M4EAccountingResponseSchema,
+  },
+
+  // GAP-003 — legal holds (§4.2, §10.6, M04-F03).
+  "GET /api/v1/legal-holds": {
+    summary: "List legal holds (cursor-paginated, §4.2)",
+    query: M4ELegalHoldListQuerySchema,
+    response: M4ELegalHoldListResponseSchema,
+  },
+  "POST /api/v1/legal-holds": {
+    summary: "Apply a legal hold (§10.6) — 422 EMPTY_CRITERIA if no selector given",
+    body: M4ECreateLegalHoldBodySchema,
+    response: M4ECreateLegalHoldResponseSchema,
+  },
+  "POST /api/v1/legal-holds/:id/release": {
+    summary: "Release a legal hold (§10.6)",
+    body: M4EReleaseLegalHoldBodySchema,
+    response: M4EReleaseLegalHoldResponseSchema,
+  },
+
+  // GAP-003 — destruction certificates (§4.2, §6, §10.5).
+  "GET /api/v1/destruction-certificates": {
+    summary: "List destruction certificates (cursor-paginated, §4.2)",
+    query: M4EDestructionCertificateListQuerySchema,
+    response: M4EDestructionCertificateListResponseSchema,
+  },
+  "POST /api/v1/destruction-certificates/:id/approve": {
+    summary:
+      "Approve a pending destruction certificate (step-up required, §6) — 409 HELD_RECORDS_PRESENT",
+    response: M4EApproveDestructionCertificateResponseSchema,
+  },
+  "POST /api/v1/destruction-certificates/:id/hold": {
+    summary: "Defer a destruction certificate (litigation hold, §6)",
+    body: M4EHoldDestructionCertificateBodySchema,
+    response: M4EHoldDestructionCertificateResponseSchema,
+  },
+
+  // GAP-003 — compliance exports (§4.2, §4.3, M04-F04 / SEC-052).
+  "POST /api/v1/audit/exports": {
+    summary: "Request a watermarked compliance export (step-up required, M04-F04 / SEC-052)",
+    body: M4ECreateAuditExportBodySchema,
+    response: M4ECreateAuditExportResponseSchema,
+  },
+  "GET /api/v1/audit/exports/:id": {
+    summary: "Fetch an export's status; `downloadUrl` present only once `status` is 'ready'",
+    response: M4EAuditExportResponseSchema,
+  },
+
+  // GAP-003 — tamper-evidence report (§4.2, §10.4).
+  "GET /api/v1/audit/integrity/report": {
+    summary: "Append-only GRANT verification report (§10.4); backup-sampling/seal-chain omitted until wired",
+    response: M4EIntegrityReportResponseSchema,
   },
 });
 

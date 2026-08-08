@@ -144,6 +144,30 @@
     },
     {
       "app": "web",
+      "module": "04-audit",
+      "moduleId": 4,
+      "id": "audit.legal-holds",
+      "path": "/compliance/legal-holds",
+      "permission": "legalhold.read"
+    },
+    {
+      "app": "web",
+      "module": "04-audit",
+      "moduleId": 4,
+      "id": "audit.integrity-report",
+      "path": "/compliance/audit/integrity",
+      "permission": "audit.integrity"
+    },
+    {
+      "app": "web",
+      "module": "04-audit",
+      "moduleId": 4,
+      "id": "audit.exports",
+      "path": "/compliance/audit/exports",
+      "permission": "audit.export"
+    },
+    {
+      "app": "web",
       "module": "05-patient",
       "moduleId": 5,
       "id": "patient.census",

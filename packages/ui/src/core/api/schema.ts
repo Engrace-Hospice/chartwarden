@@ -2785,6 +2785,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/audit/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request a watermarked compliance export (step-up required, M04-F04 / SEC-052) */
+        post: operations["postApiV1AuditExports"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit/exports/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch an export's status; `downloadUrl` present only once `status` is 'ready' */
+        get: operations["getApiV1AuditExportsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/audit/integrity/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Append-only GRANT verification report (§10.4); backup-sampling/seal-chain omitted until wired */
+        get: operations["getApiV1AuditIntegrityReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/audit/patients/{patientId}/access": {
         parameters: {
             query?: never;
@@ -6033,6 +6084,57 @@ export interface paths {
         head?: never;
         /** Start work on a denial case (→ in_progress, §4.1) */
         patch: operations["patchApiV1DenialsByIdStart"];
+        trace?: never;
+    };
+    "/api/v1/destruction-certificates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List destruction certificates (cursor-paginated, §4.2) */
+        get: operations["getApiV1Destructioncertificates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/destruction-certificates/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a pending destruction certificate (step-up required, §6) — 409 HELD_RECORDS_PRESENT */
+        post: operations["postApiV1DestructioncertificatesByIdApprove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/destruction-certificates/{id}/hold": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Defer a destruction certificate (litigation hold, §6) */
+        post: operations["postApiV1DestructioncertificatesByIdHold"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/discharges/{id}/cosign-for-cause": {
@@ -9824,6 +9926,41 @@ export interface paths {
         put?: never;
         /** Check out a visitor (§4.1) */
         post: operations["postApiV1IpuvisitorsByIdCheckout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/legal-holds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List legal holds (cursor-paginated, §4.2) */
+        get: operations["getApiV1Legalholds"];
+        put?: never;
+        /** Apply a legal hold (§10.6) — 422 EMPTY_CRITERIA if no selector given */
+        post: operations["postApiV1Legalholds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/legal-holds/{id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Release a legal hold (§10.6) */
+        post: operations["postApiV1LegalholdsByIdRelease"];
         delete?: never;
         options?: never;
         head?: never;
@@ -25555,6 +25692,123 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1AuditExports: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    scope: {
+                        patientIds?: string[];
+                        actorIds?: string[];
+                        resourceKinds?: string[];
+                        eventTypes?: string[];
+                        /** Format: date-time */
+                        from: string;
+                        /** Format: date-time */
+                        to: string;
+                    };
+                    justification: string;
+                    format: "csv" | "ndjson" | "pdf";
+                    watermarked?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        exportId: string;
+                        /** @constant */
+                        status: "pending";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AuditExportsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        status: string;
+                        format: "csv" | "ndjson" | "pdf";
+                        recordCount: number | null;
+                        downloadUrl?: string;
+                        /** Format: date-time */
+                        expiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AuditIntegrityReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        appendOnly: {
+                            grantsVerified: boolean;
+                            /** Format: date-time */
+                            lastChecked: string;
+                        };
+                        backupSampling?: {
+                            /** Format: date-time */
+                            lastRun: string;
+                            sampled: number;
+                            mismatches: number;
+                        };
+                        sealChain?: {
+                            contiguous: boolean;
+                            lastSealedPartition: string;
+                            brokenAt: string | null;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1AuditPatientsByPatientIdAccess: {
         parameters: {
             query?: {
@@ -34668,6 +34922,113 @@ export interface operations {
                         /** Format: uuid */
                         id: string;
                         version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Destructioncertificates: {
+        parameters: {
+            query?: {
+                status?: "pending" | "approved" | "held" | "executed" | "partial_refused";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            dataClass: string;
+                            recordCount: number;
+                            /** Format: date-time */
+                            dateRangeStart: string;
+                            /** Format: date-time */
+                            dateRangeEnd: string;
+                            method: string;
+                            status: "pending" | "approved" | "held" | "executed" | "partial_refused";
+                            approvedBy: string | null;
+                            executedAt: string | null;
+                            refusalReason: string | null;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DestructioncertificatesByIdApprove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "approved";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DestructioncertificatesByIdHold: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "held";
                     };
                 };
             };
@@ -44123,6 +44484,134 @@ export interface operations {
                         maskRequired: boolean;
                         checkedInAt: string;
                         checkedOutAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Legalholds: {
+        parameters: {
+            query?: {
+                status?: "active" | "released";
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            name: string;
+                            criteria: {
+                                patientIds?: string[];
+                                dateRange?: {
+                                    /** Format: date-time */
+                                    from: string;
+                                    /** Format: date-time */
+                                    to: string;
+                                };
+                                resourceKinds?: string[];
+                            };
+                            status: "active" | "released";
+                            reason: string;
+                            appliedBy: string | null;
+                            /** Format: date-time */
+                            appliedAt: string;
+                            releasedAt: string | null;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Legalholds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    criteria: {
+                        patientIds?: string[];
+                        dateRange?: {
+                            /** Format: date-time */
+                            from: string;
+                            /** Format: date-time */
+                            to: string;
+                        };
+                        resourceKinds?: string[];
+                    };
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        legalHoldId: string;
+                        matchedRecordCount: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1LegalholdsByIdRelease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        released: true;
+                        restoredRecordCount: number;
                     };
                 };
             };

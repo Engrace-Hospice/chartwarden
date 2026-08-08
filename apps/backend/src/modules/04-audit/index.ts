@@ -35,6 +35,21 @@ export {
   computeLookbackForScope,
   registerPatientAccountingRoute,
 } from "./routes/patient-accounting";
+// GAP-003: the §6/§7/§10.4 compliance surfaces that were coded (domain logic) but never given an
+// HTTP surface — legal holds, destruction certificates, compliance exports, the integrity report.
+export {
+  type LegalHoldsRouteDeps,
+  type M4OutboxPort,
+  type M4OutboxEmission,
+  registerLegalHoldsRoutes,
+} from "./routes/legal-holds";
+export {
+  type DestructionCertificatesRouteDeps,
+  registerDestructionCertificatesRoutes,
+} from "./routes/destruction-certificates";
+export { type AuditExportsRouteDeps, registerAuditExportsRoutes } from "./routes/audit-exports";
+export { type AuditIntegrityRouteDeps, registerAuditIntegrityRoutes } from "./routes/audit-integrity";
+export { M4_OUTBOX_EVENTS } from "./events-by-m4";
 // M4-T08: the destruction path — the REAL `audit_event` eraser (registered over the deny-stub by
 // the composition root) enforcing legal-hold supremacy (§10.6) + Part 2 lifetime retention (§6).
 // TASK-003/ARCH-007: the Drizzle store enumerates REAL row-groups via the sanctioned
@@ -70,20 +85,45 @@ export {
 import { createDbAuditQuery } from "@wardenx/audit";
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
+import { registerAuditExportsRoutes as _registerAuditExportsRoutes } from "./routes/audit-exports";
+import { registerAuditIntegrityRoutes as _registerAuditIntegrityRoutes } from "./routes/audit-integrity";
 import { registerAuditRoutes as _registerAuditRoutes } from "./routes/audit-routes";
+import { registerDestructionCertificatesRoutes as _registerDestructionCertificatesRoutes } from "./routes/destruction-certificates";
+import type { M4OutboxPort } from "./routes/legal-holds";
+import { registerLegalHoldsRoutes as _registerLegalHoldsRoutes } from "./routes/legal-holds";
+import { registerPatientAccountingRoute as _registerPatientAccountingRoute } from "./routes/patient-accounting";
+
+/** Optional composition-root ports `mountAuditRoutes` binds beyond the plain Drizzle handle. */
+export interface MountAuditRoutesOptions {
+  /** The `m4`-pinned transactional-outbox port (§7 M04-F03). Best-effort like every other
+   *  module's outbox binding: absent ⇒ legal-hold mutations still commit, only the
+   *  `m4.legal_hold.applied`/`released` notification is skipped. */
+  readonly outbox?: M4OutboxPort;
+}
 
 /**
- * Mount the M4 audit-log REST routes (GET /audit/events, /audit/events/:id, the per-patient
- * access history) on the real Drizzle AuditQuery over `audit_event` (RLS-scoped). The composition
- * root calls this when a DB client is present. The §164.528 accounting route (registerPatientAccounting
- * Route) is NOT mounted here yet. The `audit.elevated_access` meta-event sink is the DURABLE Drizzle
- * path (`audit: db` — `AuditExecutor` is structurally `insert(table).values(row)`, the M2 precedent;
- * migration 0119 makes the `wardenx_app` INSERT legal under RLS), so an auditor's elevated-access
- * meta-event survives the process instead of dying in a Map.
+ * Mount the FULL M4 audit/compliance REST surface on the real Drizzle AuditQuery over
+ * `audit_event` (RLS-scoped): event search + per-patient access history + the §164.528/§2.13
+ * accounting route (GAP-002), and the §6/§7/§10.4 compliance surfaces (GAP-003) — legal holds,
+ * destruction certificates, compliance exports, the integrity report. The composition root calls
+ * this when a DB client is present. Every registrar shares the same `{ query, audit }` (or `{ db }`)
+ * deps shape, so mounting them together here means a future route can't be exported-but-never-
+ * called again the way the accounting route was (GAP-002's actual bug). The `audit.elevated_access`
+ * meta-event sink is the DURABLE Drizzle path (`audit: db` — `AuditExecutor` is structurally
+ * `insert(table).values(row)`, the M2 precedent; migration 0119 makes the `wardenx_app` INSERT
+ * legal under RLS), so an auditor's elevated-access meta-event survives the process instead of
+ * dying in a Map.
  */
-export function mountAuditRoutes(app: FastifyInstance, db: DbClient): void {
-  _registerAuditRoutes(app, {
-    query: createDbAuditQuery(db),
-    audit: db,
-  });
+export function mountAuditRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  options: MountAuditRoutesOptions = {},
+): void {
+  const deps = { query: createDbAuditQuery(db), audit: db };
+  _registerAuditRoutes(app, deps);
+  _registerPatientAccountingRoute(app, deps);
+  _registerLegalHoldsRoutes(app, { db, query: deps.query, outbox: options.outbox });
+  _registerDestructionCertificatesRoutes(app, { db });
+  _registerAuditExportsRoutes(app, { db });
+  _registerAuditIntegrityRoutes(app, { db });
 }
