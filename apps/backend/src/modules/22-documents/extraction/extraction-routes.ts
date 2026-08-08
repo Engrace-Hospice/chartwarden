@@ -34,8 +34,13 @@ export interface DocLensRouteDeps {
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
   const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
+  // `userId` here is the acting MEMBERSHIP id — matches the sibling actorOf() in
+  // documents-routes.ts, whose `userId` writes into `reviewer_membership_id`. Neither current call
+  // site here threads `userId` downstream, but this was still the same defective raw-`ctx.userId`
+  // pattern fixed across M8-M14/M17/M22, kept consistent to avoid landmining a future caller.
+  const membershipId = ctx?.attributes.membershipId;
+  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
+  return { organizationId: ctx.organizationId, userId: membershipId };
 }
 
 export const RunBatchRequest = Type.Object({

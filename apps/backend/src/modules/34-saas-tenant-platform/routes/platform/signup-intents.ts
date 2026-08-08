@@ -83,9 +83,12 @@ export function registerSignupIntentRoutes(
     "/api/v1/platform/signup-intents/:id/reject",
     { preHandler: [QUALIFY, ABAC_QUALIFY] },
     async (request) => {
-      const { userId } = actorOf(request);
+      // membershipId (not userId) — matches the sibling qualifyIntent call above; the service
+      // currently discards this parameter (`void actorUserId` in service-drizzle.ts), but the
+      // moment that plumbing is wired up it must receive a membership id, not the raw user id.
+      const { membershipId } = actorOf(request);
       const body = parse(RejectIntentRequest, request.body);
-      return service.rejectIntent(intentIdOf(request), userId, {
+      return service.rejectIntent(intentIdOf(request), membershipId, {
         rejectionReason: body.rejectionReason,
       });
     },

@@ -59,8 +59,13 @@ export interface SchedulingRouteDeps {
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
   const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
+  // `userId` here is the acting MEMBERSHIP id (see scheduling-route-service-db.ts's own header
+  // comment: "the acting membership is the passed `userId` (stored as `actor_membership_id` on
+  // `visit_state_history`...)"). This used to read `ctx.userId` (the raw Better Auth user id, a
+  // different id space), FK-violating every write.
+  const membershipId = ctx?.attributes.membershipId;
+  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
+  return { organizationId: ctx.organizationId, userId: membershipId };
 }
 
 /** The M2 step-up freshness signal (header set by the M2 step-up flow; the self-attest start path needs it). */

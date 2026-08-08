@@ -48,8 +48,13 @@ export interface IdgRouteDeps {
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
   const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
+  // `userId` here is the acting MEMBERSHIP id (see idg-route-service-db.ts's own header comment:
+  // "the acting membership is the passed `userId`, stored on coordinator/recorded_by/etc.") — every
+  // downstream write lands it in a `*_membership_id` column. This used to read `ctx.userId` (the
+  // raw Better Auth user id, a different id space), FK-violating every write.
+  const membershipId = ctx?.attributes.membershipId;
+  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
+  return { organizationId: ctx.organizationId, userId: membershipId };
 }
 
 // Static permission guards (§4.6).

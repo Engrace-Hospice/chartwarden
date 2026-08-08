@@ -46,9 +46,13 @@ function actorOf(request: FastifyRequest): {
   actorIp: string | null;
 } {
   const ctx = request.context;
+  // `membershipId` writes straight into `support_session.actor_membership_id` ("platform-ops actor
+  // (M1 membership)"). This used to fall back to the raw Better Auth `ctx.userId` when
+  // `attributes.membershipId` was absent, landing the wrong id in that FK instead of failing —
+  // fail closed like the sibling `tenants.ts`/`tenant-invitations.ts` actorOf() do.
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  const membershipId =
-    typeof ctx.attributes?.membershipId === "string" ? ctx.attributes.membershipId : ctx.userId;
+  const membershipId = ctx.attributes?.membershipId;
+  if (typeof membershipId !== "string") throw new UnauthorizedError();
   return {
     organizationId: ctx.organizationId,
     userId: ctx.userId,
