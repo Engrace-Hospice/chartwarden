@@ -23406,6 +23406,312 @@
         }
       }
     },
+    "/api/v1/audit/exports": {
+      "post": {
+        "operationId": "postApiV1AuditExports",
+        "tags": [
+          "04-audit"
+        ],
+        "summary": "Request a watermarked compliance export (step-up required, M04-F04 / SEC-052)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "exportId",
+                    "status"
+                  ],
+                  "properties": {
+                    "exportId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "const": "pending",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "scope",
+                  "justification",
+                  "format"
+                ],
+                "properties": {
+                  "scope": {
+                    "type": "object",
+                    "required": [
+                      "from",
+                      "to"
+                    ],
+                    "properties": {
+                      "patientIds": {
+                        "type": "array",
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      },
+                      "actorIds": {
+                        "type": "array",
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      },
+                      "resourceKinds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "eventTypes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "from": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "to": {
+                        "format": "date-time",
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "justification": {
+                    "minLength": 10,
+                    "type": "string"
+                  },
+                  "format": {
+                    "anyOf": [
+                      {
+                        "const": "csv",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ndjson",
+                        "type": "string"
+                      },
+                      {
+                        "const": "pdf",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "watermarked": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audit/exports/{id}": {
+      "get": {
+        "operationId": "getApiV1AuditExportsById",
+        "tags": [
+          "04-audit"
+        ],
+        "summary": "Fetch an export's status; `downloadUrl` present only once `status` is 'ready'",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "status",
+                    "format",
+                    "recordCount",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "anyOf": [
+                        {
+                          "const": "csv",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ndjson",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pdf",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "recordCount": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "downloadUrl": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/audit/integrity/report": {
+      "get": {
+        "operationId": "getApiV1AuditIntegrityReport",
+        "tags": [
+          "04-audit"
+        ],
+        "summary": "Append-only GRANT verification report (§10.4); backup-sampling/seal-chain omitted until wired",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "appendOnly"
+                  ],
+                  "properties": {
+                    "appendOnly": {
+                      "type": "object",
+                      "required": [
+                        "grantsVerified",
+                        "lastChecked"
+                      ],
+                      "properties": {
+                        "grantsVerified": {
+                          "type": "boolean"
+                        },
+                        "lastChecked": {
+                          "format": "date-time",
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "backupSampling": {
+                      "type": "object",
+                      "required": [
+                        "lastRun",
+                        "sampled",
+                        "mismatches"
+                      ],
+                      "properties": {
+                        "lastRun": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "sampled": {
+                          "type": "integer"
+                        },
+                        "mismatches": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "sealChain": {
+                      "type": "object",
+                      "required": [
+                        "contiguous",
+                        "lastSealedPartition",
+                        "brokenAt"
+                      ],
+                      "properties": {
+                        "contiguous": {
+                          "type": "boolean"
+                        },
+                        "lastSealedPartition": {
+                          "type": "string"
+                        },
+                        "brokenAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/audit/patients/{patientId}/access": {
       "get": {
         "operationId": "getApiV1AuditPatientsByPatientIdAccess",
@@ -62365,6 +62671,316 @@
         }
       }
     },
+    "/api/v1/destruction-certificates": {
+      "get": {
+        "operationId": "getApiV1Destructioncertificates",
+        "tags": [
+          "04-audit"
+        ],
+        "summary": "List destruction certificates (cursor-paginated, §4.2)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "pending",
+                  "type": "string"
+                },
+                {
+                  "const": "approved",
+                  "type": "string"
+                },
+                {
+                  "const": "held",
+                  "type": "string"
+                },
+                {
+                  "const": "executed",
+                  "type": "string"
+                },
+                {
+                  "const": "partial_refused",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "dataClass",
+                          "recordCount",
+                          "dateRangeStart",
+                          "dateRangeEnd",
+                          "method",
+                          "status",
+                          "approvedBy",
+                          "executedAt",
+                          "refusalReason",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "dataClass": {
+                            "type": "string"
+                          },
+                          "recordCount": {
+                            "type": "integer"
+                          },
+                          "dateRangeStart": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "dateRangeEnd": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "method": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "approved",
+                                "type": "string"
+                              },
+                              {
+                                "const": "held",
+                                "type": "string"
+                              },
+                              {
+                                "const": "executed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "partial_refused",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "approvedBy": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "executedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "refusalReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/destruction-certificates/{id}/approve": {
+      "post": {
+        "operationId": "postApiV1DestructioncertificatesByIdApprove",
+        "tags": [
+          "04-audit"
+        ],
+        "summary": "Approve a pending destruction certificate (step-up required, §6) — 409 HELD_RECORDS_PRESENT",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "approved",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/destruction-certificates/{id}/hold": {
+      "post": {
+        "operationId": "postApiV1DestructioncertificatesByIdHold",
+        "tags": [
+          "04-audit"
+        ],
+        "summary": "Defer a destruction certificate (litigation hold, §6)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "const": "held",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 10,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/discharges/{id}/cosign-for-cause": {
       "post": {
         "operationId": "postApiV1DischargesByIdCosignforcause",
@@ -93734,6 +94350,362 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/legal-holds": {
+      "get": {
+        "operationId": "getApiV1Legalholds",
+        "tags": [
+          "04-audit"
+        ],
+        "summary": "List legal holds (cursor-paginated, §4.2)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "active",
+                  "type": "string"
+                },
+                {
+                  "const": "released",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "name",
+                          "criteria",
+                          "status",
+                          "reason",
+                          "appliedBy",
+                          "appliedAt",
+                          "releasedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "criteria": {
+                            "type": "object",
+                            "properties": {
+                              "patientIds": {
+                                "type": "array",
+                                "items": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              },
+                              "dateRange": {
+                                "type": "object",
+                                "required": [
+                                  "from",
+                                  "to"
+                                ],
+                                "properties": {
+                                  "from": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "to": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "resourceKinds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "released",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "appliedBy": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "appliedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "releasedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Legalholds",
+        "tags": [
+          "04-audit"
+        ],
+        "summary": "Apply a legal hold (§10.6) — 422 EMPTY_CRITERIA if no selector given",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "legalHoldId",
+                    "matchedRecordCount"
+                  ],
+                  "properties": {
+                    "legalHoldId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "matchedRecordCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "criteria",
+                  "reason"
+                ],
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "criteria": {
+                    "type": "object",
+                    "properties": {
+                      "patientIds": {
+                        "type": "array",
+                        "items": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      },
+                      "dateRange": {
+                        "type": "object",
+                        "required": [
+                          "from",
+                          "to"
+                        ],
+                        "properties": {
+                          "from": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "to": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "resourceKinds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "reason": {
+                    "minLength": 10,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/legal-holds/{id}/release": {
+      "post": {
+        "operationId": "postApiV1LegalholdsByIdRelease",
+        "tags": [
+          "04-audit"
+        ],
+        "summary": "Release a legal hold (§10.6)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "released",
+                    "restoredRecordCount"
+                  ],
+                  "properties": {
+                    "released": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "restoredRecordCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 10,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }

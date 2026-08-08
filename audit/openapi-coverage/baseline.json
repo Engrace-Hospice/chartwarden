@@ -12,9 +12,9 @@
       "mutatingNoBody": 2
     },
     "04-audit": {
-      "routes": 4,
+      "routes": 13,
       "deficit": 0,
-      "mutatingNoBody": 0
+      "mutatingNoBody": 1
     },
     "05-patient": {
       "routes": 14,
@@ -22,7 +22,7 @@
       "mutatingNoBody": 1
     },
     "06-admission": {
-      "routes": 47,
+      "routes": 48,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -117,7 +117,7 @@
       "mutatingNoBody": 4
     },
     "25-remittance": {
-      "routes": 31,
+      "routes": 32,
       "deficit": 0,
       "mutatingNoBody": 2
     },
@@ -197,7 +197,7 @@
       "mutatingNoBody": 2
     },
     "bootstrap": {
-      "routes": 7,
+      "routes": 9,
       "deficit": 7,
       "mutatingNoBody": 1
     }

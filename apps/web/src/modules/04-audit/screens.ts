@@ -5,6 +5,12 @@ import type { ComponentType } from "react";
 const AuditLogViewer = lazy(() =>
   import("./audit-log-viewer").then((m) => ({ default: m.AuditLogViewer })),
 );
+// GAP-003 — the 3 compliance screens the route surface had no UI for.
+const LegalHolds = lazy(() => import("./legal-holds").then((m) => ({ default: m.LegalHolds })));
+const AuditIntegrityReport = lazy(() =>
+  import("./audit-integrity-report").then((m) => ({ default: m.AuditIntegrityReport })),
+);
+const AuditExports = lazy(() => import("./audit-exports").then((m) => ({ default: m.AuditExports })));
 
 export const auditScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 4,
@@ -17,6 +23,30 @@ export const auditScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admin",
       requiredPermission: "audit.read",
       screen: AuditLogViewer,
+    },
+    {
+      id: "audit.legal-holds",
+      path: "/compliance/legal-holds",
+      title: "Legal Holds",
+      navGroup: "Admin",
+      requiredPermission: "legalhold.read",
+      screen: LegalHolds,
+    },
+    {
+      id: "audit.integrity-report",
+      path: "/compliance/audit/integrity",
+      title: "Audit Integrity",
+      navGroup: "Admin",
+      requiredPermission: "audit.integrity",
+      screen: AuditIntegrityReport,
+    },
+    {
+      id: "audit.exports",
+      path: "/compliance/audit/exports",
+      title: "Compliance Exports",
+      navGroup: "Admin",
+      requiredPermission: "audit.export",
+      screen: AuditExports,
     },
   ],
 };

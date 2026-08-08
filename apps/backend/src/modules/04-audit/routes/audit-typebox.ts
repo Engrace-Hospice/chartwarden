@@ -146,6 +146,193 @@ export type AuditEventsQuery = Static<typeof AuditEventsQuerySchema>;
 export type PatientAccessQuery = Static<typeof PatientAccessQuerySchema>;
 export type AccountingQuery = Static<typeof AccountingQuerySchema>;
 
+// --- Legal holds (§4.3, §7) ---------------------------------------------------------------------
+
+export const LegalHoldCriteriaSchema = Type.Object({
+  patientIds: Type.Optional(Type.Array(Type.String({ format: "uuid" }))),
+  dateRange: Type.Optional(
+    Type.Object({
+      from: Type.String({ format: "date-time" }),
+      to: Type.String({ format: "date-time" }),
+    }),
+  ),
+  resourceKinds: Type.Optional(Type.Array(Type.String())),
+});
+export type LegalHoldCriteria = Static<typeof LegalHoldCriteriaSchema>;
+
+export const LegalHoldSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  organizationId: Type.String({ format: "uuid" }),
+  name: Type.String(),
+  criteria: LegalHoldCriteriaSchema,
+  status: Type.Union([Type.Literal("active"), Type.Literal("released")]),
+  reason: Type.String(),
+  appliedBy: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+  appliedAt: Type.String({ format: "date-time" }),
+  releasedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+});
+
+export const LegalHoldListQuerySchema = Type.Object({
+  status: Type.Optional(Type.Union([Type.Literal("active"), Type.Literal("released")])),
+  cursor: Type.Optional(Type.String()),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+});
+
+export const LegalHoldListResponseSchema = Cursor(LegalHoldSchema);
+
+export const CreateLegalHoldBodySchema = Type.Object({
+  name: Type.String({ minLength: 1 }),
+  criteria: LegalHoldCriteriaSchema,
+  reason: Type.String({ minLength: 10 }),
+});
+
+export const CreateLegalHoldResponseSchema = Type.Object({
+  legalHoldId: Type.String({ format: "uuid" }),
+  matchedRecordCount: Type.Integer({ minimum: 0 }),
+});
+
+export const LegalHoldIdParamsSchema = Type.Object({ id: Type.String({ format: "uuid" }) });
+
+export const ReleaseLegalHoldBodySchema = Type.Object({
+  reason: Type.String({ minLength: 10 }),
+});
+
+export const ReleaseLegalHoldResponseSchema = Type.Object({
+  released: Type.Literal(true),
+  restoredRecordCount: Type.Integer({ minimum: 0 }),
+});
+
+export type CreateLegalHoldBody = Static<typeof CreateLegalHoldBodySchema>;
+export type LegalHoldListQuery = Static<typeof LegalHoldListQuerySchema>;
+
+// --- Destruction certificates (§4.3, §6) --------------------------------------------------------
+
+export const DestructionCertificateSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  organizationId: Type.String({ format: "uuid" }),
+  dataClass: Type.String(),
+  recordCount: Type.Integer(),
+  dateRangeStart: Type.String({ format: "date-time" }),
+  dateRangeEnd: Type.String({ format: "date-time" }),
+  method: Type.String(),
+  status: Type.Union([
+    Type.Literal("pending"),
+    Type.Literal("approved"),
+    Type.Literal("held"),
+    Type.Literal("executed"),
+    Type.Literal("partial_refused"),
+  ]),
+  approvedBy: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+  executedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  refusalReason: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String({ format: "date-time" }),
+});
+
+export const DestructionCertificateListQuerySchema = Type.Object({
+  status: Type.Optional(
+    Type.Union([
+      Type.Literal("pending"),
+      Type.Literal("approved"),
+      Type.Literal("held"),
+      Type.Literal("executed"),
+      Type.Literal("partial_refused"),
+    ]),
+  ),
+  cursor: Type.Optional(Type.String()),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+});
+
+export const DestructionCertificateListResponseSchema = Cursor(DestructionCertificateSchema);
+
+export const DestructionCertificateIdParamsSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+});
+
+// M04-F0X — `reauthToken` is deliberately OMITTED from this body: step-up is a SERVER fact
+// (`requireStepUp('destruction.approve')` over M3's `step_up_recent` session predicate), never a
+// caller-supplied token — the same audit-C2 judgment call M26 made for `stepUpAssertionId`
+// (m26-request-validation.test.ts). Accepting a client-supplied re-auth assertion would let the
+// caller assert its own security fact, exactly the defect that precedent exists to avoid.
+export const ApproveDestructionCertificateResponseSchema = Type.Object({
+  status: Type.Literal("approved"),
+});
+
+export const HoldDestructionCertificateBodySchema = Type.Object({
+  reason: Type.String({ minLength: 10 }),
+});
+
+export const HoldDestructionCertificateResponseSchema = Type.Object({
+  status: Type.Literal("held"),
+});
+
+export type DestructionCertificateListQuery = Static<typeof DestructionCertificateListQuerySchema>;
+
+// --- Audit exports (§4.3, §4.4, M04-F04 / SEC-052) ----------------------------------------------
+
+export const AuditExportScopeSchema = Type.Object({
+  patientIds: Type.Optional(Type.Array(Type.String({ format: "uuid" }))),
+  actorIds: Type.Optional(Type.Array(Type.String({ format: "uuid" }))),
+  resourceKinds: Type.Optional(Type.Array(Type.String())),
+  eventTypes: Type.Optional(Type.Array(Type.String())),
+  from: Type.String({ format: "date-time" }),
+  to: Type.String({ format: "date-time" }),
+});
+
+export const CreateAuditExportBodySchema = Type.Object({
+  scope: AuditExportScopeSchema,
+  justification: Type.String({ minLength: 10 }),
+  format: Type.Union([Type.Literal("csv"), Type.Literal("ndjson"), Type.Literal("pdf")]),
+  watermarked: Type.Optional(Type.Boolean()),
+});
+
+export const CreateAuditExportResponseSchema = Type.Object({
+  exportId: Type.String({ format: "uuid" }),
+  status: Type.Literal("pending"),
+});
+
+export const AuditExportIdParamsSchema = Type.Object({ id: Type.String({ format: "uuid" }) });
+
+export const AuditExportResponseSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  status: Type.String(),
+  format: Type.Union([Type.Literal("csv"), Type.Literal("ndjson"), Type.Literal("pdf")]),
+  recordCount: Type.Union([Type.Integer(), Type.Null()]),
+  downloadUrl: Type.Optional(Type.String()),
+  expiresAt: Type.String({ format: "date-time" }),
+});
+
+export type CreateAuditExportBody = Static<typeof CreateAuditExportBodySchema>;
+
+// --- Integrity report (§4.3, §10.4) --------------------------------------------------------------
+//
+// `backupSampling` is `Optional` here — a deliberate DEVIATION from the spec's literal (required)
+// shape. The `audit.integrity_sample` job (§4.4) that would populate it has no persisted run-history
+// table and its worker adapters are unwired (packages/audit/src/jobs — "a tracked follow-up", like
+// the rest of M4's async infra); fabricating `{sampled: 0, mismatches: 0}` when the check has never
+// actually run would read as "verified clean" rather than "never checked" — the exact kind of false
+// compliance signal this module exists to prevent. Omitted (not zeroed) until that job is wired.
+
+export const IntegrityReportResponseSchema = Type.Object({
+  appendOnly: Type.Object({
+    grantsVerified: Type.Boolean(),
+    lastChecked: Type.String({ format: "date-time" }),
+  }),
+  backupSampling: Type.Optional(
+    Type.Object({
+      lastRun: Type.String({ format: "date-time" }),
+      sampled: Type.Integer(),
+      mismatches: Type.Integer(),
+    }),
+  ),
+  sealChain: Type.Optional(
+    Type.Object({
+      contiguous: Type.Boolean(),
+      lastSealedPartition: Type.String(),
+      brokenAt: Type.Union([Type.String(), Type.Null()]),
+    }),
+  ),
+});
+
 // ── §4.3 RESPONSE DTO pins (M4E enrichment) ────────────────────────────────────────────────────
 // The four audit read routes already publish view-shaped response schemas above, but nothing tied
 // them to the `@wardenx/audit` `AuditQuery` port they actually return (this module has no local

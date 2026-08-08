@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1228,
-    "enriched": 1221,
+    "routes": 1237,
+    "enriched": 1230,
     "deficit": 7,
-    "mutating": 701,
-    "mutatingNoBody": 87,
-    "gets": 496,
+    "mutating": 706,
+    "mutatingNoBody": 88,
+    "gets": 500,
     "getsNoResponse": 8
   },
   "modules": [
@@ -31,12 +31,12 @@
     },
     {
       "module": "04-audit",
-      "routes": 4,
-      "enriched": 4,
+      "routes": 13,
+      "enriched": 13,
       "deficit": 0,
-      "mutating": 0,
-      "mutatingNoBody": 0,
-      "gets": 4,
+      "mutating": 5,
+      "mutatingNoBody": 1,
+      "gets": 8,
       "getsNoResponse": 0
     },
     {

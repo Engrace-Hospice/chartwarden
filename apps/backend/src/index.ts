@@ -98,6 +98,7 @@ import {
   registerAuthorizationAbacPredicates,
 } from "./modules/03-authorization/index";
 import {
+  M4_OUTBOX_EVENTS,
   assertAuditActionCatalog,
   createDrizzleAuditEraserPorts,
   createDrizzleAuditEraserStore,
@@ -1989,6 +1990,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // pending/approved/suspended + geofence-policy-changed + late-check-resolved + aggregator-cancelled emits to
     // validate against `m18OutboxPublisher`.
     M18_OUTBOX_EVENTS,
+    // M4L — the `m4.*` catalog (GAP-003). REQUIRED for the legal-hold apply/release emits to
+    // validate against `m4OutboxPublisher`; `declaredConsumers` is `[]` for both — no M04-F03
+    // `HoldApplier` seam has registered yet (see events-by-m4.ts).
+    M4_OUTBOX_EVENTS,
     M15_OUTBOX_EVENTS,
     M16_OUTBOX_EVENTS,
     // M19 — the `m19.oncall_shift.*` pair `openShift`/`closeShift` publish (genuine pre-existing gap: this
@@ -2034,6 +2039,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // dispatcher's namespace check requires it). Each forwards the caller's open tx + envelope to the shared
   // publisher. M30/M33/M34 — M34's lifecycle outbox now binds too (#107; its emit is gated to the conformant
   // `m34.tenant.provisioned` event, so no mutation rolls back).
+  // GAP-003 — the M4 legal-hold apply/release notification; `bindCallerModule`'s returned shape
+  // requires `organizationId` on every publish (`OutboxPublishInput`), which `registerLegalHoldsRoutes`
+  // supplies explicitly (see legal-holds.ts's `M4OutboxPort`).
+  const m4OutboxPublisher = bindCallerModule(txOutboxPublisher, "m4");
   const m6OutboxPublisher = bindCallerModule(txOutboxPublisher, "m6");
   // M6 → M37 (confirm-handshake fix, 2026-08-05) — the LIVE `IpuBedAssignmentProvider` seam (registered
   // by M37 at boot), resolved lazily per call (the `m24SignedEncounters`/`m24CoverageResolver` precedent)
@@ -2357,7 +2366,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               "M2 mountIdentityRoutes — external-collaborator magic-link store is a per-process Map (no M2-owned pending-token table exists)",
             task: "new M2-owned token table + RLS + audit trigger (audit report 07 §M2)",
           });
-          mountAuditRoutes(app, dbHandle.db); // M4 — audit-log search on the real Drizzle AuditQuery
+          mountAuditRoutes(app, dbHandle.db, { outbox: m4OutboxPublisher }); // M4 — audit-log search + GAP-003 compliance surface
           mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table
           mountAdmissionRoutes(app, dbHandle.db, m6OutboxPublisher, m6IpuBedAssignmentReader); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
           // Clinical core (M7–M14, M17, M18, M22) — reads mounted over the real Drizzle route services under

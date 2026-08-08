@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1219,
-    "coveredRoutes": 1219,
-    "directRoutesReferenced": 1159
+    "routes": 1228,
+    "coveredRoutes": 1228,
+    "directRoutesReferenced": 1168
   },
   "modules": [
     {
@@ -39,13 +39,16 @@
     },
     {
       "module": "04-audit",
-      "routes": 4,
+      "routes": 13,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/audit-accounting.test.ts",
-        "apps/backend/__tests__/audit-routes.test.ts"
+        "apps/backend/__tests__/audit-routes-mount.test.ts",
+        "apps/backend/__tests__/audit-routes.test.ts",
+        "apps/backend/__tests__/gap-003-compliance-routes-mount.test.ts",
+        "apps/backend/__tests__/gap-003-compliance-routes.live.test.ts"
       ],
-      "directRoutesReferenced": 4
+      "directRoutesReferenced": 13
     },
     {
       "module": "05-patient",
