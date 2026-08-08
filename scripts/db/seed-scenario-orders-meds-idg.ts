@@ -1,0 +1,305 @@
+/**
+ * WardenX — orders / prescribing / eMAR / IDG scenario data for the flagship patient (local dev).
+ * NOT for production.
+ *
+ * Builds real M11 (Orders) / M12 (DoseSpot) / M13 (eMAR) / M14 (IDG) data for Eleanor Whitfield over
+ * the real REST API, using the discipline personas from `seed-staff-personas.ts`.
+ *
+ * Genuine platform gaps hit and worked around/documented:
+ *   - M14: there is NO REST route that creates an `idg_meeting` row (`POST /idg/recurring-policies`
+ *     only creates a cadence *policy*; the schedule-materialization worker it defers to isn't
+ *     registered anywhere in this codebase — confirmed by grepping the composition root). The
+ *     project's own live-test suite (`apps/backend/__tests__/m14-idg-write.live.test.ts`) works
+ *     around this by seeding one `idg_meeting` row directly at `status:'live'`; this script does the
+ *     same, then drives agenda/attendance/decisions/adjourn through the real API from that point.
+ *   - M12: `medClass: "standard"` only — EPCS is hard-off in this environment
+ *     (`sign-controlled/*` throws `EPCS_NOT_CERTIFIED` unconditionally), so no controlled-substance
+ *     order is exercised here.
+ *   - M11 cosign: the server RE-DERIVES the cosigner role from persisted drafter/kind facts rather
+ *     than trusting the client — draft as `lpn` on a clinical kind (`lab`) to reliably trigger the
+ *     `rn_case_manager`-cosign path from a different persona than the drafter.
+ *
+ * Idempotent: wipes prior orders/medication-orders/administrations/IDG data for this patient (+ the
+ * one seeded meeting) via raw SQL before recreating.
+ * Prereqs: bun run db:seed:staff, db:seed:scenario-admissions, db:seed:scenario-clinical (Whitfield
+ * needs a care plan / signed problem for the IDG care_plan_update decision to reference, and M15
+ * needs it to exist for the field-ops script; not a hard dependency here but sequenced this way).
+ * Run:     bun run db:seed:scenario-orders-idg
+ */
+import { Client } from "pg";
+import { findPatientIdByLastName, ScenarioLog, signIn } from "./lib/api-session";
+
+const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
+const LOCATION_MAIN_ID = "55555555-0000-4000-8000-000000000001"; // db:seed:org-structure
+const nowIso = (): string => new Date().toISOString();
+
+async function membershipIdFor(email: string): Promise<string> {
+  if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
+  const db = new Client({ connectionString: ADMIN_URL });
+  await db.connect();
+  const r = await db.query<{ id: string }>(
+    `SELECT m.id FROM membership m JOIN "user" u ON u.id = m.user_id WHERE u.email = $1 LIMIT 1`,
+    [email],
+  );
+  await db.end();
+  if (!r.rows[0]) throw new Error(`no membership found for ${email} — run db:seed:staff first`);
+  return r.rows[0].id;
+}
+
+async function wipePriorOrdersMedsIdg(patientId: string): Promise<void> {
+  if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
+  const db = new Client({ connectionString: ADMIN_URL });
+  await db.connect();
+  await db.query("SET session_replication_role = replica");
+
+  const orders = await db.query<{ id: string }>("SELECT id FROM order_record WHERE patient_id = $1", [
+    patientId,
+  ]);
+  const orderIds = orders.rows.map((r) => r.id);
+
+  const meds = await db.query<{ id: string }>(
+    "SELECT id FROM medication_order WHERE patient_id = $1",
+    [patientId],
+  );
+  const medIds = meds.rows.map((r) => r.id);
+
+  // `order_signature` is polymorphic (target_kind discriminates order_record vs medication_order),
+  // so both id sets share the one cleanup.
+  const allTargetIds = [...orderIds, ...medIds];
+  if (allTargetIds.length) {
+    await db.query("DELETE FROM order_signature WHERE target_id = ANY($1)", [allTargetIds]);
+  }
+  if (orderIds.length) {
+    await db.query("DELETE FROM order_record WHERE id = ANY($1)", [orderIds]);
+  }
+  if (medIds.length) {
+    await db.query("DELETE FROM administration_record WHERE medication_order_id = ANY($1)", [medIds]);
+    await db.query("DELETE FROM medication_order WHERE id = ANY($1)", [medIds]);
+  }
+
+  // The one seeded IDG meeting (org-wide, not patient-scoped) — identified by a fixed marker in its
+  // tenant_quorum_snapshot so re-runs find and replace only the one this script owns.
+  const meetings = await db.query<{ id: string }>(
+    `SELECT id FROM idg_meeting WHERE tenant_quorum_snapshot->>'seedMarker' = 'seed-scenario-orders-meds-idg'`,
+  );
+  const meetingIds = meetings.rows.map((r) => r.id);
+  if (meetingIds.length) {
+    await db.query("DELETE FROM idg_action_item WHERE idg_meeting_id = ANY($1)", [meetingIds]);
+    await db.query("DELETE FROM idg_decision WHERE idg_meeting_id = ANY($1)", [meetingIds]);
+    await db.query("DELETE FROM idg_agenda_item WHERE idg_meeting_id = ANY($1)", [meetingIds]);
+    await db.query("DELETE FROM idg_attendance WHERE idg_meeting_id = ANY($1)", [meetingIds]);
+    await db.query("DELETE FROM idg_minutes WHERE idg_meeting_id = ANY($1)", [meetingIds]);
+    await db.query("DELETE FROM idg_meeting WHERE id = ANY($1)", [meetingIds]);
+  }
+  await db.end();
+}
+
+/** The documented M14 workaround: seed one `idg_meeting` row directly at status='live'. */
+async function seedLiveIdgMeeting(organizationId: string, coordinatorMembershipId: string): Promise<string> {
+  if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
+  const db = new Client({ connectionString: ADMIN_URL });
+  await db.connect();
+  await db.query("SET session_replication_role = replica");
+  const r = await db.query<{ id: string }>(
+    `INSERT INTO idg_meeting
+       (organization_id, location_id, scheduled_start, scheduled_end, status,
+        coordinator_membership_id, tenant_quorum_snapshot)
+     VALUES ($1,$2, now(), now() + interval '1 hour', 'live', $3, $4::jsonb)
+     RETURNING id`,
+    [
+      organizationId,
+      LOCATION_MAIN_ID,
+      coordinatorMembershipId,
+      JSON.stringify({ seedMarker: "seed-scenario-orders-meds-idg" }),
+    ],
+  );
+  await db.end();
+  return r.rows[0].id;
+}
+
+async function main(): Promise<void> {
+  const rn = await signIn("rita@wardenx.local");
+  const lpn = await signIn("dana@wardenx.local");
+  const md = await signIn("drharris@wardenx.local");
+  const msw = await signIn("mira@wardenx.local");
+  const chaplain = await signIn("cole@wardenx.local");
+  const log = new ScenarioLog("orders/meds/IDG (Whitfield)");
+
+  const patientId = await findPatientIdByLastName(rn, "Whitfield");
+  const cert = await rn.client.GET("/api/v1/patients/{patientId}/election-certification", {
+    params: { path: { patientId } },
+  });
+  const admissionId = (cert.data as unknown as { admission?: { id?: string } } | undefined)?.admission
+    ?.id;
+  if (!admissionId) throw new Error("Whitfield has no admission — run db:seed:scenario-admissions first");
+
+  console.log("wiping any prior orders/meds/IDG data for a clean re-run...");
+  await wipePriorOrdersMedsIdg(patientId);
+
+  // ── M11 — Orders (LPN-draft → RN-cosign → RN-sign path) ───────────────────────────────────────
+  let signedOrderId: string | null = null;
+  try {
+    const draft = await lpn.client.POST("/api/v1/orders", {
+      body: {
+        patientId,
+        admissionId,
+        kind: "lab",
+        drafterDiscipline: "lpn",
+        data: { testName: "Comprehensive metabolic panel", reason: "Routine hospice labs" },
+        orderingPhysicianMdmId: "11111111-0000-4000-8000-000000000001",
+      },
+    });
+    const draftData = draft.data as unknown as { id: string } | undefined;
+    if (draft.error || !draftData) throw new Error(`order draft failed: ${JSON.stringify(draft.error)}`);
+
+    const reqSig = await lpn.client.POST("/api/v1/orders/{id}/request-signature", {
+      params: { path: { id: draftData.id } },
+      body: { signerDiscipline: "rn_case_manager" },
+    });
+    if (reqSig.error) throw new Error(`order request-signature failed: ${JSON.stringify(reqSig.error)}`);
+
+    const cosign = await rn.client.POST("/api/v1/orders/{id}/cosign", {
+      params: { path: { id: draftData.id } },
+      body: {
+        cosignerRole: "rn_case_manager",
+        attestationText: "Reviewed and cosigned per LPN-draft policy for clinical order kinds.",
+      },
+    });
+    if (cosign.error) throw new Error(`order cosign failed: ${JSON.stringify(cosign.error)}`);
+
+    const sign = await rn.client.POST("/api/v1/orders/{id}/sign", {
+      params: { path: { id: draftData.id } },
+      body: { signerDiscipline: "rn_case_manager", signedAtClient: nowIso() },
+    });
+    if (sign.error) throw new Error(`order sign failed: ${JSON.stringify(sign.error)}`);
+    signedOrderId = draftData.id;
+
+    log.ok("Orders: LPN-drafted lab order, RN-cosigned, RN-signed");
+  } catch (err) {
+    log.fail(`M11 orders: ${String(err)}`);
+  }
+  void signedOrderId;
+
+  // ── M12 — DoseSpot (standard medication order, no EPCS) ───────────────────────────────────────
+  let signedMedOrderId: string | null = null;
+  try {
+    const draft = await md.client.POST("/api/v1/medication-orders", {
+      body: {
+        patientId,
+        admissionId,
+        medClass: "standard",
+        rxnormRxcui: "197696",
+        ndc: null,
+        drugName: "Morphine sulfate oral solution",
+        strength: "20 mg/mL",
+        doseForm: "solution",
+        route: "oral",
+        data: { sig: "0.25-0.5 mL PO every 2 hours PRN pain or dyspnea" },
+        prescriberDiscipline: "hospice_physician",
+        prescribingPhysicianMdmId: "11111111-0000-4000-8000-000000000001",
+        refillsAuthorized: 0,
+      },
+    });
+    const draftData = draft.data as unknown as { id: string } | undefined;
+    if (draft.error || !draftData)
+      throw new Error(`medication order draft failed: ${JSON.stringify(draft.error)}`);
+
+    await md.client.POST("/api/v1/medication-orders/{id}/request-signature", {
+      params: { path: { id: draftData.id } },
+      body: { signerDiscipline: "hospice_physician" },
+    });
+
+    const sign = await md.client.POST("/api/v1/medication-orders/{id}/sign", {
+      params: { path: { id: draftData.id } },
+      body: { signerDiscipline: "hospice_physician", signedAtClient: nowIso(), signerIsOrderingPhysician: true },
+    });
+    if (sign.error) throw new Error(`medication order sign failed: ${JSON.stringify(sign.error)}`);
+    signedMedOrderId = draftData.id;
+
+    log.ok("DoseSpot: standard comfort-medication order drafted + signed (no EPCS)");
+  } catch (err) {
+    log.fail(`M12 DoseSpot: ${String(err)}`);
+  }
+
+  // ── M13 — eMAR (administration against the signed standard medication order) ─────────────────
+  try {
+    if (!signedMedOrderId) throw new Error("no signed medication order to administer against");
+    const admin = await rn.client.POST("/api/v1/administrations", {
+      body: {
+        medicationOrderId: signedMedOrderId,
+        medClass: "standard",
+        mode: "single_dose",
+        administeredAt: nowIso(),
+        data: { route: "oral", administeredAmount: 0.25, administeredUnit: "mL" },
+        notes: "Patient reported pain 5/10; administered per PRN order, reassessed at 30 minutes.",
+      },
+    });
+    if (admin.error) throw new Error(`administration record failed: ${JSON.stringify(admin.error)}`);
+    log.ok("eMAR: one PRN administration recorded (standard med, no witness token needed)");
+  } catch (err) {
+    log.fail(`M13 eMAR: ${String(err)}`);
+  }
+
+  // ── M14 — IDG (documented gap: meeting seeded directly, rest driven via real API) ─────────────
+  try {
+    const orgId = rn.organizationId;
+    const coordinatorId = await membershipIdFor("rita@wardenx.local");
+    const meetingId = await seedLiveIdgMeeting(orgId, coordinatorId);
+
+    const agenda = await rn.client.POST("/api/v1/idg/meetings/{id}/agenda", {
+      params: { path: { id: meetingId } },
+      body: { kind: "patient_review", patientId, noteText: "Routine IDG review — RHC, stable symptom burden." },
+    });
+    if (agenda.error) throw new Error(`agenda item failed: ${JSON.stringify(agenda.error)}`);
+
+    const attendees: Array<{ email: string; membershipId: string; discipline: string }> = [
+      { email: "rita@wardenx.local", membershipId: coordinatorId, discipline: "rn_case_manager" },
+      { email: "mira@wardenx.local", membershipId: await membershipIdFor("mira@wardenx.local"), discipline: "msw" },
+      { email: "cole@wardenx.local", membershipId: await membershipIdFor("cole@wardenx.local"), discipline: "chaplain" },
+      {
+        email: "drharris@wardenx.local",
+        membershipId: await membershipIdFor("drharris@wardenx.local"),
+        discipline: "hospice_physician",
+      },
+    ];
+    for (const a of attendees) {
+      await rn.client.POST("/api/v1/idg/meetings/{id}/attendance", {
+        params: { path: { id: meetingId } },
+        body: { membershipId: a.membershipId, discipline: a.discipline, status: "present" },
+      });
+    }
+
+    const decision = await rn.client.POST("/api/v1/idg/meetings/{id}/decisions", {
+      params: { path: { id: meetingId } },
+      body: {
+        patientId,
+        payload: {
+          kind: "team_note",
+          noteText:
+            "IDG reviewed Ms. Whitfield's plan of care: pain well-controlled on current regimen, " +
+            "no changes to level of care indicated at this time. Continue routine home care.",
+        },
+      },
+    });
+    if (decision.error) throw new Error(`decision record failed: ${JSON.stringify(decision.error)}`);
+
+    const adjourn = await rn.client.POST("/api/v1/idg/meetings/{id}/adjourn", {
+      params: { path: { id: meetingId }, header: { "X-Step-Up": "fresh" } },
+      body: {},
+    });
+    if (adjourn.error) throw new Error(`adjourn failed: ${JSON.stringify(adjourn.error)}`);
+
+    log.ok(
+      "IDG: meeting seeded live (documented DB-direct workaround), quorate attendance, 1 decision, adjourned",
+    );
+  } catch (err) {
+    log.fail(`M14 IDG: ${String(err)}`);
+  }
+
+  log.summary();
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

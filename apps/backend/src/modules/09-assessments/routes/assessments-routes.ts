@@ -53,8 +53,12 @@ function actorOf(request: FastifyRequest): {
   roles: readonly string[];
 } {
   const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
+  // `userId` here is the codebase-wide convention of "the acting MEMBERSHIP id" — same bug/fix as
+  // M8 (encounters-routes.ts) and M10 (hope-routes.ts): this used to read `ctx.userId` (the raw
+  // Better Auth user id, a DIFFERENT id from the org membership).
+  const membershipId = ctx?.attributes.membershipId;
+  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
+  return { organizationId: ctx.organizationId, userId: membershipId, roles: ctx.roles };
 }
 
 /** The actor's disciplines (role tokens intersected with the matrix's discipline vocabulary). */

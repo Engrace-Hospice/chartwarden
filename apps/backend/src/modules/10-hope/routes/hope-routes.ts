@@ -47,8 +47,14 @@ export interface HopeRouteDeps {
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
   const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
+  // `userId` here is the codebase-wide convention of "the acting MEMBERSHIP id" (every
+  // `created_by_membership_id`/`signed_by_membership_id` column this module's service layer writes
+  // it into is a membership FK). This used to read `ctx.userId` (the raw Better Auth user id, a
+  // DIFFERENT id from the org membership) — every `POST /admissions/:id/hope/*` FK-violated on
+  // `created_by_membership_id` as a result. Same bug, same fix, as M8's `encounters-routes.ts`.
+  const membershipId = ctx?.attributes.membershipId;
+  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
+  return { organizationId: ctx.organizationId, userId: membershipId };
 }
 
 // Static permission guards (§4.6).

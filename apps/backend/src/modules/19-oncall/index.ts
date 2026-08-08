@@ -99,6 +99,7 @@ export {
 } from "./abac-resolver-drizzle";
 export * from "./routes/index";
 export { mountM19Routes } from "./routes/mount";
+export { M19_OUTBOX_EVENTS } from "./events-by-m19";
 export {
   type InMemoryTriageEraseSeed,
   type TriageEraseCounts,

@@ -136,13 +136,19 @@ export const FIELD_ELIGIBLE_ROLE_KEYS = [
  * excluded it would 403 the one person trying to acknowledge the alert nobody has answered — turning the
  * terminus into the permanent silence it exists to end.
  *
- * `acknowledged` / `resolving` are NOT here: by then a responder has been recorded, and the routes that
- * bind this predicate (acknowledge, resolve, the during-SOS coordinate read) each check the machine's own
- * transition table anyway. `cancel_window_open` and `raised` are not here either — nobody is responding to
- * a press that may still be stood down.
+ * `acknowledged` IS here (a prior version of this comment excluded it on the theory that "the routes that
+ * bind this predicate... check the machine's own transition table anyway" — but the ABAC predicate runs
+ * as a PRE-HANDLER, before the write service's own transition-table check ever executes, so excluding it
+ * made `resolve` unreachable in EXACTLY the case `resolveSos`'s own comment says it composes for: "a
+ * responder who acknowledged and is now closing the alert in one action" — every `resolve` call 404'd at
+ * the guard, before `write-service-drizzle.ts` ever got to compose `acknowledged → resolving → resolved`).
+ * `resolving` / `cancel_window_open` / `raised` stay excluded: `resolving` is never externally observable
+ * (the one route that enters it also leaves it, atomically, in the same call), and nobody is responding
+ * to a press that may still be stood down.
  */
 export const ACTIVE_SOS_RESPONDER_STATES = [
   "acknowledging",
+  "acknowledged",
   "escalation_tier_1",
   "escalation_tier_2",
   "escalation_tier_3",

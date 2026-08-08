@@ -1,0 +1,230 @@
+// apps/backend/src/modules/19-oncall/events-by-m19.ts — Module 19's outbox-event catalog contribution,
+// the `m19.*` taxonomy `write-service-drizzle.ts` and the D10 inbound-trigger watchdog
+// (`consumers/inbound-trigger.ts`) publish/declare, closed over `M19_EVENT_NAMES` (@wardenx/types,
+// `packages/types/src/oncall.ts`) — the pre-existing source of truth every idempotency-key entry and
+// consumer wiring already referenced by name.
+//
+// GENUINE GAP, not a stylistic omission: unlike every other module, M19 shipped with NO
+// `events-by-m19.ts` at all and no entry in `apps/backend/src/index.ts`'s `buildBootOutboxCatalog([...])`
+// list. Every one of the ten call-scoped/shift emits in `write-service-drizzle.ts` throws
+// `OutboxEventValidationError: unknown_event` and rolls back its own transaction on the very first call —
+// `POST /oncall/shifts/:id/open`, `POST /triage-calls`, disposition, escalation, protocol application,
+// abandon — were unconditionally 500s in every environment, not seed-specific. `shifts.routes.ts`'s own
+// route comments already named `m19.oncall_shift.activated` as a topic M36 and M20 subscribe to, and
+// M20's `consumers/index.ts` lists it in `M20_SUBSCRIBED_EVENT_NAMES` — the consumer side already
+// expected this catalog to exist.
+//
+// Payload shapes are transcribed from each event's actual construction site in `write-service-drizzle.ts`
+// (the `payloads: {...}` object literal passed to `runEffects`, or `dispositionPayloads()`), NOT invented.
+// The two exceptions — `m19.oncall_shift.coverage_gap` and `m19.triage.summary_requested` — are declared
+// in `M19_EVENT_NAMES` but never actually published anywhere in this codebase yet (the watchdog that would
+// fire `coverage_gap` is `consumers/inbound-trigger.ts`'s `TriggerCoverageGap`, whose shape this schema
+// mirrors exactly; `summary_requested` has no producer at all, so its schema is the same conservative
+// call-scoped base every other `m19.triage_call.*` event carries — a future implementer may need to widen
+// it, but a closed, too-narrow schema here is strictly safer than an unregistered event name).
+import { Type } from "@sinclair/typebox";
+import type { ModuleEventContribution } from "@wardenx/types";
+
+const id = Type.String({ minLength: 1 });
+const isoInstant = Type.String({ minLength: 1 });
+const nullableId = Type.Union([id, Type.Null()]);
+const nullableStr = Type.Union([Type.String(), Type.Null()]);
+
+/** The §4.10-equivalent payload base every `m19.triage_call.*` event carries (`callEventBase` in
+ *  `write-service-drizzle.ts`). */
+const callEventBase = {
+  orgId: id,
+  providerEntityId: id,
+  triageCallId: id,
+  occurredAt: isoInstant,
+};
+
+/** Module 19's outbox-event catalog contribution — the full closed `M19_EVENT_NAMES` set. */
+export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
+  {
+    eventName: "m19.triage_call.opened",
+    moduleOwner: "m19",
+    description: "A triage call was opened against a covering on-call shift.",
+    payloadSchema: Type.Object({
+      ...callEventBase,
+      onCallShiftId: id,
+      source: id,
+      patientId: nullableId,
+      paperOrigin: Type.Boolean(),
+      originalOpenedAt: nullableId,
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m19.triage_call.protocol_applied",
+    moduleOwner: "m19",
+    description: "The server-authoritative D5 protocol was pinned to a triage call.",
+    payloadSchema: Type.Object({
+      ...callEventBase,
+      triageProtocolId: id,
+      protocolVersion: id,
+      mandatoryEscalation: nullableStr,
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m19.triage_call.red_flag_hit",
+    moduleOwner: "m19",
+    description: "A protocol question answer matched a D5 red-flag predicate, opening a mandatory escalation.",
+    payloadSchema: Type.Object({
+      ...callEventBase,
+      questionId: id,
+      escalationId: id,
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m19.triage_call.escalation_recorded",
+    moduleOwner: "m19",
+    description: "A D7 escalation tier was recorded against a triage call (manual or protocol-mandatory).",
+    payloadSchema: Type.Object({
+      ...callEventBase,
+      escalationId: id,
+      tier: id,
+      triggerKind: id,
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m19.triage_call.disposition_selected",
+    moduleOwner: "m19",
+    description: "The D6 disposition was recorded for a triage call.",
+    payloadSchema: Type.Object({
+      ...callEventBase,
+      disposition: id,
+      dispositionData: Type.Unknown(),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m19.triage_call.documented",
+    moduleOwner: "m19",
+    description:
+      "`documented_pending_encounter → documented` — advanced by the M8 `encounter.signed` consumer (`clinical/m8-encounter-signed.ts`), never by a route directly.",
+    payloadSchema: Type.Object({
+      ...callEventBase,
+      signedEncounterId: id,
+      documentedAt: isoInstant,
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m19.triage_call.visit_needed",
+    moduleOwner: "m19",
+    description:
+      "A disposition (visit_dispatched_now / visit_scheduled_first_light / pronouncement_scheduled) requires M17 to create a visit.",
+    payloadSchema: Type.Object({
+      ...callEventBase,
+      patientId: nullableId,
+      requestedDiscipline: nullableStr,
+      requestedArrivalBy: nullableId,
+      proposedForDate: nullableId,
+      reason: nullableStr,
+    }),
+    declaredConsumers: ["m17"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m19.triage_call.gip_admission_proposed",
+    moduleOwner: "m19",
+    description: "A disposition proposed a GIP level-of-care change for M6/M37 to action.",
+    payloadSchema: Type.Object({
+      ...callEventBase,
+      patientId: nullableId,
+      gipCriteriaSummary: nullableStr,
+      preferredFacility: nullableStr,
+    }),
+    declaredConsumers: ["m6", "m37"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m19.triage_call.care_plan_change_indicated",
+    moduleOwner: "m19",
+    description: "A disposition indicated a care-plan-relevant change (rides alongside gip_admission_proposed).",
+    payloadSchema: Type.Object({
+      ...callEventBase,
+      patientId: nullableId,
+      changeKind: id,
+    }),
+    declaredConsumers: ["m7"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m19.triage_call.closed",
+    moduleOwner: "m19",
+    description: "A triage call reached a terminal state (abandoned, or the ordinary close path).",
+    payloadSchema: Type.Object({
+      ...callEventBase,
+      finalDisposition: nullableStr,
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m19.oncall_shift.activated",
+    moduleOwner: "m19",
+    description:
+      "An `on_call_shift` moved `scheduled → active` (D7's policy snapshot pinned) — the canonical shift-open topic M36's channel synchronizer and M20's SOS on-call-roster lookup both subscribe to.",
+    payloadSchema: Type.Object({
+      orgId: id,
+      providerEntityId: id,
+      occurredAt: isoInstant,
+      shiftId: id,
+      discipline: id,
+      membershipId: nullableId,
+      externalActorId: nullableId,
+      openedAt: isoInstant,
+    }),
+    declaredConsumers: ["m20", "m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m19.oncall_shift.completed",
+    moduleOwner: "m19",
+    description:
+      "An `on_call_shift` closed — removes the departing actor from M36's channel; messages sent during their tenure stay attributed to them (§4.5).",
+    payloadSchema: Type.Object({
+      orgId: id,
+      providerEntityId: id,
+      occurredAt: isoInstant,
+      shiftId: id,
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m19.oncall_shift.coverage_gap",
+    moduleOwner: "m19",
+    description:
+      "The §4.8 D10 inbound-trigger watchdog found no covering shift for the RN discipline CoP 418.100(c)(2) requires — schema mirrors `TriggerCoverageGap` (`consumers/inbound-trigger.ts`), the one producer this event has today (not yet wired to actually publish).",
+    payloadSchema: Type.Object({
+      organizationId: id,
+      providerEntityId: id,
+      gapStartsAt: isoInstant,
+      gapEndsAt: isoInstant,
+      discipline: Type.Literal("clinical_rn"),
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m19.triage.summary_requested",
+    moduleOwner: "m19",
+    description:
+      "Reserved in the M19_EVENT_NAMES taxonomy for an M32 AI call-summary request; no producer exists yet. Schema kept to the conservative call-scoped base shared by every other `m19.triage_call.*` event.",
+    payloadSchema: Type.Object(callEventBase),
+    declaredConsumers: ["m32"],
+    isOutboxOnly: true,
+  },
+];

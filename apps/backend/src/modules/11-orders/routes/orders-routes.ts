@@ -47,8 +47,12 @@ export interface OrderRouteDeps {
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
   const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
+  // `userId` here is the codebase-wide convention of "the acting MEMBERSHIP id" — same bug/fix as
+  // M7/M8/M9/M10: this used to read `ctx.userId` (the raw Better Auth user id, a DIFFERENT id from
+  // the org membership), FK-violating `order_record_drafter_membership_id_membership_id_fk`.
+  const membershipId = ctx?.attributes.membershipId;
+  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
+  return { organizationId: ctx.organizationId, userId: membershipId };
 }
 
 // Static permission guards (§4.6).

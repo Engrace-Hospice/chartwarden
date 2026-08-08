@@ -50,8 +50,12 @@ export interface EvvRouteDeps {
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
   const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
+  // `userId` here is the codebase-wide convention of "the acting MEMBERSHIP id" (every FK this value
+  // feeds — posting_membership_id, approved_by_membership_id, etc. — references `membership.id`, not
+  // Better Auth's `user.id`).
+  const membershipId = ctx?.attributes.membershipId;
+  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
+  return { organizationId: ctx.organizationId, userId: membershipId };
 }
 
 /** The M2 step-up freshness signal (header set by the M2 step-up flow; correction + supervisor-override need it). */
@@ -84,13 +88,14 @@ const PORTAL_ARRIVAL = P("portal.evv.read_arrival");
 // §4.7 — the capture routes' gate target: visitId + capturedAt from the body, membershipId from the session.
 const captureGateTarget = (request: {
   readonly body?: unknown;
-  readonly context?: { readonly userId?: string };
+  readonly context?: { readonly attributes?: { readonly membershipId?: unknown } };
 }): AbacTarget => {
   const body = (request.body ?? {}) as { visitId?: unknown; capturedAt?: unknown };
   const target: Record<string, unknown> = {};
   if (typeof body.visitId === "string") target.visitId = body.visitId;
   if (typeof body.capturedAt === "string") target.eventCapturedAt = body.capturedAt;
-  if (typeof request.context?.userId === "string") target.membershipId = request.context.userId;
+  if (typeof request.context?.attributes?.membershipId === "string")
+    target.membershipId = request.context.attributes.membershipId;
   return target;
 };
 const CAPTURE_GATE = (permission: string, predicate: string): PreHandler =>

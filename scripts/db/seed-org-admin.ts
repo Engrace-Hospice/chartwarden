@@ -18,6 +18,8 @@
  * Prereqs: backend running (bun run dev:backend) + DB migrated. Run: bun run db:seed:org-admin
  */
 import { randomBytes } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { allPermissionMirrorRows } from "@wardenx/auth";
 import { Client } from "pg";
 
@@ -137,6 +139,29 @@ async function main(): Promise<void> {
 
   await db.end();
 
+  // Append to CREDENTIALS.local.md (marker-based replace, same idempotent pattern
+  // seed-staff-personas.ts uses — a re-run must not accumulate stale duplicate blocks, and this
+  // account's password is regenerated fresh every run, so the file has to track it or every
+  // downstream script that signs in as orgadmin@ breaks against a stale credential).
+  const credsPath = join(process.cwd(), "CREDENTIALS.local.md");
+  const existing = readFileSync(credsPath, "utf8");
+  const marker = "\n## Organization Administrator (bun run db:seed:org-admin)\n";
+  const withoutOldBlock = existing.split(marker)[0].replace(/\n+$/, "\n");
+  const lines = [
+    withoutOldBlock,
+    marker.trimStart(),
+    "",
+    "> The `org_admin` tenant-admin role (full permission catalog + the tenant-admin authority",
+    "> `hasRole(ctx,\"org_admin\")` predicates check) — distinct from the CoP-418.100 `administrator`",
+    "> role the original 4 accounts above carry.",
+    "",
+    "| Persona | Email | Password | Role key(s) |",
+    "|---|---|---|---|",
+    `| Organization Administrator | \`${USER.email}\` | \`${password}\` | ${USER.roleKey} |`,
+    "",
+  ];
+  writeFileSync(credsPath, lines.join("\n"));
+
   console.log("\n✓ org_admin user created");
   console.log(`  email:    ${USER.email}`);
   console.log(`  password: ${password}`);
@@ -144,7 +169,7 @@ async function main(): Promise<void> {
   console.log(
     `  admin@wardenx.local bound to org_admin: ${bound.rowCount ? "yes" : "already bound"}`,
   );
-  console.log("\nAdd this account to CREDENTIALS.local.md.");
+  console.log("  credentials written to CREDENTIALS.local.md");
 }
 
 main().catch((err) => {

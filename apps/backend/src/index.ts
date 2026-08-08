@@ -275,6 +275,7 @@ import {
   registerEvvSeams,
 } from "./modules/18-evv/index";
 import {
+  M19_OUTBOX_EVENTS,
   buildDrizzleM19ReadService,
   buildDrizzleM19WriteService,
   buildDrizzleOncallAbacResolver,
@@ -1990,6 +1991,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     M18_OUTBOX_EVENTS,
     M15_OUTBOX_EVENTS,
     M16_OUTBOX_EVENTS,
+    // M19 — the `m19.oncall_shift.*` pair `openShift`/`closeShift` publish (genuine pre-existing gap: this
+    // module shipped with no catalog file and no boot-catalog entry, so both routes always 500'd — see
+    // `events-by-m19.ts`'s header).
+    M19_OUTBOX_EVENTS,
     // M21-T04 — the §4.5.2 `m21.*` catalog. Registered for the dispatcher's payload validation; the
     // per-module publisher binds with the §4.6 workers + the M21-T05 service layer (the M34 precedent —
     // catalogued now, bound when there is a mutation to bind it to).

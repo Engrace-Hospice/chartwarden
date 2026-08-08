@@ -29,10 +29,23 @@ export interface WxSession {
   email: string;
 }
 
-/** Read a seeded user's generated password out of the gitignored CREDENTIALS.local.md. */
+/**
+ * Read a seeded user's generated password out of the gitignored CREDENTIALS.local.md. Two things a
+ * naive `includes(email)` gets wrong, both confirmed live:
+ *   1. Substring collision: `"orgadmin@wardenx.local".includes("admin@wardenx.local")` is TRUE — a plain
+ *      substring search for `admin@wardenx.local` also matches `orgadmin@wardenx.local`'s row. Matching
+ *      the backtick-delimited exact cell (`` `${email}` ``) avoids this.
+ *   2. Ordering: `orgadmin@wardenx.local` is one of `seed.ts`'s base 4 accounts AND is separately
+ *      dropped-and-recreated with a different password by `seed-org-admin.ts` (its own header: "drops a
+ *      prior orgadmin@wardenx.local first, then re-creates it") — in `db:reset`'s pipeline order the base
+ *      block is written first and is stale (that user no longer exists) by the time any script signs in,
+ *      so the LAST matching line is always the authoritative one for any persona recreated by a later step.
+ */
 function readPassword(email: string): string {
   const md = readFileSync(join(process.cwd(), "CREDENTIALS.local.md"), "utf8");
-  const line = md.split("\n").find((l) => l.includes(email));
+  const needle = `\`${email}\``;
+  const lines = md.split("\n").filter((l) => l.includes(needle));
+  const line = lines[lines.length - 1];
   const m = line?.match(/`([^`]+)`\s*\|\s*`([^`]+)`/);
   if (!m) {
     throw new Error(`could not read password for ${email} from CREDENTIALS.local.md (run db:seed first)`);

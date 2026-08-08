@@ -546,8 +546,15 @@ export function buildDrizzleM21WriteService(
           providerEntityId,
           kind: input.kindPayload.kind,
           // The D7 delivery-address snapshot rides inside `data` (§3.1.7 has no address columns): the
-          // address at the time of the request must survive a later patient move.
-          data: { ...input.kindPayload, deliveryAddress: input.deliveryAddress },
+          // address at the time of the request must survive a later patient move. `kind` is the route-level
+          // discriminator, not part of any per-kind `SUPPLY_REQUEST_DATA_SCHEMAS` shape (all declare
+          // `additionalProperties: false`), so it must not leak into `data` alongside it. The per-kind
+          // schemas require `PatientAddressSnapshotSchema` (adds `capturedAt`/`county` over the route body's
+          // plain `deliveryAddress`); `capturedAt` is stamped here, server-side, at the moment of the write.
+          data: (() => {
+            const { kind: _kind, ...rest } = input.kindPayload;
+            return { ...rest, deliveryAddress: { ...input.deliveryAddress, capturedAt: iso(at) } };
+          })(),
           sourceOrderId: input.sourceOrderId ?? null,
           sourceReplenishmentEventId: null,
           requestedByMembershipId: actor.membershipId,
