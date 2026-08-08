@@ -42,20 +42,11 @@ export function needsOrgSelection(session: Session | null): boolean {
  * FAILS CLOSED — it stays hidden (audit #6). The route guard already keeps the nav from rendering at
  * all until the session is authenticated, so this is the defensive second line; the server remains
  * the authoritative enforcer either way.
- *
- * The "Platform" navGroup (M34 §5.1 control plane) is additionally gated on the `platform_ops`
- * RBAC role, not just `requiredPermission` (live-browser audit #2): an org-scoped Administrator's
- * role can legitimately hold RBAC keys like `tenant.list_platform` at their own org, but most of
- * those routes ALSO enforce the `tenant_lifecycle_platform_ops` ABAC predicate
- * (`context.roles.includes("platform_ops")`, apps/backend/.../34-saas-tenant-platform/abac-predicates.ts)
- * — so `requiredPermission` alone under-restricts the nav and advertises a section that 403s for
- * every non-platform-ops actor. These screens belong exclusively to the separate admin console app.
  */
 export function canSeeScreen(
-  screen: { requiredPermission?: string; navGroup?: string },
+  screen: { requiredPermission?: string },
   session: Session | null,
 ): boolean {
-  if (screen.navGroup === "Platform" && !session?.roles?.includes("platform_ops")) return false;
   if (!screen.requiredPermission) return true;
   if (!session?.permissions) return false; // unknown perms → fail closed (was fail-open)
   return session.permissions.includes(screen.requiredPermission);

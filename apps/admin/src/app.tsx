@@ -13,6 +13,9 @@ import type { CSSProperties, JSX } from "react";
 import { Link, Outlet, RouterProvider, createBrowserRouter, useLocation } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
 import type { AdminScreen, AdminScreenDescriptor } from "./shell/registry";
+import { RequireChrome } from "./shell/require-chrome";
+import { ActorSessionProvider } from "./shell/session";
+import type { Session } from "./shell/session";
 
 function newCorrelationId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
@@ -84,12 +87,15 @@ export interface AdminAppProps {
   /** The screen registry the composition root has registered platform-module slices into. */
   registry: ScreenRegistry<AdminScreen>;
   client: ApiClient;
+  /** Pre-resolved session (tests) — skips ActorSessionProvider's self-load when given. */
+  session?: Session | null;
   correlationId?: string;
 }
 
 export function AdminApp({
   registry,
   client,
+  session = null,
   correlationId = newCorrelationId(),
 }: AdminAppProps): JSX.Element {
   const router = useMemo(() => {
@@ -100,8 +106,13 @@ export function AdminApp({
     const routes: RouteObject[] = [
       ...chromeless.map((s) => ({ path: s.path, element: createElement(s.screen) })),
       {
-        // Pathless layout route: wraps the landing + every chromed screen in the console frame.
-        element: <AdminFrame nav={nav} />,
+        // Pathless layout route: wraps the landing + every chromed screen in the console frame,
+        // gated on an authenticated, platform_ops-holding session (RequireChrome).
+        element: (
+          <RequireChrome>
+            <AdminFrame nav={nav} />
+          </RequireChrome>
+        ),
         children: [
           { index: true, element: <AdminHome /> },
           ...chromed.map((s) => ({
@@ -118,7 +129,9 @@ export function AdminApp({
     <ErrorBoundary correlationId={correlationId}>
       <CorrelationIdProvider value={correlationId}>
         <ApiClientProvider client={client}>
-          <RouterProvider router={router} />
+          <ActorSessionProvider initial={session}>
+            <RouterProvider router={router} />
+          </ActorSessionProvider>
         </ApiClientProvider>
       </CorrelationIdProvider>
     </ErrorBoundary>

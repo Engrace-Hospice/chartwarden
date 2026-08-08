@@ -8,8 +8,26 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 import { createApiClient } from "@wardenx/ui";
 import { describe, expect, it } from "vitest";
 import { AdminApp } from "../src/app";
+import { adminAuthScreens } from "../src/shell/auth-screens";
 import { createAdminRegistry } from "../src/shell/registry";
 import type { AdminScreen } from "../src/shell/registry";
+import type { Session } from "../src/shell/session";
+import { adminSystemScreens } from "../src/shell/system-pages";
+
+// A pre-resolved, platform_ops-holding session — without this, RequireChrome (gated on the real
+// GET /api/v1/auth/context, which the stub client below can't answer) sends every chromed screen to
+// /error, and the test would only ever be verifying that ONE page renders (mirrors
+// apps/web/src/shell/screens-smoke.dom.test.tsx's FULL_SESSION).
+const FULL_SESSION: Session = {
+  userId: "smoke-user",
+  organizationId: "11111111-1111-4111-8111-111111111111",
+  membershipId: "22222222-2222-4222-8222-222222222222",
+  displayName: "Smoke Test",
+  organizationName: "Smoke Org",
+  roles: ["platform_ops"],
+  isAdmin: true,
+  permissions: [],
+};
 
 const moduleFiles = import.meta.glob<Record<string, unknown>>("../src/modules/*/screens.ts", {
   eager: true,
@@ -20,7 +38,10 @@ function isScreenModule(value: unknown): value is ScreenRegistryModule<AdminScre
   return !!m && typeof m === "object" && typeof m.slug === "string" && Array.isArray(m.screens);
 }
 
-const discoveredModules: ScreenRegistryModule<AdminScreen>[] = [];
+// adminSystemScreens/adminAuthScreens live in ../src/shell (not ../src/modules), the same as
+// apps/web's systemScreens — outside the glob's reach, so they're seeded explicitly (mirrors
+// apps/web/src/shell/screens-smoke.dom.test.tsx).
+const discoveredModules: ScreenRegistryModule<AdminScreen>[] = [adminSystemScreens, adminAuthScreens];
 for (const fileExports of Object.values(moduleFiles)) {
   for (const value of Object.values(fileExports)) {
     if (isScreenModule(value)) discoveredModules.push(value);
@@ -77,7 +98,9 @@ describe("TASK-050C — admin registry-driven screen smoke render", () => {
   for (const s of screens) {
     it(`renders "${s.id}" (${s.path}) without crashing`, async () => {
       window.history.pushState({}, "", concretePath(s.path));
-      const { container } = render(<AdminApp registry={registry} client={stubClient()} />);
+      const { container } = render(
+        <AdminApp registry={registry} client={stubClient()} session={FULL_SESSION} />,
+      );
       await waitFor(() => settledWithoutCrash(container), { timeout: 5_000 });
       expect(container.textContent?.trim().length ?? 0).toBeGreaterThan(0);
     });

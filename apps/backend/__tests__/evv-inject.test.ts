@@ -33,6 +33,8 @@ function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
   if (typeof user !== "string" || user.length === 0) return;
   request.context.userId = user;
+  // evv-routes.ts's actorOf() reads the acting MEMBERSHIP id from here (not ctx.userId).
+  request.context.attributes.membershipId = user;
   const org = request.headers["x-test-org"];
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];

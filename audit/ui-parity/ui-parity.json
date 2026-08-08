@@ -14,6 +14,7 @@
   },
   "registeredModules": [
     "admin/01-ops",
+    "admin/34-saas-platform",
     "admin/35-subscription-billing",
     "portal/31-portal",
     "web/02-identity",
@@ -1753,86 +1754,6 @@
       "app": "web",
       "module": "34-saas",
       "moduleId": 34,
-      "id": "saas.tenants",
-      "path": "/tenants",
-      "permission": "tenant.list_platform"
-    },
-    {
-      "app": "web",
-      "module": "34-saas",
-      "moduleId": 34,
-      "id": "saas.tenant-overview",
-      "path": "/tenants/:orgSlug",
-      "permission": "tenant.read_platform"
-    },
-    {
-      "app": "web",
-      "module": "34-saas",
-      "moduleId": 34,
-      "id": "saas.support-sessions",
-      "path": "/support/sessions",
-      "permission": "support_session.list_platform"
-    },
-    {
-      "app": "web",
-      "module": "34-saas",
-      "moduleId": 34,
-      "id": "saas.dsar-queue",
-      "path": "/exports/dsar",
-      "permission": "dsar_export.list_own"
-    },
-    {
-      "app": "web",
-      "module": "34-saas",
-      "moduleId": 34,
-      "id": "saas.tenant-export-queue",
-      "path": "/exports/tenant",
-      "permission": "tenant_export.list_own"
-    },
-    {
-      "app": "web",
-      "module": "34-saas",
-      "moduleId": 34,
-      "id": "saas.onboarding-templates",
-      "path": "/onboarding/templates",
-      "permission": "onboarding_template.list"
-    },
-    {
-      "app": "web",
-      "module": "34-saas",
-      "moduleId": 34,
-      "id": "saas.feature-flags",
-      "path": "/feature-flags",
-      "permission": "feature_flag.read_platform"
-    },
-    {
-      "app": "web",
-      "module": "34-saas",
-      "moduleId": 34,
-      "id": "saas.baa-register",
-      "path": "/baa",
-      "permission": "platform_tenant_baa.read_platform"
-    },
-    {
-      "app": "web",
-      "module": "34-saas",
-      "moduleId": 34,
-      "id": "saas.signups",
-      "path": "/signups",
-      "permission": "signup_intent.list_platform"
-    },
-    {
-      "app": "web",
-      "module": "34-saas",
-      "moduleId": 34,
-      "id": "saas.key-rings",
-      "path": "/key-rings",
-      "permission": "tenant.read_platform"
-    },
-    {
-      "app": "web",
-      "module": "34-saas",
-      "moduleId": 34,
       "id": "saas.account",
       "path": "/admin/account",
       "permission": "tenant.read_own"
@@ -2036,6 +1957,86 @@
       "id": "admin.ops.outbox-detail",
       "path": "/admin/ops/outbox/:id",
       "permission": "member.manage"
+    },
+    {
+      "app": "admin",
+      "module": "34-saas-platform",
+      "moduleId": 34,
+      "id": "saas.tenants",
+      "path": "/tenants",
+      "permission": "tenant.list_platform"
+    },
+    {
+      "app": "admin",
+      "module": "34-saas-platform",
+      "moduleId": 34,
+      "id": "saas.tenant-overview",
+      "path": "/tenants/:orgSlug",
+      "permission": "tenant.read_platform"
+    },
+    {
+      "app": "admin",
+      "module": "34-saas-platform",
+      "moduleId": 34,
+      "id": "saas.support-sessions",
+      "path": "/support/sessions",
+      "permission": "support_session.list_platform"
+    },
+    {
+      "app": "admin",
+      "module": "34-saas-platform",
+      "moduleId": 34,
+      "id": "saas.dsar-queue",
+      "path": "/exports/dsar",
+      "permission": "dsar_export.list_own"
+    },
+    {
+      "app": "admin",
+      "module": "34-saas-platform",
+      "moduleId": 34,
+      "id": "saas.tenant-export-queue",
+      "path": "/exports/tenant",
+      "permission": "tenant_export.list_own"
+    },
+    {
+      "app": "admin",
+      "module": "34-saas-platform",
+      "moduleId": 34,
+      "id": "saas.onboarding-templates",
+      "path": "/onboarding/templates",
+      "permission": "onboarding_template.list"
+    },
+    {
+      "app": "admin",
+      "module": "34-saas-platform",
+      "moduleId": 34,
+      "id": "saas.feature-flags",
+      "path": "/feature-flags",
+      "permission": "feature_flag.read_platform"
+    },
+    {
+      "app": "admin",
+      "module": "34-saas-platform",
+      "moduleId": 34,
+      "id": "saas.baa-register",
+      "path": "/baa",
+      "permission": "platform_tenant_baa.read_platform"
+    },
+    {
+      "app": "admin",
+      "module": "34-saas-platform",
+      "moduleId": 34,
+      "id": "saas.signups",
+      "path": "/signups",
+      "permission": "signup_intent.list_platform"
+    },
+    {
+      "app": "admin",
+      "module": "34-saas-platform",
+      "moduleId": 34,
+      "id": "saas.key-rings",
+      "path": "/key-rings",
+      "permission": "tenant.read_platform"
     },
     {
       "app": "admin",
