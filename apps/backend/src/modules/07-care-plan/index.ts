@@ -2,8 +2,10 @@
 // lifecycle core (M7-T03) and the published §7.8 CarePlanReader seam + its registration hook (M7-T04).
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
+import { defaultConsentActiveChecker, sudDisclosureAllowedForPatient } from "./abac-predicates";
 import {
   type CarePlanWriteOutboxPort,
+  createDbCarePlanAbacResolver,
   createDbCarePlanRouteService,
 } from "./care-plan-route-service-db";
 import { registerCarePlanRoutes as _registerM7Routes } from "./routes/care-plan-routes";
@@ -21,15 +23,49 @@ export {
  * the WRITE lifecycle (bootstrap → version draft/finalize/sign/return → problem/goal/intervention
  * authoring) is live too, driving the pure §2.2/§2.3 core with §7.7 optimistic concurrency and emitting
  * `m7.*` on the transactional outbox (the composition root binds the catalog-validating publisher). No
- * route is left at 501. M7's route surface carries no scaffold ABAC predicates that need a resolver here
- * — the §6 authoring predicates register separately via registerCarePlanAbacPredicates.
+ * route is left at 501. The §6 requireAbac authoring predicates register separately via
+ * registerCarePlanAbacPredicates; GAP-013 wires the two route-level DATA-SHAPING deps here
+ * (`dpoaConsentActive`/`sudDisclosureAllowed`) over the SAME M39 `ConsentEvaluator` seam glue and RN
+ * Case Manager check those predicates use (`defaultConsentActiveChecker`/`sudDisclosureAllowedForPatient`,
+ * abac-predicates.ts) — production previously ran the always-false stub defaults, permanently blocking
+ * agent-stated (DPOA) goal authoring and hiding every SUD-flagged problem from every caller.
  */
 export function mountCarePlanRoutes(
   app: FastifyInstance,
   db: DbClient,
   outbox?: CarePlanWriteOutboxPort,
 ): void {
-  _registerM7Routes(app, { service: createDbCarePlanRouteService(db, outbox) });
+  const resolver = createDbCarePlanAbacResolver(db);
+  const isConsentActive = defaultConsentActiveChecker();
+  _registerM7Routes(app, {
+    service: createDbCarePlanRouteService(db, outbox),
+    dpoaConsentActive: async ({ organizationId, planId }) => {
+      const facts = await resolver.loadPlan(organizationId, planId);
+      if (!facts) return false;
+      return isConsentActive({
+        organizationId,
+        patientId: facts.patientId,
+        consentType: "dpoa_healthcare",
+      });
+    },
+    sudDisclosureAllowed: async ({ organizationId, patientId, planId, roles }) => {
+      const resolvedPatientId =
+        patientId || (await resolver.loadPlan(organizationId, planId))?.patientId;
+      if (!resolvedPatientId) return false;
+      return sudDisclosureAllowedForPatient(
+        {
+          organizationId,
+          userId: "",
+          roles,
+          providerEntityIds: [],
+          locationIds: [],
+          attributes: {},
+        },
+        resolvedPatientId,
+        isConsentActive,
+      );
+    },
+  });
 }
 
 export * from "./lifecycle/index";
@@ -90,8 +126,10 @@ export {
   type CarePlanAbacDeps,
   M7_ABAC_PREDICATES,
   buildCarePlanAbacPredicates,
+  defaultConsentActiveChecker,
   disciplineScopeOf,
   registerCarePlanAbacPredicates,
+  sudDisclosureAllowedForPatient,
 } from "./abac-predicates";
 
 // M7-T07 — §2.4 outbox contract (the full `m7.*` taxonomy; check-fitness-gaps.ts scans events-by-m7.ts
