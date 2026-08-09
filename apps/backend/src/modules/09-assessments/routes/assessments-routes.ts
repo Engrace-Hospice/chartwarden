@@ -12,6 +12,14 @@ import { ASSESSMENT_DISCIPLINES, disciplineCanRecordScale } from "@wardenx/asses
 // binds the Part 2 / DPOA gate by enforcing it in the service (`DPOA_CONSENT_REQUIRED` on the write path,
 // `redacted` projection on reads — M09-F05 keeps SUD off the write predicate). §2.3: the correction route
 // carries the parent row version in `If-Match` → 412 STALE_VERSION on skew.
+//
+// GAP-015 (2026-08-09): the §4.1 route table also requires `caseload_or_scope` on 11 routes — this file
+// previously wired it on NONE, so any staff member holding `assessment.read`/`author` could reach any
+// patient's assessments org-wide. The 9 routes whose own path already carries `patientId` bind the shared
+// `caseload_or_scope` (M7-owned) directly by name (`SCOPE_FOR`, default `getTarget`); the 2 routes keyed by
+// a different id (cosignatures' assessmentId, acknowledge's eventId) bind the new M9-owned `assessment.scope`
+// predicate instead (`ASSESSMENT_SCOPE_FOR` — see abac-predicates.ts header for why). The 2 internal batch
+// routes and the 4 admin license/policy routes are unchanged (spec ABAC column is "caller asserts" / "—").
 import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
 import type { ScaleType } from "@wardenx/types";
@@ -98,6 +106,14 @@ const ABAC_DISCIPLINE = requireAbac("assessment.author", "discipline_can_record_
 }) as PreHandler;
 // §4.7 — the m9.cosigner_role_match ABAC guard M9 owns (target = request.params → id).
 const ABAC_COSIGN = requireAbac("assessment.cosign", "m9.cosigner_role_match") as PreHandler;
+// GAP-015 / §4.1 — the shared caseload_or_scope guard (M7-owned), bound by name on routes whose own path
+// already carries `patientId` (default getTarget = request.params).
+const SCOPE_FOR = (action: string): PreHandler =>
+  requireAbac(action, "caseload_or_scope", { notFoundOnDeny: true }) as PreHandler;
+// GAP-015 / §4.1 — the M9-owned assessment.scope guard, for the 2 routes keyed by a non-patientId id
+// (default getTarget already supplies the right field: `id` on cosignatures, `eventId` on acknowledge).
+const ASSESSMENT_SCOPE_FOR = (action: string): PreHandler =>
+  requireAbac(action, "assessment.scope", { notFoundOnDeny: true }) as PreHandler;
 // §2.3 / §7.7 — the correction route carries the parent row version in If-Match.
 const IF_MATCH = requireIfMatch() as PreHandler;
 
@@ -107,7 +123,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   // 1 — record a scale (§10 task-#5 pipeline; discipline matrix ABAC; idempotent via Idempotency-Key).
   app.post(
     "/api/v1/patients/:patientId/assessments",
-    { preHandler: [AUTHOR, ABAC_DISCIPLINE] },
+    { preHandler: [AUTHOR, SCOPE_FOR("assessment.author"), ABAC_DISCIPLINE] },
     async (request, reply) => {
       const { organizationId, userId, roles } = actorOf(request);
       const { patientId } = parse(PatientParamsSchema, request.params);
@@ -130,7 +146,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   // 2 — correction-of-record (append-only supersede; §2.3 If-Match → 412 STALE_VERSION).
   app.post(
     "/api/v1/patients/:patientId/assessments/:id/corrections",
-    { preHandler: [AMEND, ABAC_DISCIPLINE, IF_MATCH] },
+    { preHandler: [AMEND, SCOPE_FOR("assessment.amend"), ABAC_DISCIPLINE, IF_MATCH] },
     async (request, reply) => {
       const { organizationId, userId, roles } = actorOf(request);
       const { patientId, id } = parse(PatientAssessmentParamsSchema, request.params);
@@ -162,7 +178,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   app.get(
     "/api/v1/patients/:patientId/assessments",
     {
-      preHandler: [READ],
+      preHandler: [READ, SCOPE_FOR("assessment.read")],
       config: { auditRead: { resourceKind: "assessment", patientIdParam: "patientId" } },
     },
     async (request) => {
@@ -174,10 +190,13 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   );
 
   // 18 — scale-summary surface (static path BEFORE the :id param route so it is not captured by it).
+  // §4.1: `caseload_or_scope` ∨ `collaborator_patient_match` ∨ `portal_patient_match` — the latter two are
+  // unregistered anywhere in the platform (no module owns them); `caseload_or_scope`'s own session-scope
+  // branch already covers the collaborator/portal-session case, subsuming the OR clause (M7 GAP-012 precedent).
   app.get(
     "/api/v1/patients/:patientId/assessments/summary",
     {
-      preHandler: [READ_SUMMARY],
+      preHandler: [READ_SUMMARY, SCOPE_FOR("assessment.read_summary")],
       config: { auditRead: { resourceKind: "assessment", patientIdParam: "patientId" } },
     },
     async (request) => {
@@ -191,7 +210,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   app.get(
     "/api/v1/patients/:patientId/assessments/:id",
     {
-      preHandler: [READ],
+      preHandler: [READ, SCOPE_FOR("assessment.read")],
       config: { auditRead: { resourceKind: "assessment", patientIdParam: "patientId" } },
     },
     async (request) => {
@@ -205,7 +224,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   app.get(
     "/api/v1/patients/:patientId/scales/:scaleType/latest",
     {
-      preHandler: [READ],
+      preHandler: [READ, SCOPE_FOR("assessment.read")],
       config: { auditRead: { resourceKind: "assessment_scale", patientIdParam: "patientId" } },
     },
     async (request) => {
@@ -219,7 +238,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   app.get(
     "/api/v1/patients/:patientId/scales/:scaleType/series",
     {
-      preHandler: [READ_TREND],
+      preHandler: [READ_TREND, SCOPE_FOR("assessment.read_trend")],
       config: { auditRead: { resourceKind: "assessment_scale", patientIdParam: "patientId" } },
     },
     async (request) => {
@@ -234,7 +253,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   app.get(
     "/api/v1/patients/:patientId/scales/:scaleType/delta",
     {
-      preHandler: [READ_TREND],
+      preHandler: [READ_TREND, SCOPE_FOR("assessment.read_trend")],
       config: { auditRead: { resourceKind: "assessment_scale", patientIdParam: "patientId" } },
     },
     async (request) => {
@@ -245,10 +264,10 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
     },
   );
 
-  // 8 — LPN cosignature (§7.4; m9.cosigner_role_match ABAC).
+  // 8 — LPN cosignature (§7.4; m9.cosigner_role_match ABAC; GAP-015 assessment.scope by assessmentId).
   app.post(
     "/api/v1/assessments/:id/cosignatures",
-    { preHandler: [COSIGN, ABAC_COSIGN] },
+    { preHandler: [COSIGN, ASSESSMENT_SCOPE_FOR("assessment.cosign"), ABAC_COSIGN] },
     async (request, reply) => {
       const { organizationId, userId, roles } = actorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
@@ -264,7 +283,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   app.get(
     "/api/v1/patients/:patientId/significant-changes",
     {
-      preHandler: [READ],
+      preHandler: [READ, SCOPE_FOR("assessment.read")],
       config: { auditRead: { resourceKind: "assessment", patientIdParam: "patientId" } },
     },
     async (request) => {
@@ -274,10 +293,11 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
     },
   );
 
-  // 10 — acknowledge a significant-change event (open|escalated → acknowledged).
+  // 10 — acknowledge a significant-change event (open|escalated → acknowledged; GAP-015 assessment.scope
+  // resolves the event's triggering assessment to its patient by eventId).
   app.post(
     "/api/v1/significant-changes/:eventId/acknowledge",
-    { preHandler: [ACK_CHANGE] },
+    { preHandler: [ACK_CHANGE, ASSESSMENT_SCOPE_FOR("assessment.acknowledge_change")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { eventId } = parse(ChangeEventParamsSchema, request.params);

@@ -46,6 +46,11 @@ export interface AssessmentAbacFacts {
 /** Loads an assessment's org-scoped recorder facts (in-memory in the slice; Drizzle in prod under RLS). */
 export interface AssessmentAbacResolver {
   loadAssessment(organizationId: string, assessmentId: string): Promise<AssessmentAbacFacts | null>;
+  /** GAP-015: resolves a significant-change event to its triggering assessment's patient (org-scoped). */
+  loadSignificantChangeEvent(
+    organizationId: string,
+    eventId: string,
+  ): Promise<{ readonly patientId: string } | null>;
 }
 
 // ── route DTOs (in-memory; the Drizzle adapter projects rows to the SAME shapes) ────────────────────
@@ -767,6 +772,11 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
         recorderDiscipline: r.capturedByDiscipline,
         recordedByUserId: r.recordedByUserId,
       };
+    },
+    async loadSignificantChangeEvent(organizationId, eventId) {
+      const c = changes.get(eventId);
+      if (!c || c.organizationId !== organizationId) return null;
+      return { patientId: c.patientId };
     },
   };
 
