@@ -812,5 +812,17 @@ export function createDbAssessmentAbacResolver(db: DbClient): AssessmentAbacReso
           : null;
       });
     },
+    // GAP-015: `significant_change_event` carries no patient column — same join as `listSignificantChanges`.
+    async loadSignificantChangeEvent(organizationId, eventId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [r] = await tx
+          .select({ patientId: CA.patientId })
+          .from(SCE)
+          .innerJoin(CA, eq(SCE.clinicalAssessmentId, CA.id))
+          .where(eq(SCE.id, eventId))
+          .limit(1);
+        return r ? { patientId: r.patientId } : null;
+      });
+    },
   };
 }

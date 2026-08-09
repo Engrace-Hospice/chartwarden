@@ -5,12 +5,14 @@
 // Exercises M9's routes through the FULL M1 middleware chain via Fastify `inject`, no live infra:
 // buildServer() mounts the host, registerAssessmentRoutes() mounts the §4.1 inventory over the in-memory
 // assessment backend. The REAL Authorization Contract gates every route on the §4.6 keys; a header-auth
-// shim populates request.context. The two §4.7 predicates M9 owns are registered into the shared ABAC
-// registry over the slice's resolver. Covers: RBAC gating (2xx with key, 403 without), the discipline
-// floor (chaplain → AIMS 403), the §10 record pipeline (license/discipline gates), LPN cosignature
-// (RN ∧ not-self-recorder), the §2.3 If-Match version race (412 STALE_VERSION), and significant-change ack.
+// shim populates request.context. The three predicates M9 owns are registered into a FRESH ABAC registry
+// over the slice's resolver. Covers: RBAC gating (2xx with key, 403 without), the discipline floor
+// (chaplain → AIMS 403), the §10 record pipeline (license/discipline gates), LPN cosignature (RN ∧
+// not-self-recorder), the §2.3 If-Match version race (412 STALE_VERSION), significant-change ack, and
+// (GAP-015) caseload scoping (§4.1 `caseload_or_scope` / M9-owned `assessment.scope`).
 import {
   createInMemoryEffectivePermissionStore,
+  createPredicateRegistry,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAbacRegistry,
@@ -21,10 +23,18 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
+  buildAssessmentAbacPredicates,
   createInMemoryAssessmentBackend,
-  registerAssessmentAbacPredicates,
   registerAssessmentRoutes,
 } from "../src/modules/09-assessments/index";
+// GAP-015: M9's routes bind the SHARED `caseload_or_scope` predicate (M7-owned) by name for the 9 routes
+// that already carry `patientId`; a fresh per-test registry (the GAP-011 pattern, see below) needs it
+// registered too, or every one of those routes would fail-closed-deny in this file. `caseload_or_scope`'s
+// `patientId` branch (the only one M9 ever exercises) never calls the M7 resolver, so a stub that's never
+// invoked is safe here — this is a test-only import (dependency-cruiser's module-boundary rule scopes each
+// module's own codePaths, not `__tests__`; `clinical-consumer-contracts.test.ts` already cross-imports
+// M7+M8 the same way).
+import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/abac-predicates";
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
@@ -78,8 +88,13 @@ const PERMISSION_SEED = [
 ];
 
 type ExtraSeed = { assessments?: any[]; consents?: any[] };
+type IsInCaseload = (q: {
+  organizationId: string;
+  userId: string;
+  patientId: string;
+}) => Promise<boolean>;
 
-function makeServer(extra: ExtraSeed = {}) {
+function makeServer(extra: ExtraSeed = {}, options: { isInCaseload?: IsInCaseload } = {}) {
   const backend = createInMemoryAssessmentBackend({
     now: () => NOW,
     admissions: [
@@ -177,9 +192,23 @@ function makeServer(extra: ExtraSeed = {}) {
     ),
   );
   registerEffectivePermissionResolver(grantStore.store);
-  resetAbacRegistry();
-  registerAbacRegistry();
-  registerAssessmentAbacPredicates({ resolver: backend.resolver });
+
+  // GAP-015: a FRESH registry per server/test — reusing the shared module-level `abacRegistry` would
+  // silently pin every test after the first to whatever backend the FIRST test's registration closed
+  // over (`registerPredicateIdempotent`'s same-source-string reboot check can't tell two DIFFERENT
+  // in-memory backends apart). See the GAP-011 memory note for the full mechanism. `caseload_or_scope`
+  // is M7-owned but 9 of M9's routes bind it by name, so it's registered here too (over a resolver that's
+  // never called — see the import comment above).
+  const isInCaseload = options.isInCaseload ?? (async () => true);
+  const registry = createPredicateRegistry();
+  const m9Predicates = buildAssessmentAbacPredicates({ resolver: backend.resolver, isInCaseload });
+  const m7Predicates = buildCarePlanAbacPredicates({
+    resolver: { loadPlan: async () => null, loadProblem: async () => null },
+    isInCaseload,
+  });
+  registry.register("caseload_or_scope", m7Predicates.caseload_or_scope);
+  for (const [name, fn] of Object.entries(m9Predicates)) registry.register(name, fn);
+  registerAbacRegistry(registry);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerAssessmentRoutes(app, { service: backend.service });
@@ -593,5 +622,101 @@ describe("M9-T08 — §9.3 DPOA proxy-attribution write gate (§4.4)", () => {
       payload: painadBody({ actingAs: "self" }),
     });
     expect(res.statusCode).toBe(201);
+  });
+});
+
+// ── GAP-015 — caseload scoping (§4.1 `caseload_or_scope` / M9-owned `assessment.scope`) ──────────────────
+// Proves the wiring closes the gap: an RN outside the patient's caseload is denied a non-leaking 404 on
+// every route class (patientId-keyed, assessmentId-keyed cosign, eventId-keyed acknowledge), and caseload
+// membership restores access. `makeServer`'s default `isInCaseload` is permissive (`async () => true`) for
+// every other describe block in this file — these tests are the only ones that override it.
+describe("GAP-015 — caseload scoping", () => {
+  it("GET the patient's assessment list denies an RN outside the caseload (404, non-leaking)", async () => {
+    const { app } = makeServer({}, { isInCaseload: async () => false });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${PATIENT}/assessments`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("POST records a scale only for an RN whose caseload covers the patient (404 outside, 201 inside)", async () => {
+    const outside = makeServer({}, { isInCaseload: async () => false });
+    const denied = await outside.app.inject({
+      method: "POST",
+      url: `/api/v1/patients/${PATIENT}/assessments`,
+      headers: RN,
+      payload: painadBody(),
+    });
+    expect(denied.statusCode).toBe(404);
+
+    const inside = makeServer(
+      {},
+      { isInCaseload: async ({ patientId }) => patientId === PATIENT },
+    );
+    const allowed = await inside.app.inject({
+      method: "POST",
+      url: `/api/v1/patients/${PATIENT}/assessments`,
+      headers: RN,
+      payload: painadBody(),
+    });
+    expect(allowed.statusCode).toBe(201);
+  });
+
+  it("an org-wide scope role (medical_director) reads a patient's assessments without caseload membership", async () => {
+    const { app } = makeServer({}, { isInCaseload: async () => false });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${PATIENT}/assessments`,
+      headers: { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "medical_director" },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("LPN cosignature (assessmentId-keyed assessment.scope): denied outside caseload, allowed inside", async () => {
+    const outside = makeServer({}, { isInCaseload: async () => false });
+    const denied = await outside.app.inject({
+      method: "POST",
+      url: `/api/v1/assessments/${PPS_BY_LPN}/cosignatures`,
+      headers: RN,
+      payload: { attestationConfirmed: true },
+    });
+    expect(denied.statusCode).toBe(404);
+
+    const inside = makeServer(
+      {},
+      { isInCaseload: async ({ patientId }) => patientId === PATIENT },
+    );
+    const allowed = await inside.app.inject({
+      method: "POST",
+      url: `/api/v1/assessments/${PPS_BY_LPN}/cosignatures`,
+      headers: RN,
+      payload: { attestationConfirmed: true },
+    });
+    expect(allowed.statusCode).toBe(201);
+  });
+
+  it("significant-change acknowledge (eventId-keyed assessment.scope): denied outside caseload, allowed inside", async () => {
+    const outside = makeServer({}, { isInCaseload: async () => false });
+    const denied = await outside.app.inject({
+      method: "POST",
+      url: `/api/v1/significant-changes/${CHANGE_OPEN}/acknowledge`,
+      headers: RN,
+      payload: {},
+    });
+    expect(denied.statusCode).toBe(404);
+
+    const inside = makeServer(
+      {},
+      { isInCaseload: async ({ patientId }) => patientId === PATIENT },
+    );
+    const allowed = await inside.app.inject({
+      method: "POST",
+      url: `/api/v1/significant-changes/${CHANGE_OPEN}/acknowledge`,
+      headers: RN,
+      payload: {},
+    });
+    expect(allowed.statusCode).toBe(200);
   });
 });
