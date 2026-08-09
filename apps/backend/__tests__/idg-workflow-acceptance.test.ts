@@ -27,8 +27,17 @@ import {
   planCarryForward,
   transitionActionItem,
 } from "@wardenx/idg";
-import { describe, expect, it } from "vitest";
 import {
+  createInMemorySessionContextStore,
+  createSessionContextResolver,
+  resetAuthorizationContract,
+  resetEffectivePermissionResolver,
+  setEffectivePermissionResolver,
+} from "@wardenx/auth";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
+import {
+  REVIEW_FLOOR_OVERRIDE_ATTRIBUTE,
   buildIdgAbacPredicates,
   createInMemoryIdgBackend,
   planActionItemAutoClose,
@@ -457,6 +466,103 @@ describe("M14-T08 §7 workflow acceptance", () => {
         newScheduledStart: "2026-07-10T14:00:00.000Z",
       }),
     ).toBe(true);
+  });
+});
+
+describe("GAP-091 — per_patient_review_floor_clear's audited idg.override_review_floor escape valve", () => {
+  const SESSION = "sess-gap091";
+
+  function breachingPredicates() {
+    const svc = createInMemoryIdgBackend({
+      now: () => NOW,
+      meetings: [
+        {
+          id: MTG,
+          organizationId: ORG,
+          locationId: LOC,
+          status: "scheduled",
+          scheduledStart: "2026-06-22T14:00:00.000Z",
+          scheduledEnd: "2026-06-22T16:00:00.000Z",
+          includedPatientIds: [PATIENT],
+        },
+      ],
+      reviewFloorBreaches: { [MTG]: [{ patientId: PATIENT, floorAt: "2026-06-25T00:00:00.000Z" }] },
+    });
+    return buildIdgAbacPredicates({ resolver: svc });
+  }
+
+  /** Session-context-derived, so the predicate's real M2-seam read (never a client header) is exercised. */
+  function seedSession(lastStepUpAt: Date | null, factor: "webauthn" | "totp" | "sms" | null): void {
+    const { store } = createInMemorySessionContextStore([
+      {
+        sessionId: SESSION,
+        userId: "user-1",
+        membershipId: COORD,
+        organizationId: ORG,
+        roles: ["idg_coordinator"],
+        lastStepUpAt,
+        lastStepUpFactor: factor,
+      },
+    ]);
+    registerSeam("SessionContextResolver", createSessionContextResolver(store));
+  }
+
+  function overrideCtx(sessionId: string | null = SESSION) {
+    return { ...ctx(), attributes: sessionId ? { sessionId } : {} };
+  }
+
+  const target = { id: MTG, proposedTransition: "cancel" as const };
+
+  beforeEach(() => {
+    __resetSeamsForTest();
+    resetAuthorizationContract();
+  });
+  afterEach(() => {
+    __resetSeamsForTest();
+    resetAuthorizationContract();
+    resetEffectivePermissionResolver();
+  });
+
+  it("still denies a real breach when the actor holds no override permission (base case unchanged)", async () => {
+    const predicates = breachingPredicates();
+    expect(await predicates.per_patient_review_floor_clear!(overrideCtx(), target)).toBe(false);
+  });
+
+  it("denies when the actor holds the permission but has never stepped up", async () => {
+    setEffectivePermissionResolver(() => new Set(["idg.override_review_floor"]));
+    seedSession(null, null);
+    const predicates = breachingPredicates();
+    expect(await predicates.per_patient_review_floor_clear!(overrideCtx(), target)).toBe(false);
+  });
+
+  it("denies a stale step-up even with the permission", async () => {
+    setEffectivePermissionResolver(() => new Set(["idg.override_review_floor"]));
+    seedSession(new Date(Date.now() - 10 * 60_000), "totp"); // 10 min ago, past the 300s floor
+    const predicates = breachingPredicates();
+    expect(await predicates.per_patient_review_floor_clear!(overrideCtx(), target)).toBe(false);
+  });
+
+  it("denies a non-qualifying step-up factor (SMS) even when fresh", async () => {
+    setEffectivePermissionResolver(() => new Set(["idg.override_review_floor"]));
+    seedSession(new Date(Date.now() - 5_000), "sms");
+    const predicates = breachingPredicates();
+    expect(await predicates.per_patient_review_floor_clear!(overrideCtx(), target)).toBe(false);
+  });
+
+  it("denies when the request carries no session id, even with the permission (fail closed)", async () => {
+    setEffectivePermissionResolver(() => new Set(["idg.override_review_floor"]));
+    seedSession(new Date(Date.now() - 60_000), "totp");
+    const predicates = breachingPredicates();
+    expect(await predicates.per_patient_review_floor_clear!(overrideCtx(null), target)).toBe(false);
+  });
+
+  it("allows a real breach with the permission + a fresh qualifying step-up, and flags the override for the route handler", async () => {
+    setEffectivePermissionResolver(() => new Set(["idg.override_review_floor"]));
+    seedSession(new Date(Date.now() - 60_000), "webauthn"); // 60s ago, within the 300s floor
+    const predicates = breachingPredicates();
+    const context = overrideCtx();
+    expect(await predicates.per_patient_review_floor_clear!(context, target)).toBe(true);
+    expect(context.attributes[REVIEW_FLOOR_OVERRIDE_ATTRIBUTE]).toBe(true);
   });
 });
 

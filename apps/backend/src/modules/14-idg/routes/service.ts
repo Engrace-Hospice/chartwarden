@@ -151,6 +151,8 @@ export interface RescheduleArgs {
   readonly reason: string;
   readonly newScheduledStart: string;
   readonly newScheduledEnd: string;
+  /** GAP-091 — see `cancelMeeting`'s `overrideAuthorized` doc; resolved by the route, not the caller. */
+  readonly overrideAuthorized?: boolean;
 }
 export interface RecordAttendanceArgs {
   readonly membershipId: string;
@@ -196,7 +198,17 @@ export interface IdgRouteService {
   ): Promise<RecurringPolicyView>;
   // meeting lifecycle
   getMeeting(orgId: string, id: string): Promise<MeetingView>;
-  cancelMeeting(orgId: string, userId: string, id: string, reason: string): Promise<MeetingView>;
+  /** GAP-091 — `overrideAuthorized` is resolved by the ROUTE (idg.override_review_floor + fresh step-up,
+   * via the `per_patient_review_floor_clear` ABAC predicate) and passed through, same as `adjournMeeting`'s
+   * `stepUpFresh` — the service cannot independently verify permission/session state from a bare membership
+   * id. Defaults to `false` (no override) for any caller that doesn't pass it. */
+  cancelMeeting(
+    orgId: string,
+    userId: string,
+    id: string,
+    reason: string,
+    overrideAuthorized?: boolean,
+  ): Promise<MeetingView>;
   rescheduleMeeting(
     orgId: string,
     userId: string,
@@ -494,27 +506,41 @@ export function createInMemoryIdgBackend(
     async getMeeting(orgId, id) {
       return toMeetingView(meetingOf(orgId, id));
     },
-    async cancelMeeting(orgId, _userId, id, reason) {
+    async cancelMeeting(orgId, userId, id, reason, overrideAuthorized = false) {
       const m = meetingOf(orgId, id);
-      // The route's `per_patient_review_floor_clear` ABAC + override-permission gate is the authoritative guard;
-      // the in-mem service drives the pure machine with the resolved facts (clear + authorized).
+      // GAP-091 — the route's `per_patient_review_floor_clear` ABAC already checked this same seeded breach
+      // set to decide allow/deny; the service resolves it again (defense in depth, same as GAP-020) and
+      // feeds the REAL facts into the pure machine instead of the old hardcoded "always clear + authorized".
+      const breaches = reviewFloorBreaches[id] ?? [];
       const t = transitionMeeting(m.status, {
         type: "CANCEL",
         reason,
-        reviewFloorClear: true,
-        overrideAuthorized: true,
+        reviewFloorClear: breaches.length === 0,
+        overrideAuthorized,
+        breachingPatients: breaches,
       });
       m.status = t.to;
       emit("m14.meeting.cancelled", { meetingId: id, cancellationReason: reason });
+      if (breaches.length > 0 && overrideAuthorized) {
+        emit("m14.review_floor.override_recorded", {
+          meetingId: id,
+          actorMembershipId: userId,
+          reason,
+          breachingPatients: breaches,
+          overriddenAt: now(),
+        });
+      }
       return toMeetingView(m);
     },
-    async rescheduleMeeting(orgId, _userId, id, args) {
+    async rescheduleMeeting(orgId, userId, id, args) {
       const m = meetingOf(orgId, id);
+      const breaches = reviewFloorBreaches[id] ?? [];
       const t = transitionMeeting(m.status, {
         type: "RESCHEDULE",
         reason: args.reason,
-        reviewFloorClear: true,
-        overrideAuthorized: true,
+        reviewFloorClear: breaches.length === 0,
+        overrideAuthorized: args.overrideAuthorized ?? false,
+        breachingPatients: breaches,
       });
       m.status = t.to;
       const newId = nextId("idg-mtg");
@@ -534,6 +560,15 @@ export function createInMemoryIdgBackend(
         newScheduledStart: args.newScheduledStart,
         reason: args.reason,
       });
+      if (breaches.length > 0 && args.overrideAuthorized) {
+        emit("m14.review_floor.override_recorded", {
+          meetingId: id,
+          actorMembershipId: userId,
+          reason: args.reason,
+          breachingPatients: breaches,
+          overriddenAt: now(),
+        });
+      }
       return toMeetingView(m);
     },
     async buildPackets(orgId, _userId, id) {
