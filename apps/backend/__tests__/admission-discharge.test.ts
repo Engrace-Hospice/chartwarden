@@ -10,6 +10,7 @@
 // gate map to the right status codes.
 import {
   createInMemoryEffectivePermissionStore,
+  createPredicateRegistry,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
@@ -20,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
   DISCHARGE_POLICY,
+  buildAdmissionAbacPredicates,
   checkDischargeNarrative,
   createInMemoryAdmissionBackend,
   decideBereavementEligibility,
@@ -27,7 +29,6 @@ import {
   fileForCauseDischarge,
   isDischargeReason,
   planTransferIn,
-  registerAdmissionAbacPredicates,
   registerAdmissionRoutes,
   resolveForCauseDischarge,
 } from "../src/modules/06-admission/index";
@@ -415,8 +416,14 @@ function makeServer() {
     },
   ]);
   registerEffectivePermissionResolver(grantStore.store);
-  registerAdmissionAbacPredicates({ resolver: backend.resolver, isInCaseload: async () => true });
-  registerAbacRegistry();
+  // A FRESH registry per server — see admission-routes.test.ts's `makeServer()` for why.
+  const registry = createPredicateRegistry();
+  const predicates = buildAdmissionAbacPredicates({
+    resolver: backend.resolver,
+    isInCaseload: async () => true,
+  });
+  for (const [name, fn] of Object.entries(predicates)) registry.register(name, fn);
+  registerAbacRegistry(registry);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerAdmissionRoutes(app, { service: backend.service });

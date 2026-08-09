@@ -2633,5 +2633,70 @@ export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolv
           : null;
       });
     },
+    // GAP-011 — the five child-resource scope loaders `admission.scope` dispatches to for a resource
+    // NOT keyed by an admission id directly (abac-predicates.ts). `election_period` / `level_of_care_
+    // period` carry `admission_id` directly (one join); `election_statement` / `certification_of_
+    // terminal_illness` / `face_to_face_encounters` carry it only via `election_period_id` (a two-hop
+    // join). All five return the SAME `{patientId, providerEntityId}` shape `loadAdmission` does, read
+    // off the ADMISSION row (never the child) — `loadCti`/`loadF2f` above already prove the child
+    // tables carry no patient/provider-entity column of their own.
+    async loadElectionPeriodScope(organizationId, id) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [r] = await tx
+          .select({ patientId: ADM.patientId, providerEntityId: ADM.providerEntityId })
+          .from(EP)
+          .innerJoin(ADM, eq(EP.admissionId, ADM.id))
+          .where(eq(EP.id, id))
+          .limit(1);
+        return r ? { patientId: r.patientId, providerEntityId: r.providerEntityId ?? null } : null;
+      });
+    },
+    async loadElectionStatementScope(organizationId, id) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [r] = await tx
+          .select({ patientId: ADM.patientId, providerEntityId: ADM.providerEntityId })
+          .from(ES)
+          .innerJoin(EP, eq(ES.electionPeriodId, EP.id))
+          .innerJoin(ADM, eq(EP.admissionId, ADM.id))
+          .where(eq(ES.id, id))
+          .limit(1);
+        return r ? { patientId: r.patientId, providerEntityId: r.providerEntityId ?? null } : null;
+      });
+    },
+    async loadCtiScope(organizationId, id) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [r] = await tx
+          .select({ patientId: ADM.patientId, providerEntityId: ADM.providerEntityId })
+          .from(CTI)
+          .innerJoin(EP, eq(CTI.electionPeriodId, EP.id))
+          .innerJoin(ADM, eq(EP.admissionId, ADM.id))
+          .where(eq(CTI.id, id))
+          .limit(1);
+        return r ? { patientId: r.patientId, providerEntityId: r.providerEntityId ?? null } : null;
+      });
+    },
+    async loadF2fScope(organizationId, id) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [r] = await tx
+          .select({ patientId: ADM.patientId, providerEntityId: ADM.providerEntityId })
+          .from(F2F)
+          .innerJoin(EP, eq(F2F.electionPeriodId, EP.id))
+          .innerJoin(ADM, eq(EP.admissionId, ADM.id))
+          .where(eq(F2F.id, id))
+          .limit(1);
+        return r ? { patientId: r.patientId, providerEntityId: r.providerEntityId ?? null } : null;
+      });
+    },
+    async loadLocScope(organizationId, id) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [r] = await tx
+          .select({ patientId: ADM.patientId, providerEntityId: ADM.providerEntityId })
+          .from(LOC)
+          .innerJoin(ADM, eq(LOC.admissionId, ADM.id))
+          .where(eq(LOC.id, id))
+          .limit(1);
+        return r ? { patientId: r.patientId, providerEntityId: r.providerEntityId ?? null } : null;
+      });
+    },
   };
 }

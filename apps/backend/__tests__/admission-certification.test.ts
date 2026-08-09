@@ -9,6 +9,7 @@
 // chain (the §7.5 override + the W-F2F-01 422 mapping).
 import {
   createInMemoryEffectivePermissionStore,
+  createPredicateRegistry,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
@@ -18,6 +19,7 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
+  buildAdmissionAbacPredicates,
   computeF2fWindow,
   computeWrittenCertDeadline,
   createInMemoryAdmissionBackend,
@@ -26,7 +28,6 @@ import {
   endOfOrgDayInstant,
   isF2fScheduledWithinWindow,
   isWrittenCertOverdue,
-  registerAdmissionAbacPredicates,
   registerAdmissionRoutes,
 } from "../src/modules/06-admission/index";
 
@@ -292,8 +293,14 @@ function makeServer() {
     },
   ]);
   registerEffectivePermissionResolver(grantStore.store);
-  registerAdmissionAbacPredicates({ resolver: backend.resolver, isInCaseload: async () => true });
-  registerAbacRegistry();
+  // A FRESH registry per server — see admission-routes.test.ts's `makeServer()` for why.
+  const registry = createPredicateRegistry();
+  const predicates = buildAdmissionAbacPredicates({
+    resolver: backend.resolver,
+    isInCaseload: async () => true,
+  });
+  for (const [name, fn] of Object.entries(predicates)) registry.register(name, fn);
+  registerAbacRegistry(registry);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerAdmissionRoutes(app, { service: backend.service });

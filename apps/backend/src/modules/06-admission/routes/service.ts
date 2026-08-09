@@ -149,6 +149,17 @@ export interface AdmissionAbacResolver {
   loadCti(organizationId: string, id: string): Promise<CtiFacts | null>;
   loadF2f(organizationId: string, id: string): Promise<F2fFacts | null>;
   loadComplianceWindow(organizationId: string, id: string): Promise<ComplianceWindowFacts | null>;
+  // GAP-011 (§4.6 `admission.scope`) — the six resource kinds `admission.scope` is asked to scope
+  // that are NOT keyed by an admission id directly: each resolves the admission the resource belongs
+  // to (election_period/level_of_care_period carry `admission_id` directly; election_statement/CTI/
+  // face_to_face carry it only via `election_period_id`, a two-hop join) and returns the SAME
+  // `AdmissionFacts` shape `loadAdmission` does, so `admission.scope`'s one predicate body stays
+  // resource-agnostic once it has the right loader.
+  loadElectionPeriodScope(organizationId: string, id: string): Promise<AdmissionFacts | null>;
+  loadElectionStatementScope(organizationId: string, id: string): Promise<AdmissionFacts | null>;
+  loadCtiScope(organizationId: string, id: string): Promise<AdmissionFacts | null>;
+  loadF2fScope(organizationId: string, id: string): Promise<AdmissionFacts | null>;
+  loadLocScope(organizationId: string, id: string): Promise<AdmissionFacts | null>;
 }
 
 /** The capture contracts the routes hand the service (§4.2; abbreviated to the load-bearing fields). */
@@ -1339,6 +1350,18 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     },
   };
 
+  /** GAP-011 — resolve `{patientId, providerEntityId}` off the `admission` record `admissionId`
+   *  points to (the child record's own patientId, if any, is intentionally ignored — see the
+   *  loader comments above). */
+  const resolveAdmissionFacts = (
+    organizationId: string,
+    admissionId: string | undefined,
+  ): AdmissionFacts | null => {
+    if (!admissionId) return null;
+    const adm = get(organizationId, admissionId, "admission");
+    return adm?.patientId ? { patientId: adm.patientId, providerEntityId: adm.providerEntityId ?? null } : null;
+  };
+
   const resolver: AdmissionAbacResolver = {
     async loadReferral(organizationId, id) {
       const rec = get(organizationId, id, "referral");
@@ -1374,6 +1397,30 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
             providerEntityId: rec.providerEntityId ?? null,
           }
         : null;
+    },
+    // GAP-011 — resolve the owning admission's scope facts for a child resource. `patientId` is read
+    // off the ADMISSION record (never the child), matching the Drizzle resolver's join-through
+    // behavior: `cti`/`f2f` records never carry `patientId` directly (see `draftCti`/`scheduleF2f`
+    // above), so joining through `admission` is the only path that works for every kind uniformly.
+    async loadElectionPeriodScope(organizationId, id) {
+      const rec = get(organizationId, id, "election_period");
+      return resolveAdmissionFacts(organizationId, rec?.admissionId);
+    },
+    async loadElectionStatementScope(organizationId, id) {
+      const rec = get(organizationId, id, "election_statement");
+      return resolveAdmissionFacts(organizationId, rec?.admissionId);
+    },
+    async loadCtiScope(organizationId, id) {
+      const rec = get(organizationId, id, "cti");
+      return resolveAdmissionFacts(organizationId, rec?.admissionId);
+    },
+    async loadF2fScope(organizationId, id) {
+      const rec = get(organizationId, id, "f2f");
+      return resolveAdmissionFacts(organizationId, rec?.admissionId);
+    },
+    async loadLocScope(organizationId, id) {
+      const rec = get(organizationId, id, "loc");
+      return resolveAdmissionFacts(organizationId, rec?.admissionId);
     },
   };
 
