@@ -4,11 +4,14 @@
 // server-side (`request.context`, never the body). Handlers compose over the injected EncounterRouteService
 // (in-memory slice; Drizzle in prod under `withOrgContext` so RLS backstops).
 //
-// §4.6: the cosignature routes (19/20) additionally wire `requireAbac('m8.cosigner_role_match')` — the new
-// predicate M8 owns (RN ∧ not-self-author; caseload composed by the reused `caseload_membership`). §7.7:
-// the selections PATCH carries `If-Match` (the row version) → 412 VERSION_MISMATCH on skew. Sign routes
-// (14/20/21/25) carry the client's step-up timestamp; freshness (≤ 5 min, §2.7 D13) is verified here and
-// injected into the lifecycle machine (STEP_UP_AUTH_REQUIRED → 412 when stale).
+// §4.6: the cosignature routes (19/20) wire `requireAbac('m8.cosigner_role_match')` — RN ∧ not-self-
+// author. GAP-014 (2026-08-09): caseload scoping is now composed too, via the M8-owned `encounter.scope`
+// predicate (abac-predicates.ts) on routes 1/2/3/8/18/19/20/22 — the module previously shipped with NO
+// route-level caseload enforcement despite the header comment's prior claim it was "composed separately
+// upstream" (nothing ever composed it). §7.7: the selections PATCH carries `If-Match` (the row version)
+// → 412 VERSION_MISMATCH on skew. Sign routes (14/20/21/25) carry the client's step-up timestamp;
+// freshness (≤ 5 min, §2.7 D13) is verified here and injected into the lifecycle machine
+// (STEP_UP_AUTH_REQUIRED → 412 when stale).
 import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -110,6 +113,21 @@ const MILEAGE = P("mileage.author");
 // §4.6 — the m8.cosigner_role_match ABAC guard M8 owns (target = request.params → encounterId).
 const ABAC_COSIGN = requireAbac("encounter.cosign", "m8.cosigner_role_match") as PreHandler;
 
+// GAP-014 — the `encounter.scope` caseload guard M8 owns (abac-predicates.ts). `notFoundOnDeny: true`
+// matches the platform's §2.2 existence non-leak convention (M6/M7 precedent): a cross-tenant/outside-
+// caseload denial must read the same as an absent resource. Every route below already carries
+// `encounterId` in `request.params` (the predicate's default target) EXCEPT create (route 1), which
+// carries `patientId` in the body instead — the one case `getTarget` lifts a body field, per the same
+// "still never trusted for the SUBJECT" convention M7's `discipline_scope` guard uses.
+const SCOPE_FOR = (action: string): PreHandler =>
+  requireAbac(action, "encounter.scope", { notFoundOnDeny: true }) as PreHandler;
+const SCOPE_CREATE = requireAbac("encounter.author", "encounter.scope", {
+  notFoundOnDeny: true,
+  getTarget: (request) => ({
+    patientId: (request.body as { patientId?: unknown } | null)?.patientId,
+  }),
+}) as PreHandler;
+
 // §2.7 D13 / CoP 418.104(c) — `requireStepUp(operationKey)` over the M3 `step_up_recent` predicate
 // (real, server-verified freshness; replaces the removed client-timestamp-trusting check).
 const STEP_UP = (operationKey: string): PreHandler => requireStepUp(operationKey) as PreHandler;
@@ -121,7 +139,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   const { service } = deps;
 
   // 1 — create draft encounter.
-  app.post("/api/v1/encounters", { preHandler: [AUTHOR] }, async (request, reply) => {
+  app.post("/api/v1/encounters", { preHandler: [AUTHOR, SCOPE_CREATE] }, async (request, reply) => {
     const { organizationId, userId } = actorOf(request);
     const body = parse(CreateEncounterSchema, request.body);
     const res = await service.createDraft(organizationId, userId, {
@@ -138,6 +156,9 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   });
 
   // 26 — list encounters (static path BEFORE the :encounterId param routes for clarity).
+  // GAP-014: deliberately NOT `encounter.scope`-gated — a list route has no single id for the
+  // predicate's target model to scope against (M6/M7 precedent); narrowing rows to caseload is a
+  // query-level filtering concern, not a boolean route gate. RBAC (`READ`) + RLS still apply.
   app.get(
     "/api/v1/encounters",
     {
@@ -181,7 +202,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   app.get(
     "/api/v1/encounters/:encounterId",
     {
-      preHandler: [READ],
+      preHandler: [READ, SCOPE_FOR("encounter.read")],
       config: { auditRead: { resourceKind: "encounter", resourceIdParam: "encounterId" } },
     },
     async (request) => {
@@ -193,7 +214,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 3 — update selections (§7.7 If-Match).
   app.patch(
     "/api/v1/encounters/:encounterId/selections",
-    { preHandler: [AUTHOR, IF_MATCH] },
+    { preHandler: [AUTHOR, SCOPE_FOR("encounter.author"), IF_MATCH] },
     async (request) => {
       const { organizationId } = actorOf(request);
       parse(EncounterParamsSchema, request.params);
@@ -255,7 +276,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 8 — link encounter to care-plan elements.
   app.post(
     "/api/v1/encounters/:encounterId/care-plan-links",
-    { preHandler: [AUTHOR] },
+    { preHandler: [AUTHOR, SCOPE_FOR("encounter.author")] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       parse(CarePlanLinkSchema, request.body);
@@ -374,7 +395,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   app.get(
     "/api/v1/encounters/:encounterId/cosignature",
     {
-      preHandler: [READ],
+      preHandler: [READ, SCOPE_FOR("encounter.read")],
       config: {
         auditRead: { resourceKind: "encounter_cosignature", resourceIdParam: "encounterId" },
       },
@@ -388,7 +409,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 19 — cosigner acknowledges (§4.6 m8.cosigner_role_match).
   app.post(
     "/api/v1/encounters/:encounterId/cosignature/acknowledge",
-    { preHandler: [COSIGN, ABAC_COSIGN] },
+    { preHandler: [COSIGN, ABAC_COSIGN, SCOPE_FOR("encounter.cosign")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       return service.cosignAcknowledge(organizationId, encounterIdOf(request), today());
@@ -398,7 +419,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 20 — cosigner signs (§4.6 m8.cosigner_role_match; D13 step-up).
   app.post(
     "/api/v1/encounters/:encounterId/cosignature/sign",
-    { preHandler: [COSIGN, ABAC_COSIGN, STEP_UP("encounter.cosign")] },
+    { preHandler: [COSIGN, ABAC_COSIGN, SCOPE_FOR("encounter.cosign"), STEP_UP("encounter.cosign")] },
     async (request) => {
       const { organizationId, roles } = actorOf(request);
       parse(SignEncounterSchema, request.body); // validates the attestation-confirmed shape
@@ -427,7 +448,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 22 — create addendum draft on a signed encounter.
   app.post(
     "/api/v1/encounters/:encounterId/addenda",
-    { preHandler: [ADDENDUM_AUTHOR] },
+    { preHandler: [ADDENDUM_AUTHOR, SCOPE_FOR("encounter.addendum_author")] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       parse(CreateAddendumSchema, request.body);
