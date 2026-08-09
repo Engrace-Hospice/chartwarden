@@ -30,6 +30,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   createInMemoryEffectivePermissionStore,
+  createPredicateRegistry,
+  registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
   resetRbacEngine,
@@ -155,9 +157,8 @@ async function runConformanceSuite(
 // ── In-memory backend ────────────────────────────────────────────────────────────────────────────
 describe("M7 Care Plan conformance (TASK-050B)", () => {
   runConformanceSuite("in-memory", async () => {
-    const { createInMemoryCarePlanBackend, registerCarePlanRoutes } = await import(
-      "../src/modules/07-care-plan/index"
-    );
+    const { buildCarePlanAbacPredicates, createInMemoryCarePlanBackend, registerCarePlanRoutes } =
+      await import("../src/modules/07-care-plan/index");
     const { buildServer } = await import("../src/bootstrap/index");
 
     resetAuthorizationContract();
@@ -178,7 +179,17 @@ describe("M7 Care Plan conformance (TASK-050B)", () => {
     ]);
     registerEffectivePermissionResolver(grantStore.store);
 
-    const { service } = createInMemoryCarePlanBackend();
+    const { service, resolver } = createInMemoryCarePlanBackend();
+    // GAP-012: this file tests concurrency/duplicate-guard conformance, not caseload semantics — a
+    // FRESH registry with `isInCaseload` stubbed permissive (no caseload rows are seeded here) so the
+    // new `caseload_or_scope` route guards don't block these scenarios. See admission-routes.test.ts /
+    // care-plan-routes.test.ts for the pattern; a shared-registry reuse across this file's TWO backends
+    // would hit the same GAP-011 same-source-reboot contamination this pattern avoids.
+    const registry = createPredicateRegistry();
+    const predicates = buildCarePlanAbacPredicates({ resolver, isInCaseload: async () => true });
+    for (const [name, fn] of Object.entries(predicates)) registry.register(name, fn);
+    registerAbacRegistry(registry);
+
     const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
     registerCarePlanRoutes(app, { service });
     return {
@@ -234,9 +245,12 @@ describe("M7 Care Plan conformance (TASK-050B)", () => {
 
     runConformanceSuite("live Drizzle", async () => {
       const { createDbClient } = await import("@wardenx/db");
-      const { createDbCarePlanRouteService, registerCarePlanRoutes } = await import(
-        "../src/modules/07-care-plan/index"
-      );
+      const {
+        buildCarePlanAbacPredicates,
+        createDbCarePlanAbacResolver,
+        createDbCarePlanRouteService,
+        registerCarePlanRoutes,
+      } = await import("../src/modules/07-care-plan/index");
       const { buildServer } = await import("../src/bootstrap/index");
 
       resetAuthorizationContract();
@@ -292,6 +306,15 @@ describe("M7 Care Plan conformance (TASK-050B)", () => {
 
       const handle = createDbClient({ connectionString: DB_URL as string });
       const service = createDbCarePlanRouteService(handle.db as never);
+      // GAP-012: see the in-memory backend's comment above — same fresh-registry, permissive-caseload
+      // pattern, over the REAL Drizzle resolver this time (no caseload rows are seeded for `author_1`).
+      const registry = createPredicateRegistry();
+      const predicates = buildCarePlanAbacPredicates({
+        resolver: createDbCarePlanAbacResolver(handle.db as never),
+        isInCaseload: async () => true,
+      });
+      for (const [name, fn] of Object.entries(predicates)) registry.register(name, fn);
+      registerAbacRegistry(registry);
       const app = buildServer({
         db: handle.db as never,
         authenticate: headerAuth,

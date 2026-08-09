@@ -9,9 +9,14 @@
 // caching is the M1 platform middleware (applyIdempotency, mounted globally). `If-Match` carries the row
 // version the client read; the service raises 412 STALE_VERSION on skew (§7.7).
 //
-// The §4 ABAC composition (`caseload_or_scope` ∧ `discipline_scope` ∧ `sud_disclosure_allowed`,
-// `signer_role_match`) lands with the authoring work (M7-T06); the keys + RBAC gating land here.
-import { requirePermission } from "@wardenx/auth";
+// GAP-012 (2026-08-09): the §4 ABAC composition is wired here — `caseload_or_scope` on every
+// patient/plan-scoped route (via `SCOPE`/`SCOPE_BY_QUERY_PATIENT` below), `signer_role_match` on the
+// signature route, `discipline_scope` on intervention authoring (lifted from the body via `getTarget`,
+// per abac-predicates.ts's own header comment — still never trusting the body for anything but the
+// discipline being authored). `dpoa_active`/`sud_disclosure_allowed` stay as the existing
+// `dpoaConsentActive`/`sudDisclosureAllowed` closures below (per-element data-shaping, not a route
+// gate; wiring their real seam-backed implementations at boot is GAP-013, a separate finding).
+import { requireAbac, requirePermission } from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
 import type { InterventionDiscipline } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -84,6 +89,39 @@ const SIGN = P("care_plan.sign");
 const IDEMPOTENT = requireIdempotencyKey();
 const IF_MATCH = requireIfMatch();
 
+// GAP-012 — §6 ABAC composition (§4.1 route table). `caseload_or_scope`'s target reads whichever of
+// `patientId`/`planId` the route's params already carry (both shapes the predicate supports); every
+// M7 route names one directly (no resourceKind dispatch needed — unlike M6, no M7 child route's `:id`
+// is anything OTHER than the plan id). `notFoundOnDeny: true` preserves the pre-existing §6.6
+// existence-non-leak convention (a cross-tenant/outside-caseload denial must not read differently
+// from an absent resource).
+const SCOPE = (action: string): PreHandler =>
+  requireAbac(action, "caseload_or_scope", { notFoundOnDeny: true }) as PreHandler;
+
+// The overdue-status route's handler resolves entirely off `?patientId=` (its `:planId` path segment
+// is never read — see the handler below), so the ABAC target must follow the resource the handler
+// actually reads, not the unused path param.
+const SCOPE_BY_QUERY_PATIENT = (action: string): PreHandler =>
+  requireAbac(action, "caseload_or_scope", {
+    notFoundOnDeny: true,
+    getTarget: (request) => ({
+      patientId: (request.query as { patientId?: unknown } | null)?.patientId,
+    }),
+  }) as PreHandler;
+
+const SIGNER_MATCH = requireAbac("care_plan.sign", "signer_role_match", {
+  notFoundOnDeny: true,
+}) as PreHandler;
+
+// `discipline_scope`'s target is the body's `discipline` (the thing being authored) — the one M7
+// predicate that reads the body rather than a resolver-loaded resource, per abac-predicates.ts's own
+// header comment.
+const DISCIPLINE_SCOPE = requireAbac("care_plan.author", "discipline_scope", {
+  getTarget: (request) => ({
+    discipline: (request.body as { discipline?: unknown } | null)?.discipline,
+  }),
+}) as PreHandler;
+
 const planIdOf = (request: FastifyRequest): string =>
   parse(PlanParamsSchema, request.params).planId;
 
@@ -97,7 +135,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
   app.get(
     "/api/v1/patients/:patientId/care-plan",
     {
-      preHandler: [READ],
+      preHandler: [READ, SCOPE("care_plan.read")],
       config: { auditRead: { resourceKind: "care_plan", patientIdParam: "patientId" } },
     },
     async (request) => {
@@ -114,7 +152,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
 
   app.post(
     "/api/v1/patients/:patientId/care-plan",
-    { preHandler: [BOOTSTRAP] },
+    { preHandler: [BOOTSTRAP, SCOPE("care_plan.bootstrap")] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const { patientId } = parse(PatientParamsSchema, request.params);
@@ -128,7 +166,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
   app.get(
     "/api/v1/care-plans/:planId/versions",
     {
-      preHandler: [READ],
+      preHandler: [READ, SCOPE("care_plan.read")],
       config: { auditRead: { resourceKind: "care_plan_version", resourceIdParam: "planId" } },
     },
     async (request) => {
@@ -140,7 +178,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
   app.get(
     "/api/v1/care-plans/:planId/versions/:versionId",
     {
-      preHandler: [READ],
+      preHandler: [READ, SCOPE("care_plan.read")],
       config: { auditRead: { resourceKind: "care_plan_version", resourceIdParam: "versionId" } },
     },
     async (request) => {
@@ -152,7 +190,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
 
   app.post(
     "/api/v1/care-plans/:planId/versions",
-    { preHandler: [AUTHOR] },
+    { preHandler: [AUTHOR, SCOPE("care_plan.author")] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const body = parse(CreateVersionSchema, request.body);
@@ -168,7 +206,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
 
   app.post(
     "/api/v1/care-plans/:planId/versions/:versionId/finalize",
-    { preHandler: [FINALIZE] },
+    { preHandler: [FINALIZE, SCOPE("care_plan.finalize")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { planId, versionId } = parse(PlanVersionParamsSchema, request.params);
@@ -185,7 +223,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
 
   app.post(
     "/api/v1/care-plans/:planId/versions/:versionId/signatures",
-    { preHandler: [SIGN] },
+    { preHandler: [SIGN, SCOPE("care_plan.sign"), SIGNER_MATCH] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const { planId, versionId } = parse(PlanVersionParamsSchema, request.params);
@@ -204,7 +242,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
 
   app.post(
     "/api/v1/care-plans/:planId/versions/:versionId/return-to-draft",
-    { preHandler: [AUTHOR] },
+    { preHandler: [AUTHOR, SCOPE("care_plan.author")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { planId, versionId } = parse(PlanVersionParamsSchema, request.params);
@@ -216,7 +254,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
   // ── Problems ─────────────────────────────────────────────────────────────────────────────────
   app.post(
     "/api/v1/care-plans/:planId/problems",
-    { preHandler: [AUTHOR] },
+    { preHandler: [AUTHOR, SCOPE("care_plan.author")] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const body = parse(CreateProblemSchema, request.body);
@@ -234,7 +272,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
 
   app.patch(
     "/api/v1/care-plans/:planId/problems/:elementId",
-    { preHandler: [AUTHOR, IDEMPOTENT, IF_MATCH] },
+    { preHandler: [AUTHOR, SCOPE("care_plan.author"), IDEMPOTENT, IF_MATCH] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { planId, elementId } = parse(PlanElementParamsSchema, request.params);
@@ -251,7 +289,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
 
   app.post(
     "/api/v1/care-plans/:planId/problems/:elementId/resolve",
-    { preHandler: [AUTHOR] },
+    { preHandler: [AUTHOR, SCOPE("care_plan.author")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { planId, elementId } = parse(PlanElementParamsSchema, request.params);
@@ -267,32 +305,36 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
   );
 
   // ── Goals ───────────────────────────────────────────────────────────────────────────────────
-  app.post("/api/v1/care-plans/:planId/goals", { preHandler: [AUTHOR] }, async (request, reply) => {
-    const { organizationId } = actorOf(request);
-    const planId = planIdOf(request);
-    const body = parse(CreateGoalSchema, request.body);
-    const dpoa =
-      body.source === "agent_stated"
-        ? await dpoaConsentActive({ organizationId, patientId: "", planId })
-        : false;
-    const res = await service.addGoal(
-      organizationId,
-      planId,
-      {
-        problemId: body.problemId,
-        originalText: body.originalText,
-        source: body.source,
-        actingConsentId: body.actingConsentId,
-        measurableOutcome: body.measurableOutcome,
-      },
-      dpoa,
-    );
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/care-plans/:planId/goals",
+    { preHandler: [AUTHOR, SCOPE("care_plan.author")] },
+    async (request, reply) => {
+      const { organizationId } = actorOf(request);
+      const planId = planIdOf(request);
+      const body = parse(CreateGoalSchema, request.body);
+      const dpoa =
+        body.source === "agent_stated"
+          ? await dpoaConsentActive({ organizationId, patientId: "", planId })
+          : false;
+      const res = await service.addGoal(
+        organizationId,
+        planId,
+        {
+          problemId: body.problemId,
+          originalText: body.originalText,
+          source: body.source,
+          actingConsentId: body.actingConsentId,
+          measurableOutcome: body.measurableOutcome,
+        },
+        dpoa,
+      );
+      return reply.code(201).send(res);
+    },
+  );
 
   app.patch(
     "/api/v1/care-plans/:planId/goals/:elementId",
-    { preHandler: [AUTHOR, IDEMPOTENT, IF_MATCH] },
+    { preHandler: [AUTHOR, SCOPE("care_plan.author"), IDEMPOTENT, IF_MATCH] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { planId, elementId } = parse(PlanElementParamsSchema, request.params);
@@ -304,7 +346,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
   // ── Interventions ────────────────────────────────────────────────────────────────────────────
   app.post(
     "/api/v1/care-plans/:planId/interventions",
-    { preHandler: [AUTHOR] },
+    { preHandler: [AUTHOR, SCOPE("care_plan.author"), DISCIPLINE_SCOPE] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const body = parse(CreateInterventionSchema, request.body);
@@ -331,7 +373,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
 
   app.patch(
     "/api/v1/care-plans/:planId/interventions/:elementId",
-    { preHandler: [AUTHOR, IDEMPOTENT, IF_MATCH] },
+    { preHandler: [AUTHOR, SCOPE("care_plan.author"), IDEMPOTENT, IF_MATCH] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { planId, elementId } = parse(PlanElementParamsSchema, request.params);
@@ -348,7 +390,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
 
   app.post(
     "/api/v1/care-plans/:planId/interventions/:elementId/discontinue",
-    { preHandler: [AUTHOR] },
+    { preHandler: [AUTHOR, SCOPE("care_plan.author")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { planId, elementId } = parse(PlanElementParamsSchema, request.params);
@@ -367,7 +409,11 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
   app.get(
     "/api/v1/care-plans/:planId/summary",
     {
-      preHandler: [READ_SUMMARY],
+      // §4.1: `caseload_or_scope` ∨ `collaborator_patient_match` — the latter is unregistered anywhere
+      // in the platform (no module owns it), but `caseload_or_scope`'s own session-scope branch
+      // (`sessionScopePatientIds`, abac-predicates.ts) already covers the collaborator/portal-session
+      // case, so it subsumes the OR clause without a second predicate.
+      preHandler: [READ_SUMMARY, SCOPE("care_plan.read_summary")],
       config: { auditRead: { resourceKind: "care_plan", resourceIdParam: "planId" } },
     },
     async (request) => {
@@ -381,7 +427,9 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
   app.get(
     "/api/v1/care-plans/:planId/overdue-status",
     {
-      preHandler: [READ],
+      // Scoped by the query's `patientId` (what the handler actually reads), not the path's `:planId`
+      // (unused below) — see `SCOPE_BY_QUERY_PATIENT`'s doc comment.
+      preHandler: [READ, SCOPE_BY_QUERY_PATIENT("care_plan.read")],
       config: { auditRead: { resourceKind: "care_plan", resourceIdParam: "planId" } },
     },
     async (request) => {
@@ -393,6 +441,8 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
 
   app.get(
     "/api/v1/internal/care-plan/relevant-elements",
+    // §4.1: deliberately un-gated on `caseload_or_scope` — the spec's own route table marks this
+    // internal M8-caller route "M8 caller asserts scope (no gate)". RBAC (`READ`) + RLS still apply.
     {
       preHandler: [READ],
       config: { auditRead: { resourceKind: "care_plan_element" } },
