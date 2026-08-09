@@ -27,8 +27,20 @@
 //       gate reads the packet set (authoritative) OR a patient-scoped agenda item (the Phase-1 signal);
 //   (4) decision payloads are persisted exactly as route validation accepted them; amendment diffs and
 //       packet snapshots remain structural until their dedicated authoring flows land;
-//   (5) the per-patient 15-day review-floor is resolved `clear` (the M14-F01 cron owns the breach math; the
-//       gated CANCEL/RESCHEDULE transitions drive the machine with the authorized-override facts).
+//   (5) [GAP-020 CLOSED] the per-patient 15-day review-floor breach math (`computeReviewFloorBreaches`) is
+//       real: it reads the PACKET-included set (§2.3 D9's authoritative signal) for the meeting, floors each
+//       patient at `packet.since_cursor_iso + 15d` (the packet worker already resolved that cursor to "last
+//       review OR admission activation" — no second fact source needed), and a patient is covered iff another
+//       non-cancelled/non-rescheduled meeting that also includes them is scheduled on/before their floor. An
+//       agenda-only inclusion (pre-`BUILD_PACKETS`) has no packet-resolved cursor to check and is NOT
+//       evaluated — the same authoritative-vs-Phase-1-signal split `patientIncluded` already draws. `ADJOURN`
+//       now really stamps `last_idg_reviewed_at` (previously only `frozen_at` was set, so the floor could
+//       never advance — a second, silent half of this same regression). `cancelMeeting`/`rescheduleMeeting`
+//       feed the SAME computed facts into the pure `transitionMeeting` guard (`overrideAuthorized` is always
+//       `false` — no `idg.override_review_floor` composition exists at the route yet, so a real breach is a
+//       hard 422/403, not merely audited-and-allowed). Still open, deliberately out of this fix's scope: the
+//       `idg.review-clock-sweep` cron (T-3/T-0/T+1 escalation for a floor that lapses from pure inaction,
+//       never touching CANCEL/RESCHEDULE at all) and the override composition itself.
 import { createHash } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import {
@@ -42,7 +54,7 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import type { IdgActionItemStatus, IdgDecisionKind, PatientId } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
-import { and, asc, desc, eq, gte, inArray, lte, notInArray } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, ne, notInArray } from "drizzle-orm";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "./abac-predicates";
 import type {
   ActionItemPatchStatus,
@@ -210,6 +222,56 @@ export function createDbIdgBackend(
       .where(and(eq(AGD.idgMeetingId, meetingId), eq(AGD.patientId, patientId)))
       .limit(1);
     return !!ag;
+  }
+  const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
+  /** M14-F01 / ADR-0018 D2 (GAP-020) — the per-patient 15-day review-floor breach set a proposed
+   * CANCEL/RESCHEDULE would leave uncovered. Scoped to PACKET-included patients (§2.3 D9's authoritative
+   * inclusion signal); an agenda-only patient has no packet-resolved review cursor to check (documented, not
+   * silent — see the module header). Each packet's `since_cursor_iso` is already the "last review OR
+   * admission activation" cursor the §2.4 packet worker resolved when it built the packet, so the floor is
+   * just that cursor + 15 days — no second fact source to thread in. A patient is COVERED (no breach) when
+   * another non-cancelled/non-rescheduled meeting that also includes them is scheduled on/before their floor. */
+  async function computeReviewFloorBreaches(
+    tx: DbClient,
+    orgId: string,
+    meetingId: string,
+    proposedTransition: "cancel" | "reschedule",
+    newScheduledStart: string | null,
+  ): Promise<ReviewFloorBreachFact[]> {
+    const pkts = await tx
+      .select({ patientId: PKT.patientId, sinceCursorIso: PKT.sinceCursorIso })
+      .from(PKT)
+      .where(eq(PKT.idgMeetingId, meetingId));
+    if (pkts.length === 0) return [];
+
+    const breaches: ReviewFloorBreachFact[] = [];
+    for (const p of pkts) {
+      const floorAt = new Date(new Date(p.sinceCursorIso).getTime() + FIFTEEN_DAYS_MS);
+      // A RESCHEDULE onto a date still on/before the floor covers the patient with THIS meeting itself.
+      if (
+        proposedTransition === "reschedule" &&
+        newScheduledStart &&
+        new Date(newScheduledStart) <= floorAt
+      ) {
+        continue;
+      }
+      const [covering] = await tx
+        .select({ id: MTG.id })
+        .from(PKT)
+        .innerJoin(MTG, eq(MTG.id, PKT.idgMeetingId))
+        .where(
+          and(
+            eq(PKT.organizationId, orgId),
+            eq(PKT.patientId, p.patientId),
+            ne(PKT.idgMeetingId, meetingId),
+            notInArray(MTG.status, ["cancelled", "rescheduled"] as never),
+            lte(MTG.scheduledStart, floorAt),
+          ),
+        )
+        .limit(1);
+      if (!covering) breaches.push({ patientId: p.patientId, floorAt: floorAt.toISOString() });
+    }
+    return breaches;
   }
   /** Ensure a `in_progress` minutes row for the meeting (idempotent); returns its id. */
   async function ensureMinutes(tx: DbClient, orgId: string, meetingId: string): Promise<string> {
@@ -495,13 +557,17 @@ export function createDbIdgBackend(
     async cancelMeeting(orgId, userId, id, reason): Promise<MeetingView> {
       return withOrg(orgId, async (tx) => {
         const m = await loadMeeting(tx, id);
-        // The route's `per_patient_review_floor_clear` ABAC + override-permission gate is authoritative; the
-        // service drives the machine with the resolved facts (clear + authorized) (compromise #5).
+        // The route's `per_patient_review_floor_clear` ABAC gate already checks this (403 before the handler
+        // runs); the service resolves the SAME facts as a defense-in-depth backstop for any caller that
+        // reaches the service directly. No `idg.override_review_floor` composition exists yet (GAP-020
+        // header), so `overrideAuthorized` is always false — a real breach is a hard 422 here.
+        const breaches = await computeReviewFloorBreaches(tx, orgId, id, "cancel", null);
         transitionMeeting(m.status, {
           type: "CANCEL",
           reason,
-          reviewFloorClear: true,
-          overrideAuthorized: true,
+          reviewFloorClear: breaches.length === 0,
+          overrideAuthorized: false,
+          breachingPatients: breaches,
         });
         const at = new Date();
         await tx
@@ -525,11 +591,19 @@ export function createDbIdgBackend(
     async rescheduleMeeting(orgId, _userId, id, args): Promise<MeetingView> {
       return withOrg(orgId, async (tx) => {
         const prior = await loadMeeting(tx, id);
+        const breaches = await computeReviewFloorBreaches(
+          tx,
+          orgId,
+          id,
+          "reschedule",
+          args.newScheduledStart,
+        );
         transitionMeeting(prior.status, {
           type: "RESCHEDULE",
           reason: args.reason,
-          reviewFloorClear: true,
-          overrideAuthorized: true,
+          reviewFloorClear: breaches.length === 0,
+          overrideAuthorized: false,
+          breachingPatients: breaches,
         });
         const at = new Date();
         await tx
@@ -635,7 +709,12 @@ export function createDbIdgBackend(
             });
           }
         }
-        await tx.update(PKT).set({ frozenAt: at, updatedAt: at }).where(eq(PKT.idgMeetingId, id));
+        // §2.7 `stamp_review_floor` (GAP-020) — the commit-point review actually resets each included
+        // patient's 15-day floor; previously only `frozenAt` was set here, so the floor never advanced.
+        await tx
+          .update(PKT)
+          .set({ frozenAt: at, lastIdgReviewedAt: at, updatedAt: at })
+          .where(eq(PKT.idgMeetingId, id));
 
         const minutesId = await ensureMinutes(tx, orgId, id);
         await tx
@@ -1014,14 +1093,14 @@ export function createDbIdgBackend(
       });
     },
     async loadReviewFloorBreaches(
-      _orgId,
-      _meetingId,
-      _proposedTransition,
-      _newScheduledStart,
+      orgId,
+      meetingId,
+      proposedTransition,
+      newScheduledStart,
     ): Promise<readonly ReviewFloorBreachFact[]> {
-      // The per-patient 15-day review-floor breach math is the M14-F01 cron's (compromise #5); the gated
-      // CANCEL/RESCHEDULE transitions drive the machine with the authorized-override facts. Clear here.
-      return [];
+      return withOrg(orgId, (tx) =>
+        computeReviewFloorBreaches(tx, orgId, meetingId, proposedTransition, newScheduledStart),
+      );
     },
   };
 }

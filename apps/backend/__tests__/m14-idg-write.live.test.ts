@@ -13,6 +13,7 @@
  *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m14:write:live
  * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
  */
+import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
@@ -33,12 +34,14 @@ const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
 const MEMBER = "33333333-3333-3333-3333-33333333aaaa"; // idg tables carry no membership FK — literal is fine
 const PATIENT = "44444444-4444-4444-4444-444444444444";
+const ADMISSION = "55555555-5555-5555-5555-555555555555"; // idg_patient_packet's admission_id is app-validated (no FK)
 
 describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbIdgBackend>;
   const locationOf: Record<string, string> = {};
+  const peOf: Record<string, string> = {};
 
   async function resetSchema() {
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -93,6 +96,29 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       )
     ).rows[0].id as string;
   }
+  /** GAP-020 — seed a packet with a chosen `since_cursor_iso` (the "last review or admission activation"
+   * cursor the §2.4 packet worker resolves); the review-floor breach math floors it at cursor + 15 days. */
+  async function seedPacket(
+    org: string,
+    meetingId: string,
+    patientId: string,
+    sinceCursorIso: string,
+  ): Promise<void> {
+    await admin.query(
+      `INSERT INTO idg_patient_packet
+         (organization_id, provider_entity_id, location_id, idg_meeting_id, patient_id, admission_id,
+          since_cursor_iso, built_snapshot, discipline_views, cover_summary_layer1)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'{}'::jsonb,'{}'::jsonb,'seed')`,
+      [org, peOf[org], locationOf[org], meetingId, patientId, ADMISSION, sinceCursorIso],
+    );
+  }
+  async function packetReviewedAt(meetingId: string, patientId: string): Promise<string | null> {
+    const { rows } = await admin.query(
+      "SELECT last_idg_reviewed_at FROM idg_patient_packet WHERE idg_meeting_id=$1 AND patient_id=$2",
+      [meetingId, patientId],
+    );
+    return rows[0]?.last_idg_reviewed_at ? new Date(rows[0].last_idg_reviewed_at).toISOString() : null;
+  }
 
   beforeAll(async () => {
     admin = new Client({ connectionString: DB_URL });
@@ -117,6 +143,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
           ],
         )
       ).rows[0].id as string;
+      peOf[org] = pe;
       locationOf[org] = (
         await admin.query(
           `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
@@ -308,6 +335,70 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     expect(rescheduled.status).toBe("rescheduled");
     expect(await eventsFor(r)).toContain("m14.meeting.rescheduled");
     expect(await meetingStatus(r)).toBe("rescheduled");
+  });
+
+  it("adjourn stamps last_idg_reviewed_at on each included patient's packet (GAP-020)", async () => {
+    const m = await seedMeeting(ORG_A, "live");
+    const patientId = randomUUID();
+    await seedPacket(ORG_A, m, patientId, new Date(Date.now() - 20 * 86400000).toISOString());
+    expect(await packetReviewedAt(m, patientId)).toBeNull();
+    const adjourned = await svc.adjournMeeting(ORG_A, MEMBER, m, true);
+    expect(await packetReviewedAt(m, patientId)).toBe(adjourned.adjournedAt);
+  });
+
+  it("cancel refuses a packet-included patient's 15-day review-floor breach with no covering meeting (GAP-020)", async () => {
+    const m = await seedMeeting(ORG_A, "scheduled");
+    const patientId = randomUUID();
+    // since_cursor 20 days ago → floor 5 days ago (already lapsed); no other meeting covers this patient.
+    await seedPacket(ORG_A, m, patientId, new Date(Date.now() - 20 * 86400000).toISOString());
+
+    const breaches = await svc.loadReviewFloorBreaches(ORG_A, m, "cancel", null);
+    expect(breaches).toHaveLength(1);
+    expect(breaches[0]?.patientId).toBe(patientId);
+
+    await expect(svc.cancelMeeting(ORG_A, MEMBER, m, "no longer needed")).rejects.toMatchObject({
+      code: "PER_PATIENT_REVIEW_FLOOR_BREACH",
+    });
+    // The rejected transition rolled back — the meeting is still scheduled, not cancelled.
+    expect(await meetingStatus(m)).toBe("scheduled");
+  });
+
+  it("cancel succeeds when another non-cancelled meeting covers the patient's floor (GAP-020)", async () => {
+    const patientId = randomUUID();
+    const cursor = new Date(Date.now() - 10 * 86400000).toISOString(); // floor = +5 days from now
+    const covering = await seedMeeting(ORG_A, "scheduled"); // scheduled_start = now(), on/before the floor
+    const m = await seedMeeting(ORG_A, "scheduled");
+    await seedPacket(ORG_A, covering, patientId, cursor);
+    await seedPacket(ORG_A, m, patientId, cursor);
+
+    expect(await svc.loadReviewFloorBreaches(ORG_A, m, "cancel", null)).toHaveLength(0);
+    const cancelled = await svc.cancelMeeting(ORG_A, MEMBER, m, "duplicate booking");
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("reschedule refuses when the new start pushes the patient past their review floor (GAP-020)", async () => {
+    const m = await seedMeeting(ORG_A, "scheduled");
+    const patientId = randomUUID();
+    await seedPacket(ORG_A, m, patientId, new Date(Date.now() - 10 * 86400000).toISOString()); // floor +5d
+    await expect(
+      svc.rescheduleMeeting(ORG_A, MEMBER, m, {
+        reason: "conflict",
+        newScheduledStart: new Date(Date.now() + 20 * 86400000).toISOString(), // past the floor
+        newScheduledEnd: new Date(Date.now() + 20 * 86400000 + 3_600_000).toISOString(),
+      }),
+    ).rejects.toMatchObject({ code: "PER_PATIENT_REVIEW_FLOOR_BREACH" });
+  });
+
+  it("reschedule succeeds when the new start still covers the patient's review floor (GAP-020)", async () => {
+    const m = await seedMeeting(ORG_A, "scheduled");
+    const patientId = randomUUID();
+    await seedPacket(ORG_A, m, patientId, new Date(Date.now() - 10 * 86400000).toISOString()); // floor +5d
+    const rescheduled = await svc.rescheduleMeeting(ORG_A, MEMBER, m, {
+      reason: "conflict",
+      newScheduledStart: new Date(Date.now() + 2 * 86400000).toISOString(), // within the floor
+      newScheduledEnd: new Date(Date.now() + 2 * 86400000 + 3_600_000).toISOString(),
+    });
+    expect(rescheduled.status).toBe("rescheduled");
   });
 
   it("RLS: org B cannot start or read org A's meeting (404 under the wardenx_app policy)", async () => {
