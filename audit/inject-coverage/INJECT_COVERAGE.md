@@ -13,7 +13,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 04-audit | 13 | ✅ | 13/13 | apps/backend/__tests__/audit-accounting.test.ts, apps/backend/__tests__/audit-routes-mount.test.ts, apps/backend/__tests__/audit-routes.test.ts, apps/backend/__tests__/gap-003-compliance-routes-mount.test.ts, apps/backend/__tests__/gap-003-compliance-routes.live.test.ts |
 | 05-patient | 14 | ✅ | 14/14 | apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/patient-routes.test.ts |
 | 06-admission | 48 | ✅ | 48/48 | apps/backend/__tests__/admission-certification.test.ts, apps/backend/__tests__/admission-discharge.test.ts, apps/backend/__tests__/admission-intake.test.ts, apps/backend/__tests__/admission-routes.test.ts |
-| 07-care-plan | 19 | ✅ | 18/19 | apps/backend/__tests__/care-plan-conformance.live.test.ts, apps/backend/__tests__/care-plan-routes.test.ts |
+| 07-care-plan | 19 | ✅ | 18/19 | apps/backend/__tests__/care-plan-conformance.live.test.ts, apps/backend/__tests__/care-plan-routes.test.ts, apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts |
 | 08-encounters | 31 | ✅ | 26/31 | apps/backend/__tests__/encounter-authoring.test.ts, apps/backend/__tests__/encounter-routes.test.ts |
 | 09-assessments | 18 | ✅ | 13/18 | apps/backend/__tests__/assessment-routes.test.ts |
 | 10-hope | 20 | ✅ | 16/20 | apps/backend/__tests__/hope-routes.test.ts |
@@ -45,5 +45,5 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 36-messaging | 22 | ✅ | 21/22 | apps/backend/__tests__/messaging-routes-mount.test.ts, apps/backend/__tests__/messaging-routes.test.ts, apps/backend/__tests__/messaging-webhooks.test.ts |
 | 37-ipu | 45 | ✅ | 45/45 | apps/backend/__tests__/ipu-inject.test.ts |
 | 38-terminology | 8 | ✅ | 8/8 | apps/backend/__tests__/terminology-routes-mount.test.ts, apps/backend/__tests__/terminology-routes.test.ts |
-| 39-consent | 27 | ✅ | 27/27 | apps/backend/__tests__/consent-routes-mount.test.ts, apps/backend/__tests__/consent-routes.test.ts, apps/backend/__tests__/consent-surface.test.ts |
+| 39-consent | 27 | ✅ | 27/27 | apps/backend/__tests__/consent-routes-mount.test.ts, apps/backend/__tests__/consent-routes.test.ts, apps/backend/__tests__/consent-surface.test.ts, apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts |
 | 40-mdm | 14 | ✅ | 10/14 | apps/backend/__tests__/mdm-routes-mount.test.ts, apps/backend/__tests__/mdm-routes.test.ts |

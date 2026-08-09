@@ -60,13 +60,15 @@ export interface CarePlanRouteDeps {
     planId: string;
   }) => Promise<boolean>;
   /**
-   * Resolves whether the caller may see SUD-flagged problems for this patient (§7.6, M39 `42_cfr_part_2_release`).
+   * Resolves whether the caller may see SUD-flagged problems for this patient (§7.6, M39 `42_cfr_part_2_release`
+   * OR the assigned RN Case Manager — `roles` carries the caller's session roles for that check).
    * Fail-closed: defaults to deny, so SUD problems are omitted from reads unless an authoritative consent allows.
    */
   sudDisclosureAllowed?: (q: {
     organizationId: string;
     patientId: string;
     planId: string;
+    roles: readonly string[];
   }) => Promise<boolean>;
 }
 
@@ -141,7 +143,12 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
     async (request) => {
       const { organizationId } = actorOf(request);
       const { patientId } = parse(PatientParamsSchema, request.params);
-      const allowSud = await sudDisclosureAllowed({ organizationId, patientId, planId: "" });
+      const allowSud = await sudDisclosureAllowed({
+        organizationId,
+        patientId,
+        planId: "",
+        roles: request.context.roles,
+      });
       const row = await service.getCarePlanForPatient(organizationId, patientId, {
         sudDisclosureAllowed: allowSud,
       });
@@ -419,7 +426,12 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
     async (request) => {
       const { organizationId } = actorOf(request);
       const planId = planIdOf(request);
-      const allowSud = await sudDisclosureAllowed({ organizationId, patientId: "", planId });
+      const allowSud = await sudDisclosureAllowed({
+        organizationId,
+        patientId: "",
+        planId,
+        roles: request.context.roles,
+      });
       return service.getSummary(organizationId, planId, { sudDisclosureAllowed: allowSud });
     },
   );

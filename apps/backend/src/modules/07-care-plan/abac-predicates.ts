@@ -73,6 +73,53 @@ function sessionScopePatientIds(context: AbacContext): readonly string[] {
   return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : [];
 }
 
+/** A consent-type checker matching {@link CarePlanAbacDeps.isConsentActive}'s shape. */
+type ConsentActiveChecker = (q: {
+  organizationId: string;
+  patientId: string;
+  consentType: ConsentTypeKey;
+}) => Promise<boolean>;
+
+/**
+ * The default `isConsentActive` implementation — resolves through M39's `ConsentEvaluator` seam.
+ * Exported so GAP-013's route-level `dpoaConsentActive`/`sudDisclosureAllowed` closures (M7-T05's
+ * `mountCarePlanRoutes`) can reuse the SAME seam glue this module's predicates use, rather than a
+ * second, divergent copy.
+ */
+export function defaultConsentActiveChecker(): ConsentActiveChecker {
+  return async (q) => {
+    const evaluator = getSeam("ConsentEvaluator") as ConsentEvaluator;
+    const res = await evaluator.evaluate({
+      organizationId: q.organizationId,
+      patientId: q.patientId,
+      consentType: q.consentType,
+      sessionContext: { sessionClass: "staff" },
+      callerModule: "m7",
+    });
+    return res.allowed;
+  };
+}
+
+/**
+ * §7.6 SUD disclosure, at PATIENT scope: the assigned RN Case Manager, or an active
+ * `42_cfr_part_2_release` consent. Shared by the per-problem `sud_disclosure_allowed` predicate
+ * below (which additionally short-circuits true for a non-SUD problem before reaching this) and by
+ * the route-level per-read redaction closure (GAP-013's `mountCarePlanRoutes`, which has no single
+ * problem in view — a whole plan/summary read is redacted uniformly, non-SUD problems unaffected).
+ */
+export function sudDisclosureAllowedForPatient(
+  context: AbacContext,
+  patientId: string,
+  isConsentActive: ConsentActiveChecker,
+): Promise<boolean> {
+  if (hasRole(context, "rn_case_manager")) return Promise.resolve(true);
+  return isConsentActive({
+    organizationId: context.organizationId,
+    patientId,
+    consentType: "42_cfr_part_2_release",
+  });
+}
+
 /** Assemble the actor's §7.4 discipline scope from session roles/attributes (never client input). */
 export function disciplineScopeOf(context: AbacContext): AuthoringDisciplineScope {
   const fromAttributes = Array.isArray(context.attributes.disciplines)
@@ -124,19 +171,7 @@ export function buildCarePlanAbacPredicates(
 ): Record<string, (context: AbacContext, target: AbacTarget) => Promise<boolean>> {
   const { resolver } = deps;
   const isInCaseload = deps.isInCaseload ?? ((q) => getSeam("CaseloadProvider").isInCaseload(q));
-  const isConsentActive =
-    deps.isConsentActive ??
-    (async (q) => {
-      const evaluator = getSeam("ConsentEvaluator") as ConsentEvaluator;
-      const res = await evaluator.evaluate({
-        organizationId: q.organizationId,
-        patientId: q.patientId,
-        consentType: q.consentType,
-        sessionContext: { sessionClass: "staff" },
-        callerModule: "m7",
-      });
-      return res.allowed;
-    });
+  const isConsentActive = deps.isConsentActive ?? defaultConsentActiveChecker();
 
   /** Caseload-or-scope over a patient: org-wide role, session scope, or caseload membership. */
   const caseloadOrScopeFor = async (context: AbacContext, patientId: string): Promise<boolean> => {
@@ -190,12 +225,7 @@ export function buildCarePlanAbacPredicates(
       const facts = await resolver.loadProblem(context.organizationId, id);
       if (!facts) return false;
       if (!facts.sudRelated) return true; // §7.6: non-SUD problems are unrestricted
-      if (hasRole(context, "rn_case_manager")) return true; // the assigned RN Case Manager (§7.6)
-      return isConsentActive({
-        organizationId: context.organizationId,
-        patientId: facts.patientId,
-        consentType: "42_cfr_part_2_release",
-      });
+      return sudDisclosureAllowedForPatient(context, facts.patientId, isConsentActive);
     },
     signer_role_match: async (context, target) => {
       const id = targetId(target, "versionId");
