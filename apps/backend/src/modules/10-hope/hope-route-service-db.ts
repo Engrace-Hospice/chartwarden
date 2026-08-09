@@ -343,16 +343,46 @@ export function createDbHopeBackend(
       });
     },
 
-    // ── §4.7 ABAC resolver — the correction predicate's original-signer facts (fail-closed on absent) ─
+    // ── §4.7 / GAP-018 ABAC resolver — correction + scope predicate facts (fail-closed on absent) ─────
     async loadAssessment(organizationId, assessmentId): Promise<HopeAssessmentAbacFacts | null> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = (await tx
-          .select({ signedByMembershipId: ASSESS.signedByMembershipId })
+          .select({ patientId: ASSESS.patientId, signedByMembershipId: ASSESS.signedByMembershipId })
           .from(ASSESS)
           .where(and(eq(ASSESS.id, assessmentId), eq(ASSESS.organizationId, organizationId)))
-          .limit(1)) as { signedByMembershipId: string | null }[];
+          .limit(1)) as { patientId: string; signedByMembershipId: string | null }[];
         if (!r) return null; // absent / cross-tenant → deny
-        return { originalSignedBy: r.signedByMembershipId ?? null };
+        return { patientId: r.patientId, originalSignedBy: r.signedByMembershipId ?? null };
+      });
+    },
+    async loadSchedule(organizationId, scheduleId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [r] = (await tx
+          .select({ patientId: SCHED.patientId })
+          .from(SCHED)
+          .where(and(eq(SCHED.id, scheduleId), eq(SCHED.organizationId, organizationId)))
+          .limit(1)) as { patientId: string }[];
+        return r ? { patientId: r.patientId } : null;
+      });
+    },
+    async loadSfv(organizationId, sfvId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [r] = (await tx
+          .select({ patientId: SFV.patientId })
+          .from(SFV)
+          .where(and(eq(SFV.id, sfvId), eq(SFV.organizationId, organizationId)))
+          .limit(1)) as { patientId: string }[];
+        return r ? { patientId: r.patientId } : null;
+      });
+    },
+    async loadSubmission(organizationId, submissionId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [r] = (await tx
+          .select({ providerEntityId: SUB.providerEntityId })
+          .from(SUB)
+          .where(and(eq(SUB.id, submissionId), eq(SUB.organizationId, organizationId)))
+          .limit(1)) as { providerEntityId: string }[];
+        return r ? { providerEntityId: r.providerEntityId } : null;
       });
     },
 

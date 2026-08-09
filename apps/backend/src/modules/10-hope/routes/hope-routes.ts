@@ -7,9 +7,19 @@
 // §4.7 wiring: the timepoint write/sign routes add `requireAbac('hope.authorDisciplineAllowed')` (RN/NP/MD
 // only — the D4 author rule M10 owns); the SFV route adds `requireAbac('hope.sfvAuthorAllowed')` (RN/NP
 // only); the correction route adds `requireAbac('hope.correctionAuthorAllowed')` (original signer or
-// clinical-lead, target = `:id`). The §4.1 `caseload` / `provider_entity` columns map to the shared
-// `caseload_or_scope` / `provider_entity_scope` predicates (registered by M5/M7 / M3-intrinsic) — bound by
-// the §4.6 default ABAC on each key, enforced by M3's authorization middleware.
+// clinical-lead, target = `:id`).
+//
+// GAP-018 (2026-08-09): the §4.1 `caseload` / `provider_entity` columns used to be claimed here as "bound
+// by the §4.6 default ABAC on each key, enforced by M3's authorization middleware" — no such middleware
+// exists (`requirePermission` never reads a permission's `defaultAbac` catalog column), so this file wired
+// ZERO caseload/provider-entity guards. The 14 caseload-scoped + 5 provider-entity-scoped routes now bind
+// the new M10-owned `hope.scope` predicate (abac-predicates.ts) via `SCOPE`/`SCOPE_*` below — one predicate
+// covering every id shape M10's routes name (patientId/admissionId/scheduleId/sfvId/assessmentId/
+// providerEntityId/submissionId), since none of those shapes (besides bare `patientId`/`providerEntityId`)
+// resolve through the shared `caseload_or_scope` (M7-owned) or `provider_entity_scope` (M3-intrinsic)
+// predicates by name. `GET /hope/sfv` (pure org-wide worklist, no id/filter to scope by) and `POST
+// /hope/admin/regenerate-schedules` (§4.1 ABAC = `platform_admin`, a role check, not caseload/PE — out of
+// this GAP's scope) are deliberately left unwired, per the M6/M7/M8/M9 list-route precedent.
 import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -87,6 +97,58 @@ const ABAC_CORRECT = requireAbac(
   "hope.correctionAuthorAllowed",
 ) as PreHandler; // target = :id
 
+// GAP-018 — the M10-owned `hope.scope` guard. `SCOPE` covers every route whose default target
+// (`request.params`) already names a field `hope.scope` recognizes as-is: `patientId` (route 10),
+// `admissionId` (routes 4/5), or a bare `:id` (routes 6/7/8/9/11/14 — the assessmentId default branch).
+// The `SCOPE_*` variants rename `:id`/a query/body field to the entity-specific name the predicate
+// expects, since M10's schedule/SFV/submission routes all reuse the literal param name `:id` for THREE
+// different entity types — collapsing them onto the assessment-default branch would silently resolve the
+// wrong resource (a schedule id looked up as an assessment id, e.g.) rather than the right one.
+const SCOPE = (action: string): PreHandler =>
+  requireAbac(action, "hope.scope", { notFoundOnDeny: true }) as PreHandler;
+const SCOPE_SCHEDULE = (action: string): PreHandler =>
+  requireAbac(action, "hope.scope", {
+    notFoundOnDeny: true,
+    getTarget: (request) => ({
+      scheduleId: (request.params as { id?: unknown } | null)?.id,
+    }),
+  }) as PreHandler;
+const SCOPE_SFV = (action: string): PreHandler =>
+  requireAbac(action, "hope.scope", {
+    notFoundOnDeny: true,
+    getTarget: (request) => ({
+      sfvId: (request.params as { id?: unknown } | null)?.id,
+    }),
+  }) as PreHandler;
+const SCOPE_SUBMISSION = (action: string): PreHandler =>
+  requireAbac(action, "hope.scope", {
+    notFoundOnDeny: true,
+    getTarget: (request) => ({
+      submissionId: (request.params as { id?: unknown } | null)?.id,
+    }),
+  }) as PreHandler;
+const SCOPE_QUERY_PATIENT = (action: string): PreHandler =>
+  requireAbac(action, "hope.scope", {
+    notFoundOnDeny: true,
+    getTarget: (request) => ({
+      patientId: (request.query as { patientId?: unknown } | null)?.patientId,
+    }),
+  }) as PreHandler;
+const SCOPE_QUERY_PE = (action: string): PreHandler =>
+  requireAbac(action, "hope.scope", {
+    notFoundOnDeny: true,
+    getTarget: (request) => ({
+      providerEntityId: (request.query as { providerEntityId?: unknown } | null)?.providerEntityId,
+    }),
+  }) as PreHandler;
+const SCOPE_BODY_PE = (action: string): PreHandler =>
+  requireAbac(action, "hope.scope", {
+    notFoundOnDeny: true,
+    getTarget: (request) => ({
+      providerEntityId: (request.body as { providerEntityId?: unknown } | null)?.providerEntityId,
+    }),
+  }) as PreHandler;
+
 export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): void {
   const { service } = deps;
 
@@ -94,7 +156,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   app.get(
     "/api/v1/hope/schedules",
     {
-      preHandler: [READ_SCHEDULE],
+      preHandler: [READ_SCHEDULE, SCOPE_QUERY_PATIENT("hope.schedule.read")],
       config: { auditRead: { resourceKind: "hope_schedule", list: true } },
     },
     async (request) => {
@@ -112,7 +174,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   app.get(
     "/api/v1/hope/schedules/:id",
     {
-      preHandler: [READ_SCHEDULE],
+      preHandler: [READ_SCHEDULE, SCOPE_SCHEDULE("hope.schedule.read")],
       config: { auditRead: { resourceKind: "hope_schedule", resourceIdParam: "id" } },
     },
     async (request) => {
@@ -123,17 +185,21 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   );
 
   // 3 — skip a schedule (requires reason code).
-  app.post("/api/v1/hope/schedules/:id/skip", { preHandler: [SKIP] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(ScheduleParamsSchema, request.params);
-    const body = parse(SkipScheduleSchema, request.body);
-    return service.skipSchedule(organizationId, id, body.reasonCode);
-  });
+  app.post(
+    "/api/v1/hope/schedules/:id/skip",
+    { preHandler: [SKIP, SCOPE_SCHEDULE("hope.schedule.skip")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(ScheduleParamsSchema, request.params);
+      const body = parse(SkipScheduleSchema, request.body);
+      return service.skipSchedule(organizationId, id, body.reasonCode);
+    },
+  );
 
   // 4 — record a new HOPE timepoint (draft); RN/NP/MD-only author (§4.7); idempotent via Idempotency-Key.
   app.post(
     "/api/v1/admissions/:admissionId/hope/timepoints",
-    { preHandler: [WRITE, ABAC_AUTHOR] },
+    { preHandler: [WRITE, SCOPE("hope.timepoint.write"), ABAC_AUTHOR] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { admissionId } = parse(AdmissionParamsSchema, request.params);
@@ -153,7 +219,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // 5 — record an SFV completion (RFA 04); RN/NP-only author (§4.7); matches an open SFV row.
   app.post(
     "/api/v1/admissions/:admissionId/hope/sfv",
-    { preHandler: [WRITE, ABAC_SFV] },
+    { preHandler: [WRITE, SCOPE("hope.timepoint.write"), ABAC_SFV] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { admissionId } = parse(AdmissionParamsSchema, request.params);
@@ -170,17 +236,21 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   );
 
   // 6 — update a draft assessment.
-  app.put("/api/v1/hope/assessments/:id", { preHandler: [WRITE] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(AssessmentParamsSchema, request.params);
-    const body = parse(UpdateDraftSchema, request.body);
-    return service.updateDraft(organizationId, id, body.data);
-  });
+  app.put(
+    "/api/v1/hope/assessments/:id",
+    { preHandler: [WRITE, SCOPE("hope.timepoint.write")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(AssessmentParamsSchema, request.params);
+      const body = parse(UpdateDraftSchema, request.body);
+      return service.updateDraft(organizationId, id, body.data);
+    },
+  );
 
   // 7 — sign a draft (→ signed; runs the D4 J2051 trigger; snapshots PPS/ESAS-r); RN/NP/MD-only.
   app.post(
     "/api/v1/hope/assessments/:id/sign",
-    { preHandler: [SIGN, ABAC_SIGN] },
+    { preHandler: [SIGN, SCOPE("hope.timepoint.sign"), ABAC_SIGN] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
@@ -192,7 +262,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // 8 — insert a correction RFA (original superseded); original-signer or clinical-lead (§4.7).
   app.post(
     "/api/v1/hope/assessments/:id/correct",
-    { preHandler: [CORRECT, ABAC_CORRECT] },
+    { preHandler: [CORRECT, SCOPE("hope.timepoint.correct"), ABAC_CORRECT] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
@@ -211,7 +281,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   app.get(
     "/api/v1/hope/assessments/:id",
     {
-      preHandler: [READ_TIMEPOINT],
+      preHandler: [READ_TIMEPOINT, SCOPE("hope.timepoint.read")],
       config: { auditRead: { resourceKind: "hope_assessment", resourceIdParam: "id" } },
     },
     async (request) => {
@@ -225,7 +295,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   app.get(
     "/api/v1/patients/:patientId/hope/assessments",
     {
-      preHandler: [READ_TIMEPOINT],
+      preHandler: [READ_TIMEPOINT, SCOPE("hope.timepoint.read")],
       config: { auditRead: { resourceKind: "hope_assessment", patientIdParam: "patientId" } },
     },
     async (request) => {
@@ -238,7 +308,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // 11 — request the printable HOPE summary (emits `m10.hope.summary_requested`; M22 renders).
   app.post(
     "/api/v1/hope/assessments/:id/summary-pdf",
-    { preHandler: [READ_TIMEPOINT] },
+    { preHandler: [READ_TIMEPOINT, SCOPE("hope.timepoint.read")] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
@@ -248,7 +318,10 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     },
   );
 
-  // 12 — open / overdue / missed SFV worklist.
+  // 12 — open / overdue / missed SFV worklist. §4.1 ABAC = "caseload", but this route names no patient
+  // filter at all (state-only query) — a pure org-wide worklist, deliberately left unwired to `hope.scope`
+  // (M6/M7/M8/M9 precedent: a route with nothing to scope by gets RBAC + RLS only, not a guard that would
+  // always fall through to its permissive empty-target branch).
   app.get(
     "/api/v1/hope/sfv",
     {
@@ -266,7 +339,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   app.get(
     "/api/v1/hope/sfv/:id",
     {
-      preHandler: [READ_SFV],
+      preHandler: [READ_SFV, SCOPE_SFV("hope.sfv.read")],
       config: { auditRead: { resourceKind: "hope_sfv", resourceIdParam: "id" } },
     },
     async (request) => {
@@ -280,7 +353,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   app.get(
     "/api/v1/hope/assessments/:id/validation",
     {
-      preHandler: [READ_TIMEPOINT],
+      preHandler: [READ_TIMEPOINT, SCOPE("hope.timepoint.read")],
       config: {
         auditRead: { resourceKind: "hope_assessment_validation", resourceIdParam: "id" },
       },
@@ -296,7 +369,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   app.get(
     "/api/v1/hope/submissions",
     {
-      preHandler: [READ_SUBMISSION],
+      preHandler: [READ_SUBMISSION, SCOPE_QUERY_PE("hope.submission.read")],
       config: { auditRead: { resourceKind: "hope_submission", list: true } },
     },
     async (request) => {
@@ -310,7 +383,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   app.get(
     "/api/v1/hope/submissions/:id",
     {
-      preHandler: [READ_SUBMISSION],
+      preHandler: [READ_SUBMISSION, SCOPE_SUBMISSION("hope.submission.read")],
       config: { auditRead: { resourceKind: "hope_submission", resourceIdParam: "id" } },
     },
     async (request) => {
@@ -323,7 +396,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // 17 — retry a rejected submission (re-validates, re-assembles).
   app.post(
     "/api/v1/hope/submissions/:id/retry",
-    { preHandler: [SUBMISSION_MANAGE] },
+    { preHandler: [SUBMISSION_MANAGE, SCOPE_SUBMISSION("hope.submission.manage")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(SubmissionParamsSchema, request.params);
@@ -335,7 +408,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // 18 — force-assemble a submission outside the cron cadence.
   app.post(
     "/api/v1/hope/submissions/assemble",
-    { preHandler: [SUBMISSION_MANAGE] },
+    { preHandler: [SUBMISSION_MANAGE, SCOPE_BODY_PE("hope.submission.manage")] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const body = parse(AssembleSubmissionSchema, request.body);
@@ -348,7 +421,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   app.get(
     "/api/v1/hope/dashboard/compliance",
     {
-      preHandler: [DASHBOARD_READ],
+      preHandler: [DASHBOARD_READ, SCOPE_QUERY_PE("hope.dashboard.read")],
       config: {
         auditRead: {
           none: "Aggregate provider-entity compliance rates only (hopeOnTimeRate/sfvOnTimeRate/submissionAcceptanceRate); no patient identifiers or patient-level data returned.",

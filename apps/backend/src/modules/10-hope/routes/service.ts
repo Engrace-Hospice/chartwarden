@@ -749,12 +749,27 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       return { admissionId, scheduleCount: count };
     },
 
-    // ── §4.7 ABAC resolver (correction predicate) ──────────────────────────────────────────────────────
+    // ── §4.7 / GAP-018 ABAC resolver (correction + scope predicates) ───────────────────────────────────
     async loadAssessment(organizationId, assessmentId): Promise<HopeAssessmentAbacFacts | null> {
       const r = assessments.get(assessmentId);
       if (!r || r.organizationId !== organizationId) return null;
       // The signer of the corrected-of-record chain is the most-recent signed row's signer.
-      return { originalSignedBy: r.signedBy };
+      return { patientId: r.patientId, originalSignedBy: r.signedBy };
+    },
+    async loadSchedule(organizationId, scheduleId) {
+      const r = schedules.get(scheduleId);
+      if (!r || r.organizationId !== organizationId) return null;
+      return { patientId: r.patientId };
+    },
+    async loadSfv(organizationId, sfvId) {
+      const r = sfvs.get(sfvId);
+      if (!r || r.organizationId !== organizationId) return null;
+      return { patientId: r.patientId };
+    },
+    async loadSubmission(organizationId, submissionId) {
+      const r = submissions.get(submissionId);
+      if (!r || r.organizationId !== organizationId) return null;
+      return { providerEntityId: r.providerEntityId };
     },
 
     drainEvents() {
