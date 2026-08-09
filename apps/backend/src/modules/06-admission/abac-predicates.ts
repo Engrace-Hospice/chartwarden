@@ -60,6 +60,34 @@ const targetId = (target: AbacTarget): string | null =>
   typeof target.id === "string" && target.id.length > 0 ? target.id : null;
 
 /**
+ * GAP-011 — the resource kinds `admission.scope`'s target `:id` may name. A route whose path param is
+ * literally an admission id (the majority) omits `resourceKind` (defaults to `"admission"`); a route
+ * keyed by a CHILD resource (election period/statement, CTI, F2F, LOC period, compliance window) sets
+ * it explicitly via `requireAbac`'s `getTarget` (admission-routes.ts) so the predicate resolves scope
+ * through the resource's OWNING admission rather than treating the child id as an admission id.
+ */
+export type AdmissionScopeResourceKind =
+  | "admission"
+  | "electionPeriod"
+  | "electionStatement"
+  | "cti"
+  | "f2f"
+  | "loc"
+  | "complianceWindow";
+
+function resourceKindOf(target: AbacTarget): AdmissionScopeResourceKind {
+  const kind = target.resourceKind;
+  return kind === "electionPeriod" ||
+    kind === "electionStatement" ||
+    kind === "cti" ||
+    kind === "f2f" ||
+    kind === "loc" ||
+    kind === "complianceWindow"
+    ? kind
+    : "admission";
+}
+
+/**
  * Build M6's ten §4.6 predicate resolvers over injected deps (pure factory — unit-tested with a fresh
  * registry; the boot path registers these into the shared registry via {@link registerAdmissionAbacPredicates}).
  */
@@ -98,8 +126,25 @@ export function buildAdmissionAbacPredicates(
     "admission.scope": async (context, target) => {
       const id = targetId(target);
       if (!id) return false;
-      const facts = await resolver.loadAdmission(context.organizationId, id);
-      if (!facts) return false;
+      const facts = await (async () => {
+        switch (resourceKindOf(target)) {
+          case "admission":
+            return resolver.loadAdmission(context.organizationId, id);
+          case "electionPeriod":
+            return resolver.loadElectionPeriodScope(context.organizationId, id);
+          case "electionStatement":
+            return resolver.loadElectionStatementScope(context.organizationId, id);
+          case "cti":
+            return resolver.loadCtiScope(context.organizationId, id);
+          case "f2f":
+            return resolver.loadF2fScope(context.organizationId, id);
+          case "loc":
+            return resolver.loadLocScope(context.organizationId, id);
+          case "complianceWindow":
+            return resolver.loadComplianceWindow(context.organizationId, id);
+        }
+      })();
+      if (!facts) return false; // fail-closed (absent / cross-tenant)
       return admissionScopeFor(context, facts);
     },
     "cti.is_hospice_md": async (context, target) => {

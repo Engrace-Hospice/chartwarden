@@ -9,6 +9,7 @@
 // missing codes, and route 10 reads back the SAME gate (no UI/server divergence).
 import {
   createInMemoryEffectivePermissionStore,
+  createPredicateRegistry,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
@@ -18,8 +19,8 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
+  buildAdmissionAbacPredicates,
   createInMemoryAdmissionBackend,
-  registerAdmissionAbacPredicates,
   registerAdmissionRoutes,
 } from "../src/modules/06-admission/index";
 
@@ -39,7 +40,9 @@ const PROVIDER = "22222222-2222-2222-2222-222222222222";
 const MD_ID = "33333333-3333-3333-3333-333333333333";
 const ATTENDING = "44444444-4444-4444-4444-444444444444";
 
-// One intake supervisor who can drive the whole §7.1/§7.2 flow (no route below uses requireAbac).
+// One intake supervisor drives referral/admission/election/NOR (all admission-scoped, and sup_1 is
+// in every caseload per the `isInCaseload` stub below); the CTI sign steps are identity-checked
+// (GAP-011 `cti.is_hospice_md`/`cti.is_attending`) and need the matching physician's own grant.
 const WIZARD_KEYS = [
   "referral.create",
   "referral.read",
@@ -66,10 +69,36 @@ function makeServer() {
       userId: "sup_1",
       grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: WIZARD_KEYS }],
     },
+    // GAP-011 — `cti.is_hospice_md`/`cti.is_attending` now gate the sign routes on the SIGNER's
+    // identity matching the CTI's `hospiceMedicalDirectorId`/`attendingPhysicianId` (drafted as
+    // MD_ID/ATTENDING below) — sup_1 driving the whole wizard can no longer sign as either
+    // physician, matching real production identity-verified signing.
+    {
+      orgId: ORG,
+      userId: MD_ID,
+      grants: [
+        { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["cti.sign_hospice_md"] },
+      ],
+    },
+    {
+      orgId: ORG,
+      userId: ATTENDING,
+      grants: [
+        { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["cti.sign_attending"] },
+      ],
+    },
   ]);
   registerEffectivePermissionResolver(grantStore.store);
-  registerAdmissionAbacPredicates({ resolver: backend.resolver, isInCaseload: async () => true });
-  registerAbacRegistry();
+  // A FRESH registry per server, not the shared module-level `abacRegistry` — see
+  // admission-routes.test.ts's `makeServer()` for why (registerIdempotent's same-source reboot
+  // check would otherwise keep an EARLIER test's backend bound forever).
+  const registry = createPredicateRegistry();
+  const predicates = buildAdmissionAbacPredicates({
+    resolver: backend.resolver,
+    isInCaseload: async () => true,
+  });
+  for (const [name, fn] of Object.entries(predicates)) registry.register(name, fn);
+  registerAbacRegistry(registry);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerAdmissionRoutes(app, { service: backend.service });
@@ -77,6 +106,12 @@ function makeServer() {
 }
 
 const SUP = { "x-test-user": "sup_1", "x-test-org": ORG, "x-test-roles": "intake_supervisor" };
+const HOSPICE_MD = { "x-test-user": MD_ID, "x-test-org": ORG, "x-test-roles": "hospice_physician" };
+const ATTENDING_MD = {
+  "x-test-user": ATTENDING,
+  "x-test-org": ORG,
+  "x-test-roles": "attending_physician",
+};
 
 async function createReferral(
   app: ReturnType<typeof makeServer>["app"],
@@ -166,7 +201,7 @@ async function completeBundle(
   const mdSigned = await app.inject({
     method: "POST",
     url: `/api/v1/cti/${cti.json().id}/sign-hospice-md`,
-    headers: SUP,
+    headers: HOSPICE_MD,
     payload: {
       signingPhysicianName: "Dr. Director",
       signingPhysicianNpi: "1234567893",
@@ -176,7 +211,7 @@ async function completeBundle(
   await app.inject({
     method: "POST",
     url: `/api/v1/cti/${cti.json().id}/sign-attending`,
-    headers: SUP,
+    headers: ATTENDING_MD,
     payload: {
       signingPhysicianName: "Dr. Attending",
       signingPhysicianNpi: "1234567893",
@@ -416,7 +451,7 @@ describe("M6-T07 — §7.2 admission wizard + R-AC-01 activation gate", () => {
     const mdSigned = await app.inject({
       method: "POST",
       url: `/api/v1/cti/${cti.json().id}/sign-hospice-md`,
-      headers: SUP,
+      headers: HOSPICE_MD,
       payload: {
         signingPhysicianName: "Dr. D",
         signingPhysicianNpi: "1234567893",
@@ -426,7 +461,7 @@ describe("M6-T07 — §7.2 admission wizard + R-AC-01 activation gate", () => {
     await app.inject({
       method: "POST",
       url: `/api/v1/cti/${cti.json().id}/sign-attending`,
-      headers: SUP,
+      headers: ATTENDING_MD,
       payload: {
         signingPhysicianName: "Dr. A",
         signingPhysicianNpi: "1234567893",

@@ -13,7 +13,7 @@
 import { requireAbac, requirePermission } from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { M6_ROLE_PREDICATE_NAMES } from "../abac-predicates";
+import { type AdmissionScopeResourceKind, M6_ROLE_PREDICATE_NAMES } from "../abac-predicates";
 import { deriveDischargePermissionKey } from "../discharge";
 import {
   AdmissionActivateSchema,
@@ -129,6 +129,52 @@ const ABAC_COMPLIANCE_OVERRIDE = requireAbac(
   M6_ROLE_PREDICATE_NAMES.complianceWindowOverride,
 ) as PreHandler;
 
+// GAP-011 — the six §4.6 resource-bound predicates (referral.scope, admission.scope, cti.is_hospice_md,
+// cti.is_attending, f2f.is_hospice_clinician, compliance.scope — the "orphaned" ones abac-predicates.ts
+// registers but no route wired) now wired on every detail/mutate route the §4.1 table maps them to.
+// LIST routes (2, 9, 44) are deliberately NOT gated this way: `requireAbac`'s target is a single
+// resource id (defaultTarget = request.params), so there is no `:id` for a list route to scope
+// against — narrowing a LIST's rows to the caller's caseload is a query-level filtering concern, not a
+// boolean allow/deny gate, and stays out of this fix's scope (RBAC + org-scoped RLS still apply).
+
+// `notFoundOnDeny: true` on every resource-scope guard below (§2.2 existence non-leak): the resolvers
+// return the SAME "no facts" signal whether a target id is absent, cross-tenant (RLS-backstopped), or
+// simply outside the caller's caseload — collapsing all three into 404 keeps that pre-existing §6.6
+// non-leak property (a plain 403 here would newly let an actor distinguish "exists, not yours" from
+// "doesn't exist", which the org-scoped GET routes never leaked before this fix wired a gate in front
+// of them).
+
+/** `referral.scope` — every referral route's `:id` is already a referral id (native target). */
+const referralScope = (action: string): PreHandler =>
+  requireAbac(action, "referral.scope", { notFoundOnDeny: true }) as PreHandler;
+
+/**
+ * `admission.scope` — most routes' `:id` IS an admission id (the default); a route keyed by a CHILD
+ * resource (election period/statement, CTI, F2F, LOC period, compliance window) passes `resourceKind`
+ * so the predicate resolves scope through the resource's OWNING admission (abac-predicates.ts).
+ */
+const admissionScope = (
+  action: string,
+  resourceKind: AdmissionScopeResourceKind = "admission",
+): PreHandler =>
+  requireAbac(action, "admission.scope", {
+    notFoundOnDeny: true,
+    ...(resourceKind === "admission"
+      ? {}
+      : {
+          getTarget: (request) => ({
+            ...(typeof request.params === "object" && request.params ? request.params : {}),
+            resourceKind,
+          }),
+        }),
+  }) as PreHandler;
+
+// The three signer-identity predicates (target = the CTI/F2F id itself, the native `loadCti`/`loadF2f`
+// shape — no `resourceKind` involved).
+const ABAC_CTI_HOSPICE_MD = requireAbac("cti.sign_hospice_md", "cti.is_hospice_md") as PreHandler;
+const ABAC_CTI_ATTENDING = requireAbac("cti.sign_attending", "cti.is_attending") as PreHandler;
+const ABAC_F2F_CLINICIAN = requireAbac("f2f.complete", "f2f.is_hospice_clinician") as PreHandler;
+
 /**
  * §6.3 — derive route 39's permission from the body `reason` server-side (the `discharge/` submodule is
  * the single source of truth for the reason→key map). A client cannot bypass the per-reason policy by
@@ -173,7 +219,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   app.get(
     "/api/v1/referrals/:id",
     {
-      preHandler: [REFERRAL_READ],
+      preHandler: [REFERRAL_READ, referralScope("referral.read")],
       config: { auditRead: { resourceKind: "referral", resourceIdParam: "id" } },
     },
     async (request) => {
@@ -183,39 +229,55 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     },
   );
 
-  app.patch("/api/v1/referrals/:id", { preHandler: [REFERRAL_UPDATE] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(ReferralUpdateSchema, request.body);
-    return service.updateReferral(organizationId, idOf(request), body.ifVersion);
-  });
+  app.patch(
+    "/api/v1/referrals/:id",
+    { preHandler: [REFERRAL_UPDATE, referralScope("referral.update")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(ReferralUpdateSchema, request.body);
+      return service.updateReferral(organizationId, idOf(request), body.ifVersion);
+    },
+  );
 
-  app.post("/api/v1/referrals/:id/triage", { preHandler: [REFERRAL_TRIAGE] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(ReferralTriageSchema, request.body);
-    return service.triageReferral(organizationId, idOf(request), body.outcome, body.ifVersion);
-  });
+  app.post(
+    "/api/v1/referrals/:id/triage",
+    { preHandler: [REFERRAL_TRIAGE, referralScope("referral.triage")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(ReferralTriageSchema, request.body);
+      return service.triageReferral(organizationId, idOf(request), body.outcome, body.ifVersion);
+    },
+  );
 
-  app.post("/api/v1/referrals/:id/accept", { preHandler: [REFERRAL_ACCEPT] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(ReferralAcceptSchema, request.body);
-    return service.acceptReferral(
-      organizationId,
-      idOf(request),
-      {
-        patientId: body.patientId,
-        primaryDiagnosisIcd10: body.primaryDiagnosisIcd10,
-        attendingPhysicianId: body.attendingPhysicianId,
-      },
-      body.ifVersion,
-      userId,
-    );
-  });
+  app.post(
+    "/api/v1/referrals/:id/accept",
+    { preHandler: [REFERRAL_ACCEPT, referralScope("referral.accept")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(ReferralAcceptSchema, request.body);
+      return service.acceptReferral(
+        organizationId,
+        idOf(request),
+        {
+          patientId: body.patientId,
+          primaryDiagnosisIcd10: body.primaryDiagnosisIcd10,
+          attendingPhysicianId: body.attendingPhysicianId,
+        },
+        body.ifVersion,
+        userId,
+      );
+    },
+  );
 
-  app.post("/api/v1/referrals/:id/decline", { preHandler: [REFERRAL_DECLINE] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(ReferralDeclineSchema, request.body);
-    return service.declineReferral(organizationId, idOf(request), body.reason, body.ifVersion);
-  });
+  app.post(
+    "/api/v1/referrals/:id/decline",
+    { preHandler: [REFERRAL_DECLINE, referralScope("referral.decline")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(ReferralDeclineSchema, request.body);
+      return service.declineReferral(organizationId, idOf(request), body.reason, body.ifVersion);
+    },
+  );
 
   // ── Admission (routes 8–14) ────────────────────────────────────────────────────────────────
   app.post("/api/v1/admissions", { preHandler: [ADMISSION_CREATE] }, async (request, reply) => {
@@ -241,7 +303,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   app.get(
     "/api/v1/admissions/:id",
     {
-      preHandler: [ADMISSION_READ],
+      preHandler: [ADMISSION_READ, admissionScope("admission.read")],
       config: { auditRead: { resourceKind: "admission", resourceIdParam: "id" } },
     },
     async (request) => {
@@ -269,27 +331,39 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     },
   );
 
-  app.patch("/api/v1/admissions/:id", { preHandler: [ADMISSION_UPDATE] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(AdmissionUpdateSchema, request.body);
-    return service.updateAdmission(organizationId, idOf(request), body.ifVersion);
-  });
+  app.patch(
+    "/api/v1/admissions/:id",
+    { preHandler: [ADMISSION_UPDATE, admissionScope("admission.update")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(AdmissionUpdateSchema, request.body);
+      return service.updateAdmission(organizationId, idOf(request), body.ifVersion);
+    },
+  );
 
-  app.post("/api/v1/admissions/:id/hold", { preHandler: [ADMISSION_HOLD] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(AdmissionHoldSchema, request.body);
-    return service.holdAdmission(organizationId, idOf(request), body.reason, body.ifVersion);
-  });
+  app.post(
+    "/api/v1/admissions/:id/hold",
+    { preHandler: [ADMISSION_HOLD, admissionScope("admission.hold")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(AdmissionHoldSchema, request.body);
+      return service.holdAdmission(organizationId, idOf(request), body.reason, body.ifVersion);
+    },
+  );
 
-  app.post("/api/v1/admissions/:id/resume", { preHandler: [ADMISSION_HOLD] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(AdmissionResumeSchema, request.body);
-    return service.resumeAdmission(organizationId, idOf(request), body.ifVersion);
-  });
+  app.post(
+    "/api/v1/admissions/:id/resume",
+    { preHandler: [ADMISSION_HOLD, admissionScope("admission.hold")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(AdmissionResumeSchema, request.body);
+      return service.resumeAdmission(organizationId, idOf(request), body.ifVersion);
+    },
+  );
 
   app.post(
     "/api/v1/admissions/:id/activate",
-    { preHandler: [ADMISSION_ACTIVATE] },
+    { preHandler: [ADMISSION_ACTIVATE, admissionScope("admission.activate")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(AdmissionActivateSchema, request.body);
@@ -300,7 +374,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   // ── Election statement & period (routes 15–21) ───────────────────────────────────────────────
   app.post(
     "/api/v1/admissions/:id/election-statements",
-    { preHandler: [ELECTION_DRAFT] },
+    { preHandler: [ELECTION_DRAFT, admissionScope("election.draft")] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const body = parse(ElectionStatementDraftSchema, request.body);
@@ -316,7 +390,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   app.get(
     "/api/v1/election-statements/:id",
     {
-      preHandler: [ELECTION_READ],
+      preHandler: [ELECTION_READ, admissionScope("election.read", "electionStatement")],
       config: { auditRead: { resourceKind: "election_statement", resourceIdParam: "id" } },
     },
     async (request) => {
@@ -328,7 +402,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
 
   app.post(
     "/api/v1/election-statements/:id/sign",
-    { preHandler: [ELECTION_SIGN] },
+    { preHandler: [ELECTION_SIGN, admissionScope("election.sign", "electionStatement")] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(ElectionSignSchema, request.body);
@@ -338,7 +412,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
 
   app.post(
     "/api/v1/election-statements/:id/void",
-    { preHandler: [ELECTION_VOID] },
+    { preHandler: [ELECTION_VOID, admissionScope("election.void", "electionStatement")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(ElectionVoidSchema, request.body);
@@ -349,7 +423,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   app.get(
     "/api/v1/admissions/:id/election-periods",
     {
-      preHandler: [ELECTION_READ],
+      preHandler: [ELECTION_READ, admissionScope("election.read")],
       config: { auditRead: { resourceKind: "election_period", resourceIdParam: "id" } },
     },
     async (request) => {
@@ -361,7 +435,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
 
   app.post(
     "/api/v1/admissions/:id/election-periods",
-    { preHandler: [ELECTION_DRAFT] },
+    { preHandler: [ELECTION_DRAFT, admissionScope("election.draft")] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       parse(ElectionPeriodCreateSchema, request.body);
@@ -370,16 +444,20 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     },
   );
 
-  app.patch("/api/v1/election-periods/:id", { preHandler: [ELECTION_DRAFT] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(ElectionPeriodPatchSchema, request.body);
-    return service.patchElectionPeriod(organizationId, idOf(request), body.ifVersion);
-  });
+  app.patch(
+    "/api/v1/election-periods/:id",
+    { preHandler: [ELECTION_DRAFT, admissionScope("election.draft", "electionPeriod")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(ElectionPeriodPatchSchema, request.body);
+      return service.patchElectionPeriod(organizationId, idOf(request), body.ifVersion);
+    },
+  );
 
   // ── CTI (routes 22–27) ───────────────────────────────────────────────────────────────────────
   app.post(
     "/api/v1/election-periods/:id/cti",
-    { preHandler: [CTI_DRAFT] },
+    { preHandler: [CTI_DRAFT, admissionScope("cti.draft", "electionPeriod")] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(CtiDraftSchema, request.body);
@@ -400,7 +478,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   app.get(
     "/api/v1/cti/:id",
     {
-      preHandler: [CTI_READ],
+      preHandler: [CTI_READ, admissionScope("cti.read", "cti")],
       config: { auditRead: { resourceKind: "cti", resourceIdParam: "id" } },
     },
     async (request) => {
@@ -412,7 +490,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
 
   app.post(
     "/api/v1/cti/:id/sign-hospice-md",
-    { preHandler: [CTI_SIGN_HOSPICE_MD] },
+    { preHandler: [CTI_SIGN_HOSPICE_MD, ABAC_CTI_HOSPICE_MD] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(CtiSignSchema, request.body);
@@ -422,7 +500,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
 
   app.post(
     "/api/v1/cti/:id/sign-attending",
-    { preHandler: [CTI_SIGN_ATTENDING] },
+    { preHandler: [CTI_SIGN_ATTENDING, ABAC_CTI_ATTENDING] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(CtiSignSchema, request.body);
@@ -430,22 +508,30 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     },
   );
 
-  app.post("/api/v1/cti/:id/void", { preHandler: [CTI_VOID] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(CtiVoidSchema, request.body);
-    return service.voidCti(organizationId, idOf(request), body.reason, body.ifVersion);
-  });
+  app.post(
+    "/api/v1/cti/:id/void",
+    { preHandler: [CTI_VOID, admissionScope("cti.void", "cti")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(CtiVoidSchema, request.body);
+      return service.voidCti(organizationId, idOf(request), body.reason, body.ifVersion);
+    },
+  );
 
-  app.post("/api/v1/cti/:id/mark-late", { preHandler: [CTI_MARK_LATE] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(CtiMarkLateSchema, request.body);
-    return service.markCtiLate(organizationId, idOf(request), body.ifVersion);
-  });
+  app.post(
+    "/api/v1/cti/:id/mark-late",
+    { preHandler: [CTI_MARK_LATE, admissionScope("cti.mark_late", "cti")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(CtiMarkLateSchema, request.body);
+      return service.markCtiLate(organizationId, idOf(request), body.ifVersion);
+    },
+  );
 
   // ── F2F (routes 28–32) ─────────────────────────────────────────────────────────────────────
   app.post(
     "/api/v1/admissions/:id/face-to-face",
-    { preHandler: [F2F_SCHEDULE] },
+    { preHandler: [F2F_SCHEDULE, admissionScope("f2f.schedule")] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const body = parse(F2fScheduleSchema, request.body);
@@ -463,7 +549,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   app.get(
     "/api/v1/face-to-face/:id",
     {
-      preHandler: [F2F_READ],
+      preHandler: [F2F_READ, admissionScope("f2f.read", "f2f")],
       config: { auditRead: { resourceKind: "face_to_face", resourceIdParam: "id" } },
     },
     async (request) => {
@@ -473,11 +559,15 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     },
   );
 
-  app.post("/api/v1/face-to-face/:id/complete", { preHandler: [F2F_COMPLETE] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(F2fCompleteSchema, request.body);
-    return service.completeF2f(organizationId, idOf(request), body.ifVersion);
-  });
+  app.post(
+    "/api/v1/face-to-face/:id/complete",
+    { preHandler: [F2F_COMPLETE, ABAC_F2F_CLINICIAN] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(F2fCompleteSchema, request.body);
+      return service.completeF2f(organizationId, idOf(request), body.ifVersion);
+    },
+  );
 
   app.post(
     "/api/v1/face-to-face/:id/attest",
@@ -508,7 +598,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   // ── Level of care (routes 33–35) ─────────────────────────────────────────────────────────────
   app.post(
     "/api/v1/admissions/:id/level-of-care",
-    { preHandler: [LOC_CHANGE] },
+    { preHandler: [LOC_CHANGE, admissionScope("loc.change")] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const body = parse(LocChangeSchema, request.body);
@@ -527,7 +617,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   app.get(
     "/api/v1/admissions/:id/level-of-care",
     {
-      preHandler: [LOC_READ],
+      preHandler: [LOC_READ, admissionScope("loc.read")],
       config: { auditRead: { resourceKind: "level_of_care", resourceIdParam: "id" } },
     },
     async (request) => {
@@ -537,18 +627,22 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     },
   );
 
-  app.patch("/api/v1/level-of-care/:id", { preHandler: [LOC_CHANGE] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(LocPatchSchema, request.body);
-    return service.patchLoc(organizationId, idOf(request), body.reason, body.ifVersion);
-  });
+  app.patch(
+    "/api/v1/level-of-care/:id",
+    { preHandler: [LOC_CHANGE, admissionScope("loc.change", "loc")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const body = parse(LocPatchSchema, request.body);
+      return service.patchLoc(organizationId, idOf(request), body.reason, body.ifVersion);
+    },
+  );
 
   // The §2.3.5 confirm handshake (M6-T04 fix, 2026-08-05): IRC/GIP periods land in `assigning` until this
   // fires; it verifies a real M37 bed assignment exists (never trusts a caller-supplied bed id) before
   // transitioning to `active`.
   app.post(
     "/api/v1/level-of-care/:id/confirm-bed",
-    { preHandler: [LOC_CHANGE] },
+    { preHandler: [LOC_CHANGE, admissionScope("loc.change", "loc")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(LocConfirmBedSchema, request.body);
@@ -559,7 +653,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   // ── Revocation / transfer / discharge (routes 36–40) ─────────────────────────────────────────
   app.post(
     "/api/v1/admissions/:id/revocation",
-    { preHandler: [REVOCATION_CREATE] },
+    { preHandler: [REVOCATION_CREATE, admissionScope("revocation.create")] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(RevocationCreateSchema, request.body);
@@ -581,7 +675,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
 
   app.post(
     "/api/v1/admissions/:id/transfer-out",
-    { preHandler: [TRANSFER_OUT] },
+    { preHandler: [TRANSFER_OUT, admissionScope("transfer.out")] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(TransferOutSchema, request.body);
@@ -602,7 +696,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
 
   app.post(
     "/api/v1/admissions/:id/transfer-in",
-    { preHandler: [TRANSFER_IN] },
+    { preHandler: [TRANSFER_IN, admissionScope("transfer.in")] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(TransferInSchema, request.body);
@@ -667,7 +761,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   // ── NOR (routes 41–42) ─────────────────────────────────────────────────────────────────────
   app.post(
     "/api/v1/admissions/:id/nor",
-    { preHandler: [NOR_ACKNOWLEDGE] },
+    { preHandler: [NOR_ACKNOWLEDGE, admissionScope("nor.acknowledge")] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(NorAcknowledgeSchema, request.body);
@@ -684,7 +778,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   app.get(
     "/api/v1/admissions/:id/nor",
     {
-      preHandler: [NOR_READ],
+      preHandler: [NOR_READ, admissionScope("nor.read")],
       config: { auditRead: { resourceKind: "nor", resourceIdParam: "id" } },
     },
     async (request) => {
@@ -698,7 +792,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   app.get(
     "/api/v1/admissions/:id/compliance-windows",
     {
-      preHandler: [COMPLIANCE_READ],
+      preHandler: [COMPLIANCE_READ, admissionScope("compliance.read")],
       config: { auditRead: { resourceKind: "compliance_window", resourceIdParam: "id" } },
     },
     async (request) => {
@@ -723,7 +817,7 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
 
   app.post(
     "/api/v1/compliance-windows/:id/close",
-    { preHandler: [COMPLIANCE_CLOSE] },
+    { preHandler: [COMPLIANCE_CLOSE, admissionScope("compliance.close", "complianceWindow")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(ComplianceCloseSchema, request.body);

@@ -10,6 +10,7 @@
 // permission, and §6.6 cross-tenant non-leak (404).
 import {
   createInMemoryEffectivePermissionStore,
+  createPredicateRegistry,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
@@ -19,8 +20,8 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
+  buildAdmissionAbacPredicates,
   createInMemoryAdmissionBackend,
-  registerAdmissionAbacPredicates,
   registerAdmissionRoutes,
 } from "../src/modules/06-admission/index";
 
@@ -74,7 +75,9 @@ const PERMISSION_SEED = [
   { userId: "co_1", permissions: ["compliance.read", "compliance.override"] },
 ];
 
-function makeServer() {
+function makeServer(
+  options: { isInCaseload?: (q: { organizationId: string; userId: string; patientId: string }) => Promise<boolean> } = {},
+) {
   const backend = createInMemoryAdmissionBackend({
     records: [
       {
@@ -130,8 +133,19 @@ function makeServer() {
     ),
   );
   registerEffectivePermissionResolver(grantStore.store);
-  registerAdmissionAbacPredicates({ resolver: backend.resolver, isInCaseload: async () => true });
-  registerAbacRegistry();
+  // A FRESH registry per server (not the shared module-level `abacRegistry`): the shared registry's
+  // `registerIdempotent` treats same-SOURCE closures as a "reboot" no-op (comparing `Function.
+  // prototype.toString()`, which is identical across calls since it's the same factory literal) — so
+  // reusing it across tests would silently keep test 1's `backend.resolver` bound forever, resolving
+  // every later test's scope predicates against test 1's (stale, disconnected) in-memory dataset
+  // instead of the fresh one just built above (the field-safety-routes.test.ts precedent).
+  const registry = createPredicateRegistry();
+  const predicates = buildAdmissionAbacPredicates({
+    resolver: backend.resolver,
+    isInCaseload: options.isInCaseload ?? (async () => true),
+  });
+  for (const [name, fn] of Object.entries(predicates)) registry.register(name, fn);
+  registerAbacRegistry(registry);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerAdmissionRoutes(app, { service: backend.service });
@@ -249,6 +263,31 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
       headers: RN,
     });
     expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("GAP-011 §4.6 admission.scope — a same-org clinician OUTSIDE the patient's caseload cannot read the admission (404, not 403 — §6.6 existence non-leak: same signal as an absent/cross-tenant id)", async () => {
+    // A clinician with `admission.read` granted, no `medical_director`/matching-providerEntity role,
+    // and NOT on the patient's caseload: exactly the scenario the report's own recommended
+    // verification names (a non-caseload clinician on GET /api/v1/admissions/:id).
+    const { app } = makeServer({ isInCaseload: async () => false });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions/${ADMISSION}`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("GAP-011 §4.6 admission.scope — the SAME clinician CAN read once caseload membership resolves true", async () => {
+    const { app } = makeServer({ isInCaseload: async () => true });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions/${ADMISSION}`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
     await app.close();
   });
 
