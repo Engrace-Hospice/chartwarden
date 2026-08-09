@@ -9,6 +9,7 @@
 // and §4.1.1 PATCH header enforcement (400 missing Idempotency-Key, 428 missing If-Match, replay, 409 body mismatch).
 import {
   createInMemoryEffectivePermissionStore,
+  createPredicateRegistry,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
@@ -18,6 +19,7 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
+  buildCarePlanAbacPredicates,
   createInMemoryCarePlanBackend,
   registerCarePlanRoutes,
 } from "../src/modules/07-care-plan/index";
@@ -55,7 +57,15 @@ const PERMISSION_SEED = [
   { userId: "viewer_1", permissions: ["care_plan.read"] },
 ];
 
-function makeServer() {
+function makeServer(
+  options: {
+    isInCaseload?: (q: {
+      organizationId: string;
+      userId: string;
+      patientId: string;
+    }) => Promise<boolean>;
+  } = {},
+) {
   const backend = createInMemoryCarePlanBackend({
     plans: [
       { id: PLAN, organizationId: ORG, patientId: PATIENT, status: "draft" },
@@ -75,7 +85,18 @@ function makeServer() {
     ),
   );
   registerEffectivePermissionResolver(grantStore.store);
-  registerAbacRegistry();
+
+  // GAP-012: a FRESH registry per server/test — reusing the shared module-level `abacRegistry` would
+  // silently pin every test after the first to whatever backend the FIRST test's registration closed
+  // over (`registerPredicateIdempotent`'s same-source-string reboot check can't tell two DIFFERENT
+  // in-memory backends apart). See the GAP-011 memory note for the full mechanism.
+  const registry = createPredicateRegistry();
+  const predicates = buildCarePlanAbacPredicates({
+    resolver: backend.resolver,
+    isInCaseload: options.isInCaseload ?? (async () => true),
+  });
+  for (const [name, fn] of Object.entries(predicates)) registry.register(name, fn);
+  registerAbacRegistry(registry);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerCarePlanRoutes(app, { service: backend.service });
@@ -137,6 +158,37 @@ describe("M7-T05 — care-plan routes (§4.1, §4.5 gating)", () => {
       headers: RN,
     });
     expect(res.statusCode).toBe(404);
+  });
+
+  it("GAP-012: a clinician outside the patient's caseload is denied (404) reading the care plan", async () => {
+    const { app } = makeServer({ isInCaseload: async () => false });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${PATIENT}/care-plan`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("GAP-012: a clinician outside the patient's caseload is denied (404) authoring a problem", async () => {
+    const { app } = makeServer({ isInCaseload: async () => false });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/care-plans/${PLAN}/problems`,
+      headers: RN,
+      payload: { description: "Terminal CA", kind: "terminal", source: "clinical" },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("GAP-012: caseload membership restores access (200) for the same clinician", async () => {
+    const { app } = makeServer({ isInCaseload: async () => true });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${PATIENT}/care-plan`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
   });
 });
 
