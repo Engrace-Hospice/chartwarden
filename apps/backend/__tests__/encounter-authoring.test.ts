@@ -7,31 +7,46 @@
 // in-memory backend, asserting the published `m8.*` outbox events and the cross-module F2F attestation
 // write the dual-write requests of M6.
 import {
+  M3_INTRINSIC_PREDICATES,
   createInMemoryEffectivePermissionStore,
   createInMemorySessionContextStore,
+  createPredicateRegistry,
   createSessionContextResolver,
+  isStepUpRecent,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
+import { STEP_UP_POLICY } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
-import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
-import { registerAuthorizationAbacPredicates } from "../src/modules/03-authorization/index";
+import { __resetSeamsForTest, getSeam, registerSeam } from "../src/bootstrap/seams/registry";
 import {
+  buildEncounterAbacPredicates,
   computeBmi,
   createInMemoryEncounterBackend,
   deriveAbnormalFlags,
   planF2fDualWrite,
   planMileageCapture,
   planVitalsCapture,
-  registerEncounterAbacPredicates,
   registerEncounterRoutes,
   resolveMiles,
 } from "../src/modules/08-encounters/index";
+
+/** GAP-014 — see encounter-routes.test.ts's identical helper for why this reimplements step_up_recent
+ *  inline over a fresh per-test registry instead of `registerAuthorizationAbacPredicates()` (which
+ *  writes into the shared singleton a fresh registry bypasses). */
+function stepUpRecentPredicate(context: { organizationId: string; attributes: Record<string, unknown> }) {
+  const sessionId =
+    typeof context.attributes.sessionId === "string" ? context.attributes.sessionId : null;
+  if (!sessionId || !context.organizationId) return Promise.resolve(false);
+  return getSeam("SessionContextResolver")
+    .resolveStepUpState({ orgId: context.organizationId }, sessionId)
+    .then((state) => isStepUpRecent(state, STEP_UP_POLICY, Date.now()));
+}
 
 /** Assert `fn` throws an EncounterStateError carrying the given §2.7 machine code. */
 function expectCode(fn: () => unknown, code: string): void {
@@ -214,11 +229,18 @@ function makeServer() {
   );
   registerEffectivePermissionResolver(grantStore.store);
   resetAbacRegistry();
-  registerAbacRegistry();
-  registerEncounterAbacPredicates({ resolver: backend.resolver });
-  registerAuthorizationAbacPredicates();
-  // Every seeded actor starts with a FRESH step-up (real M3 step_up_recent, real M2 seam) — the sign
-  // route's requireStepUp(...) gate needs this to reach the route handler at all.
+  const registry = createPredicateRegistry({
+    ...M3_INTRINSIC_PREDICATES,
+    step_up_recent: stepUpRecentPredicate,
+  });
+  const predicates = buildEncounterAbacPredicates({
+    resolver: backend.resolver,
+    isInCaseload: async () => true,
+  });
+  for (const [name, fn] of Object.entries(predicates)) registry.register(name, fn);
+  registerAbacRegistry(registry);
+  // Every seeded actor starts with a FRESH step-up (real M3 step_up_recent decision, real M2 seam) —
+  // the sign route's requireStepUp(...) gate needs this to reach the route handler at all.
   __resetSeamsForTest();
   const sessions = createInMemorySessionContextStore(
     actors.map((userId) => ({

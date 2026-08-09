@@ -9,25 +9,46 @@
 // finalize→sign happy path, the §7.7 If-Match version race (412 VERSION_MISMATCH), and the cosigner
 // predicate (RN ∧ not-self-author).
 import {
+  M3_INTRINSIC_PREDICATES,
   createInMemoryEffectivePermissionStore,
   createInMemorySessionContextStore,
+  createPredicateRegistry,
   createSessionContextResolver,
+  isStepUpRecent,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
+import { STEP_UP_POLICY } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
-import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
-import { registerAuthorizationAbacPredicates } from "../src/modules/03-authorization/index";
-import {
-  createInMemoryEncounterBackend,
-  registerEncounterAbacPredicates,
-  registerEncounterRoutes,
-} from "../src/modules/08-encounters/index";
+import { __resetSeamsForTest, getSeam, registerSeam } from "../src/bootstrap/seams/registry";
+import { buildEncounterAbacPredicates } from "../src/modules/08-encounters/index";
+import { createInMemoryEncounterBackend, registerEncounterRoutes } from "../src/modules/08-encounters/index";
+
+/**
+ * GAP-014: a FRESH `createPredicateRegistry()` per server/test — reusing the shared module-level
+ * `abacRegistry` singleton (the old `resetAbacRegistry(); registerAbacRegistry(); registerEncounterAbacPredicates(...)`
+ * pattern) would silently pin every test after the first to whatever backend the FIRST test's
+ * registration closed over (`registerPredicateIdempotent`'s same-source-string reboot check can't
+ * tell two DIFFERENT in-memory backends apart — see the GAP-011 memory note). Since this file's
+ * sign/cosign-sign routes also gate on M3's `step_up_recent` (normally registered by
+ * `registerAuthorizationAbacPredicates()` into that SAME shared singleton, which a fresh registry
+ * bypasses), the fresh registry's seed reimplements `step_up_recent` inline over the same
+ * `SessionContextResolver` seam + `isStepUpRecent` decision the real M3 predicate uses — not a
+ * second, divergent copy of the DECISION, just a second registration site for the same pure check.
+ */
+function stepUpRecentPredicate(context: { organizationId: string; attributes: Record<string, unknown> }) {
+  const sessionId =
+    typeof context.attributes.sessionId === "string" ? context.attributes.sessionId : null;
+  if (!sessionId || !context.organizationId) return Promise.resolve(false);
+  return getSeam("SessionContextResolver")
+    .resolveStepUpState({ orgId: context.organizationId }, sessionId)
+    .then((state) => isStepUpRecent(state, STEP_UP_POLICY, Date.now()));
+}
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
@@ -69,7 +90,15 @@ const PERMISSION_SEED = [
   { userId: "viewer_1", permissions: ["encounter.read"] },
 ];
 
-function makeServer() {
+function makeServer(
+  options: {
+    isInCaseload?: (q: {
+      organizationId: string;
+      userId: string;
+      patientId: string;
+    }) => Promise<boolean>;
+  } = {},
+) {
   const backend = createInMemoryEncounterBackend({
     encounters: [
       {
@@ -113,12 +142,20 @@ function makeServer() {
   );
   registerEffectivePermissionResolver(grantStore.store);
   resetAbacRegistry();
-  registerAbacRegistry();
-  registerEncounterAbacPredicates({ resolver: backend.resolver });
-  registerAuthorizationAbacPredicates();
-  // Every seeded actor starts with a FRESH step-up (real M3 step_up_recent, real M2 seam) — the sign/
-  // cosign-sign routes' requireStepUp(...) gate needs this to reach the route handler at all. `put`
-  // lets an individual test push a STALE session for one actor to exercise the deny path for real.
+  const registry = createPredicateRegistry({
+    ...M3_INTRINSIC_PREDICATES,
+    step_up_recent: stepUpRecentPredicate,
+  });
+  const predicates = buildEncounterAbacPredicates({
+    resolver: backend.resolver,
+    isInCaseload: options.isInCaseload ?? (async () => true),
+  });
+  for (const [name, fn] of Object.entries(predicates)) registry.register(name, fn);
+  registerAbacRegistry(registry);
+  // Every seeded actor starts with a FRESH step-up (real M3 step_up_recent decision, real M2 seam) —
+  // the sign/cosign-sign routes' requireStepUp(...) gate needs this to reach the route handler at
+  // all. `put` lets an individual test push a STALE session for one actor to exercise the deny path
+  // for real.
   __resetSeamsForTest();
   const sessions = createInMemorySessionContextStore(
     PERMISSION_SEED.map((s) => ({
@@ -229,6 +266,43 @@ describe("M8-T09 — encounter routes (§4.1, §4.5 RBAC gating)", () => {
       headers: RN,
     });
     expect(res.statusCode).toBe(404);
+  });
+
+  it("GAP-014: a clinician outside the patient's caseload is denied (404) reading the encounter", async () => {
+    const { app } = makeServer({ isInCaseload: async () => false });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${ENC_BY_LPN}`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("GAP-014: a clinician outside the patient's caseload is denied (404) creating an encounter", async () => {
+    const { app } = makeServer({ isInCaseload: async () => false });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/encounters",
+      headers: RN,
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "rn",
+        serviceDate: "2026-06-20",
+      },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("GAP-014: caseload membership restores access (200) for the same clinician", async () => {
+    const { app } = makeServer({ isInCaseload: async () => true });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${ENC_BY_LPN}`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
   });
 });
 
