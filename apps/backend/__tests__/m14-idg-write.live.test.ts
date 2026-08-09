@@ -401,6 +401,78 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     expect(rescheduled.status).toBe("rescheduled");
   });
 
+  it("cancel with overrideAuthorized proceeds past a real breach and records the audited override (GAP-091)", async () => {
+    const m = await seedMeeting(ORG_A, "scheduled");
+    const patientId = randomUUID();
+    await seedPacket(ORG_A, m, patientId, new Date(Date.now() - 20 * 86400000).toISOString()); // floor -5d
+
+    const cancelled = await svc.cancelMeeting(ORG_A, MEMBER, m, "clinically necessary", true);
+    expect(cancelled.status).toBe("cancelled");
+    expect(await meetingStatus(m)).toBe("cancelled");
+
+    const { rows } = await admin.query(
+      "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type=$2",
+      [m, "m14.review_floor.override_recorded"],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].payload).toMatchObject({
+      meetingId: m,
+      actorMembershipId: MEMBER,
+      reason: "clinically necessary",
+      breachingPatients: [{ patientId }],
+    });
+  });
+
+  it("cancel WITHOUT overrideAuthorized still refuses a real breach (the default stays false)", async () => {
+    const m = await seedMeeting(ORG_A, "scheduled");
+    const patientId = randomUUID();
+    await seedPacket(ORG_A, m, patientId, new Date(Date.now() - 20 * 86400000).toISOString());
+    await expect(svc.cancelMeeting(ORG_A, MEMBER, m, "no longer needed")).rejects.toMatchObject({
+      code: "PER_PATIENT_REVIEW_FLOOR_BREACH",
+    });
+    const { rows } = await admin.query(
+      "SELECT 1 FROM outbox_event WHERE aggregate_id=$1 AND event_type=$2",
+      [m, "m14.review_floor.override_recorded"],
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it("reschedule with overrideAuthorized proceeds past a floor breach and records the audited override (GAP-091)", async () => {
+    const m = await seedMeeting(ORG_A, "scheduled");
+    const patientId = randomUUID();
+    await seedPacket(ORG_A, m, patientId, new Date(Date.now() - 10 * 86400000).toISOString()); // floor +5d
+    const rescheduled = await svc.rescheduleMeeting(ORG_A, MEMBER, m, {
+      reason: "provider unavailable",
+      newScheduledStart: new Date(Date.now() + 20 * 86400000).toISOString(), // past the floor
+      newScheduledEnd: new Date(Date.now() + 20 * 86400000 + 3_600_000).toISOString(),
+      overrideAuthorized: true,
+    });
+    expect(rescheduled.status).toBe("rescheduled");
+
+    const { rows } = await admin.query(
+      "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type=$2",
+      [m, "m14.review_floor.override_recorded"],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].payload).toMatchObject({
+      meetingId: m,
+      actorMembershipId: MEMBER,
+      reason: "provider unavailable",
+      breachingPatients: [{ patientId }],
+    });
+  });
+
+  it("overrideAuthorized on a NON-breaching cancel is a no-op — no override event is recorded", async () => {
+    const m = await seedMeeting(ORG_A, "scheduled");
+    const cancelled = await svc.cancelMeeting(ORG_A, MEMBER, m, "location closed", true);
+    expect(cancelled.status).toBe("cancelled");
+    const { rows } = await admin.query(
+      "SELECT 1 FROM outbox_event WHERE aggregate_id=$1 AND event_type=$2",
+      [m, "m14.review_floor.override_recorded"],
+    );
+    expect(rows).toHaveLength(0);
+  });
+
   it("RLS: org B cannot start or read org A's meeting (404 under the wardenx_app policy)", async () => {
     const m = await seedMeeting(ORG_A, "packets_ready");
     await expect(svc.getMeeting(ORG_B, m)).rejects.toMatchObject({ statusCode: 404 });

@@ -15,6 +15,7 @@ import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
 import type { IdgActionItemStatus, IdgAttendanceStatus } from "@wardenx/types";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { REVIEW_FLOOR_OVERRIDE_ATTRIBUTE } from "../abac-predicates";
 import {
   ActionItemListQuerySchema,
   AddAgendaItemRequest,
@@ -94,6 +95,13 @@ const ABAC_REVIEW_FLOOR = requireAbac("idg.schedule", "per_patient_review_floor_
   getTarget: reviewFloorTarget,
 }) as PreHandler;
 
+/** GAP-091 — `per_patient_review_floor_clear` flags `context.attributes[REVIEW_FLOOR_OVERRIDE_ATTRIBUTE]`
+ * when it allowed a real breach through the audited `idg.override_review_floor` + step-up escape valve
+ * (abac-predicates.ts). The handler reads it here to tell the service this was an override, so the service
+ * records it (`m14.review_floor.override_recorded`) instead of silently proceeding. */
+const reviewFloorOverrideOf = (request: FastifyRequest): boolean =>
+  request.context?.attributes[REVIEW_FLOOR_OVERRIDE_ATTRIBUTE] === true;
+
 /** The fresh step-up assertion the ADJOURN route requires (§2.2 D13). The header is set by the M2 step-up flow;
  * the in-mem slice treats its presence as the fresh-step-up signal (the pure machine raises STEP_UP_REQUIRED
  * when absent). */
@@ -155,7 +163,13 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(CancelMeetingRequest, request.body);
-      return service.cancelMeeting(organizationId, userId, id, b.reason);
+      return service.cancelMeeting(
+        organizationId,
+        userId,
+        id,
+        b.reason,
+        reviewFloorOverrideOf(request),
+      );
     },
   );
 
@@ -171,6 +185,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
         reason: b.reason,
         newScheduledStart: b.newScheduledStart,
         newScheduledEnd: b.newScheduledEnd,
+        overrideAuthorized: reviewFloorOverrideOf(request),
       });
     },
   );

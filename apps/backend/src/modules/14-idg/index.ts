@@ -58,6 +58,7 @@ export {
   type MeetingScopeFacts,
   type ReviewFloorBreachFact,
   M14_ABAC_PREDICATES,
+  REVIEW_FLOOR_OVERRIDE_ATTRIBUTE,
   buildIdgAbacPredicates,
   registerIdgAbacPredicates,
 } from "./abac-predicates";

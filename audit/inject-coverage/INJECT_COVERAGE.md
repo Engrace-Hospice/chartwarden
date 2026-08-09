@@ -20,7 +20,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 11-orders | 28 | ✅ | 22/28 | apps/backend/__tests__/orders-routes.test.ts |
 | 12-dosespot | 31 | ✅ | 19/31 | apps/backend/__tests__/dosespot-routes.test.ts |
 | 13-emar | 28 | ✅ | 16/28 | apps/backend/__tests__/emar-caregiver-barcode.test.ts, apps/backend/__tests__/emar-routes.test.ts |
-| 14-idg | 27 | ✅ | 27/27 | apps/backend/__tests__/idg-inject.test.ts |
+| 14-idg | 27 | ✅ | 27/27 | apps/backend/__tests__/idg-inject.test.ts, apps/backend/__tests__/idg-routes.test.ts |
 | 15-discipline-care-plans | 28 | ✅ | 28/28 | apps/backend/__tests__/discipline-plans-inject.test.ts |
 | 16-bereavement | 33 | ✅ | 33/33 | apps/backend/__tests__/bereavement-inject.test.ts |
 | 17-scheduling | 29 | ✅ | 29/29 | apps/backend/__tests__/scheduling-inject.test.ts |

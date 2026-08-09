@@ -36,11 +36,13 @@
 //       evaluated — the same authoritative-vs-Phase-1-signal split `patientIncluded` already draws. `ADJOURN`
 //       now really stamps `last_idg_reviewed_at` (previously only `frozen_at` was set, so the floor could
 //       never advance — a second, silent half of this same regression). `cancelMeeting`/`rescheduleMeeting`
-//       feed the SAME computed facts into the pure `transitionMeeting` guard (`overrideAuthorized` is always
-//       `false` — no `idg.override_review_floor` composition exists at the route yet, so a real breach is a
-//       hard 422/403, not merely audited-and-allowed). Still open, deliberately out of this fix's scope: the
-//       `idg.review-clock-sweep` cron (T-3/T-0/T+1 escalation for a floor that lapses from pure inaction,
-//       never touching CANCEL/RESCHEDULE at all) and the override composition itself.
+//       feed the SAME computed facts into the pure `transitionMeeting` guard. [GAP-091 CLOSED] `overrideAuthorized`
+//       is no longer hardcoded — it is resolved by the ROUTE's `per_patient_review_floor_clear` ABAC predicate
+//       (idg.override_review_floor + a fresh, server-verified step-up; see abac-predicates.ts) and passed
+//       through, same as `adjournMeeting`'s `stepUpFresh`. On a real override, `cancelMeeting`/`rescheduleMeeting`
+//       emit `m14.review_floor.override_recorded` (breaching set + reason) in the SAME transaction. Still open,
+//       deliberately out of scope: the `idg.review-clock-sweep` cron (T-3/T-0/T+1 escalation for a floor that
+//       lapses from pure inaction, never touching CANCEL/RESCHEDULE at all — GAP-092).
 import { createHash } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import {
@@ -554,19 +556,20 @@ export function createDbIdgBackend(
     },
 
     // ── meeting lifecycle (writes) ─────────────────────────────────────────────────────────────────────
-    async cancelMeeting(orgId, userId, id, reason): Promise<MeetingView> {
+    async cancelMeeting(orgId, userId, id, reason, overrideAuthorized = false): Promise<MeetingView> {
       return withOrg(orgId, async (tx) => {
         const m = await loadMeeting(tx, id);
-        // The route's `per_patient_review_floor_clear` ABAC gate already checks this (403 before the handler
-        // runs); the service resolves the SAME facts as a defense-in-depth backstop for any caller that
-        // reaches the service directly. No `idg.override_review_floor` composition exists yet (GAP-020
-        // header), so `overrideAuthorized` is always false — a real breach is a hard 422 here.
+        // The route's `per_patient_review_floor_clear` ABAC gate already checked this (403 before the
+        // handler runs, or the audited override per GAP-091); the service resolves the SAME facts again as
+        // a defense-in-depth backstop for any caller reaching the service directly, and trusts the route's
+        // `overrideAuthorized` determination (it cannot itself re-resolve permission/step-up from a bare
+        // membership id — same as `adjournMeeting`'s `stepUpFresh` parameter).
         const breaches = await computeReviewFloorBreaches(tx, orgId, id, "cancel", null);
         transitionMeeting(m.status, {
           type: "CANCEL",
           reason,
           reviewFloorClear: breaches.length === 0,
-          overrideAuthorized: false,
+          overrideAuthorized,
           breachingPatients: breaches,
         });
         const at = new Date();
@@ -585,10 +588,21 @@ export function createDbIdgBackend(
           cancellationReason: reason,
           cancelledAt: at.toISOString(),
         });
+        // GAP-091 — the audited outbox record of the override, captured in the SAME transaction as the
+        // cancellation write.
+        if (breaches.length > 0 && overrideAuthorized) {
+          await emit(tx, orgId, "m14.review_floor.override_recorded", "idg_meeting", id, {
+            meetingId: id,
+            actorMembershipId: userId,
+            reason,
+            breachingPatients: breaches,
+            overriddenAt: at.toISOString(),
+          });
+        }
         return toMeetingView({ ...m, status: "cancelled", cancellationReason: reason });
       });
     },
-    async rescheduleMeeting(orgId, _userId, id, args): Promise<MeetingView> {
+    async rescheduleMeeting(orgId, userId, id, args): Promise<MeetingView> {
       return withOrg(orgId, async (tx) => {
         const prior = await loadMeeting(tx, id);
         const breaches = await computeReviewFloorBreaches(
@@ -598,11 +612,12 @@ export function createDbIdgBackend(
           "reschedule",
           args.newScheduledStart,
         );
+        const overrideAuthorized = args.overrideAuthorized ?? false;
         transitionMeeting(prior.status, {
           type: "RESCHEDULE",
           reason: args.reason,
           reviewFloorClear: breaches.length === 0,
-          overrideAuthorized: false,
+          overrideAuthorized,
           breachingPatients: breaches,
         });
         const at = new Date();
@@ -630,6 +645,15 @@ export function createDbIdgBackend(
           newScheduledStart: new Date(args.newScheduledStart).toISOString(),
           reason: args.reason,
         });
+        if (breaches.length > 0 && overrideAuthorized) {
+          await emit(tx, orgId, "m14.review_floor.override_recorded", "idg_meeting", id, {
+            meetingId: id,
+            actorMembershipId: userId,
+            reason: args.reason,
+            breachingPatients: breaches,
+            overriddenAt: at.toISOString(),
+          });
+        }
         return toMeetingView({ ...prior, status: "rescheduled" });
       });
     },
