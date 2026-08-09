@@ -4,7 +4,7 @@
     "covered": 39,
     "routes": 1228,
     "coveredRoutes": 1228,
-    "directRoutesReferenced": 1168
+    "directRoutesReferenced": 1170
   },
   "modules": [
     {
@@ -108,7 +108,7 @@
       "suiteFiles": [
         "apps/backend/__tests__/hope-routes.test.ts"
       ],
-      "directRoutesReferenced": 16
+      "directRoutesReferenced": 18
     },
     {
       "module": "11-orders",

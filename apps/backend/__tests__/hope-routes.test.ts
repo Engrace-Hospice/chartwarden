@@ -1,15 +1,19 @@
 // apps/backend/__tests__/hope-routes.test.ts — M10-T06 route-inventory + §4.6 RBAC gating + §4.7
 // `hope.authorDisciplineAllowed` / `hope.sfvAuthorAllowed` / `hope.correctionAuthorAllowed` ABAC + the D4
 // J2051 trigger / SFV creation + §2.4 outbox emission + §4.9.1 out-of-band PHI strip (M10 spec §4.1, §4.4,
-// §4.6, §4.7, §4.9).
+// §4.6, §4.7, §4.9) + (GAP-018) `hope.scope` caseload/provider-entity scoping.
 //
 // Exercises M10's routes through the FULL M1 middleware chain via Fastify `inject`, no live infra:
 // buildServer() mounts the host, registerHopeRoutes() mounts the §4.1 inventory over the in-memory HOPE
 // backend. The REAL Authorization Contract gates every route on the §4.6 keys; a header-auth shim
-// populates request.context. The three §4.7 predicates M10 owns are registered into the shared ABAC
-// registry over the slice's resolver.
+// populates request.context (extended with `x-test-pe` — the M24 precedent — since `hope.scope`'s
+// provider-entity branch reads `context.providerEntityIds`). The four predicates M10 owns are registered
+// into a FRESH ABAC registry over the slice's resolver (the GAP-011 pattern — reusing the shared
+// module-level `abacRegistry` would silently pin every test after the first to whatever backend the FIRST
+// test's registration closed over).
 import {
   createInMemoryEffectivePermissionStore,
+  createPredicateRegistry,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAbacRegistry,
@@ -21,8 +25,8 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
+  buildHopeAbacPredicates,
   createInMemoryHopeBackend,
-  registerHopeAbacPredicates,
   registerHopeRoutes,
 } from "../src/modules/10-hope/index";
 
@@ -36,6 +40,8 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  const pe = request.headers["x-test-pe"];
+  request.context.providerEntityIds = typeof pe === "string" && pe.length > 0 ? pe.split(",") : [];
 }
 
 const ORG = "org_a";
@@ -45,6 +51,7 @@ const SCHEDULE = "55555555-5555-4555-8555-555555555555";
 const SIGNED_A = "90000000-0000-4000-8000-000000000010";
 const SUB_REJECTED = "c0000000-0000-4000-8000-000000000001";
 const SUB_QUEUED = "c0000000-0000-4000-8000-000000000002";
+const SFV_SEEDED = "d0000000-0000-4000-8000-000000000001";
 const NOW = "2026-06-08T12:00:00.000Z";
 
 const READ_KEYS = ["hope.schedule.read", "hope.timepoint.read", "hope.sfv.read"];
@@ -66,7 +73,19 @@ const PERMISSION_SEED = [
   { userId: "compliance_1", permissions: SUB_KEYS },
 ];
 
-function makeServer() {
+type IsInCaseload = (q: {
+  organizationId: string;
+  userId: string;
+  patientId: string;
+}) => Promise<boolean>;
+type ResolveAdmissionPatient = (
+  organizationId: string,
+  admissionId: string,
+) => Promise<{ patientId: string } | null>;
+
+function makeServer(
+  options: { isInCaseload?: IsInCaseload; resolveAdmissionPatient?: ResolveAdmissionPatient } = {},
+) {
   const backend = createInMemoryHopeBackend({
     now: () => NOW,
     timeZone: "America/New_York",
@@ -112,6 +131,19 @@ function makeServer() {
         itemCount: 2,
       },
     ],
+    sfvs: [
+      // status "missed" (not "open") so this seed row doesn't inflate the D4-trigger test's
+      // `?state=open` count assertion below.
+      {
+        id: SFV_SEEDED,
+        organizationId: ORG,
+        patientId: PATIENT,
+        triggeringAssessmentId: SIGNED_A,
+        status: "missed",
+        triggeredAt: "2026-06-02T10:00:00.000Z",
+        dueAt: "2026-06-16T10:00:00.000Z",
+      },
+    ],
   });
 
   const grantStore = createInMemoryEffectivePermissionStore(
@@ -122,16 +154,31 @@ function makeServer() {
     })),
   );
   registerEffectivePermissionResolver(grantStore.store);
-  resetAbacRegistry();
-  registerAbacRegistry();
-  registerHopeAbacPredicates({ resolver: backend });
+
+  // GAP-018: a FRESH registry per server/test — reusing the shared module-level `abacRegistry` would
+  // silently pin every test after the first to whatever backend the FIRST test's registration closed over
+  // (`registerPredicateIdempotent`'s same-source-string reboot check can't tell two DIFFERENT in-memory
+  // backends apart). See the GAP-011 memory note for the full mechanism. `hope.scope` is entirely M10-owned
+  // (unlike M9's `assessment.scope`, it never binds the shared `caseload_or_scope` by name), so no
+  // cross-module predicate needs registering here.
+  const registry = createPredicateRegistry();
+  const predicates = buildHopeAbacPredicates({
+    resolver: backend,
+    isInCaseload: options.isInCaseload ?? (async () => true),
+    resolveAdmissionPatient:
+      options.resolveAdmissionPatient ??
+      (async (_organizationId, admissionId) =>
+        admissionId === ADMISSION ? { patientId: PATIENT } : null),
+  });
+  for (const [name, fn] of Object.entries(predicates)) registry.register(name, fn);
+  registerAbacRegistry(registry);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerHopeRoutes(app, { service: backend });
   return { app, backend };
 }
 
-const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" };
+const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn", "x-test-pe": "pe_1" };
 const CHAPLAIN = { "x-test-user": "chap_1", "x-test-org": ORG, "x-test-roles": "chaplain" };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
 const COMPLIANCE = {
@@ -333,6 +380,186 @@ describe("M10-T06 — submission retry guard (§4.4)", () => {
       payload: {},
     });
     expect(bad.statusCode).toBe(409);
+    await app.close();
+  });
+});
+
+// ── GAP-018 — hope.scope caseload / provider-entity scoping ───────────────────────────────────────────
+// Proves the wiring closes the gap across every id shape hope.scope resolves: patientId (direct),
+// admissionId (via the M6 seam stand-in), scheduleId, sfvId, assessmentId, providerEntityId, and
+// submissionId — an actor outside the patient's caseload / the PE's scope is denied a non-leaking 404 on
+// every route class, and caseload/PE membership restores access. `makeServer`'s defaults (`isInCaseload:
+// async () => true`, `resolveAdmissionPatient` matching the seeded ADMISSION→PATIENT pair) are permissive
+// for every other describe block in this file — these tests are the only ones that override them.
+describe("GAP-018 — hope.scope caseload / provider-entity scoping", () => {
+  it("patientId-keyed route (patient HOPE timeline): denied outside caseload, allowed inside", async () => {
+    const outside = makeServer({ isInCaseload: async () => false });
+    const denied = await outside.app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${PATIENT}/hope/assessments`,
+      headers: RN,
+    });
+    expect(denied.statusCode).toBe(404);
+
+    const inside = makeServer({ isInCaseload: async ({ patientId }) => patientId === PATIENT });
+    const allowed = await inside.app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${PATIENT}/hope/assessments`,
+      headers: RN,
+    });
+    expect(allowed.statusCode).toBe(200);
+    await outside.app.close();
+    await inside.app.close();
+  });
+
+  it("admissionId-keyed route (record timepoint): denied outside caseload, allowed inside", async () => {
+    const outside = makeServer({ isInCaseload: async () => false });
+    const denied = await outside.app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: huv1Body(),
+    });
+    expect(denied.statusCode).toBe(404);
+
+    const inside = makeServer({ isInCaseload: async ({ patientId }) => patientId === PATIENT });
+    const allowed = await inside.app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: huv1Body(),
+    });
+    expect(allowed.statusCode).toBe(201);
+    await outside.app.close();
+    await inside.app.close();
+  });
+
+  it("an admissionId the resolver can't answer (seam gap) fails closed (404)", async () => {
+    const { app } = makeServer({ resolveAdmissionPatient: async () => null });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: huv1Body(),
+    });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("scheduleId-keyed route (schedule detail): denied outside caseload, allowed inside", async () => {
+    const outside = makeServer({ isInCaseload: async () => false });
+    const denied = await outside.app.inject({
+      method: "GET",
+      url: `/api/v1/hope/schedules/${SCHEDULE}`,
+      headers: RN,
+    });
+    expect(denied.statusCode).toBe(404);
+
+    const inside = makeServer({ isInCaseload: async ({ patientId }) => patientId === PATIENT });
+    const allowed = await inside.app.inject({
+      method: "GET",
+      url: `/api/v1/hope/schedules/${SCHEDULE}`,
+      headers: RN,
+    });
+    expect(allowed.statusCode).toBe(200);
+    await outside.app.close();
+    await inside.app.close();
+  });
+
+  it("sfvId-keyed route (SFV detail): denied outside caseload, allowed inside", async () => {
+    const outside = makeServer({ isInCaseload: async () => false });
+    const denied = await outside.app.inject({
+      method: "GET",
+      url: `/api/v1/hope/sfv/${SFV_SEEDED}`,
+      headers: RN,
+    });
+    expect(denied.statusCode).toBe(404);
+
+    const inside = makeServer({ isInCaseload: async ({ patientId }) => patientId === PATIENT });
+    const allowed = await inside.app.inject({
+      method: "GET",
+      url: `/api/v1/hope/sfv/${SFV_SEEDED}`,
+      headers: RN,
+    });
+    expect(allowed.statusCode).toBe(200);
+    await outside.app.close();
+    await inside.app.close();
+  });
+
+  it("assessmentId-keyed route (assessment detail): denied outside caseload, allowed inside", async () => {
+    const outside = makeServer({ isInCaseload: async () => false });
+    const denied = await outside.app.inject({
+      method: "GET",
+      url: `/api/v1/hope/assessments/${SIGNED_A}`,
+      headers: RN,
+    });
+    expect(denied.statusCode).toBe(404);
+
+    const inside = makeServer({ isInCaseload: async ({ patientId }) => patientId === PATIENT });
+    const allowed = await inside.app.inject({
+      method: "GET",
+      url: `/api/v1/hope/assessments/${SIGNED_A}`,
+      headers: RN,
+    });
+    expect(allowed.statusCode).toBe(200);
+    await outside.app.close();
+    await inside.app.close();
+  });
+
+  it("providerEntityId-keyed route (submissions filtered by PE): denied outside PE scope, allowed inside", async () => {
+    const { app } = makeServer();
+    const denied = await app.inject({
+      method: "GET",
+      url: "/api/v1/hope/submissions?providerEntityId=pe_1",
+      headers: { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" }, // no x-test-pe
+    });
+    expect(denied.statusCode).toBe(404);
+    const allowed = await app.inject({
+      method: "GET",
+      url: "/api/v1/hope/submissions?providerEntityId=pe_1",
+      headers: RN, // carries x-test-pe: pe_1
+    });
+    expect(allowed.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("submissionId-keyed route (submission detail): denied outside PE scope, allowed inside", async () => {
+    const { app } = makeServer();
+    const denied = await app.inject({
+      method: "GET",
+      url: `/api/v1/hope/submissions/${SUB_REJECTED}`,
+      headers: { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" }, // no x-test-pe
+    });
+    expect(denied.statusCode).toBe(404);
+    const allowed = await app.inject({
+      method: "GET",
+      url: `/api/v1/hope/submissions/${SUB_REJECTED}`,
+      headers: RN,
+    });
+    expect(allowed.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("the optional-filter list/dashboard routes allow an unfiltered request regardless of caseload/PE scope", async () => {
+    const { app } = makeServer({ isInCaseload: async () => false });
+    const schedules = await app.inject({
+      method: "GET",
+      url: "/api/v1/hope/schedules",
+      headers: { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" }, // no x-test-pe
+    });
+    expect(schedules.statusCode).toBe(200);
+    const submissions = await app.inject({
+      method: "GET",
+      url: "/api/v1/hope/submissions",
+      headers: { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" },
+    });
+    expect(submissions.statusCode).toBe(200);
+    const dashboard = await app.inject({
+      method: "GET",
+      url: "/api/v1/hope/dashboard/compliance",
+      headers: { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" },
+    });
+    expect(dashboard.statusCode).toBe(200);
     await app.close();
   });
 });
