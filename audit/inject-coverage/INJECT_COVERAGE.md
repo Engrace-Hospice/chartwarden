@@ -11,7 +11,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 02-identity | 17 | ✅ | 17/17 | apps/backend/__tests__/audit-accounting.test.ts, apps/backend/__tests__/audit-routes.test.ts, apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/authz-idor.test.ts, apps/backend/__tests__/authz-routes.test.ts, apps/backend/__tests__/authz-validation.test.ts, apps/backend/__tests__/identity-routes.test.ts, apps/backend/__tests__/session-step-up.test.ts |
 | 03-authorization | 17 | ✅ | 16/17 | apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/authz-idor.test.ts, apps/backend/__tests__/authz-routes.test.ts, apps/backend/__tests__/authz-validation.test.ts |
 | 04-audit | 13 | ✅ | 13/13 | apps/backend/__tests__/audit-accounting.test.ts, apps/backend/__tests__/audit-routes-mount.test.ts, apps/backend/__tests__/audit-routes.test.ts, apps/backend/__tests__/gap-003-compliance-routes-mount.test.ts, apps/backend/__tests__/gap-003-compliance-routes.live.test.ts |
-| 05-patient | 14 | ✅ | 14/14 | apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/patient-routes.test.ts |
+| 05-patient | 14 | ✅ | 14/14 | apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts, apps/backend/__tests__/patient-routes.test.ts |
 | 06-admission | 48 | ✅ | 48/48 | apps/backend/__tests__/admission-certification.test.ts, apps/backend/__tests__/admission-discharge.test.ts, apps/backend/__tests__/admission-intake.test.ts, apps/backend/__tests__/admission-routes.test.ts |
 | 07-care-plan | 19 | ✅ | 18/19 | apps/backend/__tests__/assessment-routes.test.ts, apps/backend/__tests__/care-plan-conformance.live.test.ts, apps/backend/__tests__/care-plan-routes.test.ts, apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts |
 | 08-encounters | 31 | ✅ | 26/31 | apps/backend/__tests__/encounter-authoring.test.ts, apps/backend/__tests__/encounter-routes.test.ts |
@@ -23,7 +23,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 14-idg | 27 | ✅ | 27/27 | apps/backend/__tests__/idg-inject.test.ts, apps/backend/__tests__/idg-routes.test.ts |
 | 15-discipline-care-plans | 28 | ✅ | 28/28 | apps/backend/__tests__/discipline-plans-inject.test.ts |
 | 16-bereavement | 33 | ✅ | 33/33 | apps/backend/__tests__/bereavement-inject.test.ts |
-| 17-scheduling | 29 | ✅ | 29/29 | apps/backend/__tests__/scheduling-inject.test.ts |
+| 17-scheduling | 29 | ✅ | 29/29 | apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts, apps/backend/__tests__/scheduling-inject.test.ts |
 | 18-evv | 25 | ✅ | 25/25 | apps/backend/__tests__/evv-inject.test.ts |
 | 19-oncall | 38 | ✅ | 38/38 | apps/backend/__tests__/oncall-inject.test.ts |
 | 20-field-safety | 30 | ✅ | 30/30 | apps/backend/__tests__/field-safety-inject.test.ts |

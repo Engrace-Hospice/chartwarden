@@ -43,6 +43,7 @@ export {
   createInMemoryPatientMutatorStore,
   createDrizzlePatientReaderStore,
   createDrizzlePatientMutatorStore,
+  createDrizzleCaseloadStore,
   getCaseloadProvider,
   getPatientReader,
   getPatientMutator,

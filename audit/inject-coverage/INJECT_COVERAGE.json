@@ -54,6 +54,7 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
+        "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
       "directRoutesReferenced": 14
@@ -171,6 +172,7 @@
       "routes": 29,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
         "apps/backend/__tests__/scheduling-inject.test.ts"
       ],
       "directRoutesReferenced": 29

@@ -8,6 +8,7 @@
 import { M1_ORGANIZATION_SETTINGS } from "./settings-by-m1";
 import { M3_ORGANIZATION_SETTINGS } from "./settings-by-m3";
 import { M5_ORGANIZATION_SETTINGS } from "./settings-by-m5";
+import { M17_ORGANIZATION_SETTINGS } from "./settings-by-m17";
 import type { ModuleSettingsContribution, OrganizationSettingEntry } from "./types";
 
 // Every module that registers organization-settings keys appends its contribution here.
@@ -15,6 +16,7 @@ const CONTRIBUTIONS: readonly ModuleSettingsContribution[] = [
   M1_ORGANIZATION_SETTINGS,
   M3_ORGANIZATION_SETTINGS,
   M5_ORGANIZATION_SETTINGS,
+  M17_ORGANIZATION_SETTINGS,
   // future module contributions append here
 ];
 
