@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { gzipSync } from "node:zlib";
 import { audit } from "@wardenx/audit";
 import type { DbClient } from "@wardenx/db";
 // apps/backend/src/modules/34-saas-tenant-platform/jobs/saas-jobs.ts — M34 Phase 2D LIVE BullMQ wiring
@@ -27,6 +28,7 @@ import type { DbClient } from "@wardenx/db";
 //     `withOrgContext` (F09) — the per-job scope is read from {@link M34_QUEUE_SCOPE}; this file wraps the
 //     port-binding + the worker call in that envelope, never a platform bypass for an org-scoped job.
 import {
+  DsarExportRepository,
   OnboardingRepository,
   TenantAccountRepository,
   TenantExportRepository,
@@ -36,6 +38,8 @@ import {
 import type {
   BundleExpirySweepPorts,
   DekRotateWorkerPorts,
+  DsarDocumentUploadRequest,
+  DsarExportJobInput,
   DsarExportWorkerPorts,
   OnboardingAdvancePorts,
   ProvisionWorkerPorts,
@@ -174,6 +178,24 @@ export interface M34WorkerDeps {
   };
   /** Injected clock (deterministic in tests; the package workers stamp every instant through this). */
   now?: () => Date;
+  /** GAP-048: the DSAR-export worker's object-store + render capability. Omit and `tenant.dsar_export`
+   *  stays capability-disabled on `sealBundle`/`renderBundleDocument`/`publishOutbox` (never a silent
+   *  no-op — each throws `M34WorkerPortUnbound` naming exactly what's missing). The composition root
+   *  adapts M22's real `ObjectStorePort`/`DocumentRenderer` seam so M34's own module folder never imports
+   *  M22 directly (module-boundary discipline, ADR-0005 D1 — this dep bag is the seam-equivalent glue). */
+  readonly dsarExport?: {
+    readonly objectStore: {
+      putObject(args: {
+        readonly organizationId: string;
+        readonly objectKey: string;
+        readonly bytes: Uint8Array;
+      }): Promise<{ readonly sha256Hex: string }>;
+    };
+    readonly render: {
+      render(args: DsarDocumentUploadRequest): Promise<{ readonly documentId: string }>;
+    };
+    readonly outbox: NonNullable<M34WorkerDeps["provision"]>["outbox"];
+  };
 }
 
 /** Raised when a worker port could not be bound to a real adapter (the missing-infra fail-closed signal).
@@ -613,33 +635,95 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
   };
 
   // ── tenant.dsar_export (runs under withOrgContext — the requesting tenant, F09) ──────────────────────
-  // Needs the M5 PatientReader seam (subject redirect), the M1 envelope MinIO sink, the DsarExportRepository
-  // ledger writes, and the live outbox dispatcher (the M22 §1.1 handshake + the m34.dsar_export.* emits).
+  // GAP-048: fully bound. `db` here is ALREADY the job's own org-context tx by the time these run (the
+  // worker closure below opens withOrgContext ONCE around the whole job and rebuilds ports over that tx,
+  // the same convention `inProvisionPlatform`/`inProvisionOrg` above rely on) — so `updateJob`/`appendEvent`
+  // /the object PUT issue plain Drizzle directly on `db`, no extra wrapping. `resolveSubject` and
+  // `renderBundleDocument` are genuine cross-module seam calls (M5 PatientReader / M22 DocumentRenderer) —
+  // each manages its own transaction internally, same accepted shape as GAP-030's CaseloadProvider seam
+  // call. `openBundleSink`/`sealBundle` buffer the FHIR resources in memory and assemble a real FHIR R4
+  // `Bundle` (type `collection`) at seal time — one gzip-compressed NDJSON-style PUT, not a literal
+  // multi-file tar archive (no tar library in this repo; a DSAR bundle is one logical document, not a
+  // multi-file archive, so gzip alone is the honest minimal format).
+  let dsarBundleResources: unknown[] = [];
   const dsarExport: DsarExportWorkerPorts = {
     now,
-    resolveSubject: () =>
-      unbound(
-        "dsarExport.resolveSubject",
-        "bind to getSeam('PatientReader') (merged_into_id redirect)",
-      ),
-    openBundleSink: () =>
-      unbound(
-        "dsarExport.openBundleSink",
-        "bind to the M1 envelope-backed MinIO sink (no MinIO seam yet)",
-      ),
-    sealBundle: () => unbound("dsarExport.sealBundle", "bind to the M1 MinIO object finalize"),
-    updateJob: () =>
-      unbound("dsarExport.updateJob", "bind to DsarExportRepository.update under withOrgContext"),
-    appendEvent: () =>
-      unbound(
-        "dsarExport.appendEvent",
-        "bind to DsarExportRepository.appendEvent under withOrgContext",
-      ),
-    publishOutbox: () =>
-      unbound(
-        "dsarExport.publishOutbox",
-        "bind to the live transactional-outbox dispatcher (M22 handshake + m34.dsar_export.*)",
-      ),
+    async resolveSubject(orgId, patientId) {
+      const identity = await getSeam("PatientReader").findById({ organizationId: orgId, id: patientId });
+      if (!identity) {
+        return unbound(
+          "dsarExport.resolveSubject",
+          `patient '${patientId}' not visible in org '${orgId}'`,
+        );
+      }
+      return { resolvedPatientId: identity.id };
+    },
+    async openBundleSink({ orgId, jobId }) {
+      dsarBundleResources = [];
+      const objectKey = `tenants/${orgId}/exports/dsar/${jobId}.ndjson.gz`;
+      return {
+        sink: {
+          async write(resource: unknown) {
+            dsarBundleResources.push(resource);
+          },
+        },
+        objectKey,
+      };
+    },
+    async sealBundle({ orgId, objectKey }) {
+      if (!deps.dsarExport?.objectStore) {
+        return unbound(
+          "dsarExport.sealBundle",
+          "bind the composition-root M22 ObjectStorePort adapter (dsarExport.objectStore)",
+        );
+      }
+      const bundle = {
+        resourceType: "Bundle",
+        type: "collection",
+        entry: dsarBundleResources.map((resource) => ({ resource })),
+      };
+      const bytes = gzipSync(Buffer.from(JSON.stringify(bundle), "utf8"));
+      await deps.dsarExport.objectStore.putObject({ organizationId: orgId, objectKey, bytes });
+      return { sizeBytes: bytes.byteLength };
+    },
+    async updateJob(jobId, patch) {
+      await new DsarExportRepository(db).update(jobId, patch);
+    },
+    async appendEvent(args) {
+      await new DsarExportRepository(db).appendEvent({
+        organizationId: args.orgId,
+        dsarExportJobId: args.jobId,
+        eventKind: args.eventKind,
+        fromStatus: args.fromStatus ?? null,
+        toStatus: args.toStatus ?? null,
+        occurredAt: now(),
+        shardReceipt: args.shardReceipt ?? null,
+      });
+    },
+    async renderBundleDocument(args) {
+      if (!deps.dsarExport?.render) {
+        return unbound(
+          "dsarExport.renderBundleDocument",
+          "bind the composition-root M22 DocumentRenderer adapter (dsarExport.render)",
+        );
+      }
+      return deps.dsarExport.render.render(args);
+    },
+    async publishOutbox(event, payload) {
+      if (!deps.dsarExport?.outbox) {
+        return unbound(
+          "dsarExport.publishOutbox",
+          "bind the live m34 transactional-outbox dispatcher (dsarExport.outbox)",
+        );
+      }
+      await deps.dsarExport.outbox.publish(db, {
+        eventName: event,
+        organizationId: (payload.orgId as string | undefined) ?? "",
+        aggregateKind: "dsar_export_job",
+        aggregateId: (payload.jobId as string | undefined) ?? "",
+        payload,
+      });
+    },
   };
 
   // ── tenant.export (runs under withOrgContext — the requesting tenant, F09) ───────────────────────────
@@ -862,6 +946,43 @@ export function registerM34ShredWorker(deps: M34WorkerDeps): Worker {
           )(job.data),
       ),
     { connection: deps.connection, concurrency: 1 },
+  );
+}
+
+/** `withOrgContext`'s audit-actor sentinel for the DSAR worker (a system-driven run, not a user action) —
+ *  the M4 write-audit trigger NULLIFs an empty `userId`, mirroring M30's `M30_WORKER_SYSTEM_USER_ID`. */
+const M34_DSAR_WORKER_SYSTEM_USER_ID = "";
+
+/**
+ * Construct the production DSAR-export worker (GAP-048). Org-scoped (§7.3 F09 — `M34_QUEUE_SCOPE.
+ * dsarExport === "org"`, never a platform bypass): opens ONE `withOrgContext(deps.db, {organizationId:
+ * job.data.orgId, ...}, tx => ...)` per job and rebuilds the port bag over that tx (`buildM34WorkerPorts
+ * ({...deps, db: tx})`), mirroring `registerM34DekRotateWorker`/`registerM34ShredWorker`'s per-job
+ * envelope shape but with the tenant's own RLS context instead of the platform-bypass credential. The
+ * job payload IS the full `DsarExportJobInput` (`{jobId, orgId, tenantAccountId, patientId}` — the route
+ * enqueues this shape, not a bare `jobId`, precisely so `orgId` is known before `withOrgContext` can open).
+ */
+export function registerM34DsarExportWorker(deps: M34WorkerDeps): Worker {
+  if (!deps.dsarExport) {
+    throw new M34WorkerPortUnbound(
+      "dsarExport",
+      "the object-store, DocumentRenderer, and outbox adapters are all required",
+    );
+  }
+  return new Worker(
+    M34_QUEUES.dsarExport,
+    async (job) => {
+      const data = job.data as DsarExportJobInput;
+      return withOrgContext(
+        deps.db,
+        { organizationId: data.orgId, userId: M34_DSAR_WORKER_SYSTEM_USER_ID },
+        (tx) =>
+          dsarExportProcessor(buildM34WorkerPorts({ ...deps, db: tx as unknown as DbClient }).dsarExport)(
+            data,
+          ),
+      );
+    },
+    { connection: deps.connection, concurrency: 4 },
   );
 }
 

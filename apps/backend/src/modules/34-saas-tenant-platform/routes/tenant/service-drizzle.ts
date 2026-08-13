@@ -21,9 +21,11 @@
 import { type DbClient, schema } from "@wardenx/db";
 import {
   BaaRegisterRepository,
+  type DsarExportJobInput,
   DsarExportRepository,
   OnboardingRepository,
   SupportRepository,
+  TenantAccountRepository,
   TenantExportRepository,
 } from "@wardenx/saas-tenant-platform";
 import { getRequestContext, withOrgContext } from "@wardenx/tenancy";
@@ -48,7 +50,11 @@ export type TenantTx = DbClient;
 
 /** A 24h presigned-download minting port (SEC-052). Binds to the MinIO/S3 signer; off the request thread. */
 export interface PresignDownloadPort {
-  presign(objectKey: string, ttlSeconds: number): Promise<{ url: string; expiresAt: Date }>;
+  presign(
+    organizationId: string,
+    objectKey: string,
+    ttlSeconds: number,
+  ): Promise<{ url: string; expiresAt: Date }>;
 }
 
 /** The dependencies the production tenant route service binds (the Integration agent supplies these). */
@@ -150,7 +156,20 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
           requestedAt: now,
           slaDueAt: new Date(now.getTime() + 30 * 86_400_000),
         });
-        await deps.enqueue.enqueue("tenant.dsar_export", { jobId: row.id });
+        // GAP-048: the worker's own `withOrgContext` needs `orgId` BEFORE it can read anything under RLS,
+        // so the job payload carries the full DsarExportJobInput shape rather than a bare jobId — resolved
+        // here, inside the SAME already-open org-context tx (tenant_account is org-scoped, RLS-safe read).
+        const tenantAccount = await new TenantAccountRepository(tx).findByOrganizationId(organizationId);
+        if (!tenantAccount) {
+          throw new WardenXError("TENANT_ACCOUNT_NOT_FOUND", "no tenant_account for this org", 500);
+        }
+        const jobInput: DsarExportJobInput = {
+          jobId: row.id,
+          orgId: organizationId,
+          tenantAccountId: tenantAccount.id,
+          patientId: args.patientId,
+        };
+        await deps.enqueue.enqueue("tenant.dsar_export", { ...jobInput });
         return dsarView(row);
       });
     },
@@ -230,6 +249,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
           );
         }
         const { url, expiresAt } = await deps.presign.presign(
+          organizationId,
           row.bundleMinioObjectKey,
           PRESIGN_TTL_SECONDS,
         );
@@ -292,6 +312,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
           );
         }
         const { url, expiresAt } = await deps.presign.presign(
+          organizationId,
           row.bundleMinioObjectKey,
           PRESIGN_TTL_SECONDS,
         );

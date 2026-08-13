@@ -328,6 +328,8 @@ import {
   createRefusingObjectStore,
   createS3ObjectStore,
   createSignedUrlService,
+  deriveTenantBucket,
+  getDocumentRenderer,
   mountDocumentRoutes,
   registerDocumentAbacPredicates,
   registerDocumentErasers,
@@ -578,6 +580,7 @@ import {
   mountTenantPlatformRoutes,
   registerLiveM34Seams,
   registerM34DekRotateWorker,
+  registerM34DsarExportWorker,
   registerM34ProvisionWorker,
   registerM34ShredWorker,
   registerSaasTenantPlatformErasers,
@@ -585,6 +588,7 @@ import {
   validateModule34Seams,
   wireM34Tenancy,
 } from "./modules/34-saas-tenant-platform/index";
+import type { DsarDocumentUploadRequest } from "@wardenx/saas-tenant-platform";
 // M35 (Subscription Billing) boot surface — the §4.11 outbox catalog, the §4.8 ABAC predicates, and the
 // §4.1–4.3 route mount over the single Drizzle route service. The write path emits `m35.*` events through
 // the bound transactional-outbox publisher; the platform-ops cross-tenant reads/writes run through the
@@ -3016,11 +3020,36 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         attachDlqPromotionAlert(w, `${modulePrefix}:${w.name}`, dlqPromotionSink);
     };
     const m34Workers: Worker[] = [];
+    // GAP-048 — the DSAR-export worker's object-store PUT + M22 DocumentRenderer capability. A fresh
+    // SigV4 client off the SAME MINIO_* env contract M22 uses (not M22's own instance — createS3ObjectStore
+    // is a pure stateless signer, nothing to share); `deriveTenantBucket`/`getDocumentRenderer` are M22's
+    // real implementations, reachable here (the composition root) but not from M34's own module folder
+    // (module-boundary discipline, ADR-0005 D1).
+    const m34DsarS3Config = s3ObjectStoreConfigFromEnv(process.env);
+    const m34DsarObjectStore = m34DsarS3Config ? createS3ObjectStore(m34DsarS3Config) : null;
+    const m34DsarExportDeps = m34DsarObjectStore
+      ? {
+          objectStore: {
+            putObject: (args: { organizationId: string; objectKey: string; bytes: Uint8Array }) =>
+              m34DsarObjectStore.putObject({
+                bucket: deriveTenantBucket(args.organizationId),
+                objectKey: args.objectKey,
+                bytes: args.bytes,
+              }),
+          },
+          render: {
+            render: (args: DsarDocumentUploadRequest) =>
+              getDocumentRenderer().render({ orgId: args.organizationId }, "dsar_bundle", args),
+          },
+          outbox: m34OutboxPublisher,
+        }
+      : undefined;
     if (m34ProvisionGateway && platformDbHandle) {
       const workerDeps = buildM34WorkerDeps({
         connection: queueConnection,
         db: dbHandle.db,
         platformDb: platformDbHandle.db,
+        dsarExport: m34DsarExportDeps,
         provision: {
           auditBypass: m34PlatformBypassAuditor,
           ...m34ProvisionGateway,
@@ -3076,9 +3105,19 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         m34Workers.push(shredWorker);
         app.addHook("onClose", () => shredWorker.close());
       }
+      // GAP-048 — the DSAR-export worker is org-scoped (F09), so it doesn't strictly need platformDb/the
+      // provision gateway; it's constructed alongside them here purely because `workerDeps` is already
+      // built in this block. Only registered when the MINIO_* env contract is present (m34DsarExportDeps),
+      // matching the shred worker's "constructed only when its capability is present" posture.
+      if (m34DsarExportDeps) {
+        const dsarExportWorker = registerM34DsarExportWorker(workerDeps);
+        m34Workers.push(dsarExportWorker);
+        app.addHook("onClose", () => dsarExportWorker.close());
+        enableM34JobCapability("tenant.dsar_export");
+      }
       attachDlqAlertsToAll(m34Workers, "m34");
       app.log.info(
-        `M34 key lifecycle workers constructed: provision, dek_rotate${destructionDbHandle ? ", shred" : ""}`,
+        `M34 key lifecycle workers constructed: provision, dek_rotate${destructionDbHandle ? ", shred" : ""}${m34DsarExportDeps ? ", dsar_export" : ""}`,
       );
     } else {
       app.log.warn(

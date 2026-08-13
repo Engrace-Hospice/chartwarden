@@ -36,9 +36,6 @@ import { createHash } from "node:crypto";
 import { listTenantExportShards } from "../seam-bootstrap";
 import type { FhirResourceSink } from "../seams";
 
-/** The §1.1-handshake outbox event M34 emits to ask M22 to render + store the DSAR artifacts. */
-export const M22_DOCUMENT_UPLOAD_REQUESTED = "m22.document.upload_requested" as const;
-
 /** The two `m34.dsar_export.*` outbox events this worker emits (§4.9 catalog, verbatim wire names). */
 export const M34_DSAR_EXPORT_REQUESTED = "m34.dsar_export.requested" as const;
 export const M34_DSAR_EXPORT_COMPLETED = "m34.dsar_export.completed" as const;
@@ -61,13 +58,14 @@ export interface DsarSubject {
   readonly resolvedPatientId: string;
 }
 
-// ── the §1.1 render handshake the worker emits (the M22 upload-request payload) ─────────────────────
+// ── the §1.1 render handshake the worker calls DIRECTLY (GAP-048 — no outbox round-trip, see
+// `renderBundleDocument` below) ──────────────────────────────────────────────────────────────────────
 
-/** The §1.1-handshake payload M34 hands M22 on `m22.document.upload_requested`. M22 renders the chart
- *  PDF from the (already-redacted) Bundle + writes the NDJSON manifest, stores both at retention class
- *  `compliance` with the patient back-reference, and replies `m22.document.rendered` carrying the
- *  `document_id` the `m22-document-backref` consumer applies. The Bundle is passed by its MinIO handle,
- *  never inline — M22 reads the archive from the export prefix. */
+/** The §1.1-handshake payload the worker hands M22's `DocumentRenderer` seam directly. M22 renders the
+ *  chart PDF from the (already-redacted) Bundle, stores it at retention class `compliance` with the
+ *  patient back-reference, and returns the `documentId` synchronously — no reply event, no separate
+ *  back-ref consumer (mirrors the one genuinely-live render precedent, M39 consent). The Bundle is
+ *  passed by its MinIO handle, never inline — M22 reads the archive from the export prefix. */
 export interface DsarDocumentUploadRequest {
   readonly organizationId: string;
   readonly patientId: string;
@@ -103,6 +101,8 @@ export interface DsarExportRunResult {
   readonly bundleSha256: string;
   readonly bundleMinioObjectKey: string;
   readonly bundlePresignedUrlExpiresAt: Date;
+  /** The M22 document id the chart PDF rendered under (returned synchronously, GAP-048). */
+  readonly bundleDocumentId: string;
   /** The status the job was driven to (`review_pending` on the happy path, §7.3 step 3). */
   readonly status: "review_pending";
 }
@@ -114,7 +114,8 @@ export interface DsarExportRunResult {
  * the handler stays infra-free and unit-testable (the M40 `NppesNightlyPorts` pattern). The boot wiring
  * binds each to the live adapter, ALL inside the requesting tenant's `withOrgContext` (F09): the M5
  * resolver (via `getSeam('PatientReader')`), the M1 envelope-backed MinIO put + key minting, the
- * `DsarExportRepository` status/ledger writes, the M22 §1.1 outbox publish, and the §4.9 `m34.*` emit.
+ * `DsarExportRepository` status/ledger writes, M22's `DocumentRenderer` seam (direct call, GAP-048 — NOT
+ * an outbox round-trip, see {@link renderBundleDocument}), and the §4.9 `m34.dsar_export.completed` emit.
  */
 export interface DsarExportWorkerPorts {
   /** Injected clock — stamps the run + computes the 7-day presigned-URL deadline (deterministic in test). */
@@ -125,15 +126,15 @@ export interface DsarExportWorkerPorts {
   resolveSubject(orgId: string, patientId: string): Promise<DsarSubject>;
 
   /** Open the encrypted, MinIO-backed {@link FhirResourceSink} the shards stream FHIR resources into, plus
-   *  the object key it writes under (`tenants/<orgId>/exports/dsar/<jobId>.tar.gz`, §3.7). Backed by the
-   *  M1 envelope helper (the worker holds no MinIO client code — M1 owns the primitive). */
+   *  the object key it writes under (`tenants/<orgId>/exports/dsar/<jobId>.ndjson.gz`, §3.7). Backed by
+   *  the M1 envelope helper (the worker holds no MinIO client code — M1 owns the primitive). */
   openBundleSink(args: {
     readonly orgId: string;
     readonly jobId: string;
   }): Promise<{ sink: FhirResourceSink; objectKey: string }>;
 
-  /** Finalise the assembled archive in MinIO (close the object / flush the tar.gz) and report its size.
-   *  The Bundle envelope framing is the sink's job; this seals it. */
+  /** Finalise the assembled archive in MinIO (close the object / flush the gzip stream) and report its
+   *  size. The Bundle envelope framing is the sink's job; this seals it. */
   sealBundle(args: {
     readonly orgId: string;
     readonly objectKey: string;
@@ -147,6 +148,7 @@ export interface DsarExportWorkerPorts {
       readonly bundleMinioObjectKey?: string;
       readonly bundleSha256?: string;
       readonly bundlePresignedUrlExpiresAt?: Date;
+      readonly bundleDocumentId?: string;
     },
   ): Promise<void>;
 
@@ -161,7 +163,15 @@ export interface DsarExportWorkerPorts {
     readonly shardReceipt?: DsarShardReceipt | null;
   }): Promise<void>;
 
-  /** Publish an M34/M22 outbox event in the run's transaction (the M1 dispatcher, dedup-keyed by jobId). */
+  /** GAP-048: render the chart PDF DIRECTLY through M22's `DocumentRenderer` seam (`getSeam
+   *  ('DocumentRenderer').render(...)`) — no outbox round-trip. Returns the rendered document id
+   *  synchronously so the caller can record `bundleDocumentId` on the SAME `updateJob` patch that flips
+   *  the job to `review_pending`, instead of waiting on a reply event + a separate back-ref consumer. */
+  renderBundleDocument(args: DsarDocumentUploadRequest): Promise<{ documentId: string }>;
+
+  /** Publish the §4.9 `m34.dsar_export.completed` outbox event in the run's transaction (the M1 dispatcher,
+   *  dedup-keyed by jobId). The ONLY outbox event this worker still emits (§164.524 completion signal for
+   *  M36's DSAR-officer queue + M33 throughput) — the render step no longer round-trips through the outbox. */
   publishOutbox(event: string, payload: Record<string, unknown>): Promise<void>;
 }
 
@@ -270,9 +280,9 @@ export async function runDsarExportJob(
     shardReceipt: null,
   });
 
-  // 5. §1.1 handshake — ask M22 to render the chart PDF + NDJSON manifest from the assembled Bundle and
-  //    store both at retention class `compliance` with the patient back-ref. M22 replies
-  //    `m22.document.rendered`; `consumers/m22-document-backref.ts` writes `document_id` onto the job.
+  // 5. §1.1 handshake — render the chart PDF from the assembled Bundle directly through M22's
+  //    DocumentRenderer seam (GAP-048; no outbox round-trip — see `renderBundleDocument`'s doc comment).
+  //    The document id comes back synchronously, so it lands on the SAME patch as the terminal transition.
   const uploadRequest: DsarDocumentUploadRequest = {
     organizationId: orgId,
     patientId,
@@ -284,9 +294,7 @@ export async function runDsarExportJob(
     partTwoRedactionApplied: true,
     title: `DSAR export — patient ${patientId}`,
   };
-  await ports.publishOutbox(M22_DOCUMENT_UPLOAD_REQUESTED, {
-    ...uploadRequest,
-  });
+  const { documentId: bundleDocumentId } = await ports.renderBundleDocument(uploadRequest);
 
   // 6. Record the bundle artifacts + advance to `review_pending` (the DSAR officer takes it from here).
   await ports.updateJob(jobId, {
@@ -294,6 +302,7 @@ export async function runDsarExportJob(
     bundleMinioObjectKey: objectKey,
     bundleSha256,
     bundlePresignedUrlExpiresAt,
+    bundleDocumentId,
   });
   await ports.appendEvent({
     orgId,
@@ -304,14 +313,14 @@ export async function runDsarExportJob(
     shardReceipt: null,
   });
 
-  // 7. The completion event — M36 closes the DSAR-officer queue item; M33 records throughput. The
-  //    `bundleDocumentId` is null here (M22's reply patches it via the backref consumer, async).
+  // 7. The completion event — M36 closes the DSAR-officer queue item; M33 records throughput.
+  //    `bundleDocumentId` is already known (step 5 rendered synchronously, no reply-event wait).
   await ports.publishOutbox(M34_DSAR_EXPORT_COMPLETED, {
     jobId,
     orgId,
     tenantAccountId,
     patientId,
-    bundleDocumentId: null,
+    bundleDocumentId,
     bundleSha256,
     fulfilledAt: ports.now().toISOString(),
   });
@@ -324,6 +333,7 @@ export async function runDsarExportJob(
     bundleSha256,
     bundleMinioObjectKey: objectKey,
     bundlePresignedUrlExpiresAt,
+    bundleDocumentId,
     status: "review_pending",
   };
 }

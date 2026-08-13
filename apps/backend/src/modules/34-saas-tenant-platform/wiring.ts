@@ -33,8 +33,20 @@ import {
   withOrgContext,
   withPlatformContext,
 } from "@wardenx/tenancy";
-import { DegradedError } from "@wardenx/types";
+import { DegradedError, type SignedUrlDescriptor } from "@wardenx/types";
 import { getSeam } from "../../bootstrap/index";
+
+/**
+ * §11 D1 — one bucket per tenant: `tenant-{tenantId}`. GAP-048: mirrors M22's `deriveTenantBucket`
+ * (`apps/backend/src/modules/22-documents/lifecycle/storage.ts`) byte-for-byte — M22's own comment calls
+ * that function "the only place this string is shaped", but M34's module folder cannot import M22's
+ * implementation path (module-boundary discipline, ADR-0005 D1 — only `getSeam("DocumentStorageProvider")`
+ * itself, a `@wardenx/types` leaf value, is reachable). Deliberately duplicated rather than promoted to a
+ * shared leaf package for one call site; if a second module needs this, promote it instead of triplicating.
+ */
+function m34DsarDeriveTenantBucket(organizationId: string): string {
+  return `tenant-${organizationId}`;
+}
 
 import { type M34QueueName, M34_QUEUES } from "./jobs/index";
 import type { M34WorkerDeps } from "./jobs/saas-jobs";
@@ -337,22 +349,36 @@ export function buildDrizzlePlatformService(deps: {
 
 /**
  * Build the production tenant-scoped `TenantRouteService` over the org-pooled Drizzle client. EVERY method
- * runs inside the tenant's OWN `withOrgContext` (F09 — the DSAR adapter never bypasses), so all deps here
- * are LIVE except `presign`.
+ * runs inside the tenant's OWN `withOrgContext` (F09 — the DSAR adapter never bypasses).
  *
- * TYPED-TODO: `presign` (the M1 MinIO/S3 24h signed-download mint, SEC-052) fails closed — only the
- * fulfilled-bundle download-URL routes touch it; the common read/command path is fully live.
+ * GAP-048: `presign` (the 24h signed-download mint, SEC-052) is now LIVE — bound to
+ * `getSeam("DocumentStorageProvider")`, the same real MinIO/S3 SigV4 presign M22 already exercises for its
+ * own document downloads (`apps/backend/src/modules/22-documents/seams/storage-provider.ts`). The SigV4
+ * layer's own hard ceiling is 7 days (`MAX_PRESIGN_TTL_SECONDS`), well above the 24h SEC-052 floor, so the
+ * caller's `ttlSeconds` reaches the real signer unclamped (M22's OWN `planSignedUrl` pure-planning helper
+ * imposes a SEPARATE, much shorter 300s ceiling for its interactive chart-viewer use case — that ceiling is
+ * a document-viewer policy, not a presign-mechanism limit, so this adapter builds its own
+ * `SignedUrlDescriptor` directly rather than routing through `planSignedUrl`). `disclosure_export` is the
+ * §164.528 accounting-of-disclosures access kind — the correct classification for a DSAR/tenant-export
+ * bundle download, distinct from routine chart access kinds.
  */
 export function buildDrizzleTenantService(deps: {
   db: DbClient;
   enqueue: TenantEnqueuePort;
 }): { service: TenantRouteService } {
   const presign: PresignDownloadPort = {
-    async presign() {
-      throw new M34InfraPortUnbound(
-        "presign",
-        "bind the M1 MinIO/S3 24h signed-download mint (SEC-052) — no object-store seam accessor yet",
-      );
+    async presign(organizationId, objectKey, ttlSeconds) {
+      const descriptor: SignedUrlDescriptor = {
+        bucket: m34DsarDeriveTenantBucket(organizationId),
+        objectKey,
+        ttlSeconds,
+        accessKind: "disclosure_export",
+      };
+      const { url, expiresAt } = await getSeam("DocumentStorageProvider").presignDownload({
+        descriptor,
+        organizationId,
+      });
+      return { url, expiresAt: new Date(expiresAt) };
     },
   };
   const drizzleDeps: DrizzleTenantRouteDeps = {
@@ -376,6 +402,7 @@ export function buildM34WorkerDeps(deps: {
   platformDb?: DbClient;
   provision?: M34WorkerDeps["provision"];
   keyLifecycle?: M34WorkerDeps["keyLifecycle"];
+  dsarExport?: M34WorkerDeps["dsarExport"];
 }): M34WorkerDeps {
   return {
     connection: deps.connection,
@@ -383,6 +410,7 @@ export function buildM34WorkerDeps(deps: {
     platformDb: deps.platformDb,
     provision: deps.provision,
     keyLifecycle: deps.keyLifecycle,
+    dsarExport: deps.dsarExport,
     now: () => new Date(),
   };
 }
