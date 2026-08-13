@@ -35,6 +35,7 @@ export type {
   BereavementRiskTierProvider,
   BillableEncounterReader,
   CarePlanReader,
+  CareTeamProvider,
   CaseloadProvider,
   CertificationReader,
   ComfortKitDispatchProvider,

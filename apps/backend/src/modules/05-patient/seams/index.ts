@@ -12,6 +12,7 @@ import { getSeam, registerSeam } from "../../../bootstrap/index";
 // PatientMutator (§4.9, T08). `registerPatientSeams` registers them all from the composition root.
 import { buildPatientAddressReader } from "../address-reader";
 import { buildPatientCoverageReader } from "../coverage-reader";
+import { type CareTeamSeamDeps, registerCareTeamSeam } from "./care-team-provider";
 import { type CaseloadSeamDeps, registerCaseloadSeam } from "./caseload-provider";
 import {
   type PatientMutatorStore,
@@ -35,6 +36,15 @@ export {
   getCaseloadProvider,
 } from "./caseload-provider";
 export {
+  type CareTeamStore,
+  type CareTeamSeamDeps,
+  type SeedCareTeamAssignment,
+  createCareTeamProvider,
+  createInMemoryCareTeamStore,
+  registerCareTeamSeam,
+  getCareTeamProvider,
+} from "./care-team-provider";
+export {
   type PatientReaderStore,
   MAX_MERGE_HOPS,
   createPatientReader,
@@ -49,6 +59,7 @@ export {
 export {
   type DrizzlePatientMutatorStoreDeps,
   createDrizzleCaseloadStore,
+  createDrizzleCareTeamStore,
   createDrizzlePatientMutatorStore,
   createDrizzlePatientReaderStore,
 } from "./drizzle-stores";
@@ -56,6 +67,7 @@ export {
 /** Deps for M5's seam registration (slice defaults to in-memory stores). */
 export interface PatientSeamDeps {
   caseload?: CaseloadSeamDeps;
+  careTeam?: CareTeamSeamDeps;
   /** PatientReader data port (Drizzle in prod; in-memory slice). */
   readerStore?: PatientReaderStore;
   /** PatientMutator data port (Drizzle in prod; in-memory slice). */
@@ -71,6 +83,7 @@ export interface PatientSeamDeps {
  */
 export function registerPatientSeams(deps: PatientSeamDeps = {}): void {
   registerCaseloadSeam(deps.caseload);
+  registerCareTeamSeam(deps.careTeam);
   // §3.4 — the coverage read M23/M24 resolve a claim's billed payer from. Registered ONLY when a db is
   // present: without one there is no coverage data to project, and the deny-stub's loud failure is the
   // honest answer (an empty coverage list would read as "this patient has no insurance").

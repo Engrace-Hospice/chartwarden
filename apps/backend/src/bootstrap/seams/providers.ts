@@ -30,6 +30,7 @@ import type {
   BillableEncounterReader,
   BillingStatusProvider,
   CarePlanReader,
+  CareTeamProvider,
   CaseloadProvider,
   CertificationReader,
   ComfortKitDispatchProvider,
@@ -141,6 +142,12 @@ export const caseloadDenyStub: CaseloadProvider = {
   },
   caseloadPatientIds() {
     throw new NotImplementedError("CaseloadProvider");
+  },
+};
+
+export const careTeamDenyStub: CareTeamProvider = {
+  careTeamMembers() {
+    throw new NotImplementedError("CareTeamProvider");
   },
 };
 

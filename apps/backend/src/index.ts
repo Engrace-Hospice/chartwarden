@@ -110,6 +110,7 @@ import {
   M5_OUTBOX_EVENTS,
   buildM29ProposalApplierConsumer,
   buildM5DeathCascadeConsumer,
+  createDrizzleCareTeamStore,
   createDrizzleCaseloadStore,
   createDrizzlePatientEraseStore,
   createDrizzlePatientMutatorStore,
@@ -724,6 +725,7 @@ export function wireModuleSeams(
       ? {
           db: deps.db,
           caseload: { store: createDrizzleCaseloadStore(deps.db) },
+          careTeam: { store: createDrizzleCareTeamStore(deps.db) },
           readerStore: createDrizzlePatientReaderStore(deps.db),
           ...(deps.outboxPublisher
             ? {

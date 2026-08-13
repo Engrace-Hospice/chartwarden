@@ -146,6 +146,7 @@ export interface OrgScope {
  */
 export type SeamName =
   | "CaseloadProvider" // M5/M17 — which patients an actor may see
+  | "CareTeamProvider" // M5 — every user id currently on a patient's care team (M36 channel auto-sync, D5)
   | "PatientReader" // M5 — patient identity/demographics reads (§4.8; M29 cascade)
   | "PatientCoverageReader" // M5 — §3.4 coverage list; M23/M24 resolve which payer a claim bills
   | "PatientCaregiverReader" // M5 — TASK-015: is a user the patient's primary caregiver (M31 portal ABAC); deny-stub only
@@ -477,6 +478,21 @@ export interface CaseloadProvider {
   }): Promise<readonly string[]>;
 }
 
+/**
+ * M5 — the reverse of {@link CaseloadProvider}: every user currently on a PATIENT's care team
+ * (M36 spec D5, §2.3). M36's `syncCareTeamChannel` consumes this to reconcile a `care_team`
+ * channel's `source:'auto'` membership against the real roster — the source of truth is the
+ * care team, not the channel; the channel mirrors it. Same `patient_assignment` open-row source
+ * as `CaseloadProvider` (M5-T07), just indexed the other direction. Leaf-safe (ids only).
+ */
+export interface CareTeamProvider {
+  /** Every user id with an OPEN patient_assignment for `patientId` right now. */
+  careTeamMembers(input: {
+    organizationId: string;
+    patientId: string;
+  }): Promise<readonly string[]>;
+}
+
 // M5's `PatientReader` (§4.8) + `PatientMutator` (§4.9) interfaces live in ./patient (alongside
 // PatientIdentity) and are imported above for the SeamContracts map.
 
@@ -634,6 +650,7 @@ export interface OrganizationReader {
 /** Map from seam name → its interface type, so the registry is type-safe. */
 export interface SeamContracts {
   CaseloadProvider: CaseloadProvider;
+  CareTeamProvider: CareTeamProvider;
   PatientReader: PatientReader;
   PatientCoverageReader: PatientCoverageReader;
   PatientCaregiverReader: PatientCaregiverReader;

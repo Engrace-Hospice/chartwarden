@@ -14,6 +14,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import type { PatientIdentity } from "@wardenx/types";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { OutboxPublishPort } from "../../../bootstrap/outbox-persister";
+import type { CareTeamStore } from "./care-team-provider";
 import type { CaseloadStore } from "./caseload-provider";
 import type { PatientMutatorStore } from "./patient-mutator";
 import type { PatientReaderStore } from "./patient-reader";
@@ -434,6 +435,32 @@ export function createDrizzleCaseloadStore(db: DbClient): CaseloadStore {
             ),
           );
         return rows.map((r) => r.patientId);
+      });
+    },
+  };
+}
+
+/**
+ * The real M5 CareTeamProvider store (GAP-059) — the reverse of {@link createDrizzleCaseloadStore}
+ * over the same `patient_assignment` open rows: every distinct clinician on ONE patient's team,
+ * instead of every patient on one clinician's caseload. M36's `syncCareTeamChannel` consumes this
+ * to reconcile a `care_team` channel's auto-sourced membership (M36 spec D5).
+ */
+export function createDrizzleCareTeamStore(db: DbClient): CareTeamStore {
+  return {
+    async listMembers(organizationId, patientId) {
+      return withOrgContext(db, { organizationId, userId: SEAM_SYSTEM_USER_ID }, async (tx) => {
+        const rows = await tx
+          .selectDistinct({ clinicianUserId: PA.clinicianUserId })
+          .from(PA)
+          .where(
+            and(
+              eq(PA.organizationId, organizationId),
+              eq(PA.patientId, patientId),
+              isNull(PA.unassignedAt),
+            ),
+          );
+        return rows.map((r) => r.clinicianUserId);
       });
     },
   };
