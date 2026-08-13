@@ -327,6 +327,7 @@ import {
 import {
   createDrizzleDocumentEraseStore,
   createDrizzleDocumentReaderStore,
+  createDrizzleDocumentSeamStore,
   createRefusingObjectStore,
   createS3ObjectStore,
   createSignedUrlService,
@@ -1086,15 +1087,20 @@ export function wireModuleSeams(
   // MinIO adapters land with M22's routes/worker (a later M22 task).
   // TASK-002 — the five §4.3 reader seams bind the Drizzle reader store on a db boot, and the object
   // store binds the REFUSING port (DegradedError naming the missing MinIO adapter — the audit's
-  // TASK-002 risk note: never a Map wearing durable storage). The renderer's document-row write store
-  // stays in-memory pending the MinIO adapter (see the narrowed ledger note below) — a render cannot
-  // complete anyway: it refuses at the object write, loudly.
-  // task-15 — the zero-dep SigV4 S3/MinIO adapter binds when the MINIO_* env contract is present
-  // (official-vector-tested); absent, the REFUSING port stands (never a Map wearing durable storage).
+  // TASK-002 risk note: never a Map wearing durable storage) when the MINIO_* env contract is absent.
+  // task-15 — the zero-dep SigV4 S3/MinIO adapter binds when the MINIO_* env contract IS present
+  // (official-vector-tested).
+  // GAP-095 — `store:` (the renderer's document-ROW write port, distinct from `objects` above) now binds
+  // the real Drizzle store over `document`/`document_version` — the SAME tables `readers` queries. Before
+  // this, `store:` was never passed here, so `registerDocumentSeams` fell back to its in-memory default:
+  // even when the S3 object write succeeded for real (MINIO_* present), the catalog row landed in a
+  // private per-process Map no reader seam could ever see — not a restart-loses-data bug, a permanently
+  // disconnected write path.
   const s3Config = deps.db ? s3ObjectStoreConfigFromEnv(process.env) : null;
   registerDocumentSeams(
     deps.db
       ? {
+          store: createDrizzleDocumentSeamStore(deps.db),
           readers: createDrizzleDocumentReaderStore(deps.db),
           objects: s3Config ? createS3ObjectStore(s3Config) : createRefusingObjectStore(),
         }
