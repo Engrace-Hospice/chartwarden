@@ -21,8 +21,11 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { registerPatientSeams } from "../src/modules/05-patient/index";
+import { createDrizzleCaseloadStore } from "../src/modules/05-patient/seams/drizzle-stores";
 import {
   M17_OUTBOX_EVENTS,
+  type SchedulingAbacResolver,
   type SchedulingWriteOutboxPort,
   createDbSchedulingBackend,
 } from "../src/modules/17-scheduling/index";
@@ -385,6 +388,95 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       svc.cancelVisit(ORG_B, seeded[ORG_B].member, v.id, "cross-tenant cancel attempt blocked"),
     ).rejects.toMatchObject({
       statusCode: 404,
+    });
+  });
+
+  // ── GAP-030 — the §4.7 SchedulingAbacResolver methods, live over real Postgres ────────────────────────
+  describe("GAP-030 — SchedulingAbacResolver over real data", () => {
+    const resolver = () => svc as unknown as SchedulingAbacResolver;
+
+    it("resolveDiscipline resolves a real, unexpired role grant's key", async () => {
+      const { member } = seeded[ORG_A];
+      const roleId = (
+        await admin.query(
+          `INSERT INTO role (organization_id, key, name, category) VALUES ($1,'rn','Registered Nurse','clinical_staff') RETURNING id`,
+          [ORG_A],
+        )
+      ).rows[0].id as string;
+      await admin.query(
+        `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)`,
+        [ORG_A, member, roleId],
+      );
+      await expect(resolver().resolveDiscipline(ORG_A, member)).resolves.toBe("rn");
+    });
+
+    it("resolveDiscipline returns null for a membership with no qualifying role grant (fail-closed)", async () => {
+      const { member2 } = seeded[ORG_A];
+      await expect(resolver().resolveDiscipline(ORG_A, member2)).resolves.toBeNull();
+    });
+
+    it("resolveDiscipline ignores an EXPIRED role grant (fail-closed)", async () => {
+      const suffix = `${Date.now()}`;
+      const user = (
+        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`m17w-exp-${suffix}@x.test`])
+      ).rows[0].id as string;
+      const membership = (
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status, default_provider_entity_id, default_location_ids)
+           VALUES ($1,$2,'active',$3,$4::jsonb) RETURNING id`,
+          [user, ORG_A, seeded[ORG_A].pe, JSON.stringify([seeded[ORG_A].location])],
+        )
+      ).rows[0].id as string;
+      const roleId = (
+        await admin.query(
+          `INSERT INTO role (organization_id, key, name, category) VALUES ($1,'lpn','LPN','clinical_staff') RETURNING id`,
+          [ORG_A],
+        )
+      ).rows[0].id as string;
+      await admin.query(
+        `INSERT INTO membership_role (organization_id, membership_id, role_id, expires_at) VALUES ($1,$2,$3,$4)`,
+        [ORG_A, membership, roleId, new Date(Date.now() - DAY).toISOString()],
+      );
+      await expect(resolver().resolveDiscipline(ORG_A, membership)).resolves.toBeNull();
+    });
+
+    it("isInCaseload resolves a real open patient_assignment via the real M5 CaseloadProvider seam", async () => {
+      const { member } = seeded[ORG_A];
+      registerPatientSeams({
+        db: handle.db,
+        caseload: { store: createDrizzleCaseloadStore(handle.db) },
+      });
+      const [memRow] = (
+        await admin.query(`SELECT user_id FROM membership WHERE id=$1`, [member])
+      ).rows as Array<{ user_id: string }>;
+      const patientId = (
+        await admin.query(
+          `INSERT INTO patient (organization_id,mrn,legal_first_name,legal_last_name,dob,sex_assigned_at_birth,status)
+           VALUES ($1,'MRN-M17W-CL','Case','Load','1990-01-01','F','active') RETURNING id`,
+          [ORG_A],
+        )
+      ).rows[0].id as string;
+      await expect(resolver().isInCaseload(ORG_A, member, patientId)).resolves.toBe(false);
+      await admin.query(
+        `INSERT INTO patient_assignment (patient_id, organization_id, clinician_user_id, role, assigned_at)
+         VALUES ($1,$2,$3,'primary_rn',CURRENT_DATE)`,
+        [patientId, ORG_A, memRow.user_id],
+      );
+      await expect(resolver().isInCaseload(ORG_A, member, patientId)).resolves.toBe(true);
+    });
+
+    it("allowsUnassignedPool reads the real allow_unassigned_pool_assignment org setting (default false)", async () => {
+      await expect(resolver().allowsUnassignedPool(ORG_A)).resolves.toBe(false);
+      await admin.query(
+        `UPDATE organization SET settings = settings || '{"allow_unassigned_pool_assignment": true}'::jsonb WHERE id=$1`,
+        [ORG_A],
+      );
+      await expect(resolver().allowsUnassignedPool(ORG_A)).resolves.toBe(true);
+      // Reset so it doesn't leak into other tests in this file.
+      await admin.query(
+        `UPDATE organization SET settings = settings - 'allow_unassigned_pool_assignment' WHERE id=$1`,
+        [ORG_A],
+      );
     });
   });
 });

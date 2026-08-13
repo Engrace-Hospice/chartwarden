@@ -48,6 +48,7 @@ export {
 } from "./patient-mutator";
 export {
   type DrizzlePatientMutatorStoreDeps,
+  createDrizzleCaseloadStore,
   createDrizzlePatientMutatorStore,
   createDrizzlePatientReaderStore,
 } from "./drizzle-stores";

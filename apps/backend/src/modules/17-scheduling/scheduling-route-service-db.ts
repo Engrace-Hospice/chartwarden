@@ -27,11 +27,14 @@
 //       from the assigned membership's `default_provider_entity_id` + `default_location_ids[0]` (M1 §3.7);
 //       `assigned_discipline_at_assignment` is captured as the first eligible discipline for the visit purpose
 //       (`VISIT_PURPOSE_DISCIPLINES[purpose][0]`) — the real M2 discipline resolver is not threaded here;
-//   (3) the D8 pre-schedule gate the publish/edit/reassign paths enforce resolves ONLY the `not_on_pto`
-//       predicate for real (an APPROVED time-off window overlapping the visit fails it); the M2 discipline /
-//       credential and M5 caseload predicates are NOT threaded (fail-open, the M13 compromise-#3 posture) — so
-//       `resolveDiscipline` / `credentialsActiveForPurpose` / `allowsUnassignedPool` / `isInCaseload` stay
-//       fail-closed for the route-layer §4.7 predicates, but the service-layer gate only blocks on PTO;
+//   (3) GAP-030/GAP-031 split: the ROUTE-LAYER §4.7 ABAC predicates on `POST /visits` (the
+//       `SchedulingAbacResolver` methods below) resolve real data for `resolveDiscipline` (M3
+//       membership_role→role, the GAP-021 precedent), `allowsUnassignedPool` (the M17
+//       `allow_unassigned_pool_assignment` org setting), and `isInCaseload` (the M5 CaseloadProvider
+//       seam) — GAP-030. `credentialsActiveForPurpose` stays fail-closed: no clinical-credential data
+//       model exists anywhere in the platform yet (GAP-093). The SEPARATE SERVICE-LAYER `preScheduleGatePassed`
+//       gate below (§reassign/edit/publish/reschedule, NOT the direct-create route) still resolves ONLY
+//       `not_on_pto` for real — the same four facts are NOT threaded into it (GAP-031, not yet fixed);
 //   (4) `time_off` / `clinician_availability` are clinician-scoped (nullable siting) → their inserts carry NULL
 //       provider_entity_id + location_id per the schema intent;
 //   (5) route optimisation stays OFF (`scheduling.route_optimization`) → `optimizeDay` emits the §7.9
@@ -39,7 +42,7 @@
 //   (6) `upsertAvailability` MERGES per (membership, day_of_week) — wardenx_app has no DELETE grant on any M17
 //       table, so a weekday dropped from the new set is not pruned (the append-only posture); `time_zone` has
 //       no column, so the write echoes the request tz while reads report UTC (the T01 read TODO).
-import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
+import { type DbClient, organizationSettingsReader, organizationTimezone, schema } from "@wardenx/db";
 import {
   type SchedulingDiscipline,
   type SchedulingSideEffect,
@@ -62,7 +65,8 @@ import {
   type VisitSetting,
   type VisitStatus,
 } from "@wardenx/types";
-import { type SQL, and, eq, gte, lte } from "drizzle-orm";
+import { type SQL, and, eq, gt, gte, isNull, lte, or } from "drizzle-orm";
+import { getSeam } from "../../bootstrap/index";
 import type { SchedulingAbacResolver } from "./abac-predicates";
 import type {
   AvailabilityView,
@@ -87,6 +91,13 @@ const RV = schema.recurringVisit;
 const CA = schema.clinicianAvailability;
 const TO = schema.timeOff;
 const MEM = schema.memberships;
+const MEM_ROLE = schema.membershipRoles;
+const ROLE = schema.roles;
+const ORG = schema.organizations;
+
+/** Every discipline any visit purpose accepts (GAP-030) — the full `SchedulingDiscipline` vocab,
+ *  derived from the policy map rather than duplicated as a literal list. */
+const ALL_SCHEDULING_DISCIPLINES = new Set<string>(Object.values(VISIT_PURPOSE_DISCIPLINES).flat());
 
 const iso = (d: Date | string): string => (typeof d === "string" ? d : d.toISOString());
 // PARAM-004: was `isoStr.slice(0, 10)` — a UTC-instant slice reads the WRONG calendar day for a
@@ -1249,11 +1260,30 @@ export function createDbSchedulingBackend(
     },
 
     // ── SchedulingAbacResolver (§4.7) — cross-module facts fail closed (compromise #3) ───────────────────
+    // GAP-030 — resolveDiscipline / allowsUnassignedPool / isInCaseload now read real data (the M30
+    // loadMemberRoleKeys / GAP-021 precedent + the M5 CaseloadProvider seam). credentialsActiveForPurpose
+    // stays fail-closed: no clinical-license/credential data model exists anywhere in the platform yet
+    // (M17's spec assumes an `m2.credential-reader` seam M2 never built) — tracked as its own gap
+    // (GAP-093) rather than fabricated here.
     async resolveDiscipline(
-      _orgId: string,
-      _membershipId: string,
+      orgId: string,
+      membershipId: string,
     ): Promise<SchedulingDiscipline | null> {
-      return null;
+      return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+        const roleRows = await tx
+          .select({ key: ROLE.key })
+          .from(MEM_ROLE)
+          .innerJoin(ROLE, eq(MEM_ROLE.roleId, ROLE.id))
+          .where(
+            and(
+              eq(MEM_ROLE.organizationId, orgId),
+              eq(MEM_ROLE.membershipId, membershipId),
+              or(isNull(MEM_ROLE.expiresAt), gt(MEM_ROLE.expiresAt, new Date())),
+            ),
+          );
+        const discipline = roleRows.find((r) => ALL_SCHEDULING_DISCIPLINES.has(r.key));
+        return (discipline?.key as SchedulingDiscipline | undefined) ?? null;
+      });
     },
     async credentialsActiveForPurpose(): Promise<boolean> {
       return false;
@@ -1280,11 +1310,40 @@ export function createDbSchedulingBackend(
         return rows.length > 0;
       });
     },
-    async allowsUnassignedPool(): Promise<boolean> {
-      return false;
+    async allowsUnassignedPool(orgId: string): Promise<boolean> {
+      // `organization` carries RLS (`id = current_setting('app.org_id')::uuid`) — unlike
+      // `organizationTimezone()` (safe only because `resolveOrgTimezone` always runs FIRST in the
+      // preHandler chain, before any withOrgContext call sets `app.org_id`), this predicate runs
+      // AFTER resolveDiscipline/hasApprovedTimeOffOverlap, so a bare (unwrapped) read here inherits
+      // whatever the session GUC was left as and 500s (`''::uuid` cast failure) instead of denying.
+      return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+        const [org] = await tx
+          .select({ settings: ORG.settings })
+          .from(ORG)
+          .where(eq(ORG.id, orgId))
+          .limit(1);
+        return (
+          organizationSettingsReader.get<boolean>(
+            (org?.settings as Record<string, unknown> | undefined) ?? null,
+            "allow_unassigned_pool_assignment",
+          ) ?? false
+        );
+      });
     },
-    async isInCaseload(): Promise<boolean> {
-      return false;
+    async isInCaseload(orgId: string, membershipId: string, patientId: string): Promise<boolean> {
+      return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+        const [mem] = await tx
+          .select({ userId: MEM.userId })
+          .from(MEM)
+          .where(and(eq(MEM.organizationId, orgId), eq(MEM.id, membershipId)))
+          .limit(1);
+        if (!mem) return false; // no such membership on this tenant → fail closed
+        return getSeam("CaseloadProvider").isInCaseload({
+          organizationId: orgId,
+          userId: mem.userId,
+          patientId,
+        });
+      });
     },
   };
 

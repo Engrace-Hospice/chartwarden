@@ -138,6 +138,8 @@ const createGateTarget = (request: GuardRequest): AbacTarget => {
 };
 const GATE = (predicate: string): PreHandler =>
   requireAbac("visit.create", predicate, { getTarget: createGateTarget }) as PreHandler;
+// GAP-030/GAP-093 — kept built but deliberately unattached to any route below (see the POST /visits
+// comment): re-attach once a real CredentialReader lands, rather than rebuilding this guard from scratch.
 const ABAC_CREDENTIALS = GATE("clinician_credentials_active");
 const ABAC_DISCIPLINE = GATE("discipline_matches_visit");
 const ABAC_NOT_ON_PTO = GATE("not_on_pto");
@@ -177,18 +179,19 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     },
   );
 
-  // 3 — direct manual create (skips the proposal path); runs the D8 pre-schedule gate (four §4.7 predicates).
+  // 3 — direct manual create (skips the proposal path); runs the D8 pre-schedule gate. GAP-030/GAP-093:
+  // `ABAC_CREDENTIALS` (`clinician_credentials_active`) is deliberately OMITTED here, not merely unwired —
+  // its DB-backed resolver is still an unconditional deny stub (no clinical-license/credential data model
+  // exists anywhere in the platform yet, GAP-093), and it runs first in a short-circuiting preHandler
+  // chain, so wiring it back in without real data would 100%-deny this route again exactly as GAP-030
+  // found it. `discipline_matches_visit` / `not_on_pto` / `within_caseload_or_unassigned_pool` all resolve
+  // real data (GAP-030) and stay wired. Re-add `ABAC_CREDENTIALS` to this array once GAP-093 lands a real
+  // `CredentialReader` — until then this is a real, temporary compliance gap (the spec calls an
+  // unenforced credential check a "survey-fail vector", §1.1 D8), not an oversight.
   app.post(
     "/api/v1/visits",
     {
-      preHandler: [
-        CREATE,
-        resolveOrgTimezone(service),
-        ABAC_CREDENTIALS,
-        ABAC_DISCIPLINE,
-        ABAC_NOT_ON_PTO,
-        ABAC_POOL,
-      ],
+      preHandler: [CREATE, resolveOrgTimezone(service), ABAC_DISCIPLINE, ABAC_NOT_ON_PTO, ABAC_POOL],
     },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);

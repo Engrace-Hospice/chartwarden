@@ -14,6 +14,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import type { PatientIdentity } from "@wardenx/types";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { OutboxPublishPort } from "../../../bootstrap/outbox-persister";
+import type { CaseloadStore } from "./caseload-provider";
 import type { PatientMutatorStore } from "./patient-mutator";
 import type { PatientReaderStore } from "./patient-reader";
 
@@ -24,6 +25,7 @@ const PHONE = schema.patientPhones;
 const EMAIL = schema.patientEmails;
 const ALIAS = schema.patientNameAliases;
 const COMM = schema.patientCommunicationPreferences;
+const PA = schema.patientAssignments;
 
 /** The seam envelope's actor id — a cross-module identity read has no acting membership. */
 const SEAM_SYSTEM_USER_ID = "";
@@ -382,6 +384,57 @@ export function createDrizzlePatientMutatorStore(
           callerModule: "m5",
         }),
       );
+    },
+  };
+}
+
+/**
+ * Build the Drizzle {@link CaseloadStore} over `patient_assignment` (§3.5) — an OPEN row
+ * (`unassigned_at IS NULL`) for (org, clinician_user_id, patient_id). Until this store existed,
+ * `registerPatientSeams()` had no Drizzle-backed option to pass, so the composition root registered
+ * `CaseloadProvider` over the empty in-memory default on every real boot: `caseload_membership` /
+ * `caseload_or_scope` (consumed by M7/M8/M9/M12/M13/M14/M22/M33/M34) silently denied every caller
+ * outside an org-wide-scope role, regardless of real `patient_assignment` rows. `clinicianUserId`
+ * (not a membership id) is the RAW Better Auth user id — the same id space `AbacContext.userId`
+ * carries (`request.context.userId = snap.userId`, never resolved to a membership id), so no id
+ * translation is needed here.
+ */
+export function createDrizzleCaseloadStore(db: DbClient): CaseloadStore {
+  const read = <T>(organizationId: string, fn: (tx: SeamTx) => Promise<T>): Promise<T> =>
+    withOrgContext(db, { organizationId, userId: SEAM_SYSTEM_USER_ID }, fn);
+
+  return {
+    async isAssigned(organizationId, userId, patientId) {
+      return read(organizationId, async (tx) => {
+        const rows = await tx
+          .select({ id: PA.id })
+          .from(PA)
+          .where(
+            and(
+              eq(PA.organizationId, organizationId),
+              eq(PA.clinicianUserId, userId),
+              eq(PA.patientId, patientId),
+              isNull(PA.unassignedAt),
+            ),
+          )
+          .limit(1);
+        return rows.length > 0;
+      });
+    },
+    async assignedPatientIds(organizationId, userId) {
+      return read(organizationId, async (tx) => {
+        const rows = await tx
+          .selectDistinct({ patientId: PA.patientId })
+          .from(PA)
+          .where(
+            and(
+              eq(PA.organizationId, organizationId),
+              eq(PA.clinicianUserId, userId),
+              isNull(PA.unassignedAt),
+            ),
+          );
+        return rows.map((r) => r.patientId);
+      });
     },
   };
 }
