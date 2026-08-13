@@ -113,3 +113,27 @@ export {
   eraseIdgRecord,
   registerIdgErasers,
 } from "./erasers/idg-eraser";
+// GAP-092 — the §4.8 `idg.review-clock-sweep` BullMQ queue catalog + the pure T-3/T-0/T+1 escalation scan
+// (the M9 license/change-escalation/cadence precedent).
+export {
+  type M14QueueName,
+  type ReviewClockEscalation,
+  type ReviewClockSnapshot,
+  M14_DLQ,
+  M14_JOB_SCHEDULES,
+  M14_QUEUES,
+  M14_QUEUE_PARAMS,
+  REVIEW_FLOOR_DAYS,
+  planReviewClockSweep,
+} from "./jobs/index";
+// GAP-092 — the LIVE `idg.review-clock-sweep` BullMQ Worker/Queue construction (the M9/M10/M25 precedent)
+// + the platform-tenancy registration its active-org fan-out needs.
+export {
+  type ActiveOrgListPort as M14ActiveOrgListPort,
+  type M14WorkerDeps,
+  buildM14WorkerDeps,
+  registerM14CronWorkers,
+  runReviewClockSweepCron,
+  scheduleM14Jobs,
+} from "./jobs/cron-workers";
+export { M14_PLATFORM_JOB_ID, wireM14Tenancy } from "./wiring";

@@ -24,7 +24,11 @@ import {
   type IdgWriteOutboxPort,
   createDbIdgBackend,
 } from "../src/modules/14-idg/idg-route-service-db";
-import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
+import {
+  M14_OUTBOX_EVENTS,
+  buildM14WorkerDeps,
+  runReviewClockSweepCron,
+} from "../src/modules/14-idg/index";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -40,6 +44,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbIdgBackend>;
+  let outbox: IdgWriteOutboxPort;
   const locationOf: Record<string, string> = {};
   const peOf: Record<string, string> = {};
 
@@ -157,7 +162,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
     });
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M14_OUTBOX_EVENTS]));
-    const outbox: IdgWriteOutboxPort = {
+    outbox = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m14" }),
     };
     svc = createDbIdgBackend(handle.db, outbox);
@@ -469,6 +474,59 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     const { rows } = await admin.query(
       "SELECT 1 FROM outbox_event WHERE aggregate_id=$1 AND event_type=$2",
       [m, "m14.review_floor.override_recorded"],
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it("idg.review-clock-sweep escalates a patient at T-0, aggregating last_idg_reviewed_at across multiple packets (GAP-092)", async () => {
+    const patientId = randomUUID();
+    const reviewed = await seedMeeting(ORG_A, "adjourned");
+    const laterUnreviewed = await seedMeeting(ORG_A, "scheduled");
+    // `reviewed`'s packet already has a real last_idg_reviewed_at (15 days ago → floor is today, T-0);
+    // `laterUnreviewed` is a NEWER, not-yet-adjourned packet for the SAME patient whose own
+    // last_idg_reviewed_at is still null — the store must not let this newer-but-unreviewed row shadow
+    // the older packet's real reviewed date (the exact bug `reviewClockPatientsForOrg`'s per-patient
+    // aggregation, not a naive "latest packet" read, exists to avoid).
+    await seedPacket(ORG_A, reviewed, patientId, new Date(Date.now() - 40 * 86400000).toISOString());
+    await admin.query(
+      "UPDATE idg_patient_packet SET last_idg_reviewed_at=$1 WHERE idg_meeting_id=$2 AND patient_id=$3",
+      [new Date(Date.now() - 15 * 86400000), reviewed, patientId],
+    );
+    await seedPacket(ORG_A, laterUnreviewed, patientId, new Date(Date.now() - 3 * 86400000).toISOString());
+
+    const deps = buildM14WorkerDeps({
+      connection: {} as never, // runReviewClockSweepCron never touches BullMQ — no Redis needed
+      db: handle.db,
+      outbox,
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+    });
+    await runReviewClockSweepCron(deps);
+
+    const { rows } = await admin.query(
+      "SELECT payload FROM outbox_event WHERE event_type=$1 AND payload->>'patientId'=$2",
+      ["m14.review_clock.escalated", patientId],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].payload).toMatchObject({ patientId, stage: "t_zero", severity: "critical" });
+  });
+
+  it("idg.review-clock-sweep does not escalate a patient whose floor is not at T-3/T-0/T+1 today", async () => {
+    const patientId = randomUUID();
+    const m = await seedMeeting(ORG_A, "scheduled");
+    // since_cursor 5 days ago → floor 10 days from now — nowhere near any escalation stage.
+    await seedPacket(ORG_A, m, patientId, new Date(Date.now() - 5 * 86400000).toISOString());
+
+    const deps = buildM14WorkerDeps({
+      connection: {} as never,
+      db: handle.db,
+      outbox,
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+    });
+    await runReviewClockSweepCron(deps);
+
+    const { rows } = await admin.query(
+      "SELECT 1 FROM outbox_event WHERE event_type=$1 AND payload->>'patientId'=$2",
+      ["m14.review_clock.escalated", patientId],
     );
     expect(rows).toHaveLength(0);
   });

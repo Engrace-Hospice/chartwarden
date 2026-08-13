@@ -224,6 +224,8 @@ import {
 } from "./modules/13-emar/index";
 import {
   M14_OUTBOX_EVENTS,
+  M14_PLATFORM_JOB_ID,
+  buildM14WorkerDeps,
   createDrizzleIdgEraseStore,
   createDrizzleIdgSeamStore,
   mountIdgRoutes,
@@ -231,6 +233,9 @@ import {
   registerIdgErasers,
   registerIdgRoutes,
   registerIdgSeams,
+  registerM14CronWorkers,
+  scheduleM14Jobs,
+  wireM14Tenancy,
 } from "./modules/14-idg/index";
 import {
   M15_OUTBOX_EVENTS,
@@ -1166,6 +1171,7 @@ export function wireModuleSeams(
   wireM7Tenancy();
   wireM9Tenancy();
   wireM10Tenancy();
+  wireM14Tenancy(); // GAP-092 — allowlist the cron job id so idg.review-clock-sweep may enter withPlatformContext
   // M34 — the 8 §4.6 ABAC predicate resolvers (the platform-ops tenant surface gates on
   // `tenant_lifecycle_platform_ops`, role-only; `dsar_export_*` composes the M5 CaseloadProvider seam,
   // registered above). The grant/flag/onboarding-task resolver methods are exercised by the tenant-scoped
@@ -3549,6 +3555,34 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     }
     app.log.info({ queues: m10Workers.length }, "M10 §4.8 BullMQ HOPE watchdog crons constructed");
 
+    // ── M14 §4.8 `idg.review-clock-sweep` cron (GAP-092 — the M9/M10/M25 worker-runner shape) ────────────
+    const m14ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M14_PLATFORM_JOB_ID,
+      reason: "M14 §4.8 idg.review-clock-sweep cron fan-out (active-org enumeration)",
+    });
+    const m14WorkerDeps = buildM14WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m14OutboxPublisher,
+      activeOrgs: m14ActiveOrgs,
+    });
+    const m14Workers = registerM14CronWorkers(m14WorkerDeps);
+    attachDlqAlertsToAll(m14Workers, "m14");
+    app.addHook("onClose", async () => {
+      await Promise.all(m14Workers.map((w) => w.close()));
+    });
+    try {
+      const m14ScheduleQueues = await scheduleM14Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m14ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M14 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m14Workers.length }, "M14 §4.8 BullMQ review-clock-sweep cron constructed");
+
     // TASK-040C (OPS-005/006) — the `wardenx_bullmq_queue_jobs` gauge, over one dedicated read-only
     // `Queue` handle per UNIQUE queue name actually constructed above (derived from the Workers'
     // `.name`, not a separately-maintained module-by-module catalog list — self-maintaining as new
@@ -3564,6 +3598,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       ...m7Workers,
       ...m9Workers,
       ...m10Workers,
+      ...m14Workers,
     ];
     const metricsQueueNames = [...new Set(allWorkers.map((w) => w.name))];
     const metricsQueues = metricsQueueNames.map(
