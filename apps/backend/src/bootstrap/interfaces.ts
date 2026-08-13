@@ -39,6 +39,7 @@ export type {
   CaseloadProvider,
   CertificationReader,
   ComfortKitDispatchProvider,
+  CredentialReader,
   DataClass,
   DataEraser,
   AdmissionOnsetReader,

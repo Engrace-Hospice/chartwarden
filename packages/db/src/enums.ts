@@ -3560,3 +3560,23 @@ export const ipuRemoteArrangementBillingBasis = pgEnum("ipu_remote_arrangement_b
   "bundled",
   "per_diem_passthrough",
 ]);
+
+/** `credential_discipline` — GAP-093, `membership_credential.credential_type`. Mirrors M17's
+ *  `SchedulingDiscipline` vocab (`packages/scheduling/src/policy.ts`) — an active credential of a
+ *  discipline is what the D8 `clinician_credentials_active` pre-schedule gate checks for, alongside
+ *  (not instead of) the `discipline_matches_visit` RBAC-role check. */
+export const credentialDiscipline = pgEnum("credential_discipline", [
+  "rn",
+  "lpn",
+  "chha",
+  "msw",
+  "chaplain",
+  "volunteer",
+  "md",
+  "np",
+]);
+
+/** `credential_status` — GAP-093. `active` is the only status the D8 gate accepts; `suspended`/
+ *  `revoked` both fail it (fail-closed) but are kept distinct for the audit trail (why access
+ *  stopped, not just that it did). */
+export const credentialStatus = pgEnum("credential_status", ["active", "suspended", "revoked"]);

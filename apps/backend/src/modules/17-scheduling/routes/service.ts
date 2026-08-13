@@ -26,6 +26,7 @@ import type {
 } from "@wardenx/types";
 import { ConflictError, ForbiddenError, NotFoundError } from "@wardenx/types";
 import type { SchedulingAbacResolver } from "../abac-predicates";
+import type { CredentialDiscipline, CredentialRecord } from "../seams/index";
 
 // ── §4.4 outbox events the service records (the relay wraps them in the M1 envelope; M17-T08) ─────────────
 export interface RecordedSchedulingEvent {
@@ -197,6 +198,10 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
   private readonly availability = new Map<string, AvailabilityView & { organizationId: string }>();
   private readonly timeOff = new Map<string, TimeOffView & { organizationId: string }>();
   private readonly events: RecordedSchedulingEvent[] = [];
+  // GAP-093 — the in-memory slice's membership_credential rows (route-smoke-test fixture only; the
+  // pre-schedule gate itself still reads `credentialed`, a flat per-membership flag kept in sync below).
+  private readonly credentials = new Map<string, CredentialRecord & { organizationId: string }>();
+  private credentialSeq = 0;
 
   constructor(deps: SchedulingServiceDeps) {
     this.now = deps.now;
@@ -661,6 +666,65 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
 
   async isInCaseload(_orgId: string, membershipId: string, patientId: string): Promise<boolean> {
     return this.caseload.has(caseloadKey(membershipId, patientId));
+  }
+
+  // ── GAP-093 — membership_credential grant/revoke/list (slice fixture) ────────────────────────────────
+  async listCredentials(orgId: string, membershipId: string): Promise<CredentialRecord[]> {
+    return [...this.credentials.values()].filter(
+      (c) => c.organizationId === orgId && c.membershipId === membershipId,
+    );
+  }
+
+  async grantCredential(
+    orgId: string,
+    grantedByMembershipId: string,
+    input: {
+      membershipId: string;
+      credentialType: CredentialDiscipline;
+      effectiveAt: string;
+      expiresAt?: string | null;
+      issuingBody?: string | null;
+    },
+  ): Promise<CredentialRecord> {
+    const record: CredentialRecord & { organizationId: string } = {
+      id: `cred-${++this.credentialSeq}`,
+      organizationId: orgId,
+      membershipId: input.membershipId,
+      credentialType: input.credentialType,
+      status: "active",
+      effectiveAt: input.effectiveAt,
+      expiresAt: input.expiresAt ?? null,
+      revokedAt: null,
+      revokedReason: null,
+      issuingBody: input.issuingBody ?? null,
+      grantedByMembershipId,
+      createdAt: this.now(),
+    };
+    this.credentials.set(record.id, record);
+    this.credentialed.add(input.membershipId); // keep the flat gate flag in sync (slice fixture only)
+    return record;
+  }
+
+  async revokeCredential(
+    orgId: string,
+    _revokedByMembershipId: string,
+    credentialId: string,
+    revokedReason: string,
+  ): Promise<void> {
+    const existing = this.credentials.get(credentialId);
+    if (!existing || existing.organizationId !== orgId) {
+      throw new NotFoundError("membership credential", credentialId);
+    }
+    this.credentials.set(credentialId, {
+      ...existing,
+      status: "revoked",
+      revokedAt: this.now(),
+      revokedReason,
+    });
+    const stillCredentialed = [...this.credentials.values()].some(
+      (c) => c.membershipId === existing.membershipId && c.status === "active",
+    );
+    if (!stillCredentialed) this.credentialed.delete(existing.membershipId);
   }
 
   // ── internals ─────────────────────────────────────────────────────────────────────────────────────────

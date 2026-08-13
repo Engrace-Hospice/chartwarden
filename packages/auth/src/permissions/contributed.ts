@@ -1891,6 +1891,26 @@ export const M17_CONTRIBUTED_PERMISSIONS = {
     category: "scheduling",
     abac: "none",
   },
+  // --- GAP-093 — clinical-license/certification roster (§1.1 D8); org-wide staff management, not
+  // caseload-scoped, so `abac: "none"` matches the sibling `time_off.approve` shape. ---
+  "membership_credential.read": {
+    resource: "membership_credential",
+    action: "read",
+    category: "compliance",
+    abac: "none",
+  },
+  "membership_credential.grant": {
+    resource: "membership_credential",
+    action: "grant",
+    category: "compliance",
+    abac: "none",
+  },
+  "membership_credential.revoke": {
+    resource: "membership_credential",
+    action: "revoke",
+    category: "compliance",
+    abac: "none",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M17 contributed permission keys. */

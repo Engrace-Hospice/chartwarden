@@ -28,7 +28,9 @@ import {
   type SchedulingAbacResolver,
   type SchedulingWriteOutboxPort,
   createDbSchedulingBackend,
+  registerSchedulingSeams,
 } from "../src/modules/17-scheduling/index";
+import { createDrizzleCredentialStore } from "../src/modules/17-scheduling/seams/credentials-drizzle-store";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -189,7 +191,10 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
     // AND `member2` both get 'rn' (routine_visit's accepted disciplines are rn/lpn) since `reassignVisit`
     // targets member2. ORG_A's unassigned-pool policy is opened rather than seeding a real caseload row
     // for the fixture's non-existent `PATIENT` constant (no `patient` row backs that id in this file).
+    // GAP-093 — the gate also checks a real, active membership_credential row now (not just the role);
+    // the CredentialReader seam must be registered before ANY gate check runs, same reason as CaseloadProvider.
     registerPatientSeams({ db: handle.db, caseload: { store: createDrizzleCaseloadStore(handle.db) } });
+    registerSchedulingSeams({ credentials: { store: createDrizzleCredentialStore(handle.db) } });
     const rnRoleId = (
       await admin.query(
         `INSERT INTO role (organization_id, key, name, category) VALUES ($1,'rn','Registered Nurse','clinical_staff') RETURNING id`,
@@ -200,6 +205,11 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       await admin.query(
         `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)`,
         [ORG_A, membershipId, rnRoleId],
+      );
+      await admin.query(
+        `INSERT INTO membership_credential (organization_id, membership_id, credential_type, effective_at, granted_by_membership_id)
+         VALUES ($1,$2,'rn','2020-01-01',$2)`,
+        [ORG_A, membershipId],
       );
     }
     await admin.query(

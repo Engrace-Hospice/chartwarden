@@ -268,6 +268,7 @@ import {
 } from "./modules/16-bereavement/index";
 import {
   M17_OUTBOX_EVENTS,
+  createDrizzleCredentialStore,
   createDrizzleSchedulingSeamStore,
   mountSchedulingRoutes,
   registerSchedulingAbacPredicates,
@@ -1057,7 +1058,14 @@ export function wireModuleSeams(
   // agent flagged: `tonightsOnCallRoster` now THROWS SchedulingOnCallRosterUnavailableError (M17
   // owns no rotation table) instead of the in-memory `[]` — which is the answer M19's shift-sync
   // degraded path is built for ("unreadable" keeps the last committed shifts; `[]` would cancel them).
-  registerSchedulingSeams(deps.db ? { store: createDrizzleSchedulingSeamStore(deps.db) } : {});
+  registerSchedulingSeams(
+    deps.db
+      ? {
+          store: createDrizzleSchedulingSeamStore(deps.db),
+          credentials: { store: createDrizzleCredentialStore(deps.db) },
+        }
+      : {},
+  );
   // M18 — the six §4.3 owned reader seams. `EvvBracketResolver` is published over M8's EXISTING `resolveBracket`
   // contract — this registration CLOSES M8's `encounter.period` forward seam (M8 D9), replacing its fail-closed
   // deny-stub with the real resolver. The other five (EvvComplianceReader — M23/M24 billing gate + M30 HQRP —

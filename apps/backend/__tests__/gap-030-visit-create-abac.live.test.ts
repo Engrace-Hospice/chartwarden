@@ -11,12 +11,12 @@
  * with the empty in-memory default in production, a separate platform-wide finding this fix also
  * closes).
  *
- * `clinician_credentials_active` (the 4th predicate) stays fail-closed: no clinical-credential data
- * model exists anywhere in the platform (tracked separately as GAP-093). Since it ran FIRST in the
- * route's short-circuiting preHandler chain, leaving it wired would keep this route 100% denied
- * regardless of the other 3 fixes — `scheduling-routes.ts` deliberately drops `ABAC_CREDENTIALS`
- * from `POST /visits` for now (a real, temporary, documented compliance gap — see that file's
- * comment — not an oversight). These tests exercise the 3 predicates that DO resolve real data now.
+ * `clinician_credentials_active` (the 4th predicate) is now ALSO real (GAP-093: the new M17
+ * `CredentialReader` seam over `membership_credential`) and re-attached to `POST /visits` — every
+ * clinician `bootApp` grants a role to is ALSO granted a matching credential here, so these tests
+ * keep isolating discipline/caseload the way they did before GAP-093 landed (the credential gate
+ * passing is a fixture precondition, not what these 3 scenarios are about; GAP-093's own live test
+ * covers the credential gate itself, including revoke-denies-again).
  *
  * Proves it end-to-end through the REAL `mountSchedulingRoutes` (not the in-memory slice) against
  * real Postgres — the exact seam boundary (predicate → SchedulingAbacResolver → M3 tables / M5
@@ -46,7 +46,9 @@ import {
   buildSchedulingAbacPredicates,
   createDbSchedulingBackend,
   registerSchedulingRoutes,
+  registerSchedulingSeams,
 } from "../src/modules/17-scheduling/index";
+import { createDrizzleCredentialStore } from "../src/modules/17-scheduling/seams/credentials-drizzle-store";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -172,6 +174,14 @@ describe.skipIf(!DB_URL)("GAP-030 — M17 visit-create ABAC — LIVE Postgres", 
         `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)`,
         [org, membershipId, rnRoleId],
       );
+      // GAP-093 — ABAC_CREDENTIALS now runs alongside discipline/caseload; grant a matching credential
+      // so these tests keep isolating discipline/caseload rather than tripping the (separately-tested)
+      // credential gate.
+      await admin.query(
+        `INSERT INTO membership_credential (organization_id, membership_id, credential_type, effective_at, granted_by_membership_id)
+         VALUES ($1,$2,'rn','2020-01-01',$2)`,
+        [org, membershipId],
+      );
     }
     return { userId, membershipId };
   }
@@ -202,6 +212,7 @@ describe.skipIf(!DB_URL)("GAP-030 — M17 visit-create ABAC — LIVE Postgres", 
     ]);
     registerEffectivePermissionResolver(grantStore);
     registerPatientSeams({ db: handle.db, caseload: { store: createDrizzleCaseloadStore(handle.db) } });
+    registerSchedulingSeams({ credentials: { store: createDrizzleCredentialStore(handle.db) } });
 
     const backend = createDbSchedulingBackend(handle.db);
     const registry = createPredicateRegistry();

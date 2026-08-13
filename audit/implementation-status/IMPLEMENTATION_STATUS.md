@@ -26,7 +26,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M14 IDG | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 27/27 ✅ | ✅ | ✅ | — | 9/9 ✅ |
 | M15 Discipline Care Plans | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 28/28 ✅ | ✅ | ✅ | — | 11/11 ✅ |
 | M16 Bereavement | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 33/33 ✅ | ✅ | ✅ | — | 10/10 ✅ |
-| M17 Scheduling & Route Optimization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 29/29 ✅ | ✅ | ✅ | ✅ | 7/7 ✅ |
+| M17 Scheduling & Route Optimization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 32/32 ✅ | ✅ | ✅ | ✅ | 8/8 ✅ |
 | M18 EVV | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 25/25 ✅ | ✅ | ✅ | — | 7/7 ✅ |
 | M19 On-Call Triage | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 38/38 ✅ | ✅ | ✅ | ✅ | 10/10 ✅ |
 | M20 Field Safety | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 30/30 ✅ | ✅ | ✅ | — | 13/13 ✅ |

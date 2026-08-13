@@ -10792,6 +10792,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/memberships/{membershipId}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** GAP-093: a membership's clinical-license/certification roster */
+        get: operations["getApiV1MembershipsByMembershipIdCredentials"];
+        put?: never;
+        /** GAP-093: grant a clinical-license/certification credential (201) */
+        post: operations["postApiV1MembershipsByMembershipIdCredentials"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/memberships/{membershipId}/credentials/{credentialId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** GAP-093: revoke a credential (204) */
+        delete: operations["deleteApiV1MembershipsByMembershipIdCredentialsByCredentialId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/announce": {
         parameters: {
             query?: never;
@@ -46927,6 +46962,127 @@ export interface operations {
                         revoked: true;
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MembershipsByMembershipIdCredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membershipId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        membershipId: string;
+                        credentialType: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                        status: "active" | "suspended" | "revoked";
+                        /** Format: date */
+                        effectiveAt: string;
+                        expiresAt: string | null;
+                        revokedAt: string | null;
+                        revokedReason: string | null;
+                        issuingBody: string | null;
+                        /** Format: uuid */
+                        grantedByMembershipId: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MembershipsByMembershipIdCredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membershipId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    credentialType: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                    /** Format: date */
+                    effectiveAt: string;
+                    expiresAt?: string | null;
+                    issuingBody?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        membershipId: string;
+                        credentialType: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                        status: "active" | "suspended" | "revoked";
+                        /** Format: date */
+                        effectiveAt: string;
+                        expiresAt: string | null;
+                        revokedAt: string | null;
+                        revokedReason: string | null;
+                        issuingBody: string | null;
+                        /** Format: uuid */
+                        grantedByMembershipId: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MembershipsByMembershipIdCredentialsByCredentialId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                membershipId: string;
+                credentialId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

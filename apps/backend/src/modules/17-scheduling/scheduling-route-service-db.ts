@@ -84,6 +84,7 @@ import type {
   UpsertAvailabilityInput,
   VisitView,
 } from "./routes/service";
+import { type CredentialRecord, createDrizzleCredentialStore } from "./seams/index";
 
 const V = schema.visit;
 const VSH = schema.visitStateHistory;
@@ -221,6 +222,11 @@ export function createDbSchedulingBackend(
   db: DbClient,
   outbox: SchedulingWriteOutboxPort = NOOP_OUTBOX,
 ): SchedulingRouteService {
+  // GAP-093 — the same Drizzle store `registerCredentialSeam` binds to the boot-registered
+  // `CredentialReader` seam, constructed here directly (no self-referential `getSeam` round-trip)
+  // for M17's OWN grant/revoke/list routes — this module owns `membership_credential`.
+  const credentialStore = createDrizzleCredentialStore(db);
+
   // ── emit + tx helpers ───────────────────────────────────────────────────────────────────────────────
   async function emit(
     tx: unknown,
@@ -351,12 +357,34 @@ export function createDbSchedulingBackend(
     });
   }
 
-  /** The D8 pre-schedule gate the service enforces (GAP-031). Checks the same three facts GAP-030 wired
-   *  into the route-layer ABAC predicates — `discipline_matches_visit`, `not_on_pto`,
-   *  `within_caseload_or_unassigned_pool` — against real data, reused from the SAME tx-scoped resolvers
-   *  above so the two layers can never drift. `clinician_credentials_active` stays excluded here too,
-   *  same as the route layer post-GAP-030: no clinical-credential data model exists anywhere in the
-   *  platform yet (GAP-093). */
+  // GAP-093 — the real `clinician_credentials_active` check: does `membershipId` hold an ACTIVE
+  // credential for the discipline it's actually being scheduled under (the SAME `discipline` value
+  // `resolveDisciplineTx` resolved)? Orthogonal to `discipline_matches_visit` (an M3 RBAC role grant)
+  // — a clinician can hold the "rn" ROLE while their nursing LICENSE has lapsed or been suspended.
+  // Reads through `getSeam("CredentialReader")` (M17's OWN boot-registered seam) rather than the
+  // Drizzle store directly: the seam is the one path every consumer (this gate, and eventually M23/
+  // M31) shares, so a future change to what "active" means has one home. Nested `withOrgContext` —
+  // same accepted shape as `isInCaseloadTx`'s `getSeam("CaseloadProvider")` call (GAP-030): safe
+  // because `membership_credential` is never written mid-visit-scheduling-tx by any other path.
+  async function credentialActiveTx(
+    tx: DbClient,
+    orgId: string,
+    membershipId: string,
+    discipline: SchedulingDiscipline,
+    asOfDate: string,
+  ): Promise<boolean> {
+    const creds = await getSeam("CredentialReader").activeCredentialsAsOf({
+      organizationId: orgId,
+      membershipId,
+      asOf: asOfDate,
+    });
+    return creds.some((c) => c.kind === discipline);
+  }
+
+  /** The D8 pre-schedule gate the service enforces (GAP-031/GAP-093). Checks the same facts GAP-030
+   *  wired into the route-layer ABAC predicates — `clinician_credentials_active`,
+   *  `discipline_matches_visit`, `not_on_pto`, `within_caseload_or_unassigned_pool` — against real
+   *  data, reused from the SAME tx-scoped resolvers above so the two layers can never drift. */
   async function preScheduleGatePassed(
     tx: DbClient,
     orgId: string,
@@ -368,6 +396,11 @@ export function createDbSchedulingBackend(
   ): Promise<boolean> {
     const discipline = await resolveDisciplineTx(tx, orgId, membershipId);
     if (discipline === null || !VISIT_PURPOSE_DISCIPLINES[visitPurpose].includes(discipline)) {
+      return false;
+    }
+
+    const serviceDate = serviceDateOf(startsAt, await organizationTimezone(tx, orgId));
+    if (!(await credentialActiveTx(tx, orgId, membershipId, discipline, serviceDate))) {
       return false;
     }
 
@@ -1352,10 +1385,10 @@ export function createDbSchedulingBackend(
 
     // ── SchedulingAbacResolver (§4.7) — cross-module facts fail closed (compromise #3) ───────────────────
     // GAP-030 — resolveDiscipline / allowsUnassignedPool / isInCaseload now read real data (the M30
-    // loadMemberRoleKeys / GAP-021 precedent + the M5 CaseloadProvider seam). credentialsActiveForPurpose
-    // stays fail-closed: no clinical-license/credential data model exists anywhere in the platform yet
-    // (M17's spec assumes an `m2.credential-reader` seam M2 never built) — tracked as its own gap
-    // (GAP-093) rather than fabricated here.
+    // loadMemberRoleKeys / GAP-021 precedent + the M5 CaseloadProvider seam).
+    // GAP-093 — credentialsActiveForPurpose now reads real data too (the new M17 CredentialReader seam
+    // over `membership_credential`), reusing the SAME `credentialActiveTx`/`resolveDisciplineTx`
+    // resolvers `preScheduleGatePassed` uses so the two layers can't drift (the GAP-031 pattern).
     // GAP-031 — these now delegate to the SAME tx-scoped resolvers `preScheduleGatePassed` uses (defined
     // above, near `appendHistory`), each wrapped in its own `withOrgContext` since these are called
     // standalone from the route-layer ABAC predicates (`abac-predicates.ts`), never nested inside an
@@ -1368,8 +1401,19 @@ export function createDbSchedulingBackend(
         resolveDisciplineTx(tx, orgId, membershipId),
       );
     },
-    async credentialsActiveForPurpose(): Promise<boolean> {
-      return false;
+    async credentialsActiveForPurpose(
+      orgId: string,
+      membershipId: string,
+      visitPurpose: VisitPurpose,
+      serviceDate: string,
+    ): Promise<boolean> {
+      return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+        const discipline = await resolveDisciplineTx(tx, orgId, membershipId);
+        if (discipline === null || !VISIT_PURPOSE_DISCIPLINES[visitPurpose].includes(discipline)) {
+          return false;
+        }
+        return credentialActiveTx(tx, orgId, membershipId, discipline, serviceDate);
+      });
     },
     async hasApprovedTimeOffOverlap(
       orgId: string,
@@ -1407,6 +1451,34 @@ export function createDbSchedulingBackend(
       return withOrgContext(db, { organizationId: orgId, userId: "" }, (tx) =>
         isInCaseloadTx(tx, orgId, membershipId, patientId),
       );
+    },
+
+    // ── GAP-093 — membership_credential grant/revoke/list (the management surface a real D8 gate
+    // needs, or `clinician_credentials_active` would deny every caller forever for lack of any way to
+    // ever satisfy it — the same regression GAP-030 fixed, one layer down) ─────────────────────────────
+    async listCredentials(orgId: string, membershipId: string): Promise<readonly CredentialRecord[]> {
+      return credentialStore.listForMembership(orgId, membershipId);
+    },
+    async grantCredential(
+      orgId: string,
+      grantedByMembershipId: string,
+      input: {
+        membershipId: string;
+        credentialType: CredentialRecord["credentialType"];
+        effectiveAt: string;
+        expiresAt?: string | null;
+        issuingBody?: string | null;
+      },
+    ): Promise<CredentialRecord> {
+      return credentialStore.grant(orgId, { ...input, grantedByMembershipId });
+    },
+    async revokeCredential(
+      orgId: string,
+      revokedByMembershipId: string,
+      credentialId: string,
+      revokedReason: string,
+    ): Promise<void> {
+      return credentialStore.revoke(orgId, { credentialId, revokedReason, revokedByMembershipId });
     },
   };
 

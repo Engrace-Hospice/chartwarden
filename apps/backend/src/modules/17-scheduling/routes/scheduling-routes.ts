@@ -26,8 +26,10 @@ import {
   DiscontinueRecurringVisitRequest,
   DismissProposalRequest,
   EditVisitRequest,
+  GrantCredentialRequest,
   IdParamsSchema,
   MapViewQuerySchema,
+  MembershipCredentialParamsSchema,
   MembershipIdParamsSchema,
   MetricsQuerySchema,
   NoShowVisitRequest,
@@ -39,6 +41,7 @@ import {
   RecurringListQuerySchema,
   RequestTimeOffRequest,
   RescheduleVisitRequest,
+  RevokeCredentialRequest,
   RouteEfficiencyQuerySchema,
   StartVisitRequest,
   TimeOffListQuerySchema,
@@ -97,6 +100,9 @@ const TIME_OFF_CANCEL = P("time_off.cancel_own");
 const OPTIMIZE = P("route.optimize_on_demand");
 const ROUTE_METRICS = P("route.read_metrics");
 const PORTAL_READ = P("portal.visit.read_upcoming");
+const CREDENTIAL_READ = P("membership_credential.read");
+const CREDENTIAL_GRANT = P("membership_credential.grant");
+const CREDENTIAL_REVOKE = P("membership_credential.revoke");
 
 // PARAM-004 follow-up — `requireAbac`'s `getTarget` (packages/auth/src/abac/require-abac.ts) is
 // SYNCHRONOUS, so `createGateTarget` below cannot itself resolve `orgId`'s configured timezone from
@@ -138,8 +144,8 @@ const createGateTarget = (request: GuardRequest): AbacTarget => {
 };
 const GATE = (predicate: string): PreHandler =>
   requireAbac("visit.create", predicate, { getTarget: createGateTarget }) as PreHandler;
-// GAP-030/GAP-093 — kept built but deliberately unattached to any route below (see the POST /visits
-// comment): re-attach once a real CredentialReader lands, rather than rebuilding this guard from scratch.
+// GAP-093 — re-attached to POST /visits below now that a real CredentialReader seam exists (M17's
+// new membership_credential table + grant/revoke routes) — see that route's comment.
 const ABAC_CREDENTIALS = GATE("clinician_credentials_active");
 const ABAC_DISCIPLINE = GATE("discipline_matches_visit");
 const ABAC_NOT_ON_PTO = GATE("not_on_pto");
@@ -179,19 +185,22 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     },
   );
 
-  // 3 — direct manual create (skips the proposal path); runs the D8 pre-schedule gate. GAP-030/GAP-093:
-  // `ABAC_CREDENTIALS` (`clinician_credentials_active`) is deliberately OMITTED here, not merely unwired —
-  // its DB-backed resolver is still an unconditional deny stub (no clinical-license/credential data model
-  // exists anywhere in the platform yet, GAP-093), and it runs first in a short-circuiting preHandler
-  // chain, so wiring it back in without real data would 100%-deny this route again exactly as GAP-030
-  // found it. `discipline_matches_visit` / `not_on_pto` / `within_caseload_or_unassigned_pool` all resolve
-  // real data (GAP-030) and stay wired. Re-add `ABAC_CREDENTIALS` to this array once GAP-093 lands a real
-  // `CredentialReader` — until then this is a real, temporary compliance gap (the spec calls an
-  // unenforced credential check a "survey-fail vector", §1.1 D8), not an oversight.
+  // 3 — direct manual create (skips the proposal path); runs the full D8 pre-schedule gate. GAP-093
+  // re-attached `ABAC_CREDENTIALS` (`clinician_credentials_active`) now that a real `CredentialReader`
+  // seam exists over the new `membership_credential` table (grant/revoke routes below give orgs a real
+  // way to satisfy it — re-attaching without that would have 100%-denied this route again, the exact
+  // GAP-030 regression this fix is careful not to reintroduce).
   app.post(
     "/api/v1/visits",
     {
-      preHandler: [CREATE, resolveOrgTimezone(service), ABAC_DISCIPLINE, ABAC_NOT_ON_PTO, ABAC_POOL],
+      preHandler: [
+        CREATE,
+        resolveOrgTimezone(service),
+        ABAC_CREDENTIALS,
+        ABAC_DISCIPLINE,
+        ABAC_NOT_ON_PTO,
+        ABAC_POOL,
+      ],
     },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
@@ -533,6 +542,56 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
       const { organizationId } = actorOf(request);
       const q = parse(RouteEfficiencyQuerySchema, request.query);
       return service.routeEfficiencyMetrics(organizationId, q.membership);
+    },
+  );
+
+  // 30/31/32 — GAP-093 membership-credential grant/revoke/list. The management surface the D8 gate
+  // needs to be satisfiable at all — org-wide staff data, not caseload-scoped, so plain RBAC (no ABAC
+  // predicate) gates these, matching the sibling `time_off.approve` shape.
+  app.get(
+    "/api/v1/memberships/:membershipId/credentials",
+    {
+      preHandler: [CREDENTIAL_READ],
+      config: {
+        auditRead: {
+          none: "Staff clinical-license/certification roster only; no patient identifiers or PHI in the response.",
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { membershipId } = parse(MembershipIdParamsSchema, request.params);
+      return service.listCredentials(organizationId, membershipId);
+    },
+  );
+
+  app.post(
+    "/api/v1/memberships/:membershipId/credentials",
+    { preHandler: [CREDENTIAL_GRANT] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { membershipId } = parse(MembershipIdParamsSchema, request.params);
+      const b = parse(GrantCredentialRequest, request.body);
+      const res = await service.grantCredential(organizationId, userId, {
+        membershipId,
+        credentialType: b.credentialType,
+        effectiveAt: b.effectiveAt,
+        expiresAt: b.expiresAt,
+        issuingBody: b.issuingBody,
+      });
+      return reply.code(201).send(res);
+    },
+  );
+
+  app.delete(
+    "/api/v1/memberships/:membershipId/credentials/:credentialId",
+    { preHandler: [CREDENTIAL_REVOKE] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { credentialId } = parse(MembershipCredentialParamsSchema, request.params);
+      const b = parse(RevokeCredentialRequest, request.body);
+      await service.revokeCredential(organizationId, userId, credentialId, b.reason);
+      return reply.code(204).send();
     },
   );
 }

@@ -34,6 +34,7 @@ import type {
   CaseloadProvider,
   CertificationReader,
   ComfortKitDispatchProvider,
+  CredentialReader,
   AdmissionOnsetReader,
   DeathDischargeReader,
   DischargeReader,
@@ -148,6 +149,12 @@ export const caseloadDenyStub: CaseloadProvider = {
 export const careTeamDenyStub: CareTeamProvider = {
   careTeamMembers() {
     throw new NotImplementedError("CareTeamProvider");
+  },
+};
+
+export const credentialReaderDenyStub: CredentialReader = {
+  activeCredentialsAsOf() {
+    throw new NotImplementedError("CredentialReader");
   },
 };
 
