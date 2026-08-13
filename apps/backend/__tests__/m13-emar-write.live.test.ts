@@ -411,6 +411,49 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
     expect(await eventsFor(ORG_A)).toContain("m13.policy.changed");
   });
 
+  it("loadWitnessFacts (GAP-021) resolves a real active RN membership's discipline for the ABAC gate", async () => {
+    const roleId = (
+      await admin.query(
+        `INSERT INTO role (organization_id, key, name, category) VALUES ($1,'rn','Registered Nurse','clinical_staff') RETURNING id`,
+        [ORG_A],
+      )
+    ).rows[0].id as string;
+    await admin.query(`INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)`, [
+      ORG_A,
+      member2Of[ORG_A],
+      roleId,
+    ]);
+
+    const facts = await svc.loadWitnessFacts(ORG_A, USER2);
+    expect(facts).toMatchObject({
+      witnessMembershipId: member2Of[ORG_A],
+      witnessDiscipline: "rn",
+      witnessMembershipActive: true,
+      sameTenant: true,
+      witnessIsCaregiver: false,
+    });
+  });
+
+  it("loadWitnessFacts returns null for a user with no membership on the tenant (fail-closed)", async () => {
+    expect(await svc.loadWitnessFacts(ORG_A, "99999999-9999-4999-8999-999999999999")).toBeNull();
+  });
+
+  it("loadWitnessFacts reflects a suspended membership as inactive (the pure decider denies membership_inactive)", async () => {
+    const suspendedUser = "88888888-8888-4888-8888-888888888888";
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m13w-suspended@x.test')`, [
+      suspendedUser,
+    ]);
+    const suspendedMember = (
+      await admin.query(
+        `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'suspended') RETURNING id`,
+        [suspendedUser, ORG_A],
+      )
+    ).rows[0].id as string;
+
+    const facts = await svc.loadWitnessFacts(ORG_A, suspendedUser);
+    expect(facts).toMatchObject({ witnessMembershipId: suspendedMember, witnessMembershipActive: false });
+  });
+
   it("RLS: org B cannot void or read org A's administration (404 under the wardenx_app policy)", async () => {
     const rec = await svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs());
     await expect(svc.getAdministration(ORG_B, rec.id)).rejects.toMatchObject({ statusCode: 404 });

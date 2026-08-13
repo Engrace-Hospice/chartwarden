@@ -39,6 +39,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import {
   AdministrationStateError,
   type BarcodeMatchResult,
+  WITNESS_ELIGIBLE_DISCIPLINES,
   barcodeScanBlocks,
   buildWitnessAttestationToken,
   evaluateBarcodeScan,
@@ -48,7 +49,7 @@ import {
 } from "@wardenx/emar";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, ValidationError } from "@wardenx/types";
-import { and, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNull, lte, or } from "drizzle-orm";
 import type { CaregiverReviewAbacFacts, WitnessAbacFacts } from "./abac-predicates";
 import type {
   AdministrationPolicyView,
@@ -113,6 +114,9 @@ const CKD = schema.comfortKitDeployments;
 const POL = schema.administrationPolicy;
 const BSE = schema.barcodeScanEvents;
 const WIT = schema.administrationWitnesses;
+const MEM = schema.memberships;
+const MEM_ROLE = schema.membershipRoles;
+const ROLE = schema.roles;
 
 /** The in-memory slice's default policy (returned when the org has no `administration_policy` row). */
 const DEFAULT_POLICY: AdministrationPolicyView = {
@@ -254,14 +258,54 @@ export function createDbEmarBackend(
 
   return {
     // ── EmarAbacResolver (§4.7 predicate facts) ────────────────────────────────────────────────────────
-    async loadWitnessFacts(
-      _orgId: string,
-      _witnessUserId: string,
-    ): Promise<WitnessAbacFacts | null> {
-      // TODO(M13L-T02): witness discipline/membership facts live in M2 (organization_membership), outside
-      // M13's tables. Fail closed (deny) until the membership read is wired; gates the controlled-substance
-      // witness write path (501 today).
-      return null;
+    async loadWitnessFacts(orgId: string, witnessUserId: string): Promise<WitnessAbacFacts | null> {
+      // GAP-021 — the M2 organization_membership + M3 membership_role read the TODO deferred (the M30
+      // `loadMemberRoleKeys` precedent: membership_role → role, LIVE i.e. unexpired grants only).
+      return withOrg(orgId, async (tx) => {
+        const [mem] = await tx
+          .select({ id: MEM.id, status: MEM.status })
+          .from(MEM)
+          .where(and(eq(MEM.organizationId, orgId), eq(MEM.userId, witnessUserId)))
+          .limit(1);
+        if (!mem) return null; // no membership on this tenant → fail closed
+        const roleRows = await tx
+          .select({ key: ROLE.key })
+          .from(MEM_ROLE)
+          .innerJoin(ROLE, eq(MEM_ROLE.roleId, ROLE.id))
+          .where(
+            and(
+              eq(MEM_ROLE.organizationId, orgId),
+              eq(MEM_ROLE.membershipId, mem.id),
+              // time-bound roles (on-call elevation, §7.2): only the live, unexpired grants count.
+              or(isNull(MEM_ROLE.expiresAt), gt(MEM_ROLE.expiresAt, new Date())),
+            ),
+          );
+        const roleKeys = roleRows.map((r) => r.key);
+        // The pure eligibility check needs ONE discipline value; prefer a WITNESS_ELIGIBLE_DISCIPLINES
+        // match (a clinician often holds several roles) so an ineligible-discipline witness still renders
+        // the precise `discipline_ineligible` reason rather than an arbitrary held role.
+        const witnessDiscipline =
+          roleKeys.find((k) =>
+            (WITNESS_ELIGIBLE_DISCIPLINES as readonly string[]).includes(k.toLowerCase()),
+          ) ??
+          roleKeys[0] ??
+          "";
+        return {
+          witnessMembershipId: mem.id,
+          witnessDiscipline,
+          witnessMembershipActive: mem.status === "active",
+          // The query above is already scoped to `orgId` — a resolved row is same-tenant by construction.
+          sameTenant: true,
+          // Portal caregivers are never `organization_membership` rows (a distinct M31 actor kind) — a
+          // resolved staff membership can never BE a caregiver.
+          witnessIsCaregiver: false,
+          // Not resolvable from (orgId, userId) alone — a genuine break-glass grant is a per-request /
+          // per-predicate-evaluation fact (requireAbac's own branch), not a queryable session-wide one.
+          // Documented gap: a break-glass witness is still correctly ELIGIBLE here (the security control
+          // is real), it just never gets the extra warn-audit event a true break-glass witness should.
+          witnessIsBreakGlass: false,
+        };
+      });
     },
     async loadCaregiverReviewFacts(
       orgId,
