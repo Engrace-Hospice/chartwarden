@@ -227,7 +227,12 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
       const patientId = portalPatientIdOf(actor);
       const body = parse(MessageSendRequest, request.body);
       const provider = arm<MessagingSendArm>("MessagingProvider");
-      await provider.syncCareTeamChannel?.(actor.organizationId, patientId);
+      try {
+        await provider.syncCareTeamChannel?.(actor.organizationId, patientId);
+      } catch {
+        /* degrade gracefully, same as read.routes.ts's channel pointer — the send below still
+           opens/finds the channel and proceeds even if the roster reconcile itself failed */
+      }
       const channel = await provider.openChannel(actor.organizationId, {
         kind: "care_team",
         subjectId: patientId,

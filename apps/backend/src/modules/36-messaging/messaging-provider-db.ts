@@ -9,9 +9,12 @@
 // is the backstop.
 //
 // SCOPE (FB-T05): the channel/message CRUD (`openChannel`/`sendMessage`/`markRead`/`listMessages`) is
-// live. The auto-sync hooks (`sync*`/`archiveCareTeamChannel`, §2.3) are driven by M5/M16/M17/M19
-// outbox events that are not wired in Phase 1 — they stay forward-seam deferrals (a clear NOT_IMPLEMENTED
-// throw) rather than reconcile membership against source data that has no live producer yet.
+// live. GAP-059 (2026-08-13) makes `syncCareTeamChannel` real too, over the new M5 `CareTeamProvider`
+// seam (M36 spec D5) — it reconciles a `care_team` channel's `source:'auto'` membership against the
+// real `patient_assignment` roster, leaving any `source:'manual'` rows untouched per D5's admin-override
+// invariant. `syncOnCallChannel`/`syncBereavementChannel`/`archiveCareTeamChannel` stay forward-seam
+// deferrals — driven by M16/M17/M19 outbox events not wired in Phase 1 — since they have no equivalent
+// read seam yet (a clear NOT_IMPLEMENTED throw beats reconciling against source data with no producer).
 import { type DbClient, schema } from "@wardenx/db";
 import type {
   ChannelKind,
@@ -21,7 +24,8 @@ import type {
 } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
+import { getSeam } from "../../bootstrap/index";
 import {
   type MessageBodyCipher,
   channelOr404,
@@ -33,6 +37,9 @@ import {
 const CH = schema.channels;
 const CM = schema.channelMembers;
 const MSG = schema.messages;
+
+/** The seam envelope's actor id — a roster-reconcile write has no acting membership (M4 NULLIFs it). */
+const SYNC_SYSTEM_USER_ID = "";
 
 /** The channel-kind shape the §3.3 `channel_kind_subject_shape` CHECK enforces (subject + retention). */
 function channelShape(kind: ChannelKind): {
@@ -196,9 +203,78 @@ export function createDbMessagingProvider(
       });
     },
 
-    // Auto-sync hooks (§2.3) — driven by source-module outbox events not wired in Phase 1.
-    async syncCareTeamChannel() {
-      notWired("syncCareTeamChannel");
+    // GAP-059 / M36 spec D5 — reconcile the patient's `care_team` channel membership against the
+    // real roster (M5 CareTeamProvider). Auto-sourced rows only: a `source:'manual'` add (admin
+    // override) is left alone, never re-added and never removed by the reconciler.
+    async syncCareTeamChannel(orgId, patientId) {
+      return withOrgContext(
+        db,
+        { organizationId: orgId, userId: SYNC_SYSTEM_USER_ID },
+        async (tx) => {
+          const shape = channelShape("care_team");
+          const existing = (await tx
+            .select({ id: CH.id })
+            .from(CH)
+            .where(
+              and(
+                eq(CH.organizationId, orgId),
+                eq(CH.channelKind, "care_team"),
+                eq(CH.subjectId, patientId),
+              ),
+            )
+            .limit(1)) as Array<{ id: string }>;
+          const channelId = existing[0]
+            ? existing[0].id
+            : ((
+                await tx
+                  .insert(CH)
+                  .values({
+                    organizationId: orgId,
+                    channelKind: "care_team",
+                    subjectId: patientId,
+                    title: defaultTitle("care_team"),
+                    retentionClass: shape.retentionClass,
+                  })
+                  .returning({ id: CH.id })
+              )[0] as { id: string }).id;
+
+          const roster = new Set(
+            await getSeam("CareTeamProvider").careTeamMembers({
+              organizationId: orgId,
+              patientId,
+            }),
+          );
+          const activeMembers = (await tx
+            .select({ id: CM.id, userId: CM.userId, source: CM.source })
+            .from(CM)
+            .where(
+              and(eq(CM.organizationId, orgId), eq(CM.channelId, channelId), isNull(CM.removedAt)),
+            )) as Array<{ id: string; userId: string; source: "auto" | "manual" }>;
+          const activeUserIds = new Set(activeMembers.map((m) => m.userId));
+
+          const toAdd = [...roster].filter((userId) => !activeUserIds.has(userId));
+          const toRemove = activeMembers.filter(
+            (m) => m.source === "auto" && !roster.has(m.userId),
+          );
+
+          if (toAdd.length > 0) {
+            await tx.insert(CM).values(
+              toAdd.map((userId) => ({
+                organizationId: orgId,
+                channelId,
+                userId,
+                role: "member" as const,
+                source: "auto" as const,
+              })),
+            );
+          }
+          for (const m of toRemove) {
+            await tx.update(CM).set({ removedAt: new Date() }).where(eq(CM.id, m.id));
+          }
+
+          return { channelId, membershipChanged: toAdd.length > 0 || toRemove.length > 0 };
+        },
+      );
     },
     async syncOnCallChannel() {
       notWired("syncOnCallChannel");

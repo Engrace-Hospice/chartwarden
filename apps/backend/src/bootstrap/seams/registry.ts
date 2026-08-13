@@ -36,6 +36,7 @@ import {
   capAccrualReaderDenyStub,
   capProjectionProviderDenyStub,
   carePlanReaderDenyStub,
+  careTeamDenyStub,
   caseloadDenyStub,
   certificationReaderDenyStub,
   claimLineReaderDenyStub,
@@ -180,6 +181,7 @@ const registry = new Map<SeamName, unknown>();
  */
 export const REQUIRED_SEAMS = [
   { key: "CaseloadProvider", ownerModule: 5, phi: true, denyStub: caseloadDenyStub },
+  { key: "CareTeamProvider", ownerModule: 5, phi: true, denyStub: careTeamDenyStub },
   { key: "PatientReader", ownerModule: 5, phi: true, denyStub: patientReaderDenyStub },
   // M5 (§3.4) — the coverage list M23/M24 resolve a claim's billed payer from. PHI: carries the
   // member/subscriber id, so it is boot-validated and fail-closed like the other M5 reads.
