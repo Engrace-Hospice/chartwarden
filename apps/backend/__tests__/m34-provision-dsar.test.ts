@@ -8,9 +8,10 @@
 //     and reports the surveyor summary; on replay (status ≠ provisioning) it short-circuits to a no-op and
 //     touches none of the side-effect ports; an empty transition reason / vanished row are refused.
 //   • the dsar-export worker resolves the merged subject, fans out the registered `TenantExportShard`s in
-//     deterministic (sorted) order recording a per-module receipt, seals + hashes the bundle, emits the
-//     M22 §1.1 upload-request handshake (the bundle back-ref = jobId) + `m34.dsar_export.completed`, drives
-//     requested→generating→review_pending, and is digest-stable across a replay.
+//     deterministic (sorted) order recording a per-module receipt, seals + hashes the bundle, renders the
+//     §1.1 chart PDF DIRECTLY through M22's DocumentRenderer (GAP-048 — no outbox round-trip; the bundle
+//     back-ref = jobId) then emits `m34.dsar_export.completed`, drives requested→generating→review_pending,
+//     and is digest-stable across a replay.
 import {
   DSAR_BUNDLE_PRESIGNED_TTL_MS,
   type DsarExportJobInput,
@@ -18,7 +19,6 @@ import {
   type DsarShardReceipt,
   FIRST_ADMIN_INVITATION_TTL_DAYS,
   type FhirResourceSink,
-  M22_DOCUMENT_UPLOAD_REQUESTED,
   M34_DSAR_EXPORT_COMPLETED,
   PROVISION_MINIO_PREFIXES,
   type ProvisionJob,
@@ -235,13 +235,15 @@ function fakeShard(moduleKey: string, n: number): TenantExportShard {
 }
 
 /** A recording set of DSAR ports — captures the lifecycle (updateJob), the §164.528 ledger (appendEvent),
- *  the outbox emissions, and the resolved subject; backs the sink with an in-memory resource array. */
+ *  the direct M22 render call, the outbox emissions, and the resolved subject; backs the sink with an
+ *  in-memory resource array. */
 function makeDsarPorts() {
   const sinkResources: unknown[] = [];
   const jobPatches: Array<{
     status: string;
     bundleSha256?: string;
     bundleMinioObjectKey?: string;
+    bundleDocumentId?: string;
   }> = [];
   const ledger: Array<{
     eventKind: string;
@@ -250,6 +252,7 @@ function makeDsarPorts() {
     shardReceipt?: DsarShardReceipt | null;
   }> = [];
   const outbox: Array<{ event: string; payload: Record<string, unknown> }> = [];
+  const renderCalls: Array<{ aggregateId: string; bundleMinioObjectKey: string }> = [];
   let sealedKey: string | undefined;
 
   const ports: DsarExportWorkerPorts = {
@@ -258,7 +261,7 @@ function makeDsarPorts() {
       return { resolvedPatientId: RESOLVED_PATIENT };
     },
     async openBundleSink({ jobId }) {
-      const objectKey = `tenants/org_engrace/exports/dsar/${jobId}.tar.gz`;
+      const objectKey = `tenants/org_engrace/exports/dsar/${jobId}.ndjson.gz`;
       const sink: FhirResourceSink = {
         async write(resource: unknown) {
           sinkResources.push(resource);
@@ -281,11 +284,15 @@ function makeDsarPorts() {
         shardReceipt: args.shardReceipt,
       });
     },
+    async renderBundleDocument(args) {
+      renderCalls.push({ aggregateId: args.aggregateId, bundleMinioObjectKey: args.bundleMinioObjectKey });
+      return { documentId: `doc_${args.aggregateId}` };
+    },
     async publishOutbox(event, payload) {
       outbox.push({ event, payload });
     },
   };
-  return { ports, sinkResources, jobPatches, ledger, outbox, sealed: () => sealedKey };
+  return { ports, sinkResources, jobPatches, ledger, outbox, renderCalls, sealed: () => sealedKey };
 }
 
 describe("M34 §7.3 — tenant.dsar_export worker (fan-out + lifecycle)", () => {
@@ -333,30 +340,27 @@ describe("M34 §7.3 — tenant.dsar_export worker (fan-out + lifecycle)", () => 
     expect(receiptModules).toEqual(["m05", "m09", "m22"]);
   });
 
-  it("emits the M22 §1.1 upload-request (bundle back-ref = jobId) then m34.dsar_export.completed", async () => {
+  it("renders the bundle document directly through M22 (bundle back-ref = jobId), then emits m34.dsar_export.completed", async () => {
     registerTenantExportShard(fakeShard("m05", 1));
-    const { ports, outbox } = makeDsarPorts();
+    const { ports, outbox, renderCalls, jobPatches } = makeDsarPorts();
     const result = await runDsarExportJob(DSAR_INPUT, ports);
 
-    expect(outbox.map((o) => o.event)).toEqual([
-      M22_DOCUMENT_UPLOAD_REQUESTED,
-      M34_DSAR_EXPORT_COMPLETED,
-    ]);
+    // GAP-048: the render is a DIRECT call (no outbox round-trip) — exactly one M22 render, before the
+    // single remaining outbox event.
+    expect(renderCalls).toHaveLength(1);
+    expect(renderCalls[0]?.aggregateId).toBe("dsar_1");
+    expect(renderCalls[0]?.bundleMinioObjectKey).toBe(result.bundleMinioObjectKey);
+    expect(result.bundleDocumentId).toBe("doc_dsar_1");
+    // The terminal job patch already carries the rendered document id (synchronous, no backref consumer).
+    expect(jobPatches.at(-1)?.bundleDocumentId).toBe("doc_dsar_1");
 
-    const upload = outbox[0]?.payload;
-    // The bundle back-reference: the rendered document aggregates onto the DSAR job id.
-    expect(upload?.aggregateId).toBe("dsar_1");
-    expect(upload?.bundleMinioObjectKey).toBe(result.bundleMinioObjectKey);
-    expect(upload?.bundleSha256).toBe(result.bundleSha256);
-    expect(upload?.partTwoRedactionApplied).toBe(true);
-    expect(upload?.patientId).toBe(RESOLVED_PATIENT);
-
-    const completed = outbox[1]?.payload;
+    expect(outbox.map((o) => o.event)).toEqual([M34_DSAR_EXPORT_COMPLETED]);
+    const completed = outbox[0]?.payload;
     expect(completed).toMatchObject({
       jobId: "dsar_1",
       orgId: "org_engrace",
       tenantAccountId: "ta_engrace",
-      bundleDocumentId: null, // M22's reply patches it later via the backref consumer
+      bundleDocumentId: "doc_dsar_1",
       bundleSha256: result.bundleSha256,
     });
   });
@@ -395,9 +399,6 @@ describe("M34 §7.3 — tenant.dsar_export worker (fan-out + lifecycle)", () => 
       "bundle_assembled",
       "bundle_uploaded",
     ]);
-    expect(outbox.map((o) => o.event)).toEqual([
-      M22_DOCUMENT_UPLOAD_REQUESTED,
-      M34_DSAR_EXPORT_COMPLETED,
-    ]);
+    expect(outbox.map((o) => o.event)).toEqual([M34_DSAR_EXPORT_COMPLETED]);
   });
 });

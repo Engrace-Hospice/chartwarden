@@ -119,6 +119,14 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "clinical_record",
     defaultTitle: "Lab Results",
   },
+  // GAP-048 — M34's §7.3 DSAR-export worker renders the assembled FHIR Bundle chart PDF through this key
+  // (a direct `DocumentRenderer.render()` call, not an outbox round-trip — no DSAR-specific aggregate
+  // exists, so the job id itself is the back-referenced aggregate, `aggregateType: "other"`).
+  dsar_bundle: {
+    aggregateType: "other",
+    retentionClass: "compliance",
+    defaultTitle: "DSAR Export Bundle",
+  },
 } as const;
 
 /** The shape every W2 caller's typed payload carries (a structural minimum; the full payload is template-

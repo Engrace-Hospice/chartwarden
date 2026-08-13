@@ -20,12 +20,17 @@ import { type CursorPage, paginate } from "./concurrency";
 export type M34TenantQueueName = "tenant.dsar_export" | "tenant.export";
 
 /**
- * Thin worker-trigger port the command routes enqueue onto. The LIVE BullMQ worker construction +
- * binding each worker port to its real adapter is the SEPARATE Phase-2D follow-up; here a command route
- * only enqueues `{ jobId }` to a named queue (per the §4.3 idempotency key). The slice records the call.
+ * Thin worker-trigger port the command routes enqueue onto. A command route enqueues at least `{ jobId }`
+ * (per the §4.3 idempotency key: `${queue}:${payload.jobId}`) — GAP-048's `tenant.dsar_export` payload
+ * carries the full `DsarExportJobInput` shape (`orgId`/`tenantAccountId`/`patientId` too) since the
+ * worker's own `withOrgContext` needs `orgId` before it can read anything under RLS. The slice records
+ * whatever payload it's given.
  */
 export interface EnqueuePort {
-  enqueue(queue: M34TenantQueueName, payload: { jobId: string }): Promise<void>;
+  enqueue(
+    queue: M34TenantQueueName,
+    payload: { jobId: string } & Record<string, unknown>,
+  ): Promise<void>;
 }
 
 // ── route DTOs (in-memory; the Drizzle adapter projects rows to the SAME shapes) ──────────────────────

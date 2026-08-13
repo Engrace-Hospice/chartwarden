@@ -131,7 +131,9 @@ export {
 export {
   type M34WorkerDeps,
   M34WorkerPortUnbound,
+  buildM34WorkerPorts,
   registerM34DekRotateWorker,
+  registerM34DsarExportWorker,
   registerM34Workers,
   registerM34ProvisionWorker,
   registerM34ShredWorker,
