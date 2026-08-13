@@ -96,12 +96,33 @@ const TIME_OFF_STATE = Type.Union([
   Type.Literal("consumed"),
 ]);
 
+// GAP-093 — mirrors `credential_discipline` / `credential_status` (packages/db/src/enums.ts).
+const CREDENTIAL_DISCIPLINE = Type.Union([
+  Type.Literal("rn"),
+  Type.Literal("lpn"),
+  Type.Literal("chha"),
+  Type.Literal("msw"),
+  Type.Literal("chaplain"),
+  Type.Literal("volunteer"),
+  Type.Literal("md"),
+  Type.Literal("np"),
+]);
+const CREDENTIAL_STATUS = Type.Union([
+  Type.Literal("active"),
+  Type.Literal("suspended"),
+  Type.Literal("revoked"),
+]);
+
 // ── params + query ──────────────────────────────────────────────────────────────────────────────────────
 export const VisitIdParamsSchema = Type.Object({ visitId: Type.String({ format: "uuid" }) });
 export const ProposalIdParamsSchema = Type.Object({ proposalId: Type.String({ format: "uuid" }) });
 export const IdParamsSchema = Type.Object({ id: Type.String({ format: "uuid" }) });
 export const MembershipIdParamsSchema = Type.Object({
   membershipId: Type.String({ format: "uuid" }),
+});
+export const MembershipCredentialParamsSchema = Type.Object({
+  membershipId: Type.String({ format: "uuid" }),
+  credentialId: Type.String({ format: "uuid" }),
 });
 
 export const VisitListQuerySchema = Type.Object({
@@ -329,6 +350,31 @@ export const TimeOffViewSchema = Type.Object({
 });
 export const TimeOffListResponseSchema = Type.Array(TimeOffViewSchema);
 
+// GAP-093 — membership_credential grant/revoke/list.
+export const CredentialViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  membershipId: Type.String({ format: "uuid" }),
+  credentialType: CREDENTIAL_DISCIPLINE,
+  status: CREDENTIAL_STATUS,
+  effectiveAt: Type.String({ format: "date" }),
+  expiresAt: Nullable(Type.String({ format: "date" })),
+  revokedAt: Nullable(Type.String({ format: "date-time" })),
+  revokedReason: Nullable(Type.String()),
+  issuingBody: Nullable(Type.String()),
+  grantedByMembershipId: Type.String({ format: "uuid" }),
+  createdAt: Type.String({ format: "date-time" }),
+});
+export const CredentialListResponseSchema = Type.Array(CredentialViewSchema);
+export const GrantCredentialRequest = Type.Object({
+  credentialType: CREDENTIAL_DISCIPLINE,
+  effectiveAt: Type.String({ format: "date" }),
+  expiresAt: Type.Optional(Nullable(Type.String({ format: "date" }))),
+  issuingBody: Type.Optional(Type.String({ maxLength: 200 })),
+});
+export const RevokeCredentialRequest = Type.Object({
+  reason: Type.String({ minLength: 3, maxLength: 1000 }),
+});
+
 /** §5 — day-view grid (per-clinician visits for one service date). */
 export const DayViewResponseSchema = Type.Object({
   date: Type.String({ format: "date" }),
@@ -437,6 +483,14 @@ type _Optimize = Conforms<
 type _Portal = Conforms<
   Static<typeof PortalUpcomingResponseSchema>,
   ReturnType<ServiceType["portalUpcoming"]>
+>;
+type _CredentialList = Conforms<
+  Static<typeof CredentialListResponseSchema>,
+  Awaited<ReturnType<ServiceType["listCredentials"]>>
+>;
+type _CredentialGrant = Conforms<
+  Static<typeof CredentialViewSchema>,
+  Awaited<ReturnType<ServiceType["grantCredential"]>>
 >;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */

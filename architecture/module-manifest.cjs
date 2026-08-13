@@ -549,6 +549,7 @@ exports.MODULES = [
     dependsOn: [1, 5, 8, 40], // +M1: the bootstrap seam registry (registerSeam/getSeam) M17's backend module wires its §4.3 owned seams (VisitReader/VisitAssignmentReader/PortalVisitReader/VisitMetricsProvider) into (M17-T05; M6..M14 seam-task precedent)
     ownedTables: [
       "clinician_availability",
+      "membership_credential",
       "recurring_visit",
       "route_segment",
       "time_off",

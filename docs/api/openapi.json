@@ -103695,6 +103695,468 @@
         }
       }
     },
+    "/api/v1/memberships/{membershipId}/credentials": {
+      "get": {
+        "operationId": "getApiV1MembershipsByMembershipIdCredentials",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "GAP-093: a membership's clinical-license/certification roster",
+        "parameters": [
+          {
+            "name": "membershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "membershipId",
+                      "credentialType",
+                      "status",
+                      "effectiveAt",
+                      "expiresAt",
+                      "revokedAt",
+                      "revokedReason",
+                      "issuingBody",
+                      "grantedByMembershipId",
+                      "createdAt"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "membershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "credentialType": {
+                        "anyOf": [
+                          {
+                            "const": "rn",
+                            "type": "string"
+                          },
+                          {
+                            "const": "lpn",
+                            "type": "string"
+                          },
+                          {
+                            "const": "chha",
+                            "type": "string"
+                          },
+                          {
+                            "const": "msw",
+                            "type": "string"
+                          },
+                          {
+                            "const": "chaplain",
+                            "type": "string"
+                          },
+                          {
+                            "const": "volunteer",
+                            "type": "string"
+                          },
+                          {
+                            "const": "md",
+                            "type": "string"
+                          },
+                          {
+                            "const": "np",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "const": "active",
+                            "type": "string"
+                          },
+                          {
+                            "const": "suspended",
+                            "type": "string"
+                          },
+                          {
+                            "const": "revoked",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "effectiveAt": {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      "expiresAt": {
+                        "anyOf": [
+                          {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "revokedAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "revokedReason": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "issuingBody": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "grantedByMembershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "createdAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1MembershipsByMembershipIdCredentials",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "GAP-093: grant a clinical-license/certification credential (201)",
+        "parameters": [
+          {
+            "name": "membershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "membershipId",
+                    "credentialType",
+                    "status",
+                    "effectiveAt",
+                    "expiresAt",
+                    "revokedAt",
+                    "revokedReason",
+                    "issuingBody",
+                    "grantedByMembershipId",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "membershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "credentialType": {
+                      "anyOf": [
+                        {
+                          "const": "rn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "lpn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chha",
+                          "type": "string"
+                        },
+                        {
+                          "const": "msw",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chaplain",
+                          "type": "string"
+                        },
+                        {
+                          "const": "volunteer",
+                          "type": "string"
+                        },
+                        {
+                          "const": "md",
+                          "type": "string"
+                        },
+                        {
+                          "const": "np",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "suspended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "revoked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "effectiveAt": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "revokedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "revokedReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "issuingBody": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "grantedByMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "credentialType",
+                  "effectiveAt"
+                ],
+                "properties": {
+                  "credentialType": {
+                    "anyOf": [
+                      {
+                        "const": "rn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "lpn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "chha",
+                        "type": "string"
+                      },
+                      {
+                        "const": "msw",
+                        "type": "string"
+                      },
+                      {
+                        "const": "chaplain",
+                        "type": "string"
+                      },
+                      {
+                        "const": "volunteer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "md",
+                        "type": "string"
+                      },
+                      {
+                        "const": "np",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "effectiveAt": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "expiresAt": {
+                    "anyOf": [
+                      {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "issuingBody": {
+                    "maxLength": 200,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/memberships/{membershipId}/credentials/{credentialId}": {
+      "delete": {
+        "operationId": "deleteApiV1MembershipsByMembershipIdCredentialsByCredentialId",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "GAP-093: revoke a credential (204)",
+        "parameters": [
+          {
+            "name": "membershipId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "credentialId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 3,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/messaging/announce": {
       "post": {
         "operationId": "postApiV1MessagingAnnounce",

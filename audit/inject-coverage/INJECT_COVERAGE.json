@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1228,
-    "coveredRoutes": 1228,
-    "directRoutesReferenced": 1170
+    "routes": 1231,
+    "coveredRoutes": 1231,
+    "directRoutesReferenced": 1173
   },
   "modules": [
     {
@@ -55,6 +55,7 @@
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
+        "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
       "directRoutesReferenced": 14
@@ -169,13 +170,14 @@
     },
     {
       "module": "17-scheduling",
-      "routes": 29,
+      "routes": 32,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
+        "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
         "apps/backend/__tests__/scheduling-inject.test.ts"
       ],
-      "directRoutesReferenced": 29
+      "directRoutesReferenced": 32
     },
     {
       "module": "18-evv",

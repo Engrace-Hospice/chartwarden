@@ -147,6 +147,7 @@ export interface OrgScope {
 export type SeamName =
   | "CaseloadProvider" // M5/M17 — which patients an actor may see
   | "CareTeamProvider" // M5 — every user id currently on a patient's care team (M36 channel auto-sync, D5)
+  | "CredentialReader" // M17 — a membership's active clinical-license/certification rows as-of a date (§1.1 D8, GAP-093)
   | "PatientReader" // M5 — patient identity/demographics reads (§4.8; M29 cascade)
   | "PatientCoverageReader" // M5 — §3.4 coverage list; M23/M24 resolve which payer a claim bills
   | "PatientCaregiverReader" // M5 — TASK-015: is a user the patient's primary caregiver (M31 portal ABAC); deny-stub only
@@ -493,6 +494,35 @@ export interface CareTeamProvider {
   }): Promise<readonly string[]>;
 }
 
+/** One clinical-license/certification grant, as {@link CredentialReader} reports it (GAP-093). */
+export interface CredentialGrant {
+  /** The discipline the credential covers (M17's `SchedulingDiscipline` vocab: rn/lpn/chha/msw/
+   *  chaplain/volunteer/md/np) — a plain string here since a leaf package may not import a feature
+   *  package's enum type; callers compare against their own discipline constants. */
+  readonly kind: string;
+  readonly status: "active" | "suspended" | "revoked";
+}
+
+/**
+ * M17 — a membership's clinical-license/certification rows, as of a date (§1.1 D8, GAP-093). The D8
+ * `clinician_credentials_active` pre-schedule-gate predicate is the first consumer: it resolves the
+ * disciplines a visit purpose requires, then checks every required kind has an `active` row here —
+ * a check ORTHOGONAL to the RBAC role grant `discipline_matches_visit` checks (a clinician can hold
+ * the "rn" role while their actual nursing license has lapsed or been suspended). Leaf-safe (ids +
+ * plain strings only, no PHI).
+ */
+export interface CredentialReader {
+  /** Credential rows for `membershipId` that are genuinely active as of `asOf` (an ISO date):
+   *  `status: 'active'` AND `asOf` falls within the credential's effective/expiry window. A
+   *  suspended/revoked/not-yet-effective/expired row is simply absent from the result — the
+   *  caller does not need to re-derive date/status logic, only match `kind`. */
+  activeCredentialsAsOf(input: {
+    organizationId: string;
+    membershipId: string;
+    asOf: string;
+  }): Promise<readonly CredentialGrant[]>;
+}
+
 // M5's `PatientReader` (§4.8) + `PatientMutator` (§4.9) interfaces live in ./patient (alongside
 // PatientIdentity) and are imported above for the SeamContracts map.
 
@@ -651,6 +681,7 @@ export interface OrganizationReader {
 export interface SeamContracts {
   CaseloadProvider: CaseloadProvider;
   CareTeamProvider: CareTeamProvider;
+  CredentialReader: CredentialReader;
   PatientReader: PatientReader;
   PatientCoverageReader: PatientCoverageReader;
   PatientCaregiverReader: PatientCaregiverReader;

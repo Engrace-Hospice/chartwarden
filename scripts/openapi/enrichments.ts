@@ -1549,12 +1549,15 @@ import {
   CancelVisitRequest as M17CancelVisitRequest,
   CreateRecurringVisitRequest as M17CreateRecurringVisitRequest,
   CreateVisitRequest as M17CreateVisitRequest,
+  CredentialListResponseSchema as M17CredentialListResponseSchema,
+  CredentialViewSchema as M17CredentialViewSchema,
   DayViewQuerySchema as M17DayViewQuerySchema,
   DayViewResponseSchema as M17DayViewResponseSchema,
   DenyTimeOffRequest as M17DenyTimeOffRequest,
   DiscontinueRecurringVisitRequest as M17DiscontinueRecurringVisitRequest,
   DismissProposalRequest as M17DismissProposalRequest,
   EditVisitRequest as M17EditVisitRequest,
+  GrantCredentialRequest as M17GrantCredentialRequest,
   MapViewQuerySchema as M17MapViewQuerySchema,
   MapViewResponseSchema as M17MapViewResponseSchema,
   MetricsQuerySchema as M17MetricsQuerySchema,
@@ -1573,6 +1576,7 @@ import {
   RequestTimeOffRequest as M17RequestTimeOffRequest,
   RescheduleResponseSchema as M17RescheduleResponseSchema,
   RescheduleVisitRequest as M17RescheduleVisitRequest,
+  RevokeCredentialRequest as M17RevokeCredentialRequest,
   RouteEfficiencyQuerySchema as M17RouteEfficiencyQuerySchema,
   RouteEfficiencyResponseSchema as M17RouteEfficiencyResponseSchema,
   StartVisitRequest as M17StartVisitRequest,
@@ -6721,6 +6725,19 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Per-clinician route-efficiency metrics",
     query: M17RouteEfficiencyQuerySchema,
     response: M17RouteEfficiencyResponseSchema,
+  },
+  "GET /api/v1/memberships/:membershipId/credentials": {
+    summary: "GAP-093: a membership's clinical-license/certification roster",
+    response: M17CredentialListResponseSchema,
+  },
+  "POST /api/v1/memberships/:membershipId/credentials": {
+    summary: "GAP-093: grant a clinical-license/certification credential (201)",
+    body: M17GrantCredentialRequest,
+    response: M17CredentialViewSchema,
+  },
+  "DELETE /api/v1/memberships/:membershipId/credentials/:credentialId": {
+    summary: "GAP-093: revoke a credential (204)",
+    body: M17RevokeCredentialRequest,
   },
 });
 
