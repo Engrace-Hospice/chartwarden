@@ -36,6 +36,12 @@ export interface RenderUpsert {
   readonly bucket: string;
   /** The content hash of the rendered bytes (immutable per version, §2.3). */
   readonly sha256Hex: string;
+  /** The rendered byte count — `document_version.byte_size` is NOT NULL (GAP-095). */
+  readonly byteSize: number;
+  /** The rendered content's MIME type — `document_version.mime_type` is NOT NULL (GAP-095). Every
+   *  current template renders the §7.2 stand-in PDF, so this is always `"application/pdf"` today;
+   *  carried on the DTO (not hardcoded in the store) so a future non-PDF template stays honest. */
+  readonly mimeType: string;
   readonly renderedAt: IsoInstant;
 }
 

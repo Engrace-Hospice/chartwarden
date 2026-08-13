@@ -42,6 +42,7 @@ export {
   createDrizzleDocumentReaderStore,
   createRefusingObjectStore,
 } from "./drizzle-readers-store";
+export { RENDER_SYSTEM_MEMBERSHIP_ID, createDrizzleDocumentSeamStore } from "./drizzle-seam-store";
 // The PRODUCTION MinIO/S3 ObjectStorePort (dependency-free SigV4 over fetch + node:crypto) — binds
 // over the refusing adapter when the MINIO_* env contract is present (composition-root decision).
 export {

@@ -163,6 +163,9 @@ function renderBytes(templateKey: string, payload: unknown): Uint8Array {
   return new TextEncoder().encode(`%PDF-1.7\n% wardenx-render\n${json}\n`);
 }
 
+/** Every current template resolves through {@link renderBytes}' PDF stand-in (GAP-095). */
+const RENDER_MIME_TYPE = "application/pdf";
+
 export interface DocumentRendererDeps {
   readonly store: DocumentSeamStore;
   readonly objects: ObjectStorePort;
@@ -226,6 +229,8 @@ export function createDocumentRenderer(deps: DocumentRendererDeps): DocumentRend
         objectKey,
         bucket,
         sha256Hex,
+        byteSize: bytes.byteLength,
+        mimeType: RENDER_MIME_TYPE,
         renderedAt: now(),
       });
 
