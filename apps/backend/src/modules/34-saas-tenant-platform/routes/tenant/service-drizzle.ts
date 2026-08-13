@@ -280,7 +280,9 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
           occurredAt: now,
           shardReceipt: { justification: args.justification },
         });
-        await deps.enqueue.enqueue("tenant.export", { jobId: row.id });
+        // GAP-094: the worker's job payload is `TenantExportJobBody` (`{jobId, orgId}`) — `orgId` must be
+        // enqueued alongside `jobId` so the worker's `withOrgContext` can open before touching any row.
+        await deps.enqueue.enqueue("tenant.export", { jobId: row.id, orgId: organizationId });
         return tenantExportView(row);
       });
     },

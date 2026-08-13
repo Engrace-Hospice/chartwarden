@@ -46,14 +46,17 @@ import type {
   ShredDestructivePort,
   ShredEraserCallbackPort,
   ShredWorkerPorts,
+  TenantExportJobBody,
   TenantExportWorkerPorts,
 } from "@wardenx/saas-tenant-platform";
+import { listTenantExportShards } from "@wardenx/saas-tenant-platform";
 import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import { createTenantShredEraserCallback } from "../shred-eraser-adapter";
 import { assertM34ShredPreflight } from "../shred-preflight";
+import { createTenantExportBundleSink } from "../tenant-export-bundle-sink";
 import {
   M34_JOB_SCHEDULES,
   M34_QUEUES,
@@ -196,6 +199,30 @@ export interface M34WorkerDeps {
     };
     readonly outbox: NonNullable<M34WorkerDeps["provision"]>["outbox"];
   };
+  /**
+   * Complete tenant-export capability (GAP-094, the `tenant.export` sibling of `dsarExport` above — SAME
+   * shape, minus an outbox port: the cover-letter render binds directly, never through the dead
+   * `m22.document.upload_requested` event). Omit and `tenant.export` stays unconstructed (no Worker at
+   * all, same posture as every other optional dep bag here).
+   */
+  readonly tenantExport?: {
+    readonly objectStore: {
+      putObject(args: {
+        readonly organizationId: string;
+        readonly objectKey: string;
+        readonly bytes: Uint8Array;
+      }): Promise<{ readonly sha256Hex: string }>;
+    };
+    readonly render: {
+      /** `aggregateId` is the tenant-export job id — the M22 `DocumentRenderer`'s required back-ref
+       *  identity (`RenderPayloadCore.aggregateId`), mirroring `DsarDocumentUploadRequest.aggregateId`. */
+      render(args: {
+        readonly organizationId: string;
+        readonly aggregateId: string;
+        readonly bundleSha256: string;
+      }): Promise<{ readonly documentId: string }>;
+    };
+  };
 }
 
 /** Raised when a worker port could not be bound to a real adapter (the missing-infra fail-closed signal).
@@ -238,7 +265,7 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
   const platformDb = deps.platformDb ?? deps.db;
 
   const keyRingRepo = new TenantKeyRingRepository(platformDb);
-  void new TenantExportRepository(db); // bound for the DSAR/export ledger ports (see per-port TODOs).
+  const tenantExportRepo = new TenantExportRepository(db);
 
   const inProvisionPlatform = <T>(reason: string, fn: (tx: DbClient) => Promise<T>): Promise<T> => {
     if (!deps.provision) {
@@ -727,46 +754,110 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
   };
 
   // ── tenant.export (runs under withOrgContext — the requesting tenant, F09) ───────────────────────────
-  // Needs the TenantExportShard fan-out registry (already in seam-bootstrap, listTenantExportShards), the
-  // M1 MinIO/envelope ExportBundleSink, the TenantExportRepository ledger, the M22 cover-letter outbox, and
-  // the M36 oversized-hold alert. The shard list is bindable now; the sinks/ledger/outbox need the seams.
+  // GAP-094: fully bound, mirroring GAP-048's dsarExport shape above. `listShards` is the live
+  // seam-bootstrap fan-out registry — a plain function (not a `getSeam` call; the registry lives in the
+  // SAME process, no seam indirection needed). `bundleSink` writes a REAL ustar tar.gz (no tar dependency
+  // in this repo — see ../tenant-export-tar.ts) and PUTs it as one object through the injected M1
+  // objectStore, mirroring GAP-048's single-PUT pattern over a real multi-file archive instead of a single
+  // logical document. `requestCoverLetterPdf` calls the M22 DocumentRenderer directly (GAP-048's
+  // precedent), never the dead `m22.document.upload_requested` outbox event an earlier design considered.
+  //
+  // `markGenerating`/`recordShardReceipt`/`markFulfilled`/`holdForOversizedApproval` take no `orgId` in
+  // their own signatures (the package's pure `TenantExportWorkerPorts` — unlike `DsarExportWorkerPorts`,
+  // which threads `orgId` through every call). `runTenantExportJob` always calls `markGenerating(jobId)`
+  // FIRST, before any other port, so `tenantExportOrgId` is captured there and reused by the later calls
+  // in the SAME job (ports are rebuilt fresh per job by the worker closure below — see `dsarBundleResources`
+  // above for the identical one-job-per-`buildM34WorkerPorts`-call precedent this relies on).
+  let tenantExportOrgId: string | undefined;
+  const requireTenantExportOrgId = (): string =>
+    tenantExportOrgId ??
+    unbound("tenantExport", "markGenerating must run before any other tenantExport port call");
   const tenantExport: TenantExportWorkerPorts = {
     now,
-    listShards: () =>
-      unbound(
-        "tenantExport.listShards",
-        "bind to listTenantExportShards() from seam-bootstrap (registry is live; this is a trivial pass-through to wire)",
-      ),
-    markGenerating: () =>
-      unbound(
-        "tenantExport.markGenerating",
-        "bind to TenantExportRepository status flip + ledger under withOrgContext",
-      ),
-    recordShardReceipt: () =>
-      unbound(
-        "tenantExport.recordShardReceipt",
-        "bind to TenantExportRepository.appendEvent under withOrgContext",
-      ),
-    bundleSink: () =>
-      unbound(
-        "tenantExport.bundleSink",
-        "bind to the M1 envelope/MinIO-backed ExportBundleSink (no MinIO seam yet)",
-      ),
-    requestCoverLetterPdf: () =>
-      unbound(
-        "tenantExport.requestCoverLetterPdf",
-        "bind to the live outbox dispatcher (m22.document.upload_requested)",
-      ),
-    markFulfilled: () =>
-      unbound(
-        "tenantExport.markFulfilled",
-        "bind to TenantExportRepository fulfilled flip + ledger under withOrgContext",
-      ),
-    holdForOversizedApproval: () =>
-      unbound(
-        "tenantExport.holdForOversizedApproval",
-        "bind to TenantExportRepository hold + the M36 platform-ops alert",
-      ),
+    listShards: () => listTenantExportShards(),
+    async markGenerating(jobId): Promise<void> {
+      const job = await tenantExportRepo.findById(jobId);
+      if (!job) throw new Error(`tenant_export_job ${jobId} not found`);
+      tenantExportOrgId = job.organizationId;
+      await tenantExportRepo.update(jobId, { status: "generating" });
+      await tenantExportRepo.appendEvent({
+        organizationId: job.organizationId,
+        tenantExportJobId: jobId,
+        eventKind: "generating",
+        occurredAt: now(),
+      });
+    },
+    async recordShardReceipt({ jobId, moduleKey, receipt }): Promise<void> {
+      await tenantExportRepo.appendEvent({
+        organizationId: requireTenantExportOrgId(),
+        tenantExportJobId: jobId,
+        eventKind: "shard_receipt",
+        moduleKey,
+        shardReceipt: receipt,
+        occurredAt: now(),
+      });
+    },
+    bundleSink() {
+      if (!deps.tenantExport?.objectStore) {
+        return unbound(
+          "tenantExport.bundleSink",
+          "bind the composition-root M1 S3 objectStore adapter (tenantExport.objectStore)",
+        );
+      }
+      const { objectStore } = deps.tenantExport;
+      return createTenantExportBundleSink({
+        putObject: (args) => objectStore.putObject(args),
+        nowSeconds: () => Math.floor(now().getTime() / 1000),
+      });
+    },
+    async requestCoverLetterPdf({ jobId, orgId, bundleSha256 }): Promise<{ documentId: string }> {
+      if (!deps.tenantExport?.render) {
+        return unbound(
+          "tenantExport.requestCoverLetterPdf",
+          "bind the composition-root M22 DocumentRenderer adapter (tenantExport.render)",
+        );
+      }
+      return deps.tenantExport.render.render({ organizationId: orgId, aggregateId: jobId, bundleSha256 });
+    },
+    async markFulfilled(input): Promise<void> {
+      await tenantExportRepo.update(input.jobId, {
+        status: "fulfilled",
+        fulfilledAt: now(),
+        bundleMinioObjectKey: input.bundleMinioObjectKey,
+        bundleSha256: input.bundleSha256,
+        bundleSizeBytes: input.bundleSizeBytes,
+        bundleModuleInventory: input.bundleModuleInventory,
+        bundlePresignedUrlExpiresAt: input.bundlePresignedUrlExpiresAt,
+      });
+      await tenantExportRepo.appendEvent({
+        organizationId: requireTenantExportOrgId(),
+        tenantExportJobId: input.jobId,
+        eventKind: "fulfilled",
+        shardReceipt: { bundleSha256: input.bundleSha256, bundleSizeBytes: input.bundleSizeBytes },
+        occurredAt: now(),
+      });
+    },
+    // SEC-052 — records the hold; deliberately does NOT flip status to 'fulfilled'. The tenant-scoped
+    // download route (service-drizzle.ts `tenantExportDownloadUrl`) already 409s any job whose status
+    // isn't 'fulfilled', so the hold is enforced by omission — no new status/column needed. The M36
+    // platform-ops alert this port's own doc comment names, and the platform-scoped `approve-oversized`
+    // release route that would ever un-hold a bundle, do not exist yet (the route is documented in
+    // typebox.ts's `ApproveOversizedExportRequest` but never registered) — tracked as a follow-up gap,
+    // not built here (GAP-094 is scoped to the worker; SEC-052 release is a separate platform-ops surface).
+    async holdForOversizedApproval(input): Promise<void> {
+      await tenantExportRepo.appendEvent({
+        organizationId: requireTenantExportOrgId(),
+        tenantExportJobId: input.jobId,
+        eventKind: "oversized_hold",
+        shardReceipt: {
+          bundleMinioObjectKey: input.bundleMinioObjectKey,
+          bundleSha256: input.bundleSha256,
+          bundleSizeBytes: input.bundleSizeBytes,
+          recordCount: input.recordCount,
+        },
+        occurredAt: now(),
+      });
+    },
   };
 
   // ── tenant.onboarding_advance (runs under withOrgContext — onboarding_task is org-scoped, §3.10) ──────
@@ -983,6 +1074,36 @@ export function registerM34DsarExportWorker(deps: M34WorkerDeps): Worker {
       );
     },
     { connection: deps.connection, concurrency: 4 },
+  );
+}
+
+/**
+ * Construct the production tenant-export worker (GAP-094 — the `tenant.export` sibling of
+ * `registerM34DsarExportWorker` above; SAME shape). Org-scoped (§7.6 F09 — `M34_QUEUE_SCOPE.export ===
+ * "org"`, never a platform bypass): opens ONE `withOrgContext(deps.db, {organizationId: job.data.orgId,
+ * ...}, tx => ...)` per job and rebuilds the port bag over that tx. The job payload is `TenantExportJobBody`
+ * (`{jobId, orgId}`) — the tenant route's `requestTenantExport` enqueues both fields (fixed alongside this,
+ * GAP-094: it previously enqueued a bare `{jobId}`, which would have left `withOrgContext` opening with an
+ * undefined `organizationId` the moment this worker went live).
+ */
+export function registerM34TenantExportWorker(deps: M34WorkerDeps): Worker {
+  if (!deps.tenantExport) {
+    throw new M34WorkerPortUnbound("tenantExport", "the object-store and DocumentRenderer adapters are required");
+  }
+  return new Worker(
+    M34_QUEUES.export,
+    async (job) => {
+      const data = job.data as TenantExportJobBody;
+      return withOrgContext(
+        deps.db,
+        { organizationId: data.orgId, userId: M34_DSAR_WORKER_SYSTEM_USER_ID },
+        (tx) =>
+          tenantExportProcessor(
+            buildM34WorkerPorts({ ...deps, db: tx as unknown as DbClient }).tenantExport,
+          )(data),
+      );
+    },
+    { connection: deps.connection, concurrency: 2 },
   );
 }
 

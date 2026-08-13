@@ -127,6 +127,14 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "compliance",
     defaultTitle: "DSAR Export Bundle",
   },
+  // GAP-094 — M34's §3.7/§7.6 tenant-export worker renders the cover-letter PDF that accompanies the
+  // whole-tenant NDJSON archive through this key (a direct `DocumentRenderer.render()` call, same as
+  // `dsar_bundle` above — the job id is the back-referenced aggregate, `aggregateType: "other"`).
+  tenant_export_cover_letter: {
+    aggregateType: "other",
+    retentionClass: "compliance",
+    defaultTitle: "Tenant Export Cover Letter",
+  },
 } as const;
 
 /** The shape every W2 caller's typed payload carries (a structural minimum; the full payload is template-

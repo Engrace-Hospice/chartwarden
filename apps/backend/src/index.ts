@@ -585,6 +585,7 @@ import {
   registerM34DsarExportWorker,
   registerM34ProvisionWorker,
   registerM34ShredWorker,
+  registerM34TenantExportWorker,
   registerSaasTenantPlatformErasers,
   registerTenantPlatformAbacPredicates,
   validateModule34Seams,
@@ -3054,12 +3055,37 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           outbox: m34OutboxPublisher,
         }
       : undefined;
+    // GAP-094 — the tenant-export worker's object-store PUT + M22 DocumentRenderer capability, the
+    // `tenant.export` sibling of the DSAR dep bag above. Reuses the SAME `m34DsarObjectStore` client (one
+    // stateless SigV4 signer off the one MINIO_* env contract — no reason to construct a second instance)
+    // and a new `tenant_export_cover_letter` render template (renderer.ts).
+    const m34TenantExportDeps = m34DsarObjectStore
+      ? {
+          objectStore: {
+            putObject: (args: { organizationId: string; objectKey: string; bytes: Uint8Array }) =>
+              m34DsarObjectStore.putObject({
+                bucket: deriveTenantBucket(args.organizationId),
+                objectKey: args.objectKey,
+                bytes: args.bytes,
+              }),
+          },
+          render: {
+            render: (args: { organizationId: string; aggregateId: string; bundleSha256: string }) =>
+              getDocumentRenderer().render(
+                { orgId: args.organizationId },
+                "tenant_export_cover_letter",
+                args,
+              ),
+          },
+        }
+      : undefined;
     if (m34ProvisionGateway && platformDbHandle) {
       const workerDeps = buildM34WorkerDeps({
         connection: queueConnection,
         db: dbHandle.db,
         platformDb: platformDbHandle.db,
         dsarExport: m34DsarExportDeps,
+        tenantExport: m34TenantExportDeps,
         provision: {
           auditBypass: m34PlatformBypassAuditor,
           ...m34ProvisionGateway,
@@ -3125,9 +3151,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         app.addHook("onClose", () => dsarExportWorker.close());
         enableM34JobCapability("tenant.dsar_export");
       }
+      // GAP-094 — the tenant-export worker, the same "org-scoped, constructed alongside the platform-scoped
+      // ones purely because workerDeps is already built here" posture as the DSAR worker just above.
+      if (m34TenantExportDeps) {
+        const tenantExportWorker = registerM34TenantExportWorker(workerDeps);
+        m34Workers.push(tenantExportWorker);
+        app.addHook("onClose", () => tenantExportWorker.close());
+        enableM34JobCapability("tenant.export");
+      }
       attachDlqAlertsToAll(m34Workers, "m34");
       app.log.info(
-        `M34 key lifecycle workers constructed: provision, dek_rotate${destructionDbHandle ? ", shred" : ""}${m34DsarExportDeps ? ", dsar_export" : ""}`,
+        `M34 key lifecycle workers constructed: provision, dek_rotate${destructionDbHandle ? ", shred" : ""}${m34DsarExportDeps ? ", dsar_export" : ""}${m34TenantExportDeps ? ", tenant_export" : ""}`,
       );
     } else {
       app.log.warn(
