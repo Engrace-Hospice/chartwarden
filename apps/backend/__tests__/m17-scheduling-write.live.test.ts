@@ -182,6 +182,30 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m17" }),
     };
     svc = createDbSchedulingBackend(handle.db, outbox);
+
+    // GAP-031 — the service-layer D8 gate now resolves discipline/pool/caseload for real (not just PTO),
+    // so `newVisit`'s clinicians need a real qualifying role, and the CaseloadProvider seam must be
+    // registered before ANY gate check runs (`getSeam` throws if requested before registration). `member`
+    // AND `member2` both get 'rn' (routine_visit's accepted disciplines are rn/lpn) since `reassignVisit`
+    // targets member2. ORG_A's unassigned-pool policy is opened rather than seeding a real caseload row
+    // for the fixture's non-existent `PATIENT` constant (no `patient` row backs that id in this file).
+    registerPatientSeams({ db: handle.db, caseload: { store: createDrizzleCaseloadStore(handle.db) } });
+    const rnRoleId = (
+      await admin.query(
+        `INSERT INTO role (organization_id, key, name, category) VALUES ($1,'rn','Registered Nurse','clinical_staff') RETURNING id`,
+        [ORG_A],
+      )
+    ).rows[0].id as string;
+    for (const membershipId of [seeded[ORG_A].member, seeded[ORG_A].member2]) {
+      await admin.query(
+        `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)`,
+        [ORG_A, membershipId, rnRoleId],
+      );
+    }
+    await admin.query(
+      `UPDATE organization SET settings = settings || '{"allow_unassigned_pool_assignment": true}'::jsonb WHERE id=$1`,
+      [ORG_A],
+    );
   }, 180_000);
 
   afterAll(async () => {
@@ -391,28 +415,104 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
     });
   });
 
-  // ── GAP-030 — the §4.7 SchedulingAbacResolver methods, live over real Postgres ────────────────────────
-  describe("GAP-030 — SchedulingAbacResolver over real data", () => {
-    const resolver = () => svc as unknown as SchedulingAbacResolver;
+  // ── GAP-031 — the SERVICE-layer D8 gate (reassign/edit/reschedule/publish) now threads discipline +
+  // caseload/pool into `preScheduleGatePassed`, not just `not_on_pto` — proves the write is actually
+  // BLOCKED end-to-end (not just that the resolver methods return the right booleans in isolation, which
+  // the GAP-030 describe block below already covers for the route-layer predicates).
+  describe("GAP-031 — preScheduleGatePassed resolves discipline + caseload/pool for real", () => {
+    let wrongDisciplineMember: string;
 
-    it("resolveDiscipline resolves a real, unexpired role grant's key", async () => {
-      const { member } = seeded[ORG_A];
-      const roleId = (
+    beforeAll(async () => {
+      // A membership whose only role ('chaplain') is NOT in routine_visit's accepted set (rn/lpn).
+      const suffix = `${Date.now()}-wrongdisc`;
+      const user = (
+        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`m17w-${suffix}@x.test`])
+      ).rows[0].id as string;
+      wrongDisciplineMember = (
         await admin.query(
-          `INSERT INTO role (organization_id, key, name, category) VALUES ($1,'rn','Registered Nurse','clinical_staff') RETURNING id`,
+          `INSERT INTO membership (user_id, organization_id, status, default_provider_entity_id, default_location_ids)
+           VALUES ($1,$2,'active',$3,$4::jsonb) RETURNING id`,
+          [user, ORG_A, seeded[ORG_A].pe, JSON.stringify([seeded[ORG_A].location])],
+        )
+      ).rows[0].id as string;
+      const chaplainRoleId = (
+        await admin.query(
+          `INSERT INTO role (organization_id, key, name, category) VALUES ($1,'chaplain','Chaplain','clinical_staff') RETURNING id`,
           [ORG_A],
         )
       ).rows[0].id as string;
       await admin.query(
         `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)`,
-        [ORG_A, member, roleId],
+        [ORG_A, wrongDisciplineMember, chaplainRoleId],
       );
+    });
+
+    it("reassignVisit is rejected when the target's discipline doesn't match the visit purpose", async () => {
+      const { member } = seeded[ORG_A];
+      const v = await newVisit(ORG_A, member);
+      await expect(
+        svc.reassignVisit(ORG_A, member, v.id, wrongDisciplineMember),
+      ).rejects.toMatchObject({ message: "PRE_SCHEDULE_GATE_FAILED", statusCode: 403 });
+      // The assignment must NOT have changed.
+      const { rows } = await admin.query("SELECT assigned_membership_id FROM visit WHERE id=$1", [v.id]);
+      expect(rows[0].assigned_membership_id).toBe(member);
+    });
+
+    it("editVisit reassignment is rejected on the same discipline mismatch", async () => {
+      const { member } = seeded[ORG_A];
+      const v = await newVisit(ORG_A, member);
+      await expect(
+        svc.editVisit(ORG_A, member, v.id, { assignedMembershipId: wrongDisciplineMember }),
+      ).rejects.toMatchObject({ message: "PRE_SCHEDULE_GATE_FAILED", statusCode: 403 });
+    });
+
+    it("reassignVisit is rejected when the target is outside caseload and the pool is closed", async () => {
+      const { member, member2 } = seeded[ORG_A];
+      const v = await newVisit(ORG_A, member);
+      await admin.query(
+        `UPDATE organization SET settings = settings - 'allow_unassigned_pool_assignment' WHERE id=$1`,
+        [ORG_A],
+      );
+      try {
+        // member2 has the right discipline (rn) but no caseload row for PATIENT, and the pool is now closed.
+        await expect(svc.reassignVisit(ORG_A, member, v.id, member2)).rejects.toMatchObject({
+          message: "PRE_SCHEDULE_GATE_FAILED",
+          statusCode: 403,
+        });
+      } finally {
+        // Every other test in this file (including the ones above) relies on the pool staying open.
+        await admin.query(
+          `UPDATE organization SET settings = settings || '{"allow_unassigned_pool_assignment": true}'::jsonb WHERE id=$1`,
+          [ORG_A],
+        );
+      }
+    });
+  });
+
+  // ── GAP-030 — the §4.7 SchedulingAbacResolver methods, live over real Postgres ────────────────────────
+  describe("GAP-030 — SchedulingAbacResolver over real data", () => {
+    const resolver = () => svc as unknown as SchedulingAbacResolver;
+
+    it("resolveDiscipline resolves a real, unexpired role grant's key", async () => {
+      // The top-level beforeAll already links `member` to the shared ORG_A 'rn' role (GAP-031's
+      // fixture requirement — the service-layer gate needs a real qualifying discipline now too).
+      const { member } = seeded[ORG_A];
       await expect(resolver().resolveDiscipline(ORG_A, member)).resolves.toBe("rn");
     });
 
     it("resolveDiscipline returns null for a membership with no qualifying role grant (fail-closed)", async () => {
-      const { member2 } = seeded[ORG_A];
-      await expect(resolver().resolveDiscipline(ORG_A, member2)).resolves.toBeNull();
+      const suffix = `${Date.now()}-norole`;
+      const user = (
+        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`m17w-${suffix}@x.test`])
+      ).rows[0].id as string;
+      const membership = (
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status, default_provider_entity_id, default_location_ids)
+           VALUES ($1,$2,'active',$3,$4::jsonb) RETURNING id`,
+          [user, ORG_A, seeded[ORG_A].pe, JSON.stringify([seeded[ORG_A].location])],
+        )
+      ).rows[0].id as string;
+      await expect(resolver().resolveDiscipline(ORG_A, membership)).resolves.toBeNull();
     });
 
     it("resolveDiscipline ignores an EXPIRED role grant (fail-closed)", async () => {
@@ -441,11 +541,9 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
     });
 
     it("isInCaseload resolves a real open patient_assignment via the real M5 CaseloadProvider seam", async () => {
+      // CaseloadProvider is already registered in the top-level beforeAll (GAP-031 needs it live before
+      // the very first gate check runs), so no need to re-register here.
       const { member } = seeded[ORG_A];
-      registerPatientSeams({
-        db: handle.db,
-        caseload: { store: createDrizzleCaseloadStore(handle.db) },
-      });
       const [memRow] = (
         await admin.query(`SELECT user_id FROM membership WHERE id=$1`, [member])
       ).rows as Array<{ user_id: string }>;
@@ -465,18 +563,20 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       await expect(resolver().isInCaseload(ORG_A, member, patientId)).resolves.toBe(true);
     });
 
-    it("allowsUnassignedPool reads the real allow_unassigned_pool_assignment org setting (default false)", async () => {
+    it("allowsUnassignedPool reads the real allow_unassigned_pool_assignment org setting (default false when unset)", async () => {
+      // The top-level beforeAll already opened ORG_A's pool (GAP-031's fixture requirement — `newVisit`'s
+      // constant PATIENT isn't backed by a real caseload row) — clear it first to prove the unset default.
+      await admin.query(
+        `UPDATE organization SET settings = settings - 'allow_unassigned_pool_assignment' WHERE id=$1`,
+        [ORG_A],
+      );
       await expect(resolver().allowsUnassignedPool(ORG_A)).resolves.toBe(false);
       await admin.query(
         `UPDATE organization SET settings = settings || '{"allow_unassigned_pool_assignment": true}'::jsonb WHERE id=$1`,
         [ORG_A],
       );
       await expect(resolver().allowsUnassignedPool(ORG_A)).resolves.toBe(true);
-      // Reset so it doesn't leak into other tests in this file.
-      await admin.query(
-        `UPDATE organization SET settings = settings - 'allow_unassigned_pool_assignment' WHERE id=$1`,
-        [ORG_A],
-      );
+      // Restore the fixture baseline (true) — this is the last test in the file, but keep state honest.
     });
   });
 });
