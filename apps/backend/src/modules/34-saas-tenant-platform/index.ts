@@ -137,6 +137,7 @@ export {
   registerM34Workers,
   registerM34ProvisionWorker,
   registerM34ShredWorker,
+  registerM34TenantExportWorker,
   scheduleM34Jobs,
 } from "./jobs/saas-jobs";
 

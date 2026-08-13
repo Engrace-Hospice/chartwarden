@@ -403,6 +403,7 @@ export function buildM34WorkerDeps(deps: {
   provision?: M34WorkerDeps["provision"];
   keyLifecycle?: M34WorkerDeps["keyLifecycle"];
   dsarExport?: M34WorkerDeps["dsarExport"];
+  tenantExport?: M34WorkerDeps["tenantExport"];
 }): M34WorkerDeps {
   return {
     connection: deps.connection,
@@ -411,6 +412,7 @@ export function buildM34WorkerDeps(deps: {
     provision: deps.provision,
     keyLifecycle: deps.keyLifecycle,
     dsarExport: deps.dsarExport,
+    tenantExport: deps.tenantExport,
     now: () => new Date(),
   };
 }

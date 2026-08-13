@@ -24,11 +24,12 @@
 //   • MinIO object storage + the per-tenant export prefix are M1-owned: the worker writes through the
 //     injected `ExportBundleSink` (a thin port the composition root backs with the M1 envelope/MinIO
 //     client) — M34 holds no MinIO client code beyond what M1 provides (§ER M22 clause).
-//   • the cover-letter PDF goes through M22 by EMITTING `m22.document.upload_requested` (the §3.8 / §ER
-//     handshake) — the bulk NDJSON archive deliberately does NOT go through M22 (it predates the
-//     post-offboarding M22-document retention destruction; it lives in the export prefix with the 7-day
-//     presigned-URL TTL and is destroyed on download or expiry, whichever first). The resulting
-//     `document_id` is wired back via `consumers/m22-document-backref` in a later phase.
+//   • the cover-letter PDF goes through M22 via a direct `DocumentRenderer.render()` call (GAP-094,
+//     mirroring GAP-048's DSAR precedent — NOT the `m22.document.upload_requested` outbox event an
+//     earlier design considered; that event was never cataloged and had no consumer) — the bulk NDJSON
+//     archive deliberately does NOT go through M22 (it predates the post-offboarding M22-document
+//     retention destruction; it lives in the export prefix with the 7-day presigned-URL TTL and is
+//     destroyed on download or expiry, whichever first).
 import { createHash } from "node:crypto";
 import type { NdjsonSink, TenantExportShard, TenantExportShardResult } from "../seams";
 
@@ -177,14 +178,16 @@ export interface TenantExportWorkerPorts {
    *  export prefix; the worker writes per-table NDJSON + the manifest through it). */
   bundleSink(input: { orgId: string; jobId: string }): ExportBundleSink;
 
-  /** Emit `m22.document.upload_requested` for the COVER-LETTER PDF (§3.8 / §ER handshake) — M22 stores
-   *  it and the back-ref consumer wires `document_id` later. The BULK archive does NOT go through M22.
-   *  Returns the outbox row id (recorded on the manifest-assembled ledger for the §7.6 audit chain). */
+  /** Render the COVER-LETTER PDF for this export (a direct `DocumentRenderer.render()` call — GAP-094,
+   *  mirroring GAP-048's DSAR precedent — NOT the `m22.document.upload_requested` outbox event an earlier
+   *  design considered; that event was never cataloged and had no consumer). The BULK archive does NOT
+   *  go through M22. Returns the rendered document id (recorded on the manifest-assembled ledger for the
+   *  §7.6 audit chain). */
   requestCoverLetterPdf(input: {
     jobId: string;
     orgId: string;
     bundleSha256: string;
-  }): Promise<{ outboxId: string }>;
+  }): Promise<{ documentId: string }>;
 
   /** Persist the assembled-bundle artifact handles + flip the job to `fulfilled` (status + ledger +
    *  the `m34.dsar_export`-style audit; here the tenant-export `bundle_*` columns, §7.6 step 4). The
@@ -450,7 +453,7 @@ export function createInMemoryTenantExportPorts(input: {
     oversizedHolds: [],
     bundle: bundleCapture,
   };
-  let outboxSeq = 0;
+  let documentSeq = 0;
   const ports: TenantExportWorkerPorts = {
     now: () => frozenNow,
     listShards: () => input.shards,
@@ -461,10 +464,10 @@ export function createInMemoryTenantExportPorts(input: {
       capture.shardReceipts.push({ jobId, moduleKey, receipt });
     },
     bundleSink: () => sink,
-    async requestCoverLetterPdf({ jobId, orgId, bundleSha256 }): Promise<{ outboxId: string }> {
+    async requestCoverLetterPdf({ jobId, orgId, bundleSha256 }): Promise<{ documentId: string }> {
       capture.coverLetterRequests.push({ jobId, orgId, bundleSha256 });
-      outboxSeq += 1;
-      return { outboxId: `outbox-${outboxSeq}` };
+      documentSeq += 1;
+      return { documentId: `document-${documentSeq}` };
     },
     async markFulfilled(args): Promise<void> {
       capture.fulfilled.push({
