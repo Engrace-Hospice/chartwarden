@@ -9,7 +9,7 @@ import type { FastifyInstance } from "fastify";
 import { registerFeedRoutes } from "./feed.routes";
 import { registerLabRoutes } from "./labs.routes";
 import { registerMessageRoutes } from "./message.routes";
-import { registerNppesRoutes } from "./nppes.routes";
+import { type NppesSyncTriggerPort, registerNppesRoutes } from "./nppes.routes";
 import { registerOpsRoutes } from "./ops.routes";
 import { registerProposalRoutes } from "./proposal.routes";
 import type { M29Store } from "./store";
@@ -17,7 +17,11 @@ import type { M29Store } from "./store";
 export { registerFeedRoutes, type FeedRouteDeps } from "./feed.routes";
 export { registerProposalRoutes, type ProposalRouteDeps } from "./proposal.routes";
 export { registerMessageRoutes, type MessageRouteDeps } from "./message.routes";
-export { registerNppesRoutes, type NppesRouteDeps } from "./nppes.routes";
+export {
+  registerNppesRoutes,
+  type NppesRouteDeps,
+  type NppesSyncTriggerPort,
+} from "./nppes.routes";
 export { registerOpsRoutes, type OpsRouteDeps } from "./ops.routes";
 export { registerLabRoutes, type LabRouteDeps } from "./labs.routes";
 
@@ -25,6 +29,9 @@ export { registerLabRoutes, type LabRouteDeps } from "./labs.routes";
 export interface M29RouteServices {
   /** The Drizzle-backed repo (in-memory in tests / db-less boot). */
   readonly store: M29Store;
+  /** GAP-045 — the §4.1.4 manual NPPES-sync enqueue. Absent ⇒ that one route 503s; everything else is
+   *  unaffected (the nightly D11 repeatable is registered separately at the composition root). */
+  readonly nppesSyncTrigger?: NppesSyncTriggerPort;
 }
 
 /** Mount every M29 §4.1/§4.2 route plugin over the composed service surface. */
@@ -33,7 +40,7 @@ export function mountM29Routes(app: FastifyInstance, services: M29RouteServices)
   registerFeedRoutes(app, { store });
   registerProposalRoutes(app, { store });
   registerMessageRoutes(app, { store });
-  registerNppesRoutes(app, { store });
+  registerNppesRoutes(app, { store, syncTrigger: services.nppesSyncTrigger });
   registerOpsRoutes(app, { store });
   registerLabRoutes(app, { store });
 }

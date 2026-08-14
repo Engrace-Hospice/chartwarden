@@ -49,4 +49,94 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: [],
     isOutboxOnly: true,
   },
+
+  // ── §4.7 / §4.10 NPPES platform sync (GAP-045) ────────────────────────────────────────────────────
+  // These five are PLATFORM-WIDE: every row publishes with `organization_id IS NULL` (one public CMS
+  // directory, no tenant it belongs to). `provider_synced` / `provider_deactivated` declare `m40` because
+  // M40 owns the canonical `external_physician` these keep current (@wardenx/mdm's `handleProviderSynced`
+  // / `handleProviderDeactivated` are the shipped, tested decision cores; the boot binding is still
+  // deferred — see nppes/outbox-sink.ts for why a platform row cannot reach a consumer yet). The three
+  // `sync_run.*` lifecycle events are record-only: the row IS the operational record, and M33's dashboard
+  // reads `nppes_sync_run` directly rather than subscribing.
+  {
+    eventName: "m29.nppes.provider_synced",
+    moduleOwner: "m29",
+    description:
+      "A cached NPPES provider row was inserted or updated by the platform sync — M40 applies the §4.7.1 minimum-update to its canonical external_physician from the snapshot carried ON the event (ADR-0011 D1: M40 never reads M29's table).",
+    payloadSchema: Type.Object({
+      npi: Type.String({ minLength: 10, maxLength: 10 }),
+      action: Type.Union([Type.Literal("inserted"), Type.Literal("updated")]),
+      changedFields: Type.Array(Type.String()),
+      syncedAt: Type.String({ minLength: 1 }),
+      syncRunId: Type.String({ minLength: 1 }),
+      provider: Type.Object({
+        firstName: Type.String(),
+        lastName: Type.String(),
+        credentials: Type.Union([Type.String(), Type.Null()]),
+        specialtyTaxonomy: Type.Union([Type.String(), Type.Null()]),
+      }),
+    }),
+    declaredConsumers: ["m40"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m29.nppes.provider_deactivated",
+    moduleOwner: "m29",
+    description:
+      "NPPES flipped a provider active→deactivated (death, license revocation) — M40 deactivates the canonical and alerts every tenant whose overlay marked the provider preferred or attached to an active patient (§4.7.2).",
+    payloadSchema: Type.Object({
+      npi: Type.String({ minLength: 10, maxLength: 10 }),
+      deactivationDate: Type.String({ minLength: 1 }),
+      deactivationReason: Type.String({ minLength: 1 }),
+      detectedAt: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: ["m40"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m29.nppes.sync_run.started",
+    moduleOwner: "m29",
+    description:
+      "The platform NPPES sync opened a run (§4.10). Record-only — the durable operational trail beside the `nppes_sync_run` row it opened.",
+    payloadSchema: Type.Object({
+      syncRunId: Type.String({ minLength: 1 }),
+      kind: Type.String({ minLength: 1 }),
+      triggeredBy: Type.String({ minLength: 1 }),
+      startedAt: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m29.nppes.sync_run.completed",
+    moduleOwner: "m29",
+    description:
+      "The platform NPPES sync finished walking every NPI (§4.10). Record-only.",
+    payloadSchema: Type.Object({
+      syncRunId: Type.String({ minLength: 1 }),
+      completedAt: Type.String({ minLength: 1 }),
+      providersFetched: Type.Integer({ minimum: 0 }),
+      providersUpdated: Type.Integer({ minimum: 0 }),
+      deactivations: Type.Integer({ minimum: 0 }),
+      errors: Type.Integer({ minimum: 0 }),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m29.nppes.sync_run.failed",
+    moduleOwner: "m29",
+    description:
+      "The platform NPPES sync aborted — the §2.3 consecutive-failure circuit breaker tripped, or a fatal error escaped the NPI walk (§4.10). Record-only.",
+    payloadSchema: Type.Object({
+      syncRunId: Type.String({ minLength: 1 }),
+      failedAt: Type.String({ minLength: 1 }),
+      error: Type.String({ minLength: 1 }),
+      providersFetched: Type.Integer({ minimum: 0 }),
+      providersUpdated: Type.Integer({ minimum: 0 }),
+      errors: Type.Integer({ minimum: 0 }),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
 ];

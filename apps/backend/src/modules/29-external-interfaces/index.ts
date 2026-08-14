@@ -47,6 +47,7 @@ export {
   M29StoreError,
   type M29RouteServices,
   type M29Store,
+  type NppesSyncTriggerPort,
 } from "./routes/index";
 // task-11 — the §4.10 outbox surface: the event catalog + the store's publish port (structural).
 export { M29_OUTBOX_EVENTS } from "./events-by-m29";
@@ -374,3 +375,24 @@ export {
   NppesSyncOrchestrator,
 } from "./nppes/sync-orchestrator";
 export { NPPES_SYNC_SCHEDULE, type NppesSyncSchedule } from "./nppes/schedule";
+// GAP-045 — the boot-side halves the orchestrator was always missing: the three Drizzle ports, the
+// platform-wide outbox sink, and the BullMQ worker + nightly repeatable + manual-trigger enqueue.
+export {
+  createDrizzleNppesProviderCache,
+  createDrizzleNppesSyncRunStore,
+} from "./nppes/stores-drizzle";
+export {
+  type NppesOutboxPublishPort,
+  type NppesOutboxSinkDeps,
+  buildNppesOutboxSink,
+} from "./nppes/outbox-sink";
+export {
+  type NppesManualSyncTrigger,
+  type NppesSyncJobData,
+  type NppesSyncWorkerDeps,
+  buildNppesManualSyncTrigger,
+  buildNppesSyncOrchestrator,
+  registerNppesSyncWorker,
+  runNppesSyncJob,
+  scheduleNppesSyncJob,
+} from "./nppes/cron-workers";

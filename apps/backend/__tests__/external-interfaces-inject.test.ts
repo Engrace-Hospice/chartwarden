@@ -56,6 +56,7 @@ import {
   createInMemoryM29Store,
   denyStubM29AbacResolver,
   mountM29Routes,
+  type NppesSyncTriggerPort,
 } from "../src/modules/29-external-interfaces/index";
 
 // ── header-auth shim (the M11/M19/M28 precedent) ─────────────────────────────────────────────────────
@@ -154,7 +155,7 @@ function buildM29TestAbacResolver(
   };
 }
 
-function makeServer() {
+function makeServer(opts: { nppesSyncTrigger?: NppesSyncTriggerPort } = {}) {
   const store = createInMemoryM29Store({ now: () => NOW });
 
   const grantStore = createInMemoryEffectivePermissionStore(
@@ -220,7 +221,10 @@ function makeServer() {
   });
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  mountM29Routes(app, { store });
+  mountM29Routes(app, {
+    store,
+    ...(opts.nppesSyncTrigger ? { nppesSyncTrigger: opts.nppesSyncTrigger } : {}),
+  });
   return { app, store };
 }
 
@@ -577,16 +581,62 @@ describe("M29-external-interfaces-inject — §4.1.4 NPPES administration (route
     await app.close();
   });
 
-  it("route 25 — the SAME request from a platform-operator session clears ABAC and reaches the real 501 deferral", async () => {
-    const { app } = makeServer();
+  it("route 25 — the SAME request from a platform-operator session clears ABAC and ENQUEUES a run (GAP-045)", async () => {
+    const enqueued: Array<{ kind: string; triggeredByMembershipId: string }> = [];
+    const { app } = makeServer({
+      nppesSyncTrigger: {
+        async enqueue(input) {
+          enqueued.push(input);
+          return { syncRunId: "sync-run-1", jobId: "nppes-manual-sync-run-1" };
+        },
+      },
+    });
     const res = await app.inject({
       method: "POST",
       url: "/api/admin/external-interfaces/nppes/sync-runs",
       headers: { ...SUPER, "x-test-platform-operator": "1" },
       payload: {},
     });
-    expect(res.statusCode).toBe(501);
-    expect(res.json().error.code).toBe("NOT_IMPLEMENTED");
+    // 202, not 200: an NPPES walk is thousands of rate-limited CMS requests — the route enqueues and
+    // answers with the id `GET /nppes/sync-runs` will surface once the worker opens the run row.
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toMatchObject({ syncRunId: "sync-run-1", status: "queued" });
+    // No explicit `kind` in the body ⇒ a `manual` run stamped with the triggering platform actor.
+    expect(enqueued).toEqual([{ kind: "manual", triggeredByMembershipId: MEMBER_SUPER }]);
+    await app.close();
+  });
+
+  it("route 25 — an explicit `kind` forces that scheduled pass rather than a plain manual run", async () => {
+    const enqueued: Array<{ kind: string }> = [];
+    const { app } = makeServer({
+      nppesSyncTrigger: {
+        async enqueue(input) {
+          enqueued.push(input);
+          return { syncRunId: "sync-run-2", jobId: "nppes-manual-sync-run-2" };
+        },
+      },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/external-interfaces/nppes/sync-runs",
+      headers: { ...SUPER, "x-test-platform-operator": "1" },
+      payload: { kind: "weekly_dissemination" },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(enqueued[0]?.kind).toBe("weekly_dissemination");
+    await app.close();
+  });
+
+  it("route 25 — with NO queue connection the trigger 503s: 'no worker here', not 'no such feature'", async () => {
+    const { app } = makeServer(); // trigger unbound — a db-only / REDIS-less boot
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/external-interfaces/nppes/sync-runs",
+      headers: { ...SUPER, "x-test-platform-operator": "1" },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error.message).toMatch(/REDIS_URL/);
     await app.close();
   });
 });

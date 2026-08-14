@@ -179,6 +179,14 @@ export class NppesSyncOrchestrator {
         }
       }
 
+      // TOTAL-OUTAGE FLOOR (GAP-045). The §2.3 breaker only trips at
+      // NPPES_CIRCUIT_BREAKER_CONSECUTIVE_FAILURES consecutive errors, so on a platform referencing fewer
+      // NPIs than that a CMS outage that failed EVERY single fetch would otherwise have walked out of the
+      // loop and reported `completed` — green status, zero providers touched, the failure visible only to
+      // whoever thought to read `errors_count`. A run in which nothing succeeded did not complete.
+      if (npis.length > 0 && agg.errors === npis.length) {
+        return await this.fail(syncRunId, `every_npi_failed_${agg.errors}_of_${npis.length}`, agg);
+      }
       return await this.complete(syncRunId, agg);
     } catch (err) {
       this.log("error", "nppes.sync.fatal", { syncRunId, error: (err as Error).message });

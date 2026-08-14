@@ -490,13 +490,17 @@ import {
 // a lazy M5 CaseloadProvider adapter.
 import {
   M29_OUTBOX_EVENTS,
+  NPPES_SYNC_SCHEDULE,
   buildDrizzleM29AbacResolver,
+  buildNppesManualSyncTrigger,
   createDrizzleM29PublishedSeamStore,
   createDrizzleM29Store,
   denyStubM29AbacResolver,
   mountM29Routes,
   registerM29AbacPredicates,
   registerM29PublishedSeams,
+  registerNppesSyncWorker,
+  scheduleNppesSyncJob,
 } from "./modules/29-external-interfaces/index";
 import {
   M30_OUTBOX_EVENTS,
@@ -661,6 +665,7 @@ import {
 import {
   createDbBaaStore,
   createDbMdmStore,
+  createDbNppesNpiSource,
   createDrizzleMdmEraseStore,
   getMdmEntityProvider,
   mountMdmRoutes,
@@ -1932,6 +1937,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const m24AdapterRegistry = new MedicaidAdapterRegistry([], m24OregonGateway);
   const m24SubmissionQueues =
     queueConnection && m24OregonGateway ? buildM24SubmissionQueuePort(queueConnection) : null;
+  // M29 D11 (GAP-045) — the §4.1.4 manual NPPES-sync enqueue. Built here (not in the worker-runner
+  // section) because the ROUTE needs it and the route mount runs first; the nightly repeatable + the
+  // Worker that drains this same queue are registered further below. Absent REDIS_URL → the trigger route
+  // 503s and the nightly run simply does not exist on this deployment — both honest, neither silent.
+  const m29NppesSync = queueConnection ? buildNppesManualSyncTrigger(queueConnection) : null;
   const m34ProvisionConfig = m34ProvisionGatewayConfigFromEnv(process.env);
   const m34ProvisionGateway = m34ProvisionConfig
     ? createM34ProvisionGateway(m34ProvisionConfig)
@@ -2964,13 +2974,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
 
           // M29 (External Interfaces) — mount the §4.1 operator + §4.2 clinician routes over the Drizzle
           // route store. Feed lifecycle (dual-approval + BAA gate), ADT proposal review (propose-then-review),
-          // HL7 message search/replay/retry, NPPES read, and the caseload-scoped lab surface. The compliance
-          // decrypt / manual unmatched-lab bind / tenant NPPES trigger fail closed (Phase-1 501/403), each
-          // still walking the full guard chain.
+          // HL7 message search/replay/retry, NPPES administration, and the caseload-scoped lab surface.
+          // The compliance decrypt of a stored HL7 payload still fails closed (Phase-1 501 — no module
+          // binds a per-tenant DEK), walking the full guard chain first.
           // task-11 — the accept/reject decision events now RIDE the deciding tx (the M5/M6
           // appliers consume `m29.hl7_inbound_proposal.accepted` via the boot dispatcher).
+          // GAP-045 — the §4.1.4 NPPES sync trigger is REAL: it enqueues onto the same
+          // `nppes-sync-platform` queue the D11 nightly repeatable fires (503 when this deployment has no
+          // queue connection, never a blanket 501).
           mountM29Routes(app, {
             store: createDrizzleM29Store(dbHandle.db, { outbox: m29OutboxPublisher }),
+            ...(m29NppesSync ? { nppesSyncTrigger: m29NppesSync.trigger } : {}),
           });
         }
       : undefined,
@@ -3742,6 +3756,60 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       "M14 §4.8 BullMQ review-clock-sweep cron constructed",
     );
 
+    // ── M29 D11 — the platform NPPES sync worker + its 02:30 UTC nightly repeatable (GAP-045) ────────────
+    // `NPPES_SYNC_SCHEDULE` shipped as pure data whose own comment promised "the M29-T08 worker binds this
+    // to the BullMQ scheduler"; that worker was never written, so the nightly run never happened and
+    // `nppes_provider` / `nppes_sync_run` were empty in every deployment. This is that binding.
+    //
+    // UNLIKE EVERY OTHER CRON HERE, this one is NOT an active-org fan-out: NPPES is one public CMS
+    // directory shared platform-wide (D11), so there is no per-org tick and no `buildActiveOrgEnumerator`.
+    // Its writes go through migration 0199's `nppes_writer_*` SECURITY DEFINER functions (the two tables
+    // are SELECT-only to `wardenx_app`), and its five §4.10 events publish platform-wide
+    // (`organization_id IS NULL`) through the existing migration-0186 path.
+    //
+    // It is also the only cron that reaches the PUBLIC INTERNET on a tick (the CMS NPI Registry, no
+    // credentials, no BAA). `NPPES_SYNC_DISABLED=1` opts a deployment out of the repeatable — the same
+    // escape hatch `OUTBOX_DISPATCHER_DISABLED` gives the relay — while leaving the manual trigger and
+    // the worker itself intact, so an operator can still run one on demand.
+    // The NPI list comes from M40's canonical `external_physician` — read through M40's own exported
+    // reader, never M29 reaching into another module's table (`arch:tables` refused exactly that draft).
+    const m29NppesNpiSource = createDbNppesNpiSource(dbHandle.db);
+    const m29NppesWorkerDeps = {
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m29OutboxPublisher,
+      npiSource: { collectDistinctNpis: () => m29NppesNpiSource.distinctReferencedNpis() },
+      log: (level: "info" | "warn" | "error", event: string, fields: Record<string, unknown>) => {
+        app.log[level]({ ...fields, event }, "m29.nppes.sync");
+      },
+    };
+    const m29NppesWorkers = registerNppesSyncWorker(m29NppesWorkerDeps);
+    attachDlqAlertsToAll(m29NppesWorkers, "m29");
+    app.addHook("onClose", async () => {
+      await Promise.all([
+        ...m29NppesWorkers.map((w) => w.close()),
+        ...(m29NppesSync?.queues ?? []).map((q) => q.close()),
+      ]);
+    });
+    if (process.env.NPPES_SYNC_DISABLED !== "1") {
+      try {
+        const m29ScheduleQueues = await scheduleNppesSyncJob(queueConnection);
+        app.addHook("onClose", async () => {
+          await Promise.all(m29ScheduleQueues.map((q) => q.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M29 NPPES nightly-sync schedule registration failed");
+      }
+    } else {
+      app.log.warn(
+        "NPPES_SYNC_DISABLED=1 — the D11 nightly NPPES sync repeatable is NOT registered on this deployment (the manual §4.1.4 trigger still works)",
+      );
+    }
+    app.log.info(
+      { queue: NPPES_SYNC_SCHEDULE.queueName, cron: NPPES_SYNC_SCHEDULE.cronPattern },
+      "M29 D11 BullMQ NPPES platform-sync worker constructed",
+    );
+
     // TASK-040C (OPS-005/006) — the `wardenx_bullmq_queue_jobs` gauge, over one dedicated read-only
     // `Queue` handle per UNIQUE queue name actually constructed above (derived from the Workers'
     // `.name`, not a separately-maintained module-by-module catalog list — self-maintaining as new
@@ -3758,6 +3826,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       ...m9Workers,
       ...m10Workers,
       ...m14Workers,
+      ...m29NppesWorkers,
     ];
     const metricsQueueNames = [...new Set(allWorkers.map((w) => w.name))];
     const metricsQueues = metricsQueueNames.map(

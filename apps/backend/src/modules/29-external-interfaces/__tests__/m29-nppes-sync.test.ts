@@ -490,6 +490,65 @@ describe("NppesSyncOrchestrator", () => {
     expect(runStore.error).toMatch(/circuit_breaker_50_consecutive_failures/);
   });
 
+  it("a total outage BELOW the breaker threshold still fails the run (GAP-045 floor)", async () => {
+    // The §2.3 breaker only trips at 50 CONSECUTIVE failures. A platform referencing fewer NPIs than
+    // that — every real deployment for a long while — would otherwise walk out of the loop with every
+    // fetch failed and report `completed`: green status, nothing fetched, the failure visible only in
+    // `errors_count`. A run in which NOTHING succeeded did not complete.
+    const npis = Array.from({ length: 5 }, (_, i) => `npi_${i}`);
+    const { orch, runStore, outbox } = mkOrchestrator({
+      npis,
+      fetcher: {
+        fetchByNpi: async () => {
+          throw new Error("503 from CMS");
+        },
+      },
+    });
+    const res = await orch.run(nightly);
+    expect(res.status).toBe("failed");
+    expect(res.errors).toBe(5);
+    expect(runStore.status).toBe("failed");
+    expect(runStore.error).toMatch(/every_npi_failed_5_of_5/);
+    expect(outbox.names()).toContain("m29.nppes.sync_run.failed");
+    expect(outbox.names()).not.toContain("m29.nppes.sync_run.completed");
+  });
+
+  it("a PARTIAL outage still completes — one success is a real, reportable run", async () => {
+    // The floor must not turn ordinary flakiness into a failed run: the counters already carry the
+    // errors, and failing a run that updated real providers would discard that work's report.
+    const npis = [VALID_A, "npi_bad_1", "npi_bad_2"];
+    const { orch, runStore } = mkOrchestrator({
+      npis,
+      fetcher: {
+        fetchByNpi: async (npi) => {
+          if (npi !== VALID_A) throw new Error("503 from CMS");
+          return { kind: "found", provider: mkProvider({ npi: VALID_A }) };
+        },
+      },
+    });
+    const res = await orch.run(nightly);
+    expect(res.status).toBe("completed");
+    expect(res.errors).toBe(2);
+    expect(res.providersUpdated).toBe(1);
+    expect(runStore.status).toBe("completed");
+  });
+
+  it("an EMPTY platform (no NPIs referenced anywhere) completes rather than failing", async () => {
+    // 0 errors of 0 NPIs is not an outage — it is a platform with no external physicians on file yet.
+    const { orch, runStore } = mkOrchestrator({
+      npis: [],
+      fetcher: {
+        fetchByNpi: async () => {
+          throw new Error("never called");
+        },
+      },
+    });
+    const res = await orch.run(nightly);
+    expect(res.status).toBe("completed");
+    expect(res.errors).toBe(0);
+    expect(runStore.status).toBe("completed");
+  });
+
   it("W-XI-12: a tenant-scoped trigger is refused before any store write", async () => {
     const runStore = new FakeRunStore();
     const { orch } = mkOrchestrator({

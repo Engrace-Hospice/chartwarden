@@ -44,6 +44,9 @@ export {
 // write/admin route surface. The entity-directory read surface (apps/web/src/modules/40-mdm) reads
 // live through these.
 export { createDbBaaStore, createDbMdmRouteService, createDbMdmStore } from "./mdm-store-db";
+// GAP-045 — the distinct-NPI read M29's D11 platform NPPES sync runs over. Exposed as a value-returning
+// reader because `external_physician` is M40's table and `arch:tables` forbids M29 reading it directly.
+export { type NppesNpiSource, createDbNppesNpiSource } from "./nppes-npi-source";
 
 import type { DbClient } from "@wardenx/db";
 import { createMdmEntityProvider } from "@wardenx/mdm";
