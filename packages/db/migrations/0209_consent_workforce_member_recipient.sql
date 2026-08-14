@@ -1,0 +1,34 @@
+-- `workforce_member` — the internal-actor recipient class on `consent_record_recipient`.
+--
+-- WHAT THIS UNBLOCKS. Every recipient class M39 shipped with is EXTERNAL (external_physician,
+-- facility, pharmacy, irb, family_member, attorney, employer, researcher, free_text), so a consent
+-- record could name who OUTSIDE the agency may receive the patient's records and could not name who
+-- INSIDE it may. That made one question structurally unanswerable: "is the disclosure of this
+-- patient's SUD content authorized *for this staff member*?" — which is exactly what M39 §6.4's
+-- `sud_disclosure_allowed` predicate is specified to answer ("returns allowed=true AND recipient
+-- matches the requesting party", consumed by M7, M8, M9, M11, M12, M13, M14, M15, M22 and M28) and
+-- what 42 CFR §2.13 has in mind when it says SUD records are subject to heightened access *even
+-- within a treating provider*. With no internal recipient class, the answer every internal caller got
+-- was the patient-scope one — "does a release exist at all" — and no per-actor gate could be built on
+-- top of it without inventing a fact M39 did not hold.
+--
+-- `recipient_entity_id` holds an M2 MEMBERSHIP id for this kind (not a user id, and not an M40 entity
+-- id as the external kinds do). The column is a plain uuid with no SQL FK — the same
+-- service-validated, no-hard-cross-module-FK shape §3.3 uses for the M40 kinds — so no new
+-- cross-module constraint enters the schema.
+--
+-- The `crr_freetext_or_entity` CHECK already covers this kind correctly without amendment: it demands
+-- a non-null `recipient_entity_id` for every kind except `free_text`, and a named workforce member is
+-- precisely a row that has one. `ix_crr_resolved_entity (recipient_kind, recipient_entity_id) WHERE
+-- removed_at IS NULL` likewise serves the new lookup as it stands.
+--
+-- WHAT NAMING NONE MEANS — the semantics this value does NOT change. A `42_cfr_part_2_release` whose
+-- roster names no workforce member at all continues to authorize the treating program as a whole
+-- (42 CFR §2.12(c)(3): communications within a program are not disclosures). Naming workforce members
+-- NARROWS a release to them; it never widens one, and it is never required. So this value is additive
+-- in the strict sense — no existing consent record's meaning changes, and no clinician loses access
+-- to a chart they can read today.
+--
+-- `ADD VALUE IF NOT EXISTS` is transaction-safe on PG12+; the new label simply may not be USED in the
+-- same transaction that adds it, which no statement here does.
+ALTER TYPE "public"."consent_recipient_kind" ADD VALUE IF NOT EXISTS 'workforce_member';

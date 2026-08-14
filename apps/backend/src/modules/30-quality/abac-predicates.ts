@@ -90,9 +90,10 @@ const PART2_FLAG = "sud";
 /** The minimal M39 surface this file calls — structurally typed so M30 takes no `@wardenx/consent`
  *  import edge (the M9 `capture-siting.ts` / M7 `seams/drizzle-store.ts` precedent). */
 interface M30ConsentEvaluatorShape {
-  evaluateForIngressRedaction(args: {
+  evaluateForInternalAccess(args: {
     organizationId: string;
     patientId: string;
+    actor: { membershipId: string | null };
     callerModule: string;
   }): Promise<{ redactSubstanceUseDisorderFields: boolean }>;
 }
@@ -107,10 +108,14 @@ const INCIDENT_KIND_ABUSE = "allegation_of_abuse";
 // assembled `context.attributes.membershipId`) is what these predicates compare against.
 // -----------------------------------------------------------------------------
 
-/** The org + acting user the resolver scopes each load to (the `withOrgContext` GUCs). */
+/** The org + acting user the resolver scopes each load to (the `withOrgContext` GUCs), plus the
+ *  actor's ACTIVE membership id — the id space `consent_record_recipient` names a `workforce_member`
+ *  with, and therefore what M39's per-actor Part 2 verdict is keyed on. `null` when the session
+ *  carries no membership; against a workforce-restricted release that resolves to redact. */
 export interface M30AbacReadContext {
   readonly organizationId: string;
   readonly userId: string;
+  readonly membershipId: string | null;
 }
 
 /** Owner/visibility facts for an `incident_report` row (§4.7 incident predicates). */
@@ -172,18 +177,22 @@ export interface ReadingM30AbacResolver {
   /** M5 PrivacyFlag snapshot (opaque): does the patient carry a 42 CFR Part 2 protection? */
   isPatientPart2Protected(ctx: M30AbacReadContext, patientId: string): Promise<boolean>;
   /**
-   * M39 consent (opaque): is there an ACTIVE, unexpired `42_cfr_part_2_release` on file for this
-   * patient right now?
+   * M39 consent (opaque): does an ACTIVE, unexpired `42_cfr_part_2_release` cover THIS actor's access
+   * to this patient's Part-2 material right now?
    *
-   * Named for what M39 can actually answer (GAP-047). This was `hasPart2ReleaseCoveringActor`, which
-   * promised a per-actor decision M39 does not model: its per-recipient evaluation
-   * (`evaluateForDisclosure`) keys on an EXTERNAL recipient — a resolved recipient id or client id —
-   * and an internal staff actor reading a quality row is not a consent recipient in that sense. What
-   * this answers is whether disclosure of the patient's Part-2 material is authorized in this org at
-   * all; WHICH staff may read the row stays the job of the RBAC permission and the other §4.7
-   * predicates the same routes compose.
+   * The name has been round-tripped, and the history is the point. It shipped as
+   * `hasPart2ReleaseCoveringActor`, a deny-stub. GAP-047 made it real and renamed it
+   * `hasActivePart2Release`, because the per-actor promise was unbuildable: M39's per-recipient
+   * evaluation keys on an EXTERNAL recipient (a resolved recipient id or a FHIR client id), and an
+   * internal staff actor reading a quality row is not a recipient in that sense — so the honest
+   * answer was the org-wide one, "is disclosure of this patient's Part-2 material authorized here at
+   * all". `workforce_member` recipients (mig 0209) + `evaluateForInternalAccess` closed that gap, so
+   * the per-actor question is now answerable and the name says so again.
+   *
+   * WHICH staff may read the row is still ALSO the job of the RBAC permission and the other §4.7
+   * predicates the same routes compose — this narrows, it does not replace them.
    */
-  hasActivePart2Release(ctx: M30AbacReadContext, patientId: string): Promise<boolean>;
+  part2ReleaseCoversActor(ctx: M30AbacReadContext, patientId: string): Promise<boolean>;
 }
 
 /**
@@ -223,7 +232,7 @@ export const denyStubM30AbacResolver: ReadingM30AbacResolver = {
   async isPatientPart2Protected() {
     return false;
   },
-  async hasActivePart2Release() {
+  async part2ReleaseCoversActor() {
     return false;
   },
 };
@@ -375,21 +384,26 @@ export function buildDrizzleM30AbacResolver(db: QualityDb): ReadingM30AbacResolv
     },
 
     /**
-     * GAP-047 — M39's `42_cfr_part_2_release`, through the `ConsentEvaluator` seam's INGRESS-redaction
-     * evaluation: `redactSubstanceUseDisorderFields` is false exactly when an active, unexpired Part 2
-     * release is on file for the patient. That is the same primitive M9's chart-read AIMS gate uses
-     * (GAP-017), so the two modules cannot disagree about whether a patient's Part-2 material may be
-     * disclosed at all.
+     * M39's `42_cfr_part_2_release`, through the `ConsentEvaluator` seam's PER-ACTOR evaluation:
+     * `redactSubstanceUseDisorderFields` is false exactly when the governing release covers this
+     * actor — which, for a release naming no workforce members, is every actor in the treating
+     * program (42 CFR §2.12(c)(3)), and for one that names them, only those named.
+     *
+     * GAP-047 first wired this to `evaluateForIngressRedaction`, the PATIENT-scope primitive, because
+     * that was the only question M39 could answer about an internal caller. M7's `sud_disclosure_allowed`
+     * and M15's disclosure gate now resolve the same `evaluateForInternalAccess` primitive, so the
+     * three cannot disagree about whether a given clinician may see a given patient's Part-2 material.
      *
      * Fail-CLOSED on any seam error: `part2Redisclosure` then redacts the row, which is where this
      * predicate has been for its whole life — the difference is that it can now also open.
      */
-    async hasActivePart2Release(ctx, patientId) {
+    async part2ReleaseCoversActor(ctx, patientId) {
       try {
         const evaluator = getSeam("ConsentEvaluator") as unknown as M30ConsentEvaluatorShape;
-        const res = await evaluator.evaluateForIngressRedaction({
+        const res = await evaluator.evaluateForInternalAccess({
           organizationId: ctx.organizationId,
           patientId,
+          actor: { membershipId: ctx.membershipId },
           callerModule: "m30",
         });
         return !res.redactSubstanceUseDisorderFields;
@@ -421,7 +435,11 @@ function actorMembershipId(context: AbacContext): string | null {
 
 /** The org + acting user the resolver scopes its `withOrgContext` reads to. */
 function readContextOf(context: AbacContext): M30AbacReadContext {
-  return { organizationId: context.organizationId, userId: context.userId };
+  return {
+    organizationId: context.organizationId,
+    userId: context.userId,
+    membershipId: actorMembershipId(context),
+  };
 }
 
 /**
@@ -615,7 +633,7 @@ export function buildM30AbacPredicates(
       const ctx = readContextOf(context);
       const protectedFlag = await resolver.isPatientPart2Protected(ctx, patientId);
       if (!protectedFlag) return false; // snapshot absent / unreachable → redact
-      return resolver.hasActivePart2Release(ctx, patientId);
+      return resolver.part2ReleaseCoversActor(ctx, patientId);
     },
   };
 }

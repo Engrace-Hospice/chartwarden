@@ -50,6 +50,11 @@ function makePredicates(over: Partial<CarePlanAbacDeps> = {}) {
     resolver,
     isInCaseload: async () => false,
     isConsentActive: async () => false,
+    // The SUD path resolves a DIFFERENT M39 question from `isConsentActive` — "may THIS actor see it"
+    // rather than "does a consent of this type exist" — so it has its own port. Default deny, with no
+    // named-workforce restriction (i.e. simply "no release on file"), which is what leaves the §7.6
+    // RN-Case-Manager path free to apply.
+    sudInternalAccess: async () => ({ allowed: false, restrictedToNamedWorkforce: false }),
     ...over,
   };
   return { service, resolver, predicates: buildCarePlanAbacPredicates(deps) };
@@ -313,7 +318,7 @@ describe("M7-T06 §7.6 — SUD problem confidentiality", () => {
 
   it("the sud_disclosure_allowed predicate: non-SUD allowed; SUD needs Part-2 consent or the RN Case Manager", async () => {
     const { service, predicates } = makePredicates({
-      isConsentActive: async (q) => q.consentType === "42_cfr_part_2_release",
+      sudInternalAccess: async () => ({ allowed: true, restrictedToNamedWorkforce: false }),
     });
     const nonSud = await service.addProblem(ORG, PLAN, {
       description: "Pain",
@@ -328,7 +333,9 @@ describe("M7-T06 §7.6 — SUD problem confidentiality", () => {
     });
 
     // A non-SUD problem is always disclosable, even with no consent.
-    const denyConsent = makePredicates({ isConsentActive: async () => false });
+    const denyConsent = makePredicates({
+      sudInternalAccess: async () => ({ allowed: false, restrictedToNamedWorkforce: false }),
+    });
     const nonSud2 = await denyConsent.service.addProblem(ORG, PLAN, {
       description: "Pain",
       kind: "terminal",

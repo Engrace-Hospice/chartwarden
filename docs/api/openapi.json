@@ -49856,6 +49856,10 @@
                                 "type": "string"
                               },
                               {
+                                "const": "workforce_member",
+                                "type": "string"
+                              },
+                              {
                                 "const": "free_text",
                                 "type": "string"
                               }
@@ -50028,6 +50032,10 @@
                               "type": "string"
                             },
                             {
+                              "const": "workforce_member",
+                              "type": "string"
+                            },
+                            {
                               "const": "free_text",
                               "type": "string"
                             }
@@ -50152,6 +50160,10 @@
                       },
                       {
                         "const": "researcher",
+                        "type": "string"
+                      },
+                      {
+                        "const": "workforce_member",
                         "type": "string"
                       },
                       {
@@ -50312,6 +50324,10 @@
                             },
                             {
                               "const": "researcher",
+                              "type": "string"
+                            },
+                            {
+                              "const": "workforce_member",
                               "type": "string"
                             },
                             {

@@ -81,7 +81,12 @@ const PATIENT = schema.patients;
 
 /** The `consent_recipient_kind` values that are also a resolved disclosure-target class (§4.3). The
  *  evaluator matches by id, not kind, so the extra DB kinds (attorney/employer/free_text) carry no
- *  resolved kind — `undefined` is the same shape the in-memory slice gives an unkinded recipient. */
+ *  resolved kind — `undefined` is the same shape the in-memory slice gives an unkinded recipient.
+ *
+ *  `workforce_member` is load-bearing here, not decorative: it is the ONE kind the evaluator matches by
+ *  KIND before matching by id (`evaluateForInternalAccess` asks "does this release name any workforce
+ *  member at all?"), so dropping it to `undefined` would make every internal recipient invisible and
+ *  silently restore the org-wide answer. */
 const RESOLVED_KINDS = new Set<string>([
   "external_physician",
   "facility",
@@ -89,6 +94,7 @@ const RESOLVED_KINDS = new Set<string>([
   "irb",
   "family_member",
   "researcher",
+  "workforce_member",
 ]);
 
 function resolvedKindOf(kind: string): RecipientResolvedKind | undefined {

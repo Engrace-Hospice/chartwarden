@@ -11,8 +11,9 @@
 //   caseload_or_scope      — caller's caseload covers the plan's patient, OR an org-wide scope role,
 //                            OR a session scope (collaborator/portal) naming the patient.
 //   dpoa_active            — an active `dpoa_healthcare` consent exists for the plan's patient (M39).
-//   sud_disclosure_allowed — per-problem: not SUD, OR a satisfied `42_cfr_part_2_release` context (M39),
-//                            OR the assigned RN Case Manager (§7.6).
+//   sud_disclosure_allowed — per-problem: not SUD, OR the PER-ACTOR `42_cfr_part_2_release` verdict
+//                            (M39 `evaluateForInternalAccess`), OR — only when the release does not
+//                            name other workforce members — the RN Case Manager (§7.6).
 //   signer_role_match      — caller's eligible signer roles intersect the version's RequiredSignerSet.
 //   discipline_scope       — the intervention's discipline matches the caller's (IDG Coordinator excepted).
 //
@@ -100,24 +101,97 @@ export function defaultConsentActiveChecker(): ConsentActiveChecker {
   };
 }
 
+/** M39's verdict on one actor's Part 2 access, reduced to the two facts §7.6 needs. */
+export interface InternalSudVerdict {
+  /** May THIS actor see the patient's SUD content, on the strength of the consent record alone? */
+  readonly allowed: boolean;
+  /**
+   * The patient's release names workforce members and this actor is not one of them (or could not be
+   * identified). Distinct from `!allowed`, which is also true when there is simply NO release on file:
+   * only this flag means the patient made a deliberate, per-person restriction, and only this flag
+   * outranks the §7.6 role path below.
+   */
+  readonly restrictedToNamedWorkforce: boolean;
+}
+
+/** The per-actor Part 2 checker `sud_disclosure_allowed` resolves through (M39 `evaluateForInternalAccess`). */
+export type InternalSudAccessChecker = (q: {
+  organizationId: string;
+  patientId: string;
+  /** The actor's ACTIVE M2 membership id — the id space `consent_record_recipient` names a
+   *  `workforce_member` with. `null` when the session carries none. */
+  membershipId: string | null;
+}) => Promise<InternalSudVerdict>;
+
 /**
- * §7.6 SUD disclosure, at PATIENT scope: the assigned RN Case Manager, or an active
- * `42_cfr_part_2_release` consent. Shared by the per-problem `sud_disclosure_allowed` predicate
+ * The default `sud_disclosure_allowed` backing — M39's `evaluateForInternalAccess`, the PER-ACTOR Part 2
+ * decision. Exported for the same reason `defaultConsentActiveChecker` is: the route-level redaction
+ * closure must reuse this exact glue rather than a second, divergent copy.
+ *
+ * Fail-CLOSED on any seam error, and fail-closed in BOTH fields — an M39 outage must not be readable as
+ * "no restriction exists", which would hand the §7.6 role path a disclosure the consent record might
+ * forbid.
+ */
+export function defaultInternalSudAccessChecker(): InternalSudAccessChecker {
+  return async (q) => {
+    try {
+      const evaluator = getSeam("ConsentEvaluator") as ConsentEvaluator;
+      const res = await evaluator.evaluateForInternalAccess({
+        organizationId: q.organizationId,
+        patientId: q.patientId,
+        actor: { membershipId: q.membershipId },
+        callerModule: "m7",
+      });
+      return {
+        allowed: !res.redactSubstanceUseDisorderFields,
+        restrictedToNamedWorkforce:
+          res.basis === "release_names_others" || res.basis === "actor_unidentified",
+      };
+    } catch {
+      return { allowed: false, restrictedToNamedWorkforce: true };
+    }
+  };
+}
+
+/** The actor's active membership id off the M2-assembled session attributes (never the request body). */
+export function membershipIdOf(context: AbacContext): string | null {
+  const raw = context.attributes.membershipId;
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
+}
+
+/**
+ * §7.6 SUD disclosure, at PATIENT scope. Shared by the per-problem `sud_disclosure_allowed` predicate
  * below (which additionally short-circuits true for a non-SUD problem before reaching this) and by
  * the route-level per-read redaction closure (GAP-013's `mountCarePlanRoutes`, which has no single
  * problem in view — a whole plan/summary read is redacted uniformly, non-SUD problems unaffected).
+ *
+ * This is THE `sud_disclosure_allowed` resolver — M8, M9, M11, M12, M13, M14, M15, M22 and M28 all
+ * bind the name M7 registers — so it is where "recipient matches the requesting party" (§6.4) has to
+ * become true. It used to ask M39 the PATIENT-scope question ("is a `42_cfr_part_2_release` on file
+ * for this patient at all?") because that was the only question M39 could answer about an internal
+ * caller: every recipient class was external. `workforce_member` (mig 0209) closed that, so the call
+ * is now `evaluateForInternalAccess` and the answer is about the actor.
+ *
+ * ORDER MATTERS, and it is the reverse of what it was. The RN-Case-Manager path is a TREATMENT
+ * carve-out — an intra-program communication is not a §2.31 disclosure (42 CFR §2.12(c)(3)) — so it
+ * still lets a case manager read a chart with no release on file. What it may NOT do is override a
+ * release the patient deliberately restricted to named workforce members: that restriction exists
+ * precisely to exclude other staff, and a role key cannot outrank the patient who signed it. So M39 is
+ * consulted FIRST (one extra round-trip on the case-manager path, which is the price of knowing
+ * whether a restriction exists) and the role path only applies when no restriction names someone else.
  */
-export function sudDisclosureAllowedForPatient(
+export async function sudDisclosureAllowedForPatient(
   context: AbacContext,
   patientId: string,
-  isConsentActive: ConsentActiveChecker,
+  checkInternalAccess: InternalSudAccessChecker,
 ): Promise<boolean> {
-  if (hasRole(context, "rn_case_manager")) return Promise.resolve(true);
-  return isConsentActive({
+  const verdict = await checkInternalAccess({
     organizationId: context.organizationId,
     patientId,
-    consentType: "42_cfr_part_2_release",
+    membershipId: membershipIdOf(context),
   });
+  if (verdict.allowed) return true;
+  return !verdict.restrictedToNamedWorkforce && hasRole(context, "rn_case_manager");
 }
 
 /** Assemble the actor's §7.4 discipline scope from session roles/attributes (never client input). */
@@ -160,6 +234,13 @@ export interface CarePlanAbacDeps {
     patientId: string;
     consentType: ConsentTypeKey;
   }) => Promise<boolean>;
+  /**
+   * The PER-ACTOR Part 2 check `sud_disclosure_allowed` resolves through (defaults to M39's
+   * `evaluateForInternalAccess`). Separate from {@link isConsentActive} because it asks a different
+   * question — "may THIS actor see it", not "does a consent of this type exist" — and answering the
+   * first with the second is exactly what this predicate used to do.
+   */
+  readonly sudInternalAccess?: InternalSudAccessChecker;
 }
 
 /**
@@ -172,6 +253,7 @@ export function buildCarePlanAbacPredicates(
   const { resolver } = deps;
   const isInCaseload = deps.isInCaseload ?? ((q) => getSeam("CaseloadProvider").isInCaseload(q));
   const isConsentActive = deps.isConsentActive ?? defaultConsentActiveChecker();
+  const sudInternalAccess = deps.sudInternalAccess ?? defaultInternalSudAccessChecker();
 
   /** Caseload-or-scope over a patient: org-wide role, session scope, or caseload membership. */
   const caseloadOrScopeFor = async (context: AbacContext, patientId: string): Promise<boolean> => {
@@ -225,7 +307,7 @@ export function buildCarePlanAbacPredicates(
       const facts = await resolver.loadProblem(context.organizationId, id);
       if (!facts) return false;
       if (!facts.sudRelated) return true; // §7.6: non-SUD problems are unrestricted
-      return sudDisclosureAllowedForPatient(context, facts.patientId, isConsentActive);
+      return sudDisclosureAllowedForPatient(context, facts.patientId, sudInternalAccess);
     },
     signer_role_match: async (context, target) => {
       const id = targetId(target, "versionId");
