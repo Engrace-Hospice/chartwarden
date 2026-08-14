@@ -77,7 +77,7 @@
       "mutatingNoBody": 0
     },
     "17-scheduling": {
-      "routes": 29,
+      "routes": 32,
       "deficit": 0,
       "mutatingNoBody": 1
     },
@@ -162,7 +162,7 @@
       "mutatingNoBody": 10
     },
     "34-saas-tenant-platform": {
-      "routes": 48,
+      "routes": 49,
       "deficit": 0,
       "mutatingNoBody": 1
     },

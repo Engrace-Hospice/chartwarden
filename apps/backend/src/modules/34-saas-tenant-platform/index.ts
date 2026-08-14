@@ -181,6 +181,7 @@ export {
   registerOnboardingTemplateRoutes,
   registerSignupIntentRoutes,
   registerSupportSessionRoutes,
+  registerTenantExportApprovalRoutes,
   registerTenantInvitationRoutes,
   registerTenantKeyRingRoutes,
   registerTenantPlatformRoutes,
@@ -216,6 +217,7 @@ import {
   registerOnboardingTemplateRoutes as _registerOnboardingTemplateRoutes,
   registerSignupIntentRoutes as _registerSignupIntentRoutes,
   registerSupportSessionRoutes as _registerSupportSessionRoutes,
+  registerTenantExportApprovalRoutes as _registerTenantExportApprovalRoutes,
   registerTenantInvitationRoutes as _registerTenantInvitationRoutes,
   registerTenantKeyRingRoutes as _registerTenantKeyRingRoutes,
   registerTenantPlatformRoutes as _registerTenantPlatformRoutes,
@@ -254,9 +256,10 @@ const SLICE_M34_SIGNUP_SERVICE: _SignupIntentRouteService = {
 /**
  * Mount EVERY M34 REST route surface (§4.1) on a server — invoked by the composition root when a DB client
  * is present. Three surfaces:
- *   - PLATFORM-OPS (eight plugins: tenants / invitations / key-ring / onboarding-templates / support-sessions
- *     / signup-intents / baa-register / feature-flags-admin) behind `withPlatformContext` (M1 @wardenx/tenancy
- *     — the separately-pooled, RLS-bypass, AUDITED cross-tenant platform read path, F03/F09);
+ *   - PLATFORM-OPS (nine plugins: tenants / invitations / key-ring / onboarding-templates / support-sessions
+ *     / signup-intents / baa-register / feature-flags-admin / tenant-export-approval) behind
+ *     `withPlatformContext` (M1 @wardenx/tenancy — the separately-pooled, RLS-bypass, AUDITED cross-tenant
+ *     platform read path, F03/F09);
  *   - TENANT-scoped (five plugins, support-consent-grants / dsar-export-jobs / tenant-export-jobs /
  *     onboarding-tasks / baa) behind `withOrgContext` (the tenant's own org);
  *   - PUBLIC (the session-less self-serve signup surface, gated 503 behind `m34.self_serve_signup`).
@@ -291,6 +294,7 @@ export function mountTenantPlatformRoutes(
   _registerSignupIntentRoutes(app, { service: platformService });
   _registerBaaRegisterRoutes(app, { service: platformService });
   _registerFeatureFlagAdminRoutes(app, { service: platformService });
+  _registerTenantExportApprovalRoutes(app, { service: platformService });
 
   // ── tenant-scoped surface (withOrgContext; the tenant's own org) ──
   const { service: tenantService } = services?.tenant ?? _createInMemoryTenantBackend();

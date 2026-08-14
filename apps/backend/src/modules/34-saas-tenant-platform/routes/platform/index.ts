@@ -18,6 +18,10 @@ export { registerSupportSessionRoutes, type SupportSessionRouteDeps } from "./su
 export { registerSignupIntentRoutes, type SignupIntentRouteDeps } from "./signup-intents";
 export { registerBaaRegisterRoutes, type BaaRegisterRouteDeps } from "./baa-register";
 export {
+  registerTenantExportApprovalRoutes,
+  type TenantExportApprovalRouteDeps,
+} from "./tenant-export-approval";
+export {
   registerFeatureFlagAdminRoutes,
   type FeatureFlagAdminRouteDeps,
 } from "./feature-flags-admin";

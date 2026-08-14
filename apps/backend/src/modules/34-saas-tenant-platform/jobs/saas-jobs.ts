@@ -825,7 +825,7 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
         fulfilledAt: now(),
         bundleMinioObjectKey: input.bundleMinioObjectKey,
         bundleSha256: input.bundleSha256,
-        bundleSizeBytes: input.bundleSizeBytes,
+        bundleSizeBytes: String(input.bundleSizeBytes),
         bundleModuleInventory: input.bundleModuleInventory,
         bundlePresignedUrlExpiresAt: input.bundlePresignedUrlExpiresAt,
       });
@@ -839,11 +839,12 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
     },
     // SEC-052 — records the hold; deliberately does NOT flip status to 'fulfilled'. The tenant-scoped
     // download route (service-drizzle.ts `tenantExportDownloadUrl`) already 409s any job whose status
-    // isn't 'fulfilled', so the hold is enforced by omission — no new status/column needed. The M36
-    // platform-ops alert this port's own doc comment names, and the platform-scoped `approve-oversized`
-    // release route that would ever un-hold a bundle, do not exist yet (the route is documented in
-    // typebox.ts's `ApproveOversizedExportRequest` but never registered) — tracked as a follow-up gap,
-    // not built here (GAP-094 is scoped to the worker; SEC-052 release is a separate platform-ops surface).
+    // isn't 'fulfilled', so the hold is enforced by omission — no new status/column needed. GAP-097 built
+    // the release side: `POST /api/v1/platform/tenant-export-jobs/:id/approve-oversized`
+    // (routes/platform/tenant-export-approval.ts) reads THIS event's `shardReceipt` (the bundle artifact
+    // handles recorded below) to flip the job to `fulfilled` once a platform-ops actor co-signs. The M36
+    // platform-ops alert this port's own doc comment names is not wired (no discovery surface yet for
+    // WHICH job needs approval — logged separately, GAP-097's own follow-up).
     async holdForOversizedApproval(input): Promise<void> {
       await tenantExportRepo.appendEvent({
         organizationId: requireTenantExportOrgId(),

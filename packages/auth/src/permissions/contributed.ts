@@ -2442,6 +2442,14 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "admin",
     abac: "tenant_export_org_admin_or_platform_ops",
   },
+  // GAP-097: the SEC-052 second-actor release for an oversized-hold bundle (typebox.ts's
+  // `ApproveOversizedExportRequest`, documented since M34-T-phase but never registered as a route).
+  "tenant_export.approve_oversized": {
+    resource: "tenant_export_job",
+    action: "approve_oversized",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
   // --- feature flags: admin surface (§4.5) ---
   "feature_flag.read_platform": {
     resource: "feature_flag",

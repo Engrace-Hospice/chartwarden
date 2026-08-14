@@ -12649,6 +12649,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenant-export-jobs/{id}/approve-oversized": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Second-actor release of an oversized-hold tenant-export bundle (flips to fulfilled) */
+        post: operations["postApiV1PlatformTenantexportjobsByIdApproveoversized"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenant-invitations": {
         parameters: {
             query?: never;
@@ -52205,6 +52222,39 @@ export interface operations {
                         }[];
                         nextCursor: string | null;
                         hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantexportjobsByIdApproveoversized: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    approvalReason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        jobId: string;
+                        status: string;
                     };
                 };
             };
