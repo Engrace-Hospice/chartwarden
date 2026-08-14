@@ -26,9 +26,11 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { type DbClient, createDbClient } from "@wardenx/db";
+import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerPatientSeams } from "../src/modules/05-patient/index";
+import { appRoleConnectionString, appRoleUrl } from "./_live-app-role";
 import { createDrizzleCareTeamStore } from "../src/modules/05-patient/seams/drizzle-stores";
 import { createDbMessagingProvider } from "../src/modules/36-messaging/messaging-provider-db";
 
@@ -127,9 +129,12 @@ describe.skipIf(!DB_URL)("GAP-059 — M5 CareTeamProvider + M36 syncCareTeamChan
     await assign(rn, "primary_rn");
     await assign(msw, "case_manager_msw");
 
-    await admin.query("ALTER ROLE wardenx_app LOGIN");
+    // GAP-086 — this used to be `.replace("://postgres@", "://wardenx_app@")`, which only matches a
+    // PASSWORDLESS url. Against any url carrying a password the pattern misses, `String.replace` returns
+    // the input unchanged, and the whole suite silently ran as the SUPERUSER — which bypasses RLS
+    // unconditionally, so the reconciler's org scoping was never actually exercised.
     handle = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
     registerPatientSeams({ db: handle.db, careTeam: { store: createDrizzleCareTeamStore(handle.db) } });
   }, 180_000);
@@ -137,6 +142,19 @@ describe.skipIf(!DB_URL)("GAP-059 — M5 CareTeamProvider + M36 syncCareTeamChan
   afterAll(async () => {
     await handle?.close();
     if (admin) await admin.end();
+  });
+
+  // GAP-086 guard: the failure this suite used to have was SILENT — a missed string replace left it on the
+  // superuser, where RLS does not apply and every scoping assertion below is vacuous. Assert the identity
+  // explicitly so a regression is a failing test rather than a quietly weaker one.
+  it("drives the production path as the NOBYPASSRLS wardenx_app role, not the superuser", async () => {
+    // node-postgres drizzle's `execute` resolves to a pg QueryResult (`{ rows }`), not an array.
+    const result = await handle.db.execute<{ current_user: string; bypassrls: boolean }>(
+      sql`SELECT current_user, (SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user) AS bypassrls`,
+    );
+    const row = result.rows[0];
+    expect(row?.current_user).toBe("wardenx_app");
+    expect(row?.bypassrls).toBe(false);
   });
 
   it("CareTeamProvider resolves the real open patient_assignment roster, reverse of CaseloadProvider", async () => {
@@ -232,7 +250,7 @@ describe.skipIf(!DB_URL)("GAP-059 — M5 CareTeamProvider + M36 syncCareTeamChan
   // as a single call, with no concurrency staging to get flaky.
   it("needs only ONE pooled connection at a time (a max:1 pool must still complete)", async () => {
     const single = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      connectionString: appRoleUrl(DB_URL as string),
       max: 1,
     });
     // The seam MUST resolve against the same single-connection handle — if the inner read borrowed a
