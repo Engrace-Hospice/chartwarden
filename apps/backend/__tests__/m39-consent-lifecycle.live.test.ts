@@ -50,10 +50,23 @@ describe.skipIf(!DB_URL)("M39 consent lifecycle — LIVE Postgres (WX-PR-009)", 
   }
 
   async function applyMigrations(): Promise<void> {
+    // WARDENX_TEST_NO_PGVECTOR: run on a cluster without the pgvector extension (the M4/M7 strip —
+    // the extension appears both quoted and unquoted, 0014 also declares a `vector(384)` COLUMN whose
+    // type must resolve, and its `USING hnsw` index needs a pgvector-only access method). Without
+    // this the suite dies in `beforeAll` on `extension "vector" is not available`, which vitest
+    // reports as SKIPPED — indistinguishable from "no database configured".
+    const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
     for (const file of readdirSync(MIGRATIONS_DIR)
       .filter((name) => name.endsWith(".sql"))
-      .sort())
-      await admin.query(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
+      .sort()) {
+      let sql = readFileSync(join(MIGRATIONS_DIR, file), "utf8");
+      if (strip) {
+        sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- (vector stripped)");
+        sql = sql.replace(/\bvector\(\d+\)/g, "text");
+        sql = sql.replace(/^.*USING hnsw \(.*$/gm, "-- (hnsw stripped)");
+      }
+      await admin.query(sql);
+    }
   }
 
   beforeAll(async () => {

@@ -35,6 +35,7 @@ import {
   getRenderedDocumentProvider,
   registerDocumentSeams,
 } from "../src/modules/22-documents/index";
+import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -88,11 +89,12 @@ describe.skipIf(!DB_URL)("GAP-095 — M22 document-row write store, LIVE Postgre
       )
     ).rows[0].id as string;
     actorUserId = (
-      await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, ["gap095-actor@x.test"])
+      await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [
+        "gap095-actor@x.test",
+      ])
     ).rows[0].id as string;
-    await admin.query("ALTER ROLE wardenx_app LOGIN");
     handle = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
 
     registerDocumentSeams({
@@ -137,8 +139,9 @@ describe.skipIf(!DB_URL)("GAP-095 — M22 document-row write store, LIVE Postgre
     expect(metadata?.patientId).toBe(patientId);
     expect(metadata?.activeVersionId).toBe(backRef?.versionId);
 
-    const forPatient = await runWithRequestContext({ organizationId: ORG, userId: actorUserId }, () =>
-      getDocumentReader().documentsForPatient({ patientId, organizationId: ORG }),
+    const forPatient = await runWithRequestContext(
+      { organizationId: ORG, userId: actorUserId },
+      () => getDocumentReader().documentsForPatient({ patientId, organizationId: ORG }),
     );
     expect(forPatient.map((d) => d.documentId)).toContain(documentId);
 
