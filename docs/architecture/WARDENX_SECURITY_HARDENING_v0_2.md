@@ -3,7 +3,7 @@
 **Document ID:** WARDENX_SECURITY_HARDENING
 **Status:** v0.2
 **Owner:** Fabrice V. Adjam (Engineering + interim Security/Compliance; specialized roles contracted as team grows)
-**Companion to:** WARDENX_ARCHITECTURE v0.11, WARDENX_SYSTEM_DESIGN v0.3, WARDENX_DR_BCP v0.1, WARDENX_OPS_RUNBOOK v0.1
+**Companion to:** WARDENX_ARCHITECTURE v0.12 (file `WARDENX_ARCHITECTURE_v0_11.md`), WARDENX_SYSTEM_DESIGN v0.3, WARDENX_DR_BCP v0.1, WARDENX_OPS_RUNBOOK v0.1
 **Review cadence:** Annual full review; quarterly partial review of threat model and vulnerability management sections
 **Last reviewed:** 2026-06-08
 
@@ -443,7 +443,7 @@ have a built resolver and register into M3's registry, and a missing predicate d
 |Valkey AOF and snapshots                                |Filesystem-level encryption (LUKS)                                  |Per VM                                                          |
 |Application secrets in Git                              |SOPS with age                                                       |Age key per environment; backups in sealed envelopes            |
 |TLS private keys                                        |Owned by edge / per-service; not encrypted at rest beyond filesystem|Strict filesystem ACL (mode 0400 owned by service user)         |
-|`tax_id` (provider entity), `ssn` (patient if collected)|Field-level encryption using pgcrypto with site key                 |Site key in environment; rotated annually                       |
+|`tax_id` (provider entity), `ssn` (patient if collected)|Field-level encryption: application-layer AES-256-GCM envelope (ADR-0038 — never pgcrypto)|Key custody behind the `kekUnwrap` port; rotated annually                       |
 |Tokens stored in DB (DoseSpot, OAuth refresh, etc.)     |Field-level encryption                                              |Site key                                                        |
 
 ### 4.3 Encryption in Transit
@@ -1352,7 +1352,7 @@ For each production VM:
 
 ### 12.1 Mobile Architecture Recap
 
-`apps/mobile/` is a Capacitor-wrapped TanStack Start application delivered as native iOS and Android apps via App Store / Google Play (or MDM for enterprise distribution). Used by clinical and field staff. Stores temporary clinical data offline.
+Mobile is a Capacitor wrap of `apps/web` (ADR-0035 — there is no separate `apps/mobile` app), delivered as native iOS and Android shells via App Store / Google Play (or MDM for enterprise distribution). Used by clinical and field staff. Stores temporary clinical data offline.
 
 ### 12.2 Device Posture Requirements
 
@@ -1505,7 +1505,7 @@ All mobile actions audited identically to web actions, plus:
 
 Every PHI access and every state change must produce an audit entry. Mechanism:
 
-- `audit()` helper in `packages/db/src/audit.ts` (Module 1)
+- `audit()` helper in `packages/audit/src/audit.ts` (Module 4)
 - Service-layer pattern: every domain action that touches PHI calls `audit()` before commit
 - Code review enforces this
 - Lint rule (custom) flags PHI table mutations without nearby `audit()` call
@@ -2114,3 +2114,4 @@ M33 is the tenant-facing reporting plane. Its governing security rule is **minim
 -----
 
 **End of WARDENX_SECURITY_HARDENING v0.2.**
+<!-- verified-against: 6a6eb454a12a · 2026-08-14 -->

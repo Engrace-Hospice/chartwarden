@@ -12,22 +12,35 @@ platform services M36/M38/M39/M40. The generated **implementation-status matrix*
 (`bun run status:matrix` → `audit/implementation-status/IMPLEMENTATION_STATUS.md`) is the per-module
 truth — currently **🟢 40 · 🟡 0 · ⚪ 0** (the module set is complete; the last three placeholders —
 M29, M35, and M37 — are now merged). Every module is enrichment-complete (matrix `Enriched`
-full-ratio ✅, corpus 989/995 routes carry request/response contracts). The only remaining ⚠️ rows
-are `Live` (cross-tenant RLS proof) on the three newest modules — **M29 (0/11), M35 (3/21), M37
-(8/26)** — whose live-RLS suites are still partial. **M30 is merged (PR #106)**: 18 frozen
+full-ratio ✅, corpus 1219/1226 routes carry request/response contracts —
+`audit/openapi-coverage/OPENAPI_COVERAGE.md` is the generated, authoritative count; re-check there
+before citing a number here, since this line is hand-maintained prose and the generated report is
+not). The `Live` column (cross-tenant RLS proof) is also full-ratio ✅ across all 40 modules,
+including the three newest — **M29 (11/11), M35 (21/21), M37 (26/26)** — whose live-RLS suites
+completed in the Phase 0-2 remediation pass. **M30 is merged (PR #106)**: 18 frozen
 `quality/` tables + migrations 0062–0068; the `@wardenx/quality` domain core + `@wardenx/cahps-vendors`;
-47 routes in `apps/backend/src/modules/30-quality`; the `MEASURE_CATALOG`/measure registry (HCI 10
+60 routes in `apps/backend/src/modules/30-quality`; the `MEASURE_CATALOG`/measure registry (HCI 10
 indicators + composite, HVLDL, HOPE-derived TFP, operational); and CAHPS/QAPI/SRA/incident/mortality/
 infection surveillance — status matrix 🟢. A follow-up wiring batch (**issue #107, PRs #108–#118**) then
 made M30's cross-module seams real: the M1-T10 transactional outbox-row emit (M30+M33 events emit), the
 M40-free provider-entity resolver, the M33 `MetricsProvider` registration, the HOPE-rollup + HVLDL measure
 inputs (computing end-to-end, incl. a new M6 `DeathDischargeReader` + a Drizzle-backed M8
 `SignedEncountersReader`), per-job `withOrgContext` RLS on the recompute/outbreak workers, and the cron
-allowlist + active-org enumerator. M23 and M27 are now **merged** (no longer placeholders), so the
-**HCI/operational measure families' remaining blocker is the cross-module seam BIND** — M27 consuming the
-M23/M26 forward-seams (`CapAccrualReader`/`CapSettlementProvider` for the CMS-1984-14 cap calc) and M30's HCI
-consuming M27; those reach live as deny-stubs today, so `hci_composite` stays fail-closed until they flip
-live.
+allowlist + active-org enumerator. M23 and M27 are now **merged** (no longer placeholders); the M23/M26→M27
+forward-seam binds for the CMS-1984-14 cap calc (`CapAccrualReader` et al.) and M27's own forward seam into
+M30 (`CostReportFilingStatusReader`) are **live and tested**, not deny-stubs (`m30-forward-seam-binds.test.ts`,
+`m26-cost-report-cap-seam.live.test.ts`, `m27-validation-context.live.test.ts`) — this un-suppresses the CoP
+418.310 failure-to-file indicator and half of HCI 5/6/7's inputs. **`hci_composite`'s real remaining blocker
+is DATA, not wiring**: 9 of its 10 indicators need M6/M8 aggregate seams
+(per-election-period LOC-days, discharge timing, cross-setting transition sequences, per-day
+skilled-nursing minutes) that were never built — only `hci_indicator_10` computes. All 10 of the
+remaining operational measures are now bound, including `bereavement_coverage_rate` (M16) and the two
+that needed an M15 producer-side fix first — `volunteer_compliance_gate_rate` /
+`supervisory_visit_on_time` used to return a pre-divided rate (no denominator, so CMS small-N suppression
+couldn't apply); M15's `DisciplineComplianceProvider` now exposes the count pair beside each rate method
+(`supervisoryOnTimeCounts`/`volunteerGateComplianceCounts`), the same store round-trip, no new query.
+`opioid_on_admission_rate` remains genuinely blocked — it needs an M38 RxCUI→therapeutic-class capability
+that doesn't exist yet.
 
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104, see
 [`audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md`](./audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md)):
@@ -95,7 +108,7 @@ Note: the `architecture/` directory at the repo root holds the *enforcement code
 the prose docs in `docs/architecture/`.
 
 - `architecture/module-manifest.ts` (+ `.cjs`) — single source of truth for each module's
-  `codePaths`, `dependsOn`, and `ownedTables` (453 tables across 40 modules).
+  `codePaths`, `dependsOn`, and `ownedTables` (460 tables across 40 modules).
 - `architecture/.dependency-cruiser.cjs` — import-boundary rules.
 - `scripts/check-table-ownership.ts`, `check-tenancy.ts`, `check-ddl-legality.ts`,
   `check-fitness-gaps.ts` (event-catalog `mN.` convention, seam-registry completeness, PHI
@@ -110,6 +123,28 @@ the prose docs in `docs/architecture/`.
   inputs do not exist yet is expressed as a *registered* predicate that denies and says why
   (`deviceAttestationValid` in `packages/auth/src/abac/registry.ts`), never as an unregistered
   name — both refuse identically, only the first is distinguishable from a mistake.
+- `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
+  Every `test:m<N>:…:live` script in `package.json` must be invoked by a job in
+  `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so
+  with no database it reports SKIPPED rather than failed and `bun run test` stays green either
+  way; a script in `package.json` looks wired but nothing distinguishes one CI runs from one
+  nothing has ever run. That pairing (GAP-086) left the 25 clinical-core **lifecycle** suites —
+  205 assertions over the real Drizzle write paths — unexecuted outside their authors' laptops,
+  and 23 of 25 were red once run. Two CI jobs now cover them: `rls-live` (table-level policy
+  proof) and `lifecycle-live` (the production route services as the NOBYPASSRLS `wardenx_app`
+  role, grouped per module).
+- `scripts/check-architecture-docs.ts` — **architecture-corpus freshness gate**
+  (`bun run arch:architecture-docs`, in `arch:fitness` since 2026-08-14). The authority rule makes
+  `docs/architecture/` binding, yet it was the only ungated documentation body and drifted for two
+  months (63 dead cited paths, stale companion citations — see
+  `audit/ARCHITECTURE_DOC_CONSISTENCY_AUDIT_2026-08-13.md`). Enforces: cited repo paths exist
+  (paths on a line that says they don't exist are exempt — documented absence is correct), version
+  headers parse (filename-version drift needs the "FILENAME still reads" note), `Companion to:`
+  citations match on-disk header versions, and four-digit `ADR-NNNN` citations resolve
+  (ARCHITECTURE §21's short `ADR-00N` open-decision register is a separate, deliberately ungated
+  namespace). Warn-only `<!-- verified-against: sha · date -->` staleness stamps. The six build
+  divergences the 2026-08-13 audit surfaced are recorded as ADR-0036…0040 (+ ADR-0030/0032/0035
+  for the frontend stack).
 - `scripts/audit-fitness.ts` — point-in-time enforcement audit (module matrix, table
   ownership, dependency graph/cycles); writes `audit/FITNESS_ENFORCEMENT_AUDIT.md`.
 - `scripts/report-implementation-status.ts` — per-module **implementation-status matrix**
@@ -139,8 +174,8 @@ the prose docs in `docs/architecture/`.
   ship their contracts), and when it **falls** the baseline must be re-tightened
   (`bun run openapi:coverage --update`) so progress is locked in. A module absent from the
   baseline has an implied floor of **0** — a brand-new module's first unenriched route fails.
-  The 2026-08-01 sweep retro-enriched the corpus from **478 unenriched → 6** (currently **989/995
-  enriched**; only bootstrap's health/infra routes remain) and re-tightened the baseline — the gate
+  The 2026-08-01 sweep retro-enriched the corpus from **478 unenriched → 6** (currently **1219/1226
+  enriched**; only bootstrap's health/infra routes remain unenriched) and re-tightened the baseline — the gate
   never *required* that backfill, but the progress is now locked in. Writes
   `audit/openapi-coverage/OPENAPI_COVERAGE.md` (+ `.json`).
   `client:check` (generated typed client ↔ openapi.json) is now in `arch:fitness` too.
