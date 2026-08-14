@@ -34,12 +34,13 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import type { DeaSchedule, MedClass } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { type SQL, and, desc, eq, exists, inArray, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { prescriberEligible } from "./prescriber-eligibility";
 import type {
   ControlledSubstancePolicyView,
   CreateMedicationOrderArgs,
+  DoseSpotAbacActor,
   MedicationOrderRouteService,
   MedicationOrderView,
   PrescriberRosterView,
@@ -143,6 +144,49 @@ const DEFAULT_CS_POLICY: ControlledSubstancePolicyView = {
   scheduleIiiToVMaxRefills: 5,
   epcsCertificationStatus: "not_certified",
 };
+
+/**
+ * The §2.7 refill-inbox narrowing, AS A `WHERE` CLAUSE — "which refill rows belong to this actor's
+ * inbox?" over the three axes {@link MedicationOrderRouteService.loadRefillScope} gates a detail with.
+ * `null` means no axis can name a row for this actor (no caseload, no membership id): the caller must
+ * return an empty inbox WITHOUT querying, because an empty `or()` folds to `undefined` in drizzle —
+ * an unfiltered read, which is exactly the tenant-wide leak this narrowing exists to close.
+ *
+ * Exported because the SQL SHAPE is the security- and cost-relevant property, and it is the one thing
+ * a behavioural test cannot see: a post-read `rows.filter(...)` returns the same rows as this does
+ * (that is what GAP-026 first shipped) while still reading every refill in the tenant into app memory.
+ * `refillInboxWhere(...).toSQL()` is what tells those two apart.
+ *
+ * `db` is used only to RENDER the correlated EXISTS sub-select; a subquery never executes on its own,
+ * and the caller's `withOrgContext` transaction is what runs (and RLS-scopes) the finished statement.
+ */
+export function refillInboxWhere(
+  db: DbClient,
+  args: { caseloadPatientIds: readonly string[]; actor: DoseSpotAbacActor },
+): SQL | null {
+  const me = args.actor.membershipId;
+  const axes: SQL[] = [];
+  if (args.caseloadPatientIds.length > 0)
+    axes.push(inArray(RR.patientId, [...args.caseloadPatientIds]));
+  if (me !== null) {
+    axes.push(eq(RR.approvedByMembershipId, me));
+    axes.push(
+      exists(
+        db
+          .select({ one: sql`1` })
+          .from(MO)
+          .where(
+            and(
+              eq(MO.id, RR.sourceMedicationOrderId),
+              eq(MO.organizationId, RR.organizationId),
+              eq(MO.prescriberMembershipId, me),
+            ),
+          ),
+      ),
+    );
+  }
+  return axes.length === 0 ? null : (or(...axes) as SQL);
+}
 
 /**
  * The production, RLS-backed DoseSpot backend (service + §4.7 ABAC resolver in one object). Reads + the write
@@ -673,36 +717,40 @@ export function createDbDoseSpotBackend(
 
     // ── Refill-inbox reads + writes (§2.7 D9) ────────────────────────────────────────────────────────
     async listRefills(organizationId, actor) {
-      // GAP-026 — the inbox is now NARROWED, not merely org-scoped. `refill_inbox_scope` resolves to
-      // allow on a list (there is no per-row target to gate), so this service call was the only
-      // control on the list side and it applied none: every clinician saw every refill in the tenant.
-      // The narrowing is the §2.7 inbox model — the refills you are the named prescriber of, plus
-      // those for patients on your caseload — the same two axes `loadRefillScope` gates a detail with.
+      // GAP-026 — the inbox is NARROWED, not merely org-scoped. `refill_inbox_scope` resolves to
+      // allow on a list (there is no per-row target to gate), so this service call is the only
+      // control on the list side, and before GAP-026 it applied none: every clinician saw every
+      // refill in the tenant. The narrowing is the §2.7 inbox model — the refills you are the named
+      // prescriber of, plus those for patients on your caseload — the same two axes
+      // `loadRefillScope` gates a detail with.
       //
-      // Resolved OUTSIDE `withOrg` (M5's provider opens its own `withOrgContext`), and filtered in the
-      // service rather than joined in SQL: the caseload lives in M5's tables, across a boundary this
-      // module may not join over (ADR-0005).
-      const caseload = new Set(await caseloadPatientIds(organizationId, actor.userId));
+      // THE NARROWING IS THE `WHERE` CLAUSE, not a post-read `.filter()`. GAP-026 first shipped it in
+      // the service: read every refill row in the tenant, then drop the ones that are not yours. That
+      // is correct and it is invisible from the outside, but it makes the cost of MY inbox scale with
+      // EVERY OTHER clinician's refill volume, and it ships the whole tenant's refill PHI into app
+      // memory to throw most of it away. Both are properties of the query, so both are fixed in the
+      // query:
+      //   · caseload  — `patient_id = ANY($ids)`, the ids M5 resolved for this actor;
+      //   · approver  — `approved_by_membership_id = $me`, a column on the row itself;
+      //   · prescriber— an EXISTS against `medication_order` (M12's OWN table, so this is a
+      //                 within-module join, not a cross-boundary one) on the SOURCE order's
+      //                 prescriber. Supported by `medication_order_prescriber_idx` (mig 0208) —
+      //                 the pre-existing prescriber index is PARTIAL on the pending-signature
+      //                 statuses, so a refill against an ACTIVE order could not use it.
+      // The caseload ids still come from M5 across a boundary this module may not join over
+      // (ADR-0005), so they arrive as a bound parameter — resolved OUTSIDE `withOrg`, because M5's
+      // provider opens its own `withOrgContext`.
+      //
+      // Deliberately unpaged: the result is now bounded by one actor's own work rather than by the
+      // tenant, and a silent `LIMIT` on an inbox would under-report work without saying so. Paging is
+      // a route-contract change, for when a single prescriber's own volume warrants it.
+      const caseload = await caseloadPatientIds(organizationId, actor.userId);
+      const mine = refillInboxWhere(db, { caseloadPatientIds: caseload, actor });
+      // No caseload AND no membership id = no axis can name a row for this actor.
+      if (mine === null) return { refills: [] };
       return withOrg(organizationId, async (tx) => {
-        const rows = await tx.select().from(RR).orderBy(desc(RR.receivedAt));
-        if (rows.length === 0) return { refills: [] };
-        // The primary routing identity is the prescriber of the SOURCE order, which lives on
-        // `medication_order` — one batched read for the page, never one per row.
-        const sourceIds = [...new Set(rows.map((r) => r.sourceMedicationOrderId))];
-        const sources = await tx
-          .select({ id: MO.id, prescriberMembershipId: MO.prescriberMembershipId })
-          .from(MO)
-          .where(inArray(MO.id, sourceIds));
-        const prescriberOf = new Map(sources.map((o) => [o.id, o.prescriberMembershipId]));
-        const mine = rows.filter((r) => {
-          if (caseload.has(r.patientId)) return true;
-          if (actor.membershipId === null) return false;
-          return (
-            r.approvedByMembershipId === actor.membershipId ||
-            prescriberOf.get(r.sourceMedicationOrderId) === actor.membershipId
-          );
-        });
-        return { refills: mine.map(toRefillView) };
+        const rows = await tx.select().from(RR).where(mine).orderBy(desc(RR.receivedAt));
+        return { refills: rows.map(toRefillView) };
       });
     },
     async getRefill(organizationId, id) {

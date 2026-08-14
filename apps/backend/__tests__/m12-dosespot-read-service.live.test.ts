@@ -185,6 +185,63 @@ describe.skipIf(!DB_URL)("M12 DoseSpot Drizzle read service — LIVE Postgres (M
     expect((await service.listRefills(ORG_A, stranger)).refills).toEqual([]);
   });
 
+  // The narrowing is a WHERE clause (see dosespot-refill-inbox-sql.test.ts for the emitted SQL). The
+  // prescriber axis is a correlated EXISTS against the partitioned `medication_order`, so it is worth
+  // proving against real Postgres that it separates TWO prescribers in the SAME tenant — the
+  // stranger case above would still pass if the sub-select matched nothing at all for anyone.
+  it("the prescriber EXISTS separates two prescribers inside one tenant", async () => {
+    const OTHER_USER = "33333333-3333-3333-3333-3333333333a1";
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m12r-other@x.test')`, [
+      OTHER_USER,
+    ]);
+    const otherMembership = (
+      await admin.query(
+        `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+        [OTHER_USER, ORG_A],
+      )
+    ).rows[0].id as string;
+    const mine = await admin.query(
+      `SELECT provider_entity_id, location_id FROM medication_order WHERE id = $1`,
+      [seeded[ORG_A].medicationOrder],
+    );
+    const { provider_entity_id: pe, location_id: loc } = mine.rows[0];
+    const otherOrder = (
+      await admin.query(
+        `INSERT INTO medication_order (organization_id, provider_entity_id, location_id, patient_id,
+           admission_id, med_class, drug_name, strength, dose_form, route, data, prescriber_membership_id,
+           prescribing_physician_mdm_id, status)
+         VALUES ($1,$2,$3,$4,$5,'standard','Lorazepam','1 mg','tablet','oral','{}'::jsonb,$6,$7,'active') RETURNING id`,
+        [ORG_A, pe, loc, PATIENT, ADMISSION, otherMembership, PHYSICIAN_MDM],
+      )
+    ).rows[0].id as string;
+    const otherRefill = (
+      await admin.query(
+        `INSERT INTO refill_request (organization_id, provider_entity_id, location_id,
+           source_medication_order_id, patient_id, dosespot_event_id, received_at)
+         VALUES ($1,$2,$3,$4,$5,'rx-evt-M12R-other', now()) RETURNING id`,
+        [ORG_A, pe, loc, otherOrder, PATIENT],
+      )
+    ).rows[0].id as string;
+
+    // Two refills now exist in ORG_A, for the SAME patient, differing only by whose order they came
+    // from. Each prescriber sees exactly one.
+    const forMe = await service.listRefills(ORG_A, {
+      userId: USER,
+      membershipId: seeded[ORG_A].membership,
+    });
+    expect(forMe.refills.map((r) => r.id)).toEqual([seeded[ORG_A].refillRequest]);
+
+    const forOther = await service.listRefills(ORG_A, {
+      userId: OTHER_USER,
+      membershipId: otherMembership,
+    });
+    expect(forOther.refills.map((r) => r.id)).toEqual([otherRefill]);
+
+    // Clean up so the surrounding suite's single-refill expectations still hold.
+    await admin.query("DELETE FROM refill_request WHERE id = $1", [otherRefill]);
+    await admin.query("DELETE FROM medication_order WHERE id = $1", [otherOrder]);
+  });
+
   it("loadRefillScope grants the named prescriber and denies everyone else (GAP-026)", async () => {
     const facts = await service.loadRefillScope(ORG_A, seeded[ORG_A].refillRequest, {
       userId: USER,
