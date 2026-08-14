@@ -124,23 +124,23 @@ The master list. Every external connection appears here exactly once. New integr
 |--|-----------|---------|--------|----|---------|----------|----------------|-----------|-------|
 |1|DoseSpot (e-prescribe)|Bidirectional|REST + webhooks|Yes|Yes|per-tenant (clinic reg)|12|`packages/dosespot`|Tier 2|
 |2|Surescripts (via DoseSpot)|Downstream of DoseSpot|—|Yes|via DoseSpot|n/a (DoseSpot-mediated)|12|(through DoseSpot)|Tier 2|
-|3|Medicare MAC — NGS J6 (Engrace)|Outbound + ack|EDI X12 (837I, 999, 277CA, 835) + file drop/portal|Yes|N/A (CMS contractor)|per-provider-entity|23, 25|`packages/x12-worker`|Tier 2|
-|4|MAC eligibility — HETS|Outbound query|EDI X12 270/271|Yes|N/A (CMS)|per-provider-entity|5, 23|`packages/x12-worker`|Tier 3|
+|3|Medicare MAC — NGS J6 (Engrace)|Outbound + ack|EDI X12 (837I, 999, 277CA, 835) + file drop/portal|Yes|N/A (CMS contractor)|per-provider-entity|23, 25|`packages/x12-837-client` + `packages/x12-835-client` (ADR-0029; MAC transport not wired)|Tier 2|
+|4|MAC eligibility — HETS|Outbound query|EDI X12 270/271|Yes|N/A (CMS)|per-provider-entity|5, 23|not built — no HETS client exists (ADR-0029 target)|Tier 3|
 |5|State Medicaid|Outbound + ack|EDI X12 837 / 270-271 + state portals|Yes|N/A (state)|per-provider-entity + per-state adapter|24, 25|`packages/medicaid-adapters`|Tier 2|
-|6|CMS MCReF (cost report)|Outbound upload|ECR file upload (portal/API)|No (financial)|N/A (CMS)|per-provider-entity|27|`packages/x12-worker` (ECR build) + portal|Tier 4|
+|6|CMS MCReF (cost report)|Outbound upload|ECR file upload (portal/API)|No (financial)|N/A (CMS)|per-provider-entity|27|`packages/cost-report` (ECR build) + portal|Tier 4|
 |7|CMS iQIES (HOPE)|Outbound submission|HL7-style / iQIES file submission|Yes|N/A (CMS)|per-provider-entity|10, 30|`packages/iqies-client`|Tier 3|
-|8|CAHPS survey vendor|Bidirectional|Vendor API / file exchange (vendor-pluggable)|Yes (decedent caregiver PII)|Yes|per-tenant|30|`packages/cahps-client` (interface)|Tier 4|
+|8|CAHPS survey vendor|Bidirectional|Vendor API / file exchange (vendor-pluggable)|Yes (decedent caregiver PII)|Yes|per-tenant|30|`packages/cahps-vendors`|Tier 4|
 |9|Xero (accounting)|Bidirectional|OAuth 2.0 + REST|No (financial)|No (no PHI)|per-tenant|27, 29|`packages/xero-client`|Tier 4|
 |10|Gusto (payroll)|Inbound pull|OAuth 2.0 + REST|No (wage data)|No (no PHI)|per-tenant|27, 29|`packages/gusto-client`|Tier 4|
-|11|Stripe (subscription billing)|Bidirectional|REST + webhooks|No (WardenX↔customer billing)|No|platform|35|`packages/stripe-client`|Tier 3|
-|12|Twilio — SMS|Outbound|REST + status webhooks|No (no PHI in payload by rule)|Yes (BAA)|platform|36|`packages/twilio-client`|Tier 2 (alert path)|
-|13|Twilio — Voice (SOS escalation)|Outbound|REST + TwiML/webhooks|No (no PHI in payload)|Yes (BAA)|platform|20, 36|`packages/twilio-client`|Tier 1 (field safety)|
-|14|Postmark (email)|Outbound|REST + bounce/delivery webhooks|No (no PHI in payload by rule)|Yes (BAA)|platform|36|`packages/postmark-client`|Tier 3|
-|15|Web Push (VAPID)|Outbound|Web Push Protocol|No (no PHI in payload)|N/A (browser push services)|platform (VAPID keys)|36|`packages/webpush`|Tier 2 (alert path)|
+|11|Stripe (subscription billing)|Bidirectional|REST + webhooks|No (WardenX↔customer billing)|No|platform|35|`packages/subscription-billing` (Stripe SDK not installed; transport not wired)|Tier 3|
+|12|Twilio — SMS|Outbound|REST + status webhooks|No (no PHI in payload by rule)|Yes (BAA)|platform|36|not built — inbound status webhooks land in `apps/backend/src/modules/36-messaging`; no outbound client exists|Tier 2 (alert path)|
+|13|Twilio — Voice (SOS escalation)|Outbound|REST + TwiML/webhooks|No (no PHI in payload)|Yes (BAA)|platform|20, 36|not built — see row 12 (no outbound Twilio client exists)|Tier 1 (field safety)|
+|14|Postmark (email)|Outbound|REST + bounce/delivery webhooks|No (no PHI in payload by rule)|Yes (BAA)|platform|36|not built — outbound email is a production no-op; inbound webhooks land in `apps/backend/src/modules/36-messaging`|Tier 3|
+|15|Web Push (VAPID)|Outbound|Web Push Protocol|No (no PHI in payload)|N/A (browser push services)|platform (VAPID keys)|36|not built (`packages/webpush` never created)|Tier 2 (alert path)|
 |16|Anthropic API (cloud AI)|Outbound|REST (Messages API)|Yes (with ZDR + redaction)|Yes (BAA + ZDR)|platform|32 (consumed by 8, 10, 22, 36)|`packages/ai-platform/src/backends/anthropic.ts`|Tier 3|
 |17|Local AI — Ollama / vLLM / sentence-transformers|Internal (WardenX-operated)|HTTP (loopback/VPC)|Yes (stays in perimeter)|N/A (no third party)|platform (no external cred)|32|`packages/ai-platform` backends|Tier 3|
-|18|Hospital ADT feed|Inbound|HL7 v2 over MLLP|Yes|Yes (with sending facility)|per-tenant / per-feed|29, 5|`packages/hl7-worker`|Tier 3|
-|19|Lab feeds|Inbound|HL7 v2 / LOINC over MLLP or SFTP|Yes|Yes (with lab)|per-tenant / per-feed|29, 9|`packages/hl7-worker`|Tier 3|
+|18|Hospital ADT feed|Inbound|HL7 v2 over MLLP|Yes|Yes (with sending facility)|per-tenant / per-feed|29, 5|`apps/backend/src/modules/29-external-interfaces` (module-side; `packages/hl7-worker` extraction deferred — ADR-0028)|Tier 3|
+|19|Lab feeds|Inbound|HL7 v2 / LOINC over MLLP or SFTP|Yes|Yes (with lab)|per-tenant / per-feed|29, 9|`apps/backend/src/modules/29-external-interfaces` (see row 18; `packages/hl7-worker` deferred)|Tier 3|
 |20|NPI Registry (NPPES)|Outbound query|REST (public)|No (provider directory)|No|platform|5, 23, 40|`packages/mdm`|Tier 4|
 |21|Telehealth video (Daily.co — ADR-003)|Bidirectional|REST + WebRTC + webhooks|Yes (video is PHI)|Yes|platform or per-tenant (TBD ADR-003)|31|`packages/telehealth-client`|Tier 3|
 |22|Map / routing (Mapbox vs OSRM — ADR-007)|Outbound|REST|No (addresses are PHI-adjacent — see §6.22)|Conditional (see §6.22)|platform|17|`packages/routing-client`|Tier 4|
@@ -148,13 +148,13 @@ The master list. Every external connection appears here exactly once. New integr
 |24|FHIR Gateway (outbound/inbound interop)|Bidirectional|FHIR R4 REST + bulk NDJSON|Yes|Per-recipient (varies)|per-tenant / per-recipient|28|`packages/fhir`|Tier 3|
 |25|Object storage egress (MinIO presigned URLs for external collaborators)|Outbound (scoped)|HTTPS presigned|Yes (scoped docs)|n/a (internal store)|per-tenant bucket prefix|22, §7.6 external collaborator|`apps/backend/src/modules/22-documents/seams/s3-object-store.ts`|Tier 2|
 |26|EVV state aggregators (**Sandata** + open-model — what `packages/evv-aggregators` actually implements; OR-PTC DCI is NOT built)|Outbound + poll|REST / SFTP per state|Yes|**Yes** (trading-partner agmt / BAA) — *ADR-0020*|per-provider-entity per-state|18|`packages/evv-aggregators`|Tier 3|
-|27|DME vendors|Outbound + confirmation|portal/email/fax (Phase 1); EDI X12 (Phase 2)|Yes (name, address, items)|**Yes**|per-tenant per-vendor|21|`packages/vendor-edi` (deny-stub P1)|Tier 3|
-|28|Partner pharmacy (comfort-kit fulfillment)|Bidirectional|vendor API / portal|Yes|**Yes**|per-tenant|21|`packages/pharmacy-client`|Tier 3|
-|29|Print/mail vendor (statements, letters)|Outbound|REST / SFTP|Yes (name, address, doc content)|**Yes**|platform or per-tenant|22|`packages/print-mail-client`|Tier 4|
+|27|DME vendors|Outbound + confirmation|portal/email/fax (Phase 1); EDI X12 (Phase 2)|Yes (name, address, items)|**Yes**|per-tenant per-vendor|21|not built — M21 deny-stub port (`packages/vendor-edi` never created)|Tier 3|
+|28|Partner pharmacy (comfort-kit fulfillment)|Bidirectional|vendor API / portal|Yes|**Yes**|per-tenant|21|not built (`packages/pharmacy-client` never created)|Tier 3|
+|29|Print/mail vendor (statements, letters)|Outbound|REST / SFTP|Yes (name, address, doc content)|**Yes**|platform or per-tenant|22|not built (`packages/print-mail-client` never created)|Tier 4|
 |30|Fax/email document ingest|Inbound|fax-to-API / secure email|Yes|**Yes** (vendor)|per-tenant|22|`packages/intake-extraction`|Tier 3|
-|31|External triage vendor (after-hours)|Bidirectional|vendor API / portal|Yes (clinical; SUD ⇒ **QSOA**)|**Yes** (+ QSOA for Part 2)|per-tenant|19|`packages/triage-client`|Tier 2|
+|31|External triage vendor (after-hours)|Bidirectional|vendor API / portal|Yes (clinical; SUD ⇒ **QSOA**)|**Yes** (+ QSOA for Part 2)|per-tenant|19|`packages/triage-vendors`|Tier 2|
 |32|HaveIBeenPwned (HIBP) breach check|Outbound query|REST (k-anonymity, SHA-1 prefix)|**No**|**No** (no PHI)|platform|2|`packages/auth` (hibp adapter)|Tier 4|
-|33|Outbound HL7 ORM (lab orders)|Outbound|HL7 v2 over MLLP / SFTP|Yes|**Yes** (with lab)|per-tenant / per-feed|11, 29|`packages/hl7-worker`|Tier 3|
+|33|Outbound HL7 ORM (lab orders)|Outbound|HL7 v2 over MLLP / SFTP|Yes|**Yes** (with lab)|per-tenant / per-feed|11, 29|`apps/backend/src/modules/29-external-interfaces` (see row 18; `packages/hl7-worker` deferred)|Tier 3|
 
 > **Counts:** **33** catalogued surfaces. Surfaces **26–33 were added in the Phase-5 remediation
 > (ADR-0020)** — they had been shipped by their modules without the mandatory INT-002 five-step
@@ -196,7 +196,7 @@ Every integration inherits these patterns unless its §6 section explicitly over
 - **No credential in source or in plain env files in production.** Secrets live in the secrets manager (per Security Hardening / Ops Runbook §8); the app reads them at boot and on rotation signal.
 - **Scope is enforced structurally:**
   - *Platform* secrets (Anthropic key, Stripe key, Twilio/Postmark keys, VAPID keys, NPPES is keyless, terminology license creds) — one set, held by WardenX, never exposed to tenants.
-  - *Per-tenant* secrets (DoseSpot clinic registration, Xero OAuth tokens, Gusto OAuth tokens, CAHPS vendor creds) — stored keyed by `organization_id`, isolated so one tenant's tokens are unreadable in another tenant's context. DoseSpot credentials specifically per architecture §8(4): `packages/dosespot/credentials` keyed by tenant.
+  - *Per-tenant* secrets (DoseSpot clinic registration, Xero OAuth tokens, Gusto OAuth tokens, CAHPS vendor creds) — stored keyed by `organization_id`, isolated so one tenant's tokens are unreadable in another tenant's context. DoseSpot credentials specifically per architecture §8(4): vaulted in the M40 per-tenant secret store (the planned `packages/dosespot/credentials` path was never created).
   - *Per-ProviderEntity* secrets (MAC submitter IDs, Medicaid trading-partner IDs, iQIES/MCReF submitter credentials) — scoped to the CCN-bearing ProviderEntity, since CMS sees the provider, not the Organization.
 - **OAuth token isolation** (Xero, Gusto): refresh tokens stored per-tenant; refresh failures are isolated and do not cascade across tenants.
 - Rotation owners and cadence are in WARDENX_SECURITY_HARDENING; rotation *procedures* are in WARDENX_OPS_RUNBOOK §8. This catalog names *which* secret exists per integration in §6.
@@ -299,7 +299,7 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
 - **Purpose:** Full-integration e-prescribing — patient sync, prescriber roster, NewRx, refills, RxBenefit, medication history; EPCS architecture in place (certification deferred per ADR-006). Custom native React prescribing UI over DoseSpot's 250+ APIs (not iframe).
 - **Direction & protocol:** Bidirectional REST + inbound webhooks.
 - **Operations:** Patient sync (on demographic change), prescriber roster management, NewRx, refill request inbox, RxBenefit, MedicationHistory.
-- **Credential model:** **Per-tenant** DoseSpot clinic registration; credentials stored in `packages/dosespot/credentials` keyed by `organization_id` (architecture §8(4)). Per-prescriber DoseSpot identity linkage maintained in `DoseSpotPrescriber`.
+- **Credential model:** **Per-tenant** DoseSpot clinic registration; credentials vaulted in the M40 per-tenant secret store keyed by `organization_id` (architecture §8(4); the planned `packages/dosespot/credentials` path was never created). Per-prescriber DoseSpot identity linkage maintained in `DoseSpotPrescriber`.
 - **BAA / PHI:** PHI-bearing. BAA required (§5). EPCS adds DEA controlled-substance requirements — out of scope for prod until ADR-006 certification kickoff; data model and architecture ready.
 - **Sandbox vs prod:** DoseSpot staging clinic + sandbox prescribers; synthetic patients only. CI uses recorded fixtures.
 - **Webhooks (inbound):** Script status updates; refill requests. Signature-verified, idempotent (dedup on DoseSpot event/message ID), audited. PHI bodies never logged in clear.
@@ -373,7 +373,7 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
 ### 6.8 CAHPS Survey Vendor (Module 30)
 
 - **Purpose:** Decedent caregiver experience survey via a CMS-approved CAHPS Hospice vendor. Vendor is **tenant-configurable** (default per ADR-005).
-- **Direction & protocol:** Bidirectional — outbound decedent/caregiver sample file; inbound results ingest. Mechanism varies by vendor (API or secure file exchange) behind a common `packages/cahps-client` interface.
+- **Direction & protocol:** Bidirectional — outbound decedent/caregiver sample file; inbound results ingest. Mechanism varies by vendor (API or secure file exchange) behind a common `packages/cahps-vendors` interface.
 - **Credential model:** Per-tenant vendor credentials.
 - **BAA / PHI:** Decedent caregiver PII; BAA required with the selected vendor.
 - **Sandbox vs prod:** Vendor sandbox where available; synthetic decedent sample.
@@ -485,7 +485,7 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
 ### 6.18 Hospital ADT Feed (Modules 29, 5)
 
 - **Purpose:** Inbound admit/discharge/transfer events to drive patient matching and demographic update.
-- **Direction & protocol:** **Inbound** HL7 v2 over **MLLP** listener (`packages/hl7-worker`). Message types A01, A03, A04, A08, A11. Patient-match algorithm before any chart write.
+- **Direction & protocol:** **Inbound** HL7 v2 over **MLLP** listener — module-side in `apps/backend/src/modules/29-external-interfaces` (the standalone `packages/hl7-worker` extraction is deferred; ADR-0028). Message types A01, A03, A04, A08, A11. Patient-match algorithm before any chart write.
 - **Credential model:** Per-tenant / per-feed — listener endpoint, allowlisted sending facility, channel credentials.
 - **BAA / PHI:** PHI-bearing; BAA / data-sharing agreement with the sending hospital or HIE.
 - **Sandbox vs prod:** HL7 test harness replaying synthetic ADT messages.
@@ -548,7 +548,7 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
 ### 6.24 FHIR Gateway — Interop (Module 28)
 
 - **Purpose:** Standards-based interop — outbound FHIR R4 (Patient, Encounter, Observation, MedicationRequest/Administration, Condition, CarePlan, Goal, DocumentReference, Practitioner(Role), Organization), `$everything`, bulk export (NDJSON to MinIO); inbound import of selected resources (demographics from ADT, medication history). Also exposes Module 38 terminology as FHIR CodeSystem/ValueSet.
-- **Direction & protocol:** Bidirectional FHIR R4 REST + bulk NDJSON. US Core v6 (R4) conformance; v10 (R6) when published. Version-pluggable mappers (`packages/fhir/r4|r5|r6`).
+- **Direction & protocol:** Bidirectional FHIR R4 REST + bulk NDJSON. US Core v6 (R4) conformance; v10 (R6) when published. Version-pluggable mappers (`packages/fhir` — R4 shipped; R5/R6 are pluggable targets).
 - **Credential model:** Per-tenant / per-recipient — SMART-on-FHIR or API-key auth per consuming partner (varies). 42 CFR Part 2 SUD records excluded from export by default (Module 5 / Module 39 consent gating).
 - **BAA / PHI:** PHI-bearing; per-recipient agreement (varies by recipient and use).
 - **Retry/idempotency:** Reads idempotent; bulk export jobs idempotent per job ID; inbound import proposes (review) rather than blind-writes where ambiguous.
@@ -664,7 +664,10 @@ The Module 34 onboarding workflow touches several integrations. This is the inte
 
 ## 11. Open Items Affecting Integrations
 
-These ADRs (architecture §21) must close before the dependent integration section is finalized and the consuming module ships:
+These short-numbered items are rows of the **architecture §21 open-decision register** (a separate
+namespace from the ratified four-digit `docs/adr/ADR-NNNN` records — see §21's numbering note).
+Each must close — via a four-digit ADR — before the dependent integration section is finalized and
+the consuming module ships:
 
 |ADR|Affects|This catalog section|Decision needed|
 |---|-------|---------------------|----------------|
@@ -683,3 +686,5 @@ Additionally, every **BAA marked TBD in §5 must read EXECUTED** before that int
 Integration Catalog v0.1 establishes the contract layer. Adding a new integration requires: (1) an inventory row in §2, (2) a §6 contract section, (3) a §5 BAA-register entry if PHI-bearing, (4) a §8 degraded-mode row, and (5) cross-reference from the consuming module spec's "External integration points" section. Vendor contract, BAA, or API-version changes trigger a review of the affected §6 section and the §5 register. SEV-1/2 vendor outages are handled per WARDENX_DR_BCP §2 using the §8 matrix as input.
 
 This document lands in parallel with Modules 2–4 specs per architecture §20.C, since it references foundation concepts (tenancy, secrets, audit) that Module 1 establishes.
+
+<!-- verified-against: 6a6eb454a12a · 2026-08-14 -->

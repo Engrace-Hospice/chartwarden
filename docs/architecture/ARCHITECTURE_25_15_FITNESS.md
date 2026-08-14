@@ -95,7 +95,7 @@ RLS enforces the **tenant** boundary: rows must match `app.org_id`. It says noth
 ## Wiring (package.json + CI)
 
 > **Do not read the gate list from this document — read it from `package.json`.** This section used
-> to inline a four-gate `arch:fitness`; the real chain is **22 gates** and grows. `ci.yml` already
+> to inline a four-gate `arch:fitness`; the real chain is **23 gates as of 2026-08-14** and grows. `ci.yml` already
 > made this fix for its own stage label. The authoritative list is the `arch:fitness` script:
 >
 > ```bash
@@ -103,7 +103,9 @@ RLS enforces the **tenant** boundary: rows must match `app.org_id`. It says noth
 > ```
 >
 > As of 2026-08-14 that is: `arch:parity`, `arch:boundaries`, `arch:tables`, `arch:tenancy`,
-> `arch:ddl`, `arch:gaps`, `arch:ai-governance`, `arch:plan-integrity`, `arch:status-matrix`,
+> `arch:ddl`, `arch:gaps`, `arch:ai-governance`, `arch:architecture-docs` (the corpus-freshness
+> gate: cited paths exist, companion/ADR citations resolve, version headers parse — see
+> `scripts/check-architecture-docs.ts`), `arch:plan-integrity`, `arch:status-matrix`,
 > `arch:ui-parity`, `arch:frame-fidelity`, `arch:design-tokens`, `arch:abac-predicates`,
 > `arch:live-suites`, `arch:org-indexes`, `arch:audit-denylist-sync`, `arch:audit-exceptions`,
 > `docs:ui`, `openapi:check`, `arch:openapi-coverage`, `arch:inject-coverage`, `client:check`.
@@ -160,3 +162,5 @@ A failing fitness check blocks merge exactly like a failing test. The visual gra
 > **`scripts/audit-fitness.ts` is wired to no `package.json` script** — it is a point-in-time
 > enforcement audit (module matrix, table ownership, dependency graph/cycles) writing
 > `audit/FITNESS_ENFORCEMENT_AUDIT.md`. Run it directly: `bun run scripts/audit-fitness.ts`.
+
+<!-- verified-against: 6a6eb454a12a · 2026-08-14 -->

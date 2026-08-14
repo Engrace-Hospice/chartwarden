@@ -685,10 +685,12 @@ For Phase 2+ when Clinical Reviewer is a contracted clinician (not Fabrice):
 
 ### 8.1 Prompt Versioning
 
-Every prompt template is versioned in Git at `packages/prompts/templates/<capability>/v<N>.txt`:
+Prompt templates are versioned in Git as code, registered in
+`packages/ai-platform/src/prompts/prompt-registry.ts`. The per-file layout below is **target
+state — `packages/prompts` does not exist yet**:
 
 ```
-packages/prompts/templates/
+packages/prompts/templates/        # TARGET — does not exist yet
 ├── hearthnote/
 │   ├── layer2_enhancement_v1.txt
 │   ├── layer2_enhancement_v2.txt
@@ -700,7 +702,8 @@ packages/prompts/templates/
 └── ...
 ```
 
-Template metadata stored in `packages/prompts/templates/<capability>/v<N>.meta.yaml`:
+Template metadata stored in `packages/prompts/templates/<capability>/v<N>.meta.yaml` *(same target layout — does not exist yet;
+the shipped registry carries this metadata in code)*:
 
 ```yaml
 capability: doclens
@@ -777,7 +780,7 @@ Prompts include defenses against injection:
 - Output schema validation (catches injection that tries to break expected output format)
 - Refusal patterns trained into the prompt
 
-Example pattern (illustrative — actual prompts in `packages/prompts/`):
+Example pattern (illustrative — actual prompts in `packages/ai-platform/src/prompts/`):
 
 ```
 You are an extraction assistant for hospice clinical documents.
@@ -1793,3 +1796,5 @@ Direct, honest answer:
 ---
 
 **End of WARDENX_AI_GOVERNANCE v0.2.**
+
+<!-- verified-against: 6a6eb454a12a · 2026-08-14 -->

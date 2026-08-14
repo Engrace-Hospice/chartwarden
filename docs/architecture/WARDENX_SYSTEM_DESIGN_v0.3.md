@@ -21,8 +21,8 @@
 ```mermaid
 flowchart TB
   subgraph clients["Clients"]
-    web["Web (apps/frontend)<br/>TanStack Start"]
-    mobile["Mobile (apps/mobile)<br/>Capacitor iOS/Android"]
+    web["Web (apps/web)<br/>Vite + react-router (ADR-0035)"]
+    mobile["Mobile<br/>Capacitor wrap of apps/web (ADR-0035)"]
     admin["Admin (apps/admin)<br/>WardenX ops console"]
     portal["Portal (apps/portal)<br/>Patient/Caregiver PWA"]
   end
@@ -1671,3 +1671,5 @@ pre-push:
 This system design specifies how WardenX runs — concrete topology, networking, data layout, identity propagation, conventions, and operations. It is meant to be read alongside the architecture document; together they describe both *what* WardenX is and *how it operates*.
 
 The next layer of detail lives in **per-module specifications** under `docs/modules/`. Module 1 (Foundation) is the next deliverable and instantiates §12.6 (local dev), §4 (data architecture), §5 (identity propagation), §11 (observability scaffolding), and the package skeletons referenced throughout this design.
+
+<!-- verified-against: 6a6eb454a12a · 2026-08-14 -->

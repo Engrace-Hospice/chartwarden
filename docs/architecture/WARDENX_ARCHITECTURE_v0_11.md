@@ -261,8 +261,9 @@ Organization (tenant — the WardenX customer)
 > ## ⚠️ §4–§5, §9, §12, §17 — READ THIS FIRST (AD-11/AD-14, verified 2026-08-14)
 >
 > **Several technologies named across the next few sections are not installed, and several paths do
-> not exist.** The build deliberately diverged; the divergences are real decisions, not rot, but
-> they were never written down — so these sections read as present tense for things that were never
+> not exist.** The build deliberately diverged; the divergences are real decisions, now recorded as
+> **ADR-0036…ADR-0040** (plus ADR-0030/0032/0035 for the frontend stack) — the per-row citations
+> below are normative. These sections read as present tense for things that were never
 > built. Verified as **absent from every `package.json` in the workspace**:
 >
 > `@tanstack/*` · `socket.io` · `xstate` · `@fastify/*` (any plugin) · `@opentelemetry/*` ·
@@ -271,12 +272,12 @@ Organization (tenant — the WardenX customer)
 >
 > | This document says | Reality |
 > |---|---|
-> | TanStack Start | **Vite 6 + `react-router-dom` ^7** in all three SPAs (a deliberate TASK-066 choice) |
-> | Socket.IO / realtime backbone | **No realtime backbone.** `packages/messaging/src/realtime/*` are pure room-name builders that state they import no socket.io. The **transactional outbox** is what carries cross-module events. |
-> | Python sidecars (§12) for X12 / cost report | **TypeScript.** Zero `.py` files; no `services/`, no `infra/`. The work lives in `packages/x12-837-client`, `packages/x12-835-client`, `packages/cost-report`. The fail-closed `X12_WORKER_NOT_WIRED` port fronts a sidecar that was never built. |
-> | pgcrypto envelope encryption | **Application-layer AES-256-GCM with HKDF per-tenant DEKs.** `pgcrypto` is installed but used only for `gen_random_uuid()` — zero `pgp_sym_encrypt`/`encrypt(` calls across all migrations. *(Highest compliance weight of these.)* |
-> | XState state machines | **Pure transition functions.** Several files say so explicitly, e.g. `saas-tenant-platform/src/onboarding/machine.ts`. |
-> | `@fastify/*` plugins | **Hand-written, "with NO new npm dependency"** (`bootstrap/plugins/security.ts`): CSP/HSTS/CORS/rate limiting. OpenAPI is emitted offline by `scripts/openapi/emit.ts`. No multipart, no SSE. |
+> | TanStack Start | **Vite 6 + `react-router-dom` ^7** in all three SPAs (a deliberate TASK-066 choice) — **ADR-0030 / ADR-0032 / ADR-0035** |
+> | Socket.IO / realtime backbone | **No realtime backbone.** `packages/messaging/src/realtime/*` are pure room-name builders that state they import no socket.io. The **transactional outbox** is what carries cross-module events. — **ADR-0036** |
+> | Python sidecars (§12) for X12 / cost report | **TypeScript.** Zero `.py` files; no `services/`, no `infra/`. The work lives in `packages/x12-837-client`, `packages/x12-835-client`, `packages/cost-report`. The fail-closed `X12_WORKER_NOT_WIRED` port fronts a sidecar that was never built. — **ADR-0037** |
+> | pgcrypto envelope encryption | **Application-layer AES-256-GCM with HKDF per-tenant DEKs.** `pgcrypto` is installed but used only for `gen_random_uuid()` — zero `pgp_sym_encrypt`/`encrypt(` calls across all migrations. *(Highest compliance weight of these.)* — **ADR-0038** |
+> | XState state machines | **Pure transition functions.** Several files say so explicitly, e.g. `saas-tenant-platform/src/onboarding/machine.ts`. — **ADR-0039** |
+> | `@fastify/*` plugins | **Hand-written, "with NO new npm dependency"** (`bootstrap/plugins/security.ts`): CSP/HSTS/CORS/rate limiting. OpenAPI is emitted offline by `scripts/openapi/emit.ts`. No multipart, no SSE. — **ADR-0040** |
 > | Valkey idempotency | **Postgres** (`createDbIdempotencyStore`) — the in-memory Map it replaced was process-local. |
 > | ~60-role catalogue (§7) | **13 roles shipped.** |
 > | `apps/web` | **`apps/web`** |
@@ -848,7 +849,7 @@ Funeral home staff get a tightly scoped per-deceased-patient session for body re
 1. **RLS at the database** — every PHI table has `organization_id`; session sets `app.org_id` via `SET LOCAL`; policies enforce match
 1. **Envelope encryption** for sensitive columns (SSN, financial account numbers, narrative blocks containing high-sensitivity content) — DEK per tenant, KEK held by app, rotation supported
 1. **Per-tenant object storage scope** — MinIO bucket prefix `tenant/<org_id>/` with IAM policies preventing cross-tenant signing
-1. **Per-tenant DoseSpot clinic registration** — credentials stored in `packages/dosespot/credentials` keyed by tenant
+1. **Per-tenant DoseSpot clinic registration** — credentials vaulted per-tenant in the M40 secret store, keyed by tenant (the once-planned `packages/dosespot/credentials` path was never created)
 1. **Per-tenant Xero connection** — OAuth tokens scoped per tenant, refresh isolated
 1. **Tenant boundary in logs** — every log line carries `tenant_id`; Sentry events tagged; Grafana dashboards filtered
 1. **HIPAA data subject access & deletion** — tenant offboarding job exports all data (NDJSON + PDFs) and shreds (cryptographic via DEK destruction)
@@ -862,13 +863,13 @@ Funeral home staff get a tightly scoped per-deceased-patient session for body re
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│  HTTP / Fastify routes (apps/backend/src/routes)         │
+│  HTTP / Fastify routes (apps/backend/src/modules/NN-name/routes)         │
 ├──────────────────────────────────────────────────────┤
-│  Application services (apps/backend/src/services)        │  ← orchestration
+│  Application services (apps/backend/src/modules/NN-name)        │  ← orchestration
 ├──────────────────────────────────────────────────────┤
 │  Domain layer (packages/domain)                      │  ← pure, no I/O
 ├──────────────────────────────────────────────────────┤
-│  Repositories (packages/db/src/repos)                │  ← Drizzle queries
+│  Stores (per-module, over packages/db schema)        │  ← Drizzle queries
 ├──────────────────────────────────────────────────────┤
 │  PostgreSQL (RLS-enforced)                           │
 └──────────────────────────────────────────────────────┘
@@ -998,16 +999,16 @@ HearthNote is WardenX’s clinical narrative system. It is **not** generative-AI
   - Symptom impact vocabulary aligned with HOPE J2051 categories
   - Care plan element vocabulary aligned with care plan structure
   - Each entry: code, plain-language label, narrative phrase template(s), discipline tags, encounter-type tags
-- **Template engine** (`packages/hearthnote/templates/`)
+- **Template engine** (`packages/hearthnote/src/templates/`)
   - One template per encounter type × discipline combination (RN routine visit, RN admission, RN recert, LPN visit, CHHA visit, MSW assessment, Chaplain initial spiritual assessment, etc.)
   - Templates declare required sections, optional sections, and assembly grammar
   - Templates version-controlled per tenant (defaults provided; tenants can customize but cannot remove regulatory-required sections)
-- **Selection UI** (in `apps/frontend/`)
+- **Selection UI** (in `apps/web/`)
   - Clinician picks from finite, scoped menus per template section
   - Free-text entry permitted in narrative annotation fields (always preserved verbatim)
   - Vital signs and assessment scale entries direct-typed (numeric)
   - Selection state captured as structured JSON
-- **Assembly engine** (`packages/hearthnote/assembly/`)
+- **Assembly engine** (`packages/hearthnote/src/assembly/`)
   - Takes the selection state + template
   - Resolves narrative phrase templates with patient context (name, pronouns, date, location)
   - Applies grammar rules (subject-verb agreement, tense, sentence joining)
@@ -1183,7 +1184,7 @@ DocLens is WardenX’s structured extraction system for patient referral documen
 └────────────────────┬─────────────────────────────────┘
                      ▼
 ┌──────────────────────────────────────────────────────┐
-│  7. Review UI (apps/frontend)                        │
+│  7. Review UI (apps/web)                             │
 │     Side-by-side: extracted candidates on left;      │
 │     source PDF on right with field locations         │
 │     highlighted. Per-field approve / edit / reject.  │
@@ -1209,7 +1210,7 @@ Multi-page faxes commonly contain multiple documents. The classifier:
 
 ### 10.6.3 Per-Type Extraction Schemas
 
-Each document type has a dedicated TypeBox schema + LangExtract prompt template + post-processing rules. Schemas live in `packages/intake-extraction/schemas/`. Each field in a schema declares:
+Each document type has a dedicated TypeBox schema + LangExtract prompt template + post-processing rules. Schemas live in `packages/intake-extraction/src/schemas/`. Each field in a schema declares:
 
 - TypeBox type and validation
 - Source page reference required (always)
@@ -1371,7 +1372,7 @@ Local is not strictly “better” — it trades quality and operational simplic
 ### 10.7.2 Backend Interface
 
 ```typescript
-// packages/ai/src/backend.ts
+// packages/ai-platform/src/backends/model-backend.ts
 
 export interface ModelBackend {
   /** Backend identification */
@@ -1426,7 +1427,7 @@ Adding new backends is straightforward — implement the interface, register in 
 Per capability, WardenX defines a **routing policy**:
 
 ```yaml
-# packages/ai/config/routing.yaml
+# TARGET — does not exist yet: packages/ai/config/routing.yaml (backend selection ships as code in packages/ai-platform/src/backends)
 capabilities:
   hearthnote_layer2:
     default_backend: anthropic-claude-opus-4-7
@@ -2030,7 +2031,7 @@ See §10 for capability inventory, discipline rules, and §10.7 for model backen
   - (Phase 2 optional) `llm-worker` (Python): dedicated vLLM serving for high-throughput local LLM workloads; split from ml-worker when scale demands
 - **Local model artifact storage:** MinIO `platform/ml-models/` with subdirectories for Ollama models, embedding models, custom classifiers; aligned with MLflow versioning
 - **Model registry:** MLflow self-hosted on Proxmox; tracks both cloud-backend usage (model versions, prompt versions, calibration metrics) and local-backend deployments (model artifacts, training runs, evaluation runs); per-capability per-backend calibration metrics
-- **Capability routing config:** `packages/ai-platform/config/routing.yaml` declares per-capability default backend, allowed backends, tenant-override permission, fallback chain
+- **Capability routing config:** *target — `packages/ai-platform/config/routing.yaml` does not exist yet; backend selection ships as code in `packages/ai-platform/src/backends`*. The planned config declares per-capability default backend, allowed backends, tenant-override permission, fallback chain
 - **Tenant routing override:** Tenant settings include `ai_routing_preference`: `prefer_cloud` (default) | `prefer_local` | `cloud_only` | `local_only` — drives backend selection within allowed set
 - **Cost monitoring:** Per-tenant per-capability per-backend tracking. Cloud backend = token usage × vendor rate. Local backend = compute attribution (a tenant heavily using local capabilities consumes ml-worker capacity; attributed pro-rata). Configurable monthly budgets with soft/hard caps.
 - **Drift detection:** Input distribution monitoring; per-backend output quality tracking; automatic alert + dashboard. Same monitoring for cloud and local backends with same calibration metrics, possibly different thresholds.
@@ -2281,7 +2282,7 @@ interface MedicaidAdapter {
 
 ### Adapter loading
 
-- Registered in `packages/medicaid-adapters/registry.ts`
+- Registered in `packages/medicaid-adapters/src/registry.ts`
 - Selected per-claim based on patient’s Medicaid plan
 - Per-state subpackages: `oregon/`, `washington/`, `idaho/`, etc.
 
@@ -2297,7 +2298,7 @@ interface MedicaidAdapter {
 |Access control                   |RBAC + ABAC + RLS                                                                                                                                                                                               |
 |Session management               |15 min idle, 8 hr absolute, 5 min UI screen lock                                                                                                                                                                |
 |Backup & recovery                |pgBackRest with offsite (encrypted); monthly restore drill                                                                                                                                                      |
-|BAA register                     |Tracked in `packages/shared/baa-register.ts` — DoseSpot, Surescripts, Anthropic, Twilio (SMS/Voice), Postmark (email), Sentry (self-hosted, no external BAA needed), Stripe (no PHI sent), Daily.co (telehealth)|
+|BAA register                     |Tracked in WARDENX_INTEGRATIONS §5 (the planned `packages/shared/baa-register.ts` was never created) — DoseSpot, Surescripts, Anthropic, Twilio (SMS/Voice), Postmark (email), Sentry (self-hosted, no external BAA needed), Stripe (no PHI sent), Daily.co (telehealth)|
 |Messaging — encryption           |Per-tenant DEK envelope encryption for message bodies; portable across tenants is impossible                                                                                                                    |
 |Messaging — notification payloads|No PHI in push/SMS/email payloads; deep link to authenticated app                                                                                                                                               |
 |Messaging — retention            |6 years minimum for care-related messages; bereavement messages until plan close                                                                                                                                |
@@ -2340,7 +2341,7 @@ interface MedicaidAdapter {
 |RLS           |Dedicated test suite verifying cross-tenant isolation                         |100% of PHI tables                    |
 |AI            |Calibration tests against held-out data; behavioral tests against canned cases|All prediction surfaces               |
 
-Test data fixtures in `packages/db/test-fixtures/` — multi-tenant set: Engrace (Oregon), a fictional multi-CCN tenant, a fictional single-location tenant.
+Test data fixtures in `packages/db/__tests__/` (the planned `packages/db/test-fixtures/` directory was never created) — multi-tenant set: Engrace (Oregon), a fictional multi-CCN tenant, a fictional single-location tenant.
 
 -----
 
@@ -2687,6 +2688,15 @@ These four land in parallel with Modules 2-4 specs (post-Module 1) since they re
 
 These remain genuinely open and need decision before specific modules are spec’d. Per direction, nothing is *deferred* in scope — every module is built — but specific implementation choices need decisions.
 
+> **Numbering note (2026-08-14).** This short-numbered `ADR-00N` register is the *pre-build
+> open-decision list*, defined only in this table and referenced from the companion docs
+> (e.g. INTEGRATIONS §11). It is a **different namespace** from the ratified, four-digit decision
+> records in [`docs/adr/`](../adr/README.md) (`ADR-0001`…): a bare `ADR-003` means row 3 of this
+> table (telehealth vendor — still open), *not* the four-digit `ADR-0003` (room-and-board revenue
+> codes) in `docs/adr/`. When an item here gets decided, it is closed by a four-digit ADR — as already happened
+> for ADR-008 (mobile → **ADR-0035**). Four-digit citations are gate-checked
+> (`arch:architecture-docs`); short-register references are not, deliberately.
+
 |ADR    |Title                                                                                                                         |Needed before      |
 |-------|------------------------------------------------------------------------------------------------------------------------------|-------------------|
 |ADR-001|Subscription pricing model (per-seat, per-patient-month, hybrid)                                                              |Module 35 spec     |
@@ -2740,7 +2750,7 @@ This section maps each regulatory framework’s requirements to specific WardenX
 |§164.308(a)(6) Security Incident Procedures               |Incident response runbook with 60-day breach notification timer   |§14, Module 30                        |Runbook in `docs/architecture/WARDENX_OPS_RUNBOOK_v0.1.md` (`docs/runbooks/` not created), incident records |
 |§164.308(a)(7) Contingency Plan                           |Backup + DR plan (pgBackRest + offsite per ADR-002)               |§14, §19                              |Backup logs, restore drill records                       |
 |§164.308(a)(8) Evaluation                                 |Annual SRA + quarterly access reviews                             |Module 30                             |Quarterly review attestations                            |
-|§164.308(b) Business Associate Contracts                  |BAA register in code                                              |`packages/shared/baa-register.ts`, §14|Signed BAAs filed; register validated in CI              |
+|§164.308(b) Business Associate Contracts                  |BAA register (WARDENX_INTEGRATIONS §5 — the planned `packages/shared/baa-register.ts` was never created)|INTEGRATIONS §5, §14|Signed BAAs filed; register review at onboarding              |
 |§164.310(a)(1) Facility Access Controls                   |Out of scope (cloud/Proxmox provider controls)                    |§19                                   |Provider attestations                                    |
 |§164.310(b) Workstation Use / (c) Workstation Security    |Tenant policy guidance; not enforced by software                  |N/A                                   |Tenant policy template                                   |
 |§164.310(d)(1) Device and Media Controls                  |Encrypted volumes; per-tenant DEK destruction on offboarding      |§14, Module 34                        |Encryption attestation, offboarding job log              |
@@ -3023,7 +3033,7 @@ Standardized patterns that every module follows. Locks the patterns explicitly; 
 
 ### 25.2 Validation Frameworks
 
-**Pattern:** Rules-as-data per domain with a shared **interface** in `packages/rules-engine/` (interface only — no implementation). Each domain implements its own rule registry with domain-typed rules: `ClaimValidationRule`, `CostReportValidationRule`, `IntakeValidationRule`, etc.
+**Pattern:** Rules-as-data per domain. The shared **interface** package `packages/rules-engine/` was never created — each domain ships its own registry without it. Each domain implements its own rule registry with domain-typed rules: `ClaimValidationRule`, `CostReportValidationRule`, `IntakeValidationRule`, etc.
 
 **Examples in use:** §11.A Claim Pre-Submission Validation Framework (Module 23), §11.B Cost Report Pre-Submission Validation Framework (Module 27). HOPE J-code triggers (Module 10) and care-plan compliance (Module 7) follow the same pattern.
 
@@ -3133,7 +3143,7 @@ summarized here with pointers; the linked file is authoritative in each case.
 | Pattern | What it is | Where it lives |
 |---|---|---|
 | **The module manifest** | Single source of truth for every module's `codePaths`, `dependsOn` and `ownedTables` (40 modules, 464 tables). Edit it, then run `bun run scaffold`. **Both** the `.ts` and `.cjs` copies must change together. | `architecture/module-manifest.{ts,cjs}` |
-| **Architecture fitness (22 gates)** | `bun run arch:fitness`. A green run proves architectural coherence, **not** feature completeness. Read the chain from `package.json`, never from prose. | `ARCHITECTURE_25_15_FITNESS.md`, `scripts/check-*.ts` |
+| **Architecture fitness** | `bun run arch:fitness` (read the gate count/chain from `package.json`). A green run proves architectural coherence, **not** feature completeness. Read the chain from `package.json`, never from prose. | `ARCHITECTURE_25_15_FITNESS.md`, `scripts/check-*.ts` |
 | **dependency-cruiser boundaries** | Enforces the import graph the manifest declares, plus the vendor-adapter mandate, domain purity, and "leaves stay leaves". | `architecture/.dependency-cruiser.cjs` |
 | **Seams (`getSeam`)** | The cross-module call mechanism. A seam creates **no** dependency-cruiser edge — it is typed off `SeamContracts` in the leaf `@wardenx/types`. A seam consumer that binds an uncatalogued event **crashes boot**. | `packages/types/src/seams.ts`, `bootstrap/seams/` |
 | **`withOrgContext` / `withPlatformContext`** | Every tenant-scoped query runs inside `withOrgContext`, which sets `app.org_id` for RLS. `withPlatformContext` is the audited cross-tenant escape hatch. Seams open their **own** context, so a seam call must not sit inside an already-open write transaction. | `packages/tenancy/src/context.ts` |
@@ -3166,3 +3176,4 @@ This document is the input spec for the Archon workflow library. Workflows deriv
 - `migration.yaml` — schema changes with backward compatibility check
 - `claim-submission.yaml` — billing path with heavy validation
 - `model-train.yaml` — AI model training, validation, deployment
+<!-- verified-against: 6a6eb454a12a · 2026-08-14 -->

@@ -156,7 +156,7 @@ Maintenance windows announced to customers ≥ 7 days in advance via status page
 For every deploy, however small:
 
 - [ ] Code merged to `main` (no direct deploys from branches)
-- [ ] All CI checks green — what `ci.yml` **actually** runs: build, `arch:fitness` (20 gates),
+- [ ] All CI checks green — what `ci.yml` **actually** runs: build, `arch:fitness` (read the gate chain from `package.json`, never from prose),
       unit/integration tests, and the live-DB jobs (`rls-live`, `lifecycle-live`, the per-module
       matrix). Note **lint is `continue-on-error: true`** — a red lint does not fail CI, so read it
       rather than trusting the check mark.
@@ -2171,3 +2171,5 @@ Scheduled runs (`report_schedule_run`: `queued → running → rendered_pending 
 ---
 
 **End of WARDENX_OPS_RUNBOOK v0.1.**
+
+<!-- verified-against: 6a6eb454a12a · 2026-08-14 -->

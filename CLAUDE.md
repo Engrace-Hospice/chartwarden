@@ -133,6 +133,18 @@ the prose docs in `docs/architecture/`.
   and 23 of 25 were red once run. Two CI jobs now cover them: `rls-live` (table-level policy
   proof) and `lifecycle-live` (the production route services as the NOBYPASSRLS `wardenx_app`
   role, grouped per module).
+- `scripts/check-architecture-docs.ts` — **architecture-corpus freshness gate**
+  (`bun run arch:architecture-docs`, in `arch:fitness` since 2026-08-14). The authority rule makes
+  `docs/architecture/` binding, yet it was the only ungated documentation body and drifted for two
+  months (63 dead cited paths, stale companion citations — see
+  `audit/ARCHITECTURE_DOC_CONSISTENCY_AUDIT_2026-08-13.md`). Enforces: cited repo paths exist
+  (paths on a line that says they don't exist are exempt — documented absence is correct), version
+  headers parse (filename-version drift needs the "FILENAME still reads" note), `Companion to:`
+  citations match on-disk header versions, and four-digit `ADR-NNNN` citations resolve
+  (ARCHITECTURE §21's short `ADR-00N` open-decision register is a separate, deliberately ungated
+  namespace). Warn-only `<!-- verified-against: sha · date -->` staleness stamps. The six build
+  divergences the 2026-08-13 audit surfaced are recorded as ADR-0036…0040 (+ ADR-0030/0032/0035
+  for the frontend stack).
 - `scripts/audit-fitness.ts` — point-in-time enforcement audit (module matrix, table
   ownership, dependency graph/cycles); writes `audit/FITNESS_ENFORCEMENT_AUDIT.md`.
 - `scripts/report-implementation-status.ts` — per-module **implementation-status matrix**
