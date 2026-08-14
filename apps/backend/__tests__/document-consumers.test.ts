@@ -57,6 +57,7 @@ describe("M22-T06 — §4.11 outbox subscriptions catalog", () => {
       "m11.order.document_requested",
       "m12.medication_order.document_requested",
       "m13.reconciliation.document_requested",
+      "m21.supply_request.document_requested",
       "m23.abn.required",
     ]);
   });
@@ -116,6 +117,13 @@ describe("M22-T06 — decideDocumentRequest renders + emits a back-ref (§4.11)"
       templateKey: "medication_reconciliation_worksheet",
       aggregateType: "medication_reconciliation_worksheet",
       retentionClass: "clinical_record",
+    },
+    {
+      // M21 — one event, two artifacts, discriminated by `documentKind` in the normalizer.
+      event: "m21.supply_request.document_requested",
+      templateKey: "comfort_kit_return_receipt",
+      aggregateType: "comfort_kit_return_receipt",
+      retentionClass: "compliance",
     },
     {
       event: "m23.abn.required",

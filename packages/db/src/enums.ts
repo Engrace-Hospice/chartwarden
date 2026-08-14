@@ -1929,7 +1929,9 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   "medication_administration_record",
   "medication_reconciliation_worksheet",
   "patient_medication_list",
-  "comfort_kit_receipt",
+  "comfort_kit_receipt", // M13 — the kit-DEPLOYMENT receipt the patient/family signs for
+  "supply_bill_of_lading", // M21 — the dispatch shipping manifest (mig 0196)
+  "comfort_kit_return_receipt", // M21 — the DEA-1304 controlled-substance return receipt (mig 0196)
   "idg_patient_packet",
   "idg_minutes",
   "aide_poc",

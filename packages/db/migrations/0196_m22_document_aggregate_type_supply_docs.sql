@@ -1,0 +1,21 @@
+-- M22 `document_aggregate_type` — the two M21 supply artifacts the taxonomy never had.
+--
+-- M21 has been LIVE-emitting `m21.supply_request.document_requested` from two write paths since it
+-- landed — the bill of lading at `prepareDispatch` and the DEA-1304-format return receipt at return
+-- reconciliation — and M22 had no consumer and no template for either, so the rows accumulated
+-- `pending` in `outbox_event` and `comfort_kit_dispatch.bol_document_id` /
+-- `comfort_kit_return.receipt_document_id` (columns that exist, per M21 §3) stayed NULL forever.
+-- M22's own §4.5 template registry has no M21 row at all; `comfort_kit_receipt` in this enum is
+-- M13's kit-DEPLOYMENT receipt (M22 spec §4.5 assigns it to M13), a different artifact from either
+-- of these, so neither can borrow it.
+--
+--   · `supply_bill_of_lading`     — the shipping manifest accompanying a comfort-kit dispatch.
+--   · `comfort_kit_return_receipt` — the controlled-substance return receipt (DEA 1304 perpetual-log
+--     line items). Distinct from `comfort_kit_receipt` in both direction and retention: the return
+--     receipt is a controlled-substance disposition record, not a clinical chart artifact.
+--
+-- Additive only (no removal, no existing row affected). Own migration: PG forbids using a value added
+-- earlier in the same transaction, so this stands alone ahead of any migration that reads/writes it
+-- (the 0125 discharge_type / 0183 facility_kind precedent).
+ALTER TYPE "public"."document_aggregate_type" ADD VALUE IF NOT EXISTS 'supply_bill_of_lading';--> statement-breakpoint
+ALTER TYPE "public"."document_aggregate_type" ADD VALUE IF NOT EXISTS 'comfort_kit_return_receipt';

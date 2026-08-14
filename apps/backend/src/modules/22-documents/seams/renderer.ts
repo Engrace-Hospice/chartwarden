@@ -104,6 +104,22 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "bereavement",
     defaultTitle: "Bereavement Letter",
   },
+  // M21's two supply artifacts, keyed by the `documentKind` discriminator on
+  // `m21.supply_request.document_requested`. M22's §4.5 registry never allocated a template for either,
+  // which is why M21 had been emitting render requests nothing could resolve (mig 0196 adds the
+  // matching aggregate types). The BOL is a shipping manifest — `operational`. The return receipt is a
+  // DEA-1304 controlled-substance disposition record — `compliance`, not the clinical class its
+  // deployment-side sibling (`comfort_kit_receipt`, M13) carries.
+  supply_bill_of_lading: {
+    aggregateType: "supply_bill_of_lading",
+    retentionClass: "operational",
+    defaultTitle: "Bill of Lading",
+  },
+  comfort_kit_return_receipt: {
+    aggregateType: "comfort_kit_return_receipt",
+    retentionClass: "compliance",
+    defaultTitle: "Comfort Kit Return Receipt",
+  },
   evv_verification: {
     aggregateType: "evv_verification",
     retentionClass: "operational",

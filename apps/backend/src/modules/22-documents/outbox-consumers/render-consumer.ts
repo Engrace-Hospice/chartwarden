@@ -39,13 +39,26 @@ import {
 /** How one source module's wire payload maps onto M22's canonical {@link DocumentRequestPayload}. Kept as
  * DATA (not a switch) so adding a source module is one row, and so the whole mapping is assertable. */
 interface RequestShape {
-  /** Payload field(s) holding the source aggregate id — the first present, non-empty string wins. */
+  /** Payload field(s) holding the source aggregate id — the first present, non-empty string wins. Empty
+   *  when the identity is only on the ENVELOPE (see {@link aggregateIdFromEvent}). */
   readonly aggregateIdFields: readonly string[];
+  /** Take the aggregate id from the outbox row's own `aggregate_id` rather than the payload. M21 needs
+   *  this: its return-receipt request carries `dispatchId` in the body but the RETURN row's id on the
+   *  envelope, so the body would back-ref the wrong artifact. */
+  readonly aggregateIdFromEvent?: boolean;
   /** The M22 template key, when the source module's own form-template name is NOT one (M13 asks for
    *  `reconciliation_worksheet_v1`; M22's published key is `medication_reconciliation_worksheet`). */
   readonly templateKey?: string;
   /** Payload field holding the source's own template name, used when {@link templateKey} is absent. */
   readonly templateKeyField?: string;
+  /** One event carrying SEVERAL artifacts, discriminated by a payload field: `{field, map}` resolves the
+   *  M22 template key from the discriminator's value. A value absent from the map is a malformed request
+   *  (a throw), never a guess — rendering the wrong document under a real patient's chart is worse than
+   *  a dead letter. */
+  readonly templateKeyByField?: {
+    readonly field: string;
+    readonly map: Readonly<Record<string, string>>;
+  };
   /** Payload field holding the render content blob (passed through to the byte renderer). */
   readonly contentField?: string;
 }
@@ -71,6 +84,22 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     aggregateIdFields: ["worksheetId"],
     templateKey: "medication_reconciliation_worksheet",
     contentField: "renderPayload",
+  },
+  // M21 §4.5.2 — ONE event, TWO artifacts, discriminated by `documentKind`. M21 has been emitting this
+  // from both write paths since it landed with nothing consuming it. The aggregate identity is on the
+  // ENVELOPE, not the body: `prepareDispatch` publishes with aggregate `comfort_kit_dispatch`/dispatch.id
+  // and the return path with `comfort_kit_return`/return.id, while BOTH bodies carry `dispatchId` — so
+  // reading the body would file the return receipt against the dispatch.
+  "m21.supply_request.document_requested": {
+    aggregateIdFields: [],
+    aggregateIdFromEvent: true,
+    templateKeyByField: {
+      field: "documentKind",
+      map: {
+        bill_of_lading: "supply_bill_of_lading",
+        return_receipt: "comfort_kit_return_receipt",
+      },
+    },
   },
   // M23 §4.10 (GAP-038) — the CMS-R-131 ABN. A flat financial record, no `formTemplate` field at all: the
   // event name itself names the artifact, so the template key is fixed and the whole payload is content.
@@ -103,11 +132,14 @@ const str = (v: unknown): string | undefined =>
  * @throws MalformedRenderRequestError when the event is not a known §4.11 request or the payload lacks the
  * aggregate identity / template key the render needs.
  */
-export function normalizeDocumentRequest(
-  eventType: string,
-  organizationId: string,
-  rawPayload: unknown,
-): { event: DocumentRequestEvent; payload: DocumentRequestPayload } {
+export function normalizeDocumentRequest(delivered: {
+  readonly eventType: string;
+  readonly organizationId: string;
+  /** The outbox row's own `aggregate_id` — the identity for shapes that carry it on the envelope. */
+  readonly aggregateId?: string;
+  readonly payload: unknown;
+}): { event: DocumentRequestEvent; payload: DocumentRequestPayload } {
+  const { eventType, organizationId, payload: rawPayload } = delivered;
   const shape = (REQUEST_SHAPES as Record<string, RequestShape | undefined>)[eventType];
   if (!shape) throw new MalformedRenderRequestError(eventType, "not a §4.11 render-request event");
   if (!rawPayload || typeof rawPayload !== "object") {
@@ -115,20 +147,34 @@ export function normalizeDocumentRequest(
   }
   const p = rawPayload as Record<string, unknown>;
 
-  const aggregateId = shape.aggregateIdFields.map((f) => str(p[f])).find((v) => v !== undefined);
+  const aggregateId = shape.aggregateIdFromEvent
+    ? str(delivered.aggregateId)
+    : shape.aggregateIdFields.map((f) => str(p[f])).find((v) => v !== undefined);
   if (!aggregateId) {
     throw new MalformedRenderRequestError(
       eventType,
-      `payload names no aggregate id (looked at ${shape.aggregateIdFields.join(", ")})`,
+      shape.aggregateIdFromEvent
+        ? "the outbox row carries no aggregate_id"
+        : `payload names no aggregate id (looked at ${shape.aggregateIdFields.join(", ")})`,
     );
   }
 
+  const byField = shape.templateKeyByField;
+  const discriminator = byField ? str(p[byField.field]) : undefined;
+  if (byField && discriminator !== undefined && byField.map[discriminator] === undefined) {
+    throw new MalformedRenderRequestError(
+      eventType,
+      `${byField.field} '${discriminator}' maps to no M22 template`,
+    );
+  }
   const templateKey =
-    shape.templateKey ?? (shape.templateKeyField ? str(p[shape.templateKeyField]) : undefined);
+    shape.templateKey ??
+    (discriminator !== undefined ? byField?.map[discriminator] : undefined) ??
+    (shape.templateKeyField ? str(p[shape.templateKeyField]) : undefined);
   if (!templateKey) {
     throw new MalformedRenderRequestError(
       eventType,
-      `payload names no template (expected '${shape.templateKeyField}')`,
+      `payload names no template (expected '${shape.templateKeyField ?? byField?.field}')`,
     );
   }
 
@@ -207,11 +253,7 @@ export function buildM22DocumentRequestConsumer(
     consumerModule: "m22",
     eventTypes: [...M22_DOCUMENT_REQUEST_EVENTS],
     async handle(event: DispatchableOutboxEvent): Promise<void> {
-      const { event: sourceEvent, payload } = normalizeDocumentRequest(
-        event.eventType,
-        event.organizationId,
-        event.payload,
-      );
+      const { event: sourceEvent, payload } = normalizeDocumentRequest(event);
 
       const descriptor = templates[payload.templateKey];
       const prior = descriptor
