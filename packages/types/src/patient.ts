@@ -358,3 +358,56 @@ export interface PatientAddressReader {
     asOfDate: string,
   ): Promise<PatientResidenceSnapshot | null>;
 }
+
+// ── PatientPrivacyFlagReader seam (GAP-061 — the M37 §2.2 shared-room occupancy gate) ────────────────
+
+/**
+ * How a patient's recorded sex resolves for a shared-room occupancy decision. M5 stores
+ * `patient.sex_assigned_at_birth` as a USCDI value-set code; `unspecified` collapses every code that
+ * is neither male nor female (`U`, `O`, `UNK`, an unmapped SNOMED code, …).
+ *
+ * `unspecified` is NOT a third sex for rooming purposes — it means the record cannot PROVE same-sex
+ * occupancy, which is why M37's gate refuses a shared room on it rather than treating it as a match.
+ */
+export type PatientSexClass = "male" | "female" | "unspecified";
+
+/**
+ * The minimum M5 facts a shared-room occupancy decision needs about ONE patient. Deliberately not a
+ * `PatientIdentity`: the occupancy gate must read the CURRENT ROOMMATES' records, and a roommate is
+ * someone the assigning nurse may have no other right to see — so the seam hands back the two facts
+ * the decision consumes and nothing that identifies the person (no name, no MRN, no DOB).
+ */
+export interface PatientRoomingFacts {
+  readonly patientId: string;
+  readonly sexClass: PatientSexClass;
+  /**
+   * The patient's ACTIVE privacy flags — the `flags` array of M5's `patient_privacy_flag_snapshot`
+   * (§3.5: a subset of `sud | hiv | mental_health | genetic | minor_restricted | abuse_victim`).
+   * Empty when no snapshot row exists (the snapshot is a cache, and its absence means "no flag
+   * recorded", not "unreadable"). Every flag in M5's v1 vocabulary is RESTRICTIVE — none of them
+   * grants a permission — see M37's `evaluateRoomOccupancy` for how the consumer reads them.
+   */
+  readonly privacyFlags: readonly string[];
+}
+
+/**
+ * M5 §3.5 — the privacy-flag / rooming read M37's `assignBed` gate consults (M37 spec §2.2 route-table
+ * row 170: "the bed's room is not occupied by an opposite-sex patient unless the room is private or
+ * the patient privacy flag permits (M5 `PrivacyFlagReader`)"). GAP-061.
+ *
+ * A seam rather than a shared read: M37 gains no schema edge into M5 (ADR-0005), and the PHI that
+ * crosses is bounded to the two facts the decision consumes. The POLICY lives in M37 — M5 owns what a
+ * patient's sex and privacy flags ARE, M37 owns what a room may hold.
+ */
+export interface PatientPrivacyFlagReader {
+  /**
+   * Rooming facts for a set of patients in one round trip (the incoming patient + every current
+   * roommate). Patients with no readable row are OMITTED from the result — the caller decides what an
+   * absent answer means, and M37's gate treats it as unprovable (refuse the shared room) rather than
+   * as a match.
+   */
+  roomingFactsFor(input: {
+    organizationId: string;
+    patientIds: readonly string[];
+  }): Promise<readonly PatientRoomingFacts[]>;
+}

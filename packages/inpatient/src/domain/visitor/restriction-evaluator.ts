@@ -21,6 +21,46 @@ export function isImmediateFamily(relationship: IpuVisitorRelationship): boolean
   return IMMEDIATE_FAMILY_RELATIONSHIPS.includes(relationship);
 }
 
+// ── §2.7 the M39 consent gate on a non-immediate-family visitor (GAP-061's sibling, GAP-062) ────────
+
+/**
+ * The M39 consent types that can authorize a NON-immediate-family visitor at the bedside (§2.7: "consent
+ * of the patient or representative if the visitor is non-immediate-family"). Any ACTIVE one satisfies the
+ * gate — these are the on-file authorizations by which a patient names someone outside the immediate
+ * family to receive their PHI.
+ *
+ * COARSE BY CONSTRUCTION, and the limit is worth stating: check-in captures a free-text `visitor_name`
+ * and no recipient id, so nothing can bind THIS visitor to a named recipient on the consent record. The
+ * question the gate can honestly answer is "does this patient have an on-file authorization admitting
+ * non-family access at all", and that is the question it asks. Binding visitor → named recipient needs a
+ * recipient picker at the desk (M39 §2.3 recipients), not a different evaluator call.
+ */
+export const VISITOR_CONSENT_TYPES: readonly string[] = [
+  "hipaa_release",
+  "family_caregiver_access",
+];
+
+/** A `legal_representative` visitor is additionally authorized by an active healthcare DPOA — the
+ *  instrument that MAKES them the representative (M39 §2.3 `per_named_agent`). */
+export const LEGAL_REPRESENTATIVE_CONSENT_TYPES: readonly string[] = [
+  "dpoa_healthcare",
+  ...VISITOR_CONSENT_TYPES,
+];
+
+/**
+ * §2.7 — which M39 consent types must be checked before admitting this visitor, or `null` when the
+ * relationship needs no consent evaluation at all (immediate family — the spec's "spouse visit is
+ * consent-default-OK", W-IPU-07 step 5).
+ */
+export function visitorConsentTypesFor(
+  relationship: IpuVisitorRelationship,
+): readonly string[] | null {
+  if (isImmediateFamily(relationship)) return null;
+  return relationship === "legal_representative"
+    ? LEGAL_REPRESENTATIVE_CONSENT_TYPES
+    : VISITOR_CONSENT_TYPES;
+}
+
 /** An active restriction fact the check-in route injects (unit-scope or patient-scope, already filtered to active). */
 export interface ActiveVisitorRestriction {
   readonly kind: IpuVisitorRestrictionKind;

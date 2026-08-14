@@ -3,6 +3,7 @@ import type {
   PatientAddressReader,
   PatientCoverageReader,
   PatientMutator,
+  PatientPrivacyFlagReader,
   PatientReader,
 } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
@@ -12,6 +13,7 @@ import { getSeam, registerSeam } from "../../../bootstrap/index";
 // PatientMutator (§4.9, T08). `registerPatientSeams` registers them all from the composition root.
 import { buildPatientAddressReader } from "../address-reader";
 import { buildPatientCoverageReader } from "../coverage-reader";
+import { buildPatientPrivacyFlagReader } from "../privacy-flag-reader";
 import { type CareTeamSeamDeps, registerCareTeamSeam } from "./care-team-provider";
 import { type CaseloadSeamDeps, registerCaseloadSeam } from "./caseload-provider";
 import {
@@ -93,6 +95,10 @@ export function registerPatientSeams(deps: PatientSeamDeps = {}): void {
   // without one and the deny-stub's loud failure is honest (the ABAC predicate already fails closed
   // on an unreadable residence — see the interface doc).
   if (deps.db) registerSeam("PatientAddressReader", buildPatientAddressReader(deps.db));
+  // GAP-061 — the §3.5 sex-class + privacy-flag read M37's shared-room occupancy gate consults. Same
+  // posture again: registered only with a db present. The deny-stub's throw is the honest answer for a
+  // db-less boot, and M37 refuses the bed assignment on it rather than reading "no roommates".
+  if (deps.db) registerSeam("PatientPrivacyFlagReader", buildPatientPrivacyFlagReader(deps.db));
   registerSeam(
     "PatientReader",
     createPatientReader(deps.readerStore ?? createInMemoryPatientReaderStore().store),
@@ -116,6 +122,11 @@ export function getPatientCoverageReader(): PatientCoverageReader {
 /** Typed resolver for M5's PatientAddressReader seam (the M31 two-party-recording-consent read). */
 export function getPatientAddressReader(): PatientAddressReader {
   return getSeam("PatientAddressReader");
+}
+
+/** Typed resolver for M5's §3.5 PatientPrivacyFlagReader seam (the M37 shared-room occupancy read). */
+export function getPatientPrivacyFlagReader(): PatientPrivacyFlagReader {
+  return getSeam("PatientPrivacyFlagReader");
 }
 
 /** Typed resolver for M5's PatientMutator seam. */

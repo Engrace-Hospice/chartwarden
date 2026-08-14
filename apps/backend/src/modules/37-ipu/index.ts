@@ -30,7 +30,12 @@ export type { IpuRouteService } from "./routes/service";
 export { eraseIpuRecord, registerIpuErasers } from "./eraser";
 
 // §4.11 — the eight published IPU reader seams (registered over the deny-stubs by the composition root).
-export { buildIpuSeams, registerIpuSeams } from "./seams";
+export {
+  buildIpuSeams,
+  getIpuRoomingFactsReader,
+  getIpuVisitorConsentGate,
+  registerIpuSeams,
+} from "./seams";
 
 // D16 — the AI-prohibited-zone boot validator (§8.6). Re-exported from @wardenx/inpatient; the composition
 // root invokes it in a db-present onReady hook against the real M32 AIPromptRegistry seam.

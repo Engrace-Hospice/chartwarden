@@ -18,6 +18,7 @@ import type { AiCapabilityUnavailable } from "@wardenx/types";
 import type {
   AITokenMeterProvider,
   AdmissionCensusReader,
+  AdmissionOnsetReader,
   AdmissionStatusReader,
   AuditorSessionMinter,
   BereavedPortalScopeProvider,
@@ -35,10 +36,8 @@ import type {
   CertificationReader,
   ComfortKitDispatchProvider,
   CredentialReader,
-  AdmissionOnsetReader,
   DeathDischargeReader,
   DischargeReader,
-  LevelOfCarePeriodReader,
   DisciplineComplianceProvider,
   DisciplinePlanReader,
   DocumentReader,
@@ -77,6 +76,7 @@ import type {
   IpuTenantPostureReader,
   IpuVisitorReader,
   LatestAssessmentProvider,
+  LevelOfCarePeriodReader,
   LevelOfCareReader,
   MedicationAdministrationProvider,
   MedicationOrderProvider,
@@ -92,6 +92,7 @@ import type {
   PatientCounterProvider,
   PatientCoverageReader,
   PatientMutator,
+  PatientPrivacyFlagReader,
   PatientReader,
   PlanCatalogReader,
   PortalDocumentReader,
@@ -217,6 +218,19 @@ export const patientAddressReaderDenyStub: PatientAddressReader = {
   },
   residenceAt() {
     throw new NotImplementedError("PatientAddressReader");
+  },
+};
+
+/**
+ * M5 §3.5 sex-class + privacy-flag read, consulted by M37's `assignBed` shared-room occupancy gate
+ * (GAP-061). M5 registers a real impl over `patient` + `patient_privacy_flag_snapshot` at boot; this
+ * throws for a boot without a DB. THROWING IS THE SAFE DEFAULT HERE: M37 only calls this seam when a
+ * shared room already holds another patient, and an unanswerable occupancy question must refuse the
+ * assignment — an empty answer would read as "the room is empty".
+ */
+export const patientPrivacyFlagReaderDenyStub: PatientPrivacyFlagReader = {
+  roomingFactsFor() {
+    throw new NotImplementedError("PatientPrivacyFlagReader");
   },
 };
 
