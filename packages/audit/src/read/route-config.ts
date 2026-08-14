@@ -14,6 +14,22 @@ export interface RouteReadAuditEmit {
   /** Route param holding the touched patient's id (enables the §164.528 accounting join). */
   readonly patientIdParam?: string;
   /**
+   * Query-string param holding the touched patient's id, for a read that names its patient in the
+   * query rather than the path (`/consents/eval-audit/by-patient?patientId=…`).
+   */
+  readonly patientIdQueryParam?: string;
+  /**
+   * Dot path(s) into the RESPONSE payload holding the touched patient's id, for a read whose route
+   * identifies the RESOURCE but not the patient (`GET /consents/:consentId`). Numeric segments index
+   * arrays (`"data.0.patientId"`); the first path yielding a non-empty string wins.
+   *
+   * This exists because the accounting query joins on `context.patientId`
+   * (packages/audit/src/query/drizzle-audit-query.ts `touchesPatient`) — a patient-scoped read that
+   * emits an event it cannot attribute to a patient is invisible to the §164.528 report, which is
+   * the one question the read trail exists to answer.
+   */
+  readonly patientIdPayloadPath?: string | readonly string[];
+  /**
    * Route param holding the specific resource's id (a single chart open). Defaults to
    * `patientIdParam` when omitted — a patient-scoped read is accounted against the patient.
    */

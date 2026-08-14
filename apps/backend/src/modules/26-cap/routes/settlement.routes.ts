@@ -27,7 +27,14 @@ export function registerSettlementRoutes(app: FastifyInstance, deps: SettlementR
 
   app.get(
     "/api/v1/cap/settlements/:periodId",
-    { preHandler: [SETTLEMENT_READ] },
+    {
+      preHandler: [SETTLEMENT_READ],
+      config: {
+        auditRead: {
+          none: "agency-level settlement worksheet: cap totals, beneficiary COUNT, overage; no patient is named",
+        },
+      },
+    },
     async (request, reply) =>
       reply.send(await readService.getSettlement(actorOf(request), pParam(request, "periodId"))),
   );

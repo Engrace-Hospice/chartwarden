@@ -148,6 +148,14 @@ export const DEFAULT_READ_AUDIT_PREFIXES: readonly string[] = [
   "/api/v1/rb-days",
   "/api/v1/rb-arrangements",
   "/api/v1/state-medicaid-trading-partner-credentials",
+  // M26 Cap Management (GAP-079) — a cap projection, accrual and threshold event all carry a
+  // nullable `patient_id`: the beneficiary-scope rows name the patient whose Medicare utilization
+  // is being read. The agency/inpatient aggregates and the period config carry justified waivers.
+  "/api/v1/cap",
+  // M39 Consent (GAP-079) — the `/api/v1/patients/:patientId/…` consent reads were already covered
+  // by the "/api/v1/patients" prefix above; these are the consent-record-keyed ones that were not.
+  "/api/v1/consents",
+  "/api/v1/consent-types",
   // M25 Remittance & Denials — an 835 line and a denial both resolve to a patient's claim.
   "/api/v1/remittance",
   "/api/v1/denials",

@@ -114,3 +114,111 @@ describe("read-audit emission (preSerialization)", () => {
     expect(captured).toHaveLength(0);
   });
 });
+
+/**
+ * GAP-079 — where the emitted event gets its `context.patientId`. This matters because the §164.528
+ * accounting query joins on exactly that field (`touchesPatient` in the audit query): a read event
+ * that cannot name its patient never appears in the patient's accounting report, so it answers the
+ * only question the read trail exists to answer with silence. A route keyed by resource id rather
+ * than patient id (M39's `/consents/:consentId`) names its patient in the response instead.
+ */
+describe("read-audit emission — patient attribution (GAP-079)", () => {
+  it("prefers the route param when the route names its patient in the path", async () => {
+    const app = makeApp();
+    app.get(
+      "/api/v1/patients/:patientId/thing",
+      {
+        config: {
+          auditRead: {
+            resourceKind: "thing",
+            patientIdParam: "patientId",
+            patientIdPayloadPath: "data.patientId",
+          },
+        },
+      },
+      async () => ({ data: { patientId: "p_from_payload" } }),
+    );
+    await app.inject({ method: "GET", url: "/api/v1/patients/p_from_path/thing" });
+    expect(captured[0].context?.patientId).toBe("p_from_path");
+  });
+
+  it("falls back to the query param (…/eval-audit/by-patient?patientId=…)", async () => {
+    const app = makeApp();
+    app.get(
+      "/api/v1/patients/by-patient",
+      {
+        config: {
+          auditRead: {
+            resourceKind: "consent_eval_audit",
+            patientIdQueryParam: "patientId",
+            list: true,
+          },
+        },
+      },
+      async () => ({ data: [{ id: "e1" }] }),
+    );
+    await app.inject({ method: "GET", url: "/api/v1/patients/by-patient?patientId=p_from_query" });
+    expect(captured[0].eventType).toBe("consent_eval_audit.list_viewed");
+    expect(captured[0].context?.patientId).toBe("p_from_query");
+  });
+
+  it("falls back to a payload path, indexing arrays by numeric segment", async () => {
+    const app = makeApp();
+    app.get(
+      "/api/v1/patients/consent/:consentId",
+      {
+        config: {
+          auditRead: {
+            resourceKind: "consent",
+            resourceIdParam: "consentId",
+            patientIdPayloadPath: "data.0.patientId",
+          },
+        },
+      },
+      async () => ({ data: [{ patientId: "p_from_payload" }] }),
+    );
+    await app.inject({ method: "GET", url: "/api/v1/patients/consent/c1" });
+    expect(captured[0].resourceId).toBe("c1");
+    expect(captured[0].context?.patientId).toBe("p_from_payload");
+  });
+
+  it("takes the first payload path that resolves (M39's two ancestor chains — either may be empty)", async () => {
+    const app = makeApp();
+    const cfg = {
+      config: {
+        auditRead: {
+          resourceKind: "consent_version_chain",
+          resourceIdParam: "consentId",
+          patientIdPayloadPath: ["data.supersedes.0.patientId", "data.renewedFrom.0.patientId"],
+        },
+      },
+    };
+    app.get("/api/v1/patients/chain/:consentId", cfg, async () => ({
+      data: { supersedes: [], renewedFrom: [{ patientId: "p_renewed" }] },
+    }));
+    await app.inject({ method: "GET", url: "/api/v1/patients/chain/c1" });
+    expect(captured[0].context?.patientId).toBe("p_renewed");
+  });
+
+  it("emits with no patientId — rather than throwing — when no path resolves", async () => {
+    const app = makeApp();
+    app.get(
+      "/api/v1/patients/empty/:consentId",
+      {
+        config: {
+          auditRead: {
+            resourceKind: "consent_renewal_cycle",
+            resourceIdParam: "consentId",
+            patientIdPayloadPath: "data.0.patientId",
+          },
+        },
+      },
+      // No rows → nothing about a patient was disclosed, so an unattributed event is correct.
+      async () => ({ data: [] }),
+    );
+    await app.inject({ method: "GET", url: "/api/v1/patients/empty/c1" });
+    expect(captured).toHaveLength(1);
+    expect(captured[0].context?.patientId).toBeUndefined();
+    expect(captured[0].resourceId).toBe("c1");
+  });
+});

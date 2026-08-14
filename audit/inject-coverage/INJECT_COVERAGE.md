@@ -32,7 +32,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 23-billing-medicare | 43 | ✅ | 43/43 | apps/backend/__tests__/billing-medicare-inject.test.ts |
 | 24-billing-medicaid | 39 | ✅ | 39/39 | apps/backend/__tests__/billing-medicaid-inject.test.ts |
 | 25-remittance | 32 | ✅ | 31/32 | apps/backend/__tests__/remittance-inject.test.ts |
-| 26-cap | 27 | ✅ | 27/27 | apps/backend/__tests__/cap-inject.test.ts |
+| 26-cap | 27 | ✅ | 27/27 | apps/backend/__tests__/cap-inject.test.ts, apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts |
 | 27-cost-report | 45 | ✅ | 45/45 | apps/backend/__tests__/cost-report-inject.test.ts |
 | 28-fhir | 35 | ✅ | 35/35 | apps/backend/__tests__/fhir-inject.test.ts |
 | 29-external-interfaces | 33 | ✅ | 33/33 | apps/backend/__tests__/external-interfaces-inject.test.ts |
@@ -45,5 +45,5 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 36-messaging | 22 | ✅ | 21/22 | apps/backend/__tests__/messaging-routes-mount.test.ts, apps/backend/__tests__/messaging-routes.test.ts, apps/backend/__tests__/messaging-webhooks.test.ts |
 | 37-ipu | 45 | ✅ | 45/45 | apps/backend/__tests__/ipu-inject.test.ts |
 | 38-terminology | 8 | ✅ | 8/8 | apps/backend/__tests__/terminology-routes-mount.test.ts, apps/backend/__tests__/terminology-routes.test.ts |
-| 39-consent | 27 | ✅ | 27/27 | apps/backend/__tests__/consent-routes-mount.test.ts, apps/backend/__tests__/consent-routes.test.ts, apps/backend/__tests__/consent-surface.test.ts, apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts |
+| 39-consent | 27 | ✅ | 27/27 | apps/backend/__tests__/consent-routes-mount.test.ts, apps/backend/__tests__/consent-routes.test.ts, apps/backend/__tests__/consent-surface.test.ts, apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts, apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts |
 | 40-mdm | 14 | ✅ | 10/14 | apps/backend/__tests__/mdm-routes-mount.test.ts, apps/backend/__tests__/mdm-routes.test.ts |

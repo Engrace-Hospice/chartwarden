@@ -74,6 +74,46 @@ function emissionConfig(value: RouteReadAudit | undefined): RouteReadAuditEmit |
   return value;
 }
 
+/**
+ * Read a dot path out of a response payload, e.g. `"data.0.patientId"` — numeric segments index
+ * arrays (JS indexes them by string key, so no special case is needed). Returns the value only when
+ * it is a non-empty string; anything else (missing, wrong type, empty) reads as "not found".
+ */
+function atPath(payload: unknown, path: string): string | undefined {
+  let cur: unknown = payload;
+  for (const segment of path.split(".")) {
+    if (cur === null || typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[segment];
+  }
+  return typeof cur === "string" && cur.length > 0 ? cur : undefined;
+}
+
+/**
+ * The patient this read touched, for the §164.528 accounting join: route param first, then query
+ * param, then the response payload. A route whose config names none of the three emits an event
+ * with no patient attribution — correct for a read that genuinely has no single patient (an
+ * org-wide queue), and the reason a patient-scoped route must name one of them.
+ */
+function resolvePatientId(
+  cfg: RouteReadAuditEmit,
+  params: Record<string, string>,
+  query: unknown,
+  payload: unknown,
+): string | undefined {
+  const fromParam = cfg.patientIdParam ? params[cfg.patientIdParam] : undefined;
+  if (fromParam) return fromParam;
+  const fromQuery = cfg.patientIdQueryParam
+    ? (query as Record<string, unknown> | undefined)?.[cfg.patientIdQueryParam]
+    : undefined;
+  if (typeof fromQuery === "string" && fromQuery.length > 0) return fromQuery;
+  const paths = cfg.patientIdPayloadPath;
+  for (const path of typeof paths === "string" ? [paths] : (paths ?? [])) {
+    const found = atPath(payload, path);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 /** Row count for a list read — an `items` array (cursor-page convention), a bare array, or the first array property. */
 function rowCount(payload: unknown): number {
   if (Array.isArray(payload)) return payload.length;
@@ -120,7 +160,7 @@ export function applyReadAuditCoverage(
       const ctx = request.context;
       if (!ctx?.organizationId) return payload; // unauthenticated/no-org — the route denied anyway
       const params = (request.params ?? {}) as Record<string, string>;
-      const patientId = cfg.patientIdParam ? params[cfg.patientIdParam] : undefined;
+      const patientId = resolvePatientId(cfg, params, request.query, payload);
       const auditCtx: AuditContext = {
         organizationId: ctx.organizationId,
         userId: ctx.userId || null,
