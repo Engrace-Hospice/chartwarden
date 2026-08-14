@@ -33,12 +33,12 @@ to follow each run. See [`../ARCHON_SETUP.md`](../ARCHON_SETUP.md) for install +
 | 2 | A | M3, M4 | `archon workflow run wardenx-piv --branch feat/wave-a "Use the plan at docs/plans/WAVE_A_M3-M4_PLAN.md"` | ✅ | [#4](https://github.com/fabwebdev/wardenx/pull/4) † |
 | 3 | B | M36, M38, M40 | `archon workflow run wardenx-piv --branch feat/wave-b "Use the plan at docs/plans/WAVE_B_M36-M38-M40_PLAN.md"` | ✅ | [#5](https://github.com/fabwebdev/wardenx/pull/5) § |
 | 4 | C | M5, M39 | `archon workflow run wardenx-piv --branch feat/wave-c "Use the plan at docs/plans/WAVE_C_M5-M39_PLAN.md"` | ✅ | M5 [#6](https://github.com/fabwebdev/wardenx/pull/6) · M39 [#7](https://github.com/fabwebdev/wardenx/pull/7) ✦ |
-| 5 | D | M6, M7, M8 | `archon workflow run wardenx-piv --branch feat/wave-d "Use the plan at docs/plans/WAVE_D_M6-M7-M8_PLAN.md"` | ☐ | |
-| 6 | E | M9, M10, M11, M12, M13 | `archon workflow run wardenx-piv --branch feat/wave-e "Use the plan at docs/plans/WAVE_E_M9-M13_PLAN.md"` | ☐ | |
-| 7 | F | M14, M17, M18, M22 | `archon workflow run wardenx-piv --branch feat/wave-f "Use the plan at docs/plans/WAVE_F_M14-M17-M18-M22_PLAN.md"` | ☐ | |
+| 5 | D | M6, M7, M8 | `archon workflow run wardenx-piv --branch feat/wave-d "Use the plan at docs/plans/WAVE_D_M6-M7-M8_PLAN.md"` | ✅ | merged (Wave D — M6/M7/M8) |
+| 6 | E | M9, M10, M11, M12, M13 | `archon workflow run wardenx-piv --branch feat/wave-e "Use the plan at docs/plans/WAVE_E_M9-M13_PLAN.md"` | ✅ | merged (Wave E — M9–M13) |
+| 7 | F | M14, M17, M18, M22 | `archon workflow run wardenx-piv --branch feat/wave-f "Use the plan at docs/plans/WAVE_F_M14-M17-M18-M22_PLAN.md"` | ✅ | merged (Wave F) |
 | — | ✅ gate | — | ADR-0029 applied (x12-837-client→M23, x12-835-client→M25; 38 pkgs) — no action | ✅ | — |
-| 8 | G | M23, M25, M26 | `archon workflow run wardenx-piv --branch feat/wave-g "Use the plan at docs/plans/WAVE_G_M23-M25-M26_PLAN.md"` | ☐ | |
-| 9 | H | M28, M29, M30, M32, M34 | `archon workflow run wardenx-piv --branch feat/wave-h "Use the plan at docs/plans/WAVE_H_M28-M29-M30-M32-M34_PLAN.md"` | ☐ | |
+| 8 | G | M23, M25, M26 | `archon workflow run wardenx-piv --branch feat/wave-g "Use the plan at docs/plans/WAVE_G_M23-M25-M26_PLAN.md"` | ✅ | merged (Wave G — modules shipped; MAC transport remains fail-closed, ADR-0037) |
+| 9 | H | M28, M29, M30, M32, M34 | `archon workflow run wardenx-piv --branch feat/wave-h "Use the plan at docs/plans/WAVE_H_M28-M29-M30-M32-M34_PLAN.md"` | ✅ | merged (Wave H) |
 
 ‡ **Slice #1 (PR [#3](https://github.com/fabwebdev/wardenx/pull/3)) — MERGED 2026-06-15.** The
 `wardenx-piv` run was killed at the approval node (nested-Claude hang, [Archon#1067](https://github.com/coleam00/Archon/issues/1067))
@@ -108,7 +108,7 @@ status ledger [`../design/DEFERRED_SCREENS.md`](../design/DEFERRED_SCREENS.md). 
 
 | # | Wave | Scope | Command | Status | PR |
 |---|---|---|---|---|---|
-| A | Track A | M36/M38/M39/M40 live-wire + M5 chart tabs + partials + auth follow-ups | `archon workflow run wardenx-piv --branch feat/frontend-backlog "Use the plan at docs/plans/WAVE_FRONTEND_BACKLOG_PLAN.md"` | ☐ | |
+| A | Track A | M36/M38/M39/M40 live-wire + M5 chart tabs + partials + auth follow-ups | `archon workflow run wardenx-piv --branch feat/frontend-backlog "Use the plan at docs/plans/WAVE_FRONTEND_BACKLOG_PLAN.md"` | ✅ | merged (Track A + backlog T01–T16) |
 
 > Per-group PRs recommended (the wave has 4 groups, FB-T01…T15): append e.g. `(Group 1 only)` /
 > `(FB-T01 only)` to scope a run, like the big-wave per-module tip below. Group 1 (live-wiring) is the
@@ -119,15 +119,15 @@ status ledger [`../design/DEFERRED_SCREENS.md`](../design/DEFERRED_SCREENS.md). 
 | # | Wave | Modules / upgrades | Command | Status | PR |
 |---|---|---|---|---|---|
 | 10 | Part A | M32 ai.full → M8 L2 → M14 full; M22 DocLens + M17 route-opt | `archon workflow run wardenx-piv --branch feat/p2a-upgrades "Use the plan at docs/plans/PHASE_2A_UPGRADES_PLAN.md"` | ☐ | |
-| 11 | P2-1 | M15, M16, M21, M24 | `archon workflow run wardenx-piv --branch feat/p2-1 "Use the plan at docs/plans/WAVE_P2-1_M15-M16-M21-M24_PLAN.md"` | ☐ | |
-| 12 | P2-2 | M19, M20 | `archon workflow run wardenx-piv --branch feat/p2-2 "Use the plan at docs/plans/WAVE_P2-2_M19-M20_PLAN.md"` | ☐ | |
-| 13 | P2-3 | M27, M31, M33, M35 | `archon workflow run wardenx-piv --branch feat/p2-3 "Use the plan at docs/plans/WAVE_P2-3_M27-M31-M33-M35_PLAN.md"` | ☐ | |
+| 11 | P2-1 | M15, M16, M21, M24 | `archon workflow run wardenx-piv --branch feat/p2-1 "Use the plan at docs/plans/WAVE_P2-1_M15-M16-M21-M24_PLAN.md"` | ✅ | merged (P2-1) |
+| 12 | P2-2 | M19, M20 | `archon workflow run wardenx-piv --branch feat/p2-2 "Use the plan at docs/plans/WAVE_P2-2_M19-M20_PLAN.md"` | ✅ | merged (P2-2) |
+| 13 | P2-3 | M27, M31, M33, M35 | `archon workflow run wardenx-piv --branch feat/p2-3 "Use the plan at docs/plans/WAVE_P2-3_M27-M31-M33-M35_PLAN.md"` | ✅ | merged (P2-3) |
 
 ## Phase 3 (M37 + 5 upgrades)
 
 | # | Wave | Modules / upgrades | Command | Status | PR |
 |---|---|---|---|---|---|
-| 14 | New build | M37 IPU | `archon workflow run wardenx-piv --branch feat/m37-ipu "Use the plan at docs/plans/WAVE_P3_M37_IPU_PLAN.md"` | ☐ | |
+| 14 | New build | M37 IPU | `archon workflow run wardenx-piv --branch feat/m37-ipu "Use the plan at docs/plans/WAVE_P3_M37_IPU_PLAN.md"` | ✅ | merged (M37 — 🟢 40) |
 | 15 | Upgrades | M34 multi-tenant, M30 CAHPS/HVLDL/HCI, M26 full cap, M28 fhir.write†, M12 epcs† | `archon workflow run wardenx-piv --branch feat/p3-upgrades "Use the plan at docs/plans/PHASE_3_UPGRADES_PLAN.md"` | ☐ | |
 
 † certification-gated (FHIR conformance / DEA EPCS): the run produces flag-ready code; the flag stays
