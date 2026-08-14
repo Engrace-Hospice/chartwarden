@@ -444,6 +444,8 @@ export interface TenantPlatformRouteSeed {
     id: string;
     organizationId?: string;
     held?: boolean;
+    /** Who requested the export — the approve route must refuse this same membership (SEC-052). */
+    requestingMembershipId?: string;
     requestedPurpose?: string;
     requestedAt?: string;
     heldBundleSizeBytes?: string;
@@ -508,6 +510,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
       organizationId: string;
       status: string;
       held: boolean;
+      requestingMembershipId: string;
       requestedPurpose: string;
       requestedAt: string;
       heldBundleSizeBytes: string | null;
@@ -634,6 +637,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
       organizationId: j.organizationId ?? uuidFromCounter("e", 1),
       status: held ? "generating" : "fulfilled",
       held,
+      requestingMembershipId: j.requestingMembershipId ?? uuidFromCounter("f", 8),
       requestedPurpose: j.requestedPurpose ?? "migration",
       requestedAt: j.requestedAt ?? now(),
       heldBundleSizeBytes: held ? (j.heldBundleSizeBytes ?? "53687091200") : null,
@@ -1093,6 +1097,15 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
     async approveOversizedExport(jobId, actorMembershipId, args) {
       const job = tenantExportJobs.get(jobId);
       if (!job) throw new NotFoundError("tenant export job");
+      // SEC-052 second-actor property — the slice enforces the same distinct-approver rule as the
+      // Drizzle service so route tests can exercise the refusal.
+      if (job.requestingMembershipId === actorMembershipId) {
+        throw new WardenXError(
+          "TENANT_EXPORT_SELF_APPROVAL",
+          "oversized-hold approval requires a platform-ops actor distinct from the export requestor",
+          403,
+        );
+      }
       if (job.status !== "generating") {
         throw new WardenXError(
           "TENANT_EXPORT_NOT_HELD",
@@ -1100,7 +1113,6 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
           409,
         );
       }
-      void actorMembershipId;
       void args.approvalReason;
       job.status = "fulfilled";
       job.held = false; // the list must stop calling it held the moment the release lands

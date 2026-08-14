@@ -218,7 +218,13 @@ afterEach(() => {
 describe("M10-T06 — §4.6 RBAC gating", () => {
   it("RN with hope.schedule.read lists schedules; a viewer without the key is 403 only on protected routes", async () => {
     const { app } = makeServer();
-    const ok = await app.inject({ method: "GET", url: "/api/v1/hope/schedules", headers: VIEWER });
+    // Names the patient: an UNFILTERED list is an org-wide read that `hope.scope` now reserves for
+    // the org-wide scope roles, and this test is about the RBAC key, not the scope claim.
+    const ok = await app.inject({
+      method: "GET",
+      url: `/api/v1/hope/schedules?patientId=${PATIENT}`,
+      headers: VIEWER,
+    });
     expect(ok.statusCode).toBe(200);
     const denied = await app.inject({ method: "GET", url: "/api/v1/hope/sfv", headers: VIEWER });
     expect(denied.statusCode).toBe(403); // viewer lacks hope.sfv.read
@@ -540,26 +546,46 @@ describe("GAP-018 — hope.scope caseload / provider-entity scoping", () => {
     await app.close();
   });
 
-  it("the optional-filter list/dashboard routes allow an unfiltered request regardless of caseload/PE scope", async () => {
+  it("an UNFILTERED list/dashboard request is an org-wide read: denied without an org-wide scope role, allowed with one", async () => {
+    // 2026-08-14 review — an optional filter is not a scope. Omitting the query param used to reach
+    // hope.scope with an empty target and an unconditional `true`, handing any org member every PE's
+    // submissions and every patient's schedules (the services apply no narrowing of their own when
+    // the filter is absent). Now the empty target requires an ORG_WIDE_SCOPE_ROLE; a caseload/PE-
+    // scoped caller must name the patient/PE they claim, which the id branches then verify.
     const { app } = makeServer({ isInCaseload: async () => false });
-    const schedules = await app.inject({
+    // SAME user (so the RBAC keys are identical and only the ABAC decision differs) — only the role
+    // changes between the denied and allowed calls.
+    const rn = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" }; // no x-test-pe
+    const compliance = {
+      "x-test-user": "rn_1",
+      "x-test-org": ORG,
+      "x-test-roles": "compliance_officer",
+    };
+    for (const url of [
+      "/api/v1/hope/schedules",
+      "/api/v1/hope/submissions",
+      "/api/v1/hope/dashboard/compliance",
+    ]) {
+      const denied = await app.inject({ method: "GET", url, headers: rn });
+      expect(denied.statusCode, `${url} unfiltered as plain rn`).toBe(404);
+      const allowed = await app.inject({ method: "GET", url, headers: compliance });
+      expect(allowed.statusCode, `${url} unfiltered as compliance_officer`).toBe(200);
+    }
+    // An EMPTY-STRING param is the same empty target (targetStr treats "" as absent) — it must not
+    // sneak past as a "present" filter.
+    const emptyParam = await app.inject({
       method: "GET",
-      url: "/api/v1/hope/schedules",
-      headers: { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" }, // no x-test-pe
+      url: "/api/v1/hope/submissions?providerEntityId=",
+      headers: rn,
     });
-    expect(schedules.statusCode).toBe(200);
-    const submissions = await app.inject({
+    expect(emptyParam.statusCode).toBe(404);
+    // The filtered path still works for the scoped caller: an RN naming a patient in caseload.
+    const filtered = await app.inject({
       method: "GET",
-      url: "/api/v1/hope/submissions",
-      headers: { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" },
+      url: `/api/v1/hope/schedules?patientId=${PATIENT}`,
+      headers: { ...rn },
     });
-    expect(submissions.statusCode).toBe(200);
-    const dashboard = await app.inject({
-      method: "GET",
-      url: "/api/v1/hope/dashboard/compliance",
-      headers: { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" },
-    });
-    expect(dashboard.statusCode).toBe(200);
+    expect(filtered.statusCode).toBe(404); // isInCaseload:false — the named claim is verified too
     await app.close();
   });
 });

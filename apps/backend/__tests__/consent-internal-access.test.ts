@@ -120,22 +120,42 @@ describe("M39 evaluateForInternalAccess — the per-actor Part 2 verdict", () =>
     expect(v.basis).toBe("actor_unidentified");
   });
 
-  it("a REMOVED or EXPIRED workforce recipient does not keep the release restricted", async () => {
-    // Otherwise a release stays narrowed forever to someone who has left the agency, and the patient
-    // would have to re-sign to restore their own care team's access.
+  it("a REMOVED or EXPIRED workforce recipient does not GRANT, and does not re-widen the release", async () => {
+    // 2026-08-14 review — this used to answer `release_covers_program`, i.e. removing the last named
+    // recipient turned SUD redaction OFF for the whole org. Narrowing a recipient list to zero must
+    // never grant strictly more access than leaving one name on it. A restricted release with no
+    // live recipient names nobody: everyone is `release_names_others`.
     const removed = await ask([part2Release([workforce(SOMEONE_ELSE, { removedAtMs: 1 })])], ME);
-    expect(removed.basis).toBe("release_covers_program");
-    expect(removed.redactSubstanceUseDisorderFields).toBe(false);
+    expect(removed.basis).toBe("release_names_others");
+    expect(removed.redactSubstanceUseDisorderFields).toBe(true);
 
     const expired = await ask([part2Release([workforce(SOMEONE_ELSE, { expiresAtMs: 1 })])], ME);
-    expect(expired.basis).toBe("release_covers_program");
+    expect(expired.basis).toBe("release_names_others");
+    expect(expired.redactSubstanceUseDisorderFields).toBe(true);
 
-    // But an expired one alongside a LIVE one leaves the restriction standing.
+    // A removed recipient does not GRANT either — being the departed name buys nothing.
+    const wasNamed = await ask([part2Release([workforce(ME, { removedAtMs: 1 })])], ME);
+    expect(wasNamed.redactSubstanceUseDisorderFields).toBe(true);
+
+    // An expired one alongside a LIVE one leaves the restriction standing, and the live name grants.
     const stillRestricted = await ask(
       [part2Release([workforce(SOMEONE_ELSE, { expiresAtMs: 1 }), workforce(SOMEONE_ELSE)])],
       ME,
     );
     expect(stillRestricted.basis).toBe("release_names_others");
+    const liveNamed = await ask(
+      [part2Release([workforce(SOMEONE_ELSE, { expiresAtMs: 1 }), workforce(ME)])],
+      ME,
+    );
+    expect(liveNamed.basis).toBe("release_names_actor");
+  });
+
+  it("a release that NEVER named a workforce member still covers the treating program", async () => {
+    // The §2.12(c)(3) case is unchanged: the fix above distinguishes "never restricted" from
+    // "restricted, named parties now gone" — only the second one stays redacted.
+    const external = await ask([part2Release([])], ME);
+    expect(external.basis).toBe("release_covers_program");
+    expect(external.redactSubstanceUseDisorderFields).toBe(false);
   });
 
   it("a revoked or expired release redacts however it names the actor", async () => {

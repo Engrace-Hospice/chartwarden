@@ -99,6 +99,21 @@ export interface M34WorkerDeps {
    * cross-tenant pool the spec mandates — F03/F09). Left optional so a dev boot wires without it.
    */
   readonly platformDb?: DbClient;
+  /**
+   * The organization this port bag is bound to, for the ORG-SCOPED jobs (dsar_export / tenant.export).
+   * The per-job registrars set it from the job payload's `orgId` before building the bag, so every
+   * org-scoped port opens its OWN short `withOrgContext` around its own write.
+   *
+   * This replaces two things that were defects: (a) a mutable `tenantExportOrgId` captured by
+   * `markGenerating` and read by every later port, which made the bag single-use and order-dependent,
+   * and (b) one long `withOrgContext` held around the WHOLE job by the worker closure — which meant
+   * every cross-module seam call inside the run (M5 PatientReader, M22 DocumentRenderer, M36
+   * AlertEmitter) opened a SECOND transaction on the same pool while the first was still held. At
+   * concurrency 4 (dsar) + 2 (export) that is up to 12 simultaneous connections against `max: 10`:
+   * the pool deadlocks and, being a worker, starves the request path with it (cf. the M36
+   * `syncCareTeamChannel` and M17 pre-schedule seam fixes — same shape, same cause).
+   */
+  readonly orgScope?: string;
   /** Complete provision capability. Omit any part and `tenant.provision` remains disabled. */
   readonly provision?: {
     readonly auditBypass: PlatformBypassAuditor<DbClient>;
@@ -255,6 +270,10 @@ const unbound = (port: string, reason: string): never => {
  * Drizzle inside whichever transaction the envelope opens. Here we hand the repos the base client; the
  * envelope is the worker's job (mechanism-vs-policy: the worker owns the RLS envelope, F09).
  */
+/** `withOrgContext`'s audit-actor sentinel for the org-scoped jobs (a system-driven run, not a user
+ *  action) — the M4 write-audit trigger NULLIFs an empty `userId`, mirroring M30's worker sentinel. */
+const M34_ORG_JOB_SYSTEM_USER_ID = "";
+
 export function buildM34WorkerPorts(deps: M34WorkerDeps): {
   provision: ProvisionWorkerPorts;
   dekRotate: DekRotateWorkerPorts;
@@ -269,7 +288,6 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
   const platformDb = deps.platformDb ?? deps.db;
 
   const keyRingRepo = new TenantKeyRingRepository(platformDb);
-  const tenantExportRepo = new TenantExportRepository(db);
 
   const inProvisionPlatform = <T>(reason: string, fn: (tx: DbClient) => Promise<T>): Promise<T> => {
     if (!deps.provision) {
@@ -293,6 +311,30 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
     fn: (tx: DbClient) => Promise<T>,
   ): Promise<T> =>
     withOrgContext(db, { organizationId, userId: "" }, (tx) => fn(tx as unknown as DbClient));
+
+  /** The org this bag's org-scoped ports write under — see {@link M34WorkerDeps.orgScope}. */
+  const requireOrgScope = (): string =>
+    deps.orgScope ??
+    unbound(
+      "orgScope",
+      "build the port bag with `orgScope` set to the job's organization (the per-job registrars do)",
+    );
+
+  /**
+   * One SHORT `withOrgContext` per write, opened and closed inside the port — never one long
+   * transaction around the whole job. A job's cross-module seam calls (PatientReader /
+   * DocumentRenderer / AlertEmitter) each open their own transaction; if this job were holding one
+   * too, each in-flight job would pin two pool connections and the workers would deadlock the pool.
+   * Nothing is lost: those seams always ran on a separate connection and therefore a separate
+   * snapshot, so the outer transaction never actually made the job atomic — it only looked like it.
+   * Per-hop durability is what the job's own event ledger + BullMQ retries are built on.
+   */
+  const inOrgTx = <T>(fn: (tx: DbClient) => Promise<T>): Promise<T> =>
+    withOrgContext(
+      db,
+      { organizationId: requireOrgScope(), userId: M34_ORG_JOB_SYSTEM_USER_ID },
+      (tx) => fn(tx as unknown as DbClient),
+    );
 
   const requireKeyLifecycle = (): NonNullable<M34WorkerDeps["keyLifecycle"]> => {
     if (!deps.keyLifecycle) {
@@ -666,17 +708,20 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
   };
 
   // ── tenant.dsar_export (runs under withOrgContext — the requesting tenant, F09) ──────────────────────
-  // GAP-048: fully bound. `db` here is ALREADY the job's own org-context tx by the time these run (the
-  // worker closure below opens withOrgContext ONCE around the whole job and rebuilds ports over that tx,
-  // the same convention `inProvisionPlatform`/`inProvisionOrg` above rely on) — so `updateJob`/`appendEvent`
-  // /the object PUT issue plain Drizzle directly on `db`, no extra wrapping. `resolveSubject` and
-  // `renderBundleDocument` are genuine cross-module seam calls (M5 PatientReader / M22 DocumentRenderer) —
-  // each manages its own transaction internally, same accepted shape as GAP-030's CaseloadProvider seam
-  // call. `openBundleSink`/`sealBundle` buffer the FHIR resources in memory and assemble a real FHIR R4
+  // GAP-048: fully bound. Every DB-touching port opens its OWN short `withOrgContext` via `inOrgTx`
+  // (the bag is bound to one org — `deps.orgScope`). The worker closure deliberately does NOT hold a
+  // transaction around the job: `resolveSubject` and `renderBundleDocument` are cross-module seam
+  // calls (M5 PatientReader / M22 DocumentRenderer) whose stores open their own transactions, and a
+  // job holding one while a seam opens another pins two pool connections per in-flight job — at
+  // concurrency 4 that alone can exhaust a `max: 10` pool. See `M34WorkerDeps.orgScope`.
+  //
+  // `openBundleSink`/`sealBundle` buffer the FHIR resources in memory and assemble a real FHIR R4
   // `Bundle` (type `collection`) at seal time — one gzip-compressed NDJSON-style PUT, not a literal
   // multi-file tar archive (no tar library in this repo; a DSAR bundle is one logical document, not a
-  // multi-file archive, so gzip alone is the honest minimal format).
-  let dsarBundleResources: unknown[] = [];
+  // multi-file archive, so gzip alone is the honest minimal format). The buffer is keyed by object
+  // key rather than held in a single closure variable, so two jobs sharing a bag cannot interleave
+  // their resources into each other's bundle (the cross-org bleed the shared-bag registrar allowed).
+  const dsarBundlesByObjectKey = new Map<string, unknown[]>();
   const dsarExport: DsarExportWorkerPorts = {
     now,
     async resolveSubject(orgId, patientId) {
@@ -693,12 +738,13 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
       return { resolvedPatientId: identity.id };
     },
     async openBundleSink({ orgId, jobId }) {
-      dsarBundleResources = [];
       const objectKey = `tenants/${orgId}/exports/dsar/${jobId}.ndjson.gz`;
+      const resources: unknown[] = [];
+      dsarBundlesByObjectKey.set(objectKey, resources);
       return {
         sink: {
           async write(resource: unknown) {
-            dsarBundleResources.push(resource);
+            resources.push(resource);
           },
         },
         objectKey,
@@ -711,28 +757,38 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
           "bind the composition-root M22 ObjectStorePort adapter (dsarExport.objectStore)",
         );
       }
+      const resources = dsarBundlesByObjectKey.get(objectKey);
+      if (!resources) {
+        return unbound(
+          "dsarExport.sealBundle",
+          `openBundleSink must run before sealBundle for object key '${objectKey}'`,
+        );
+      }
       const bundle = {
         resourceType: "Bundle",
         type: "collection",
-        entry: dsarBundleResources.map((resource) => ({ resource })),
+        entry: resources.map((resource) => ({ resource })),
       };
       const bytes = gzipSync(Buffer.from(JSON.stringify(bundle), "utf8"));
       await deps.dsarExport.objectStore.putObject({ organizationId: orgId, objectKey, bytes });
+      dsarBundlesByObjectKey.delete(objectKey); // the bundle is durable in object storage now
       return { sizeBytes: bytes.byteLength };
     },
     async updateJob(jobId, patch) {
-      await new DsarExportRepository(db).update(jobId, patch);
+      await inOrgTx((tx) => new DsarExportRepository(tx).update(jobId, patch));
     },
     async appendEvent(args) {
-      await new DsarExportRepository(db).appendEvent({
-        organizationId: args.orgId,
-        dsarExportJobId: args.jobId,
-        eventKind: args.eventKind,
-        fromStatus: args.fromStatus ?? null,
-        toStatus: args.toStatus ?? null,
-        occurredAt: now(),
-        shardReceipt: args.shardReceipt ?? null,
-      });
+      await inOrgTx((tx) =>
+        new DsarExportRepository(tx).appendEvent({
+          organizationId: args.orgId,
+          dsarExportJobId: args.jobId,
+          eventKind: args.eventKind,
+          fromStatus: args.fromStatus ?? null,
+          toStatus: args.toStatus ?? null,
+          occurredAt: now(),
+          shardReceipt: args.shardReceipt ?? null,
+        }),
+      );
     },
     async renderBundleDocument(args) {
       if (!deps.dsarExport?.render) {
@@ -750,13 +806,16 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
           "bind the live m34 transactional-outbox dispatcher (dsarExport.outbox)",
         );
       }
-      await deps.dsarExport.outbox.publish(db, {
-        eventName: event,
-        organizationId: (payload.orgId as string | undefined) ?? "",
-        aggregateKind: "dsar_export_job",
-        aggregateId: (payload.jobId as string | undefined) ?? "",
-        payload,
-      });
+      const outbox = deps.dsarExport.outbox;
+      await inOrgTx((tx) =>
+        outbox.publish(tx, {
+          eventName: event,
+          organizationId: (payload.orgId as string | undefined) ?? "",
+          aggregateKind: "dsar_export_job",
+          aggregateId: (payload.jobId as string | undefined) ?? "",
+          payload,
+        }),
+      );
     },
   };
 
@@ -771,38 +830,39 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
   //
   // `markGenerating`/`recordShardReceipt`/`markFulfilled`/`holdForOversizedApproval` take no `orgId` in
   // their own signatures (the package's pure `TenantExportWorkerPorts` — unlike `DsarExportWorkerPorts`,
-  // which threads `orgId` through every call). `runTenantExportJob` always calls `markGenerating(jobId)`
-  // FIRST, before any other port, so `tenantExportOrgId` is captured there and reused by the later calls
-  // in the SAME job (ports are rebuilt fresh per job by the worker closure below — see `dsarBundleResources`
-  // above for the identical one-job-per-`buildM34WorkerPorts`-call precedent this relies on).
-  let tenantExportOrgId: string | undefined;
-  const requireTenantExportOrgId = (): string =>
-    tenantExportOrgId ??
-    unbound("tenantExport", "markGenerating must run before any other tenantExport port call");
+  // which threads `orgId` through every call), so the org comes from the bag's binding
+  // (`deps.orgScope`). It used to come from a mutable `tenantExportOrgId` that `markGenerating`
+  // captured and every later port read, which made the bag single-use and order-dependent: two jobs
+  // sharing one bag would write each other's ledger rows under the wrong org. The binding is now
+  // explicit and immutable, and each port opens its own short transaction (`inOrgTx`).
   const tenantExport: TenantExportWorkerPorts = {
     now,
     listShards: () => listTenantExportShards(),
     async markGenerating(jobId): Promise<void> {
-      const job = await tenantExportRepo.findById(jobId);
-      if (!job) throw new Error(`tenant_export_job ${jobId} not found`);
-      tenantExportOrgId = job.organizationId;
-      await tenantExportRepo.update(jobId, { status: "generating" });
-      await tenantExportRepo.appendEvent({
-        organizationId: job.organizationId,
-        tenantExportJobId: jobId,
-        eventKind: "generating",
-        occurredAt: now(),
+      await inOrgTx(async (tx) => {
+        const repo = new TenantExportRepository(tx);
+        const job = await repo.findById(jobId);
+        if (!job) throw new Error(`tenant_export_job ${jobId} not found`);
+        await repo.update(jobId, { status: "generating" });
+        await repo.appendEvent({
+          organizationId: job.organizationId,
+          tenantExportJobId: jobId,
+          eventKind: "generating",
+          occurredAt: now(),
+        });
       });
     },
     async recordShardReceipt({ jobId, moduleKey, receipt }): Promise<void> {
-      await tenantExportRepo.appendEvent({
-        organizationId: requireTenantExportOrgId(),
-        tenantExportJobId: jobId,
-        eventKind: "shard_receipt",
-        moduleKey,
-        shardReceipt: receipt,
-        occurredAt: now(),
-      });
+      await inOrgTx((tx) =>
+        new TenantExportRepository(tx).appendEvent({
+          organizationId: requireOrgScope(),
+          tenantExportJobId: jobId,
+          eventKind: "shard_receipt",
+          moduleKey,
+          shardReceipt: receipt,
+          occurredAt: now(),
+        }),
+      );
     },
     bundleSink() {
       if (!deps.tenantExport?.objectStore) {
@@ -831,21 +891,27 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
       });
     },
     async markFulfilled(input): Promise<void> {
-      await tenantExportRepo.update(input.jobId, {
-        status: "fulfilled",
-        fulfilledAt: now(),
-        bundleMinioObjectKey: input.bundleMinioObjectKey,
-        bundleSha256: input.bundleSha256,
-        bundleSizeBytes: String(input.bundleSizeBytes),
-        bundleModuleInventory: input.bundleModuleInventory,
-        bundlePresignedUrlExpiresAt: input.bundlePresignedUrlExpiresAt,
-      });
-      await tenantExportRepo.appendEvent({
-        organizationId: requireTenantExportOrgId(),
-        tenantExportJobId: input.jobId,
-        eventKind: "fulfilled",
-        shardReceipt: { bundleSha256: input.bundleSha256, bundleSizeBytes: input.bundleSizeBytes },
-        occurredAt: now(),
+      await inOrgTx(async (tx) => {
+        const repo = new TenantExportRepository(tx);
+        await repo.update(input.jobId, {
+          status: "fulfilled",
+          fulfilledAt: now(),
+          bundleMinioObjectKey: input.bundleMinioObjectKey,
+          bundleSha256: input.bundleSha256,
+          bundleSizeBytes: String(input.bundleSizeBytes),
+          bundleModuleInventory: input.bundleModuleInventory,
+          bundlePresignedUrlExpiresAt: input.bundlePresignedUrlExpiresAt,
+        });
+        await repo.appendEvent({
+          organizationId: requireOrgScope(),
+          tenantExportJobId: input.jobId,
+          eventKind: "fulfilled",
+          shardReceipt: {
+            bundleSha256: input.bundleSha256,
+            bundleSizeBytes: input.bundleSizeBytes,
+          },
+          occurredAt: now(),
+        });
       });
     },
     // SEC-052 — records the hold; deliberately does NOT flip status to 'fulfilled'. The tenant-scoped
@@ -867,19 +933,23 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
     // uploaded, and then unreachable by ANY path. So the emit is best-effort and its failure is logged,
     // not propagated — the pull surface is the one that must always work.
     async holdForOversizedApproval(input): Promise<void> {
-      const orgId = requireTenantExportOrgId();
-      await tenantExportRepo.appendEvent({
-        organizationId: orgId,
-        tenantExportJobId: input.jobId,
-        eventKind: "oversized_hold",
-        shardReceipt: {
-          bundleMinioObjectKey: input.bundleMinioObjectKey,
-          bundleSha256: input.bundleSha256,
-          bundleSizeBytes: input.bundleSizeBytes,
-          recordCount: input.recordCount,
-        },
-        occurredAt: now(),
-      });
+      const orgId = requireOrgScope();
+      // The ledger write commits and CLOSES before the seam emit below opens its own transaction —
+      // the emit must never run while this one is still held (see `M34WorkerDeps.orgScope`).
+      await inOrgTx((tx) =>
+        new TenantExportRepository(tx).appendEvent({
+          organizationId: orgId,
+          tenantExportJobId: input.jobId,
+          eventKind: "oversized_hold",
+          shardReceipt: {
+            bundleMinioObjectKey: input.bundleMinioObjectKey,
+            bundleSha256: input.bundleSha256,
+            bundleSizeBytes: input.bundleSizeBytes,
+            recordCount: input.recordCount,
+          },
+          occurredAt: now(),
+        }),
+      );
       try {
         // No PHI: a job id, an org id, and the bundle's SIZE — which is the whole basis on which a
         // platform-ops actor decides whether to co-sign. The object key and sha256 stay OUT of the
@@ -979,51 +1049,27 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
 
 // ── live worker construction (the M4-T11 audit-jobs.ts template) ───────────────────────────────────────
 
-/**
- * Construct one BullMQ `Worker` per §4.3 COMMAND queue (provision / dek_rotate / shred / dsar_export /
- * export / onboarding_advance) + the bundle-expiry sweep, each driving the matching pure processor with
- * the bound ports. Returns the workers so the composition root can `close()` them on shutdown — the caller
- * owns the lifecycle; nothing here runs at import (constructing a Worker opens the Valkey connection, which
- * must happen only in production wiring, never in tests).
+/*
+ * There is deliberately NO `registerM34Workers(deps): Worker[]` here any more.
  *
- * The per-job tenancy envelope (withOrgContext / withPlatformContext per {@link M34_QUEUE_SCOPE}) is the
- * SEPARATE integration concern: the ports built above expect to be invoked inside that envelope, so the
- * integrator either wraps the processor body or threads a per-job scoped DB handle. This function constructs
- * the worker shells; binding the envelope + supplying the still-missing infra seams is the integrator's
- * remaining step (the typed throws above name each missing seam).
+ * It built ONE port bag with `buildM34WorkerPorts(deps)` and shared it across all seven workers,
+ * including DSAR export at concurrency 4 and tenant export at concurrency 2. Both of those bags carry
+ * per-job state (the bundle buffer; the tenant-export org binding), so concurrent jobs interleaved
+ * through it — org B's FHIR resources could be sealed into org A's bundle, and a ledger row could be
+ * written under the wrong organization. It also built the bags with no `orgScope`, so nothing opened
+ * an RLS context at all: it depended on an envelope "the integrator" was expected to add later.
  *
- * The baa_expiry_sweep, support_session_close_sweep, and dsar_sla_escalation_sweep workers are NOT
- * constructed here — their processors take additional per-run inputs (the BAA sweep ports, the
- * support-session deps + expired-candidate list, the DSAR-SLA candidate set) the integrator assembles; they
- * are scheduled (the `Queue` repeatables) by {@link scheduleM34Jobs} and their `Worker`s land with those
- * deps. See the TODO at the foot of this file.
+ * The composition root has used the per-job registrars below since GAP-048/GAP-094, so this function
+ * was already dead — but it stayed exported from the module barrel, which is all it takes for someone
+ * to wire the unsafe path back in. Construct workers ONE queue at a time; each registrar binds the
+ * job's own org and builds its own bag.
+ *
+ * `onboardingAdvance` and `bundleExpirySweep` have no registrar yet — their ports are still unbound
+ * stubs (see the typed throws above), so there is nothing to construct. The baa_expiry_sweep,
+ * support_session_close_sweep, and dsar_sla_escalation_sweep workers likewise take per-run inputs the
+ * integrator assembles; they are only SCHEDULED here, by {@link scheduleM34Jobs}. See the TODO at the
+ * foot of this file.
  */
-export function registerM34Workers(deps: M34WorkerDeps): Worker[] {
-  const ports = buildM34WorkerPorts(deps);
-  const { connection } = deps;
-  const mk = <D, R>(
-    queue: string,
-    processor: (data: D) => Promise<R>,
-    concurrency: number,
-  ): Worker =>
-    new Worker(queue, async (job) => processor(job.data as D), { connection, concurrency });
-
-  return [
-    mk(M34_QUEUES.provision, provisionProcessor(ports.provision), 1),
-    mk(M34_QUEUES.dekRotate, dekRotateProcessor(ports.dekRotate), 2),
-    mk(M34_QUEUES.shred, shredProcessor(ports.shred), 1),
-    mk(M34_QUEUES.dsarExport, dsarExportProcessor(ports.dsarExport), 4),
-    mk(M34_QUEUES.export, tenantExportProcessor(ports.tenantExport), 2),
-    mk(
-      M34_QUEUES.onboardingAdvance,
-      onboardingAdvanceProcessor(ports.onboardingAdvance) as (
-        data: OnboardingAdvanceJob,
-      ) => Promise<unknown>,
-      4,
-    ),
-    mk(M34_QUEUES.bundleExpirySweep, bundleExpirySweepProcessor(ports.bundleExpirySweep), 1),
-  ];
-}
 
 /** Construct only the launch-critical provision worker; unrelated M34 capabilities stay disabled. */
 export function registerM34ProvisionWorker(deps: M34WorkerDeps): Worker {
@@ -1088,18 +1134,20 @@ export function registerM34ShredWorker(deps: M34WorkerDeps): Worker {
   );
 }
 
-/** `withOrgContext`'s audit-actor sentinel for the DSAR worker (a system-driven run, not a user action) —
- *  the M4 write-audit trigger NULLIFs an empty `userId`, mirroring M30's `M30_WORKER_SYSTEM_USER_ID`. */
-const M34_DSAR_WORKER_SYSTEM_USER_ID = "";
-
 /**
  * Construct the production DSAR-export worker (GAP-048). Org-scoped (§7.3 F09 — `M34_QUEUE_SCOPE.
- * dsarExport === "org"`, never a platform bypass): opens ONE `withOrgContext(deps.db, {organizationId:
- * job.data.orgId, ...}, tx => ...)` per job and rebuilds the port bag over that tx (`buildM34WorkerPorts
- * ({...deps, db: tx})`), mirroring `registerM34DekRotateWorker`/`registerM34ShredWorker`'s per-job
- * envelope shape but with the tenant's own RLS context instead of the platform-bypass credential. The
- * job payload IS the full `DsarExportJobInput` (`{jobId, orgId, tenantAccountId, patientId}` — the route
- * enqueues this shape, not a bare `jobId`, precisely so `orgId` is known before `withOrgContext` can open).
+ * dsarExport === "org"`, never a platform bypass): builds a FRESH port bag per job, bound to that job's
+ * `orgId` (`buildM34WorkerPorts({...deps, orgScope: data.orgId})`), and each port opens its own short
+ * `withOrgContext` around its own write. The job payload IS the full `DsarExportJobInput` (`{jobId,
+ * orgId, tenantAccountId, patientId}` — the route enqueues this shape, not a bare `jobId`, precisely so
+ * `orgId` is known before any RLS context opens).
+ *
+ * It used to open ONE `withOrgContext` around the whole job instead. That transaction stayed open
+ * across an object-store PUT and two cross-module seam calls (M5 PatientReader, M22 DocumentRenderer)
+ * whose own stores each open a transaction on the same pool — two connections per in-flight job, four
+ * jobs at a time, against `max: 10`, sharing that pool with tenant-export and every HTTP request. It
+ * deadlocked, and the outer transaction was never buying atomicity anyway: the seams ran on their own
+ * connections and their own snapshots regardless.
  */
 export function registerM34DsarExportWorker(deps: M34WorkerDeps): Worker {
   if (!deps.dsarExport) {
@@ -1112,13 +1160,8 @@ export function registerM34DsarExportWorker(deps: M34WorkerDeps): Worker {
     M34_QUEUES.dsarExport,
     async (job) => {
       const data = job.data as DsarExportJobInput;
-      return withOrgContext(
-        deps.db,
-        { organizationId: data.orgId, userId: M34_DSAR_WORKER_SYSTEM_USER_ID },
-        (tx) =>
-          dsarExportProcessor(
-            buildM34WorkerPorts({ ...deps, db: tx as unknown as DbClient }).dsarExport,
-          )(data),
+      return dsarExportProcessor(buildM34WorkerPorts({ ...deps, orgScope: data.orgId }).dsarExport)(
+        data,
       );
     },
     { connection: deps.connection, concurrency: 4 },
@@ -1127,12 +1170,12 @@ export function registerM34DsarExportWorker(deps: M34WorkerDeps): Worker {
 
 /**
  * Construct the production tenant-export worker (GAP-094 — the `tenant.export` sibling of
- * `registerM34DsarExportWorker` above; SAME shape). Org-scoped (§7.6 F09 — `M34_QUEUE_SCOPE.export ===
- * "org"`, never a platform bypass): opens ONE `withOrgContext(deps.db, {organizationId: job.data.orgId,
- * ...}, tx => ...)` per job and rebuilds the port bag over that tx. The job payload is `TenantExportJobBody`
- * (`{jobId, orgId}`) — the tenant route's `requestTenantExport` enqueues both fields (fixed alongside this,
- * GAP-094: it previously enqueued a bare `{jobId}`, which would have left `withOrgContext` opening with an
- * undefined `organizationId` the moment this worker went live).
+ * `registerM34DsarExportWorker` above; SAME shape, same reason for it). Org-scoped (§7.6 F09 —
+ * `M34_QUEUE_SCOPE.export === "org"`, never a platform bypass): a fresh port bag per job, bound to that
+ * job's `orgId`, each port opening its own short `withOrgContext`. Its seam call is M36's AlertEmitter
+ * in `holdForOversizedApproval`, plus the M22 DocumentRenderer cover letter. The job payload is
+ * `TenantExportJobBody` (`{jobId, orgId}`) — the tenant route's `requestTenantExport` enqueues both
+ * fields (fixed alongside this, GAP-094: it previously enqueued a bare `{jobId}`).
  */
 export function registerM34TenantExportWorker(deps: M34WorkerDeps): Worker {
   if (!deps.tenantExport) {
@@ -1145,14 +1188,9 @@ export function registerM34TenantExportWorker(deps: M34WorkerDeps): Worker {
     M34_QUEUES.export,
     async (job) => {
       const data = job.data as TenantExportJobBody;
-      return withOrgContext(
-        deps.db,
-        { organizationId: data.orgId, userId: M34_DSAR_WORKER_SYSTEM_USER_ID },
-        (tx) =>
-          tenantExportProcessor(
-            buildM34WorkerPorts({ ...deps, db: tx as unknown as DbClient }).tenantExport,
-          )(data),
-      );
+      return tenantExportProcessor(
+        buildM34WorkerPorts({ ...deps, orgScope: data.orgId }).tenantExport,
+      )(data);
     },
     { connection: deps.connection, concurrency: 2 },
   );

@@ -236,14 +236,21 @@ describe.skipIf(!DB_URL)("M39 consent lifecycle — LIVE Postgres (WX-PR-009)", 
       }),
     ).toMatchObject({ redactSubstanceUseDisorderFields: false });
 
-    // Removing the named recipient lifts the restriction rather than sealing the record forever.
+    // Removing the last named recipient does NOT re-widen the release to the whole program
+    // (2026-08-14 review): the patient's restriction outlives the named clinician's departure, so
+    // an unnamed actor stays redacted — over real rows, where the removed recipient is still on
+    // disk and is what makes the "was restricted" case distinguishable.
     await admin.query(
       "UPDATE consent_record_recipient SET removed_at = now() WHERE consent_record_id = $1",
       [draft.id],
     );
     expect(await ask(UNNAMED_MEMBERSHIP)).toMatchObject({
-      redactSubstanceUseDisorderFields: false,
-      basis: "release_covers_program",
+      redactSubstanceUseDisorderFields: true,
+      basis: "release_names_others",
+    });
+    // …and the departed name buys nothing either.
+    expect(await ask(NAMED_MEMBERSHIP)).toMatchObject({
+      redactSubstanceUseDisorderFields: true,
     });
   });
 

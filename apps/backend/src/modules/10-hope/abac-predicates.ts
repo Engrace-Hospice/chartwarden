@@ -48,7 +48,11 @@ export const M10_ABAC_PREDICATES = [
 
 /** Roles that read/scope any patient's HOPE data or any ProviderEntity's submissions without caseload/PE
  * membership (mirrors M7/M8/M9's `caseload_or_scope` org-wide escape). */
-const ORG_WIDE_SCOPE_ROLES = ["medical_director", "compliance_officer", "survey_coordinator"] as const;
+const ORG_WIDE_SCOPE_ROLES = [
+  "medical_director",
+  "compliance_officer",
+  "survey_coordinator",
+] as const;
 
 /** The HOPE clinical-lead role token that may correct any signed assessment (§4.7 / §4.6). */
 const CLINICAL_LEAD_ROLES = ["clinical_lead", "clinical_supervisor"] as const;
@@ -140,8 +144,9 @@ const defaultResolveAdmissionPatient = async (
  * `scheduleId` / `sfvId` / (`assessmentId` or bare `id`, the default when a route names none of the
  * others) / `providerEntityId` / `submissionId` — every route wires exactly one shape via `getTarget`
  * (hope-routes.ts); an empty target (`{}`) is the optional-filter list/dashboard routes' "no filter
- * given" case and is ALLOWED (RLS + the service's own narrowing is the row control), matching the shared
- * `caseload_or_scope`'s own `{}` branch philosophy.
+ * given" case and is an ORG-WIDE read, allowed only for the org-wide scope roles — the services apply
+ * no PE/caseload narrowing when the filter is absent, so for everyone else the filter param IS the
+ * scope claim and must be present (2026-08-14 review: an optional filter is not a scope).
  */
 export function buildHopeAbacPredicates(
   deps: HopeAbacDeps,
@@ -153,7 +158,11 @@ export function buildHopeAbacPredicates(
   const caseloadOrScopeFor = async (context: AbacContext, patientId: string): Promise<boolean> => {
     if (ORG_WIDE_SCOPE_ROLES.some((r) => context.roles.includes(r))) return true;
     if (!context.userId) return false;
-    return isInCaseload({ organizationId: context.organizationId, userId: context.userId, patientId });
+    return isInCaseload({
+      organizationId: context.organizationId,
+      userId: context.userId,
+      patientId,
+    });
   };
 
   const peOrScopeFor = (context: AbacContext, providerEntityId: string): boolean =>
@@ -215,10 +224,14 @@ export function buildHopeAbacPredicates(
         return peOrScopeFor(context, facts.providerEntityId);
       }
 
-      // No scoping field at all — only the optional-filter list/dashboard routes (schedules, submissions,
-      // compliance dashboard) ever construct an empty target this way; every other wired route supplies a
-      // required path param, so this branch is never reached as a misconfiguration fallback.
-      return true;
+      // No scoping field at all — only the optional-filter list/dashboard routes (schedules,
+      // submissions, compliance dashboard) construct an empty target, by the caller simply OMITTING
+      // the query param. An optional filter is not a scope: the services apply no PE/caseload
+      // narrowing of their own when the filter is absent (RLS is org-level only), so an unfiltered
+      // request is an org-wide read and only the org-wide scope roles may make one. Everyone else
+      // must name the patient/PE they claim, which the branches above then verify. Fails closed on
+      // a misconfigured route for the same reason (mirrors M8/M9's empty-target `return false`).
+      return ORG_WIDE_SCOPE_ROLES.some((r) => context.roles.includes(r));
     },
   };
 }
