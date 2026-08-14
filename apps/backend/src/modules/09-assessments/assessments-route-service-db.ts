@@ -59,9 +59,10 @@ import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import {
   type AssessmentSitingResolver,
   type ResolvedAdmissionAnchor,
-  dpoaConsentActiveViaSeam,
   type ResolvedCaptureSiting,
   createSeamAssessmentSitingResolver,
+  dpoaConsentActiveViaSeam,
+  sudRedactionRequiredViaSeam,
 } from "./capture-siting";
 import type {
   AssessmentAbacResolver,
@@ -170,10 +171,14 @@ type AssessmentRow = {
 
 // D10 / M09-F05 (ADR-0014 D1) chart-read disclosure gate. A SUD-context AIMS row is returned redacted
 // (empty data/score) so a clinician sees "there is an AIMS but you can't see it" — never blocked on
-// creation, never redacting non-SUD/non-AIMS rows. The full decision is consent-driven (M5 PrivacyFlag +
-// M39 consent.evaluate, resolved SQL-side); until that join is wired here it FAILS CLOSED — every
-// SUD-context AIMS row is redacted. TODO(M9L): resolve the active 42 CFR Part 2 release and unredact.
-const sudRedacted = (r: AssessmentRow): boolean => r.scaleType === "aims" && r.sudContext;
+// creation, never redacting non-SUD/non-AIMS rows.
+//
+// GAP-017 — the decision is now CONSENT-DRIVEN. This used to be the whole gate: `aims && sudContext`,
+// with no consent read anywhere, so an active 42 CFR Part 2 release the patient signed and the org
+// recorded changed nothing and the row stayed hidden from every caller forever. Which rows are
+// CANDIDATES is still this pure predicate; whether a candidate is actually redacted is answered per
+// read by M39 (`sudRedactionRequiredViaSeam` → `evaluateForIngressRedaction`), fail-closed.
+const sudRedactionCandidate = (r: AssessmentRow): boolean => r.scaleType === "aims" && r.sudContext;
 
 const toView = (
   r: AssessmentRow,
@@ -221,7 +226,32 @@ export function createDbAssessmentRouteService(
     organizationId,
     patientId,
   ) => dpoaConsentActiveViaSeam(organizationId, patientId),
+  /**
+   * GAP-017 — "must this patient's SUD content stay redacted on an in-org chart read?", through M39's
+   * `ConsentEvaluator.evaluateForIngressRedaction`. Injectable so unit tests need no seam registry;
+   * fail-closed (redact) by default. See {@link sudRedactionRequiredViaSeam} for why the decision is
+   * patient-scoped rather than per-actor.
+   */
+  sudRedactionRequired: (organizationId: string, patientId: string) => Promise<boolean> = (
+    organizationId,
+    patientId,
+  ) => sudRedactionRequiredViaSeam(organizationId, patientId),
 ): AssessmentRouteService {
+  /**
+   * Resolve the D10 redaction decision for a set of candidate rows — ONE consent read per request, and
+   * only when at least one row is actually a SUD-context AIMS row. Every read path here is already
+   * scoped to a single patient, so one answer covers the whole result set; a read with no candidate
+   * rows (the overwhelming majority) never touches M39 at all.
+   */
+  async function redactionFor(
+    organizationId: string,
+    patientId: string,
+    rows: readonly AssessmentRow[],
+  ): Promise<boolean> {
+    if (!rows.some(sudRedactionCandidate)) return false;
+    return sudRedactionRequired(organizationId, patientId);
+  }
+
   /** Emit one `m9.*` event on the caller's tx (validated + persisted by the bound publisher; no-op default). */
   async function emit(
     tx: unknown,
@@ -428,12 +458,18 @@ export function createDbAssessmentRouteService(
     return [...latest.values()];
   };
 
-  async function viewsFor(tx: DbClient, rows: AssessmentRow[]): Promise<AssessmentView[]> {
+  async function viewsFor(
+    tx: DbClient,
+    organizationId: string,
+    patientId: string,
+    rows: AssessmentRow[],
+  ): Promise<AssessmentView[]> {
     const map = await cosignedMap(
       tx,
       rows.map((r) => r.id),
     );
-    return rows.map((r) => toView(r, map.get(r.id) ?? null, sudRedacted(r)));
+    const redact = await redactionFor(organizationId, patientId, rows);
+    return rows.map((r) => toView(r, map.get(r.id) ?? null, redact && sudRedactionCandidate(r)));
   }
 
   return {
@@ -445,7 +481,7 @@ export function createDbAssessmentRouteService(
           .from(CA)
           .where(eq(CA.patientId, patientId))
           .orderBy(desc(CA.capturedAt), desc(CA.id))) as AssessmentRow[];
-        return { assessments: await viewsFor(tx as DbClient, rows) };
+        return { assessments: await viewsFor(tx as DbClient, organizationId, patientId, rows) };
       });
     },
 
@@ -458,7 +494,8 @@ export function createDbAssessmentRouteService(
           .limit(1)) as AssessmentRow[];
         if (!r || r.patientId !== patientId) throw new NotFoundError("assessment");
         const map = await cosignedMap(tx as DbClient, [r.id]);
-        return toView(r, map.get(r.id) ?? null, sudRedacted(r));
+        const redact = await redactionFor(organizationId, patientId, [r]);
+        return toView(r, map.get(r.id) ?? null, redact && sudRedactionCandidate(r));
       });
     },
 
@@ -468,7 +505,10 @@ export function createDbAssessmentRouteService(
           .select(assessmentCols)
           .from(CA)
           .where(and(eq(CA.patientId, patientId), eq(CA.status, "active")))) as AssessmentRow[];
-        return { patientId, latest: await viewsFor(tx as DbClient, latestPerScale(rows)) };
+        return {
+          patientId,
+          latest: await viewsFor(tx as DbClient, organizationId, patientId, latestPerScale(rows)),
+        };
       });
     },
 
@@ -484,7 +524,8 @@ export function createDbAssessmentRouteService(
           .limit(1)) as AssessmentRow[];
         if (!r) throw new NotFoundError("assessment");
         const map = await cosignedMap(tx as DbClient, [r.id]);
-        return toView(r, map.get(r.id) ?? null, sudRedacted(r));
+        const redact = await redactionFor(organizationId, patientId, [r]);
+        return toView(r, map.get(r.id) ?? null, redact && sudRedactionCandidate(r));
       });
     },
 
@@ -508,8 +549,9 @@ export function createDbAssessmentRouteService(
               ),
             )
             .orderBy(asc(CA.capturedAt), asc(CA.id))) as AssessmentRow[];
+          const redact = await redactionFor(organizationId, patientId, rows);
           const points: ScaleSeriesPoint[] = rows.map((r) => {
-            const redacted = sudRedacted(r);
+            const redacted = redact && sudRedactionCandidate(r);
             return {
               assessmentId: r.id,
               capturedAt: toIso(r.capturedAt),
@@ -555,7 +597,9 @@ export function createDbAssessmentRouteService(
               inArray(CA.scaleType, [...scaleTypes] as ScaleType[]),
             ),
           )) as AssessmentRow[];
-        return { latest: await viewsFor(tx as DbClient, latestPerScale(rows)) };
+        return {
+          latest: await viewsFor(tx as DbClient, organizationId, patientId, latestPerScale(rows)),
+        };
       });
     },
 

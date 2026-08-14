@@ -105,7 +105,7 @@ describe.skipIf(!DB_URL)("M9 Drizzle read service — LIVE Postgres (M9L)", () =
        VALUES ($1,'pps', true, $2)`,
       [org, membership],
     );
-    return { scaleLicense, clinicalAssessment };
+    return { scaleLicense, clinicalAssessment, providerEntity, location, membership };
   }
 
   beforeAll(async () => {
@@ -150,6 +150,115 @@ describe.skipIf(!DB_URL)("M9 Drizzle read service — LIVE Postgres (M9L)", () =
     expect(assessments[0].scaleType).toBe("pps");
     expect(assessments[0].score).toBe(60);
     expect(assessments[0].redacted).toBe(false);
+  });
+
+  // ── GAP-017 — the D10 / M09-F05 SUD chart-read disclosure gate ────────────────────────────────
+  //
+  // The AIMS gate was `scaleType === "aims" && sudContext` with NO consent read anywhere, so a
+  // SUD-context AIMS row was redacted for every caller forever and an active 42 CFR Part 2 release
+  // changed nothing. These cases drive the PRODUCTION read paths with the consent decision injected
+  // both ways, which is the only way to see that the decision is now actually consulted.
+  describe("SUD-context AIMS redaction is consent-driven (GAP-017)", () => {
+    let aimsId: string;
+
+    beforeAll(async () => {
+      aimsId = (
+        await admin.query(
+          `INSERT INTO clinical_assessment (organization_id, provider_entity_id, location_id, patient_id,
+             admission_id, scale_type, scale_version, data, score, score_interpretation, captured_at,
+             captured_by_membership_id, captured_by_discipline, sud_context)
+           VALUES ($1,$2,$3,$4,$5,'aims','1.0','{"notes":"aims seed"}'::jsonb, 12, 'AIMS 12', now(), $6, 'RN', true)
+           RETURNING id`,
+          [
+            ORG_A,
+            seeded[ORG_A].providerEntity,
+            seeded[ORG_A].location,
+            PATIENT,
+            ADMISSION,
+            seeded[ORG_A].membership,
+          ],
+        )
+      ).rows[0].id as string;
+    });
+
+    /** The production service with the M39 decision injected (undefined ⇒ the real seam defaults). */
+    const serviceWithConsent = (redact: boolean) =>
+      createDbAssessmentRouteService(
+        handle.db,
+        undefined,
+        undefined,
+        undefined,
+        async () => redact,
+      );
+
+    it("redacts the AIMS row when no Part 2 release is on file", async () => {
+      const { assessments } = await serviceWithConsent(true).listAssessments(ORG_A, PATIENT);
+      const aims = assessments.find((a) => a.id === aimsId);
+      expect(aims).toBeDefined();
+      expect(aims!.redacted).toBe(true);
+      expect(aims!.score).toBeNull();
+      expect(aims!.data).toEqual({});
+    });
+
+    it("UN-redacts the same row when M39 reports an active Part 2 release", async () => {
+      const { assessments } = await serviceWithConsent(false).listAssessments(ORG_A, PATIENT);
+      const aims = assessments.find((a) => a.id === aimsId);
+      expect(aims!.redacted).toBe(false);
+      expect(aims!.score).toBe(12);
+      expect(aims!.data).toEqual({ notes: "aims seed" });
+    });
+
+    it("never redacts a NON-SUD row, whatever the consent decision says", async () => {
+      const { assessments } = await serviceWithConsent(true).listAssessments(ORG_A, PATIENT);
+      const pps = assessments.find((a) => a.id === seeded[ORG_A].clinicalAssessment);
+      expect(pps!.redacted).toBe(false);
+      expect(pps!.score).toBe(60);
+    });
+
+    it("applies the same decision on the single-row read and the series read", async () => {
+      const one = await serviceWithConsent(true).getAssessment(ORG_A, PATIENT, aimsId);
+      expect(one.redacted).toBe(true);
+      const open = await serviceWithConsent(false).getAssessment(ORG_A, PATIENT, aimsId);
+      expect(open.redacted).toBe(false);
+
+      const today = new Date().toISOString().slice(0, 10);
+      const closed = await serviceWithConsent(true).seriesScale(
+        ORG_A,
+        PATIENT,
+        "aims",
+        today,
+        today,
+      );
+      expect(closed.points.every((pt) => pt.score === null)).toBe(true);
+      const shown = await serviceWithConsent(false).seriesScale(
+        ORG_A,
+        PATIENT,
+        "aims",
+        today,
+        today,
+      );
+      expect(shown.points.some((pt) => pt.score === 12)).toBe(true);
+    });
+
+    it("does not consult M39 at all when the result set holds no SUD-context AIMS row", async () => {
+      // One consent read per request is already cheap, but zero for the overwhelmingly common case is
+      // the point: this must not put an M39 round trip on every chart read in the product.
+      let calls = 0;
+      const svc = createDbAssessmentRouteService(
+        handle.db,
+        undefined,
+        undefined,
+        undefined,
+        async () => {
+          calls += 1;
+          return true;
+        },
+      );
+      await svc.latestScale(ORG_A, PATIENT, "pps");
+      expect(calls).toBe(0);
+      await svc.listAssessments(ORG_A, PATIENT); // contains the AIMS row
+      expect(calls).toBe(1);
+    });
   });
 
   it("RLS: org B cannot see org A's license or assessment through the read service", async () => {
