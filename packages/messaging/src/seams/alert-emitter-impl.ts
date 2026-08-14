@@ -43,6 +43,9 @@ export interface PersistedAlert {
   readonly eventType: string;
   readonly severity: AlertSeverity;
   readonly correlationId: string;
+  /** The structured event payload (§3.6) — `alert.payload` is NOT NULL (GAP-096: this field was
+   *  missing here even though `emit()`'s own input always carries one). */
+  readonly payload: Record<string, unknown>;
   readonly deliveries: readonly PlannedDelivery[];
 }
 
@@ -119,6 +122,7 @@ export function createAlertEmitter(ports: AlertEmitterPorts): AlertEmitter {
         eventType: input.eventType,
         severity: input.severity,
         correlationId: input.correlationId,
+        payload: input.payload,
         deliveries,
       });
       return { alertId, resolvedRecipientCount: recipientUnion.size };

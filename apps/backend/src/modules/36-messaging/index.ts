@@ -75,6 +75,14 @@ export { createDbMessagingRouteService } from "./messaging-route-service-db";
 // FB-T05 — the production Drizzle `MessagingProvider` seam (§4.6): the cross-module channel/message
 // CRUD surface, registered into the M1 registry over the deny-stub so `validateSeams()` sees it real.
 export { createDbMessagingProvider } from "./messaging-provider-db";
+// GAP-096 — the production Drizzle `AlertEmitterPorts` + the `AlertEmitter` they compose over (the
+// M36-T04 resolution/fan-out engine, real for the first time in the composition root).
+export {
+  createDrizzleAlertEmitter,
+  createDrizzleAlertEmitterPorts,
+} from "./alert-emitter-drizzle";
+// GAP-096 — boot-populate alert_rule's platform-default rows (BYPASSRLS-only; see file header).
+export { wireAlertRuleSeed } from "./alert-rule-seed-persister";
 // FB-T14 — M36-owned TRANSACTIONAL email transport (password reset / magic-link delivery). The
 // composition root binds the auth `EmailTransport` seam to this, so auth links dispatch through M36
 // (DR/INT #14, Postmark = M36) — no `dependsOn` edge (the bridge lives in the composition root).

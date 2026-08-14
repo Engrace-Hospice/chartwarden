@@ -23,6 +23,10 @@ export const notificationDeliveries = pgTable(
     recipientUserId: uuid("recipient_user_id")
       .notNull()
       .references(() => users.id),
+    // §2.6 / §7.6 vacation forwarding (GAP-096, migration 0192): set on a backup's delivery row when
+    // it exists only because the original recipient forwarded it (PlannedDelivery.forwardedFromUserId,
+    // packages/messaging/src/resolution/fan-out.ts) — null on every non-forwarded row.
+    forwardedFromUserId: uuid("forwarded_from_user_id").references(() => users.id),
     alertCategory: alertCategory("alert_category").notNull(), // denormalized from parent alert
     alertSeverity: alertSeverity("alert_severity").notNull(), // denormalized from parent alert
     channel: notificationChannel("channel").notNull(),
