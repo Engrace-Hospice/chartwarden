@@ -1,0 +1,247 @@
+// apps/backend/src/modules/36-messaging/alert-emitter-drizzle.ts — GAP-096.
+//
+// The Drizzle-backed AlertEmitterPorts the M36-T04 resolution/fan-out engine (`createAlertEmitter`,
+// @wardenx/messaging) composes over in production. Before this file, `registerMessagingSeams` never
+// received `emitter:`, so it always fell back to `createInMemoryAlertEmitter()` — every alert emitted
+// platform-wide ran in a per-process in-memory engine: no `alert`/`notification_delivery` row was ever
+// written, and state never survived a restart or a second instance.
+//
+// TENANCY: mirrors `messaging-route-service-db.ts`'s established `withOrgContext(db, {organizationId,
+// userId: ""}, fn)` pattern for every write; `alert_rule`/`user_notification_preferences` reads use the
+// SAME pattern (RLS admits both the caller's own-org rows and the NULL-organization_id platform-default
+// rows per their own `_read` policies, so a plain per-call withOrgContext is sufficient — no ambient
+// request context needed, since `emit()` may run from a background consumer as often as a request).
+//
+// RECIPIENT SOURCES: `careTeamMembers`/`onCallMembers` bind the REAL M5/M19 seams (`CareTeamProvider`
+// GAP-059, `OnCallProvider` already real at boot) — M36 dependsOn [1,2,3,4], so it reaches these only
+// through `getSeam`, never a direct import. `roleSetMembers`/`tenantAdmins`/`orgMembers` are plain
+// Drizzle joins over the M1/M3-owned `membership`/`membership_role`/`role` tables (M36 dependsOn 1,3 —
+// no seam needed, mirrors GAP-021's M13 witness-facts membership_role→role join precedent).
+// `tenantAdmins` mirrors `createDbAdminMembershipReader`'s real query (@wardenx/auth) — role key
+// `org_admin`, enabled, non-expired grant — rather than re-importing it, since this store needs the
+// membership's userId in the same query, not just the membershipId that reader returns.
+//
+// `disciplineMembers` REFUSES (DegradedError) rather than silently answering `[]`: M36's foundation
+// tier has no clinical-discipline vocabulary to query (the only real one, M17's
+// `membership_credential.credential_type`, GAP-093, is gated behind a dependsOn edge M36 does not
+// have, and no platform-default alert_rule uses the `discipline` resolver today). A silent `[]` would
+// make a tenant-configured `discipline` rule notify NOBODY forever with no error — the exact
+// WIRED-but-fake-predicate trap GAP-020 already taught this codebase to avoid.
+import { type DbClient, schema } from "@wardenx/db";
+import type {
+  AlertEmitter,
+  AlertEmitterPorts,
+  EmitAlertRule,
+  PersistedAlert,
+  QuietHoursConfig,
+  RecipientPreferences,
+  RecipientSourcePorts,
+  ResolverArgs,
+  RoutingMap,
+} from "@wardenx/messaging";
+import {
+  type AlertCategory,
+  type AlertRecipientResolver,
+  type AlertSeverity,
+  type NotificationChannel,
+  createAlertEmitter,
+} from "@wardenx/messaging";
+import { withOrgContext } from "@wardenx/tenancy";
+import { DegradedError } from "@wardenx/types";
+import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
+import { getSeam } from "../../bootstrap/index";
+
+type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+
+/** Mirrors `createDbAdminMembershipReader`'s role key (@wardenx/auth's `ORG_ADMIN_ROLE_KEY`) — kept as
+ *  its own local constant since that one isn't exported, and this query needs `membership.userId`
+ *  directly rather than the membershipId that reader returns. */
+const ORG_ADMIN_ROLE_KEY = "org_admin";
+
+function toEmitAlertRule(r: typeof schema.alertRules.$inferSelect): EmitAlertRule {
+  return {
+    category: r.category as AlertCategory,
+    severityFloor: r.severityFloor as AlertSeverity,
+    recipientResolver: r.recipientResolver as AlertRecipientResolver,
+    resolverArgs: r.resolverArgs as ResolverArgs,
+    channelsOverride: r.channelsOverride as readonly NotificationChannel[] | null,
+  };
+}
+
+function buildRecipientPorts(db: DbClient): RecipientSourcePorts {
+  const MR = schema.membershipRoles;
+  const R = schema.roles;
+  const M = schema.memberships;
+
+  const activeMembershipUserIds = (orgId: string, roleKeys: readonly string[]) =>
+    withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx: Tx) => {
+      if (roleKeys.length === 0) return [] as string[];
+      const rows = await tx
+        .selectDistinct({ userId: M.userId })
+        .from(MR)
+        .innerJoin(R, eq(R.id, MR.roleId))
+        .innerJoin(M, eq(M.id, MR.membershipId))
+        .where(
+          and(
+            eq(MR.organizationId, orgId),
+            inArray(R.key, roleKeys as string[]),
+            eq(R.enabled, true),
+            eq(M.status, "active"),
+            or(isNull(MR.expiresAt), gt(MR.expiresAt, new Date())),
+          ),
+        );
+      return rows.map((r) => r.userId);
+    });
+
+  return {
+    async careTeamMembers(orgId, patientId) {
+      return getSeam("CareTeamProvider").careTeamMembers({ organizationId: orgId, patientId });
+    },
+    async onCallMembers(orgId, providerEntityId) {
+      const actors = await getSeam("OnCallProvider").currentOnCallActors(
+        orgId,
+        providerEntityId,
+        new Date().toISOString(),
+      );
+      // `external_vendor` actors are structurally incapable of resolving to a user id (the type's own
+      // discriminated-union design, packages/types/src/oncall.ts) — a vendor-covered shift correctly
+      // yields no in-app/push/sms recipient here (the vendor's own channel covers it separately).
+      return actors.filter((a) => a.kind === "membership").map((a) => a.userId);
+    },
+    async disciplineMembers(): Promise<readonly string[]> {
+      throw new DegradedError(
+        "m36-alert-recipients",
+        "disciplineMembers has no bound discipline vocabulary at M36's foundation tier " +
+          "(dependsOn [1,2,3,4] only) — no platform-default alert_rule uses the discipline " +
+          "resolver; a tenant-configured rule naming it refuses loudly rather than silently " +
+          "resolving to nobody",
+      );
+    },
+    async roleSetMembers(orgId, roleKeys) {
+      return activeMembershipUserIds(orgId, roleKeys);
+    },
+    async tenantAdmins(orgId) {
+      return activeMembershipUserIds(orgId, [ORG_ADMIN_ROLE_KEY]);
+    },
+    async orgMembers(orgId) {
+      return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx: Tx) => {
+        const rows = await tx
+          .selectDistinct({ userId: M.userId })
+          .from(M)
+          .where(and(eq(M.organizationId, orgId), eq(M.status, "active")));
+        return rows.map((r) => r.userId);
+      });
+    },
+  };
+}
+
+/** Build the real {@link AlertEmitterPorts} over `db` (GAP-096). */
+export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts {
+  const AR = schema.alertRules;
+  const AL = schema.alerts;
+  const ND = schema.notificationDeliveries;
+
+  return {
+    recipients: buildRecipientPorts(db),
+
+    async rulesFor(orgId, eventType) {
+      return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx: Tx) => {
+        const rows = await tx
+          .select()
+          .from(AR)
+          .where(
+            and(
+              eq(AR.eventType, eventType),
+              eq(AR.enabled, true),
+              or(isNull(AR.organizationId), eq(AR.organizationId, orgId)),
+            ),
+          );
+        // Mirrors messaging-route-service-db.ts's `listAlertRules`/`patchAlertRule` established
+        // design: a tenant's own row for an eventType REPLACES the platform default entirely (the
+        // clone-on-first-edit model — the platform row is never deleted, just shadowed), never a
+        // union at the eventType granularity. Unlike that admin-list view (which keeps only ONE row
+        // per eventType, silently dropping extra org severityFloor variants), this keeps every org
+        // row so multiple tenant-configured severity tiers for the same event all fire.
+        const orgRows = rows.filter((r) => r.organizationId === orgId);
+        const platformRows = rows.filter((r) => r.organizationId === null);
+        return (orgRows.length > 0 ? orgRows : platformRows).map(toEmitAlertRule);
+      });
+    },
+
+    async preferencesFor(orgId, userIds) {
+      const map = new Map<string, RecipientPreferences>();
+      if (userIds.length === 0) return map;
+      // `user_notification_preferences`'s own RLS is keyed on app.user_id, not app.org_id — "the
+      // user's own rows only" (migration 0017), so no per-request wardenx_app session can ever read a
+      // SECOND user's row. This calls migration 0194's SECURITY DEFINER cross-user reader instead of a
+      // plain Drizzle select (confirmed live: the plain-select version failed with "invalid input
+      // syntax for type uuid: ''" the moment more than the system-actor sentinel was in scope). Mirrors
+      // getPreferences's established read shape otherwise (own-org row only — no NULL-org
+      // cross-tenant-default fallback; a user with no row here gets the in-app floor, per this port's
+      // own doc comment).
+      const result = await db.execute<{
+        user_id: string;
+        routing_map: RoutingMap;
+        quiet_hours: QuietHoursConfig;
+        vacation_forward_to_user_id: string | null;
+        vacation_until: string | null;
+      }>(sql`
+        SELECT * FROM user_notification_preferences_for_org_users(
+          ${orgId},
+          ${JSON.stringify(userIds)}::jsonb
+        )
+      `);
+      for (const r of result.rows) {
+        map.set(r.user_id, {
+          userId: r.user_id,
+          routingMap: r.routing_map,
+          quietHours: r.quiet_hours,
+          vacationForwardToUserId: r.vacation_forward_to_user_id,
+          // db.execute() (raw query) does NOT apply Drizzle's column-type deserialization the way
+          // .select().from(table) does — timestamptz comes back as a string here, confirmed live
+          // ("prefs.vacationUntil.getTime is not a function"), the SAME db.execute-returns-strings
+          // gotcha WX-PR-024 hit for withPlatformContext.
+          vacationUntil: r.vacation_until === null ? null : new Date(r.vacation_until),
+        });
+      }
+      return map;
+    },
+
+    async persist(record: PersistedAlert): Promise<{ alertId: string }> {
+      return withOrgContext(db, { organizationId: record.orgId, userId: "" }, async (tx: Tx) => {
+        const [row] = await tx
+          .insert(AL)
+          .values({
+            organizationId: record.orgId,
+            eventType: record.eventType,
+            severity: record.severity,
+            payload: record.payload,
+            correlationId: record.correlationId,
+          })
+          .returning({ id: AL.id });
+        if (!row) throw new Error("alert insert returned no row");
+        if (record.deliveries.length > 0) {
+          await tx.insert(ND).values(
+            record.deliveries.map((d) => ({
+              alertId: row.id,
+              recipientUserId: d.recipientUserId,
+              forwardedFromUserId: d.forwardedFromUserId,
+              alertCategory: d.alertCategory,
+              alertSeverity: d.alertSeverity,
+              channel: d.channel,
+              status: d.status,
+            })),
+          );
+        }
+        return { alertId: row.id };
+      });
+    },
+
+    now: () => new Date(),
+  };
+}
+
+/** Build the real production {@link AlertEmitter} (GAP-096). */
+export function createDrizzleAlertEmitter(db: DbClient): AlertEmitter {
+  return createAlertEmitter(createDrizzleAlertEmitterPorts(db));
+}

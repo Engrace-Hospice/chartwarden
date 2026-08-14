@@ -607,11 +607,13 @@ import {
 } from "./modules/35-subscription/index";
 import {
   createDbMessagingProvider,
+  createDrizzleAlertEmitter,
   createDrizzleMessagingEraseStore,
   mountMessagingRoutes,
   registerMessagingErasers,
   registerMessagingSeams,
   selectTransactionalEmailTransport,
+  wireAlertRuleSeed,
 } from "./modules/36-messaging/index";
 // M37 (Inpatient Unit / IPU Management) boot surface — the §4.7 ABAC predicates, the §4.4 outbox catalog,
 // and the §4.1 core route mount over the Drizzle route service. The write path emits `m37.*` through the
@@ -710,9 +712,15 @@ export function wireModuleSeams(
   // M38 — TerminologyProvider (§4.5). Production backs it with the Drizzle store over the real M38
   // tables (FB-T01); slice/tests keep the in-memory default.
   registerTerminologySeams(deps.db ? { store: createDbTerminologyStore(deps.db) } : {});
-  // M36 — AlertEmitter (§4.6) always; the DB-backed MessagingProvider (§4.6 channel/message CRUD with
-  // per-tenant DEK encryption) registers over the deny-stub when a DB client is present (FB-T05).
-  registerMessagingSeams(deps.db ? { provider: createDbMessagingProvider(deps.db) } : {});
+  // M36 — AlertEmitter (§4.6): GAP-096 — the real Drizzle-backed T04 resolution/fan-out engine binds
+  // over a DB client; slice/tests keep the in-memory default (createInMemoryAlertEmitter). The
+  // DB-backed MessagingProvider (§4.6 channel/message CRUD with per-tenant DEK encryption) registers
+  // over the deny-stub when a DB client is present too (FB-T05).
+  registerMessagingSeams(
+    deps.db
+      ? { emitter: createDrizzleAlertEmitter(deps.db), provider: createDbMessagingProvider(deps.db) }
+      : {},
+  );
   // M40 — MdmEntityProvider (§4.5) + BaaStatusProvider (§4.6 §7.7 as-of gate). Production backs both
   // seams with Drizzle stores over the real M40 tables (FB-T02); slice/tests keep the in-memory default.
   registerMdmSeams(
@@ -3014,6 +3022,16 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   if (dbHandle) {
     wireOrganizationSettingsRegistry(dbHandle.db).catch((err) => {
       app.log.error(err, "organization_settings_registry population failed");
+    });
+  }
+
+  // GAP-096 — boot-populate alert_rule's platform-default rows (organization_id IS NULL) from
+  // PLATFORM_DEFAULT_ALERT_RULES, via the migration-0193 SECURITY DEFINER function (see
+  // alert-rule-seed-persister.ts) — runs over the ordinary tenant pool (dbHandle), no platform
+  // credential required. Fail-soft, fire-and-forget, same posture as the two boot-populates above.
+  if (dbHandle) {
+    wireAlertRuleSeed(dbHandle.db).catch((err) => {
+      app.log.error(err, "alert_rule platform-default seed population failed");
     });
   }
 
