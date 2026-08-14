@@ -14,10 +14,14 @@
 // Because the AssessmentRouteService interface threads no admission/consent facts nor an acting
 // membership beyond `actorUserId`, this slice makes documented compromises (the M7/M8 convention):
 // (1) writes envelope `withOrgContext` with `userId:""` → the M4 write-audit trigger fires with a NULL
-// actor; (2) the §10 admission-anchor gate (active admission + capturedAt ≥ activation, M6 facts) and the
-// DPOA proxy-attribution gate (M5/M39 consent) are NOT re-enforced here — they require cross-module reads
-// not threaded into the route service; the policy + license + discipline + server-score gates (all
-// resolvable from M9's own tables + the pure scorers) ARE enforced; (3) the cosignature attestation text
+// actor; (2) — CLOSED by GAP-016. The §10 admission-anchor gate (active admission + capturedAt ≥
+// activation) and the DPOA proxy-attribution gate ARE enforced now, on BOTH record and correct: the
+// anchor facts ride on the same `AdmissionStatusReader` summary the capture siting already fetched (no
+// extra round-trip), and the DPOA fact resolves through M39's `ConsentEvaluator` — the same seam glue
+// M7's `dpoa_active` predicate uses. Until then `INACTIVE_ADMISSION` / `BEFORE_ADMISSION` /
+// `DPOA_CONSENT_REQUIRED` existed only in the in-memory slice, so production accepted an assessment
+// against a discharged admission. The policy + license + discipline + server-score gates (all resolvable
+// from M9's own tables + the pure scorers) were and remain enforced; (3) the cosignature attestation text
 // and the license/policy acting membership are a documented sentinel / NULL until the interface carries
 // them. The correction row REUSES the target's `captured_at` (the composite self-FK
 // `(corrects_assessment_id, captured_at) → (id, captured_at)` demands it).
@@ -43,11 +47,19 @@ import {
 } from "@wardenx/assessments";
 import { type DbClient, schema, todayForOrganization } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import type { ScaleDelta, ScaleSeries, ScaleSeriesPoint, ScaleType } from "@wardenx/types";
+import type {
+  AssessmentActingAs,
+  ScaleDelta,
+  ScaleSeries,
+  ScaleSeriesPoint,
+  ScaleType,
+} from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
 import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import {
   type AssessmentSitingResolver,
+  type ResolvedAdmissionAnchor,
+  dpoaConsentActiveViaSeam,
   type ResolvedCaptureSiting,
   createSeamAssessmentSitingResolver,
 } from "./capture-siting";
@@ -200,6 +212,15 @@ export function createDbAssessmentRouteService(
   db: DbClient,
   outbox: AssessmentWriteOutboxPort = NOOP_OUTBOX,
   sitingResolver: AssessmentSitingResolver = createSeamAssessmentSitingResolver(),
+  /**
+   * GAP-016 — "does this patient have an active `dpoa_healthcare` consent?", through M39's
+   * `ConsentEvaluator`. Resolved lazily per call (the composition root registers seams after the mount)
+   * and injectable so unit tests need no seam registry.
+   */
+  consentActive: (organizationId: string, patientId: string) => Promise<boolean> = (
+    organizationId,
+    patientId,
+  ) => dpoaConsentActiveViaSeam(organizationId, patientId),
 ): AssessmentRouteService {
   /** Emit one `m9.*` event on the caller's tx (validated + persisted by the bound publisher; no-op default). */
   async function emit(
@@ -229,8 +250,56 @@ export function createDbAssessmentRouteService(
     return p ? p.enabled : true;
   }
 
-  /** The §10 record/correct gate chain resolvable from M9's OWN data + the pure scorers (§4.4 codes). See
-   * the file header for the admission-anchor / DPOA gates deferred to seam-threading. Returns the score. */
+  /**
+   * The §10 ADMISSION-ANCHOR gate (GAP-016). Was enforced only in the in-memory slice, so production
+   * accepted an assessment against a discharged admission, or one captured before the admission was ever
+   * activated — the exact `INACTIVE_ADMISSION` / `BEFORE_ADMISSION` cases §4.4 lists as 422 production
+   * behaviour.
+   *
+   * FAIL-CLOSED on an unresolvable anchor, matching the in-memory slice (which throws INACTIVE_ADMISSION
+   * when the admission is simply not found). An unresolvable anchor means the seam denied, the admission
+   * does not exist, or it belongs to another org/patient — every one of which is a reason to refuse a
+   * clinical record, not to write it anchored to nothing. Note this is a DIFFERENT posture from the
+   * SITING half of the same seam call, which stays fail-open (an unsited row is a reporting gap, not a
+   * mis-attributed record) — same fact, two consequences, deliberately.
+   */
+  function assertAdmissionAnchor(anchor: ResolvedAdmissionAnchor | null, capturedAt: string): void {
+    require_(
+      anchor !== null && anchor.status === "active",
+      "INACTIVE_ADMISSION",
+      "Patient's admission is not active.",
+    );
+    // `activatedAt` is a LocalDate (`YYYY-MM-DD`) and `capturedAt` an ISO instant; comparing the
+    // instant's DATE prefix keeps this a same-shape string compare, exactly as the slice does. A row
+    // that is `active` with no activation date has not been activated, so nothing can precede it.
+    require_(
+      anchor.activatedAt !== null && capturedAt.slice(0, 10) >= anchor.activatedAt,
+      "BEFORE_ADMISSION",
+      "capturedAt precedes admission activation.",
+    );
+  }
+
+  /**
+   * The §10 DPOA proxy-attribution gate (GAP-016). A `patient_representative` report needs an active
+   * `dpoa_healthcare` consent — resolved through M39's `ConsentEvaluator` seam, the same one M7's
+   * `dpoa_active` predicate uses (GAP-013's glue), so the two cannot drift.
+   */
+  async function assertProxyAttribution(
+    org: string,
+    patientId: string,
+    actingAs: AssessmentActingAs | undefined,
+  ): Promise<void> {
+    if (actingAs !== "patient_representative") return; // self-report — no proxy to authorize
+    require_(
+      await consentActive(org, patientId),
+      "DPOA_CONSENT_REQUIRED",
+      "acting_as='patient_representative' requires an active dpoa_healthcare consent.",
+    );
+  }
+
+  /** The §10 record/correct gate chain resolvable from M9's OWN data + the pure scorers (§4.4 codes).
+   * The admission-anchor and DPOA gates run BEFORE this, outside the write tx (they read cross-module
+   * seams that open their own request-scoped connections). Returns the score. */
   async function scoredForWrite(
     tx: DbClient,
     org: string,
@@ -567,10 +636,17 @@ export function createDbAssessmentRouteService(
       });
     },
 
-    // ── Record (§10 pipeline: policy/license/discipline gate → server score → insert) ────────────────
+    // ── Record (§10 pipeline: anchor/DPOA/policy/license/discipline gate → server score → insert) ────
     async recordAssessment(organizationId, actorUserId, patientId, args) {
-      // Seam-resolved siting BEFORE the write tx (the M6 store opens its own request-scoped read).
-      const siting = await sitingResolver.resolve(organizationId, patientId, args.admissionId);
+      // Seam-resolved siting + anchor facts BEFORE the write tx, in ONE seam call (the M6 store opens
+      // its own request-scoped read). GAP-016: the anchor half used to be discarded.
+      const { siting, anchor } = await sitingResolver.resolveAnchor(
+        organizationId,
+        patientId,
+        args.admissionId,
+      );
+      assertAdmissionAnchor(anchor, args.capturedAt);
+      await assertProxyAttribution(organizationId, patientId, args.actingAs);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const scored = await scoredForWrite(t, organizationId, args);
@@ -587,8 +663,16 @@ export function createDbAssessmentRouteService(
       ifVersion,
       args: CorrectAssessmentArgs,
     ) {
-      // Resolved up front (outside the write tx) — used only where the target row is legacy-unsited.
-      const fresh = await sitingResolver.resolve(organizationId, patientId, args.admissionId);
+      // Resolved up front (outside the write tx). The SITING half is used only where the target row is
+      // legacy-unsited; the ANCHOR half gates the amendment itself (GAP-016) — a correction is a new
+      // append-only clinical row, so §10 applies to it exactly as it does to the original capture.
+      const { siting: fresh, anchor } = await sitingResolver.resolveAnchor(
+        organizationId,
+        patientId,
+        args.admissionId,
+      );
+      assertAdmissionAnchor(anchor, args.capturedAt);
+      await assertProxyAttribution(organizationId, patientId, args.actingAs);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const [target] = (await t

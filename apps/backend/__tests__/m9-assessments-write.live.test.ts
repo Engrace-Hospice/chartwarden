@@ -141,7 +141,19 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
     const outbox: AssessmentWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m9" }),
     };
-    svc = createDbAssessmentRouteService(handle.db, outbox);
+    // GAP-016 — the §10 admission-anchor gate now runs on every record/correct, so a service whose
+    // resolver cannot answer refuses everything (fail-closed, by design). This suite has no ambient
+    // request scope, which is what M6's real `AdmissionStatusReader` reads under — so the anchor is
+    // injected. `siting` stays UNSITED, preserving what the siting test below was already asserting:
+    // the two halves of one seam call have deliberately DIFFERENT postures (gate fail-closed, siting
+    // fail-open), and this service proves the siting half still degrades to NULL.
+    svc = createDbAssessmentRouteService(handle.db, outbox, {
+      resolve: async () => ({ providerEntityId: null, locationId: null }),
+      resolveAnchor: async () => ({
+        siting: { providerEntityId: null, locationId: null },
+        anchor: { status: "active", activatedAt: "2026-01-01" },
+      }),
+    });
   }, 120_000);
 
   afterAll(async () => {
@@ -180,6 +192,10 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
     // An injected resolver (standing in for the M6 AdmissionStatusReader seam) sites the insert.
     const sitedSvc = createDbAssessmentRouteService(handle.db, undefined, {
       resolve: async () => ({ providerEntityId: providerA, locationId: locationA }),
+      resolveAnchor: async () => ({
+        siting: { providerEntityId: providerA, locationId: locationA },
+        anchor: { status: "active", activatedAt: "2026-01-01" },
+      }),
     });
     const sited = await sitedSvc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs());
     const sitedRow = (
@@ -332,6 +348,122 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
     ).rows[0]?.id as string;
     const ack = await svc.acknowledgeChange(ORG_A, eventId);
     expect(ack.status).toBe("acknowledged");
+  });
+
+  // ── GAP-016: the §10 admission-anchor + DPOA gates, in the PRODUCTION service ────────────────────
+  // These three codes existed only in the in-memory slice (`routes/service.ts`), which the file's own
+  // header says production supersedes — so the live write path accepted an assessment against a
+  // discharged admission, or one captured before the admission was ever activated. §4.4 lists all three
+  // as 422/403 production behaviour.
+  const withAnchor = (anchor: { status: string; activatedAt: string | null } | null) =>
+    createDbAssessmentRouteService(handle.db, undefined, {
+      resolve: async () => ({ providerEntityId: null, locationId: null }),
+      resolveAnchor: async () => ({
+        siting: { providerEntityId: null, locationId: null },
+        anchor,
+      }),
+    });
+
+  it("refuses a record against a DISCHARGED admission (INACTIVE_ADMISSION)", async () => {
+    const gated = withAnchor({ status: "discharged", activatedAt: "2026-01-01" });
+    await expect(
+      gated.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs()),
+    ).rejects.toMatchObject({ code: "INACTIVE_ADMISSION" });
+  });
+
+  it("refuses a record captured BEFORE the admission was activated (BEFORE_ADMISSION)", async () => {
+    // CAPTURED_AT is 2026-01-20; the admission activates the day after.
+    const gated = withAnchor({ status: "active", activatedAt: "2026-01-21" });
+    await expect(
+      gated.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs()),
+    ).rejects.toMatchObject({ code: "BEFORE_ADMISSION" });
+    // Same-day activation IS allowed — the boundary is `>=`, not `>`.
+    const sameDay = withAnchor({ status: "active", activatedAt: "2026-01-20" });
+    const ok = await sameDay.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs());
+    expect(ok.status).toBe("active");
+  });
+
+  it("refuses when the anchor cannot be resolved at all (unknown / cross-tenant admission)", async () => {
+    // The resolver returns null for an absent seam, an unknown admission, or one belonging to another
+    // org/patient. All three are reasons to refuse a clinical record, not to anchor it to nothing —
+    // the same answer the in-memory slice gives when the admission is simply not found.
+    const gated = withAnchor(null);
+    await expect(
+      gated.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs()),
+    ).rejects.toMatchObject({ code: "INACTIVE_ADMISSION" });
+  });
+
+  it("refuses an active admission with NO activation date (nothing can precede a non-activation)", async () => {
+    const gated = withAnchor({ status: "active", activatedAt: null });
+    await expect(
+      gated.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs()),
+    ).rejects.toMatchObject({ code: "BEFORE_ADMISSION" });
+  });
+
+  it("gates a CORRECTION too — an amendment is a new append-only clinical row", async () => {
+    const rec = await svc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs());
+    const gated = withAnchor({ status: "discharged", activatedAt: "2026-01-01" });
+    await expect(
+      gated.correctAssessment(ORG_A, recorderOf[ORG_A], PATIENT, rec.id, rec.version, {
+        ...recordArgs(),
+        correctionReason: "amending after discharge must be refused",
+      }),
+    ).rejects.toMatchObject({ code: "INACTIVE_ADMISSION" });
+  });
+
+  it("refuses a patient_representative report with no active DPOA consent (DPOA_CONSENT_REQUIRED)", async () => {
+    // The consent fact resolves through M39's ConsentEvaluator seam; injected here (no seam registry in
+    // this suite), and fail-closed in production when the seam cannot answer.
+    const denying = createDbAssessmentRouteService(
+      handle.db,
+      undefined,
+      {
+        resolve: async () => ({ providerEntityId: null, locationId: null }),
+        resolveAnchor: async () => ({
+          siting: { providerEntityId: null, locationId: null },
+          anchor: { status: "active", activatedAt: "2026-01-01" },
+        }),
+      },
+      async () => false,
+    );
+    await expect(
+      denying.recordAssessment(
+        ORG_A,
+        recorderOf[ORG_A],
+        PATIENT,
+        recordArgs({ actingAs: "patient_representative" }),
+      ),
+    ).rejects.toMatchObject({ code: "DPOA_CONSENT_REQUIRED" });
+    // A SELF report is unaffected — the gate is scoped to proxy attribution only.
+    const self = await denying.recordAssessment(
+      ORG_A,
+      recorderOf[ORG_A],
+      PATIENT,
+      recordArgs({ actingAs: "self" }),
+    );
+    expect(self.status).toBe("active");
+  });
+
+  it("allows a patient_representative report when the DPOA consent IS active", async () => {
+    const allowing = createDbAssessmentRouteService(
+      handle.db,
+      undefined,
+      {
+        resolve: async () => ({ providerEntityId: null, locationId: null }),
+        resolveAnchor: async () => ({
+          siting: { providerEntityId: null, locationId: null },
+          anchor: { status: "active", activatedAt: "2026-01-01" },
+        }),
+      },
+      async () => true,
+    );
+    const v = await allowing.recordAssessment(
+      ORG_A,
+      recorderOf[ORG_A],
+      PATIENT,
+      recordArgs({ actingAs: "patient_representative" }),
+    );
+    expect(v.actingAs).toBe("patient_representative");
   });
 
   it("RLS — org B cannot read or correct org A's assessment (non-leaking 404)", async () => {
