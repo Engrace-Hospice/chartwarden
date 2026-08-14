@@ -39,6 +39,7 @@ wins until the spec is re-locked.
 | [`DEVELOPMENT.md`](./DEVELOPMENT.md) | Development runbook + "how to add a module". **Start here to build/extend.** |
 | [`PHASE_0_SCAFFOLD_PLAN.md`](./PHASE_0_SCAFFOLD_PLAN.md) | Phase 0 scaffold plan — the manifest→tree generation model (ADR-0027). |
 | [`ARCHON_SETUP.md`](./ARCHON_SETUP.md) | WardenX × Archon deterministic-coding setup. |
+| [`wardenx-hospice-ehr.prd.md`](./wardenx-hospice-ehr.prd.md) | Product Requirements Document (retrospective intent) — problem, thesis, hypothesis, pilot MVP, success metrics. |
 
 ---
 
