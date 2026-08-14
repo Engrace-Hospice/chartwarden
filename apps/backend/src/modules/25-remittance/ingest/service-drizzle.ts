@@ -179,7 +179,14 @@ export function buildDrizzleM25IngestService(
       const eventBase = {
         claimId: match.claimId as string,
         remittanceLineId: line.id,
-        postedAt: new Date(0).toISOString(),
+        // GAP-037 — the advice id M23 stamps onto `claim_state_history.remittance_advice_id` and onto its
+        // own `m23.claim.paid` / `.denied` / `.adjudicated` payloads (all three REQUIRE it). Without it
+        // the consumer could only reach it by reading M25's own tables across the module boundary.
+        remittanceAdviceId: advice.id,
+        // Was `new Date(0).toISOString()` — a literal 1970-01-01 on every posting event. Nothing consumed
+        // it before, so nothing noticed; M23 now maps it to `paidAt` / `adjudicatedAt`, which feed M30's
+        // and M33's date-bucketed measures. The 835's receipt instant is the posting instant.
+        postedAt: advice.receivedAt.toISOString(),
       };
       if (outcome === "paid") {
         await outbox.publish(tx, {

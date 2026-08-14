@@ -362,6 +362,7 @@ import {
   buildM23BootAssemblyService,
   buildM23OutboxBackedSubmissionGate,
   buildM23SubmissionQueuePort,
+  buildM23RemittanceConsumer,
   buildM23SubmissionRequestConsumer,
   buildM23WorkerDeps,
   createDrizzleBillingEraseStore,
@@ -3920,6 +3921,28 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               },
             }),
           ),
+          // GAP-037 — the other half of that pipeline. M25's ingest consumer above posts the 835 and
+          // publishes `m25.remittance.claim_paid` / `_partial_paid` / `_denied` / `_recouped`, all four
+          // declaring `m23` as a consumer. M23 had none: every posting row sat `pending` and no claim
+          // ever left ACK_ACCEPTED when the MAC paid it. This drives the real lifecycle transition,
+          // appends `claim_state_history`, and emits M23's own §4.10 adjudication events.
+          buildM23RemittanceConsumer({
+            db: dbHandle.db,
+            outbox: m23OutboxPublisher,
+            // A skip is a settled decision (re-delivery, unmatched claim, or an 835 against a claim the
+            // transition is not legal from) — the row completes, so without this it would be silent.
+            onSkipped: (info) =>
+              app.log.warn(
+                {
+                  reason: info.reason,
+                  event: info.eventType,
+                  org: info.organizationId,
+                  claim: info.claimId,
+                  state: info.currentState,
+                },
+                "M23 remittance transition skipped",
+              ),
+          }),
         ],
         eventCatalog: bootOutboxCatalog,
         options: {

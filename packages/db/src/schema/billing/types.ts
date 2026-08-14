@@ -26,6 +26,7 @@ export const m23ClaimState = pgEnum("m23_claim_state", [
   "ACK_REJECTED",
   "ACK_PARTIAL",
   "PAID",
+  "PARTIAL_PAID", // migration 0198 (GAP-037) — the domain union + the §2.2 machine had it; the enum did not
   "DENIED",
   "REPLACED",
   "VOIDED",

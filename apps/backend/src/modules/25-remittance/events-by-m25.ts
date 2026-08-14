@@ -85,6 +85,7 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       claimId: id,
       remittanceLineId: id,
+      remittanceAdviceId: id,
       paidAmount: money,
       postedAt: isoInstant,
     }),
@@ -98,6 +99,7 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       claimId: id,
       remittanceLineId: id,
+      remittanceAdviceId: id,
       paidAmount: money,
       adjustedAmount: money,
       postedAt: isoInstant,
@@ -113,6 +115,7 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       claimId: id,
       remittanceLineId: id,
+      remittanceAdviceId: id,
       carcCodes: Type.Array(str),
       postedAt: isoInstant,
     }),
@@ -127,6 +130,7 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       claimId: id,
       remittanceLineId: id,
+      remittanceAdviceId: id,
       recoupedAmount: money,
       postedAt: isoInstant,
     }),

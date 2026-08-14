@@ -214,40 +214,43 @@ export const M23_OUTBOX_SUBSCRIPTIONS: Readonly<Record<string, M23TopicSubscript
       ],
     },
 
-    // ── M25 remittance → claim PAID/PARTIAL_PAID/DENIED (task 55 — DENY-STUB until M25 lands) ────────────
+    // ── M25 remittance → claim PAID/PARTIAL_PAID/DENIED/reversal (task 55 — LIVE since GAP-037) ──────────
+    // These four names are M25's ACTUAL emitted set. The fourth used to read `m25.remittance.claim_adjusted`
+    // — a name M25 has never published (its reversal event is `claim_recouped`), so binding the old key
+    // would have subscribed to nothing while every real reversal went unconsumed.
     "m25.remittance.claim_paid": {
-      status: "deny_stub",
+      status: "live",
       effects: [
         {
           kind: "claim_remittance_transition",
-          note: "M25 posted an 835 full-payment — claim ACK_ACCEPTED → PAID, emit `m23.claim.paid` (task 55). DENY-STUB until M25 lands.",
+          note: "M25 posted an 835 full-payment — claim ACK_ACCEPTED → PAID, emit `m23.claim.paid` + `m23.claim.adjudicated` (task 55).",
         },
       ],
     },
     "m25.remittance.claim_partial_paid": {
-      status: "deny_stub",
+      status: "live",
       effects: [
         {
           kind: "claim_remittance_transition",
-          note: "M25 posted an 835 partial-payment — claim → PARTIAL_PAID (task 55). DENY-STUB until M25 lands.",
+          note: "M25 posted an 835 partial-payment — claim ACK_ACCEPTED → PARTIAL_PAID, emit `m23.claim.adjudicated` with outcome `partial_paid` (task 55).",
         },
       ],
     },
     "m25.remittance.claim_denied": {
-      status: "deny_stub",
+      status: "live",
       effects: [
         {
           kind: "claim_remittance_transition",
-          note: "M25 posted a denial 835 — claim ACK_ACCEPTED → DENIED, emit `m23.claim.denied` (task 55). DENY-STUB until M25 lands.",
+          note: "M25 posted a denial 835 — claim ACK_ACCEPTED → DENIED, emit `m23.claim.denied` + `m23.claim.adjudicated` (task 55).",
         },
       ],
     },
-    "m25.remittance.claim_adjusted": {
-      status: "deny_stub",
+    "m25.remittance.claim_recouped": {
+      status: "live",
       effects: [
         {
           kind: "claim_remittance_transition",
-          note: "M25 posted an adjustment 835 — the claim's adjudicated amounts are revised (task 55). DENY-STUB until M25 lands.",
+          note: "M25 posted a CLP02=22 reversal (42 CFR §424.526) — the payment is taken back, so PAID/PARTIAL_PAID → ACK_ACCEPTED awaiting re-adjudication. M23 emits nothing: M26 reverses its cap accrual off M25's own event.",
         },
       ],
     },

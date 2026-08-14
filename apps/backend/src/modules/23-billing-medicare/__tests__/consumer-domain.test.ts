@@ -24,6 +24,7 @@ import {
   handleDocumentRendered,
   handleElectionSigned,
   handlePatientDeceased,
+  handleRemittancePosted,
   handleRevalidateTrigger,
   handleRevocationCreated,
   handleTransferCreated,
@@ -42,6 +43,7 @@ function makePorts(overrides: Partial<M23ConsumerPorts> = {}): M23ConsumerPorts 
     enqueueRevalidation: vi.fn(async () => ({ revalidationJobId: "job-1" })),
     freezeNewClaims: vi.fn(async () => undefined),
     recordDocumentBackReference: vi.fn(async () => undefined),
+    applyRemittanceTransition: vi.fn(async () => ({ applied: true })),
     ...overrides,
   };
 }
@@ -200,19 +202,81 @@ describe("m5.patient.deceased → freeze then revalidate (task 53), in order", (
   });
 });
 
-describe("M25 / M26 forward-seam consumers are INERT (deny-stub, fail-closed)", () => {
-  it("an m25 remittance event fails closed via dispatch (no live binding until M25 lands)", async () => {
-    await expect(
-      dispatchM23UpstreamEvent(
-        {
-          topic: "m25.remittance.claim_paid",
-          payload: { eventId: "e", organizationId: ORG, claimId: "c" },
-        },
-        makePorts(),
-      ),
-    ).rejects.toBeInstanceOf(ForwardSeamNotLandedError);
+describe("m25.remittance.claim_* → claim adjudication transition (task 55 / GAP-037 — LIVE)", () => {
+  const REMIT = {
+    eventId: "e",
+    organizationId: ORG,
+    claimId: "c",
+    remittanceAdviceId: "ra-1",
+    postedAt: "2026-03-04T05:06:07.000Z",
+  };
+
+  it.each([
+    ["m25.remittance.claim_paid", "remittance_paid"],
+    ["m25.remittance.claim_partial_paid", "remittance_partial_paid"],
+    ["m25.remittance.claim_denied", "remittance_denied"],
+    ["m25.remittance.claim_recouped", "remittance_recouped"],
+  ] as const)("dispatches %s to the %s transition", async (topic, transition) => {
+    const ports = makePorts();
+    const report = await dispatchM23UpstreamEvent(
+      { topic, payload: REMIT } as never,
+      ports,
+    );
+    expect(report.effects).toEqual(["claim_remittance_transition"]);
+    expect(report.actedOnIds).toEqual(["c"]);
+    expect(ports.applyRemittanceTransition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: ORG,
+        triggeringEventId: "e",
+        plan: expect.objectContaining({ claimId: "c", transition, remittanceAdviceId: "ra-1" }),
+      }),
+    );
   });
 
+  it("converts the X12 decimal paid amount to CENTS (a unit slip here is a 100x misstatement)", async () => {
+    const ports = makePorts();
+    await handleRemittancePosted(
+      "m25.remittance.claim_paid",
+      { ...REMIT, paidAmount: "1234.56" },
+      ports,
+    );
+    expect(ports.applyRemittanceTransition).toHaveBeenCalledWith(
+      expect.objectContaining({ plan: expect.objectContaining({ paidAmountCents: 123456 }) }),
+    );
+  });
+
+  it("carries the denial CARC codes through to the transition plan", async () => {
+    const ports = makePorts();
+    await handleRemittancePosted(
+      "m25.remittance.claim_denied",
+      { ...REMIT, carcCodes: ["16", "97"] },
+      ports,
+    );
+    expect(ports.applyRemittanceTransition).toHaveBeenCalledWith(
+      expect.objectContaining({ plan: expect.objectContaining({ denialCodes: ["16", "97"] }) }),
+    );
+  });
+
+  it("reports NO effect when the port skipped (a settled decision, not a silent success)", async () => {
+    const ports = makePorts({
+      applyRemittanceTransition: vi.fn(async () => ({
+        applied: false,
+        skipped: "already_applied" as const,
+      })),
+    });
+    const report = await handleRemittancePosted("m25.remittance.claim_paid", REMIT, ports);
+    expect(report.effects).toEqual([]);
+    expect(report.actedOnIds).toEqual([]);
+  });
+
+  it("still fails closed on a remittance topic name M25 does not emit", async () => {
+    await expect(
+      handleRemittancePosted("m25.remittance.claim_adjusted", REMIT, makePorts()),
+    ).rejects.toBeInstanceOf(ForwardSeamNotLandedError);
+  });
+});
+
+describe("M26 forward-seam consumer is INERT (deny-stub, fail-closed)", () => {
   it("an m26 cap-projection event fails closed via dispatch (no live binding until M26 lands)", async () => {
     await expect(
       dispatchM23UpstreamEvent(

@@ -12,9 +12,11 @@
 // to a running subscriber (RULE 3(d)) — they ship pure + the subscription map; the live inbound dispatcher is
 // a later platform phase.
 //
-// LIVE vs DENY-STUB: M5/M6/M8/M18/M40 are LOCKED → their handlers run live. M25/M26 have not landed → their
-// handlers are FORWARD-SEAM DENY-STUBS that fail-closed when invoked (the topic is declared for §4.10
-// completeness but never bound at boot; `registerM23Consumers` binds only LIVE topics).
+// LIVE vs DENY-STUB: M5/M6/M8/M18/M25/M40 are LOCKED → their handlers run live (M25's four 835-posting
+// topics joined at GAP-037; they had been deny-stubs since long after M25 merged and started emitting
+// them). M26 has not landed → its handler is a FORWARD-SEAM DENY-STUB that fail-closes when invoked (the
+// topic is declared for §4.10 completeness but never bound at boot; `registerM23Consumers` binds only
+// LIVE topics).
 //
 // NO PHI / NO MBI in any payload (D13, §3.6) — every slice is IDs + dates + control numbers only.
 import {
@@ -71,7 +73,7 @@ export interface RevalidationFact {
  * no-op. The noe/notr-assembly + freeze + back-ref ports own their OWN `m23.*` outbox emit in their bound tx
  * (D2), so the handlers do not emit directly.
  */
-export interface M23ConsumerPorts {
+export interface M23ConsumerPorts extends RemittanceTransitionPort {
   /**
    * Create a `noe_record` DRAFT from a signed election (task 47) + emit `m23.noe.draft_created` in-tx. Returns
    * the new id, or `null` when the binding decides the election is not NOE-eligible (idempotent / already
@@ -408,26 +410,139 @@ export async function handleDocumentRendered(
   };
 }
 
-// ── DENY-STUB handlers (M25 / M26 forward seams; fail-closed until those modules land) ───────────────────
+// ── M25 remittance → claim adjudication (task 55 / GAP-037 — LIVE) ───────────────────────────────────────
 
-/** The minimal M25 remittance slice M23 will read once M25 lands (task 55). */
+/** The M25 835-posting slice M23 reads (§2.4 / architecture §11.A). No PHI — ids, codes and amounts. */
 export interface RemittancePostedEvent {
   readonly eventId: string;
   readonly organizationId: string;
   readonly claimId: string;
+  /** The `remittance_advice` the line posted under — stamped on `claim_state_history` + every emitted event. */
+  readonly remittanceAdviceId: string;
+  readonly remittanceLineId?: string;
+  /** ISO instant the 835 posted (M25's `advice.received_at`). */
+  readonly postedAt?: string;
+  /** Present on `claim_paid` / `claim_partial_paid` (decimal string, e.g. "1234.56"). */
+  readonly paidAmount?: string;
+  /** Present on `claim_denied` — the CARC codes that made it a denial. */
+  readonly carcCodes?: readonly string[];
+  /** Present on `claim_recouped` (decimal string). */
+  readonly recoupedAmount?: string;
 }
 
 /**
- * `m25.remittance.claim_*` → DENY-STUB (task 55). M25 has not landed; this handler fail-closes so a
- * mis-delivered event is never silently dropped nor mis-applied. When M25 lands this becomes the real
- * PAID/PARTIAL_PAID/DENIED state-transition handler (emitting `m23.claim.paid` / `m23.claim.denied`).
+ * The M25 topic → `ClaimTransitionEvent` map (GAP-037). The four keys are M25's ACTUAL emitted names:
+ * M23's subscription map used to declare a fourth topic `m25.remittance.claim_adjusted`, which M25 has
+ * never emitted — its reversal event is `claim_recouped` — so even a naively-wired binding would have
+ * subscribed to a name no producer publishes while the real reversals went unconsumed.
+ */
+export const REMITTANCE_TRANSITION_BY_TOPIC = {
+  "m25.remittance.claim_paid": "remittance_paid",
+  "m25.remittance.claim_partial_paid": "remittance_partial_paid",
+  "m25.remittance.claim_denied": "remittance_denied",
+  "m25.remittance.claim_recouped": "remittance_recouped",
+} as const;
+
+/** The M25 topics this handler accepts. */
+export type RemittanceTopic = keyof typeof REMITTANCE_TRANSITION_BY_TOPIC;
+
+/** Is `topic` one of the four M25 posting topics? (Total over `string` — the dispatcher passes raw names.) */
+export function isRemittanceTopic(topic: string): topic is RemittanceTopic {
+  return topic in REMITTANCE_TRANSITION_BY_TOPIC;
+}
+
+/** Why a delivered remittance event changed nothing (a settled decision, not a delivery failure). */
+export type RemittanceSkipReason =
+  /** The claim id is not one of ours / no longer exists — M25 matched it to another tenant's row. */
+  | "claim_not_found"
+  /** The claim is already in the state this event would move it to (re-delivery, or a second 835 line). */
+  | "already_applied"
+  /** The transition is not legal from the claim's current state (an 835 for a claim that was never
+   *  accepted, or one already replaced/voided). Needs a human, not a retry. */
+  | "transition_not_legal";
+
+/**
+ * Convert an M25 posting event into the `ClaimTransitionEvent` + the history/event context M23 records.
+ * PURE — the port applies it. Amounts arrive as X12 decimal strings and are converted to CENTS here,
+ * because the §4.10 `m23.claim.paid` schema is `cents` and a silent unit mismatch here is a 100×
+ * misstatement of what the MAC paid.
+ */
+export function planRemittanceTransition(
+  topic: RemittanceTopic,
+  event: RemittancePostedEvent,
+): RemittanceTransitionPlan {
+  return {
+    claimId: event.claimId,
+    transition: REMITTANCE_TRANSITION_BY_TOPIC[topic],
+    remittanceAdviceId: event.remittanceAdviceId,
+    paidAmountCents: decimalToCents(event.paidAmount),
+    denialCodes: [...(event.carcCodes ?? [])],
+    postedAt: event.postedAt,
+  };
+}
+
+/** Parse an X12 decimal-string amount ("1234.56") to integer cents. `undefined` → 0. */
+export function decimalToCents(amount: string | undefined): number {
+  if (amount === undefined || amount.trim() === "") return 0;
+  const parsed = Number(amount);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.round(parsed * 100);
+}
+
+/** The port-ready description of one remittance-driven claim transition. */
+export interface RemittanceTransitionPlan {
+  readonly claimId: string;
+  readonly transition:
+    | "remittance_paid"
+    | "remittance_partial_paid"
+    | "remittance_denied"
+    | "remittance_recouped";
+  readonly remittanceAdviceId: string;
+  readonly paidAmountCents: number;
+  readonly denialCodes: readonly string[];
+  readonly postedAt?: string;
+}
+
+/** The single port the remittance handler fans out through (the Drizzle claim-state service at boot). */
+export interface RemittanceTransitionPort {
+  /**
+   * Apply the planned transition in ONE org-scoped transaction (reducer → versioned state write →
+   * `claim_state_history` append → §4.10 emit). Returns the skip reason when nothing was applied — a
+   * settled decision the caller records rather than a throw that redelivers forever.
+   */
+  readonly applyRemittanceTransition: (input: {
+    readonly organizationId: string;
+    readonly triggeringEventId: string;
+    readonly plan: RemittanceTransitionPlan;
+  }) => Promise<{ readonly applied: boolean; readonly skipped?: RemittanceSkipReason }>;
+}
+
+/**
+ * `m25.remittance.claim_*` → the claim's adjudication transition (task 55, LIVE since GAP-037).
+ *
+ * M25 has been merged and unconditionally emitting these four events at 835-posting time; M23 declared
+ * them as deny-stubs and this handler threw `ForwardSeamNotLandedError` for every one, so the outbox rows
+ * sat `pending` forever and no claim ever left ACK_ACCEPTED on payment.
  */
 export async function handleRemittancePosted(
   eventName: string,
-  _event: RemittancePostedEvent,
-  _ports: M23ConsumerPorts,
+  event: RemittancePostedEvent,
+  ports: RemittanceTransitionPort,
 ): Promise<UpstreamConsumeReport> {
-  throw new ForwardSeamNotLandedError(eventName, "M25 (Remittance)");
+  if (!isRemittanceTopic(eventName)) {
+    throw new ForwardSeamNotLandedError(eventName, "M25 (Remittance)");
+  }
+  const plan = planRemittanceTransition(eventName, event);
+  const result = await ports.applyRemittanceTransition({
+    organizationId: event.organizationId,
+    triggeringEventId: event.eventId,
+    plan,
+  });
+  return {
+    eventName,
+    effects: result.applied ? ["claim_remittance_transition"] : [],
+    actedOnIds: result.applied ? [event.claimId] : [],
+  };
 }
 
 /** The minimal M26 cap-projection-change slice M23 will read once M26 lands (task 56). */

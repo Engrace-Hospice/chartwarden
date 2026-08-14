@@ -102,9 +102,19 @@ export function requireStepUp(actor: BillingWriteActor): void {
   }
 }
 
-/** Map a non-user actor kind to the nullable `actor_membership_id` (system/worker transitions carry NULL). */
+/**
+ * Map a non-user actor kind to the nullable `actor_membership_id`. `system` / `worker` / `consumer`
+ * transitions carry NULL — none of the three has an acting person, and `claim_state_history
+ * .actor_membership_id` is a uuid: passing an empty string for a machine-driven transition is not a
+ * missing value, it is a `22P02 invalid input syntax for type uuid` at write time. `consumer` joined the
+ * list at GAP-037, which bound the first consumer-driven transition (M25's 835 posting).
+ */
 function membershipForKind(actor: BillingWriteActor): string | null {
-  return actor.actorKind === "system" || actor.actorKind === "worker" ? null : actor.membershipId;
+  return actor.actorKind === "system" ||
+    actor.actorKind === "worker" ||
+    actor.actorKind === "consumer"
+    ? null
+    : actor.membershipId;
 }
 
 // ── claim-transition input / result ───────────────────────────────────────────────────────────────────
@@ -325,6 +335,30 @@ function buildClaimEmissions(
           },
         },
       ];
+    case "remittance_partial_paid":
+      // NO `m23.claim.paid` — the catalog defines that event as "M25 posted the 835 with FULL payment",
+      // and a partial payment announcing full payment would be read downstream as a settled claim.
+      // `claim.adjudicated` carries `outcome: "partial_paid"`, which is the whole signal (GAP-037).
+      return [
+        {
+          eventName: "m23.claim.adjudicated",
+          aggregateKind: ak,
+          aggregateId: claimId,
+          payload: {
+            claimId,
+            providerEntityId: claim.providerEntityId,
+            outcome: "partial_paid",
+            remittanceAdviceId: extra.remittanceAdviceId,
+            adjudicatedAt: extra.adjudicatedAt ?? extra.paidAt,
+          },
+        },
+      ];
+    case "remittance_recouped":
+      // A CLP02=22 reversal emits NOTHING from M23 (GAP-037). The §4.10 catalog has no recoupment event,
+      // and the two modules that care already consume M25's own `m25.remittance.claim_recouped` directly
+      // (it declares `["m23","m26"]`) — M26 reverses the cap accrual off that, not off a relay from here.
+      // Minting an M23 event no module consumes would add a permanently-pending outbox row per reversal.
+      return [];
     case "remittance_denied":
       return [
         {

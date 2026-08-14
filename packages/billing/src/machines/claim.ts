@@ -45,6 +45,7 @@ export type ClaimTransitionEvent =
   | "remittance_paid"
   | "remittance_partial_paid"
   | "remittance_denied"
+  | "remittance_recouped"
   | "appeal_succeeded"
   | "replacement_accepted"
   | "void_accepted";
@@ -91,9 +92,8 @@ export const CLAIM_TRANSITIONS: readonly ClaimTransition[] = [
   { from: "ack_pending", event: "ack_277ca_partial", to: "ack_partial" },
 
   // ACK_ACCEPTED: 835 remittance posts payment (full/partial)/denial; or a replacement/void supersedes
-  // it (D14). The partial-pay edge is driven by `m25.remittance.claim_partial_paid` (M25 deny-stubbed
-  // today — the m25-remit-posted consumer un-stubs at M25 lock; the edge is present so the machine is
-  // complete and the consumer is a drop-in).
+  // it (D14). All three remittance edges are driven by M23's `m25.remittance.claim_*` outbox consumer,
+  // live since GAP-037.
   { from: "ack_accepted", event: "remittance_paid", to: "paid" },
   { from: "ack_accepted", event: "remittance_partial_paid", to: "partial_paid" },
   { from: "ack_accepted", event: "remittance_denied", to: "denied" },
@@ -106,6 +106,14 @@ export const CLAIM_TRANSITIONS: readonly ClaimTransition[] = [
   // PAID: post-payment correction (817) or post-payment void (818).
   { from: "paid", event: "replacement_accepted", to: "replaced" },
   { from: "paid", event: "void_accepted", to: "voided" },
+
+  // PAID/PARTIAL_PAID → ACK_ACCEPTED on a CLP02=22 reversal (42 CFR §424.526, GAP-037). The MAC took the
+  // payment back, so the claim is no longer paid — but it is still an accepted claim awaiting remittance,
+  // which is exactly `ack_accepted`. There is deliberately NO `recouped` state: `claim.state` mirrors a
+  // frozen pgEnum, the reversal is usually followed by a corrected 835 line that re-posts through the same
+  // three edges, and a terminal `recouped` would strand the claim short of that re-adjudication.
+  { from: "paid", event: "remittance_recouped", to: "ack_accepted" },
+  { from: "partial_paid", event: "remittance_recouped", to: "ack_accepted" },
 
   // PARTIAL_PAID: same post-payment paths as PAID (a TOB 817 corrects, a TOB 818 voids); an M25 appeal
   // on the underpaid portion can re-post full payment.

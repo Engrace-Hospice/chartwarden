@@ -54,6 +54,7 @@ const ALL_CLAIM_EVENTS: readonly ClaimTransitionEvent[] = [
   "remittance_paid",
   "remittance_partial_paid",
   "remittance_denied",
+  "remittance_recouped",
   "appeal_succeeded",
   "replacement_accepted",
   "void_accepted",

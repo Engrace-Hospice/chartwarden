@@ -6,8 +6,8 @@
 // builders/resolver (tasks 57 + 58), and the forward-declared register surface the boot dispatcher wires once
 // the live inbound transactional-outbox dispatcher accessor lands. RULE 3(d): these ship pure + a
 // subscription map — NO boot-wired running subscriber here; the live inbound dispatcher is a later platform
-// phase. `registerM23Consumers` binds only the LIVE topics (M5/M6/M8/M18/M40 are locked); the M25/M26
-// forward-seam topics stay deny-stub until those modules land.
+// phase. `registerM23Consumers` binds only the LIVE topics (M5/M6/M8/M18/M25/M40 are locked); M26's
+// forward-seam topic stays deny-stub until that module lands.
 export * from "./subscription-map";
 export * from "./document-render";
 export * from "./handlers";
@@ -64,11 +64,12 @@ export type M23UpstreamEvent =
   | { readonly topic: typeof M40_CANONICAL_UPDATED_TOPIC; readonly payload: RevalidateTriggerEvent }
   // ── M22 render handshake ──
   | { readonly topic: "m22.document.rendered"; readonly payload: DocumentRenderedEvent }
-  // ── M25 / M26 forward-seam DENY-STUBS ──
+  // ── M25 remittance → claim adjudication (LIVE since GAP-037) ──
   | { readonly topic: "m25.remittance.claim_paid"; readonly payload: RemittancePostedEvent }
   | { readonly topic: "m25.remittance.claim_partial_paid"; readonly payload: RemittancePostedEvent }
   | { readonly topic: "m25.remittance.claim_denied"; readonly payload: RemittancePostedEvent }
-  | { readonly topic: "m25.remittance.claim_adjusted"; readonly payload: RemittancePostedEvent }
+  | { readonly topic: "m25.remittance.claim_recouped"; readonly payload: RemittancePostedEvent }
+  // ── M26 forward-seam DENY-STUB ──
   | {
       readonly topic: typeof M26_CAP_PROJECTION_TOPIC;
       readonly payload: CapProjectionChangedEvent;
@@ -108,7 +109,7 @@ export async function dispatchM23UpstreamEvent(
     case "m25.remittance.claim_paid":
     case "m25.remittance.claim_partial_paid":
     case "m25.remittance.claim_denied":
-    case "m25.remittance.claim_adjusted":
+    case "m25.remittance.claim_recouped":
       return handleRemittancePosted(event.topic, event.payload, ports);
     case M26_CAP_PROJECTION_TOPIC:
       return handleCapProjectionChanged(event.topic, event.payload, ports);
@@ -118,8 +119,8 @@ export async function dispatchM23UpstreamEvent(
 /**
  * Register the M23 §4.4 upstream consumers (the M27 register-surface mirror). The boot dispatcher calls this
  * with its `bind(eventName, consumerName, handler)` registrar and the live {@link M23ConsumerPorts}; each
- * LIVE forward-declared subscription is bound to a closure over {@link dispatchM23UpstreamEvent}. The M25/M26
- * DENY-STUB topics are NOT bound today (wired conservatively — M25/M26 have not landed). Until the live
+ * LIVE forward-declared subscription is bound to a closure over {@link dispatchM23UpstreamEvent}. M26's
+ * DENY-STUB topic is NOT bound today (wired conservatively — M26 has not landed). Until the live
  * inbound transactional-outbox dispatcher accessor lands (RULE 3(d)) the composition root calls this with NO
  * registrar — it then merely returns the forward-declared bindings (nothing boots). Idempotent: the
  * dispatcher dedups on `(eventId, consumerName)` per the M1 outbox-consumer pattern.
@@ -135,7 +136,7 @@ export function registerM23Consumers(options?: {
   const { ports, bind } = options ?? {};
   if (bind && ports) {
     for (const subscription of M23_UPSTREAM_SUBSCRIPTIONS) {
-      // Conservative: bind only the LIVE topics (M5/M6/M8/M18/M40). M25/M26 stay deny-stub until they land.
+      // Conservative: bind only the LIVE topics (M5/M6/M8/M18/M25/M40). M26 stays deny-stub until it lands.
       if (!M23_LIVE_SUBSCRIPTION_TOPICS.includes(subscription.eventName)) continue;
       bind(subscription.eventName, subscription.consumerName, (payload) =>
         dispatchM23UpstreamEvent(

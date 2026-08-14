@@ -127,6 +127,12 @@ export {
   M23_SUBMISSION_REQUEST_EVENTS,
 } from "./outbox-consumers/submit-requests";
 
+// GAP-037 — M23's live `m25.remittance.claim_*` consumer: the 835 → claim-adjudication feedback loop.
+export {
+  buildM23RemittanceConsumer,
+  M23_REMITTANCE_CONSUMER,
+} from "./outbox-consumers/m25-remittance";
+
 // §4.4 — the M23→M27 cost-report published seam (PatientDaysProvider): the billed-and-accepted patient-day
 // census the cost-report Worksheet-D reconciliation reads. The composition root registers it into the M1
 // SeamRegistry in `wireModuleSeams` (the M26 `registerM26PublishedSeams` precedent — M23's first M1 publish).
