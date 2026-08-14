@@ -200,6 +200,12 @@ jobs:
           - { name: "M34 oversized-hold discovery", scripts: "test:m34:hold-discovery:live" }
           - { name: "M37 IPU", scripts: "test:m37:write:live" }
           - { name: "M37 privacy gates", scripts: "test:m37:privacy-gates:live" }
+          # AC-01: the §7.4 break-glass co-signature as a real TWO-PERSON control. `cosign` matched on
+          # the event id alone, so the invoker could approve their own emergency PHI grant and a
+          # co-signature could resurrect a REVOKED one. Both guards are conjuncts in the UPDATE (a
+          # read-then-write would let two concurrent co-signers through) and `bge_cosigner_distinct`
+          # (migration 0210) holds when the store is bypassed — neither is provable off a database.
+          - { name: "M3 break-glass co-signature", scripts: "test:m3:break-glass:live" }
           # GAP-079: M4's §2.5 read-audit EMISSION over the M26 Cap + M39 Consent read surfaces —
           # proves the events land in the partitioned audit_event table carrying the patient id the
           # §164.528 accounting query joins on, as the NOBYPASSRLS app role.

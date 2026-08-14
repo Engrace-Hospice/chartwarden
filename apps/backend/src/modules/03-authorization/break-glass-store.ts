@@ -10,8 +10,13 @@
 import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
 import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
-import { and, desc, eq, gt } from "drizzle-orm";
-import type { BreakGlassStatus, BreakGlassStore, BreakGlassView } from "./authz-ports";
+import { and, desc, eq, gt, ne } from "drizzle-orm";
+import {
+  type BreakGlassStatus,
+  BreakGlassCosignError,
+  type BreakGlassStore,
+  type BreakGlassView,
+} from "./authz-ports";
 
 const COLUMNS = {
   id: schema.breakGlassEvents.id,
@@ -91,13 +96,43 @@ export function createDbBreakGlassStore(db: DbClient): BreakGlassStore {
 
     async cosign(eventId, byUserId): Promise<BreakGlassView> {
       return withOrgContextFromRequest(db, async (tx) => {
+        // BOTH guards live in the WHERE rather than in a read-then-write. `breakglass.cosign` is
+        // held by several people by construction (it is the two-person control), so two of them
+        // acting on the same pending event would both clear a prior SELECT; here the second
+        // UPDATE simply matches no row. The `ne(...)` conjunct is the app-layer twin of the
+        // `bge_cosigner_distinct` CHECK (migration 0210) — the constraint is what makes the
+        // invariant survive a future caller, the predicate is what turns it into a 409 instead
+        // of a raised integrity error.
         const updated = (await tx
           .update(schema.breakGlassEvents)
           .set({ status: "active", cosignedBy: byUserId })
-          .where(eq(schema.breakGlassEvents.id, eventId))
+          .where(
+            and(
+              eq(schema.breakGlassEvents.id, eventId),
+              eq(schema.breakGlassEvents.status, "cosign_pending"),
+              ne(schema.breakGlassEvents.actorUserId, byUserId),
+            ),
+          )
           .returning(COLUMNS)) as Row[];
-        if (!updated[0]) throw new Error(`unknown break-glass event ${eventId}`);
-        return toView(updated[0]);
+        if (updated[0]) return toView(updated[0]);
+        // Nothing matched: re-read to say WHY. Order matters — a settled event reports its status
+        // rather than leaking whether the caller happens to be its invoker.
+        const existing = (await tx
+          .select(COLUMNS)
+          .from(schema.breakGlassEvents)
+          .where(eq(schema.breakGlassEvents.id, eventId))
+          .limit(1)) as Row[];
+        const row = existing[0];
+        if (!row) throw new Error(`unknown break-glass event ${eventId}`);
+        if (row.status !== "cosign_pending")
+          throw new BreakGlassCosignError(
+            "not_pending",
+            `break-glass event ${eventId} is ${row.status}, not awaiting a co-signature`,
+          );
+        throw new BreakGlassCosignError(
+          "self_cosign",
+          "break-glass co-signature requires a user distinct from the invoker",
+        );
       });
     },
 

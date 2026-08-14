@@ -56,9 +56,17 @@ const PERMISSION_SEED = [
     permissions: ["breakglass.read", "breakglass.cosign", "engagement.manage", "engagement.read"],
   },
   { organizationId: "org_a", userId: "rn_1", permissions: ["breakglass.invoke"] },
+  // The actor the §7.4 two-person control exists for: one user holding BOTH halves. Nothing stops
+  // a tenant granting `breakglass.invoke` and `breakglass.cosign` to the same person — the
+  // distinctness check is what stops that person from approving their own emergency PHI access.
+  {
+    organizationId: "org_a",
+    userId: "both_1",
+    permissions: ["breakglass.invoke", "breakglass.cosign", "breakglass.read"],
+  },
 ];
 
-function makeServer() {
+function makeServer(opts: { cosignRequired?: boolean } = {}) {
   const roles = createInMemoryRoleStore();
   const membershipRoles = createInMemoryMembershipRoleStore();
   const breakGlass = createInMemoryBreakGlassStore();
@@ -90,8 +98,9 @@ function makeServer() {
     notifier: notifier.notifier,
     effectivePermissions: perms.resolver,
     audit: auditSink.executor,
-    // audit C2 — tenant policy, not the request body. The slice pins the registered default.
-    cosignPolicy: async () => false,
+    // audit C2 — tenant policy, not the request body. The slice pins the registered default;
+    // `cosignRequired: true` is the tenant that turned the two-person control ON.
+    cosignPolicy: async () => opts.cosignRequired ?? false,
   };
   registerAuthorizationRoutes(app, deps);
   return {
@@ -109,6 +118,8 @@ function makeServer() {
 const ADMIN = { "x-test-user": "admin_1", "x-test-org": "org_a", "x-test-roles": "org_admin" };
 const COMPLIANCE = { "x-test-user": "co_1", "x-test-org": "org_a", "x-test-roles": "compliance" };
 const CLINICIAN = { "x-test-user": "rn_1", "x-test-org": "org_a", "x-test-roles": "clinical_rn" };
+/** Holds `breakglass.invoke` AND `breakglass.cosign` — the self-cosign case (§7.4). */
+const BOTH = { "x-test-user": "both_1", "x-test-org": "org_a", "x-test-roles": "clinical_rn" };
 
 // `break_glass_event.target_patient_id` is a uuid column, and the route validates the body against
 // `authz-typebox` at the boundary — so the glass fixtures are real uuids, not opaque handles.
@@ -339,6 +350,133 @@ describe("M3-T08 authorization route inventory", () => {
       });
       expect(revoke.statusCode).toBe(200);
       expect(revoke.json().status).toBe("revoked");
+      await app.close();
+    });
+  });
+
+  // ── §7.4 two-person control (AC-01) ────────────────────────────────────────────────────────
+  //
+  // These run with `cosignRequired: true` — the tenant setting that makes the co-signature the
+  // control rather than a formality. Under the default (`false`) glass opens `active` on
+  // invocation and the cosign route is never on the path, which is why the defect survived: the
+  // only pre-existing test of this route asserted a 404 for an unknown id.
+  describe("§7.4 break-glass co-signature is a two-person control", () => {
+    const GLASS = {
+      targetPatientId: TARGET_PATIENT,
+      reason: "covering nurse, chest pain emergency",
+    };
+
+    async function invokeGlass(app: ReturnType<typeof makeServer>["app"], headers: typeof BOTH) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/breakglass",
+        headers,
+        payload: GLASS,
+      });
+      expect(res.statusCode).toBe(201);
+      expect(res.json().status).toBe("cosign_pending"); // the control is armed
+      return res.json().breakGlassId as string;
+    }
+
+    it("refuses the invoker as their own co-signer → 409, and the glass stays shut", async () => {
+      const { app, breakGlass, auditSink } = makeServer({ cosignRequired: true });
+      const eventId = await invokeGlass(app, BOTH);
+
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/breakglass/${eventId}/cosign`,
+        headers: BOTH,
+      });
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error.code).toBe("BREAKGLASS_SELF_COSIGN");
+
+      // The security property, not just the status code: the grant never opened.
+      expect(breakGlass.all()[0]?.status).toBe("cosign_pending");
+      const guard = requireAbac("patient.read", "caseload_membership");
+      await expect(
+        guard({
+          context: {
+            correlationId: "c",
+            userId: "both_1",
+            organizationId: "org_a",
+            providerEntityIds: [],
+            locationIds: [],
+            roles: [],
+            attributes: {} as Record<string, unknown>,
+            ip: "",
+            userAgent: "",
+            startTime: 0,
+          },
+          params: { patientId: TARGET_PATIENT },
+        }),
+      ).rejects.toMatchObject({ statusCode: 403 });
+
+      // A refusal is a signal Compliance must be able to find in the trail.
+      const refused = auditSink.rows.find((r) => r.eventType === "m3.breakglass.cosign_refused");
+      expect(refused?.severity).toBe("critical");
+      expect(refused?.outcome).toBe("denied");
+      expect((refused?.context as { reason: string }).reason).toBe("self_cosign");
+      expect(auditSink.rows.some((r) => r.eventType === "m3.breakglass.cosigned")).toBe(false);
+      await app.close();
+    });
+
+    it("a DISTINCT co-signer opens the glass → 200 active", async () => {
+      const { app, breakGlass, auditSink } = makeServer({ cosignRequired: true });
+      const eventId = await invokeGlass(app, CLINICIAN);
+
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/breakglass/${eventId}/cosign`,
+        headers: COMPLIANCE, // co_1 — not the invoker
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().status).toBe("active");
+      expect(breakGlass.all()[0]?.status).toBe("active");
+      expect(auditSink.rows.some((r) => r.eventType === "m3.breakglass.cosigned")).toBe(true);
+      await app.close();
+    });
+
+    it("a co-signature cannot resurrect a REVOKED event → 409", async () => {
+      const { app, breakGlass } = makeServer({ cosignRequired: true });
+      const eventId = await invokeGlass(app, CLINICIAN);
+
+      const revoked = await app.inject({
+        method: "POST",
+        url: `/api/v1/breakglass/${eventId}/revoke`,
+        headers: COMPLIANCE,
+      });
+      expect(revoked.json().status).toBe("revoked");
+
+      // cosign and revoke share `breakglass.cosign`, so whoever ended the grant could re-open it:
+      // the old cosign matched on id alone and set status='active' whatever the current status was.
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/breakglass/${eventId}/cosign`,
+        headers: COMPLIANCE,
+      });
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error.code).toBe("BREAKGLASS_NOT_PENDING");
+      expect(breakGlass.all()[0]?.status).toBe("revoked");
+      await app.close();
+    });
+
+    it("an ALREADY-ACTIVE grant cannot be re-co-signed → 409 (no second cosigner overwrite)", async () => {
+      const { app } = makeServer({ cosignRequired: true });
+      const eventId = await invokeGlass(app, CLINICIAN);
+      const first = await app.inject({
+        method: "POST",
+        url: `/api/v1/breakglass/${eventId}/cosign`,
+        headers: COMPLIANCE,
+      });
+      expect(first.statusCode).toBe(200);
+
+      const second = await app.inject({
+        method: "POST",
+        url: `/api/v1/breakglass/${eventId}/cosign`,
+        headers: BOTH,
+      });
+      expect(second.statusCode).toBe(409);
+      expect(second.json().error.code).toBe("BREAKGLASS_NOT_PENDING");
       await app.close();
     });
   });

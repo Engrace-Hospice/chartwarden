@@ -5,7 +5,8 @@
 // Officer (§3.6). Time-boxed via `expires_at` (default +4h, D1) and accountable via
 // actor/cosign columns. Not a PHI table itself (carries only the target *reference*), so it
 // is org-scoped without the PE/location columns; standard app.org_id RLS lands in M3-T04.
-import { boolean, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, check, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { breakGlassStatus } from "../enums";
 import { organizations } from "./organizations";
 import { users } from "./users";
@@ -34,6 +35,14 @@ export const breakGlassEvents = pgTable(
     orgIdx: index("break_glass_org_idx").on(t.organizationId),
     actorIdx: index("break_glass_actor_idx").on(t.actorUserId),
     activeIdx: index("break_glass_active_idx").on(t.status, t.expiresAt),
+    // §7.4 two-person control (migration 0210): when a tenant sets `breakglass_cosign_required`,
+    // the co-signature IS the control — so the invoker may never be their own co-signer. Enforced
+    // at rest as well as in the store so the invariant survives a future caller (a backfill, an
+    // admin script, a second store implementation) that never sees the app-layer guard.
+    cosignerDistinct: check(
+      "bge_cosigner_distinct",
+      sql`cosigned_by IS NULL OR cosigned_by <> actor_user_id`,
+    ),
   }),
 );
 
