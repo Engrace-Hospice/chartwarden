@@ -1163,7 +1163,7 @@ function createM30Backend(): {
     async isPatientPart2Protected() {
       return false;
     },
-    async hasPart2ReleaseCoveringActor() {
+    async hasActivePart2Release() {
       return false;
     },
   };

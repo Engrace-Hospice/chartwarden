@@ -16,13 +16,17 @@
 //
 // P2c — the REAL Drizzle fact-loader. `buildDrizzleM30AbacResolver(db)` loads each owner fact under
 // `withOrgContext` (RLS scopes every read to `app.org_id`), mirroring the M34 §4.6 resolver shape (the
-// composition root binds the db handle; the M33/M34 SLICE_*_ABAC_RESOLVER precedent). Two reaches stay
-// genuinely-unlanded fail-closed deny-stubs — NOT faked: the M5 PrivacyFlag snapshot + the M39
-// `42_cfr_part_2_release` consent that back `part2Redisclosure` are absent from the M1 SeamContracts, so
-// `isPatientPart2Protected` / `hasPart2ReleaseCoveringActor` return false (the Part-2 row is redacted),
-// and `abuseAllegationAccess` keeps its role-only default (the clearance/case-access read it would key on
-// is not landed). Default-deny throughout: a missing / cross-tenant fact row, an actor with no active
-// membership, an unreachable M5/M39 reach all resolve to deny. Never fails open.
+// composition root binds the db handle; the M33/M34 SLICE_*_ABAC_RESOLVER precedent).
+//
+// GAP-047 — the two Part-2 reaches are REAL NOW. They were fail-closed deny-stubs because the seams
+// they need did not exist: M5's PrivacyFlag snapshot landed later as `PatientPrivacyFlagReader`
+// (GAP-061, for M37's shared-room gate) and M39's `ConsentEvaluator` is registered at boot over the
+// Drizzle consent store. So `part2Redisclosure` no longer redacts EVERY Part-2-promoted row
+// unconditionally — a patient carrying M5's `sud` privacy flag with an active `42_cfr_part_2_release`
+// on file now passes. `abuseAllegationAccess` keeps its role-only default (the clearance/case-access
+// read it would key on is genuinely not landed). Default-deny throughout: a missing / cross-tenant
+// fact row, an actor with no active membership, an unreachable M5/M39 seam all resolve to deny.
+// Never fails open.
 //
 // IDENTITY NOTE (the P2c correctness fix): the §3 owner columns are MEMBERSHIP ids
 // (`reported_by_membership_id`, `owner_membership_id`, `opened_by_membership_id`,
@@ -43,6 +47,7 @@ import { schema } from "@wardenx/db";
 import type { QualityDb } from "@wardenx/quality";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
+import { getSeam } from "../../bootstrap/index";
 
 /**
  * The §4.7 predicate names M30 OWNS and registers into M3 (eleven). `inOrg` is excluded — it is the
@@ -78,6 +83,19 @@ const ROLE_QAPI_COORDINATOR = "qapi_coordinator";
 
 /** The D23 retention class promoting a row into 42 CFR Part 2 protection (the `part2Redisclosure` gate). */
 const RETENTION_CLASS_PART2 = "compliance_42cfr_part2";
+
+/** The M5 §3.5 privacy flag that puts a patient's records under 42 CFR Part 2 (GAP-047). */
+const PART2_FLAG = "sud";
+
+/** The minimal M39 surface this file calls — structurally typed so M30 takes no `@wardenx/consent`
+ *  import edge (the M9 `capture-siting.ts` / M7 `seams/drizzle-store.ts` precedent). */
+interface M30ConsentEvaluatorShape {
+  evaluateForIngressRedaction(args: {
+    organizationId: string;
+    patientId: string;
+    callerModule: string;
+  }): Promise<{ redactSubstanceUseDisorderFields: boolean }>;
+}
 
 /** The incident kind whose disclosure is visibility-gated (R-61). */
 const INCIDENT_KIND_ABUSE = "allegation_of_abuse";
@@ -153,8 +171,19 @@ export interface ReadingM30AbacResolver {
   loadMemberRoleKeys(ctx: M30AbacReadContext, membershipId: string): Promise<readonly string[]>;
   /** M5 PrivacyFlag snapshot (opaque): does the patient carry a 42 CFR Part 2 protection? */
   isPatientPart2Protected(ctx: M30AbacReadContext, patientId: string): Promise<boolean>;
-  /** M39 consent (opaque): a valid unexpired `42_cfr_part_2_release` covering this actor→patient access? */
-  hasPart2ReleaseCoveringActor(ctx: M30AbacReadContext, patientId: string): Promise<boolean>;
+  /**
+   * M39 consent (opaque): is there an ACTIVE, unexpired `42_cfr_part_2_release` on file for this
+   * patient right now?
+   *
+   * Named for what M39 can actually answer (GAP-047). This was `hasPart2ReleaseCoveringActor`, which
+   * promised a per-actor decision M39 does not model: its per-recipient evaluation
+   * (`evaluateForDisclosure`) keys on an EXTERNAL recipient — a resolved recipient id or client id —
+   * and an internal staff actor reading a quality row is not a consent recipient in that sense. What
+   * this answers is whether disclosure of the patient's Part-2 material is authorized in this org at
+   * all; WHICH staff may read the row stays the job of the RBAC permission and the other §4.7
+   * predicates the same routes compose.
+   */
+  hasActivePart2Release(ctx: M30AbacReadContext, patientId: string): Promise<boolean>;
 }
 
 /**
@@ -194,7 +223,7 @@ export const denyStubM30AbacResolver: ReadingM30AbacResolver = {
   async isPatientPart2Protected() {
     return false;
   },
-  async hasPart2ReleaseCoveringActor() {
+  async hasActivePart2Release() {
     return false;
   },
 };
@@ -207,9 +236,10 @@ export const denyStubM30AbacResolver: ReadingM30AbacResolver = {
  * partition key need not be supplied for a single-row lookup). `loadMemberRoleKeys` joins
  * `membership_role` → `role` for the LIVE (unexpired) role keys.
  *
- * The two M5/M39 Part-2 reaches stay fail-closed deny-stubs (RULE 3): the PrivacyFlag snapshot + the
- * `42_cfr_part_2_release` consent are NOT in the M1 SeamContracts, so a real cross-module read here would
- * fabricate a boundary edge M30 is not permitted. They return false → `part2Redisclosure` redacts the row.
+ * The two M5/M39 Part-2 reaches go through the M1 seam registry (GAP-047), not through a schema edge:
+ * `PatientPrivacyFlagReader` is leaf-typed in @wardenx/types so `getSeam` resolves it with no import
+ * edge, and M39's `ConsentEvaluator` is opaque in the registry so it is narrowed here by a local
+ * structural shape (the M9 `capture-siting.ts` precedent). Both fail closed on a seam error.
  */
 export function buildDrizzleM30AbacResolver(db: QualityDb): ReadingM30AbacResolver {
   const I = schema.incidentReport;
@@ -322,14 +352,50 @@ export function buildDrizzleM30AbacResolver(db: QualityDb): ReadingM30AbacResolv
       });
     },
 
-    // M5 PrivacyFlag snapshot — NOT in the M1 SeamContracts. Fail-closed (RULE 3): the row is redacted.
-    async isPatientPart2Protected() {
-      return false;
+    /**
+     * GAP-047 — M5's §3.5 privacy-flag snapshot, through the published `PatientPrivacyFlagReader`
+     * seam. This was a fail-closed deny-stub because that seam did not exist when M30 landed; GAP-061
+     * built it for M37's shared-room gate, and its `privacyFlags` field is the general §3.5 fact, not
+     * a rooming-specific one (the method simply carries its first consumer's name).
+     *
+     * `sud` is the flag that promotes a patient's records into 42 CFR Part 2 protection. An absent
+     * snapshot row yields an empty flag array — "no flag recorded" — which correctly reads as
+     * not-Part-2-protected rather than as unreadable.
+     */
+    async isPatientPart2Protected(ctx, patientId) {
+      try {
+        const facts = await getSeam("PatientPrivacyFlagReader").roomingFactsFor({
+          organizationId: ctx.organizationId,
+          patientIds: [patientId],
+        });
+        return facts.some((f) => f.patientId === patientId && f.privacyFlags.includes(PART2_FLAG));
+      } catch {
+        return false; // seam unregistered / deny-stub / unreachable → not provably protected
+      }
     },
 
-    // M39 `42_cfr_part_2_release` consent — NOT in the M1 SeamContracts. Fail-closed (RULE 3): redacted.
-    async hasPart2ReleaseCoveringActor() {
-      return false;
+    /**
+     * GAP-047 — M39's `42_cfr_part_2_release`, through the `ConsentEvaluator` seam's INGRESS-redaction
+     * evaluation: `redactSubstanceUseDisorderFields` is false exactly when an active, unexpired Part 2
+     * release is on file for the patient. That is the same primitive M9's chart-read AIMS gate uses
+     * (GAP-017), so the two modules cannot disagree about whether a patient's Part-2 material may be
+     * disclosed at all.
+     *
+     * Fail-CLOSED on any seam error: `part2Redisclosure` then redacts the row, which is where this
+     * predicate has been for its whole life — the difference is that it can now also open.
+     */
+    async hasActivePart2Release(ctx, patientId) {
+      try {
+        const evaluator = getSeam("ConsentEvaluator") as unknown as M30ConsentEvaluatorShape;
+        const res = await evaluator.evaluateForIngressRedaction({
+          organizationId: ctx.organizationId,
+          patientId,
+          callerModule: "m30",
+        });
+        return !res.redactSubstanceUseDisorderFields;
+      } catch {
+        return false;
+      }
     },
   };
 }
@@ -549,7 +615,7 @@ export function buildM30AbacPredicates(
       const ctx = readContextOf(context);
       const protectedFlag = await resolver.isPatientPart2Protected(ctx, patientId);
       if (!protectedFlag) return false; // snapshot absent / unreachable → redact
-      return resolver.hasPart2ReleaseCoveringActor(ctx, patientId);
+      return resolver.hasActivePart2Release(ctx, patientId);
     },
   };
 }

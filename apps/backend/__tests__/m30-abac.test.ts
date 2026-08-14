@@ -9,7 +9,8 @@
 //   (b) the §4.7 fact-loader predicates (`buildM30AbacPredicates` over an in-memory resolver) GRANT for
 //       the owning/assigned actor and DENY otherwise, the §6.7 separation-of-duties co-sign predicates
 //       require two distinct actors in the two distinct roles, and the fail-closed predicates
-//       (`part2Redisclosure`, `abuseAllegationAccess`) deny by default (deny-stub resolver / no role).
+//       (`part2Redisclosure`, `abuseAllegationAccess`) deny by default (deny-stub resolver / no role),
+//       and — GAP-047 — `part2Redisclosure` now also OPENS when both M5/M39 facts say it may.
 //
 // PURE: an in-memory `ReadingM30AbacResolver` is injected — no DB. The route-key orphan scan reads the
 // route source files from disk (they are the §4.1 inventory and cannot be imported without a Fastify app).
@@ -19,7 +20,8 @@ import { fileURLToPath } from "node:url";
 import type { AbacContext, AbacTarget } from "@wardenx/auth";
 import { abacRegistry } from "@wardenx/auth";
 import { M30_PERMISSIONS } from "@wardenx/quality";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
 import {
   type IncidentAbacFacts,
   M30_CONTRIBUTED_PERMISSIONS,
@@ -29,6 +31,7 @@ import {
   type QapiProjectAbacFacts,
   type ReadingM30AbacResolver,
   type SraCycleAbacFacts,
+  buildDrizzleM30AbacResolver,
   buildM30AbacPredicates,
   denyStubM30AbacResolver,
   registerM30AbacPredicates,
@@ -127,7 +130,7 @@ function resolverWith(seed: {
     async isPatientPart2Protected() {
       return false;
     },
-    async hasPart2ReleaseCoveringActor() {
+    async hasActivePart2Release() {
       return false;
     },
   };
@@ -397,5 +400,132 @@ describe("M30 ABAC registry wiring", () => {
     expect(
       await p.assignedToMortality!(ctx({ membershipId: ASSIGNEE }), { reviewId: "rev-1" }),
     ).toBe(false);
+  });
+});
+
+// ── GAP-047 — part2Redisclosure can now open ────────────────────────────────────────────────────
+//
+// The predicate spent its whole life redacting EVERY Part-2-promoted row, because the two facts it
+// keys on were fail-closed deny-stubs: M5's PrivacyFlag snapshot did not exist as a seam when M30
+// landed (it arrived later as `PatientPrivacyFlagReader`, GAP-061) and M39's consent reach was not
+// wired. Both are real now, so the predicate has a grant path — and these cases pin that it is the
+// CONJUNCTION, so neither fact alone discloses.
+describe("M30 part2Redisclosure grant path (GAP-047)", () => {
+  const resolverWith = (
+    part2Protected: boolean,
+    activeRelease: boolean,
+  ): ReadingM30AbacResolver => ({
+    ...denyStubM30AbacResolver,
+    async isPatientPart2Protected() {
+      return part2Protected;
+    },
+    async hasActivePart2Release() {
+      return activeRelease;
+    },
+  });
+
+  const decide = (part2Protected: boolean, activeRelease: boolean) =>
+    buildM30AbacPredicates({ resolver: resolverWith(part2Protected, activeRelease) })
+      .part2Redisclosure!(ctx({ membershipId: REPORTER }), {
+      retentionClass: "compliance_42cfr_part2",
+      patientId: "pat-1",
+    });
+
+  it("GRANTS when the patient is Part-2 protected AND an active release is on file", async () => {
+    await expect(decide(true, true)).resolves.toBe(true);
+  });
+
+  it("REDACTS when the patient is Part-2 protected but no active release is on file", async () => {
+    await expect(decide(true, false)).resolves.toBe(false);
+  });
+
+  it("REDACTS when the M5 snapshot does not mark the patient Part-2 protected", async () => {
+    // Not "grant because there is nothing to protect": a row whose retention class says Part 2 while
+    // the patient's snapshot does not is an unreconciled state, and the safe reading is redact.
+    await expect(decide(false, true)).resolves.toBe(false);
+    await expect(decide(false, false)).resolves.toBe(false);
+  });
+});
+
+// ── GAP-047 — the production resolver's two Part-2 seam reaches ──────────────────────────────────
+//
+// Neither method touches the db handle (both are pure seam calls), so the resolver can be built over a
+// null handle here. What is under test is the glue that used to be `return false`.
+describe("M30 Drizzle resolver Part-2 reaches (GAP-047 seam glue)", () => {
+  // biome-ignore lint/suspicious/noExplicitAny: the two methods under test never touch the handle.
+  const resolver = () => buildDrizzleM30AbacResolver(null as any);
+  const CTX = { organizationId: "org-a", userId: "user-1" };
+
+  afterEach(() => __resetSeamsForTest());
+
+  it("reads Part-2 protection off M5's privacy-flag snapshot (`sud`)", async () => {
+    registerSeam("PatientPrivacyFlagReader", {
+      roomingFactsFor: async ({ patientIds }: { patientIds: readonly string[] }) =>
+        patientIds.map((patientId) => ({
+          patientId,
+          sexClass: "unspecified" as const,
+          privacyFlags: ["sud", "hiv"],
+        })),
+    });
+    await expect(resolver().isPatientPart2Protected(CTX, "pat-1")).resolves.toBe(true);
+  });
+
+  it("is not Part-2 protected when the snapshot carries other flags but not `sud`", async () => {
+    registerSeam("PatientPrivacyFlagReader", {
+      roomingFactsFor: async ({ patientIds }: { patientIds: readonly string[] }) =>
+        patientIds.map((patientId) => ({
+          patientId,
+          sexClass: "unspecified" as const,
+          privacyFlags: ["hiv"],
+        })),
+    });
+    await expect(resolver().isPatientPart2Protected(CTX, "pat-1")).resolves.toBe(false);
+  });
+
+  it("ignores a row for a DIFFERENT patient in the batch result", async () => {
+    registerSeam("PatientPrivacyFlagReader", {
+      roomingFactsFor: async () => [
+        { patientId: "someone-else", sexClass: "unspecified" as const, privacyFlags: ["sud"] },
+      ],
+    });
+    await expect(resolver().isPatientPart2Protected(CTX, "pat-1")).resolves.toBe(false);
+  });
+
+  it("reads the active release off M39's ingress-redaction evaluation, naming m30 as the caller", async () => {
+    let caller: string | undefined;
+    registerSeam("ConsentEvaluator", {
+      evaluateForIngressRedaction: async (args: { callerModule: string }) => {
+        caller = args.callerModule;
+        return { redactSubstanceUseDisorderFields: false };
+      },
+    });
+    await expect(resolver().hasActivePart2Release(CTX, "pat-1")).resolves.toBe(true);
+    expect(caller).toBe("m30");
+  });
+
+  it("has no active release when M39 says SUD content must stay redacted", async () => {
+    registerSeam("ConsentEvaluator", {
+      evaluateForIngressRedaction: async () => ({ redactSubstanceUseDisorderFields: true }),
+    });
+    await expect(resolver().hasActivePart2Release(CTX, "pat-1")).resolves.toBe(false);
+  });
+
+  it("both reaches fail CLOSED on a throwing or unregistered seam", async () => {
+    // Unregistered.
+    await expect(resolver().isPatientPart2Protected(CTX, "pat-1")).resolves.toBe(false);
+    await expect(resolver().hasActivePart2Release(CTX, "pat-1")).resolves.toBe(false);
+    // Registered but throwing.
+    registerSeam("PatientPrivacyFlagReader", {
+      roomingFactsFor: async () => {
+        throw new Error("RLS denied");
+      },
+    });
+    registerSeam("ConsentEvaluator", {
+      evaluateForIngressRedaction: async () => {
+        throw new Error("consent store unavailable");
+      },
+    });
+    await expect(resolver().isPatientPart2Protected(CTX, "pat-1")).resolves.toBe(false);
+    await expect(resolver().hasActivePart2Release(CTX, "pat-1")).resolves.toBe(false);
   });
 });
