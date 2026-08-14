@@ -29,7 +29,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
-import type { DocumentSeamStore, RenderedDocumentRow, RenderUpsert } from "./store";
+import type { DocumentSeamStore, RenderUpsert, RenderedDocumentRow } from "./store";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
@@ -175,7 +175,7 @@ export function createDrizzleDocumentSeamStore(db: DbClient): DocumentSeamStore 
         if (!doc || !doc.activeVersionId) return null;
 
         const [version] = await tx
-          .select({ id: VER.id, createdAt: VER.createdAt })
+          .select({ id: VER.id, versionNumber: VER.versionNumber, createdAt: VER.createdAt })
           .from(VER)
           .where(eq(VER.id, doc.activeVersionId))
           .orderBy(desc(VER.createdAt))
@@ -185,6 +185,10 @@ export function createDrizzleDocumentSeamStore(db: DbClient): DocumentSeamStore 
         return {
           documentId: doc.id,
           versionId: version.id,
+          // `document_version.version_number` is a TEXT column ("app-side serial"), and
+          // `RenderedDocumentRow.versionNumber` is a number — the upsert path already narrows the same
+          // way, so the read must too or the two halves of this port disagree on the type.
+          versionNumber: Number(version.versionNumber),
           renderedAt: version.createdAt.toISOString(),
         };
       });

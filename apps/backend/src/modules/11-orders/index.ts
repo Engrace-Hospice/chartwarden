@@ -131,3 +131,7 @@ export {
   type OrderPdfResult,
   denyStubOrderPdfRenderer,
 } from "./seams/m22-order-pdf";
+export {
+  M11_DOCUMENT_BACKREF_CONSUMER,
+  buildM11DocumentBackrefConsumer,
+} from "./outbox-consumers/m22-document-rendered";

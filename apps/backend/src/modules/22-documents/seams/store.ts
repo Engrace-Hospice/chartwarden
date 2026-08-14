@@ -75,6 +75,9 @@ export interface DocumentSeamStore {
   }): Promise<{
     documentId: DocumentId;
     versionId: DocumentVersionId;
+    /** The active version's number — 1 on a genesis render, >1 after a W2 addendum/correction. Carried
+     *  on `m22.document.rendered` so a requesting module can tell a first render from a re-render. */
+    versionNumber: number;
     renderedAt: IsoInstant;
   } | null>;
 }
@@ -246,6 +249,7 @@ export function createInMemoryDocumentSeamStore(seed: DocumentSeamSeed = {}): {
         return {
           documentId: d.documentId,
           versionId: latest.versionId,
+          versionNumber: latest.versionNumber,
           renderedAt: latest.renderedAt,
         };
       },

@@ -193,6 +193,7 @@ import {
 } from "./modules/10-hope/index";
 import {
   M11_OUTBOX_EVENTS,
+  buildM11DocumentBackrefConsumer,
   buildM11IdgDecisionConsumer,
   createDrizzleOrderEraseStore,
   createDrizzleOrderSeamStore,
@@ -205,6 +206,7 @@ import {
 } from "./modules/11-orders/index";
 import {
   M12_OUTBOX_EVENTS,
+  buildM12DocumentBackrefConsumer,
   buildM12IdgDecisionConsumer,
   createDrizzleDoseSpotSeamStore,
   createDrizzleMedicationOrderEraseStore,
@@ -216,6 +218,7 @@ import {
 } from "./modules/12-dosespot/index";
 import {
   M13_OUTBOX_EVENTS,
+  buildM13DocumentBackrefConsumer,
   createDrizzleEmarEraseStore,
   createDrizzleEmarSeamStore,
   mountEmarRoutes,
@@ -317,6 +320,7 @@ import {
   buildDrizzleM21WriteService,
   buildDrizzleSuppliesAbacResolver,
   buildDrizzleSuppliesSeamStore,
+  buildM21DocumentBackrefConsumer,
   decideDispatcherEligible,
   denyStubSuppliesAbacResolver,
   mountM21Routes,
@@ -325,6 +329,8 @@ import {
   registerSupplyEraser,
 } from "./modules/21-supplies/index";
 import {
+  M22_DOCUMENT_RENDERED_EVENT,
+  M22_OUTBOX_EVENTS,
   buildM22DocumentRequestConsumer,
   createDrizzleDocumentEraseStore,
   createDrizzleDocumentReaderStore,
@@ -2051,6 +2057,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // per-module publisher binds with the §4.6 workers + the M21-T05 service layer (the M34 precedent —
     // catalogued now, bound when there is a mutation to bind it to).
     M21_OUTBOX_EVENTS,
+    // M22 — the §7.2 W2 handshake's DOWNSTREAM half (`m22.document.rendered`). M22 had no event catalog
+    // at all until this, so every source module's declared `m*.document-backref` consumer subscribed to
+    // a name the dispatcher had never heard of and every `document_id` back-ref column stayed NULL.
+    M22_OUTBOX_EVENTS,
     M23_OUTBOX_EVENTS,
     M24_OUTBOX_EVENTS,
     M25_OUTBOX_EVENTS,
@@ -2128,6 +2138,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const m19OutboxPublisher = bindCallerModule(txOutboxPublisher, "m19");
   const m20OutboxPublisher = bindCallerModule(txOutboxPublisher, "m20");
   const m21OutboxPublisher = bindCallerModule(txOutboxPublisher, "m21");
+  const m22OutboxPublisher = bindCallerModule(txOutboxPublisher, "m22");
   const m23OutboxPublisher = bindCallerModule(txOutboxPublisher, "m23");
   const m24OutboxPublisher = bindCallerModule(txOutboxPublisher, "m24");
   const m25OutboxPublisher = bindCallerModule(txOutboxPublisher, "m25");
@@ -3814,7 +3825,31 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 },
                 `M22 render refused: ${r.kind}`,
               ),
+            // The §7.2 DOWNSTREAM half. The render and this emit are two transactions (the renderer opens
+            // its own), which is why the consumer re-announces on an idempotent re-delivery: a crash
+            // between them is precisely what gets redelivered.
+            emitRendered: ({ organizationId, ...payload }) =>
+              withOrgContext(dbHandle.db, { organizationId, userId: "" }, (tx) =>
+                m22OutboxPublisher.publish(tx as never, {
+                  eventName: M22_DOCUMENT_RENDERED_EVENT,
+                  payload,
+                  organizationId,
+                  aggregateKind: "document",
+                  aggregateId: payload.documentId,
+                }),
+              ),
           }),
+          // The four requesting modules' back-ref consumers — the columns each built for exactly this
+          // (`order_record.document_id`, `medication_order.document_id`,
+          // `medication_reconciliation_worksheet.document_id`, `comfort_kit_dispatch.bol_document_id` /
+          // `comfort_kit_return.receipt_document_id`) and never had an event to fill. Each ignores every
+          // document it did not request. They must ALL be bound: `m22.document.rendered` declares exactly
+          // these four consumers, and the dispatcher holds a row `pending` while any declared consumer
+          // module has no live binding.
+          buildM11DocumentBackrefConsumer({ db: dbHandle.db }),
+          buildM12DocumentBackrefConsumer({ db: dbHandle.db }),
+          buildM13DocumentBackrefConsumer({ db: dbHandle.db }),
+          buildM21DocumentBackrefConsumer({ db: dbHandle.db }),
           // WX-PR-012 — the LIVE `m25.parse-and-post` consumer: M25 self-pulls (no other module produces
           // `m25.edi.835_received`), so this drives the parse + transactional-post + denial-seed half of
           // the pipeline the `remittance.receive` route's `receiveAdvice` emits into. The same
