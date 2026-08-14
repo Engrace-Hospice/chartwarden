@@ -51,9 +51,9 @@ import {
   credentialReaderDenyStub,
   deathDischargeReaderDenyStub,
   denialOutcomePredictionProviderDenyStub,
+  dischargeReaderDenyStub,
   disciplineComplianceProviderDenyStub,
   disciplinePlanReaderDenyStub,
-  dischargeReaderDenyStub,
   docLensClassifierDenyStub,
   docLensExtractorDenyStub,
   docLensSudDetectorDenyStub,
@@ -122,6 +122,7 @@ import {
   patientCoverageReaderDenyStub,
   patientDaysProviderDenyStub,
   patientMutatorDenyStub,
+  patientPrivacyFlagReaderDenyStub,
   patientReaderDenyStub,
   planCatalogReaderDenyStub,
   portalDocumentReaderDenyStub,
@@ -209,6 +210,15 @@ export const REQUIRED_SEAMS = [
     ownerModule: 5,
     phi: true,
     denyStub: patientAddressReaderDenyStub,
+  },
+  // M5 (§3.5) — GAP-061: the sex-class + active-privacy-flag read M37's shared-room occupancy gate
+  // consults before `assignBed`. PHI: a patient's sex and privacy-category flags; M5 registers a real
+  // impl over `patient` + `patient_privacy_flag_snapshot` at boot.
+  {
+    key: "PatientPrivacyFlagReader",
+    ownerModule: 5,
+    phi: true,
+    denyStub: patientPrivacyFlagReaderDenyStub,
   },
   // M40 — TASK-015/ARCH-018: the M31 bereaved-portal `/resources` read. Deny-stub only — no
   // `external_grief_resource` table exists yet (M40 has not built this catalog).

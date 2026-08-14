@@ -55,6 +55,7 @@ export {
   getPatientReader,
   getPatientMutator,
   getPatientCoverageReader,
+  getPatientPrivacyFlagReader,
   registerPatientSeams,
 } from "./seams/index";
 

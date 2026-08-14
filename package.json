@@ -91,6 +91,7 @@
     "test:m33:schedule-cron:live": "vitest run apps/backend/__tests__/gap-050-m33-schedule-cron.live.test.ts",
     "test:m33:export-render:live": "vitest run apps/backend/__tests__/gap-051-m33-export-render.live.test.ts",
     "test:m37:write:live": "vitest run apps/backend/__tests__/m37-ipu-write.live.test.ts",
+    "test:m37:privacy-gates:live": "vitest run apps/backend/__tests__/gap-061-062-m37-privacy-gates.live.test.ts",
     "test:rls:live:m7": "vitest run packages/db/migrations/__tests__/m7-rls-isolation.live.test.ts",
     "test:rls:live:m8": "vitest run packages/db/migrations/__tests__/m8-rls-isolation.live.test.ts",
     "test:m8:read:live": "vitest run apps/backend/__tests__/m8-encounters-read-service.live.test.ts",

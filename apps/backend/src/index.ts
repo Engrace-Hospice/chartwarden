@@ -630,6 +630,8 @@ import {
   type IpuAiPromptRegistryPort,
   M37_OUTBOX_EVENTS,
   buildDrizzleIpuRouteService,
+  getIpuRoomingFactsReader,
+  getIpuVisitorConsentGate,
   mountM37Routes,
   registerIpuErasers,
   registerIpuSeams,
@@ -2591,7 +2593,15 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // drives the pure @wardenx/inpatient §2 machines, and emits its §4.4 m37.* event through the
           // catalog-validating tx publisher (callerModule `m37`) in the same unit of work (D17 outbox-only).
           mountM37Routes(app, {
-            service: buildDrizzleIpuRouteService(dbHandle.db, { outbox: m37OutboxPublisher }),
+            service: buildDrizzleIpuRouteService(dbHandle.db, {
+              outbox: m37OutboxPublisher,
+              // GAP-061 — the §2.2 shared-room occupancy gate's M5 read. A THUNK: the seam registry is
+              // populated by wireModuleSeams(), and resolving eagerly here would capture whatever was
+              // registered at mount time (the deny-stub, on an unlucky ordering).
+              rooming: getIpuRoomingFactsReader,
+              // GAP-062 — the §2.7 non-immediate-family visitor consent gate's M39 read (same thunk reason).
+              consent: getIpuVisitorConsentGate,
+            }),
           });
           // M23 (Billing — Medicare) — mount the §4.1 route plugins over the Drizzle READ + WRITE services +
           // the boot-time claim-assembly service. Each mutation opens its own withOrgContext (RLS scopes every

@@ -8,21 +8,28 @@ import { type DbClient, schema, todayForOrganization } from "@wardenx/db";
 import {
   type AdmissionTransition,
   INITIAL_BED_CLEANING_STATUS,
+  IpuStateError,
+  type RoomOccupancyDecision,
   assertInspectionCurrent,
   computeIrcState,
+  evaluateRoomOccupancy,
   evaluateVisitorCheckIn,
+  isPrivateRoom,
   normalizeReassessmentInterval,
   planCapOverride,
   planOpenAdmission,
   planReassessmentOutcome,
   requireIpu,
+  roomOccupancyDenyMessage,
   transitionAdmission,
   transitionBedCleaning,
   transitionBodyRelease,
   validateGipCriteriaPayload,
   validateRestraintApply,
+  visitorConsentTypesFor,
 } from "@wardenx/inpatient";
 import { withOrgContext } from "@wardenx/tenancy";
+import type { PatientPrivacyFlagReader, PatientRoomingFacts } from "@wardenx/types";
 import { ConflictError, NotFoundError } from "@wardenx/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { IpuReadActor, IpuWriteActor } from "./actor";
@@ -95,8 +102,63 @@ export interface WriteOutboxPort {
 
 const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
 
+/**
+ * The M5 §3.5 rooming read the §2.2 shared-room occupancy gate consults (GAP-061). Declared here as a
+ * narrow PORT rather than resolved from the M1 registry inside the service, so the slice and the tests
+ * can drive the gate without a boot; the composition root binds `getPatientPrivacyFlagReader()`.
+ */
+export type RoomingFactsPort = Pick<PatientPrivacyFlagReader, "roomingFactsFor">;
+
+/** Unbound default: THROWS. `evaluateRoomOccupancyForBed` catches it and the pure gate refuses on
+ *  absent facts — an unbound seam must never read as "the room is empty". */
+const UNBOUND_ROOMING: RoomingFactsPort = {
+  roomingFactsFor() {
+    throw new Error("PatientPrivacyFlagReader is not bound");
+  },
+};
+
+/**
+ * The M39 `ConsentEvaluator` narrowed to the ONE method §2.7's visitor gate calls (GAP-062) — the M12
+ * `DoseSpotConsentValidator` precedent. M39's rich interface lives in @wardenx/consent, which M37 does
+ * not import; the seam is registered opaquely (`SeamContracts["ConsentEvaluator"] = unknown`) and this
+ * subset is what M37 depends on, so no manifest edge appears.
+ *
+ * The spec asks for `ConsentEvaluator.evaluateForVisit(patientId, visitorRelationship)`. M39 publishes
+ * no such method, and adding one would put IPU visitation vocabulary inside the consent module — so the
+ * relationship → consent-type mapping stays in M37's pure core (`visitorConsentTypesFor`) and this calls
+ * M39's real, general `evaluate` per candidate type.
+ */
+export interface VisitorConsentGate {
+  evaluate(args: {
+    organizationId: string;
+    patientId: string;
+    consentType: string;
+    sessionContext: { sessionClass: string; membershipId?: string };
+    callerModule: string;
+    callerRoute?: string;
+  }): Promise<{
+    allowed: boolean;
+    consentRecordId?: string;
+    consentVersionAtEval?: number;
+    expiresAt?: string;
+    denyReason?: string;
+  }>;
+}
+
+/** Unbound default: THROWS, and the check-in gate turns that into the same 412 a denial produces. */
+const UNBOUND_CONSENT: VisitorConsentGate = {
+  evaluate() {
+    throw new Error("ConsentEvaluator is not bound");
+  },
+};
+
 export interface IpuRouteServiceDeps {
   readonly outbox?: WriteOutboxPort;
+  /** M5 `PatientPrivacyFlagReader` (GAP-061). Bound lazily — the composition root passes a thunk so
+   *  the seam is resolved per call, after `wireModuleSeams()` has run. */
+  readonly rooming?: RoomingFactsPort | (() => RoomingFactsPort);
+  /** M39 `ConsentEvaluator` (GAP-062), same lazy-thunk posture as `rooming`. */
+  readonly consent?: VisitorConsentGate | (() => VisitorConsentGate);
 }
 
 const iso = (d: Date): string => d.toISOString();
@@ -111,6 +173,12 @@ export function buildDrizzleIpuRouteService(
   deps: IpuRouteServiceDeps = {},
 ): IpuRouteService {
   const outbox = deps.outbox ?? NOOP_OUTBOX;
+  const roomingDep = deps.rooming ?? UNBOUND_ROOMING;
+  const rooming = (): RoomingFactsPort =>
+    typeof roomingDep === "function" ? roomingDep() : roomingDep;
+  const consentDep = deps.consent ?? UNBOUND_CONSENT;
+  const consentGate = (): VisitorConsentGate =>
+    typeof consentDep === "function" ? consentDep() : consentDep;
   const U = schema.inpatientUnit;
   const A = schema.ipuAdmission;
   const H = schema.ipuAdmissionStateHistory;
@@ -271,6 +339,168 @@ export function buildDrizzleIpuRouteService(
       .update(A)
       .set({ state: transition.to as never, updatedAt: new Date(), version: admission.version + 1 })
       .where(eq(A.id, admission.id));
+  }
+
+  /**
+   * §2.2 row 170 (GAP-061) — resolve the room, its current occupants and their M5 rooming facts, then
+   * run the pure gate. Runs inside the caller's `withOrgContext` transaction, so both reads are
+   * RLS-scoped; the M5 seam opens its own org-scoped read (it owns the patient tables, M37 does not).
+   *
+   * The seam is consulted ONLY when a shared room already holds someone else — a private room or an
+   * empty room is decided from M37's own rows, so a private-room placement never depends on M5 being
+   * reachable, and the common case costs no extra call.
+   */
+  async function evaluateRoomOccupancyForBed(
+    t: DbClient,
+    organizationId: string,
+    target: { roomId: string; incomingPatientId: string },
+  ): Promise<RoomOccupancyDecision> {
+    const [room] = await t
+      .select({ kind: schema.ipuRoom.kind })
+      .from(schema.ipuRoom)
+      .where(eq(schema.ipuRoom.id, target.roomId))
+      .limit(1);
+    if (!room) throw new NotFoundError("ipu_room not found");
+
+    // Everyone currently holding a bed in this room: an un-ended assignment on any bed of the room,
+    // joined to its admission for the patient id.
+    const occupantRows = await t
+      .select({ patientId: A.patientId })
+      .from(schema.ipuBedAssignment)
+      .innerJoin(B, eq(B.id, schema.ipuBedAssignment.bedId))
+      .innerJoin(A, eq(A.id, schema.ipuBedAssignment.ipuAdmissionId))
+      .where(and(eq(B.roomId, target.roomId), isNull(schema.ipuBedAssignment.endedAt)));
+    const occupantPatientIds = [
+      ...new Set(
+        occupantRows.map((r) => r.patientId).filter((id) => id !== target.incomingPatientId),
+      ),
+    ];
+
+    if (isPrivateRoom(room.kind) || occupantPatientIds.length === 0) {
+      return evaluateRoomOccupancy({
+        roomKind: room.kind,
+        incomingPatientId: target.incomingPatientId,
+        occupantPatientIds,
+        facts: [],
+      });
+    }
+
+    // A shared room with company — M5 is the only source for the sex/privacy facts. A seam that
+    // throws (unregistered, or a db-less boot) must NOT read as "nobody is in the room": catch it and
+    // let the pure gate refuse on absent facts.
+    let facts: readonly PatientRoomingFacts[] = [];
+    try {
+      facts = await rooming().roomingFactsFor({
+        organizationId,
+        patientIds: [target.incomingPatientId, ...occupantPatientIds],
+      });
+    } catch {
+      facts = [];
+    }
+    return evaluateRoomOccupancy({
+      roomKind: room.kind,
+      incomingPatientId: target.incomingPatientId,
+      occupantPatientIds,
+      facts,
+    });
+  }
+
+  /**
+   * §2.7 (GAP-062) — the M39 consent gate on a non-immediate-family visitor. Returns the object
+   * persisted verbatim into `ipu_visitor.consent_evaluator_result`: the evidence of WHAT was asked and
+   * WHAT M39 answered, which is the artifact a surveyor reads. Structural only — no visitor name, no
+   * patient identifier beyond the ids already on the row.
+   *
+   * Allowed when ANY candidate type is active. Denied → the caller raises `VISITOR_CONSENT_MISSING`;
+   * an unreachable evaluator denies identically (`consent_evaluator_unavailable`), because "we could
+   * not check" and "there is no consent" have the same correct answer at the front desk.
+   */
+  async function evaluateVisitorConsent(
+    actor: IpuWriteActor,
+    patientId: string,
+    relationship: string,
+    consentTypes: readonly string[],
+  ): Promise<{ allowed: boolean; result: Record<string, unknown> }> {
+    const evaluatedAt = iso(new Date());
+    const attempts: Record<string, unknown>[] = [];
+    for (const consentType of consentTypes) {
+      let outcome: {
+        allowed: boolean;
+        consentRecordId?: string;
+        consentVersionAtEval?: number;
+        expiresAt?: string;
+        denyReason?: string;
+      };
+      try {
+        outcome = await consentGate().evaluate({
+          organizationId: actor.organizationId,
+          patientId,
+          consentType,
+          sessionContext: { sessionClass: "staff", membershipId: actor.membershipId },
+          callerModule: "m37",
+          callerRoute: "POST /api/v1/ipu-visitors",
+        });
+      } catch {
+        return {
+          allowed: false,
+          result: {
+            evaluated: true,
+            relationship,
+            consentTypesConsidered: [...consentTypes],
+            allowed: false,
+            denyReason: "consent_evaluator_unavailable",
+            attempts,
+            evaluatedAt,
+          },
+        };
+      }
+      attempts.push({
+        consentType,
+        allowed: outcome.allowed,
+        ...(outcome.denyReason ? { denyReason: outcome.denyReason } : {}),
+      });
+      if (outcome.allowed) {
+        return {
+          allowed: true,
+          result: {
+            evaluated: true,
+            relationship,
+            consentTypesConsidered: [...consentTypes],
+            allowed: true,
+            satisfiedByConsentType: consentType,
+            ...(outcome.consentRecordId ? { consentRecordId: outcome.consentRecordId } : {}),
+            ...(outcome.consentVersionAtEval !== undefined
+              ? { consentVersionAtEval: outcome.consentVersionAtEval }
+              : {}),
+            ...(outcome.expiresAt ? { expiresAt: outcome.expiresAt } : {}),
+            attempts,
+            evaluatedAt,
+          },
+        };
+      }
+    }
+    // Report the most INFORMATIVE reason, not the last one tried. "There has never been a consent of
+    // this type" is M39's default answer for every type the patient does not use, so a revoked or
+    // expired record — the one the desk can act on — must not be buried behind it.
+    const reasons = attempts
+      .map((a) => a.denyReason)
+      .filter((r): r is string => typeof r === "string");
+    const denyReason =
+      reasons.find((r) => r !== "no_active_consent_on_file") ??
+      reasons[0] ??
+      "no_active_consent_on_file";
+    return {
+      allowed: false,
+      result: {
+        evaluated: true,
+        relationship,
+        consentTypesConsidered: [...consentTypes],
+        allowed: false,
+        denyReason,
+        attempts,
+        evaluatedAt,
+      },
+    };
   }
 
   return {
@@ -563,11 +793,27 @@ export function buildDrizzleIpuRouteService(
         if (!adm) throw new NotFoundError("ipu_admission not found");
         const [bed] = await t.select().from(B).where(eq(B.id, body.bedId)).limit(1);
         if (!bed) throw new NotFoundError("ipu_bed not found");
+        // §2.2 route-table row 170 (GAP-061) — the shared-room occupancy gate. Resolved HERE rather
+        // than passed as a constant: the room's privacy classification and its current occupants are
+        // M37 facts, the occupants' sex/privacy flags are M5's, and the policy joining them is M37's.
+        const occupancy = await evaluateRoomOccupancyForBed(t, actor.organizationId, {
+          roomId: bed.roomId,
+          incomingPatientId: adm.patientId,
+        });
+        if (!occupancy.allowed) {
+          // The machine's own guard (below) raises the same code from the boolean; raising here first
+          // is what carries the REASON to the coordinator — "room holds a patient of a different
+          // recorded sex" and "M5 could not be read" are different problems with different fixes.
+          throw new IpuStateError(
+            "IPU_ROOM_OCCUPANCY_CONFLICT",
+            roomOccupancyDenyMessage(occupancy.denyReason ?? "rooming_facts_unavailable"),
+          );
+        }
         const transition = transitionAdmission(adm.state, adm.kind, {
           type: "assignBed",
           bedId: body.bedId,
           bedReady: (bed.cleaningStatus ?? INITIAL_BED_CLEANING_STATUS) === "ready",
-          roomOccupancyAllowed: true, // M5 PrivacyFlagReader is a forward seam; default-allow until bound.
+          roomOccupancyAllowed: occupancy.allowed,
         });
         await applyAdmissionTransition(t, actor, adm, transition, {
           sourceBedId: body.bedId,
@@ -1143,6 +1389,27 @@ export function buildDrizzleIpuRouteService(
           .map((r) => ({ kind: r.restrictionKind }));
         // §2.7 — the machine throws VISITOR_RESTRICTION_FULL_BLOCK / VISITOR_IMMEDIATE_FAMILY_ONLY (412).
         const decision = evaluateVisitorCheckIn(body.relationship, applicable);
+        // §2.7 (GAP-062) — the M39 consent gate. Immediate family needs no evaluation ("spouse visit is
+        // consent-default-OK", W-IPU-07 step 5); everyone else needs an on-file authorization.
+        const consentTypes = visitorConsentTypesFor(body.relationship);
+        const consent =
+          consentTypes === null
+            ? {
+                allowed: true,
+                result: {
+                  evaluated: false,
+                  relationship: body.relationship,
+                  reason: "immediate_family",
+                  evaluatedAt: iso(new Date()),
+                } as Record<string, unknown>,
+              }
+            : await evaluateVisitorConsent(actor, adm.patientId, body.relationship, consentTypes);
+        if (!consent.allowed) {
+          throw new IpuStateError(
+            "VISITOR_CONSENT_MISSING",
+            `A ${body.relationship} visitor needs the patient's (or representative's) consent on file; M39 returned ${String(consent.result.denyReason)}.`,
+          );
+        }
         const [row] = await t
           .insert(schema.ipuVisitor)
           .values({
@@ -1151,7 +1418,7 @@ export function buildDrizzleIpuRouteService(
             visitorName: body.visitorName,
             relationship: body.relationship,
             screeningOutcome: body.screeningOutcome,
-            consentEvaluatorResult: {}, // M39 ConsentEvaluator is a forward seam; {} until bound.
+            consentEvaluatorResult: consent.result,
             checkedInBy: actor.membershipId,
             maskRequired: decision.maskRequired,
           })

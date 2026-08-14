@@ -16,10 +16,13 @@ import type {
   IpuTenantPostureReader,
   IpuVisitorReader,
   IpuVisitorRelationship,
+  PatientPrivacyFlagReader,
   SeamContracts,
   SeamName,
 } from "@wardenx/types";
 import { and, eq, isNull, lte, ne, sql } from "drizzle-orm";
+import { getSeam } from "../../bootstrap/index";
+import type { VisitorConsentGate } from "./routes/service-drizzle";
 
 type RegisterSeam = <K extends SeamName>(name: K, impl: SeamContracts[K]) => void;
 
@@ -284,6 +287,27 @@ export function buildIpuSeams(db: DbClient): {
       },
     },
   };
+}
+
+// ── §4.4 cross-module seams M37 CONSUMES (not owned) ─────────────────────────────────────────────────
+
+/**
+ * GAP-061 — M5's §3.5 `PatientPrivacyFlagReader`, the sex-class + privacy-flag read the §2.2 shared-room
+ * occupancy gate consults before `assignBed`. Leaf-typed in @wardenx/types, so this resolves through the
+ * M1 registry with NO import edge into M5's code (ADR-0005 D1) — the M12 `getDoseSpotMdmValidator`
+ * precedent. The route service takes it as a lazy thunk so the seam is read after `wireModuleSeams()`.
+ */
+export function getIpuRoomingFactsReader(): PatientPrivacyFlagReader {
+  return getSeam("PatientPrivacyFlagReader");
+}
+
+/**
+ * GAP-062 — M39's `ConsentEvaluator`, narrowed to the one method §2.7's visitor gate calls. The seam is
+ * held OPAQUELY by the M1 registry (its rich interface lives in @wardenx/consent, which M37 does not
+ * import), so this narrows with a cast — to `evaluate`, a method the real evaluator actually implements.
+ */
+export function getIpuVisitorConsentGate(): VisitorConsentGate {
+  return getSeam("ConsentEvaluator") as VisitorConsentGate;
 }
 
 /** Register M37's eight §4.11 published seams over the Phase-0 deny-stubs (composition-root hook). */

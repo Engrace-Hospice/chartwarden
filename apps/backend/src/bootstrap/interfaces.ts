@@ -94,6 +94,7 @@ export type {
   PatientAddressReader,
   PatientCaregiverReader,
   PatientCoverageReader,
+  PatientPrivacyFlagReader,
   PatientReader,
   PortalDocumentReader,
   PortalTriageReader,

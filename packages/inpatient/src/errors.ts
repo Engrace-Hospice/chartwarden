@@ -101,6 +101,9 @@ export const M37_ERROR_STATUS = {
   VISITOR_RESTRICTION_FULL_BLOCK: 412,
   // §2.7 — a non-immediate-family visitor blocked by an active immediate_family_only restriction.
   VISITOR_IMMEDIATE_FAMILY_ONLY: 412,
+  // §2.7 (GAP-062) — a non-immediate-family visitor with no active M39 consent authorizing non-family
+  // access (or with the evaluator unreadable, which refuses the same way).
+  VISITOR_CONSENT_MISSING: 412,
   // §2.9 — an assign-equipment-to-patient action on equipment with an overdue biomed inspection.
   EQUIPMENT_INSPECTION_OVERDUE: 412,
 

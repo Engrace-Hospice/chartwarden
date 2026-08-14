@@ -7,8 +7,8 @@ import type {
   DischargeReader,
   ElectionPeriodReader,
   FaceToFaceReader,
-  LevelOfCareReader,
   LevelOfCarePeriodReader,
+  LevelOfCareReader,
 } from "./admission";
 import type { LatestAssessmentProvider, ScaleSeriesProvider } from "./assessment";
 import type {
@@ -90,6 +90,7 @@ import type {
   PatientCaregiverReader,
   PatientCoverageReader,
   PatientMutator,
+  PatientPrivacyFlagReader,
   PatientReader,
 } from "./patient";
 // @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
@@ -152,6 +153,7 @@ export type SeamName =
   | "PatientCoverageReader" // M5 — §3.4 coverage list; M23/M24 resolve which payer a claim bills
   | "PatientCaregiverReader" // M5 — TASK-015: is a user the patient's primary caregiver (M31 portal ABAC); deny-stub only
   | "PatientAddressReader" // M5 — TASK-015: patient residence state (M31 portal two-party-recording ABAC)
+  | "PatientPrivacyFlagReader" // M5 §3.5 — sex class + active privacy flags (M37 shared-room gate, GAP-061)
   | "ExternalGriefResourceReader" // M40 — TASK-015: bereaved-portal external resources list; deny-stub only (no M40 table yet)
   | "PatientMutator" // M5 — apply an M29-proposal/amendment field diff (§4.9; D12 strip)
   | "DocumentRenderer" // M22 — render a typed payload to a stored document (W2 handshake)
@@ -687,6 +689,7 @@ export interface SeamContracts {
   PatientCoverageReader: PatientCoverageReader;
   PatientCaregiverReader: PatientCaregiverReader;
   PatientAddressReader: PatientAddressReader;
+  PatientPrivacyFlagReader: PatientPrivacyFlagReader;
   ExternalGriefResourceReader: ExternalGriefResourceReader;
   PatientMutator: PatientMutator;
   DocumentRenderer: DocumentRenderer;
