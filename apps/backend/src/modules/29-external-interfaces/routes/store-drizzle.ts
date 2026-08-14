@@ -16,22 +16,31 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
   ConflictError,
+  DegradedError,
   type Hl7InboundProposalKind,
   NotFoundError,
   ValidationError,
 } from "@wardenx/types";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 
 import { canExternalFeedTransition, externalFeedCoApprovalSatisfied } from "../feed/lifecycle";
+import {
+  type UnmatchedLabQueueItem,
+  planUnmatchedBind,
+  planUnmatchedDiscard,
+} from "../inbound/unmatched-lab-review";
 import {
   ProposalAlreadyDecidedError,
   ProposalRejectRationaleRequiredError,
   type ProposalSnapshot,
   decideProposal,
 } from "../proposals/decision";
+import { throwReviewRefusal } from "./store";
 import type {
   CredentialSummary,
   FeedDetail,
+  M29BindPatientResolver,
+  UnmatchedReviewResult,
   FeedHealthAggregate,
   FeedHealthView,
   InboundMessageView,
@@ -75,9 +84,34 @@ export interface M29WriteOutboxPort {
 export interface DrizzleM29StoreDeps {
   /** The §4.10 outbox publisher — accept/reject decision events ride the deciding tx. */
   readonly outbox?: M29WriteOutboxPort;
+  /**
+   * GAP-044 — the M5 `PatientReader` seam the manual unmatched-lab bind resolves its target through.
+   * A THUNK is accepted so the composition root can pass `getPatientReader` before `wireModuleSeams()`
+   * has run. UNBOUND ⇒ the bind refuses with a 503; every other route is unaffected.
+   */
+  readonly patients?: M29BindPatientResolver | (() => M29BindPatientResolver);
 }
 
+/** The fail-closed stand-in when no M5 reader is bound — a bind cannot invent an agency (ARCH-011). */
+const UNBOUND_PATIENTS: M29BindPatientResolver = {
+  findById() {
+    return Promise.reject(
+      new DegradedError(
+        "M29_PATIENT_READER_UNBOUND",
+        "the M5 PatientReader seam is not bound — an unmatched lab cannot be bound to a patient without resolving that patient's agency (ARCH-011)",
+      ),
+    );
+  },
+};
+
 export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDeps = {}): M29Store {
+  const patients: M29BindPatientResolver =
+    typeof storeDeps.patients === "function"
+      ? {
+          findById: (input) =>
+            (storeDeps.patients as () => M29BindPatientResolver)().findById(input),
+        }
+      : (storeDeps.patients ?? UNBOUND_PATIENTS);
   const FEED = schema.externalFeed;
   const CRED = schema.externalFeedCredential;
   const HEALTH = schema.externalFeedHealth;
@@ -94,6 +128,46 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
     organizationId: orgId,
     userId: membershipId,
   });
+
+  /**
+   * Load one review-queue item (the link row + its persisted OBX values) WITHIN the caller's tx, so the
+   * pure decision is made against the same snapshot the claiming UPDATE then races on. A missing row is a
+   * 404, not a refusal — the reviewer asked about something that does not exist in this tenant.
+   */
+  async function loadQueueItem(
+    tx: Tx,
+    orgId: string,
+    observationId: string,
+  ): Promise<UnmatchedLabQueueItem> {
+    const [link] = await tx
+      .select()
+      .from(OBS_LINK)
+      .where(and(eq(OBS_LINK.organizationId, orgId), eq(OBS_LINK.observationId, observationId)))
+      .limit(1);
+    if (!link) throw new NotFoundError("lab_observation_inbound_link", observationId);
+    const values = await tx
+      .select()
+      .from(OBS_VALUE)
+      .where(and(eq(OBS_VALUE.organizationId, orgId), eq(OBS_VALUE.observationId, observationId)));
+    return {
+      linkId: link.id,
+      organizationId: link.organizationId,
+      observationId: link.observationId,
+      sourceMessageId: link.sourceMessageId,
+      matchMethod: link.matchMethod,
+      candidatePatientId: link.candidatePatientId,
+      resolvedAt: link.resolvedAt,
+      createdAt: link.createdAt,
+      values: values.map((v) => ({
+        obxSetId: v.obxSetId,
+        loincCode: v.loincCode,
+        loincDisplayText: v.loincDisplayText,
+        terminologyValidation: v.terminologyValidation,
+        abnormalFlag: v.abnormalFlag,
+        receivedAt: v.receivedAt,
+      })),
+    };
+  }
 
   const feedDetail = (row: typeof FEED.$inferSelect): FeedDetail => ({
     id: row.id,
@@ -799,27 +873,183 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
     },
     async listUnmatchedObservations(orgId, filter) {
       return withOrgContext(db, ctx(orgId), async (tx): Promise<Page<UnmatchedLabView>> => {
+        // `resolved_at IS NULL` IS the queue (GAP-044). The old predicate kept any link row whose
+        // `match_method` was `unmatched` OR that carried a candidate — with no notion of resolution, so a
+        // bound or discarded item would have surfaced forever. It never mattered, because ingest wrote no
+        // link row for an unmatched result at all and the queue was structurally empty.
         const rows = await tx
           .select()
           .from(OBS_LINK)
-          .where(eq(OBS_LINK.organizationId, orgId))
+          .where(
+            and(
+              eq(OBS_LINK.organizationId, orgId),
+              eq(OBS_LINK.matchMethod, "unmatched"),
+              isNull(OBS_LINK.resolvedAt),
+            ),
+          )
           .orderBy(desc(OBS_LINK.createdAt))
           .limit(filter.limit ?? 50);
+        if (rows.length === 0) return { items: [] };
+        // §5.2.4's detail panel needs the actual results — one batched read, never N+1.
+        const valueRows = await tx
+          .select()
+          .from(OBS_VALUE)
+          .where(
+            and(
+              eq(OBS_VALUE.organizationId, orgId),
+              inArray(
+                OBS_VALUE.observationId,
+                rows.map((r) => r.observationId),
+              ),
+            ),
+          );
+        const byObservation = new Map<string, typeof valueRows>();
+        for (const v of valueRows) {
+          const bucket = byObservation.get(v.observationId) ?? [];
+          bucket.push(v);
+          byObservation.set(v.observationId, bucket);
+        }
         return {
-          items: rows
-            .filter((r) => r.matchMethod === "unmatched" || r.candidatePatientId !== null)
-            .map((r) => ({
-              id: r.id,
-              observationId: r.observationId,
-              sourceMessageId: r.sourceMessageId,
-              obrPlacerOrderNumber: r.obrPlacerOrderNumber,
-              matchMethod: r.matchMethod,
-              candidatePatientId: r.candidatePatientId,
-              candidateMatchLevel: r.candidateMatchLevel,
-              createdAt: r.createdAt.toISOString(),
-            })),
+          items: rows.map((r) => ({
+            id: r.id,
+            observationId: r.observationId,
+            sourceMessageId: r.sourceMessageId,
+            obrPlacerOrderNumber: r.obrPlacerOrderNumber,
+            matchMethod: r.matchMethod,
+            candidatePatientId: r.candidatePatientId,
+            candidateMatchLevel: r.candidateMatchLevel,
+            createdAt: r.createdAt.toISOString(),
+            values: (byObservation.get(r.observationId) ?? [])
+              .sort((a, b) => a.obxSetId - b.obxSetId)
+              .map((v) => ({
+                obxSetId: v.obxSetId,
+                loincCode: v.loincCode,
+                loincDisplayText: v.loincDisplayText,
+                valueType: v.valueType,
+                numericValue: num(v.numericValue),
+                stringValue: v.stringValue,
+                units: v.units,
+                referenceRange: v.referenceRange,
+                abnormalFlag: v.abnormalFlag,
+              })),
+          })),
         };
       });
+    },
+
+    // ── §4.2 review-queue EXIT (GAP-044) ──────────────────────────────────────────────────────────────
+    // Both decisions are the PURE cores in `../inbound/unmatched-lab-review`; this layer only reads the
+    // queue item, resolves the patient through M5's seam, and writes what the core decided — inside ONE
+    // `withOrgContext` tx so the observation insert, the link patch and the §4.10 emit commit together.
+    //
+    // THE LINK ROW IS THE LOCK. Both writes claim it with `UPDATE … WHERE resolved_at IS NULL` and treat
+    // a zero-row result as "someone else got there first" — without that, two reviewers binding the same
+    // result concurrently would both pass the pure guard (each read an unresolved row) and the second
+    // insert would collide on the observation PK with an opaque constraint error instead of a 409.
+
+    async bindUnmatchedObservation(orgId, membershipId, observationId, args) {
+      const patient = await patients.findById({ organizationId: orgId, id: args.patientId });
+      if (patient === null) {
+        throwReviewRefusal({
+          kind: "refused",
+          reason: "patient_not_found",
+          message: `patient ${args.patientId} does not resolve in this tenant`,
+        });
+      }
+      return withOrgContext(
+        db,
+        ctx(orgId, membershipId),
+        async (tx): Promise<UnmatchedReviewResult> => {
+          const item = await loadQueueItem(tx, orgId, observationId);
+          const decidedAt = new Date();
+          const decision = planUnmatchedBind(item, {
+            patient: { patientId: patient.id, providerEntityId: patient.providerEntityId ?? null },
+            decidedByMembershipId: membershipId,
+            ...(args.note === undefined ? {} : { note: args.note }),
+            now: decidedAt,
+          });
+          if (decision.kind === "refused") throwReviewRefusal(decision);
+
+          const claimed = await tx
+            .update(OBS_LINK)
+            .set(decision.linkPatch)
+            .where(
+              and(
+                eq(OBS_LINK.organizationId, orgId),
+                eq(OBS_LINK.observationId, observationId),
+                isNull(OBS_LINK.resolvedAt),
+              ),
+            )
+            .returning({ id: OBS_LINK.id });
+          if (claimed.length === 0) {
+            throw new ConflictError(
+              "this unmatched lab result has already been bound or discarded — reload the queue",
+            );
+          }
+          await tx.insert(OBS).values(decision.observation);
+          await storeDeps.outbox?.publish(tx as unknown as DbClient, {
+            eventName: decision.event.name,
+            payload: { ...decision.event.payload },
+            organizationId: orgId,
+            aggregateKind: "lab_observation",
+            aggregateId: observationId,
+          });
+          return {
+            observationId,
+            resolution: "manually_matched",
+            resolvedAt: decidedAt.toISOString(),
+            resolvedByMembershipId: membershipId,
+            patientId: decision.linkPatch.candidatePatientId,
+          };
+        },
+      );
+    },
+
+    async discardUnmatchedObservation(orgId, membershipId, observationId, args) {
+      return withOrgContext(
+        db,
+        ctx(orgId, membershipId),
+        async (tx): Promise<UnmatchedReviewResult> => {
+          const item = await loadQueueItem(tx, orgId, observationId);
+          const decidedAt = new Date();
+          const decision = planUnmatchedDiscard(item, {
+            reason: args.reason,
+            decidedByMembershipId: membershipId,
+            now: decidedAt,
+          });
+          if (decision.kind === "refused") throwReviewRefusal(decision);
+
+          const claimed = await tx
+            .update(OBS_LINK)
+            .set(decision.linkPatch)
+            .where(
+              and(
+                eq(OBS_LINK.organizationId, orgId),
+                eq(OBS_LINK.observationId, observationId),
+                isNull(OBS_LINK.resolvedAt),
+              ),
+            )
+            .returning({ id: OBS_LINK.id });
+          if (claimed.length === 0) {
+            throw new ConflictError(
+              "this unmatched lab result has already been bound or discarded — reload the queue",
+            );
+          }
+          await storeDeps.outbox?.publish(tx as unknown as DbClient, {
+            eventName: decision.event.name,
+            payload: { ...decision.event.payload },
+            organizationId: orgId,
+            aggregateKind: "lab_observation",
+            aggregateId: observationId,
+          });
+          return {
+            observationId,
+            resolution: "discarded",
+            resolvedAt: decidedAt.toISOString(),
+            resolvedByMembershipId: membershipId,
+          };
+        },
+      );
     },
   };
 }

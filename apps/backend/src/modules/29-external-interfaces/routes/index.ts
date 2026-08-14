@@ -12,6 +12,7 @@ export {
   type LabRouteDeps,
   type MessageRouteDeps,
   type NppesRouteDeps,
+  type NppesSyncTriggerPort,
   type OpsRouteDeps,
   type ProposalRouteDeps,
 } from "./mount";

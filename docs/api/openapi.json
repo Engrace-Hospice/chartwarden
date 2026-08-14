@@ -9296,7 +9296,7 @@
                 ],
                 "properties": {
                   "reason": {
-                    "minLength": 1,
+                    "minLength": 10,
                     "maxLength": 500,
                     "type": "string"
                   }

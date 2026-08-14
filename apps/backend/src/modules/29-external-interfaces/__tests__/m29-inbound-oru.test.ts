@@ -613,7 +613,7 @@ describe("planLabAttach", () => {
     });
   });
 
-  it("W-XI-06 — an unmatched resolution produces NO observation row, only the unmatched event", () => {
+  it("W-XI-06 — an unmatched resolution produces NO observation PARENT, but does enter the review queue", () => {
     const plan = planLabAttach(
       baseAttachInput({
         resolution: {
@@ -635,6 +635,25 @@ describe("planLabAttach", () => {
       candidatePatientId: "pt_jane",
       candidateMatchLevel: "L4_DEMOGRAPHIC_BRIDGE_CANDIDATE",
     });
+    // GAP-044 — the parent is DEFERRED (patient_id / provider_entity_id are NOT NULL and neither is
+    // known), but the OBX rows and the link row ARE written, under a RESERVED observation id. Before
+    // this, the branch returned the event and nothing else, so the §4.2 queue — which reads exactly
+    // `lab_observation_inbound_link` — was permanently empty and the result values a reviewer needs to
+    // identify the patient were thrown away at the wire boundary.
+    expect(plan.event.payload.observationId).toBe("obs_1");
+    expect(plan.link).toMatchObject({
+      id: "link_1",
+      observationId: "obs_1",
+      matchMethod: "unmatched",
+      candidatePatientId: "pt_jane",
+      candidateMatchLevel: "L4_DEMOGRAPHIC_BRIDGE_CANDIDATE",
+      matchConfidence: "0.920",
+    });
+    // The link row enters the queue UNRESOLVED — `resolved_at IS NULL` is what the §4.2 read selects on.
+    expect(plan.link.resolvedAt).toBeUndefined();
+    expect(plan.link.resolution).toBeUndefined();
+    expect(plan.values.length).toBeGreaterThan(0);
+    for (const v of plan.values) expect(v.observationId).toBe("obs_1");
   });
 
   it("multi-OBX panel → one observation + N value rows; ED OBX excluded and emitted as a PDF handshake", () => {

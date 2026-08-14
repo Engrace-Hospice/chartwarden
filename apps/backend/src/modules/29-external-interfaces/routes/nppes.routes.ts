@@ -2,8 +2,17 @@
 //
 // The NPPES cache is platform-shared public-directory data (no PHI). A tenant may READ a cached provider or
 // the sync-run history; the manual sync TRIGGER is platform-only (`nppes_platform_job_caller`, W-XI-12) — a
-// tenant-scoped session carries no platform-operator fact, so the predicate denies with a 403. Even the
-// platform path fails closed here (the real sync runs under the platform scheduler, T07) with a typed 501.
+// tenant-scoped session carries no platform-operator fact, so the predicate denies with a 403.
+//
+// GAP-045 — the trigger is now REAL. It enqueues onto the same `nppes-sync-platform` queue the D11 nightly
+// repeatable fires, so the manual and cron paths run one engine (nppes/cron-workers.ts). The route never
+// runs the sync inline: an NPPES walk is thousands of rate-limited CMS requests and would hold the HTTP
+// connection open for the whole run. It answers 202 with the `syncRunId` the worker will open the
+// `nppes_sync_run` row under, which is what `GET /nppes/sync-runs` then surfaces.
+//
+// UNBOUND (no queue connection — a db-only or REDIS-less boot) still fails closed, but as a 503
+// `NPPES_SYNC_QUEUE_UNBOUND` rather than the old blanket 501: "this deployment has no worker" is an
+// operational fact an operator can fix, where 501 said "this feature does not exist".
 import type { FastifyInstance } from "fastify";
 
 import { actorOf, writeActorOf } from "./actor";
@@ -11,8 +20,19 @@ import { ABAC_IN_ORG, ABAC_NPPES_PLATFORM, P, STEP_UP } from "./guards";
 import { NppesSyncRunListQuery, NppesSyncTriggerBody, parse, parseQuery } from "./m29-typebox";
 import { type M29Store, M29StoreError } from "./store";
 
+/** The §4.1.4 manual-trigger port (nppes/cron-workers.ts `NppesManualSyncTrigger`), restated locally so
+ *  the route layer takes no import edge on bullmq. */
+export interface NppesSyncTriggerPort {
+  enqueue(input: {
+    readonly kind: "daily_incremental" | "weekly_dissemination" | "monthly_deactivation" | "manual";
+    readonly triggeredByMembershipId: string;
+  }): Promise<{ readonly syncRunId: string; readonly jobId: string }>;
+}
+
 export interface NppesRouteDeps {
   readonly store: M29Store;
+  /** Absent when the deployment has no queue connection — the trigger then 503s (see the header note). */
+  readonly syncTrigger?: NppesSyncTriggerPort;
 }
 
 export function registerNppesRoutes(app: FastifyInstance, deps: NppesRouteDeps): void {
@@ -62,12 +82,27 @@ export function registerNppesRoutes(app: FastifyInstance, deps: NppesRouteDeps):
         ABAC_NPPES_PLATFORM("external_interfaces.nppes.sync_trigger"),
       ],
     },
-    async (request) => {
-      writeActorOf(request);
-      parse(NppesSyncTriggerBody, request.body);
-      throw new M29StoreError(
-        "the NPPES sync job runs under the platform scheduler (withPlatformContext); no tenant-triggered path in Phase 1 (W-XI-12)",
-      );
+    async (request, reply) => {
+      const actor = writeActorOf(request);
+      const body = parse(NppesSyncTriggerBody, request.body);
+      if (!deps.syncTrigger) {
+        // 503, not 501: the capability exists and is wired — THIS process has no queue connection.
+        throw new M29StoreError(
+          "the NPPES sync worker is not available on this deployment (no queue connection) — the nightly D11 run and the manual trigger both need REDIS_URL",
+          503,
+        );
+      }
+      const queued = await deps.syncTrigger.enqueue({
+        // A manual run is `manual` unless the operator explicitly asks for one of the scheduled kinds
+        // (a forced re-run of the weekly dissemination or the monthly deactivation pass).
+        kind: body.kind ?? "manual",
+        triggeredByMembershipId: actor.membershipId,
+      });
+      return reply.code(202).send({
+        syncRunId: queued.syncRunId,
+        jobId: queued.jobId,
+        status: "queued",
+      });
     },
   );
 }

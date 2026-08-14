@@ -113,6 +113,11 @@ export const labMatchMethod = pgEnum("lab_match_method", [
   "manual",
   "unmatched",
 ]);
+/** How an unmatched lab left the §4.2 review queue (GAP-044, migration 0200). */
+export const labUnmatchedResolution = pgEnum("lab_unmatched_resolution", [
+  "manually_matched",
+  "discarded",
+]);
 
 // ── NPPES directory sync (platform-shared) ──────────────────────────────────────────────────────────────
 export const nppesEnumerationType = pgEnum("nppes_enumeration_type", ["NPI-1", "NPI-2"]);

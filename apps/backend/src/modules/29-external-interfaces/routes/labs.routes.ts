@@ -2,10 +2,14 @@
 //
 // The deliberately narrow clinician read surface: caseload-scoped `lab_observation` reads (the
 // `lab_observation_patient_caseload_or_scope` predicate is the gatekeeper on the single-observation read +
-// the abnormal-flag acknowledgment) and the unmatched-lab review queue (the review-unmatched role). Manual
-// bind / discard of an UNMATCHED result materializes a `lab_observation` from a stored wire message and lands
-// in T-29.13, so those two routes fail closed here with a typed 501 (honest "not yet"); the routes still walk
-// the full guard + step-up + actor chain.
+// the abnormal-flag acknowledgment) and the unmatched-lab review queue (the review-unmatched role).
+//
+// GAP-044 — the queue now has an EXIT. `attach-patient` and `discard` were permanent 501s deferring to
+// T-29.13, which is the FRONTEND task; no backend task ever owned them, and the queue they were the exit
+// from was itself empty (ingest wrote no link row for an unmatched result). Both are real writes now:
+// the bind materializes the `lab_observation` parent that ingest deferred, under the observation id the
+// link row reserved; the discard soft-tombstones the link with a ≥10-char reason (§5.2.4). The guard +
+// step-up + actor chain each already walked is unchanged.
 import type { FastifyInstance } from "fastify";
 
 import { actorOf, writeActorOf } from "./actor";
@@ -17,7 +21,7 @@ import {
   parse,
   parseQuery,
 } from "./m29-typebox";
-import { type M29Store, M29StoreError } from "./store";
+import type { M29Store } from "./store";
 
 export interface LabRouteDeps {
   readonly store: M29Store;
@@ -95,11 +99,13 @@ export function registerLabRoutes(app: FastifyInstance, deps: LabRouteDeps): voi
       ],
     },
     async (request) => {
-      writeActorOf(request);
-      parse(AttachPatientBody, request.body);
-      throw new M29StoreError(
-        "manual bind of an unmatched lab result materializes a lab_observation from the stored wire message — T-29.13",
-      );
+      const actor = writeActorOf(request);
+      const { observationId } = request.params as { observationId: string };
+      const body = parse(AttachPatientBody, request.body);
+      return store.bindUnmatchedObservation(actor.organizationId, actor.membershipId, observationId, {
+        patientId: body.patientId,
+        ...(body.note === undefined ? {} : { note: body.note }),
+      });
     },
   );
 
@@ -114,10 +120,14 @@ export function registerLabRoutes(app: FastifyInstance, deps: LabRouteDeps): voi
       ],
     },
     async (request) => {
-      writeActorOf(request);
-      parse(DiscardObservationBody, request.body);
-      throw new M29StoreError(
-        "discard of an unmatched lab result lands with the manual bind — T-29.13",
+      const actor = writeActorOf(request);
+      const { observationId } = request.params as { observationId: string };
+      const body = parse(DiscardObservationBody, request.body);
+      return store.discardUnmatchedObservation(
+        actor.organizationId,
+        actor.membershipId,
+        observationId,
+        { reason: body.reason },
       );
     },
   );

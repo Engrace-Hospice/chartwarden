@@ -164,6 +164,8 @@ jobs:
           - { name: "M22 Documents", scripts: "test:m22:read:live test:m22:write:live" }
           - { name: "M23 remittance feedback", scripts: "test:m23:remittance-feedback:live" }
           - { name: "M24 NF facility snapshot", scripts: "test:m24:nf-facility-snapshot:live" }
+          - { name: "M29 NPPES platform sync", scripts: "test:m29:nppes-sync:live" }
+          - { name: "M29 unmatched-lab review", scripts: "test:m29:unmatched-lab-review:live" }
           - { name: "M37 IPU", scripts: "test:m37:write:live" }
           - { name: "M37 privacy gates", scripts: "test:m37:privacy-gates:live" }
           # GAP-079: M4's §2.5 read-audit EMISSION over the M26 Cap + M39 Consent read surfaces —

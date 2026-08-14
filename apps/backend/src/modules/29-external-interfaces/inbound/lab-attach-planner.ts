@@ -9,11 +9,15 @@ import type {
 //   • `attach`    — the `lab_observation` insert row + N `lab_observation_value` rows + the
 //                   `lab_observation_inbound_link` row + the outbox descriptors (received / attached /
 //                   abnormal-critical) + the M22 PDF handshake descriptors, or
-//   • `unmatched` — NO observation row (`lab_observation.patient_id` is NOT NULL per the T02 schema, so an
-//                   unmatched lab is NOT materialized as an observation — architecture wins over the spec's
-//                   nullable-patient sketch), just the `m29.lab_observation.unmatched` descriptor keyed on
-//                   the source message; the message row carries the match columns and feeds the T08
-//                   unmatched-lab queue.
+//   • `unmatched` — no `lab_observation` PARENT (its `patient_id` and, via ARCH-011, its
+//                   `provider_entity_id` are both NOT NULL, and an unmatched result has neither), but the
+//                   observation id is RESERVED and its `lab_observation_value` rows + one
+//                   `lab_observation_inbound_link` row ARE written, plus the
+//                   `m29.lab_observation.unmatched` descriptor. GAP-044: before that, the unmatched branch
+//                   returned the event and nothing else — no link row — so the §4.2 review queue, which
+//                   reads exactly that table, was permanently EMPTY and the result values a reviewer needs
+//                   to identify the patient (§5.2.4's detail panel) were discarded at the wire boundary.
+//                   The manual bind materializes the parent under the reserved id.
 //
 // Determinism (mirrors `planProposal`, T04): the caller supplies `observationId` / `linkId` / `receivedAt`
 // so the result is a pure function of its inputs — the T08 worker mints the ids + clock and does the atomic
@@ -68,7 +72,9 @@ export interface LabAbnormalFlagPayload {
 }
 
 export interface LabUnmatchedPayload {
-  /** No `observationId` — an unmatched lab has no `lab_observation` row (patient_id NOT NULL). */
+  /** The RESERVED observation id — the queue item's identity and, after a bind, the materialized
+   *  `lab_observation.id`. The parent row does not exist yet (patient_id / provider_entity_id NOT NULL). */
+  readonly observationId: string;
   readonly sourceMessageId: string;
   readonly organizationId: string;
   readonly loincCode: string;
@@ -110,7 +116,13 @@ export type LabAttachPlan =
       readonly events: readonly LabOutboxEvent[];
     }
   | {
+      /**
+       * The §4.2 review-queue ENTRY: the OBX value rows under the reserved observation id + the link row
+       * that IS the queue item. No `observation` — the parent materializes at manual bind (GAP-044).
+       */
       readonly kind: "unmatched";
+      readonly values: readonly NewLabObservationValueRow[];
+      readonly link: NewLabObservationInboundLinkRow;
       readonly event: {
         readonly name: "m29.lab_observation.unmatched";
         readonly payload: LabUnmatchedPayload;
@@ -216,13 +228,35 @@ export function planLabAttach(input: LabAttachInput): LabAttachPlan {
     ? new Date(input.obr.observationDate)
     : input.receivedAt;
 
-  // ─── Unmatched: no observation row (patient_id NOT NULL) — route to the review queue ──
+  // ─── Unmatched: the parent observation is DEFERRED, the queue entry is not (GAP-044) ──
+  // The values land under the reserved id so the reviewer can read the actual results (§5.2.4), and the
+  // link row is the queue item the §4.2 routes act on. `lab_observation_value` carries its own
+  // organization_id, RLS policy and audit trigger and references its parent logically (no FK across the
+  // partition edge), so writing children ahead of a parent that may never exist is legal by construction.
   if (input.resolution.kind === "unmatched") {
     return {
       kind: "unmatched",
+      values: buildValueRows(input),
+      link: {
+        id: input.linkId,
+        organizationId: input.organizationId,
+        observationId: input.observationId,
+        sourceMessageId: input.sourceMessageId,
+        sourceOrderId: null,
+        obrPlacerOrderNumber: input.obr.placerOrderNumber || null,
+        matchMethod: "unmatched",
+        matchConfidence:
+          input.resolution.matchConfidence === null
+            ? null
+            : input.resolution.matchConfidence.toFixed(3),
+        candidatePatientId: input.resolution.candidatePatientId,
+        candidateMatchLevel: input.resolution
+          .candidateMatchLevel as NewLabObservationInboundLinkRow["candidateMatchLevel"],
+      },
       event: {
         name: "m29.lab_observation.unmatched",
         payload: {
+          observationId: input.observationId,
           sourceMessageId: input.sourceMessageId,
           organizationId: input.organizationId,
           loincCode: loinc.code,

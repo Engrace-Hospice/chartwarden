@@ -231,6 +231,8 @@ export const AttachPatientBody = Type.Object({
 export type AttachPatientInput = Static<typeof AttachPatientBody>;
 
 export const DiscardObservationBody = Type.Object({
-  reason: Type.String({ minLength: 1, maxLength: 500 }),
+  // §5.2.4 — "requires a reason ≥10 chars". Was minLength 1, which let "x" through; the pure review core
+  // and migration 0200's CHECK enforce the same floor, so the boundary now agrees with both (GAP-044).
+  reason: Type.String({ minLength: 10, maxLength: 500 }),
 });
 export type DiscardObservationInput = Static<typeof DiscardObservationBody>;
