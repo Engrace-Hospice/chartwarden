@@ -61,11 +61,12 @@ describe("evaluateJ2051Trigger — server-authoritative per-symptom severity (D4
   });
 });
 
-describe("planSfvCreation — D3 2-calendar-day due window off signed_at", () => {
-  it("due_at is end of (signed local date + 2 calendar days)", () => {
+describe("planSfvCreation — ADR-0018 D1 2-calendar-day window off the ASSESSMENT date", () => {
+  it("due_at is end of (assessment local date + 2 calendar days)", () => {
     expect(SFV_DUE_CALENDAR_DAYS).toBe(2);
     const sfv = planSfvCreation({
       triggeringAssessmentId: "a-1",
+      assessmentDate: "2026-06-10T15:00:00.000Z",
       signedAt: "2026-06-10T15:00:00.000Z",
       timeZone: UTC,
     });
@@ -73,10 +74,23 @@ describe("planSfvCreation — D3 2-calendar-day due window off signed_at", () =>
     expect(sfv.triggeredAt).toBe("2026-06-10T15:00:00.000Z");
   });
 
-  it("anchors on the org-local day (a late-evening LA sign stays on its local date)", () => {
+  it("a LATE signature does not move the deadline (the ADR-0018 D1 point)", () => {
+    // Assessment done Jun 10; signed Jun 13. Due stays end-of Jun 12 — already overdue at signing.
+    const sfv = planSfvCreation({
+      triggeringAssessmentId: "a-3",
+      assessmentDate: "2026-06-10T15:00:00.000Z",
+      signedAt: "2026-06-13T09:00:00.000Z",
+      timeZone: UTC,
+    });
+    expect(sfv.dueAt).toBe("2026-06-12T23:59:59.999Z");
+    expect(sfv.triggeredAt).toBe("2026-06-13T09:00:00.000Z");
+  });
+
+  it("anchors on the org-local day (a late-evening LA assessment stays on its local date)", () => {
     // 2026-06-10T05:00Z == 2026-06-09 22:00 LA → local date Jun 9 → due Jun 11
     const sfv = planSfvCreation({
       triggeringAssessmentId: "a-2",
+      assessmentDate: "2026-06-10T05:00:00.000Z",
       signedAt: "2026-06-10T05:00:00.000Z",
       timeZone: "America/Los_Angeles",
     });

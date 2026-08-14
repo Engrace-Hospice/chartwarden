@@ -293,7 +293,7 @@ export interface HippsSegmentSnapshot {
   readonly dateTo: IsoDate;
   readonly ratePerDiemCents: Cents;
   /** RHC payment-period bucket (first 7 days vs days 8+); `'n/a'` for non-RHC segments. */
-  readonly rhcDayBucket: "days_1_7" | "days_8_plus" | "n/a";
+  readonly rhcDayBucket: "days_1_60" | "days_61_plus" | "n/a";
 }
 
 export interface HippsSnapshot {

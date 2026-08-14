@@ -20,8 +20,8 @@ import { describe, expect, it } from "vitest";
 
 // TODO(CMS-fixture): replace these representative per-diems with the published FY hospice rate file.
 const RATE_TABLE: HippsRateTable = {
-  rhcDays1to7PerDiemCents: 20_000,
-  rhcDays8PlusPerDiemCents: 16_000,
+  rhcDays1to60PerDiemCents: 20_000,
+  rhcDays61PlusPerDiemCents: 16_000,
   chcPerDiemCents: 160_000,
   ircPerDiemCents: 50_000,
   gipPerDiemCents: 100_000,
@@ -56,62 +56,62 @@ describe("levelOfCareToCode — full-name → 3-letter code mapping", () => {
     expect(levelOfCareToCode("general_inpatient_care")).toBe("GIP"));
 });
 
-describe("calculateHipps — RHC days 1-7 vs 8+ boundary (day-of-stay from admission)", () => {
-  it("a 7-day claim starting on the admission date is entirely days_1_7", () => {
+describe("calculateHipps — ADR-0001 RHC day-60 tier boundary (day-of-stay from admission)", () => {
+  // ADMISSION = 2026-01-01 ⇒ day 60 = 2026-03-01, day 61 = 2026-03-02.
+  it("a 7-day claim starting on the admission date is entirely RHC-High (days_1_60)", () => {
     const r = calculateHipps(
       input({ claimServiceFrom: "2026-01-01", claimServiceTo: "2026-01-07" }),
     );
-    expect(r.rhcDays1to7).toBe(7);
-    expect(r.rhcDays8Plus).toBe(0);
+    expect(r.rhcDays1to60).toBe(7);
+    expect(r.rhcDays61Plus).toBe(0);
     expect(r.segments).toHaveLength(1);
     expect(r.segments[0]!.days).toBe(7);
-    expect(r.segments[0]!.rhcDayBucket).toBe("days_1_7");
+    expect(r.segments[0]!.rhcDayBucket).toBe("days_1_60");
     expect(r.segments[0]!.ratePerDiemCents).toBe(20_000);
     expect(r.totalCents).toBe(140_000);
     expect(r.perDiemRateCents).toBe(20_000);
   });
 
-  it("an 8-day claim from admission splits day 7 (days_1_7) from day 8 (days_8_plus)", () => {
+  it("day 8 is STILL RHC-High — the old day-7 boundary was the ADR-0001 defect", () => {
     const r = calculateHipps(
       input({ claimServiceFrom: "2026-01-01", claimServiceTo: "2026-01-08" }),
     );
-    expect(r.rhcDays1to7).toBe(7);
-    expect(r.rhcDays8Plus).toBe(1);
-    expect(r.segments).toHaveLength(2);
-    expect(r.segments[0]!.rhcDayBucket).toBe("days_1_7");
-    expect(r.segments[0]!.days).toBe(7);
-    expect(r.segments[1]!.rhcDayBucket).toBe("days_8_plus");
-    expect(r.segments[1]!.days).toBe(1);
-    expect(r.segments[1]!.ratePerDiemCents).toBe(16_000);
-    expect(r.totalCents).toBe(140_000 + 16_000);
+    expect(r.rhcDays1to60).toBe(8);
+    expect(r.rhcDays61Plus).toBe(0);
+    expect(r.segments).toHaveLength(1);
+    expect(r.totalCents).toBe(8 * 20_000);
   });
 
-  it("the exact day-7 / day-8 boundary: a 2-day claim spanning stay-day 7→8 splits into two buckets", () => {
+  it("the exact day-60 / day-61 boundary: a 2-day claim spanning stay-day 60→61 splits into two tiers", () => {
     const r = calculateHipps(
-      input({ claimServiceFrom: "2026-01-07", claimServiceTo: "2026-01-08" }),
+      input({ claimServiceFrom: "2026-03-01", claimServiceTo: "2026-03-02" }),
     );
     expect(r.segments).toHaveLength(2);
-    expect(r.rhcDays1to7).toBe(1);
-    expect(r.rhcDays8Plus).toBe(1);
+    expect(r.rhcDays1to60).toBe(1);
+    expect(r.rhcDays61Plus).toBe(1);
+    expect(r.segments[0]!.rhcDayBucket).toBe("days_1_60");
+    expect(r.segments[1]!.rhcDayBucket).toBe("days_61_plus");
+    expect(r.segments[1]!.ratePerDiemCents).toBe(16_000);
     expect(r.totalCents).toBe(20_000 + 16_000);
   });
 
-  it("a mid-stay interim claim (all days past day 8) bills entirely at the days_8_plus rate", () => {
+  it("a mid-stay interim claim past day 60 bills entirely at the RHC-Low (days_61_plus) rate", () => {
+    // 2026-04-01 is stay-day 91.
     const r = calculateHipps(
-      input({ claimServiceFrom: "2026-02-01", claimServiceTo: "2026-02-05" }),
+      input({ claimServiceFrom: "2026-04-01", claimServiceTo: "2026-04-05" }),
     );
-    expect(r.rhcDays1to7).toBe(0);
-    expect(r.rhcDays8Plus).toBe(5);
+    expect(r.rhcDays1to60).toBe(0);
+    expect(r.rhcDays61Plus).toBe(5);
     expect(r.segments).toHaveLength(1);
-    expect(r.segments[0]!.rhcDayBucket).toBe("days_8_plus");
+    expect(r.segments[0]!.rhcDayBucket).toBe("days_61_plus");
     expect(r.totalCents).toBe(5 * 16_000);
   });
 
-  it("a single-day claim on the admission date is one days_1_7 day", () => {
+  it("a single-day claim on the admission date is one days_1_60 day", () => {
     const r = calculateHipps(
       input({ claimServiceFrom: "2026-01-01", claimServiceTo: "2026-01-01" }),
     );
-    expect(r.rhcDays1to7).toBe(1);
+    expect(r.rhcDays1to60).toBe(1);
     expect(r.segments).toHaveLength(1);
     expect(r.totalCents).toBe(20_000);
   });
@@ -132,8 +132,8 @@ describe("calculateHipps — non-RHC levels of care (CHC / IRC / GIP)", () => {
     expect(r.segments[0]!.levelOfCareCode).toBe("CHC");
     expect(r.segments[0]!.rhcDayBucket).toBe("n/a");
     expect(r.totalCents).toBe(3 * 160_000);
-    expect(r.rhcDays1to7).toBe(0);
-    expect(r.rhcDays8Plus).toBe(0);
+    expect(r.rhcDays1to60).toBe(0);
+    expect(r.rhcDays61Plus).toBe(0);
   });
 
   it("prices an IRC-only claim at the IRC per-diem", () => {
@@ -170,7 +170,7 @@ describe("calculateHipps — LOC-period mid-claim transitions + segment coalesci
     const r = calculateHipps(
       input({ claimServiceFrom: "2026-02-01", claimServiceTo: "2026-02-04" }),
     );
-    // All four days are RHC days_8_plus ⇒ one coalesced 4-day segment.
+    // All four days are RHC days_61_plus ⇒ one coalesced 4-day segment.
     expect(r.segments).toHaveLength(1);
     expect(r.segments[0]!.days).toBe(4);
   });
@@ -190,19 +190,19 @@ describe("calculateHipps — LOC-period mid-claim transitions + segment coalesci
     expect(r.segments).toHaveLength(3);
     expect(r.segments.map((s) => s.levelOfCareCode)).toEqual(["RHC", "GIP", "RHC"]);
     expect(r.segments.map((s) => s.days)).toEqual([2, 2, 1]);
-    // RHC days are all past day 8 ⇒ days_8_plus.
-    expect(r.totalCents).toBe(2 * 16_000 + 2 * 100_000 + 1 * 16_000);
+    // RHC days 41-45 of the stay ⇒ all within the day-60 RHC-High tier.
+    expect(r.totalCents).toBe(2 * 20_000 + 2 * 100_000 + 1 * 20_000);
   });
 
   it("breaks a segment at the RHC bucket boundary even though the LOC is unchanged", () => {
-    // 2026-01-05..2026-01-09 is RHC throughout: days 5,6,7 are days_1_7; days 8,9 are days_8_plus.
+    // 2026-02-27..2026-03-03 is RHC throughout: stay-days 58,59,60 are days_1_60; 61,62 are days_61_plus.
     const r = calculateHipps(
-      input({ claimServiceFrom: "2026-01-05", claimServiceTo: "2026-01-09" }),
+      input({ claimServiceFrom: "2026-02-27", claimServiceTo: "2026-03-03" }),
     );
     expect(r.segments).toHaveLength(2);
-    expect(r.segments[0]!.rhcDayBucket).toBe("days_1_7");
+    expect(r.segments[0]!.rhcDayBucket).toBe("days_1_60");
     expect(r.segments[0]!.days).toBe(3);
-    expect(r.segments[1]!.rhcDayBucket).toBe("days_8_plus");
+    expect(r.segments[1]!.rhcDayBucket).toBe("days_61_plus");
     expect(r.segments[1]!.days).toBe(2);
   });
 
@@ -243,15 +243,15 @@ describe("calculateHipps — gap days (uncovered by any LOC period)", () => {
         ],
       }),
     );
-    // 2026-02-03 is a gap day ⇒ it is NOT billed: only 4 days carry a per-diem, all RHC days_8_plus.
-    expect(r.rhcDays8Plus).toBe(4);
-    expect(r.totalCents).toBe(4 * 16_000);
+    // 2026-02-03 is a gap day ⇒ it is NOT billed: only 4 days carry a per-diem, all RHC-High (days 32-36).
+    expect(r.rhcDays1to60).toBe(4);
+    expect(r.totalCents).toBe(4 * 20_000);
     // The coalescer merges by (LOC, bucket) on consecutively-RESOLVED days, not strict calendar adjacency,
     // so the two covered runs collapse into ONE 4-day segment. The gap day carries no per-diem, so the
     // CHARGE stays correct (rate × 4) even though the segment's date span brackets the skipped day.
     expect(r.segments).toHaveLength(1);
     expect(r.segments[0]!.days).toBe(4);
-    expect(r.segments[0]!.segmentTotalCents).toBe(4 * 16_000);
+    expect(r.segments[0]!.segmentTotalCents).toBe(4 * 20_000);
   });
 
   it("a claim with no covering LOC period at all yields no segments and zero totals", () => {
@@ -335,7 +335,7 @@ describe("deriveHippsCode — placeholder encoding (TODO(CMS-fixture))", () => {
       days: 1,
       baseRatePerDiemCents: 20_000,
       ratePerDiemCents: 20_000,
-      rhcDayBucket: "days_1_7",
+      rhcDayBucket: "days_1_60",
       hippsCharPosition: 1,
       segmentTotalCents: 20_000,
       ...over,
@@ -346,12 +346,12 @@ describe("deriveHippsCode — placeholder encoding (TODO(CMS-fixture))", () => {
     expect(deriveHippsCode([])).toBe("00000");
   });
 
-  it("encodes RHC days_1_7 as R1000", () => {
-    expect(deriveHippsCode([seg({ rhcDayBucket: "days_1_7" })])).toBe("R1000");
+  it("encodes RHC days_1_60 as R1000", () => {
+    expect(deriveHippsCode([seg({ rhcDayBucket: "days_1_60" })])).toBe("R1000");
   });
 
-  it("encodes RHC days_8_plus as R8000", () => {
-    expect(deriveHippsCode([seg({ rhcDayBucket: "days_8_plus" })])).toBe("R8000");
+  it("encodes RHC days_61_plus as R6000", () => {
+    expect(deriveHippsCode([seg({ rhcDayBucket: "days_61_plus" })])).toBe("R6000");
   });
 
   it("encodes a CHC first segment as C0000 (bucket n/a → 0)", () => {
@@ -381,7 +381,7 @@ describe("deriveHippsCode — placeholder encoding (TODO(CMS-fixture))", () => {
   it("derives the code from the FIRST segment only", () => {
     const code = deriveHippsCode([
       seg({ levelOfCare: "general_inpatient_care", levelOfCareCode: "GIP", rhcDayBucket: "n/a" }),
-      seg({ rhcDayBucket: "days_1_7" }),
+      seg({ rhcDayBucket: "days_1_60" }),
     ]);
     expect(code).toBe("G0000");
   });

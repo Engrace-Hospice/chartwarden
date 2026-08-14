@@ -1,11 +1,21 @@
-// @wardenx/billing — M23 HIPPS calculator (D7, spec §1.1 / §3.3 `hipps_calculation`). A PURE function
-// that maps M6's `LevelOfCarePeriod` segments within a claim's from-through range to the CMS hospice
-// payment-period model: each day of the claim is assigned a level of care (RHC / CHC / IRC / GIP) and,
-// for RHC, the days-1-7-vs-days-8+ payment bucket measured from the patient's hospice ADMISSION date
-// (the day-of-stay anchor — NOT the claim's from date, so a mid-stay interim claim correctly bills every
-// day at the days-8+ rate). Each resolved per-diem is the wage-index-ADJUSTED CMS base rate; the wage
-// index factor is PASSED IN and SNAPSHOTTED into the result (the Phase-3 service persists it onto the
-// `hipps_calculation` row so a later wage-index file reload cannot retroactively change historic math).
+// @wardenx/billing — M23 per-diem rate calculator (D7, spec §3.3 `hipps_calculation` row). A PURE
+// function that maps M6's `LevelOfCarePeriod` segments within a claim's from-through range to the CMS
+// hospice per-diem model: each day of the claim is assigned a level of care (RHC / CHC / IRC / GIP)
+// and, for RHC, the **ADR-0001 day-60 two-tier bucket** — RHC-High for election days 1–60, RHC-Low for
+// day 61+ (80 FR 47142; the earlier "days 1–7 vs 8+" encoding conflated RHC tiering with the unrelated
+// SIA last-7-days window and was struck by ADR-0001). Days are measured from `hospiceAdmissionDate`
+// (NOT the claim's from date, so a mid-stay interim claim lands in the right tier).
+//
+// KNOWN LIMITATION (recorded, not silent): ADR-0001's day counter is the beneficiary's CUMULATIVE
+// hospice-election day count across sequential stays and hospices, with a >60-day election-gap reset.
+// This calculator anchors to the CURRENT election's admission date — correct for a first/continuous
+// election, and under-counts prior-stay days otherwise. Wiring the cumulative count needs beneficiary
+// election history (M6 + external eligibility data) that no seam provides yet; when it lands, pass the
+// cumulative day-1 anchor as `hospiceAdmissionDate` and this math is already right.
+//
+// Each resolved per-diem is the wage-index-ADJUSTED CMS base rate; the wage index factor is PASSED IN
+// and SNAPSHOTTED into the result (the Phase-3 service persists it onto the `hipps_calculation` row so
+// a later wage-index file reload cannot retroactively change historic math).
 //
 // The exact CMS base per-diem rate table (per FY, per LOC, the RHC two-tier amounts) and the precise
 // 5-position HIPPS character encoding are PUBLISHED CMS fixtures — they are NOT fabricated here. The base
@@ -18,8 +28,11 @@ import { dayOfStay, fromEpochDay, toEpochDay } from "../domain/dates";
 import type { Cents } from "../domain/money";
 import { applyWageIndexFactor, perDiemAmountCents, sumCents } from "../domain/money";
 
-/** The RHC payment-period bucket (D7); `n/a` for non-RHC levels of care, which have a single rate. */
-export type RhcDayBucket = "days_1_7" | "days_8_plus" | "n/a";
+/** ADR-0001: last election day paid at the RHC-High tier; day 61+ pays RHC-Low (80 FR 47142). */
+export const RHC_HIGH_TIER_LAST_DAY = 60;
+
+/** The RHC payment-tier bucket (ADR-0001); `n/a` for non-RHC levels of care, which have a single rate. */
+export type RhcDayBucket = "days_1_60" | "days_61_plus" | "n/a";
 
 /** Map a contracts `LevelOfCare` (full name) to the DB `m23_claim_line_level_of_care` 3-letter code. */
 export function levelOfCareToCode(loc: LevelOfCare): "RHC" | "CHC" | "IRC" | "GIP" {
@@ -42,10 +55,10 @@ export function levelOfCareToCode(loc: LevelOfCare): "RHC" | "CHC" | "IRC" | "GI
  * this structure at the service layer from the rate file; the calculator applies the wage index to them.
  */
 export interface HippsRateTable {
-  /** RHC per-diem for days 1-7 of the hospice stay (the higher CMS RHC rate). */
-  readonly rhcDays1to7PerDiemCents: Cents;
-  /** RHC per-diem for days 8+ of the hospice stay (the lower CMS RHC rate). */
-  readonly rhcDays8PlusPerDiemCents: Cents;
+  /** RHC-High per-diem for election days 1-60 (ADR-0001). */
+  readonly rhcDays1to60PerDiemCents: Cents;
+  /** RHC-Low per-diem for election day 61 and after (ADR-0001). */
+  readonly rhcDays61PlusPerDiemCents: Cents;
   /** CHC full-day per-diem (the hourly-derived 24-hour amount). */
   readonly chcPerDiemCents: Cents;
   /** IRC (inpatient respite) per-diem. */
@@ -65,7 +78,8 @@ export interface HippsLocPeriodInput {
 export interface HippsCalculationInput {
   readonly claimServiceFrom: IsoDate;
   readonly claimServiceTo: IsoDate;
-  /** The hospice election/admission date — the anchor for the days-1-7 vs days-8+ day-of-stay bucket. */
+  /** The hospice election/admission date — day 1 of the ADR-0001 day-60 tier count (see the header's
+   * cumulative-count limitation note). */
   readonly hospiceAdmissionDate: IsoDate;
   readonly levelOfCarePeriods: readonly HippsLocPeriodInput[];
   readonly rateTable: HippsRateTable;
@@ -104,8 +118,8 @@ export interface HippsCalculationResult {
   /** The wage index factor applied, echoed for the row snapshot. */
   readonly wageIndexFactorApplied: string;
   readonly segments: readonly HippsSegmentResult[];
-  readonly rhcDays1to7: number;
-  readonly rhcDays8Plus: number;
+  readonly rhcDays1to60: number;
+  readonly rhcDays61Plus: number;
   /** Sum of every segment total — the claim's HIPPS-derived per-diem charge. */
   readonly totalCents: Cents;
 }
@@ -114,9 +128,9 @@ export interface HippsCalculationResult {
 function baseRateFor(rateTable: HippsRateTable, loc: LevelOfCare, bucket: RhcDayBucket): Cents {
   switch (loc) {
     case "routine_home_care":
-      return bucket === "days_1_7"
-        ? rateTable.rhcDays1to7PerDiemCents
-        : rateTable.rhcDays8PlusPerDiemCents;
+      return bucket === "days_1_60"
+        ? rateTable.rhcDays1to60PerDiemCents
+        : rateTable.rhcDays61PlusPerDiemCents;
     case "continuous_home_care":
       return rateTable.chcPerDiemCents;
     case "inpatient_respite_care":
@@ -143,7 +157,7 @@ export function deriveHippsCode(segments: readonly HippsSegmentResult[]): string
     general_inpatient_care: "G",
   };
   const bucketDigit =
-    first.rhcDayBucket === "days_1_7" ? "1" : first.rhcDayBucket === "days_8_plus" ? "8" : "0";
+    first.rhcDayBucket === "days_1_60" ? "1" : first.rhcDayBucket === "days_61_plus" ? "6" : "0";
   // [LOC char][RHC bucket digit][3 filler] — fixed 5 chars; filler positions await the CMS fixture.
   return `${locChar[first.levelOfCare]}${bucketDigit}000`;
 }
@@ -186,9 +200,9 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
     const loc = period.levelOfCare;
     const bucket: RhcDayBucket =
       loc === "routine_home_care"
-        ? dayOfStay(input.hospiceAdmissionDate, iso) <= 7
-          ? "days_1_7"
-          : "days_8_plus"
+        ? dayOfStay(input.hospiceAdmissionDate, iso) <= RHC_HIGH_TIER_LAST_DAY
+          ? "days_1_60"
+          : "days_61_plus"
         : "n/a";
     const baseRatePerDiemCents = baseRateFor(input.rateTable, loc, bucket);
     const ratePerDiemCents = applyWageIndexFactor(
@@ -232,8 +246,8 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
     }
   }
 
-  const rhcDays1to7 = days.filter((d) => d.bucket === "days_1_7").length;
-  const rhcDays8Plus = days.filter((d) => d.bucket === "days_8_plus").length;
+  const rhcDays1to60 = days.filter((d) => d.bucket === "days_1_60").length;
+  const rhcDays61Plus = days.filter((d) => d.bucket === "days_61_plus").length;
   const totalCents = sumCents(segments.map((s) => s.segmentTotalCents));
   const perDiemRateCents = segments[0]?.ratePerDiemCents ?? 0;
 
@@ -244,8 +258,8 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
     wageIndexFiscalYear: input.wageIndexFiscalYear,
     wageIndexFactorApplied: input.wageIndexFactorDecimal,
     segments,
-    rhcDays1to7,
-    rhcDays8Plus,
+    rhcDays1to60,
+    rhcDays61Plus,
     totalCents,
   };
 }

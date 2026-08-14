@@ -18,8 +18,10 @@ import { require_ } from "../errors";
 import { DEFAULT_SFV_ALERT_CADENCE, type SfvAlertCadence } from "../scheduling/alert-cadence";
 import { addCalendarDays, endOfOrgDayInstant, orgLocalDate } from "../scheduling/time";
 
-/** D3 — calendar days from the triggering assessment's `signed_at` within which the SFV is due. CMS
- * regulatory floor; not tenant-configurable (computed from `signed_at`, org-TZ-aware). */
+/** ADR-0018 D1 — calendar days from the triggering assessment's VISIT/ASSESSMENT date within which
+ * the SFV is due. CMS regulatory floor; not tenant-configurable; org-TZ-aware. The clock anchors to
+ * the assessment date, NEVER the signature timestamp — anchoring to `signed_at` let delayed signing
+ * extend the federal deadline (silently under-reporting HQRP non-compliance). */
 export const SFV_DUE_CALENDAR_DAYS = 2;
 
 /** §2.2.3 — calendar days an `overdue` SFV decays to `missed` after its `due_at` passes. */
@@ -38,21 +40,24 @@ export interface SfvDescriptor {
 /** Facts the recording service injects after a HOPE assessment with `j2051_trigger_fired=true` signs. */
 export interface SfvCreationFacts {
   readonly triggeringAssessmentId: HopeAssessmentId;
-  /** The triggering assessment's `signed_at` — the D3 anchor (NOT `created_at`, so a long-running draft
-   * cannot satisfy the window without the clinical signature). */
+  /** The triggering assessment's VISIT/ASSESSMENT date (`target_date`) — the ADR-0018 D1 anchor for
+   * `due_at`. Never `signed_at`: a late signature must not extend the 2-calendar-day window. */
+  readonly assessmentDate: IsoInstant;
+  /** The triggering assessment's `signed_at` — when the J2051 trigger actually fired (`triggered_at`);
+   * the SFV row cannot exist before the clinical signature, but the DEADLINE never moves with it. */
   readonly signedAt: IsoInstant;
   readonly timeZone: string;
   readonly alertCadence?: SfvAlertCadence;
 }
 
 /**
- * D3 / D4 — plan the single SFV for a triggering assessment. `due_at` is the END of the org-local day
- * `signed_at + 2 calendar days` (the "within 2 calendar days" CMS floor). Deterministic; the caller
- * inserts exactly one row (the unique index enforces one-per-source).
+ * ADR-0018 D1 / D4 — plan the single SFV for a triggering assessment. `due_at` is the END of the
+ * org-local day `assessment date + 2 calendar days` (the "within 2 calendar days" CMS floor).
+ * Deterministic; the caller inserts exactly one row (the unique index enforces one-per-source).
  */
 export function planSfvCreation(facts: SfvCreationFacts): SfvDescriptor {
   const dueDate = addCalendarDays(
-    orgLocalDate(facts.signedAt, facts.timeZone),
+    orgLocalDate(facts.assessmentDate, facts.timeZone),
     SFV_DUE_CALENDAR_DAYS,
   );
   return {

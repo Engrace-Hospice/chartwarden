@@ -549,9 +549,11 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         `${id}:signed`,
       );
       if (verdict.triggerFired) {
-        // D4 — exactly one SFV per source timepoint; D3 anchored to signed_at.
+        // D4 — exactly one SFV per source timepoint; due_at anchored to the ASSESSMENT date, never
+        // the signature (ADR-0018 D1).
         const descriptor = planSfvCreation({
           triggeringAssessmentId: id,
+          assessmentDate: r.targetDate,
           signedAt: at,
           timeZone: tz,
         });

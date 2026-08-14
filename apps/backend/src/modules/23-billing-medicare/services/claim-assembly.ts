@@ -724,8 +724,8 @@ export function buildClaimAssemblyService(
             ratePerDiemCents: s.ratePerDiemCents,
             hippsCharPosition: s.hippsCharPosition,
           })),
-          rhcDays1to7: hipps.rhcDays1to7,
-          rhcDays8Plus: hipps.rhcDays8Plus,
+          rhcDays1to60: hipps.rhcDays1to60,
+          rhcDays61Plus: hipps.rhcDays61Plus,
         });
 
         if (siaRow) {
