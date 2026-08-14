@@ -109,10 +109,21 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   const { service } = deps;
 
   // 1. GET /api/v1/consent-types — catalog + applicable tenant overlay (every role).
-  app.get("/api/v1/consent-types", { preHandler: [READ_CATALOG] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    return { data: await service.readCatalog(organizationId) };
-  });
+  app.get(
+    "/api/v1/consent-types",
+    {
+      preHandler: [READ_CATALOG],
+      config: {
+        auditRead: {
+          none: "org-level consent-type catalog + tenant overlay; no consent record and no patient",
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return { data: await service.readCatalog(organizationId) };
+    },
+  );
 
   // 2. POST /api/v1/consent-types/overlay — publish a TIGHTEN-ONLY tenant overlay (§7.6 + STEP-UP).
   // A loosen attempt is refused by the pure `validateConsentOverlay` and surfaces as a 422.
@@ -151,19 +162,48 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   );
 
   // 4. GET /api/v1/consents/:consentId — full record (consent.read).
-  app.get("/api/v1/consents/:consentId", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { consentId } = parse(ConsentIdParamsSchema, request.params);
-    const record = await service.getConsent(organizationId, consentId);
-    if (!record) throw new WardenXError("NOT_FOUND", "consent not found", 404);
-    return { data: record };
-  });
+  // The §2.5 read-audit config on the `/consents/:consentId/…` family names the patient through the
+  // RESPONSE (`patientIdPayloadPath`), not the path: these routes are keyed by consent id, and the
+  // §164.528 accounting joins on `context.patientId` — an event that cannot name its patient never
+  // reaches the accounting report, which is the whole reason the read trail exists.
+  app.get(
+    "/api/v1/consents/:consentId",
+    {
+      preHandler: [READ],
+      config: {
+        auditRead: {
+          resourceKind: "consent",
+          resourceIdParam: "consentId",
+          patientIdPayloadPath: "data.patientId",
+          fields: ["typeKey", "status", "scopeDescriptor", "effectiveAt", "expiresAt", "signedAt"],
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { consentId } = parse(ConsentIdParamsSchema, request.params);
+      const record = await service.getConsent(organizationId, consentId);
+      if (!record) throw new WardenXError("NOT_FOUND", "consent not found", 404);
+      return { data: record };
+    },
+  );
 
   // 5. GET /api/v1/consents/:consentId/version-chain — both ancestor chains (D1 supersession +
   // D13 renewal), gated on the distinct `consent.read_history` key (§4.1).
   app.get(
     "/api/v1/consents/:consentId/version-chain",
-    { preHandler: [READ_HISTORY] },
+    {
+      preHandler: [READ_HISTORY],
+      config: {
+        auditRead: {
+          resourceKind: "consent_version_chain",
+          resourceIdParam: "consentId",
+          // Either ancestor chain can be the empty one; take the patient from whichever has a row.
+          // Both chains belong to the same patient, so the order between them does not matter.
+          patientIdPayloadPath: ["data.supersedes.0.patientId", "data.renewedFrom.0.patientId"],
+        },
+      },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
@@ -301,15 +341,25 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   // the service refuses the rest. Add/remove carry STEP-UP: each one widens or narrows a live
   // disclosure scope (W-CON-02 adds a recipient to an already-signed 42 CFR Part 2 release).
   // 11. GET /api/v1/consents/:consentId/recipients — active + historical.
-  app.get("/api/v1/consents/:consentId/recipients", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { consentId } = parse(ConsentIdParamsSchema, request.params);
-    try {
-      return { data: await service.listRecipients(organizationId, consentId, nowIso()) };
-    } catch (e) {
-      mapError(e);
-    }
-  });
+  // `ConsentRecipientView` is the one view in this family that does NOT carry `patientId` — the row
+  // describes the third party, not the patient. The event is therefore accounted against the consent
+  // record (`resourceId`); its patient is recoverable through route 4's event for the same id.
+  app.get(
+    "/api/v1/consents/:consentId/recipients",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "consent_recipient", resourceIdParam: "consentId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { consentId } = parse(ConsentIdParamsSchema, request.params);
+      try {
+        return { data: await service.listRecipients(organizationId, consentId, nowIso()) };
+      } catch (e) {
+        mapError(e);
+      }
+    },
+  );
 
   // 12. POST /api/v1/consents/:consentId/recipients — add a named recipient (STEP-UP).
   app.post(
@@ -367,15 +417,28 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   // ── §2.3 D5 named DPOA agents (14–17). Only legal on a per-named-agent type; ≤1 active agent
   // per kind, and a DPOA consent cannot be signed without exactly one active primary.
   // 14. GET /api/v1/consents/:consentId/dpoa-agents — active + historical.
-  app.get("/api/v1/consents/:consentId/dpoa-agents", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { consentId } = parse(ConsentIdParamsSchema, request.params);
-    try {
-      return { data: await service.listDpoaAgents(organizationId, consentId, nowIso()) };
-    } catch (e) {
-      mapError(e);
-    }
-  });
+  app.get(
+    "/api/v1/consents/:consentId/dpoa-agents",
+    {
+      preHandler: [READ],
+      config: {
+        auditRead: {
+          resourceKind: "consent_dpoa_agent",
+          resourceIdParam: "consentId",
+          patientIdPayloadPath: "data.0.patientId",
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { consentId } = parse(ConsentIdParamsSchema, request.params);
+      try {
+        return { data: await service.listDpoaAgents(organizationId, consentId, nowIso()) };
+      } catch (e) {
+        mapError(e);
+      }
+    },
+  );
 
   // 15. POST /api/v1/consents/:consentId/dpoa-agents — name an agent (STEP-UP).
   app.post(
@@ -464,15 +527,28 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   );
 
   // 19. GET /api/v1/consents/:consentId/renewal-cycle — open + closed cycles (D8).
-  app.get("/api/v1/consents/:consentId/renewal-cycle", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { consentId } = parse(ConsentIdParamsSchema, request.params);
-    try {
-      return { data: await service.listRenewalCycles(organizationId, consentId) };
-    } catch (e) {
-      mapError(e);
-    }
-  });
+  app.get(
+    "/api/v1/consents/:consentId/renewal-cycle",
+    {
+      preHandler: [READ],
+      config: {
+        auditRead: {
+          resourceKind: "consent_renewal_cycle",
+          resourceIdParam: "consentId",
+          patientIdPayloadPath: "data.0.patientId",
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { consentId } = parse(ConsentIdParamsSchema, request.params);
+      try {
+        return { data: await service.listRenewalCycles(organizationId, consentId) };
+      } catch (e) {
+        mapError(e);
+      }
+    },
+  );
 
   // 20. POST /api/v1/consents/:consentId/renew — the D13 renewal chain (distinct from supersession:
   // the prior row is expired/revoked, not active). Closes the open renewal cycle as `renewed`.
@@ -518,7 +594,17 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   // (§4.12). Same partitioned sink as route 23, scoped to one record.
   app.get(
     "/api/v1/consents/:consentId/eval-audit",
-    { preHandler: [READ_EVAL_AUDIT] },
+    {
+      preHandler: [READ_EVAL_AUDIT],
+      config: {
+        auditRead: {
+          resourceKind: "consent_eval_audit",
+          resourceIdParam: "consentId",
+          patientIdPayloadPath: "data.0.patientId",
+          list: true,
+        },
+      },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
@@ -536,7 +622,17 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   // (§4.12; NOT the §164.528 disclosure sink — that is M4's, ADR-0013).
   app.get(
     "/api/v1/consents/eval-audit/by-patient",
-    { preHandler: [READ_EVAL_AUDIT] },
+    {
+      preHandler: [READ_EVAL_AUDIT],
+      // This one names its patient in the QUERY, not the path.
+      config: {
+        auditRead: {
+          resourceKind: "consent_eval_audit",
+          patientIdQueryParam: "patientId",
+          list: true,
+        },
+      },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(EvalAuditQuerySchema, request.query);

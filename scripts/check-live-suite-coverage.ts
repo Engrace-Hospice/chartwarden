@@ -23,15 +23,21 @@ import { join } from "node:path";
 const ROOT = join(import.meta.dir, "..");
 const CI_PATH = join(ROOT, ".github", "workflows", "ci.yml");
 
-/** Matches the per-module live-suite scripts: `test:m6:write:live`, `test:rls:live:m30`, … */
-const LIVE_SCRIPT = /^test:(m\d+:[a-z0-9]+:live|rls:live(:m\d+)?)$/;
+/**
+ * Matches the per-module live-suite scripts: `test:m6:write:live`, `test:m4:read-audit:live`,
+ * `test:rls:live:m30`, … The middle segment allows hyphens on purpose — a name this pattern does
+ * NOT match is silently ignored by this gate, which is the exact failure mode the gate exists for.
+ */
+const LIVE_SCRIPT = /^test:(m\d+:[a-z0-9][a-z0-9-]*:live|rls:live(:m\d+)?)$/;
 
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as {
   scripts: Record<string, string>;
 };
 const ci = readFileSync(CI_PATH, "utf8");
 
-const live = Object.keys(pkg.scripts).filter((name) => LIVE_SCRIPT.test(name)).sort();
+const live = Object.keys(pkg.scripts)
+  .filter((name) => LIVE_SCRIPT.test(name))
+  .sort();
 // A shorter script name can be a prefix of a longer one (`test:rls:live` vs `test:rls:live:m6`), so match
 // on a word boundary — otherwise the baseline suite would look covered by any of its per-module siblings.
 const unwired = live.filter((name) => !new RegExp(`${name}(?![\\w:-])`).test(ci));
@@ -46,4 +52,6 @@ if (unwired.length > 0) {
   process.exit(1);
 }
 
-console.log(`OK live-suite-coverage: all ${live.length} live-DB script(s) are wired into a ci.yml job`);
+console.log(
+  `OK live-suite-coverage: all ${live.length} live-DB script(s) are wired into a ci.yml job`,
+);

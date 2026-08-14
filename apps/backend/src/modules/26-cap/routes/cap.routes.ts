@@ -46,8 +46,19 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
   const { readService, writeService } = deps;
 
   // ── cap periods ──
-  app.get("/api/v1/cap/periods", { preHandler: [PERIOD_READ] }, async (request, reply) =>
-    reply.send(await readService.listPeriods(actorOf(request))),
+  // A cap PERIOD is the agency's own aggregate window (CCN, dates, cap amount, methodology) — no
+  // beneficiary is named, so both period reads carry a §2.5 waiver rather than an emission config.
+  app.get(
+    "/api/v1/cap/periods",
+    {
+      preHandler: [PERIOD_READ],
+      config: {
+        auditRead: {
+          none: "agency-level cap-period config (CCN, window, cap amount); no patient is named",
+        },
+      },
+    },
+    async (request, reply) => reply.send(await readService.listPeriods(actorOf(request))),
   );
 
   app.post(
@@ -62,7 +73,14 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
 
   app.get(
     "/api/v1/cap/periods/:periodId",
-    { preHandler: [PERIOD_READ] },
+    {
+      preHandler: [PERIOD_READ],
+      config: {
+        auditRead: {
+          none: "agency-level cap-period config (CCN, window, cap amount); no patient is named",
+        },
+      },
+    },
     async (request, reply) => {
       const period = await readService.getPeriod(actorOf(request), pParam(request, "periodId"));
       if (!period) throw new NotFoundError("cap period not found");
@@ -126,14 +144,29 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
   );
 
   // ── projections ──
-  app.get("/api/v1/cap/projections", { preHandler: [PROJ_READ] }, async (request, reply) =>
-    reply.send(
-      await readService.listProjections(actorOf(request), qStr(request.query, "periodId") ?? ""),
-    ),
+  // `ProjectionView.patientId` is nullable: a period's projection list mixes the agency/inpatient
+  // aggregates with the PER-BENEFICIARY rows, so this is a §3.4 list read over PHI, not a waiver.
+  app.get(
+    "/api/v1/cap/projections",
+    {
+      preHandler: [PROJ_READ],
+      config: { auditRead: { resourceKind: "cap_projection", list: true } },
+    },
+    async (request, reply) =>
+      reply.send(
+        await readService.listProjections(actorOf(request), qStr(request.query, "periodId") ?? ""),
+      ),
   );
   app.get(
     "/api/v1/cap/projections/agency/:periodId",
-    { preHandler: [PROJ_READ] },
+    {
+      preHandler: [PROJ_READ],
+      config: {
+        auditRead: {
+          none: "agency-scope projection: cap totals + beneficiary COUNT; no patient is named",
+        },
+      },
+    },
     async (request, reply) =>
       reply.send(
         await readService.getAgencyProjection(actorOf(request), pParam(request, "periodId")),
@@ -141,7 +174,16 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
   );
   app.get(
     "/api/v1/cap/projections/patient/:periodId/:patientId",
-    { preHandler: [PROJ_READ] },
+    {
+      preHandler: [PROJ_READ],
+      config: {
+        auditRead: {
+          resourceKind: "cap_projection",
+          patientIdParam: "patientId",
+          fields: ["paidYtdCents", "projectedYearEndCents", "pctOfCap", "alertBand"],
+        },
+      },
+    },
     async (request, reply) =>
       reply.send(
         await readService.getPatientProjection(
@@ -153,7 +195,14 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
   );
   app.get(
     "/api/v1/cap/projections/inpatient/:periodId",
-    { preHandler: [PROJ_READ] },
+    {
+      preHandler: [PROJ_READ],
+      config: {
+        auditRead: {
+          none: "inpatient-scope projection: aggregate GIP/IRC day counts + pct; no patient is named",
+        },
+      },
+    },
     async (request, reply) =>
       reply.send(
         await readService.getInpatientProjection(actorOf(request), pParam(request, "periodId")),
@@ -176,7 +225,21 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
   // ── accruals ──
   app.get(
     "/api/v1/cap/accruals/patient/:periodId/:patientId",
-    { preHandler: [ACCRUAL_READ] },
+    {
+      preHandler: [ACCRUAL_READ],
+      config: {
+        auditRead: {
+          resourceKind: "cap_accrual",
+          patientIdParam: "patientId",
+          fields: [
+            "paidCents",
+            "outstandingBilledCents",
+            "firstElectionInPeriod",
+            "lastPaidThrough",
+          ],
+        },
+      },
+    },
     async (request, reply) => {
       const view = await readService.getPatientAccrual(
         actorOf(request),
@@ -189,7 +252,12 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
   );
   app.get(
     "/api/v1/cap/accruals/patient/:periodId/:patientId/lines",
-    { preHandler: [ACCRUAL_READ] },
+    {
+      preHandler: [ACCRUAL_READ],
+      config: {
+        auditRead: { resourceKind: "cap_accrual_line", patientIdParam: "patientId", list: true },
+      },
+    },
     async (request, reply) =>
       reply.send(
         await readService.listAccrualLines(
@@ -203,7 +271,14 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
   );
   app.get(
     "/api/v1/cap/accruals/inpatient/:periodId",
-    { preHandler: [ACCRUAL_READ] },
+    {
+      preHandler: [ACCRUAL_READ],
+      config: {
+        auditRead: {
+          none: "agency-level inpatient day totals for the §418.302(f) cap; no patient is named",
+        },
+      },
+    },
     async (request, reply) =>
       reply.send(
         await readService.getInpatientAccrual(actorOf(request), pParam(request, "periodId")),
@@ -211,17 +286,26 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
   );
 
   // ── threshold events ──
-  app.get("/api/v1/cap/threshold-events", { preHandler: [EVENT_READ] }, async (request, reply) => {
-    const q = request.query;
-    return reply.send(
-      await readService.listThresholdEvents(actorOf(request), {
-        capPeriodId: qStr(q, "periodId"),
-        scope: qStr(q, "scope"),
-        band: qStr(q, "band"),
-        unacknowledgedOnly: qStr(q, "unacknowledgedOnly") === "true",
-      }),
-    );
-  });
+  // `ThresholdEventView.patientId` is nullable for the same reason as the projection list: the queue
+  // mixes agency-scope band changes with per-beneficiary ones.
+  app.get(
+    "/api/v1/cap/threshold-events",
+    {
+      preHandler: [EVENT_READ],
+      config: { auditRead: { resourceKind: "cap_threshold_event", list: true } },
+    },
+    async (request, reply) => {
+      const q = request.query;
+      return reply.send(
+        await readService.listThresholdEvents(actorOf(request), {
+          capPeriodId: qStr(q, "periodId"),
+          scope: qStr(q, "scope"),
+          band: qStr(q, "band"),
+          unacknowledgedOnly: qStr(q, "unacknowledgedOnly") === "true",
+        }),
+      );
+    },
+  );
   app.patch(
     "/api/v1/cap/threshold-events/:eventId/acknowledge",
     { preHandler: [validateParams(EventIdParams), EVENT_ACK, IDEMPOTENT] },
@@ -234,7 +318,14 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
   );
 
   // ── dashboard ──
-  app.get("/api/v1/cap/dashboard", { preHandler: [PROJ_READ] }, async (request, reply) =>
-    reply.send(await readService.getDashboard(actorOf(request))),
+  // The cap-watch composite embeds `topPatients` (per-beneficiary projections) and `recentEvents`,
+  // so the landing screen itself is a PHI read — the one most likely to be opened casually.
+  app.get(
+    "/api/v1/cap/dashboard",
+    {
+      preHandler: [PROJ_READ],
+      config: { auditRead: { resourceKind: "cap_dashboard", list: true } },
+    },
+    async (request, reply) => reply.send(await readService.getDashboard(actorOf(request))),
   );
 }

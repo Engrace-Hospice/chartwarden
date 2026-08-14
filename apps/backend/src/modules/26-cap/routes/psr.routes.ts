@@ -46,13 +46,26 @@ export function registerPsrRoutes(app: FastifyInstance, deps: PsrRouteDeps): voi
     },
   );
 
-  app.get("/api/v1/cap/psr-imports/:importId", { preHandler: [PSR_READ] }, async (request, reply) =>
-    reply.send(await readService.getPsrImport(actorOf(request), pParam(request, "importId"))),
+  app.get(
+    "/api/v1/cap/psr-imports/:importId",
+    {
+      preHandler: [PSR_READ],
+      config: {
+        auditRead: { none: "PS&R import status + MAC-reported period totals; no patient is named" },
+      },
+    },
+    async (request, reply) =>
+      reply.send(await readService.getPsrImport(actorOf(request), pParam(request, "importId"))),
   );
 
+  // `PsrVarianceView.patientId` is nullable — a beneficiary-scope variance line names the patient
+  // whose paid amount disagrees with the MAC's, so the queue is a §3.4 list read over PHI.
   app.get(
     "/api/v1/cap/psr-imports/:importId/reconciliation",
-    { preHandler: [PSR_READ] },
+    {
+      preHandler: [PSR_READ],
+      config: { auditRead: { resourceKind: "cap_psr_variance", list: true } },
+    },
     async (request, reply) =>
       reply.send(
         await readService.listPsrReconciliation(actorOf(request), pParam(request, "importId")),

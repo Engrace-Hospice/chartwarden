@@ -163,6 +163,10 @@ jobs:
           - { name: "M18 EVV", scripts: "test:m18:read:live test:m18:write:live" }
           - { name: "M22 Documents", scripts: "test:m22:read:live test:m22:write:live" }
           - { name: "M37 IPU", scripts: "test:m37:write:live" }
+          # GAP-079: M4's §2.5 read-audit EMISSION over the M26 Cap + M39 Consent read surfaces —
+          # proves the events land in the partitioned audit_event table carrying the patient id the
+          # §164.528 accounting query joins on, as the NOBYPASSRLS app role.
+          - { name: "M4 read-audit", scripts: "test:m4:read-audit:live" }
     env:
       WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
     steps:

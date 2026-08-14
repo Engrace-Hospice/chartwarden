@@ -7,6 +7,7 @@
  * server cannot boot with an undeclared PHI read route.
  */
 import { resetReadAuditDeclarations } from "@wardenx/audit";
+import type { DbClient } from "@wardenx/db";
 import { beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_READ_AUDIT_PREFIXES, buildServer } from "../src/bootstrap/index";
 import {
@@ -14,6 +15,9 @@ import {
   applyReadAuditCoverage,
   isGovernedReadRoute,
 } from "../src/bootstrap/plugins/read-audit";
+import type { M26RouteServices } from "../src/modules/26-cap/routes/index";
+import { mountM26Routes } from "../src/modules/26-cap/routes/mount";
+import { mountConsentRoutes } from "../src/modules/39-consent/index";
 
 const PREFIXES = ["/api/v1/patients"];
 
@@ -172,6 +176,49 @@ describe("DEFAULT_READ_AUDIT_PREFIXES — the governed PHI surface", () => {
     ]) {
       expect(isGovernedReadRoute("GET", url, DEFAULT_READ_AUDIT_PREFIXES)).toBe(true);
     }
+  });
+
+  it("governs M26 Cap and M39 Consent (GAP-079 — the allowlist had not kept pace)", () => {
+    // These two modules' patient-scoped reads registered with nothing to declare and emitted nothing:
+    // per-beneficiary Medicare cap accrual/projection data, and every consent-record-keyed read
+    // (the `/api/v1/patients/:patientId/…` consent routes were already covered, by the patients prefix).
+    for (const url of [
+      "/api/v1/cap/projections/patient/:periodId/:patientId",
+      "/api/v1/cap/accruals/patient/:periodId/:patientId",
+      "/api/v1/cap/accruals/patient/:periodId/:patientId/lines",
+      "/api/v1/cap/threshold-events",
+      "/api/v1/cap/psr-imports/:importId/reconciliation",
+      "/api/v1/cap/settlements/:periodId",
+      "/api/v1/consents/:consentId",
+      "/api/v1/consents/:consentId/version-chain",
+      "/api/v1/consents/:consentId/dpoa-agents",
+      "/api/v1/consents/eval-audit/by-patient",
+      "/api/v1/consent-types",
+    ]) {
+      expect(isGovernedReadRoute("GET", url, DEFAULT_READ_AUDIT_PREFIXES)).toBe(true);
+    }
+    // M26's platform-scope constants live under a DIFFERENT prefix and stay outside this gate.
+    expect(
+      isGovernedReadRoute("GET", "/api/v1/platform/cap/constants", DEFAULT_READ_AUDIT_PREFIXES),
+    ).toBe(false);
+  });
+
+  it("mounts the REAL M39 consent surface under the default prefixes without a coverage error", () => {
+    // The load-bearing half of GAP-079: adding a prefix is only safe once every GET under it declares.
+    // Route registration never queries, so a stub handle proves the declarations, not the store.
+    const app = buildServer({ security: { rateLimitEnabled: false } });
+    expect(() => mountConsentRoutes(app, {} as DbClient)).not.toThrow();
+  });
+
+  it("mounts the REAL M26 cap surface under the default prefixes without a coverage error", () => {
+    const app = buildServer({ security: { rateLimitEnabled: false } });
+    // Same reasoning: the four §4.1 plugins only close over the services at registration time.
+    expect(() =>
+      mountM26Routes(app, {
+        readService: {} as M26RouteServices["readService"],
+        writeService: {} as M26RouteServices["writeService"],
+      }),
+    ).not.toThrow();
   });
 
   it("governs the M28 FHIR admin surface, but NOT the /fhir/r4 patient-data mount (a different, non-/api/v1 prefix audited via FhirDisclosureAuditPort)", () => {
