@@ -199,6 +199,37 @@ describe("M17-T09 §7 workflow acceptance", () => {
     expect(await predicates.within_caseload_or_unassigned_pool!(ctx(), target)).toBe(true);
   });
 
+  // Code review 2026-08-14 — the Drizzle resolver picked ONE discipline with `roleRows.find(...)` over an
+  // UNORDERED role query, so a membership holding several disciplines got an arbitrary one and both the D8
+  // gate and this predicate judged the visit against it. "Does this clinician hold A discipline that fits
+  // this visit?" is a set-intersection question; the seed below puts the NON-qualifying discipline first so
+  // a single-value resolver that trusts arrival order denies a clinician who plainly qualifies.
+  it("§4.7 — a membership holding SEVERAL disciplines qualifies on ANY of them, whatever the order", async () => {
+    const MEM_MULTI = "mem_multi";
+    const svc = service({
+      disciplines: { [MEM_MULTI]: ["volunteer", "rn"] },
+      credentialedMemberships: [MEM_MULTI],
+      caseload: [`${MEM_MULTI}|${PATIENT}`],
+    });
+    const predicates = buildSchedulingAbacPredicates({ resolver: svc });
+    const target = {
+      membershipId: MEM_MULTI,
+      visitPurpose: "routine_visit",
+      patientId: PATIENT,
+      serviceDate: "2026-06-23",
+    };
+    // `routine_visit` accepts rn/lpn — the SECOND discipline held. Order must not decide the answer.
+    expect(await predicates.discipline_matches_visit!(ctx(), target)).toBe(true);
+    // …and the volunteer half is not a free pass onto a purpose neither discipline covers.
+    expect(
+      await predicates.discipline_matches_visit!(ctx(), { ...target, visitPurpose: "msw_assessment" }),
+    ).toBe(false);
+    // The service-layer D8 gate reads the same set, so the two layers still agree.
+    expect(() =>
+      svc.createVisit(ORG, "sched_1", { ...ROUTINE_VISIT, assignedMembershipId: MEM_MULTI }),
+    ).not.toThrow();
+  });
+
   it("§7.5 — an approved PTO window makes the `not_on_pto` predicate deny an overlapping visit assignment", async () => {
     const svc = service();
     const pto = svc.requestTimeOff(ORG, "sched_1", {

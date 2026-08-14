@@ -227,12 +227,15 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
       const patientId = portalPatientIdOf(actor);
       const body = parse(MessageSendRequest, request.body);
       const provider = arm<MessagingSendArm>("MessagingProvider");
-      try {
-        await provider.syncCareTeamChannel?.(actor.organizationId, patientId);
-      } catch {
-        /* degrade gracefully, same as read.routes.ts's channel pointer — the send below still
-           opens/finds the channel and proceeds even if the roster reconcile itself failed */
-      }
+      // The roster reconcile MUST succeed before the body is written into the channel, so this
+      // deliberately does NOT catch. A failed `syncCareTeamChannel` means the `care_team` channel's
+      // membership is whatever it was last time — including clinicians M5 has since removed from the
+      // care team — and `openChannel` below happily returns that stale channel. Swallowing the error
+      // here therefore turned a reconciliation failure into a PHI disclosure to a removed clinician
+      // (the exact GAP-059 condition, where the M5 CareTeamProvider seam is the thing that throws).
+      // read.routes.ts's channel-pointer catch is NOT precedent for this: there the catch abandons the
+      // whole read (`channelId: ""`) and discloses nothing; here the handler proceeds to write.
+      await provider.syncCareTeamChannel?.(actor.organizationId, patientId);
       const channel = await provider.openChannel(actor.organizationId, {
         kind: "care_team",
         subjectId: patientId,

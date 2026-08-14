@@ -304,11 +304,19 @@ export function createDbSchedulingBackend(
   // `withOrgContext`/transaction, or it risks missing a write made earlier in the SAME enclosing tx) and
   // the `backend.resolveDiscipline`/`allowsUnassignedPool` ABAC-resolver methods below (which wrap these
   // in their OWN `withOrgContext` for the route-layer predicates, called standalone outside any tx).
-  async function resolveDisciplineTx(
+  // Returns EVERY scheduling discipline the membership holds, not just one. This used to be a
+  // `roleRows.find(...)` over an UNORDERED query, which is wrong twice for a multi-discipline
+  // membership: the row Postgres happened to return first decided both whether the D8 gate passed
+  // and which credential kind was then looked for, so a clinician holding e.g. `msw` + `rn` was
+  // non-deterministically 403'd on an `admission_visit` they genuinely qualify for. "Does this
+  // clinician hold A discipline that fits this visit?" is a set-intersection question; answering it
+  // with one arbitrary element cannot be made correct by ordering, only by keeping the set.
+  // Sorted so the value is stable for logging/debugging regardless of row order.
+  async function resolveDisciplinesTx(
     tx: DbClient,
     orgId: string,
     membershipId: string,
-  ): Promise<SchedulingDiscipline | null> {
+  ): Promise<SchedulingDiscipline[]> {
     const roleRows = await tx
       .select({ key: ROLE.key })
       .from(MEM_ROLE)
@@ -320,8 +328,13 @@ export function createDbSchedulingBackend(
           or(isNull(MEM_ROLE.expiresAt), gt(MEM_ROLE.expiresAt, new Date())),
         ),
       );
-    const discipline = roleRows.find((r) => ALL_SCHEDULING_DISCIPLINES.has(r.key));
-    return (discipline?.key as SchedulingDiscipline | undefined) ?? null;
+    return [
+      ...new Set(
+        roleRows
+          .map((r) => r.key)
+          .filter((k): k is SchedulingDiscipline => ALL_SCHEDULING_DISCIPLINES.has(k)),
+      ),
+    ].sort();
   }
 
   async function allowsUnassignedPoolTx(tx: DbClient, orgId: string): Promise<boolean> {
@@ -370,15 +383,16 @@ export function createDbSchedulingBackend(
     tx: DbClient,
     orgId: string,
     membershipId: string,
-    discipline: SchedulingDiscipline,
+    disciplines: readonly SchedulingDiscipline[],
     asOfDate: string,
   ): Promise<boolean> {
+    if (disciplines.length === 0) return false; // no qualifying discipline → nothing to credential
     const creds = await getSeam("CredentialReader").activeCredentialsAsOf({
       organizationId: orgId,
       membershipId,
       asOf: asOfDate,
     });
-    return creds.some((c) => c.kind === discipline);
+    return creds.some((c) => disciplines.includes(c.kind as SchedulingDiscipline));
   }
 
   /** The D8 pre-schedule gate the service enforces (GAP-031/GAP-093). Checks the same facts GAP-030
@@ -394,13 +408,16 @@ export function createDbSchedulingBackend(
     startsAt: string,
     endsAt: string,
   ): Promise<boolean> {
-    const discipline = await resolveDisciplineTx(tx, orgId, membershipId);
-    if (discipline === null || !VISIT_PURPOSE_DISCIPLINES[visitPurpose].includes(discipline)) {
-      return false;
-    }
+    // The clinician qualifies if ANY discipline they hold is accepted for this visit purpose, and the
+    // credential check then runs against that same qualifying set — a membership holding `msw` + `rn`
+    // passes an `admission_visit` on its `rn` role and `rn` licence, whichever order the rows arrive in.
+    const qualifying = (await resolveDisciplinesTx(tx, orgId, membershipId)).filter((d) =>
+      VISIT_PURPOSE_DISCIPLINES[visitPurpose].includes(d),
+    );
+    if (qualifying.length === 0) return false;
 
     const serviceDate = serviceDateOf(startsAt, await organizationTimezone(tx, orgId));
-    if (!(await credentialActiveTx(tx, orgId, membershipId, discipline, serviceDate))) {
+    if (!(await credentialActiveTx(tx, orgId, membershipId, qualifying, serviceDate))) {
       return false;
     }
 
@@ -1393,12 +1410,9 @@ export function createDbSchedulingBackend(
     // above, near `appendHistory`), each wrapped in its own `withOrgContext` since these are called
     // standalone from the route-layer ABAC predicates (`abac-predicates.ts`), never nested inside an
     // existing tx — that's the opposite call shape from the service-layer gate, hence the two wrappers.
-    async resolveDiscipline(
-      orgId: string,
-      membershipId: string,
-    ): Promise<SchedulingDiscipline | null> {
+    async resolveDisciplines(orgId: string, membershipId: string): Promise<SchedulingDiscipline[]> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, (tx) =>
-        resolveDisciplineTx(tx, orgId, membershipId),
+        resolveDisciplinesTx(tx, orgId, membershipId),
       );
     },
     async credentialsActiveForPurpose(
@@ -1408,11 +1422,10 @@ export function createDbSchedulingBackend(
       serviceDate: string,
     ): Promise<boolean> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
-        const discipline = await resolveDisciplineTx(tx, orgId, membershipId);
-        if (discipline === null || !VISIT_PURPOSE_DISCIPLINES[visitPurpose].includes(discipline)) {
-          return false;
-        }
-        return credentialActiveTx(tx, orgId, membershipId, discipline, serviceDate);
+        const qualifying = (await resolveDisciplinesTx(tx, orgId, membershipId)).filter((d) =>
+          VISIT_PURPOSE_DISCIPLINES[visitPurpose].includes(d),
+        );
+        return credentialActiveTx(tx, orgId, membershipId, qualifying, serviceDate);
       });
     },
     async hasApprovedTimeOffOverlap(

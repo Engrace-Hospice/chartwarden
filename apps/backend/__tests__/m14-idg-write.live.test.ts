@@ -398,6 +398,42 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     expect(cancelled.status).toBe("cancelled");
   });
 
+  // Code review 2026-08-14 — the covering-meeting query excluded only `cancelled`/`rescheduled`, so an
+  // ADJOURNED meeting counted as cover. That is always satisfiable: a patient's `since_cursor_iso` is set BY
+  // their last adjourned meeting, so that meeting always sits on/before cursor + 15d. The guard therefore
+  // returned an EMPTY breach set for every patient with any review history, and only ever bit for a patient
+  // whose sole packet was on the meeting being cancelled.
+  it("an ADJOURNED meeting does NOT cover the floor — it is what the floor is measured FROM (GAP-020)", async () => {
+    const patientId = randomUUID();
+    const cursor = new Date(Date.now() - 10 * 86400000).toISOString(); // floor = +5 days from now
+    // scheduled_start = now(), i.e. on/before the floor — the ONLY thing disqualifying it is that it has
+    // already adjourned. This is exactly the shape a real prior review leaves behind.
+    const priorReview = await seedMeeting(ORG_A, "adjourned");
+    const m = await seedMeeting(ORG_A, "scheduled");
+    await seedPacket(ORG_A, priorReview, patientId, cursor);
+    await seedPacket(ORG_A, m, patientId, cursor);
+
+    const breaches = await svc.loadReviewFloorBreaches(ORG_A, m, "cancel", null);
+    expect(breaches).toHaveLength(1);
+    expect(breaches[0]?.patientId).toBe(patientId);
+    await expect(svc.cancelMeeting(ORG_A, MEMBER, m, "no longer needed")).rejects.toMatchObject({
+      code: "PER_PATIENT_REVIEW_FLOOR_BREACH",
+    });
+    expect(await meetingStatus(m)).toBe("scheduled");
+  });
+
+  it("a still-PENDING meeting in any pre-adjourn status covers the floor (the allowlist is not over-tight)", async () => {
+    for (const status of ["scheduled", "packets_building", "packets_ready", "live"] as const) {
+      const patientId = randomUUID();
+      const cursor = new Date(Date.now() - 10 * 86400000).toISOString();
+      const covering = await seedMeeting(ORG_A, status);
+      const m = await seedMeeting(ORG_A, "scheduled");
+      await seedPacket(ORG_A, covering, patientId, cursor);
+      await seedPacket(ORG_A, m, patientId, cursor);
+      expect(await svc.loadReviewFloorBreaches(ORG_A, m, "cancel", null)).toHaveLength(0);
+    }
+  });
+
   it("reschedule refuses when the new start pushes the patient past their review floor (GAP-020)", async () => {
     const m = await seedMeeting(ORG_A, "scheduled");
     const patientId = randomUUID();

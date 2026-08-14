@@ -196,6 +196,43 @@ describe.skipIf(!DB_URL)("M37 privacy gates — LIVE Postgres (GAP-061 + GAP-062
     expect(bed.rows[0].cleaning_status).toBe("ready");
   });
 
+  // Code review 2026-08-14 — the gate read the room's occupants and then wrote the assignment with NO row
+  // lock, so two coordinators filling two DIFFERENT beds of the same room each saw the room as empty under
+  // READ COMMITTED and both committed. The bed-level uniqueness constraint cannot catch it: the two writes
+  // land on different beds. `SELECT … FOR UPDATE` on the ROOM is what serializes them.
+  // Asserting the LOCK directly rather than staging two concurrent assigns: two `assignBed` calls fired
+  // together happen to serialize on their own here (each transaction is short enough to finish inside the
+  // other's scheduling gap), so a naive `Promise.allSettled` race passes with OR without the lock and
+  // proves nothing — verified by removing `.for("update")` and watching it still go green.
+  // Holding the room row from an outside session is deterministic: a plain SELECT sails past a competing
+  // `FOR UPDATE`, so if `assignBed` blocks, it can only be because it asked for the row lock too.
+  it("takes a ROOM-level row lock before evaluating occupancy (serializes concurrent assignments)", async () => {
+    const { roomId, bedIds } = await seedRoom("semi_private", "210", ["A", "B"]);
+    const adm = await admissionAwaitingBed(P_MALE_2);
+
+    const blocker = new Client({ connectionString: DB_URL });
+    await blocker.connect();
+    await blocker.query("BEGIN");
+    await blocker.query("SELECT id FROM ipu_room WHERE id = $1 FOR UPDATE", [roomId]);
+
+    let settled = false;
+    const assign = svc
+      .assignBed(actor, adm.id, { bedId: bedIds[0]! })
+      .finally(() => {
+        settled = true;
+      });
+
+    // Give it well past the time an unblocked assign needs (they complete in single-digit ms above).
+    await new Promise((r) => setTimeout(r, 1_500));
+    expect(settled).toBe(false); // still waiting on the room lock
+
+    await blocker.query("COMMIT");
+    await blocker.end();
+
+    // Once the room is released the assignment proceeds normally.
+    expect((await assign).state).toBe("bed_assigned");
+  });
+
   it("ADMITS the same-sex roommate into the same room (the gate is not a blanket refusal)", async () => {
     const { bedIds } = await seedRoom("semi_private", "202", ["A", "B"]);
     const first = await admissionAwaitingBed(P_MALE_2);

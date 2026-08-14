@@ -6,7 +6,7 @@
 // tick — a partial escalation burst never partially commits).
 import type { DbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import { type ConnectionOptions, type Job, Queue, Worker } from "bullmq";
 import type { IdgWriteOutboxPort } from "../idg-route-service-db";
 import { reviewClockPatientsForOrg } from "./cron-store";
 import { M14_JOB_SCHEDULES, M14_QUEUES, M14_QUEUE_PARAMS, planReviewClockSweep } from "./index";
@@ -64,37 +64,87 @@ export function buildM14WorkerDeps(deps: {
   };
 }
 
+/**
+ * A per-org checkpoint that survives a BullMQ RETRY of the same job.
+ *
+ * Why this exists: the fan-out sweeps every active org inside ONE job, and each org's
+ * `withOrgContext` COMMITS INDEPENDENTLY. With `attempts: 3`, a failure part-way through the loop
+ * re-runs the whole loop, so every org that already committed gets its escalations published a
+ * second (and on the third attempt a third) time — every patient sitting exactly on T-3/T-0/T+1 in
+ * those orgs is escalated again, at `critical`, to every consumer. The transactional outbox makes a
+ * single org's burst all-or-nothing; it says nothing about the loop around it.
+ *
+ * `swept` therefore has to be durable across attempts, which rules out an in-process Set. BullMQ's
+ * own job data is the natural home: it lives in Redis, and a retry reuses the SAME job, so the list
+ * written by attempt 1 is visible to attempt 2.
+ */
+export interface ReviewClockSweepCheckpoint {
+  /** Org ids already swept by an earlier attempt of THIS job — skipped on re-entry. */
+  readonly swept: readonly string[];
+  /** Durably record that `organizationId` committed. Called after each org's tx, never inside it. */
+  record(organizationId: string): Promise<void>;
+}
+
 /** `idg.review-clock-sweep` (§4.8 daily / M14-F01 / ADR-0018 D2, GAP-092) — escalate every patient at
- * T-3/T-0/T+1 of their per-patient 15-day review floor. */
-export async function runReviewClockSweepCron(deps: M14WorkerDeps): Promise<void> {
+ * T-3/T-0/T+1 of their per-patient 15-day review floor.
+ *
+ * Two retry-safety properties, both load-bearing:
+ *   (1) an org already swept by an earlier ATTEMPT is skipped (see {@link ReviewClockSweepCheckpoint});
+ *   (2) one org's failure no longer aborts the tick for the orgs after it — failures are collected and
+ *       rethrown together at the end, so a single bad tenant cannot silently deny every tenant that
+ *       sorts after it a day's escalations. The throw still fails the job (so the DLQ/alerting sees
+ *       it), but the retry now only has the un-swept orgs left to do. */
+export async function runReviewClockSweepCron(
+  deps: M14WorkerDeps,
+  checkpoint?: ReviewClockSweepCheckpoint,
+): Promise<void> {
   const now = (deps.now ?? (() => new Date()))();
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
+  const alreadySwept = new Set(checkpoint?.swept ?? []);
+  const failures: { organizationId: string; error: unknown }[] = [];
   for (const { organizationId } of orgs) {
-    await withOrgContext(
-      deps.db,
-      { organizationId, userId: M14_WORKER_SYSTEM_USER_ID },
-      async (tx) => {
-        const t = tx as unknown as DbClient;
-        const patients = await reviewClockPatientsForOrg(t, organizationId);
-        const escalations = planReviewClockSweep(patients, now);
-        for (const e of escalations) {
-          await deps.outbox.publish(t, {
-            eventName: "m14.review_clock.escalated",
-            payload: {
-              admissionId: e.admissionId,
-              patientId: e.patientId,
-              locationId: e.locationId,
-              lastIdgReviewedAt: e.lastIdgReviewedAt,
-              floorAt: e.floorAt,
-              stage: e.stage,
-              severity: e.severity,
-            },
-            organizationId,
-            aggregateKind: "idg_patient_packet",
-            aggregateId: e.patientId,
-          });
-        }
-      },
+    if (alreadySwept.has(organizationId)) continue;
+    try {
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: M14_WORKER_SYSTEM_USER_ID },
+        async (tx) => {
+          const t = tx as unknown as DbClient;
+          const patients = await reviewClockPatientsForOrg(t, organizationId);
+          const escalations = planReviewClockSweep(patients, now);
+          for (const e of escalations) {
+            await deps.outbox.publish(t, {
+              eventName: "m14.review_clock.escalated",
+              payload: {
+                admissionId: e.admissionId,
+                patientId: e.patientId,
+                locationId: e.locationId,
+                lastIdgReviewedAt: e.lastIdgReviewedAt,
+                floorAt: e.floorAt,
+                stage: e.stage,
+                severity: e.severity,
+              },
+              organizationId,
+              aggregateKind: "idg_patient_packet",
+              aggregateId: e.patientId,
+            });
+          }
+        },
+      );
+    } catch (error) {
+      failures.push({ organizationId, error });
+      continue;
+    }
+    // Only AFTER the org's tx committed. If recording the checkpoint itself fails, the org is swept
+    // again on retry — a duplicate escalation for one org, which is strictly better than treating an
+    // uncommitted org as done and dropping its escalations entirely.
+    await checkpoint?.record(organizationId);
+  }
+  if (failures.length > 0) {
+    throw new AggregateError(
+      failures.map((f) => f.error),
+      `M14_REVIEW_CLOCK_SWEEP: ${failures.length} of ${orgs.length} org(s) failed — ` +
+        `${failures.map((f) => f.organizationId).join(", ")}`,
     );
   }
 }
@@ -141,14 +191,34 @@ function parseBackoff(spec: string): ParsedBackoff {
 
 // ── BullMQ construction (the M9/M10/M25 registerMxCronWorkers / scheduleMxJobs template) ────────────────
 
+/** Back {@link ReviewClockSweepCheckpoint} with the BullMQ job's own `data`, which Redis persists and a
+ * RETRY of the same job re-reads — so orgs swept by attempt 1 are skipped by attempt 2. `updateData`
+ * rewrites the whole data blob, so the existing fields are spread back in. */
+function bullmqCheckpoint(job: Job): ReviewClockSweepCheckpoint {
+  const data = (job.data ?? {}) as { sweptOrgIds?: unknown };
+  const swept = Array.isArray(data.sweptOrgIds) ? (data.sweptOrgIds as string[]) : [];
+  const accumulated = [...swept];
+  return {
+    swept,
+    async record(organizationId: string) {
+      accumulated.push(organizationId);
+      await job.updateData({ ...(job.data ?? {}), sweptOrgIds: accumulated });
+    },
+  };
+}
+
 /** Construct the `idg.review-clock-sweep` cron `Worker` (the caller owns lifecycle — `close()` on shutdown). */
 export function registerM14CronWorkers(deps: M14WorkerDeps): Worker[] {
   const { connection } = deps;
   return [
-    new Worker(M14_QUEUES.reviewClockSweep, async () => runReviewClockSweepCron(deps), {
-      connection,
-      concurrency: M14_QUEUE_PARAMS.reviewClockSweep.concurrency,
-    }),
+    new Worker(
+      M14_QUEUES.reviewClockSweep,
+      async (job) => runReviewClockSweepCron(deps, bullmqCheckpoint(job)),
+      {
+        connection,
+        concurrency: M14_QUEUE_PARAMS.reviewClockSweep.concurrency,
+      },
+    ),
   ];
 }
 
