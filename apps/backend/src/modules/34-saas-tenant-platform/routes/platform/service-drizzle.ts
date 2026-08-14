@@ -29,7 +29,9 @@ import {
   OnboardingRepository,
   SignupIntentRepository,
   SupportRepository,
+  TENANT_EXPORT_OBJECT_TTL_MS,
   TenantAccountRepository,
+  TenantExportRepository,
   TenantKeyRingRepository,
 } from "@wardenx/saas-tenant-platform";
 import {
@@ -907,6 +909,60 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         });
         void actorUserId;
         return baaView(row);
+      });
+    },
+
+    // ── tenant export: SEC-052 oversized-hold release (§3.7; GAP-097) ──
+    async approveOversizedExport(jobId, actorMembershipId, args) {
+      return inPlatformCtx("platform-ops approve oversized tenant export", async (tx) => {
+        const repo = new TenantExportRepository(tx);
+        const job = await repo.findById(jobId);
+        if (!job) throw new NotFoundError("tenant export job");
+        // The newest ledger event must be GAP-094's `oversized_hold` row — the same check confirms
+        // the job hasn't already been approved (approval appends a newer `oversized_approved` event
+        // and flips status off `generating`, so a re-approve attempt fails this the same way an
+        // unheld job does).
+        const [latest] = await repo.listEvents(jobId, { limit: 1 });
+        if (job.status !== "generating" || latest?.eventKind !== "oversized_hold") {
+          throw new WardenXError(
+            "TENANT_EXPORT_NOT_HELD",
+            "the bundle is not awaiting oversized-hold approval",
+            409,
+          );
+        }
+        const receipt = (latest.shardReceipt ?? {}) as {
+          bundleMinioObjectKey?: string;
+          bundleSha256?: string;
+          bundleSizeBytes?: number;
+        };
+        if (
+          !receipt.bundleMinioObjectKey ||
+          !receipt.bundleSha256 ||
+          typeof receipt.bundleSizeBytes !== "number"
+        ) {
+          throw new WardenXError(
+            "TENANT_EXPORT_HOLD_INCOMPLETE",
+            "the hold event is missing its bundle artifact handles",
+            409,
+          );
+        }
+        const now = deps.supportSessionPorts.now();
+        await repo.update(jobId, {
+          status: "fulfilled",
+          fulfilledAt: now,
+          bundleMinioObjectKey: receipt.bundleMinioObjectKey,
+          bundleSha256: receipt.bundleSha256,
+          bundleSizeBytes: String(receipt.bundleSizeBytes),
+          bundlePresignedUrlExpiresAt: new Date(now.getTime() + TENANT_EXPORT_OBJECT_TTL_MS),
+        });
+        await repo.appendEvent({
+          organizationId: job.organizationId,
+          tenantExportJobId: jobId,
+          eventKind: "oversized_approved",
+          shardReceipt: { approvalReason: args.approvalReason, approvedByMembershipId: actorMembershipId },
+          occurredAt: now,
+        });
+        return { jobId, status: "fulfilled" };
       });
     },
 

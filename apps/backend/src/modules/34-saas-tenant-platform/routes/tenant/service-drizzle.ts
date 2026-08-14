@@ -467,7 +467,7 @@ function tenantExportView(j: schema.TenantExportJob): TenantExportJobView {
     status: j.status,
     requestedAt: isoReq(j.requestedAt),
     fulfilledAt: iso(j.fulfilledAt),
-    bundleSizeBytes: j.bundleSizeBytes ?? null,
+    bundleSizeBytes: j.bundleSizeBytes === null ? null : Number(j.bundleSizeBytes),
     createdAt: isoReq(j.requestedAt),
   };
 }

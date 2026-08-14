@@ -7,7 +7,7 @@
 // membership is a plain uuid app-validated cross-module ref. SEC-052 bulk-export controls add
 // `bundle_downloaded_by_membership_id` + `bundle_presigned_url_last_generated_at`. RLS + grants +
 // the M4 write-audit trigger land in 0052/0053.
-import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { tenantExportJobPurpose, tenantExportJobStatus } from "../../enums";
 import { organizations } from "../organizations";
 
@@ -26,7 +26,11 @@ export const tenantExportJob = pgTable(
     fulfilledAt: timestamp("fulfilled_at", { withTimezone: true }),
     bundleMinioObjectKey: text("bundle_minio_object_key"),
     bundleSha256: text("bundle_sha256"),
-    bundleSizeBytes: integer("bundle_size_bytes"),
+    // GAP-097: bigint stored as text per M1 convention (the M22 `document_version.byte_size` precedent)
+    // — SEC-052 oversized bundles are BY DEFINITION over the 50GB `TENANT_EXPORT_MAX_BYTES` threshold,
+    // well past a plain `integer` column's ~2GB ceiling (was `integer`; overflowed on the very sizes
+    // this table exists to record — migration 0195).
+    bundleSizeBytes: text("bundle_size_bytes"),
     bundleModuleInventory: jsonb("bundle_module_inventory"),
     bundlePresignedUrlExpiresAt: timestamp("bundle_presigned_url_expires_at", {
       withTimezone: true,

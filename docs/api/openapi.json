@@ -125188,6 +125188,75 @@
         }
       }
     },
+    "/api/v1/platform/tenant-export-jobs/{id}/approve-oversized": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantexportjobsByIdApproveoversized",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Second-actor release of an oversized-hold tenant-export bundle (flips to fulfilled)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "jobId",
+                    "status"
+                  ],
+                  "properties": {
+                    "jobId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "approvalReason"
+                ],
+                "properties": {
+                  "approvalReason": {
+                    "minLength": 8,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/platform/tenant-invitations": {
       "get": {
         "operationId": "getApiV1PlatformTenantinvitations",

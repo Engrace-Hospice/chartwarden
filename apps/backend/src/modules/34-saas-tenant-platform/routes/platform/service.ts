@@ -334,6 +334,12 @@ export interface TenantPlatformRouteService {
     actorUserId: string,
     args: UpdateBaaRecordArgs,
   ): Promise<BaaRecordView>;
+  // ── tenant export: SEC-052 oversized-hold release (§3.7; GAP-097) ──
+  approveOversizedExport(
+    jobId: string,
+    actorMembershipId: string,
+    args: { approvalReason: string },
+  ): Promise<{ jobId: string; status: string }>;
   // ── feature-flag admin (§4.7 / D13 — delegates to M1's FeatureFlagAdmin seam) ──
   listFeatureFlags(
     filter: { organizationId?: string; flagKind?: string },
@@ -388,6 +394,15 @@ export interface TenantPlatformRouteSeed {
     grantorMembershipId: string;
     expiresAt: string;
   }>;
+  /** Tenant-export jobs the approve-oversized route may act on (§3.7 SEC-052; GAP-097). A job seeded
+   *  with `held: true` mirrors GAP-094's `holdForOversizedApproval` outcome (status stays `generating`,
+   *  awaiting the co-sign); `held: false`/omitted seeds an already-fulfilled or never-held job so the
+   *  route's "not actually held" 409 is exercisable too. */
+  readonly tenantExportJobs?: ReadonlyArray<{
+    id: string;
+    organizationId?: string;
+    held?: boolean;
+  }>;
 }
 
 /** Pads `n` to a uuid-shaped id so created ids round-trip through uuid-validated bodies (M22 slice). */
@@ -438,6 +453,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
   const intents = new Map<string, SignupIntentView>(); // keyed by intent id
   const baaRecords = new Map<string, BaaRecordView>(); // keyed by baa id
   const flags = new Map<string, FeatureFlagView>(); // keyed by `${flagKey}@${organizationId ?? '*'}`
+  const tenantExportJobs = new Map<string, { id: string; organizationId: string; status: string }>(); // keyed by job id
   const grants = new Map<
     string,
     {
@@ -548,6 +564,13 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
       rolloutPercent: f.rolloutPercent ?? null,
       killSwitchActive: f.killSwitchActive ?? false,
       updatedAt: f.updatedAt ?? now(),
+    });
+  }
+  for (const j of seed.tenantExportJobs ?? []) {
+    tenantExportJobs.set(j.id, {
+      id: j.id,
+      organizationId: j.organizationId ?? uuidFromCounter("e", 1),
+      status: (j.held ?? true) ? "generating" : "fulfilled",
     });
   }
 
@@ -972,6 +995,23 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
       };
       baaRecords.set(baaId, view);
       return view;
+    },
+
+    // ── tenant export: SEC-052 oversized-hold release (§3.7; GAP-097) ──
+    async approveOversizedExport(jobId, actorMembershipId, args) {
+      const job = tenantExportJobs.get(jobId);
+      if (!job) throw new NotFoundError("tenant export job");
+      if (job.status !== "generating") {
+        throw new WardenXError(
+          "TENANT_EXPORT_NOT_HELD",
+          "the bundle is not awaiting oversized-hold approval",
+          409,
+        );
+      }
+      void actorMembershipId;
+      void args.approvalReason;
+      job.status = "fulfilled";
+      return { jobId, status: "fulfilled" };
     },
 
     // ── feature-flag admin (§4.7 / D13 — the slice stands in for M1's FeatureFlagAdmin seam) ──

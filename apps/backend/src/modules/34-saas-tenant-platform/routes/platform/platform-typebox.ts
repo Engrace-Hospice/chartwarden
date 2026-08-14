@@ -95,6 +95,10 @@ export const BaaParamsSchema = Type.Object({
 export const FeatureFlagParamsSchema = Type.Object({
   flagKey: Type.String({ minLength: 1, maxLength: 128 }),
 });
+// GAP-097 — the SEC-052 oversized-hold release route keys by the tenant_export_job uuid.
+export const TenantExportJobParamsSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+});
 
 // ── bodies ─────────────────────────────────────────────────────────────────────────────────────────
 
@@ -172,6 +176,12 @@ export const QualifyIntentRequest = Type.Object({
 });
 export const RejectIntentRequest = Type.Object({
   rejectionReason: Type.String({ minLength: 8, maxLength: 1000 }),
+});
+
+// GAP-097 / SEC-052 — the platform-ops second-actor release of an oversized tenant-export bundle
+// (mirrors typebox.ts's `ApproveOversizedExportRequest`, this module's own local-schema convention).
+export const ApproveOversizedExportRequest = Type.Object({
+  approvalReason: Type.String({ minLength: 8, maxLength: 2000 }),
 });
 
 // §3.8 — platform-tenant BAA register (create one per (tenant_account, addendum_version); update status).
@@ -460,6 +470,11 @@ export const QualifyIntentAckSchema = Type.Object({
 export const RejectIntentAckSchema = Type.Object({
   intentId: Type.String(),
   intentStatus: Type.String(),
+});
+/** GAP-097 / SEC-052 — approve oversized export → `{ jobId, status: 'fulfilled' }`. */
+export const ApproveOversizedExportAckSchema = Type.Object({
+  jobId: Type.String(),
+  status: Type.String(),
 });
 
 // Compile-time pins: each read DTO structurally conforms to its `service.ts` view (drift = a type error).

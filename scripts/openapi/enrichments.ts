@@ -1099,6 +1099,8 @@ import {
 // ── platform-ops surface (routes/platform/platform-typebox.ts) ──────────────────────────────────────
 import {
   // queries
+  ApproveOversizedExportAckSchema as M34ApproveOversizedExportAckSchema,
+  ApproveOversizedExportRequest as M34ApproveOversizedExportRequest,
   BaaRegisterListQuerySchema as M34BaaRegisterListQuerySchema,
   BaaRegisterListResponseSchema as M34BaaRegisterListResponseSchema,
   CloseSessionAckSchema as M34CloseSessionAckSchema,
@@ -9356,6 +9358,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Reject an intent (new → rejected) with a recorded rationale",
     body: M34RejectIntentRequest,
     response: M34RejectIntentAckSchema,
+  },
+
+  // ── tenant export: SEC-052 oversized-hold release (GAP-097) ──
+  "POST /api/v1/platform/tenant-export-jobs/:id/approve-oversized": {
+    summary: "Second-actor release of an oversized-hold tenant-export bundle (flips to fulfilled)",
+    body: M34ApproveOversizedExportRequest,
+    response: M34ApproveOversizedExportAckSchema,
   },
 
   // ── public self-serve signup (§7.1 Phase-3; flag-gated 503 when OFF) ──
