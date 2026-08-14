@@ -50,7 +50,7 @@ import {
   VersionParamsSchema,
   parse,
 } from "./documents-typebox";
-import type { DocumentRouteService } from "./service";
+import type { DocumentRouteService, DocumentWriteActor } from "./service";
 import type { SignedUrlService } from "./signed-url-service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
@@ -61,18 +61,28 @@ export interface DocumentRouteDeps {
   signedUrl: SignedUrlService;
 }
 
+/**
+ * The acting org + BOTH actor ids. They are different id spaces and both are load-bearing (GAP-039):
+ * `userId` (the Better Auth `user.id`) becomes `app.user_id` and lands in `audit_event.actor_user_id`
+ * via M4's write triggers; `membershipId` is what the M22 `*_by_membership_id` columns record. This
+ * used to return the membership id UNDER the name `userId`, which is why passing "the actor" to a
+ * write is now passing a `DocumentWriteActor` and never a bare string.
+ */
 function actorOf(request: FastifyRequest): {
   organizationId: string;
-  userId: string;
+  actor: DocumentWriteActor;
   roles: readonly string[];
 } {
   const ctx = request.context;
-  // `userId` here is the acting MEMBERSHIP id — `openReview()` writes it straight into
-  // `reviewer_membership_id` (documents-route-service-db.ts). This used to read `ctx.userId` (the
-  // raw Better Auth user id, a different id space), landing the wrong id in that FK.
   const membershipId = ctx?.attributes.membershipId;
-  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: membershipId, roles: ctx.roles };
+  if (!ctx?.organizationId || !ctx.userId || typeof membershipId !== "string") {
+    throw new UnauthorizedError();
+  }
+  return {
+    organizationId: ctx.organizationId,
+    actor: { userId: ctx.userId, membershipId },
+    roles: ctx.roles,
+  };
 }
 
 const docIdOf = (request: FastifyRequest): string => parse(DocumentParamsSchema, request.params).id;
@@ -133,9 +143,9 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
 
   // 1 — upload new document (creates document + version v1).
   app.post("/api/v1/documents", { preHandler: [UPLOAD] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
+    const { organizationId, actor } = actorOf(request);
     const body = parse(UploadDocumentRequest, request.body);
-    const res = await service.uploadDocument(organizationId, userId, {
+    const res = await service.uploadDocument(organizationId, actor, {
       patientId: body.patientId ?? null,
       admissionId: body.admissionId ?? null,
       retentionClass: body.retentionClass,
@@ -169,9 +179,9 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
 
   // 2 — upload new version of an existing document.
   app.post("/api/v1/documents/:id/versions", { preHandler: [UPLOAD] }, async (request, reply) => {
-    const { organizationId } = actorOf(request);
+    const { organizationId, actor } = actorOf(request);
     parse(UploadVersionRequest, request.body);
-    const res = await service.uploadVersion(organizationId, docIdOf(request));
+    const res = await service.uploadVersion(organizationId, actor, docIdOf(request));
     return reply.code(201).send(res);
   });
 
@@ -239,9 +249,9 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
 
   // 8 — edit metadata (legal_hold_aware ABAC denies while a hold is active, §4.7).
   app.patch("/api/v1/documents/:id", { preHandler: [EDIT, ABAC_LEGAL_HOLD] }, async (request) => {
-    const { organizationId } = actorOf(request);
+    const { organizationId, actor } = actorOf(request);
     const body = parse(PatchDocumentRequest, request.body);
-    return service.patchDocument(organizationId, docIdOf(request), {
+    return service.patchDocument(organizationId, actor, docIdOf(request), {
       title: body.title,
       patientFacing: body.patientFacing,
       attachToDisclosures: body.attachToDisclosures,
@@ -253,9 +263,9 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     "/api/v1/documents/:id/tags",
     { preHandler: [EDIT, ABAC_LEGAL_HOLD] },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, actor } = actorOf(request);
       const body = parse(AddTagRequest, request.body);
-      const res = await service.addTag(organizationId, docIdOf(request), {
+      const res = await service.addTag(organizationId, actor, docIdOf(request), {
         tagKind: body.tagKind,
         tagKey: body.tagKey,
         tagValue: body.tagValue ?? null,
@@ -269,9 +279,9 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     "/api/v1/documents/:id/tags/:tagId",
     { preHandler: [EDIT, ABAC_LEGAL_HOLD] },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, actor } = actorOf(request);
       const { id, tagId } = parse(TagParamsSchema, request.params);
-      await service.removeTag(organizationId, id, tagId);
+      await service.removeTag(organizationId, actor, id, tagId);
       return reply.code(204).send();
     },
   );
@@ -281,9 +291,9 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     "/api/v1/documents/:id/export-phi-bundle",
     { preHandler: [EXPORT, ABAC_OWNER] },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, actor } = actorOf(request);
       const body = parse(ExportPhiBundleRequest, request.body);
-      const res = await service.exportPhiBundle(organizationId, {
+      const res = await service.exportPhiBundle(organizationId, actor, {
         patientId: body.patientId,
         purpose: body.purpose,
       });
@@ -295,9 +305,9 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
 
   // 12 — upload a new intake batch.
   app.post("/api/v1/intake/uploads", { preHandler: [INTAKE_UPLOAD] }, async (request, reply) => {
-    const { organizationId } = actorOf(request);
+    const { organizationId, actor } = actorOf(request);
     const body = parse(IntakeUploadRequest, request.body);
-    const res = await service.uploadBatch(organizationId, {
+    const res = await service.uploadBatch(organizationId, actor, {
       patientId: body.patientId ?? null,
       sourceChannel: body.sourceChannel,
     });
@@ -338,10 +348,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     "/api/v1/intake/uploads/:id/classification/confirm",
     { preHandler: [INTAKE_CONFIRM] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, actor } = actorOf(request);
       const { id } = parse(BatchParamsSchema, request.params);
       parse(ConfirmClassificationRequest, request.body);
-      return service.confirmClassification(organizationId, id);
+      return service.confirmClassification(organizationId, actor, id);
     },
   );
 
@@ -380,10 +390,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     "/api/v1/intake/uploads/:id/review",
     { preHandler: [INTAKE_REVIEW] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, actor } = actorOf(request);
       const { id } = parse(BatchParamsSchema, request.params);
       parse(OpenReviewRequest, request.body);
-      const res = await service.openReview(organizationId, id, userId);
+      const res = await service.openReview(organizationId, actor, id);
       return reply.code(201).send(res);
     },
   );
@@ -408,10 +418,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     "/api/v1/intake/reviews/:id/decisions",
     { preHandler: [INTAKE_REVIEW, ABAC_REVIEWER] },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, actor } = actorOf(request);
       const { id } = parse(ReviewParamsSchema, request.params);
       const body = parse(RecordDecisionRequest, request.body);
-      const res = await service.recordDecision(organizationId, id, {
+      const res = await service.recordDecision(organizationId, actor, id, {
         candidateId: body.candidateId,
         decision: body.decision,
       });
@@ -424,10 +434,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     "/api/v1/intake/reviews/:id/decisions:bulk-approve",
     { preHandler: [INTAKE_REVIEW, ABAC_BULK] },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, actor } = actorOf(request);
       const { id } = parse(ReviewParamsSchema, request.params);
       const body = parse(BulkApproveRequest, request.body);
-      const res = await service.bulkApprove(organizationId, id, body.candidateIds);
+      const res = await service.bulkApprove(organizationId, actor, id, body.candidateIds);
       return reply.code(201).send(res);
     },
   );
@@ -437,10 +447,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     "/api/v1/intake/reviews/:id/discrepancies/:discrepancyId/resolve",
     { preHandler: [INTAKE_REVIEW, ABAC_REVIEWER] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, actor } = actorOf(request);
       const { id, discrepancyId } = parse(DiscrepancyParamsSchema, request.params);
       parse(ResolveDiscrepancyRequest, request.body);
-      return service.resolveDiscrepancy(organizationId, id, discrepancyId);
+      return service.resolveDiscrepancy(organizationId, actor, id, discrepancyId);
     },
   );
 
@@ -449,10 +459,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     "/api/v1/intake/reviews/:id/complete",
     { preHandler: [INTAKE_REVIEW] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, actor } = actorOf(request);
       const { id } = parse(ReviewParamsSchema, request.params);
       parse(CompleteReviewRequest, request.body);
-      return service.completeReview(organizationId, id);
+      return service.completeReview(organizationId, actor, id);
     },
   );
 
@@ -461,10 +471,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     "/api/v1/intake/reviews/:id/abandon",
     { preHandler: [INTAKE_REVIEW] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, actor } = actorOf(request);
       const { id } = parse(ReviewParamsSchema, request.params);
       parse(AbandonReviewRequest, request.body);
-      return service.abandonReview(organizationId, id);
+      return service.abandonReview(organizationId, actor, id);
     },
   );
 
@@ -473,10 +483,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     "/api/v1/intake/uploads/:id/discard",
     { preHandler: [INTAKE_DISCARD] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, actor } = actorOf(request);
       const { id } = parse(BatchParamsSchema, request.params);
       parse(DiscardBatchRequest, request.body);
-      return service.discardBatch(organizationId, id);
+      return service.discardBatch(organizationId, actor, id);
     },
   );
 
@@ -529,10 +539,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     "/api/v1/admin/form-templates/:key/versions",
     { preHandler: [PUBLISH_TEMPLATE, ABAC_PUBLISH] },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, actor } = actorOf(request);
       const { key } = parse(TemplateParamsSchema, request.params);
       const body = parse(PublishTemplateRequest, request.body);
-      const res = await service.publishTemplateVersion(organizationId, key, {
+      const res = await service.publishTemplateVersion(organizationId, actor, key, {
         versionLabel: body.versionLabel,
       });
       return reply.code(201).send(res);
@@ -557,10 +567,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     "/api/v1/tenant-overlays/:templateKey",
     { preHandler: [MANAGE_OVERLAY, ABAC_OVERLAY, IF_MATCH] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, actor } = actorOf(request);
       const { templateKey } = parse(OverlayParamsSchema, request.params);
       parse(PublishOverlayRequest, request.body);
-      return service.publishOverlay(organizationId, templateKey, ifMatchVersionOf(request));
+      return service.publishOverlay(organizationId, actor, templateKey, ifMatchVersionOf(request));
     },
   );
 
@@ -583,10 +593,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     "/api/v1/admin/form-fills/:id/retry",
     { preHandler: [ADMIN_RETRY_RENDER] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, actor } = actorOf(request);
       const { id } = parse(FormFillParamsSchema, request.params);
       parse(RetryRenderRequest, request.body);
-      return service.retryRender(organizationId, id);
+      return service.retryRender(organizationId, actor, id);
     },
   );
 }

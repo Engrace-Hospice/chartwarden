@@ -16,9 +16,10 @@
 // Documented compromises: `form_template*` is platform reference (SELECT only for wardenx_app), so
 // `publishTemplateVersion` is a platform-admin op with no tenant-layer persistence (returns the current active
 // version / a synthetic id); the `exportPhiBundle` bundle is materialized by the async export worker (the route
-// returns its tracking id); the `*_by_membership_id` columns are plain uuid (no SQL FK), so the write routes
-// that do not thread the acting membership use `SENTINEL_MEMBERSHIP`; `withOrgContext(userId:"")` → the M4
-// audit actor is NULL. The in-memory `createInMemoryDocumentBackend` (`routes/service.ts`) stays the reference.
+// returns its tracking id). The in-memory `createInMemoryDocumentBackend` (`routes/service.ts`) stays the
+// reference. Every WRITE now carries its `DocumentWriteActor` (GAP-039): `actor.userId` reaches the M4
+// audit triggers through `app.user_id`, and `actor.membershipId` fills the `*_by_membership_id` columns
+// that used to take a hardcoded sentinel.
 //
 // The signed-URL STORAGE PRESIGNER is deliberately NOT built here — the M22 storage adapter is unwired;
 // the barrel (`index.ts`) binds the throwing `DegradedError` stub. This module supplies only the read
@@ -33,6 +34,7 @@ import { type CursorPage, paginate } from "./routes/concurrency";
 import type {
   DocumentRouteService,
   DocumentView,
+  DocumentWriteActor,
   IntakeBatchView,
   VersionView,
 } from "./routes/service";
@@ -57,18 +59,35 @@ const DISC = schema.extractionDiscrepancies;
 /** A read-wire fetch cap for the in-memory `paginate` keyset slicer (TODO: push the cursor into SQL). */
 const READ_WINDOW = 1000;
 
-/** Placeholder actor for the write routes that do not thread the acting membership to the service
- * (`addTag`/`removeTag`/`patchDocument`/`resolveDiscrepancy`/`publishOverlay`/version bump). The M22
- * `*_by_membership_id` columns are plain uuid (no SQL FK), so a sentinel satisfies NOT NULL; the M4 audit
- * actor is still NULL under `withOrgContext(userId:"")`. */
-const SENTINEL_MEMBERSHIP = "00000000-0000-4000-8000-0000000000c1";
 const iso = (v: Date | string): string => (v instanceof Date ? v.toISOString() : String(v));
 
+/**
+ * A READ, org-scoped under RLS. `userId` is empty because M4's audit triggers fire on writes only, and
+ * a read leaves no trigger-written row to attribute — the §2.5 read trail is emitted separately by the
+ * host's read-audit hook, under the requesting user's own `withOrgContext`.
+ */
 const withOrg = <T>(
   db: DbClient,
   organizationId: OrgId,
   fn: (tx: DbClient) => Promise<T>,
 ): Promise<T> => withOrgContext(db, { organizationId, userId: "" }, (tx) => fn(tx as DbClient));
+
+/**
+ * A WRITE, org-scoped under RLS AND attributed to the acting user (GAP-039). `actor.userId` becomes
+ * `app.user_id`, which every M4 audit trigger on these tables reads into `audit_event.actor_user_id`.
+ *
+ * Until GAP-039 every write here went through the read helper above, so `app.user_id` was the empty
+ * string, which the trigger's NULLIF-then-cast turns into a NULL actor: the whole M22 write history
+ * recorded that SOMETHING changed a document, tag, overlay or review, and nothing about who. The actor
+ * was available at the route the entire time and was destructured away.
+ */
+const withOrgAs = <T>(
+  db: DbClient,
+  organizationId: OrgId,
+  actor: DocumentWriteActor,
+  fn: (tx: DbClient) => Promise<T>,
+): Promise<T> =>
+  withOrgContext(db, { organizationId, userId: actor.userId }, (tx) => fn(tx as DbClient));
 
 /**
  * The production, RLS-backed DocumentRouteService. Reads and metadata/review writes are real; binary
@@ -451,8 +470,8 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         "new versions are unavailable until object bytes, verified byte size, and SHA-256 persistence are bound",
       );
     },
-    async patchDocument(organizationId, documentId, patch) {
-      return withOrg(db, organizationId, async (tx) => {
+    async patchDocument(organizationId, actor, documentId, patch) {
+      return withOrgAs(db, organizationId, actor, async (tx) => {
         await loadDocRow(tx, organizationId, documentId); // 404
         await assertNoHold(tx, documentId);
         const set: Record<string, unknown> = { updatedAt: new Date() };
@@ -464,8 +483,8 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         return loadDocRow(tx, organizationId, documentId);
       });
     },
-    async addTag(organizationId, documentId, tag) {
-      return withOrg(db, organizationId, async (tx) => {
+    async addTag(organizationId, actor, documentId, tag) {
+      return withOrgAs(db, organizationId, actor, async (tx) => {
         await loadDocRow(tx, organizationId, documentId); // 404
         await assertNoHold(tx, documentId);
         const [t] = await tx
@@ -476,15 +495,15 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
             tagKind: tag.tagKind,
             tagKey: tag.tagKey,
             tagValue: tag.tagValue,
-            addedByMembershipId: SENTINEL_MEMBERSHIP,
+            addedByMembershipId: actor.membershipId,
           })
           .returning({ id: TAG.id });
         if (!t) throw new Error("document_tag insert returned no row");
         return { id: t.id, tagKind: tag.tagKind, tagKey: tag.tagKey, tagValue: tag.tagValue };
       });
     },
-    async removeTag(organizationId, documentId, tagId) {
-      return withOrg(db, organizationId, async (tx) => {
+    async removeTag(organizationId, actor, documentId, tagId) {
+      return withOrgAs(db, organizationId, actor, async (tx) => {
         await loadDocRow(tx, organizationId, documentId); // 404
         await assertNoHold(tx, documentId);
         const del = await tx
@@ -494,15 +513,15 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         if (del.length === 0) throw new NotFoundError("tag");
       });
     },
-    async exportPhiBundle(_organizationId, _args) {
+    async exportPhiBundle(_organizationId, _actor, _args) {
       // §4.1 — the PHI export bundle is materialized by the async export worker; the route returns the tracking
       // id it will render under (the in-mem posture — no synchronous bundle table on the write path).
       return { documentBundleId: randomUUID() };
     },
 
     // ── Intake writes ────────────────────────────────────────────────────────────────────────────────
-    async uploadBatch(organizationId, args) {
-      return withOrg(db, organizationId, async (tx) => {
+    async uploadBatch(organizationId, actor, args) {
+      return withOrgAs(db, organizationId, actor, async (tx) => {
         const [b] = await tx
           .insert(BATCH)
           .values({
@@ -512,7 +531,7 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
             // (no SQL FK — app-validated). A sentinel keeps the NOT NULL invariant honest.
             initialDocumentId: randomUUID(),
             sourceChannel: args.sourceChannel,
-            uploadedByMembershipId: SENTINEL_MEMBERSHIP,
+            uploadedByMembershipId: actor.membershipId,
             correlationId: randomUUID(),
           })
           .returning({ id: BATCH.id, status: BATCH.status, uploadedAt: BATCH.uploadedAt });
@@ -528,22 +547,22 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         };
       });
     },
-    async confirmClassification(organizationId, batchId) {
-      return withOrg(db, organizationId, async (tx) => {
+    async confirmClassification(organizationId, actor, batchId) {
+      return withOrgAs(db, organizationId, actor, async (tx) => {
         await requireBatch(tx, batchId);
         await tx.update(BATCH).set({ status: "classifier_complete" }).where(eq(BATCH.id, batchId));
         return { batchId, status: "classifier_complete" };
       });
     },
-    async openReview(organizationId, batchId, actorUserId) {
-      return withOrg(db, organizationId, async (tx) => {
+    async openReview(organizationId, actor, batchId) {
+      return withOrgAs(db, organizationId, actor, async (tx) => {
         await requireBatch(tx, batchId);
         const [r] = await tx
           .insert(ER)
           .values({
             organizationId,
             intakeUploadBatchId: batchId,
-            reviewerMembershipId: actorUserId || SENTINEL_MEMBERSHIP,
+            reviewerMembershipId: actor.membershipId,
             status: "in_progress",
             correlationId: randomUUID(),
           })
@@ -553,8 +572,8 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         return { id: r.id, batchId, status: r.status, createdAt: iso(r.openedAt) };
       });
     },
-    async recordDecision(organizationId, reviewId, args) {
-      return withOrg(db, organizationId, async (tx) => {
+    async recordDecision(organizationId, actor, reviewId, args) {
+      return withOrgAs(db, organizationId, actor, async (tx) => {
         await requireReview(tx, reviewId);
         const [d] = await tx
           .insert(ED)
@@ -570,8 +589,8 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         return { decisionId: d.id };
       });
     },
-    async bulkApprove(organizationId, reviewId, candidateIds) {
-      return withOrg(db, organizationId, async (tx) => {
+    async bulkApprove(organizationId, actor, reviewId, candidateIds) {
+      return withOrgAs(db, organizationId, actor, async (tx) => {
         await requireReview(tx, reviewId);
         const bulkApproveBatchId = randomUUID();
         for (const candidateId of candidateIds) {
@@ -588,14 +607,14 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         return { bulkApproveBatchId, decisionsCreated: candidateIds.length };
       });
     },
-    async resolveDiscrepancy(organizationId, reviewId, discrepancyId) {
-      return withOrg(db, organizationId, async (tx) => {
+    async resolveDiscrepancy(organizationId, actor, reviewId, discrepancyId) {
+      return withOrgAs(db, organizationId, actor, async (tx) => {
         await requireReview(tx, reviewId);
         const upd = await tx
           .update(DISC)
           .set({
             status: "resolved",
-            resolvedByMembershipId: SENTINEL_MEMBERSHIP,
+            resolvedByMembershipId: actor.membershipId,
             resolvedAt: new Date(),
           })
           .where(eq(DISC.id, discrepancyId))
@@ -604,8 +623,8 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         return { discrepancyId, status: "resolved" };
       });
     },
-    async completeReview(organizationId, reviewId) {
-      return withOrg(db, organizationId, async (tx) => {
+    async completeReview(organizationId, actor, reviewId) {
+      return withOrgAs(db, organizationId, actor, async (tx) => {
         const r = await requireReview(tx, reviewId);
         await tx
           .update(ER)
@@ -620,8 +639,8 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         return { reviewId, status: "complete" };
       });
     },
-    async abandonReview(organizationId, reviewId) {
-      return withOrg(db, organizationId, async (tx) => {
+    async abandonReview(organizationId, actor, reviewId) {
+      return withOrgAs(db, organizationId, actor, async (tx) => {
         await requireReview(tx, reviewId);
         await tx
           .update(ER)
@@ -630,8 +649,8 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         return { reviewId, status: "abandoned" };
       });
     },
-    async discardBatch(organizationId, batchId) {
-      return withOrg(db, organizationId, async (tx) => {
+    async discardBatch(organizationId, actor, batchId) {
+      return withOrgAs(db, organizationId, actor, async (tx) => {
         await requireBatch(tx, batchId);
         await tx
           .update(BATCH)
@@ -642,7 +661,7 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
     },
 
     // ── Template / overlay / render writes ───────────────────────────────────────────────────────────
-    async publishTemplateVersion(organizationId, key, _args) {
+    async publishTemplateVersion(organizationId, actor, key, _args) {
       // `form_template_version` is PLATFORM reference (wardenx_app has SELECT only) — a version publish is a
       // platform-admin op, not a tenant write. Return the template's current active version if resolvable,
       // else a synthetic id (no tenant-layer persistence; the in-mem posture).
@@ -655,8 +674,8 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         return { key, versionId: t?.active ?? randomUUID() };
       });
     },
-    async publishOverlay(organizationId, templateKey, ifVersion) {
-      return withOrg(db, organizationId, async (tx) => {
+    async publishOverlay(organizationId, actor, templateKey, ifVersion) {
+      return withOrgAs(db, organizationId, actor, async (tx) => {
         const [t] = await tx
           .select({ id: FT.id })
           .from(FT)
@@ -685,7 +704,7 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
             templateId: t.id,
             branding: {},
             isActive: true,
-            publishedByMembershipId: SENTINEL_MEMBERSHIP,
+            publishedByMembershipId: actor.membershipId,
             publishedAt: new Date(),
           })
           .returning({ id: OVL.id });
@@ -693,8 +712,8 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         return { overlayId: o.id, version: current + 1 };
       });
     },
-    async retryRender(organizationId, fillId) {
-      return withOrg(db, organizationId, async (tx) => {
+    async retryRender(organizationId, actor, fillId) {
+      return withOrgAs(db, organizationId, actor, async (tx) => {
         const [f] = await tx.select({ id: FF.id }).from(FF).where(eq(FF.id, fillId)).limit(1);
         if (!f) throw new NotFoundError("form fill");
         await tx.update(FF).set({ status: "queued" }).where(eq(FF.id, fillId));
