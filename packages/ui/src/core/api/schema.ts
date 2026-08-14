@@ -38338,8 +38338,8 @@ export interface operations {
                         membershipId: string;
                         eventId: string;
                         visitId: string;
-                        lat: number;
-                        lng: number;
+                        lat: number | null;
+                        lng: number | null;
                         accuracyM: number;
                         capturedAt: string;
                     }[];

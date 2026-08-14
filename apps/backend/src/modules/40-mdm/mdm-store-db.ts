@@ -14,10 +14,11 @@
 //   • ORG-SCOPED (external_physician_tenant_overlay / mdm_provisional / mdm_baa_record /
 //     mdm_baa_required) carry app.org_id RLS, so their reads/writes run inside `withOrgContext`.
 //   • PLATFORM-OPS (merge_request / nppes_sync_log) are wardenx_admin break-glass surfaces with NO
-//     wardenx_app grant, and the merge-approval workflow needs the §7.6 canonical-writer functions.
-//     Those governance writes are therefore NOT wired on the request handle in FB-T02 (they throw a
-//     clear 501) — the entity-directory read surface + the org-scoped overlay/BAA writes ARE live,
-//     which is what the merged-module screen (apps/web/src/modules/40-mdm) consumes.
+//     wardenx_app grant. The §7.6 governance surface — merge approve/reject, provisional promotion,
+//     AND the dedup-queue read — therefore routes through migration 0205's `mdm_canonical_writer_*`
+//     SECURITY DEFINER functions. GAP-060: all three writes used to throw a blanket 501 behind live,
+//     fully-enriched admin routes, and `listMergeRequests` read `merge_request` directly on the app
+//     pool, which is a `permission denied` 500 — so the queue could be neither seen nor acted on.
 import { type DbClient, schema } from "@wardenx/db";
 import type {
   BaaRecordRow,
@@ -330,14 +331,15 @@ export function createDbBaaStore(db: DbClient): BaaStore {
   };
 }
 
-/** The §7.6 governance writes need the canonical-writer SECURITY DEFINER functions (deeper M40),
- *  not wired on the request handle in FB-T02 — fail clearly rather than corrupt the redirect graph. */
-function governanceNotWired(op: string): never {
-  throw new WardenXError(
-    "NOT_IMPLEMENTED",
-    `${op} runs through the M40 platform-ops canonical-writer surface (§7.6), not wired in FB-T02`,
-    501,
-  );
+/** One row of the migration-0205 `mdm_canonical_writer_list_merge_requests()` projection (snake_case,
+ *  as Postgres returns it — this is a raw `db.execute`, not a Drizzle select). */
+interface MergeQueueRow {
+  readonly id: string;
+  readonly entity_kind: string;
+  readonly canonical_id: string;
+  readonly duplicate_id: string;
+  readonly status: string;
+  readonly evidence: unknown;
 }
 
 /**
@@ -441,38 +443,70 @@ export function createDbMdmRouteService(db: DbClient): MdmRouteService {
     async listMergeRequests(): Promise<readonly MergeRequestRow[]> {
       // Platform-ops read (wardenx_admin break-glass surface; no wardenx_app grant). The open dedup
       // queue, newest first.
-      const rows = await db
-        .select({
-          id: MERGE.id,
-          kind: MERGE.entityKind,
-          canonicalId: MERGE.canonicalId,
-          duplicateId: MERGE.duplicateId,
-          status: MERGE.status,
-          evidence: MERGE.evidence,
-        })
-        .from(MERGE)
-        .where(inArray(MERGE.status, ["pending", "approved"]))
-        .orderBy(desc(MERGE.createdAt));
+      // GAP-060 — through the migration-0205 SECURITY DEFINER reader. This USED to be a direct
+      // `db.select().from(MERGE)`, which is a hard `permission denied` on the app pool: migration 0019
+      // gave `merge_request` GRANT ALL to `wardenx_admin` and NO `wardenx_app` grant at all (the comment
+      // two lines up said so while the query below ignored it). So the dedup queue 500'd next to the
+      // three 501s — an admin could not see the merges they could not approve.
+      const result = await db.execute(
+        sql`SELECT * FROM mdm_canonical_writer_list_merge_requests()`,
+      );
+      const rows =
+        (result as unknown as { rows?: readonly MergeQueueRow[] }).rows ?? ([] as MergeQueueRow[]);
       return rows.map((r) => ({
         id: r.id,
-        kind: r.kind,
-        canonicalId: r.canonicalId,
-        duplicateId: r.duplicateId,
-        status: r.status,
+        kind: r.entity_kind as MdmEntityKind,
+        canonicalId: r.canonical_id,
+        duplicateId: r.duplicate_id,
+        status: r.status as MergeRequestRow["status"],
         evidence: (r.evidence ?? {}) as Readonly<Record<string, unknown>>,
       }));
     },
 
-    async approveMerge() {
-      return governanceNotWired("merge approval");
+    // GAP-060 — the §7.6 governance writes, live. Each runs ONE migration-0205 SECURITY DEFINER
+    // function that does the whole state change atomically (claim the row FOR UPDATE, move the
+    // canonical, settle the workflow row) — the alternative, doing it in three app-side statements,
+    // would leave a window where the duplicate redirects but the merge still reads `pending`.
+    async approveMerge(mergeId, actorUserId) {
+      const result = await db.execute(
+        sql`SELECT * FROM mdm_canonical_writer_approve_merge(${mergeId}, ${actorUserId})`,
+      );
+      const row = (
+        result as unknown as { rows?: Array<{ duplicate_id: string; canonical_id: string }> }
+      ).rows?.[0];
+      // The function raises on every refusal path (unknown / not-pending / unsupported kind / survivor
+      // absent or itself merged), so a zero-row return means a contract change, not a business outcome.
+      if (!row) throw new Error(`merge approval for ${mergeId} returned no row`);
+      return { duplicateId: row.duplicate_id, canonicalId: row.canonical_id };
     },
 
-    async rejectMerge() {
-      governanceNotWired("merge rejection");
+    async rejectMerge(mergeId, reason, actorUserId) {
+      const result = await db.execute(
+        sql`SELECT mdm_canonical_writer_reject_merge(${mergeId}, ${reason}, ${actorUserId}) AS settled`,
+      );
+      const settled = Number(
+        (result as unknown as { rows?: Array<{ settled?: number }> }).rows?.[0]?.settled ?? 0,
+      );
+      // 0 rows = the proposal is absent or already settled. A silent success there would tell an admin
+      // acting on a stale queue that they rejected something they did not.
+      if (settled === 0) {
+        throw new WardenXError(
+          "NOT_FOUND",
+          `merge request ${mergeId} is not open for rejection`,
+          404,
+        );
+      }
     },
 
-    async promoteProvisional() {
-      return governanceNotWired("provisional promotion");
+    async promoteProvisional(provisionalId, actorUserId) {
+      const result = await db.execute(
+        sql`SELECT mdm_canonical_writer_promote_provisional(${provisionalId}, ${actorUserId}) AS canonical_id`,
+      );
+      const canonicalId = (
+        result as unknown as { rows?: Array<{ canonical_id?: string }> }
+      ).rows?.[0]?.canonical_id;
+      if (!canonicalId) throw new Error(`promotion of ${provisionalId} returned no canonical id`);
+      return { canonicalId };
     },
 
     async nppesLookup(npi) {
