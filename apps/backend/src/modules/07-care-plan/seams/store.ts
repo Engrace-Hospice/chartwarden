@@ -9,6 +9,7 @@
 // NOT trust a caller-asserted scope (§7.8). The in-memory slice seeds the decision directly so reader
 // tests can exercise both the entitled and the redacted paths.
 import type {
+  CarePlanCodeUsageRecord,
   CarePlanId,
   IsoInstant,
   PatientId,
@@ -67,6 +68,16 @@ export interface CarePlanReaderStore {
     organizationId: string,
     window: { from: string; to: string },
   ): Promise<{ numerator: number; denominator: number }>;
+
+  /**
+   * ORG-LEVEL problem-list terminology-code usage restricted to `codes` — M38's §7.3 remediation
+   * report input (GAP-063). Active problems only; returns the row id + which code it uses, nothing
+   * else (the report is a code-and-count surface, not a chart read).
+   */
+  terminologyCodeUsageForOrg(
+    organizationId: string,
+    codes: readonly { readonly systemId: string; readonly code: string }[],
+  ): Promise<readonly CarePlanCodeUsageRecord[]>;
 }
 
 // ── in-memory slice store ─────────────────────────────────────────────────────────────────────────
@@ -75,6 +86,8 @@ export interface CarePlanReaderStore {
 export interface CarePlanReaderSeed {
   readonly elements?: readonly CarePlanElementsRecord[];
   readonly clocks?: readonly CarePlanClockRecord[];
+  /** Problem-list code usage the slice serves M38's remediation rollup (filtered by the caller's set). */
+  readonly codeUsage?: readonly CarePlanCodeUsageRecord[];
 }
 
 /** An in-memory {@link CarePlanReaderStore} for the slice/tests — no DB, deterministic, RLS-free. */
@@ -83,6 +96,7 @@ export function createInMemoryCarePlanReaderStore(seed: CarePlanReaderSeed = {})
 } {
   const elements = seed.elements ?? [];
   const clocks = seed.clocks ?? [];
+  const codeUsage = seed.codeUsage ?? [];
   return {
     store: {
       async activeCarePlanElements(patientId) {
@@ -94,6 +108,11 @@ export function createInMemoryCarePlanReaderStore(seed: CarePlanReaderSeed = {})
       /** Slice default: 0/0 — M30's kernel SUPPRESSES rather than scoring perfect adherence. */
       async fifteenDayCycleCountsForOrg() {
         return { numerator: 0, denominator: 0 };
+      },
+      async terminologyCodeUsageForOrg(_organizationId, codes) {
+        // Same filter the SQL applies, so a seeded row only surfaces when the caller asked for its code.
+        const wanted = new Set(codes.map((c) => `${c.systemId} ${c.code}`));
+        return codeUsage.filter((r) => wanted.has(`${r.systemId} ${r.code}`));
       },
     },
   };

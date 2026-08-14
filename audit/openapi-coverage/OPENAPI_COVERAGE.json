@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1244,
-    "enriched": 1237,
+    "routes": 1250,
+    "enriched": 1243,
     "deficit": 7,
-    "mutating": 709,
-    "mutatingNoBody": 88,
-    "gets": 502,
+    "mutating": 711,
+    "mutatingNoBody": 89,
+    "gets": 506,
     "getsNoResponse": 8
   },
   "modules": [
@@ -371,12 +371,12 @@
     },
     {
       "module": "38-terminology",
-      "routes": 8,
-      "enriched": 8,
+      "routes": 14,
+      "enriched": 14,
       "deficit": 0,
-      "mutating": 1,
-      "mutatingNoBody": 0,
-      "gets": 6,
+      "mutating": 3,
+      "mutatingNoBody": 1,
+      "gets": 10,
       "getsNoResponse": 0
     },
     {

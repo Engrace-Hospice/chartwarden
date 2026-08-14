@@ -22,6 +22,11 @@ import type {
   ValidateResult as ServiceValidateResult,
 } from "@wardenx/terminology";
 import { ValidationError } from "@wardenx/types";
+import type {
+  TerminologyLoadHistoryEntry as StoreLoadHistoryEntry,
+  TenantExtensionGovernanceRow as StoreTenantExtensionGovernanceRow,
+  ValueSetCatalogEntry as StoreValueSetCatalogEntry,
+} from "../ops-store";
 
 // --- format registration (TypeBox Value does not validate `format` until registered) ----------
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -201,6 +206,137 @@ export const ExtensionCreatedResponseSchema = Type.Object({
   code: Type.String(),
 });
 
+// --- GAP-063: the six §4.1 routes that were never built ---------------------------------------
+// Six of the fourteen §4.1 rows had no `app.get/post` anywhere: the value-set catalog, the tenant
+// remediation report, and the whole `/api/v1/admin/terminology/*` platform-ops surface. Their
+// schemas live here beside the eight that shipped.
+
+/** GET /api/v1/terminology/value-sets — the catalog (§4.1). */
+export const ValueSetCatalogQuerySchema = Type.Object({
+  scope: Type.Optional(
+    Type.Union([Type.Literal("platform"), Type.Literal("hospice"), Type.Literal("hqrp")]),
+  ),
+});
+export const ValueSetCatalogEntrySchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  description: Type.Union([Type.String(), Type.Null()]),
+  scope: Type.Union([Type.Literal("platform"), Type.Literal("hospice"), Type.Literal("hqrp")]),
+  updatedAt: Type.String(),
+});
+export const ValueSetCatalogResponseSchema = Type.Object({
+  items: Type.Array(ValueSetCatalogEntrySchema),
+});
+
+/** GET /api/v1/terminology/remediation — the per-tenant §7.3 rollup. */
+export const RemediationQuerySchema = Type.Object({
+  since: Type.Optional(Type.String({ format: "date" })),
+  system: Type.Optional(CodeSystemIdSchema),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+});
+export const RemediationLineSchema = Type.Object({
+  systemId: CodeSystemIdSchema,
+  deprecatedCode: Type.String(),
+  deprecationEffective: Type.String(),
+  successorCodes: Type.Array(Type.String()),
+  mappingKind: DeprecationMappingKindSchema,
+  guidance: Type.Union([Type.String(), Type.Null()]),
+  affectedRecordCount: Type.Integer(),
+  sampleRecordIds: Type.Array(Type.String()),
+  affectedByType: Type.Record(Type.String(), Type.Integer()),
+  /** §7.3: an `equivalent` mapping to exactly one successor is mechanical; everything else is judgement. */
+  recommendedAction: Type.Union([
+    Type.Literal("update_to_successor"),
+    Type.Literal("manual_review"),
+  ]),
+});
+export const RemediationResponseSchema = Type.Object({
+  since: Type.String(),
+  /** Distinct (record, deprecated code) usages — a row on two deprecated codes is two remediations. */
+  totalAffected: Type.Integer(),
+  affectedCodeCount: Type.Integer(),
+  /** Record classes actually consulted — see the route's honesty note on unbuilt producers. */
+  coveredRecordTypes: Type.Array(Type.String()),
+  items: Type.Array(RemediationLineSchema),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+});
+
+/** GET /api/v1/admin/terminology/versions — platform load history. */
+export const AdminVersionsQuerySchema = Type.Object({
+  system: Type.Optional(CodeSystemIdSchema),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+});
+export const AdminVersionEntrySchema = Type.Object({
+  logId: Type.String(),
+  systemId: CodeSystemIdSchema,
+  versionId: Type.Union([Type.String(), Type.Null()]),
+  version: Type.Union([Type.String(), Type.Null()]),
+  versionStatus: Type.Union([Type.String(), Type.Null()]),
+  action: Type.String(),
+  conceptCount: Type.Integer(),
+  newCodes: Type.Integer(),
+  retiredCodes: Type.Integer(),
+  affectedValueSets: Type.Integer(),
+  summary: Type.Record(Type.String(), Type.Unknown()),
+  at: Type.String(),
+});
+export const AdminVersionsResponseSchema = Type.Object({
+  items: Type.Array(AdminVersionEntrySchema),
+});
+
+/** POST /api/v1/admin/terminology/:system/load — register a source version (step-up). */
+export const AdminSystemParamsSchema = Type.Object({ system: CodeSystemIdSchema });
+export const AdminLoadBodySchema = Type.Object({
+  version: Type.String({ minLength: 1, maxLength: 64 }),
+  sourceFileRef: Type.String({ minLength: 1, maxLength: 512 }),
+  /**
+   * REQUIRED, unlike the §4.2 body sketch. `code_system_version.checksum` is NOT NULL and exists so a
+   * re-load can be proven byte-identical; defaulting it would write a lie into the provenance column.
+   */
+  checksum: Type.String({ minLength: 8, maxLength: 128 }),
+  releasedOn: Type.Optional(Type.String({ format: "date" })),
+  effectiveFrom: Type.Optional(Type.String({ format: "date" })),
+});
+export const AdminLoadResponseSchema = Type.Object({
+  versionId: Type.String(),
+  status: Type.String(),
+  /** False when this (system, version) was already registered — the caller's request changed nothing. */
+  created: Type.Boolean(),
+  /** What actually happened, so "registered" is never mistaken for "ingested". */
+  ingestion: Type.Literal("pending_loader_worker"),
+});
+
+/** POST /api/v1/admin/terminology/:system/refresh-embeddings. */
+export const AdminRefreshEmbeddingsResponseSchema = Type.Object({
+  versionId: Type.String(),
+  status: Type.Literal("embedding"),
+  recompute: Type.Literal("pending_embeddings_worker"),
+});
+
+/** GET /api/v1/admin/terminology/value-set-extensions — cross-tenant governance view. */
+export const AdminExtensionsQuerySchema = Type.Object({
+  valueSetId: Type.Optional(Type.String({ minLength: 1 })),
+  organizationId: Type.Optional(Type.String({ minLength: 1 })),
+  includeRemoved: Type.Optional(Type.Boolean()),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+  cursor: Type.Optional(Type.String()),
+});
+export const AdminExtensionEntrySchema = Type.Object({
+  extensionId: Type.String(),
+  valueSetId: Type.String(),
+  organizationId: Type.String(),
+  systemId: CodeSystemIdSchema,
+  code: Type.String(),
+  reason: Type.String(),
+  addedBy: Type.Union([Type.String(), Type.Null()]),
+  removedAt: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+});
+export const AdminExtensionsResponseSchema = Type.Object({
+  items: Type.Array(AdminExtensionEntrySchema),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+});
+
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the seam returns).
 type Conforms<T extends V, V> = T;
 type _Validate = Conforms<
@@ -229,6 +365,17 @@ type _ExtCreated = Conforms<
     readonly system: CodeSystemId;
     readonly code: string;
   }
+>;
+// GAP-063 — the same pin for the six new routes' DTOs: the published contract must stay assignable to
+// what `TerminologyOpsStore` returns, so a store field renamed breaks the build rather than the client.
+type _ValueSetCatalog = Conforms<
+  Static<typeof ValueSetCatalogEntrySchema>,
+  StoreValueSetCatalogEntry
+>;
+type _AdminVersion = Conforms<Static<typeof AdminVersionEntrySchema>, StoreLoadHistoryEntry>;
+type _AdminExtension = Conforms<
+  Static<typeof AdminExtensionEntrySchema>,
+  StoreTenantExtensionGovernanceRow
 >;
 
 /**

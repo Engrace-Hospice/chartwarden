@@ -24,6 +24,8 @@ import { requirePermission } from "@wardenx/auth";
 import type { CodeSystemId, ExpansionMember, TerminologyProvider } from "@wardenx/terminology";
 import { UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { TerminologyOpsStore } from "../ops-store";
+import type { createRemediationService } from "../remediation-service";
 import {
   DeprecationParamsSchema,
   ExpandParamsSchema,
@@ -37,8 +39,10 @@ import {
   LookupQuerySchema,
   SearchParamsSchema,
   SearchQuerySchema,
+  RemediationQuerySchema,
   ValidateParamsSchema,
   ValidateQuerySchema,
+  ValueSetCatalogQuerySchema,
   parse,
 } from "./terminology-typebox";
 
@@ -63,7 +67,21 @@ export interface TerminologyRouteDeps {
   provider: TerminologyProvider;
   /** Resolves an org's feature flags; absent → all flags off (Phase-1 default). */
   flags?: TerminologyFeatureFlagReader;
+  /**
+   * GAP-063 — the value-set catalog port. Absent ⇒ the `/value-sets` route is not registered at all,
+   * so a boot that cannot serve the catalog 404s rather than answering an empty list that reads as
+   * "this platform curates no value sets".
+   */
+  ops?: Pick<TerminologyOpsStore, "listValueSets">;
+  /**
+   * GAP-063 — the §7.3 remediation report service. Absent ⇒ the route is not registered (same stance:
+   * a compliance report that cannot consult its producers must not answer "nothing to remediate").
+   */
+  remediation?: RemediationService;
 }
+
+/** The §7.3 report surface the remediation route calls (see ../remediation-service.ts). */
+export type RemediationService = ReturnType<typeof createRemediationService>;
 
 /** The org-scoped actor (org binding is server-side: the context, never the body). */
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
@@ -79,11 +97,43 @@ function asOfDate(asOf: string | undefined): Date | undefined {
 
 const READ = requirePermission("terminology.read") as PreHandler;
 const EXTEND = requirePermission("terminology.value_set.extend") as PreHandler;
+// §4.4 — the report is a Compliance/Privacy/Coder surface, deliberately NOT folded into
+// `terminology.read`: reading a code is a dictionary lookup, seeing which of this tenant's records
+// still use retired codes is a compliance exposure listing.
+const REMEDIATION = requirePermission("terminology.deprecation_report") as PreHandler;
 
 const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not found`, 404);
 
 export function registerTerminologyRoutes(app: FastifyInstance, deps: TerminologyRouteDeps): void {
-  const { provider, flags } = deps;
+  const { provider, flags, ops, remediation } = deps;
+
+  // --- §4.1 the value-set catalog (GAP-063) ---------------------------------------------------
+  // Registered BEFORE the `/:system/...` family, and static-vs-parametric anyway: Fastify's radix
+  // router prefers the literal `value-sets` segment, so this never shadows a code system named
+  // `value-sets` (there is none — `:system` is a closed enum).
+  if (ops) {
+    app.get("/api/v1/terminology/value-sets", { preHandler: [READ] }, async (request) => {
+      const { scope } = parse(ValueSetCatalogQuerySchema, request.query);
+      const all = await ops.listValueSets();
+      return { items: scope ? all.filter((v) => v.scope === scope) : all };
+    });
+  }
+
+  // --- §4.2 the per-tenant deprecation remediation report (GAP-063) ---------------------------
+  // Org-scoped by construction: the org comes from `request.context`, never a query parameter, and
+  // the producers self-scope under RLS. See ../remediation-service.ts for what is and is not covered.
+  if (remediation) {
+    app.get("/api/v1/terminology/remediation", { preHandler: [REMEDIATION] }, async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(RemediationQuerySchema, request.query);
+      return remediation.report({
+        organizationId,
+        since: q.since,
+        system: q.system as CodeSystemId | undefined,
+        limit: q.limit,
+      });
+    });
+  }
 
   /**
    * §7.7 semantic gate: `mode=semantic` rides the `ai.full` capability (Phase 2). In Phase 1 the

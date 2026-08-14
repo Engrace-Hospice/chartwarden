@@ -1228,6 +1228,13 @@ import {
 // brings in `SearchQuerySchema as TerminologySearchQuerySchema` (line ~585) — keep that one; these
 // are the added response/echo schemas. Request query/param schemas are reused from source.
 import {
+  AdminExtensionsQuerySchema as M38AdminExtensionsQuerySchema,
+  AdminExtensionsResponseSchema as M38AdminExtensionsResponseSchema,
+  AdminLoadBodySchema as M38AdminLoadBodySchema,
+  AdminLoadResponseSchema as M38AdminLoadResponseSchema,
+  AdminRefreshEmbeddingsResponseSchema as M38AdminRefreshEmbeddingsResponseSchema,
+  AdminVersionsQuerySchema as M38AdminVersionsQuerySchema,
+  AdminVersionsResponseSchema as M38AdminVersionsResponseSchema,
   ConceptResponseSchema as M38ConceptResponseSchema,
   DeprecationLookupResponseSchema as M38DeprecationLookupResponseSchema,
   ExpandQuerySchema as M38ExpandQuerySchema,
@@ -1237,8 +1244,12 @@ import {
   IsMemberQuerySchema as M38IsMemberQuerySchema,
   LookupQuerySchema as M38LookupQuerySchema,
   MembershipResponseSchema as M38MembershipResponseSchema,
+  RemediationQuerySchema as M38RemediationQuerySchema,
+  RemediationResponseSchema as M38RemediationResponseSchema,
   ValidateQuerySchema as M38ValidateQuerySchema,
   ValidateResponseSchema as M38ValidateResponseSchema,
+  ValueSetCatalogQuerySchema as M38ValueSetCatalogQuerySchema,
+  ValueSetCatalogResponseSchema as M38ValueSetCatalogResponseSchema,
 } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
 
 // M39 Consent & Authorization Management — OpenAPI enrichment import.
@@ -9555,6 +9566,42 @@ Object.assign(ROUTE_ENRICHMENTS, {
   // Tenant removes an extension (soft-delete) — 204, no response body → summary-only.
   "DELETE /api/v1/terminology/value-sets/:id/extensions/:extId": {
     summary: "Remove a tenant value-set extension (soft-delete; 204, §4.2)",
+  },
+  // ── GAP-063: the six §4.1 rows that had no route registration at all ──
+  // Value-set catalog (§4.1 row 6).
+  "GET /api/v1/terminology/value-sets": {
+    summary: "Catalog of platform value sets (§4.1)",
+    query: M38ValueSetCatalogQuerySchema,
+    response: M38ValueSetCatalogResponseSchema,
+  },
+  // Per-tenant deprecation remediation report (§4.2 / §7.3) — org-scoped by RLS, not by a parameter.
+  "GET /api/v1/terminology/remediation": {
+    summary: "This tenant's records still using recently-deprecated codes (§7.3)",
+    query: M38RemediationQuerySchema,
+    response: M38RemediationResponseSchema,
+  },
+  // Platform load history (§4.1 row 11) — platform-ops only, audited as audit.elevated_access.
+  "GET /api/v1/admin/terminology/versions": {
+    summary: "Platform terminology load history (platform-ops, §4.1)",
+    query: M38AdminVersionsQuerySchema,
+    response: M38AdminVersionsResponseSchema,
+  },
+  // Register a source version (§4.2 row 12) — step-up; idempotent on (system, version) → 409.
+  "POST /api/v1/admin/terminology/:system/load": {
+    summary: "Register a source version for a code system (platform-ops + step-up, §4.2)",
+    body: M38AdminLoadBodySchema,
+    response: M38AdminLoadResponseSchema,
+  },
+  // Recompute embeddings at the system's ACTIVE version (§4.2 row 13).
+  "POST /api/v1/admin/terminology/:system/refresh-embeddings": {
+    summary: "Request an embeddings recompute at the active version (platform-ops, §4.2)",
+    response: M38AdminRefreshEmbeddingsResponseSchema,
+  },
+  // Cross-tenant tenant-extension governance view (§4.1 row 14).
+  "GET /api/v1/admin/terminology/value-set-extensions": {
+    summary: "Cross-tenant view of tenant value-set extensions (platform-ops, §4.1)",
+    query: M38AdminExtensionsQuerySchema,
+    response: M38AdminExtensionsResponseSchema,
   },
 });
 

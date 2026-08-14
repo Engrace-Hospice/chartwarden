@@ -48,11 +48,50 @@ export {
 // `registerTerminologySeams`) and the consumer-facing route inventory below.
 export { createDbTerminologyStore } from "./terminology-store-db";
 
+// GAP-063 — the six §4.1 routes that had no registration anywhere: the value-set catalog, the §7.3
+// tenant remediation report, and the four platform-ops `/api/v1/admin/terminology/*` routes. The
+// admin write door is migration 0206's `terminology_loader` SECURITY DEFINER pair (`wardenx_app` has
+// no canonical write grant, §7.4), and the platform-only conjunct is M38's own ABAC predicate.
+export {
+  type TerminologyOpsStore,
+  type TerminologyOpsSeed,
+  type ValueSetCatalogEntry,
+  type TerminologyLoadHistoryEntry,
+  type TenantExtensionGovernanceRow,
+  createInMemoryTerminologyOpsStore,
+} from "./ops-store";
+export { createDbTerminologyOpsStore } from "./terminology-ops-store-db";
+export {
+  type AdminTerminologyRouteDeps,
+  registerAdminTerminologyRoutes,
+} from "./routes/admin-terminology-routes";
+export {
+  type CodeUsageProducer,
+  type RemediationResponse,
+  carePlanCodeUsageProducer,
+  createRemediationService,
+  defaultRemediationSince,
+  recommendedActionFor,
+  REMEDIATION_COVERED_RECORD_TYPES,
+} from "./remediation-service";
+export {
+  M38_ABAC_PREDICATES,
+  buildTerminologyAbacPredicates,
+  registerTerminologyAbacPredicates,
+} from "./abac-predicates";
+
 import type { DbClient } from "@wardenx/db";
 import { createTerminologyProvider } from "@wardenx/terminology";
 import type { FastifyInstance } from "fastify";
+import { registerAdminTerminologyRoutes as _registerAdminTerminologyRoutes } from "./routes/admin-terminology-routes";
 import { registerTerminologyRoutes as _registerTerminologyRoutes } from "./routes/terminology-routes";
+import {
+  carePlanCodeUsageProducer as _carePlanCodeUsageProducer,
+  createRemediationService as _createRemediationService,
+} from "./remediation-service";
+import { createDbTerminologyOpsStore as _createDbTerminologyOpsStore } from "./terminology-ops-store-db";
 import { createDbTerminologyStore as _createDbTerminologyStore } from "./terminology-store-db";
+import { getSeam } from "../../bootstrap/index";
 
 /**
  * Mount the M38 terminology REST routes (validate / lookup / search / value-set expand+is-member /
@@ -63,5 +102,14 @@ import { createDbTerminologyStore as _createDbTerminologyStore } from "./termino
  */
 export function mountTerminologyRoutes(app: FastifyInstance, db: DbClient): void {
   const provider = createTerminologyProvider(_createDbTerminologyStore(db));
-  _registerTerminologyRoutes(app, { provider });
+  const ops = _createDbTerminologyOpsStore(db);
+  // The remediation report's ONE bound producer today is M7's problem list, reached opaquely through
+  // the seam registry (no `@wardenx/care-plan` import edge, so M38 `dependsOn` stays [1,2,3,4]).
+  // Resolved lazily per call: registration order at boot is then irrelevant.
+  const remediation = _createRemediationService({
+    ops,
+    producers: [_carePlanCodeUsageProducer(() => getSeam("CarePlanReader"))],
+  });
+  _registerTerminologyRoutes(app, { provider, ops, remediation });
+  _registerAdminTerminologyRoutes(app, { ops });
 }

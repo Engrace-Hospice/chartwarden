@@ -180,6 +180,11 @@ jobs:
           # org-less event reaching a real consumer, its org-less §4.11 receipt, and M40's canonical
           # write path (which had no SECURITY DEFINER function at all until migration 0202).
           - { name: "M1 platform outbox delivery", scripts: "test:m1:platform-outbox:live" }
+          # GAP-063: M38's platform-ops write door. Migration 0015 granted `terminology_loader`
+          # INSERT/UPDATE on the canonical tables but created no row POLICY for it, so the grant was
+          # dead — every loader write matched zero rows. This suite runs as NOBYPASSRLS wardenx_app,
+          # so it fails if 0206's policy or its SECURITY DEFINER functions go missing.
+          - { name: "M38 terminology admin", scripts: "test:m38:admin:live" }
           - { name: "M37 IPU", scripts: "test:m37:write:live" }
           - { name: "M37 privacy gates", scripts: "test:m37:privacy-gates:live" }
           # GAP-079: M4's §2.5 read-audit EMISSION over the M26 Cap + M39 Consent read surfaces —
