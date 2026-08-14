@@ -32,7 +32,7 @@ export type AbnId = string;
 export type IsoDate = string;
 /** ISO-8601 instant (`YYYY-MM-DDTHH:mm:ss.sssZ`). */
 export type IsoDateTime = string;
-/** A hospice aggregate-cap year (Nov 1 – Oct 31), keyed by its starting calendar year. */
+/** A hospice aggregate-cap year (Oct 1 – Sep 30 (ADR-0002)), keyed by its starting calendar year. */
 export type CapYear = number;
 /** A cost-report fiscal year, keyed by its ending calendar year. */
 export type FiscalYear = number;

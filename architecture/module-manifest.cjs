@@ -7,7 +7,7 @@
  *   - dependsOn:   the modules it MAY import from. This STARTED as a verbatim copy of the
  *                  ARCHITECTURE §20 dependency table and is no longer one — the manifest is the
  *                  source of truth and §20 is the derived view (AD-10). Known deliberate
- *                  divergences: M9/M10/M11 dropped their edge on M8 (the ADR-0007 seam inversion,
+ *                  divergences: M9/M10/M11 dropped their edge on M8 (the post-ADR-0007 seam-direction inversion (ADR-0007 prescribed keeping the M8 edges; the build deliberately inverted — recorded as ADR-0043),
  *                  recorded in the architecture changelog but never propagated into the §20 table),
  *                  plus M22→39 and M35→34. Change this array, then regenerate §20 — never the
  *                  reverse, and never edit both by hand.

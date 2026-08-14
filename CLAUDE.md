@@ -85,7 +85,8 @@ Every spec declares a named layout pattern (`Use <name>.`) defined in
 authoritative glossary of layout patterns, shared regions, and composition rules. Like module
 specs, **UI screen specs are implementation proposals** (architecture wins on conflict).
 Run `bun run docs:ui` (`scripts/check-ui-screens.ts`) to verify corpus consistency —
-index parity, layout-heading hygiene, and pattern resolution against the glossary.
+index parity, layout-heading hygiene, pattern resolution against the glossary, and (2026-08-14)
+corpus-wide ADR-citation + relative-link integrity including the root docs.
 
 ### Authoritative architecture documents → `docs/architecture/`
 
@@ -153,6 +154,13 @@ the prose docs in `docs/architecture/`.
   26 of 40 modules before this gate), four-digit ADR-citation resolution (audit-era
   "ADR-NNNN / ARCH-nnn" composite citations exempt as a historical namespace), relative-link
   integrity, and the "implementation proposal" authority marker every spec now carries.
+- `scripts/check-adr-docs.ts` — **ADR corpus gate** (`bun run arch:adr-docs`, in `arch:fitness`).
+  ADRs are immutable once Accepted, so this never checks prose freshness — it checks the corpus as
+  a decision REGISTER: contiguous unique numbering 0001…max, index parity, a parseable Status line
+  (Accepted/Proposed/Superseded/Rejected/Deprecated; Superseded must cite its successor), the
+  index row's status cell AGREEING with the file (a decision must not sit formally Proposed while
+  the register calls it Accepted), cross-citations and links resolving. Code-vs-Decision
+  compliance is the audit layer (audit/ADR_COMPLIANCE_AUDIT_*.md), not this gate.
 - `scripts/audit-fitness.ts` — point-in-time enforcement audit (module matrix, table
   ownership, dependency graph/cycles); writes `audit/FITNESS_ENFORCEMENT_AUDIT.md`.
 - `scripts/report-implementation-status.ts` — per-module **implementation-status matrix**
