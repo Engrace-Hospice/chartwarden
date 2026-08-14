@@ -37,7 +37,7 @@ import {
   registerTenantExportShard,
   runDsarExportJob,
 } from "@wardenx/saas-tenant-platform";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
+import { runWithRequestContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
@@ -178,10 +178,14 @@ describe.skipIf(!DB_URL)("GAP-048 — M34 DSAR export, LIVE Postgres", () => {
     };
 
     const txOutboxPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M34_OUTBOX_EVENTS]));
-    const result = await withOrgContext(handle.db, { organizationId: ORG, userId: "" }, (tx) => {
+    // Built the way the PRODUCTION registrar builds it (`registerM34DsarExportWorker`): the pooled
+    // handle plus an explicit `orgScope`, with NO transaction held open around the job. Passing a `tx`
+    // as `db` would make each port's own `withOrgContext` a SAVEPOINT rather than a real transaction,
+    // so the suite would stop exercising the per-port tenancy envelope that replaced the job-long one.
+    const result = await (async () => {
       const ports = buildM34WorkerDeps({
         connection: {} as never, // never read by buildM34WorkerPorts — no real BullMQ/Redis needed here
-        db: tx as never,
+        db: handle.db,
         dsarExport: {
           objectStore: {
             async putObject({ organizationId, objectKey, bytes }) {
@@ -197,8 +201,10 @@ describe.skipIf(!DB_URL)("GAP-048 — M34 DSAR export, LIVE Postgres", () => {
           },
         },
       });
-      return runDsarExportJob(jobInput, buildM34WorkerPorts(ports).dsarExport);
-    });
+      // `orgScope` is added HERE, not in `buildM34WorkerDeps` (whose parameter type cannot express it)
+      // — exactly as `registerM34DsarExportWorker` does with `{ ...deps, orgScope: data.orgId }`.
+      return runDsarExportJob(jobInput, buildM34WorkerPorts({ ...ports, orgScope: ORG }).dsarExport);
+    })();
 
     // The fan-out actually ran (one resource from the fake m05 shard).
     expect(result.shardReceipts.map((r) => r.moduleKey)).toEqual(["m05"]);

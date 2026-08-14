@@ -34,7 +34,7 @@ import {
   registerTenantExportShard,
   runTenantExportJob,
 } from "@wardenx/saas-tenant-platform";
-import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
+import { runWithRequestContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createInMemoryObjectStore, registerDocumentSeams } from "../src/modules/22-documents/index";
@@ -150,10 +150,15 @@ describe.skipIf(!DB_URL)("GAP-094 — M34 tenant export, LIVE Postgres", () => {
 
     const jobInput: TenantExportJobBody = { jobId, orgId: ORG };
 
-    const result = await withOrgContext(handle.db, { organizationId: ORG, userId: "" }, (tx) => {
+    // Built the way the PRODUCTION registrar builds it (`registerM34TenantExportWorker`): the pooled
+    // handle plus an explicit `orgScope`, with NO transaction held open around the job. Passing a `tx`
+    // as `db` here would make each port's own `withOrgContext` a SAVEPOINT instead of a real
+    // transaction, so the suite would no longer exercise — or catch a regression in — the per-port
+    // tenancy envelope that replaced the job-long transaction.
+    const result = await (async () => {
       const deps = buildM34WorkerDeps({
         connection: {} as never, // never read by buildM34WorkerPorts — no real BullMQ/Redis needed here
-        db: tx as never,
+        db: handle.db,
         tenantExport: {
           objectStore: {
             async putObject({ organizationId, objectKey, bytes }) {
@@ -170,8 +175,13 @@ describe.skipIf(!DB_URL)("GAP-094 — M34 tenant export, LIVE Postgres", () => {
           },
         },
       });
-      return runTenantExportJob(jobInput, buildM34WorkerPorts(deps).tenantExport);
-    });
+      // `orgScope` is added HERE, not in `buildM34WorkerDeps` (whose parameter type cannot express it) —
+      // exactly as `registerM34TenantExportWorker` does with `{ ...deps, orgScope: data.orgId }`.
+      return runTenantExportJob(
+        jobInput,
+        buildM34WorkerPorts({ ...deps, orgScope: ORG }).tenantExport,
+      );
+    })();
 
     expect(result.outcome).toBe("fulfilled");
     expect(result.modules.map((m) => m.moduleKey)).toEqual(["m05", "m06"]);
