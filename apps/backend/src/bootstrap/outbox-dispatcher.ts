@@ -56,6 +56,36 @@ export interface OutboxConsumerBinding {
   handle(event: DispatchableOutboxEvent): Promise<void>;
 }
 
+/**
+ * One claimed PLATFORM-wide (`organization_id IS NULL`) outbox row (GAP-099).
+ *
+ * A separate type rather than widening {@link DispatchableOutboxEvent}'s `organizationId` to
+ * `string | null`: ~150 org-scoped bindings read that field as a `string` and pass it straight to
+ * `withOrgContext`, so widening it would turn a compile-time guarantee into a runtime one across the
+ * whole consumer surface. The absence of the field IS the contract here — a platform consumer has no
+ * tenant to act for, and anything it writes is either org-less master data or an explicit per-org
+ * fan-out it resolves itself.
+ */
+export interface PlatformDispatchableOutboxEvent {
+  readonly id: string;
+  readonly eventType: string;
+  readonly aggregateKind: string;
+  readonly aggregateId: string;
+  readonly payload: unknown;
+  readonly attemptCount: number;
+  readonly createdAt: Date;
+}
+
+/** A live PLATFORM consumer: same contract as {@link OutboxConsumerBinding}, org-less event (GAP-099). */
+export interface PlatformOutboxConsumerBinding {
+  /** The `(eventId, consumerName)` dedup identity (§4.11); receipts are written org-less. */
+  readonly consumerName: string;
+  /** Module named in the catalog's `declaredConsumers` list. */
+  readonly consumerModule: ModuleToken;
+  readonly eventTypes: readonly string[];
+  handle(event: PlatformDispatchableOutboxEvent): Promise<void>;
+}
+
 export interface OutboxDispatcherOptions {
   /** Max rows claimed per org per tick (default 25). */
   readonly batchSize?: number;
@@ -88,7 +118,8 @@ export interface OutboxDispatcherOptions {
   readonly onDeadLetter?: (event: {
     readonly eventId: string;
     readonly eventType: string;
-    readonly organizationId: string;
+    /** NULL for a PLATFORM-wide row (GAP-099) — there is no tenant the dead letter belongs to. */
+    readonly organizationId: string | null;
     readonly attemptCount: number;
     readonly error: string;
   }) => void;
@@ -105,6 +136,12 @@ export interface OutboxDispatcherDeps {
   readonly db: DbClient;
   readonly orgs: ActiveOrgEnumerator;
   readonly consumers: readonly OutboxConsumerBinding[];
+  /**
+   * GAP-099 — consumers of PLATFORM-wide (`organization_id IS NULL`) events. Separate list because the
+   * two kinds handle structurally different events; a module may appear in both (bound to different
+   * event types). Consumer NAMES must still be unique per event type across both lists.
+   */
+  readonly platformConsumers?: readonly PlatformOutboxConsumerBinding[];
   /** Full boot catalog. Routing is derived from its declared-consumer contract. */
   readonly eventCatalog: ReadonlyMap<string, OutboxEventEntry>;
   readonly options?: OutboxDispatcherOptions;
@@ -132,9 +169,34 @@ export interface OutboxTickSummary {
 
 export interface OutboxRoutingPlan {
   readonly live: ReadonlyMap<string, readonly OutboxConsumerBinding[]>;
+  /** GAP-099 — the same map for PLATFORM (`organization_id IS NULL`) bindings. */
+  readonly livePlatform: ReadonlyMap<string, readonly PlatformOutboxConsumerBinding[]>;
   /** Events still missing at least one catalog-declared consumer module. */
   readonly deferred: ReadonlySet<string>;
   readonly recordOnly: ReadonlySet<string>;
+}
+
+/** The catalog checks that are identical for an org binding and a platform binding. */
+function assertBindableAgainstCatalog(
+  eventCatalog: ReadonlyMap<string, OutboxEventEntry>,
+  eventType: string,
+  consumerName: string,
+  consumerModule: ModuleToken,
+): void {
+  const entry = eventCatalog.get(eventType);
+  if (!entry) {
+    throw new Error(`outbox consumer '${consumerName}' binds unknown catalog event '${eventType}'`);
+  }
+  if (entry.declaredConsumers.length === 0) {
+    throw new Error(
+      `outbox event '${eventType}' is catalogued record-only but has live consumer bindings`,
+    );
+  }
+  if (!entry.declaredConsumers.includes(consumerModule)) {
+    throw new Error(
+      `outbox consumer '${consumerName}' module '${consumerModule}' is not declared for '${eventType}'`,
+    );
+  }
 }
 
 /**
@@ -142,48 +204,71 @@ export interface OutboxRoutingPlan {
  * are live even when another declared module is not yet wired; durable receipts make that partial fan-out
  * restart-safe while `deferred` keeps the source row pending. Only an explicit empty consumer list is
  * record-only. Unknown, undeclared, and duplicate bindings fail boot.
+ *
+ * GAP-099: org and platform bindings are collected separately (they handle structurally different events)
+ * but scored TOGETHER for `deferred` — "is every declared consumer module live?" is a question about the
+ * module, not about which scope it happens to listen on. A consumer NAME may not repeat for one event
+ * type across the two lists either: the `(event_id, consumer_name)` receipt identity is shared.
  */
 export function buildOutboxRoutingPlan(
   eventCatalog: ReadonlyMap<string, OutboxEventEntry>,
   consumers: readonly OutboxConsumerBinding[],
+  platformConsumers: readonly PlatformOutboxConsumerBinding[] = [],
 ): OutboxRoutingPlan {
   const bindingsByType = new Map<string, OutboxConsumerBinding[]>();
+  const platformBindingsByType = new Map<string, PlatformOutboxConsumerBinding[]>();
+  const namesByType = new Map<string, Set<string>>();
+
+  const claimName = (eventType: string, consumerName: string) => {
+    const names = namesByType.get(eventType) ?? new Set<string>();
+    if (names.has(consumerName)) {
+      throw new Error(
+        `outbox consumer '${consumerName}' is bound more than once for '${eventType}'`,
+      );
+    }
+    names.add(consumerName);
+    namesByType.set(eventType, names);
+  };
+
   for (const consumer of consumers) {
     for (const eventType of consumer.eventTypes) {
-      const entry = eventCatalog.get(eventType);
-      if (!entry) {
-        throw new Error(
-          `outbox consumer '${consumer.consumerName}' binds unknown catalog event '${eventType}'`,
-        );
-      }
-      if (entry.declaredConsumers.length === 0) {
-        throw new Error(
-          `outbox event '${eventType}' is catalogued record-only but has live consumer bindings`,
-        );
-      }
-      if (!entry.declaredConsumers.includes(consumer.consumerModule)) {
-        throw new Error(
-          `outbox consumer '${consumer.consumerName}' module '${consumer.consumerModule}' is not declared for '${eventType}'`,
-        );
-      }
+      assertBindableAgainstCatalog(
+        eventCatalog,
+        eventType,
+        consumer.consumerName,
+        consumer.consumerModule,
+      );
+      claimName(eventType, consumer.consumerName);
       const bucket = bindingsByType.get(eventType) ?? [];
-      if (bucket.some((binding) => binding.consumerName === consumer.consumerName)) {
-        throw new Error(
-          `outbox consumer '${consumer.consumerName}' is bound more than once for '${eventType}'`,
-        );
-      }
       bucket.push(consumer);
       bindingsByType.set(eventType, bucket);
     }
   }
 
+  for (const consumer of platformConsumers) {
+    for (const eventType of consumer.eventTypes) {
+      assertBindableAgainstCatalog(
+        eventCatalog,
+        eventType,
+        consumer.consumerName,
+        consumer.consumerModule,
+      );
+      claimName(eventType, consumer.consumerName);
+      const bucket = platformBindingsByType.get(eventType) ?? [];
+      bucket.push(consumer);
+      platformBindingsByType.set(eventType, bucket);
+    }
+  }
+
   const live = new Map<string, readonly OutboxConsumerBinding[]>();
+  const livePlatform = new Map<string, readonly PlatformOutboxConsumerBinding[]>();
   const deferred = new Set<string>();
   const recordOnly = new Set<string>();
   for (const [eventType, entry] of eventCatalog) {
     const bindings = bindingsByType.get(eventType) ?? [];
+    const platformBindings = platformBindingsByType.get(eventType) ?? [];
     if (entry.declaredConsumers.length === 0) {
-      if (bindings.length > 0) {
+      if (bindings.length > 0 || platformBindings.length > 0) {
         throw new Error(
           `outbox event '${eventType}' is catalogued record-only but has live consumer bindings`,
         );
@@ -193,14 +278,18 @@ export function buildOutboxRoutingPlan(
     }
 
     if (bindings.length > 0) live.set(eventType, bindings);
-    const boundModules = new Set(bindings.map((binding) => binding.consumerModule));
+    if (platformBindings.length > 0) livePlatform.set(eventType, platformBindings);
+    const boundModules = new Set([
+      ...bindings.map((binding) => binding.consumerModule),
+      ...platformBindings.map((binding) => binding.consumerModule),
+    ]);
     const allDeclaredConsumersBound = entry.declaredConsumers.every((module) =>
       boundModules.has(module),
     );
     if (!allDeclaredConsumersBound) deferred.add(eventType);
   }
 
-  return { live, deferred, recordOnly };
+  return { live, livePlatform, deferred, recordOnly };
 }
 
 /** Exponential backoff with cap: base·2^(attempt-1), attempt 1-based. Exported for the unit tests. */
@@ -230,7 +319,11 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
   const onDeadLetter = opt.onDeadLetter ?? (() => {});
   const onTick = opt.onTick ?? (() => {});
 
-  const routing = buildOutboxRoutingPlan(deps.eventCatalog, deps.consumers);
+  const routing = buildOutboxRoutingPlan(
+    deps.eventCatalog,
+    deps.consumers,
+    deps.platformConsumers ?? [],
+  );
 
   let orgCache: { at: number; orgs: readonly { organizationId: string }[] } | null = null;
   async function activeOrgs(): Promise<readonly { organizationId: string }[]> {
@@ -353,7 +446,19 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
           continue;
         }
         if (!routing.recordOnly.has(row.eventType)) {
-          throw new Error(`outbox event '${row.eventType}' has no routing classification`);
+          // Every declared consumer module IS live, but all of them bound this event type on the
+          // PLATFORM list while this row carries an org (GAP-099). The row is not deliverable here and
+          // never will be — but it is also not a bug worth crashing the relay for, so it defers with a
+          // message that names the actual mismatch instead of the old "no routing classification" throw.
+          await finalize({
+            status: "pending",
+            attemptCount: row.attemptCount - 1,
+            dispatchedAt: null,
+            nextAttemptAt: new Date(now.getTime() + deferredRetryMs),
+            lastError: "deferred: consumers for this event are bound platform-scoped, not org-scoped",
+          });
+          summary.deferred += 1;
+          continue;
         }
         // The catalog explicitly declares no consumers: the row itself is the durable record.
         await finalize({
@@ -484,15 +589,17 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
   // — no `withOrgContext`/`withPlatformContext` envelope is needed here (the function body, not the
   // caller's session, carries the elevated privilege).
   //
-  // SCOPED DOWN, DELIBERATELY: this pass claims + routes + finalizes (unknown-event / deferred /
-  // record-only), the same three outcomes a NEWLY-EMITTED, not-yet-consumed platform event can reach
-  // today. It does NOT deliver to `deps.consumers` (the `DispatchableOutboxEvent`/`OutboxConsumerBinding`
-  // types are non-null-organizationId by design — used by ~150 existing org-scoped bindings — widening
-  // them was out of scope for this pass). In practice this is a no-op distinction right now: NO platform
-  // consumer is registered for any `m33.mv.*`/`m33.lag.*` event yet (no M33 self-invalidate binding, no
-  // M36 alert binding built), so every platform event the dispatcher sees today lands in `deferred`
-  // regardless — durably persisted, honestly reported as awaiting a consumer, never silently dropped.
-  // Building the actual M33/M36 consumer logic for these events is separate, not-yet-built work.
+  // GAP-099 — this pass now DELIVERS. It mirrors pollOrg's outcome set exactly (unknown-event, deferred,
+  // record-only, delivered, retried, dead-lettered) over `deps.platformConsumers`, whose
+  // `PlatformOutboxConsumerBinding`/`PlatformDispatchableOutboxEvent` pair is the org-less twin of the
+  // org types (see their declarations for why widening the existing pair was the wrong move). The §4.11
+  // receipt — the thing that makes partial fan-out restart-safe — goes through the migration-0201
+  // `report_writer_*_platform_receipt*` functions, since `outbox_consumer_receipt.organization_id` is NULL
+  // for these rows and no `app.org_id` policy can admit them.
+  //
+  // Until GAP-099 this pass could claim a platform row and only ever put it back down as `deferred`, so
+  // `m29.nppes.provider_synced` (M40's canonical applier) and every `m33.mv.*` row accumulated pending
+  // forever — durable and honestly reported, but never acted on.
   async function pollPlatform(): Promise<Omit<OutboxTickSummary, "orgsPolled">> {
     const summary = {
       delivered: 0,
@@ -546,17 +653,24 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
         continue;
       }
 
-      const bindings = routing.live.get(row.eventType);
+      const deferRow = async (reason: string) => {
+        await deps.db.execute(
+          sql`SELECT report_writer_finalize_platform_outbox_deferred(${row.id}, ${row.attemptCount - 1}, ${new Date(now.getTime() + deferredRetryMs)}, ${reason})`,
+        );
+        summary.deferred += 1;
+      };
+
+      const bindings = routing.livePlatform.get(row.eventType);
       if (!bindings || bindings.length === 0) {
         if (routing.deferred.has(row.eventType)) {
-          await deps.db.execute(
-            sql`SELECT report_writer_finalize_platform_outbox_deferred(${row.id}, ${row.attemptCount - 1}, ${new Date(now.getTime() + deferredRetryMs)}, ${"deferred: one or more declared consumers are not live"})`,
-          );
-          summary.deferred += 1;
+          await deferRow("deferred: one or more declared consumers are not live");
           continue;
         }
         if (!routing.recordOnly.has(row.eventType)) {
-          throw new Error(`outbox event '${row.eventType}' has no routing classification`);
+          // The mirror of pollOrg's case: every declared module is live, but bound ORG-scoped while this
+          // row is platform-wide. Defer with the mismatch named rather than crash the relay.
+          await deferRow("deferred: consumers for this event are bound org-scoped, not platform-scoped");
+          continue;
         }
         await deps.db.execute(
           sql`SELECT report_writer_finalize_platform_outbox_dispatched(${row.id}, ${now})`,
@@ -565,15 +679,59 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
         continue;
       }
 
-      // Reachable once a real PlatformOutboxConsumerBinding lands (none exist yet — see the doc comment
-      // above); until then `routing.live` never carries a platform-org event type, so this never runs.
-      log(
-        `⚠️  outbox-dispatcher: '${row.eventType}' (${row.id}) has live bindings but pollPlatform() cannot deliver to them yet (no PlatformOutboxConsumerBinding type built) — deferring`,
-      );
-      await deps.db.execute(
-        sql`SELECT report_writer_finalize_platform_outbox_deferred(${row.id}, ${row.attemptCount - 1}, ${new Date(now.getTime() + deferredRetryMs)}, ${"deferred: platform-event consumer delivery is not yet implemented"})`,
-      );
-      summary.deferred += 1;
+      const event: PlatformDispatchableOutboxEvent = row;
+      try {
+        for (const binding of bindings) {
+          const receiptResult = await deps.db.execute(
+            sql`SELECT report_writer_platform_receipt_exists(${row.id}, ${binding.consumerName}) AS completed`,
+          );
+          const completed =
+            (receiptResult as unknown as { rows?: Array<{ completed?: boolean }> }).rows?.[0]
+              ?.completed === true;
+          if (completed) continue;
+
+          await binding.handle(event);
+          await deps.db.execute(
+            sql`SELECT report_writer_insert_platform_receipt(${row.id}, ${binding.consumerName}, ${binding.consumerModule}, ${new Date(clock())})`,
+          );
+        }
+
+        if (routing.deferred.has(row.eventType)) {
+          await deferRow(
+            "deferred: completed live bindings; one or more declared consumers are not live",
+          );
+          continue;
+        }
+        await deps.db.execute(
+          sql`SELECT report_writer_finalize_platform_outbox_dispatched(${row.id}, ${new Date(clock())})`,
+        );
+        summary.delivered += 1;
+      } catch (err) {
+        const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+        if (row.attemptCount >= maxAttempts) {
+          await deps.db.execute(
+            sql`SELECT report_writer_finalize_platform_outbox_dead_letter(${row.id}, ${message.slice(0, 2000)})`,
+          );
+          summary.deadLettered += 1;
+          log(
+            `☠️  outbox-dispatcher: platform '${row.eventType}' (${row.id}) dead-lettered after ${row.attemptCount} attempts — ${message}`,
+          );
+          // `organizationId: null` rather than a made-up sentinel uuid: the ops sink already renders the
+          // org clause conditionally, and a fake org id in a DLQ alert is worse than none.
+          onDeadLetter({
+            eventId: row.id,
+            eventType: row.eventType,
+            organizationId: null,
+            attemptCount: row.attemptCount,
+            error: message,
+          });
+        } else {
+          await deps.db.execute(
+            sql`SELECT report_writer_finalize_platform_outbox_retry(${row.id}, ${new Date(now.getTime() + outboxBackoffMs(row.attemptCount, backoffBaseMs, backoffCapMs))}, ${message.slice(0, 2000)})`,
+          );
+          summary.retried += 1;
+        }
+      }
     }
 
     const purgeResult = await deps.db.execute(
@@ -602,11 +760,17 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
       const row = (result as unknown as { rows?: Array<{ count?: number }> }).rows?.[0];
       total += row?.count ?? 0;
     }
-    // NOTE: this does NOT include platform-wide (organization_id IS NULL) pending rows — `wardenx_app`
-    // has no RLS policy admitting them (by design, ADR-0010 D2/D3), so a plain SELECT would silently
-    // undercount rather than error. Exposing that count would need its own SECURITY DEFINER read
-    // function; left out of this pass (the readiness probe is an operational nicety, not the outbox
-    // emit-path fix this task covers).
+    // GAP-099 — platform-wide (organization_id IS NULL) pending rows are now included, through the
+    // migration-0201 SECURITY DEFINER counter. `wardenx_app` still has no RLS policy admitting those rows
+    // (by design, ADR-0010 D2/D3), so a plain SELECT here would silently UNDERCOUNT rather than error —
+    // which is why this needed its own function. Before platform delivery existed, a platform backlog was
+    // the expected steady state and leaving it out was defensible; now it is the exact symptom the depth
+    // check is for.
+    const platformResult = await deps.db.execute(
+      sql`SELECT report_writer_platform_outbox_pending_depth() AS count`,
+    );
+    const platformRow = (platformResult as unknown as { rows?: Array<{ count?: number }> }).rows?.[0];
+    total += Number(platformRow?.count ?? 0);
     return total;
   }
 

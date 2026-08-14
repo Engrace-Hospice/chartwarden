@@ -664,6 +664,8 @@ import {
   registerConsentSeams,
 } from "./modules/39-consent/index";
 import {
+  M40_OUTBOX_EVENTS,
+  buildM29NppesPlatformConsumers,
   createDbBaaStore,
   createDbMdmStore,
   createDbNppesNpiSource,
@@ -2109,6 +2111,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // task-11 — the m29.* decision events (accept/reject). REQUIRED for the store's §4.10 emit to
     // validate; the M5/M6 appliers consume `accepted` via the boot dispatcher.
     M29_OUTBOX_EVENTS,
+    // GAP-099 — the `m40.canonical.*` catalog. REQUIRED for the NPPES appliers' own emits to validate:
+    // `m40OutboxPublisher` runs every publish through this catalog and an unlisted name throws
+    // `unknown_event`, which would fail the delivery and retry the canonical write forever.
+    M40_OUTBOX_EVENTS,
   ]);
   const txOutboxPublisher = buildTxOutboxPublisher(bootOutboxCatalog);
   // Per-module adapters that pin `callerModule` (the module-scoped `WriteOutboxPort` omits it; the
@@ -2171,6 +2177,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const m35OutboxPublisher = bindCallerModule(txOutboxPublisher, "m35");
   const m37OutboxPublisher = bindCallerModule(txOutboxPublisher, "m37");
   const m39OutboxPublisher = bindCallerModule(txOutboxPublisher, "m39");
+  // GAP-099 — M40's first publisher. It had none until now because nothing could WRITE a canonical
+  // (migration 0019 created `mdm_canonical_writer` and never a function owning it), so there was no
+  // canonical change for M40 to announce; migration 0202 built the write path and events-by-m40.ts the
+  // catalog. Publishes platform-wide (`organizationId: null`) — a canonical belongs to no tenant.
+  const m40OutboxPublisher = bindCallerModule(txOutboxPublisher, "m40");
   // M24 §8.7 — the trading-partner secret cipher port. Built once at boot so a missing/short KEK surfaces
   // here, not on the first tenant write; left undefined when no key is configured, which makes credential
   // WRITES fail closed while every other M24 route keeps working (production requires the key via env.ts).
@@ -3860,15 +3871,16 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   if (role !== "api" && dbHandle && process.env.OUTBOX_DISPATCHER_DISABLED !== "1") {
     if (platformDbHandle) {
       registerPlatformJob(M1_OUTBOX_DISPATCHER_JOB_ID);
+      const outboxRelayOrgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M1_OUTBOX_DISPATCHER_JOB_ID,
+        reason: "outbox relay: active-org poll list",
+        statuses: ["created", "active", "suspended"],
+      });
       const outboxDispatcher = createOutboxDispatcher({
         db: dbHandle.db,
-        orgs: buildActiveOrgEnumerator({
-          platformDb: platformDbHandle.db,
-          auditBypass: m34PlatformBypassAuditor,
-          jobId: M1_OUTBOX_DISPATCHER_JOB_ID,
-          reason: "outbox relay: active-org poll list",
-          statuses: ["created", "active", "suspended"],
-        }),
+        orgs: outboxRelayOrgs,
         consumers: [
           buildM7IdgDecisionConsumer({ db: dbHandle.db, outbox: m7OutboxPublisher }),
           buildM11IdgDecisionConsumer({
@@ -4032,6 +4044,31 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               ),
           }),
         ],
+        // GAP-099 — the PLATFORM (`organization_id IS NULL`) binding list. Until now this list did not
+        // exist and `pollPlatform()` could only claim a row and defer it, so M29's NPPES sync published
+        // `m29.nppes.provider_synced` into a queue with no reachable consumer: every row sat pending on
+        // the 30-minute deferred clock forever while M40's canonical went stale. These two appliers were
+        // written and unit-tested in M40-T09 and have been waiting on the delivery path ever since.
+        platformConsumers: buildM29NppesPlatformConsumers({
+          db: dbHandle.db,
+          outbox: m40OutboxPublisher,
+          // The live M36 seam — the §4.7.2 per-tenant "your preferred physician was deactivated" alert.
+          alerts: getSeam("AlertEmitter") as {
+            emit(
+              organizationId: string,
+              input: {
+                eventType: string;
+                payload: Record<string, unknown>;
+                severity: string;
+                correlationId: string;
+              },
+            ): Promise<unknown>;
+          },
+          // The same audited enumerator the relay polls with — the deactivation fan-out asks each active
+          // org's overlay whether it marked this provider preferred (one RLS-scoped read per org; there
+          // is no legitimate single statement that spans tenants).
+          orgs: outboxRelayOrgs,
+        }),
         eventCatalog: bootOutboxCatalog,
         options: {
           log: (m) => app.log.warn(m),
@@ -4040,7 +4077,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             dlqPromotionSink({
               source: "outbox",
               jobId: e.eventId,
-              organizationId: e.organizationId,
+              // GAP-099 — null for a platform-wide row; the sink renders the org clause only when set.
+              organizationId: e.organizationId ?? undefined,
               attempts: e.attemptCount,
               error: `${e.eventType}: ${e.error}`,
               occurredAt: new Date().toISOString(),

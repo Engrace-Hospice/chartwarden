@@ -95,11 +95,12 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
   // ── §4.7 / §4.10 NPPES platform sync (GAP-045) ────────────────────────────────────────────────────
   // These five are PLATFORM-WIDE: every row publishes with `organization_id IS NULL` (one public CMS
   // directory, no tenant it belongs to). `provider_synced` / `provider_deactivated` declare `m40` because
-  // M40 owns the canonical `external_physician` these keep current (@wardenx/mdm's `handleProviderSynced`
-  // / `handleProviderDeactivated` are the shipped, tested decision cores; the boot binding is still
-  // deferred — see nppes/outbox-sink.ts for why a platform row cannot reach a consumer yet). The three
-  // `sync_run.*` lifecycle events are record-only: the row IS the operational record, and M33's dashboard
-  // reads `nppes_sync_run` directly rather than subscribing.
+  // M40 owns the canonical `external_physician` these keep current. Both appliers are LIVE as of GAP-099
+  // (`40-mdm/outbox-consumers/m29-nppes-consumers.ts`, registered on the dispatcher's platform binding
+  // list) — before that they could not be reached at all, because `pollPlatform()` had no way to deliver
+  // an org-less row and M40's canonical had no write path. The three `sync_run.*` lifecycle events are
+  // record-only: the row IS the operational record, and M33's dashboard reads `nppes_sync_run` directly
+  // rather than subscribing.
   {
     eventName: "m29.nppes.provider_synced",
     moduleOwner: "m29",
