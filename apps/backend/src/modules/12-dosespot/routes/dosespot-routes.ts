@@ -43,7 +43,7 @@ import {
   UpdateMedicationOrderRequest,
   parse,
 } from "./dosespot-typebox";
-import type { MedicationOrderRouteService } from "./service";
+import type { DoseSpotAbacActor, MedicationOrderRouteService } from "./service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -61,6 +61,23 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
   const membershipId = ctx?.attributes.membershipId;
   if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
   return { organizationId: ctx.organizationId, userId: membershipId };
+}
+
+/**
+ * The §2.7 refill inbox needs BOTH ids (GAP-026): the named-prescriber axis keys on the membership id
+ * {@link actorOf} resolves, and the caseload axis goes through M5's `CaseloadProvider`, which reads
+ * `patient_assignment.clinician_user_id` — the M2 USER id. Everything else on this router keys on one
+ * axis only, so only the inbox route uses this.
+ */
+function refillActorOf(request: FastifyRequest): {
+  organizationId: string;
+  actor: DoseSpotAbacActor;
+} {
+  const { organizationId, userId: membershipId } = actorOf(request);
+  return {
+    organizationId,
+    actor: { userId: request.context?.userId ?? "", membershipId },
+  };
 }
 
 // Static permission guards (§4.6).
@@ -396,8 +413,8 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
       config: { auditRead: { resourceKind: "refill", list: true } },
     },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
-      return service.listRefills(organizationId, userId);
+      const { organizationId, actor } = refillActorOf(request);
+      return service.listRefills(organizationId, actor);
     },
   );
 

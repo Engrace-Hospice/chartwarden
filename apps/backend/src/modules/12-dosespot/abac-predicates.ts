@@ -25,7 +25,7 @@
 import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import type { MedClass } from "@wardenx/types";
 import { prescriberEligible } from "./prescriber-eligibility";
-import type { DoseSpotAbacResolver } from "./routes/service";
+import type { DoseSpotAbacActor, DoseSpotAbacResolver } from "./routes/service";
 
 /** The §4.7 predicate names M12 owns (registered into M3). Single-owner across the platform registry. */
 export const M12_ABAC_PREDICATES = [
@@ -33,6 +33,20 @@ export const M12_ABAC_PREDICATES = [
   "dea_schedule_authorized",
   "refill_inbox_scope",
 ] as const;
+
+/**
+ * The acting identity for a §4.7 resolver read (GAP-026). BOTH ids, because M12's two axes key on two
+ * DIFFERENT id spaces — and because passing `context.userId` where a membership id was expected is
+ * exactly what made `dea_schedule_authorized` and the named-prescriber half of `refill_inbox_scope`
+ * deny EVERY caller in production while both in-memory route suites stayed green (their fixtures use
+ * one id for both). `context.attributes.membershipId` is the server-assembled M2 session attribute
+ * `authenticate.ts` stamps; an actor with no active membership carries null and cannot own a row.
+ */
+const actorOf = (context: AbacContext): DoseSpotAbacActor => ({
+  userId: context.userId,
+  membershipId:
+    typeof context.attributes.membershipId === "string" ? context.attributes.membershipId : null,
+});
 
 const targetStr = (target: AbacTarget, field: string): string | null => {
   const value = target[field];
@@ -77,9 +91,14 @@ export function buildDoseSpotAbacPredicates(
     dea_schedule_authorized: async (context, target) => {
       const schedule = targetStr(target, "schedule");
       if (!schedule) return false; // no schedule named → deny (fail-closed)
+      // `dosespot_prescriber.membership_id`, NOT the user id this used to pass (GAP-026) — the two
+      // are different id spaces, so the roster lookup found no row for any real caller and every
+      // controlled-substance sign denied.
+      const membershipId = actorOf(context).membershipId;
+      if (!membershipId) return false; // no active membership (fail-closed)
       const authorized = await resolver.loadAuthorizedSchedules(
         context.organizationId,
-        context.userId,
+        membershipId,
       );
       if (!authorized) return false; // no roster row (fail-closed)
       return authorized.includes(schedule);
@@ -87,7 +106,7 @@ export function buildDoseSpotAbacPredicates(
     refill_inbox_scope: async (context, target) => {
       const id = targetStr(target, "id") ?? targetStr(target, "refillId");
       if (!id) return true; // list view — the service narrows the inbox to the caller's scope.
-      const facts = await resolver.loadRefillScope(context.organizationId, id, context.userId);
+      const facts = await resolver.loadRefillScope(context.organizationId, id, actorOf(context));
       if (!facts) return false; // fail-closed (absent / cross-tenant)
       return facts.isNamedPrescriber || facts.patientInCaseload;
     },

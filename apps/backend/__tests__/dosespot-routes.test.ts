@@ -29,7 +29,15 @@ function headerAuth(request: FastifyRequest): void {
   if (typeof user !== "string" || user.length === 0) return;
   request.context.userId = user;
   // dosespot-routes.ts's actorOf() reads the acting MEMBERSHIP id from here (not ctx.userId).
-  request.context.attributes.membershipId = user;
+  //
+  // GAP-026 — `x-test-membership` lets a case set the two APART. They default to the same string,
+  // which is what every pre-existing case here does and is exactly why the id-space bug in
+  // `refill_inbox_scope` / `dea_schedule_authorized` was invisible to this suite: the ABAC layer
+  // passed `ctx.userId` where a membership id was expected, and with one value for both the
+  // comparison still matched. In production they are different values and it never did.
+  const membership = request.headers["x-test-membership"];
+  request.context.attributes.membershipId =
+    typeof membership === "string" && membership.length > 0 ? membership : user;
   const org = request.headers["x-test-org"];
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
@@ -59,6 +67,12 @@ const PERMISSION_SEED = [
   { userId: "rn_1", permissions: [...READ, "prescribing.draft", "prescribing.verbal.record"] },
   { userId: "chap_1", permissions: [...READ, "prescribing.draft"] },
   { userId: "viewer_1", permissions: READ },
+  // GAP-026 — the same three actors with a USER id distinct from their membership id. The RBAC
+  // grant store keys on `context.userId`, so these need their own rows; without them a split-id case
+  // 403s at the PERMISSION gate and never reaches the ABAC predicate it means to exercise.
+  { userId: "md_1_user", permissions: [...READ, ...WRITE] },
+  { userId: "rn_1_user", permissions: [...READ, "prescribing.refill_decide"] },
+  { userId: "viewer_1_user", permissions: READ },
 ];
 
 function makeServer() {
@@ -89,6 +103,9 @@ function makeServer() {
     prescribers: [
       { organizationId: ORG, membershipId: "md_1", deaAuthorizedSchedules: ["II", "III"] },
     ],
+    // GAP-026 — the caseload axis is keyed by USER id (`patient_assignment.clinician_user_id` in
+    // prod), never by membership id. `rn_1` covers this patient while `md_1` is the named prescriber.
+    caseloadPatientIds: [{ organizationId: ORG, userId: "rn_1_user", patientId: PATIENT }],
   });
 
   const grantStore = createInMemoryEffectivePermissionStore(
@@ -294,6 +311,86 @@ describe("M12-T08 — §2.7 refill inbox", () => {
       headers: VIEWER,
     });
     expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+});
+
+// ── GAP-026 — `refill_inbox_scope`'s two axes, with the two id spaces held APART ─────────────────
+//
+// In production the ABAC layer handed the resolver `ctx.userId` (an M2 user id) where the
+// named-prescriber comparison expects a `*_membership_id`, and the caseload axis was the literal
+// `patientInCaseload: false`. Both disjuncts were therefore false for every real caller: nobody could
+// open a refill detail, while the LIST route — whose predicate resolves to allow because there is no
+// per-row target — returned every refill in the tenant. These cases give each actor a membership id
+// that differs from their user id, which is the only configuration where either bug is visible.
+const RN_SPLIT = {
+  "x-test-user": "rn_1_user",
+  "x-test-membership": "rn_1",
+  "x-test-org": ORG,
+  "x-test-roles": "rn_case_manager",
+};
+const MD_SPLIT = {
+  "x-test-user": "md_1_user",
+  "x-test-membership": "md_1",
+  "x-test-org": ORG,
+  "x-test-roles": "hospice_physician",
+};
+const VIEWER_SPLIT = {
+  "x-test-user": "viewer_1_user",
+  "x-test-membership": "viewer_1",
+  "x-test-org": ORG,
+  "x-test-roles": "auditor",
+};
+
+describe("M12 GAP-026 — refill_inbox_scope resolves each axis in its own id space", () => {
+  it("the named prescriber reaches a refill detail when userId ≠ membershipId", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/refills/${REFILL}`,
+      headers: MD_SPLIT,
+    });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("a covering caseload clinician reaches the same detail — the axis that was hardcoded false", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/refills/${REFILL}`,
+      headers: RN_SPLIT,
+    });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("an actor on neither axis is still denied (403) — the gate did not become permissive", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/refills/${REFILL}`,
+      headers: VIEWER_SPLIT,
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("the inbox LIST is narrowed to the caller's scope, not the whole tenant", async () => {
+    const { app } = makeServer();
+    const mine = await app.inject({ method: "GET", url: "/api/v1/refills", headers: RN_SPLIT });
+    expect(mine.statusCode).toBe(200);
+    expect(mine.json().refills.map((r: { id: string }) => r.id)).toEqual([REFILL]);
+
+    // A reader on neither axis sees an EMPTY inbox. Their permission (`prescribing.read`) and the
+    // list predicate both pass — the service is the only control on this path, and it applied none.
+    const theirs = await app.inject({
+      method: "GET",
+      url: "/api/v1/refills",
+      headers: VIEWER_SPLIT,
+    });
+    expect(theirs.statusCode).toBe(200);
+    expect(theirs.json().refills).toEqual([]);
     await app.close();
   });
 });
