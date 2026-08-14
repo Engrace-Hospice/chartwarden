@@ -34,7 +34,8 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import type { DeaSchedule, MedClass } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import { getSeam } from "../../bootstrap/index";
 import { prescriberEligible } from "./prescriber-eligibility";
 import type {
   ControlledSubstancePolicyView,
@@ -154,6 +155,50 @@ export function createDbDoseSpotBackend(
 ): MedicationOrderRouteService {
   const withOrg = <T>(organizationId: string, fn: (tx: DbClient) => Promise<T>): Promise<T> =>
     withOrgContext(db, { organizationId, userId: "" }, (tx) => fn(tx as DbClient));
+
+  /**
+   * The §2.7 caseload axis (GAP-026) — "is this refill's patient on the caller's caseload right now?",
+   * through M5's published `CaseloadProvider` seam. This used to be the literal `patientInCaseload:
+   * false` placeholder, so `refill_inbox_scope`'s second disjunct never fired and a covering clinician
+   * could not open, approve or deny a refill for a patient they are actively caring for.
+   *
+   * `userId` here is the M2 USER id, not a membership id: the seam reads
+   * `patient_assignment.clinician_user_id`, and passing the membership id would silently match
+   * nothing — the same class of mistake this gap was.
+   *
+   * Called OUTSIDE `withOrg`: the M5 provider opens its own `withOrgContext`, and nesting one inside
+   * another sets the GUC on an already-bound connection. Fail-CLOSED on a seam error (unregistered,
+   * deny-stub, RLS-empty) — an authorization axis that cannot be evaluated does not grant.
+   */
+  /**
+   * Every patient id on the caller's caseload right now — the list-side counterpart of
+   * {@link patientInCaseload}, one seam call instead of one per row. Same fail-closed posture: an
+   * unresolvable caseload narrows the inbox to the named-prescriber axis rather than widening it.
+   */
+  const caseloadPatientIds = async (
+    organizationId: string,
+    userId: string,
+  ): Promise<readonly string[]> => {
+    if (!userId) return [];
+    try {
+      return await getSeam("CaseloadProvider").caseloadPatientIds({ organizationId, userId });
+    } catch {
+      return [];
+    }
+  };
+
+  const patientInCaseload = async (
+    organizationId: string,
+    userId: string,
+    patientId: string,
+  ): Promise<boolean> => {
+    if (!userId) return false;
+    try {
+      return await getSeam("CaseloadProvider").isInCaseload({ organizationId, userId, patientId });
+    } catch {
+      return false;
+    }
+  };
 
   /** Emit one `m12.*` event on the caller's tx (validated + persisted by the bound publisher). */
   async function emit(
@@ -627,12 +672,37 @@ export function createDbDoseSpotBackend(
     },
 
     // ── Refill-inbox reads + writes (§2.7 D9) ────────────────────────────────────────────────────────
-    async listRefills(organizationId, _userId) {
-      // RLS scopes to the org; the finer named-prescriber ∨ caseload narrowing needs the M5 caseload seam
-      // (the per-item `refill_inbox_scope` ABAC guards detail). Deferred — org scope is the coarse bound.
+    async listRefills(organizationId, actor) {
+      // GAP-026 — the inbox is now NARROWED, not merely org-scoped. `refill_inbox_scope` resolves to
+      // allow on a list (there is no per-row target to gate), so this service call was the only
+      // control on the list side and it applied none: every clinician saw every refill in the tenant.
+      // The narrowing is the §2.7 inbox model — the refills you are the named prescriber of, plus
+      // those for patients on your caseload — the same two axes `loadRefillScope` gates a detail with.
+      //
+      // Resolved OUTSIDE `withOrg` (M5's provider opens its own `withOrgContext`), and filtered in the
+      // service rather than joined in SQL: the caseload lives in M5's tables, across a boundary this
+      // module may not join over (ADR-0005).
+      const caseload = new Set(await caseloadPatientIds(organizationId, actor.userId));
       return withOrg(organizationId, async (tx) => {
         const rows = await tx.select().from(RR).orderBy(desc(RR.receivedAt));
-        return { refills: rows.map(toRefillView) };
+        if (rows.length === 0) return { refills: [] };
+        // The primary routing identity is the prescriber of the SOURCE order, which lives on
+        // `medication_order` — one batched read for the page, never one per row.
+        const sourceIds = [...new Set(rows.map((r) => r.sourceMedicationOrderId))];
+        const sources = await tx
+          .select({ id: MO.id, prescriberMembershipId: MO.prescriberMembershipId })
+          .from(MO)
+          .where(inArray(MO.id, sourceIds));
+        const prescriberOf = new Map(sources.map((o) => [o.id, o.prescriberMembershipId]));
+        const mine = rows.filter((r) => {
+          if (caseload.has(r.patientId)) return true;
+          if (actor.membershipId === null) return false;
+          return (
+            r.approvedByMembershipId === actor.membershipId ||
+            prescriberOf.get(r.sourceMedicationOrderId) === actor.membershipId
+          );
+        });
+        return { refills: mine.map(toRefillView) };
       });
     },
     async getRefill(organizationId, id) {
@@ -877,10 +947,11 @@ export function createDbDoseSpotBackend(
         return row ? ((row.schedules ?? []) as readonly string[]) : null;
       });
     },
-    async loadRefillScope(organizationId, refillId, userId) {
-      return withOrg(organizationId, async (tx) => {
+    async loadRefillScope(organizationId, refillId, actor) {
+      const facts = await withOrg(organizationId, async (tx) => {
         const [r] = await tx
           .select({
+            patientId: RR.patientId,
             sourceMedicationOrderId: RR.sourceMedicationOrderId,
             approvedByMembershipId: RR.approvedByMembershipId,
           })
@@ -894,11 +965,22 @@ export function createDbDoseSpotBackend(
           .where(eq(MO.id, r.sourceMedicationOrderId))
           .limit(1);
         return {
+          patientId: r.patientId,
+          // MEMBERSHIP ids on both sides (GAP-026). The ABAC layer used to hand this method
+          // `context.userId` — a different id space — so this comparison was false for every real
+          // caller and, with the caseload axis hardcoded false below, `refill_inbox_scope` denied
+          // EVERYONE on a refill detail in production while the in-memory route suite stayed green.
           isNamedPrescriber:
-            r.approvedByMembershipId === userId || source?.prescriberMembershipId === userId,
-          patientInCaseload: false, // caseload axis needs the M5 caseload seam (deferred); fail closed
+            actor.membershipId !== null &&
+            (r.approvedByMembershipId === actor.membershipId ||
+              source?.prescriberMembershipId === actor.membershipId),
         };
       });
+      if (!facts) return null; // absent / cross-tenant refill → fail closed
+      return {
+        isNamedPrescriber: facts.isNamedPrescriber,
+        patientInCaseload: await patientInCaseload(organizationId, actor.userId, facts.patientId),
+      };
     },
 
     // The prod outbox is the M1 transactional relay, not a drainable in-memory buffer.

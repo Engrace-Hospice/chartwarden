@@ -38,6 +38,12 @@ interface ConsentEvaluatorShape {
     sessionContext: { sessionClass: string; membershipId?: string };
     callerModule: string;
   }): Promise<{ allowed: boolean }>;
+  evaluateForIngressRedaction(args: {
+    organizationId: string;
+    patientId: string;
+    callerModule: string;
+    callerRoute?: string;
+  }): Promise<{ redactSubstanceUseDisorderFields: boolean }>;
 }
 
 /**
@@ -65,6 +71,43 @@ export async function dpoaConsentActiveViaSeam(
     return res.allowed;
   } catch {
     return false;
+  }
+}
+
+/**
+ * GAP-017 — the D10 / M09-F05 chart-read disclosure gate: must this patient's SUD-context content stay
+ * redacted for an in-org chart read? Answered by M39's `evaluateForIngressRedaction`, whose
+ * `redactSubstanceUseDisorderFields` flips to `false` exactly when an active `42_cfr_part_2_release`
+ * is on file for the patient — the un-redaction condition §4.4/§9.1 specifies.
+ *
+ * The AIMS gate was a BLANKET, unconditional redaction: `scaleType === "aims" && sudContext` with no
+ * consent read at all, so a Part 2 release the patient had signed, and the org had recorded, changed
+ * nothing — the row stayed hidden from every caller forever. That is the safe direction to fail, but a
+ * gate that cannot open is not a gate.
+ *
+ * PATIENT-SCOPED, NOT ACTOR-SCOPED — deliberately, and this is the whole of what M39 can answer for an
+ * internal chart read. `evaluateForDisclosure` is the per-recipient variant, and its recipient is an
+ * external client / resolved recipient id: M39 does not model an internal staff actor as a Part 2
+ * recipient at all. So the question here is "is disclosure of this patient's SUD content authorized in
+ * this org right now", and WHICH staff may read the chart remains the job of the route's RBAC +
+ * `caseload_or_scope` ABAC, which already gate every one of these reads.
+ *
+ * Fail-CLOSED on any seam error (unregistered, deny-stub, evaluator throw): redact.
+ */
+export async function sudRedactionRequiredViaSeam(
+  organizationId: string,
+  patientId: string,
+): Promise<boolean> {
+  try {
+    const evaluator = getSeam("ConsentEvaluator") as unknown as ConsentEvaluatorShape;
+    const res = await evaluator.evaluateForIngressRedaction({
+      organizationId,
+      patientId,
+      callerModule: "m9",
+    });
+    return res.redactSubstanceUseDisorderFields;
+  } catch {
+    return true;
   }
 }
 
@@ -145,7 +188,10 @@ export function createSeamAssessmentSitingResolver(): AssessmentSitingResolver {
     return {
       // task-11 — AdmissionSummary carries the admission's location anchor (optional field; honestly
       // null until activation sites the admission).
-      siting: { providerEntityId: summary.providerEntityId, locationId: summary.locationId ?? null },
+      siting: {
+        providerEntityId: summary.providerEntityId,
+        locationId: summary.locationId ?? null,
+      },
       anchor: { status: summary.status, activatedAt: summary.activatedAt ?? null },
     };
   };

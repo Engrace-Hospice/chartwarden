@@ -29,9 +29,10 @@ import {
   require_,
 } from "@wardenx/hope";
 import { withOrgContext } from "@wardenx/tenancy";
-import type { J2051Severity } from "@wardenx/types";
+import type { J2051Severity, LatestAssessment, ScaleType } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
+import { getSeam } from "../../bootstrap/index";
 import type { HopeAbacResolver, HopeAssessmentAbacFacts } from "./abac-predicates";
 import type {
   CorrectTimepointArgs,
@@ -81,6 +82,17 @@ function firstOrThrow<T>(rows: readonly T[], msg: string): T {
   if (!r) throw new NotFoundError(msg);
   return r;
 }
+
+/**
+ * The §D8 scales snapshotted onto `clinical_context_snapshot` at HOPE sign (GAP-019). The DB backend
+ * used to skip this entirely — `clinical_context_snapshot` was written only by a CORRECTION copying the
+ * original's (always-null) value, so no production HOPE assessment has ever carried the PPS/ESAS-r
+ * context the D8 rule exists to preserve.
+ */
+const D8_SNAPSHOT_SCALES = ["pps", "esas_r"] as const;
+
+/** The §D8 rule id + message the compensating warning finding carries (spec §D8 / M10 §7.13). */
+const D8_MISSING_PPS_RULE = "D8_CLINICAL_CONTEXT_PPS_MISSING";
 
 /** The §D8 scales snapshotted at HOPE sign — skipped in the DB backend (M9 seam not threaded; §7.13). */
 const j2051EntriesOf = (data: Record<string, unknown>): J2051SymptomReading[] => {
@@ -182,6 +194,55 @@ export function createDbHopeBackend(
   }
 
   /** Load a tenant-scoped assessment row (RLS-scoped) or raise the non-leaking 404. */
+  /**
+   * GAP-019 — the §D8 PPS/ESAS-r snapshot, through M9's published `LatestAssessmentProvider` seam.
+   * Returns `null` when the seam cannot answer (unregistered, deny-stub, RLS-empty): §7.13 is explicit
+   * that no external dependency blocks a clinical write, so a missing snapshot degrades to the
+   * compensating warning finding below rather than refusing the signature.
+   *
+   * Called OUTSIDE the sign transaction: M9's store opens its own `withOrgContextFromRequest`, and
+   * nesting that inside an open `withOrgContext` would set the GUC on an already-bound connection.
+   */
+  async function d8Snapshot(patientId: string): Promise<Record<string, number | null> | null> {
+    try {
+      const rows = await getSeam("LatestAssessmentProvider").latestBatch(patientId, [
+        ...D8_SNAPSHOT_SCALES,
+      ] as unknown as ReadonlyArray<ScaleType>);
+      const byScale = new Map<string, number | null>(
+        rows.map((r: LatestAssessment) => [String(r.scaleType), r.score ?? null]),
+      );
+      const snap: Record<string, number | null> = {};
+      for (const scale of D8_SNAPSHOT_SCALES) snap[scale] = byScale.get(scale) ?? null;
+      return snap;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * The admission's PE/location siting, through M6's `AdmissionStatusReader`. Needed ONLY to write a
+   * `hope_validation_finding`, whose `provider_entity_id` / `location_id` are NOT NULL while
+   * `hope_assessment`'s are nullable and this backend leaves them null (documented compromise #3).
+   * `null` when unresolvable — the finding then cannot be written and says so in the log rather than
+   * disappearing.
+   */
+  async function admissionSiting(
+    organizationId: string,
+    patientId: string,
+    admissionId: string,
+  ): Promise<{ providerEntityId: string; locationId: string } | null> {
+    try {
+      const summary = await getSeam("AdmissionStatusReader").getAdmissionSummary(admissionId);
+      if (summary.organizationId !== organizationId || summary.patientId !== patientId) return null;
+      const providerEntityId = summary.providerEntityId;
+      const locationId = summary.locationId ?? null;
+      if (!providerEntityId || !locationId) return null;
+      return { providerEntityId, locationId };
+    } catch {
+      return null;
+    }
+  }
+
   async function loadA(t: DbClient, id: string): Promise<AssessmentRow> {
     const [r] = (await t
       .select()
@@ -347,7 +408,10 @@ export function createDbHopeBackend(
     async loadAssessment(organizationId, assessmentId): Promise<HopeAssessmentAbacFacts | null> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = (await tx
-          .select({ patientId: ASSESS.patientId, signedByMembershipId: ASSESS.signedByMembershipId })
+          .select({
+            patientId: ASSESS.patientId,
+            signedByMembershipId: ASSESS.signedByMembershipId,
+          })
           .from(ASSESS)
           .where(and(eq(ASSESS.id, assessmentId), eq(ASSESS.organizationId, organizationId)))
           .limit(1)) as { patientId: string; signedByMembershipId: string | null }[];
@@ -523,6 +587,22 @@ export function createDbHopeBackend(
 
     // ── Sign a draft (§2.2.2 — server-authoritative J2051 verdict; triggers close the schedule + open the SFV) ─
     async signTimepoint(organizationId, userId, id) {
+      // GAP-019 — the D8 clinical-context snapshot and the siting the compensating finding needs both
+      // come from OTHER modules' seams, each of which opens its own tenant context. They are resolved
+      // here, before the write transaction, and the assessment is re-read inside it so the draft guard
+      // and the UPDATE still see one consistent row.
+      const pre = await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
+        loadA(tx as unknown as DbClient, id),
+      );
+      const snapshot = pre.status === "draft" ? await d8Snapshot(pre.patientId) : null;
+      // A snapshot with no PPS reading is the case §D8 names: "if no PPS is on file at the time of
+      // signing, the validator emits a warning-severity finding (not blocking)". An ABSENT snapshot
+      // (M9 unreachable) is the same compliance gap from the reviewer's side, so both take the finding.
+      const ppsMissing = pre.status === "draft" && (snapshot === null || snapshot.pps === null);
+      const siting = ppsMissing
+        ? await admissionSiting(organizationId, pre.patientId, pre.admissionId)
+        : null;
+
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadA(t, id);
@@ -543,6 +623,10 @@ export function createDbHopeBackend(
               status: "signed",
               signedAt: at,
               signedByMembershipId: userId,
+              // D8 (GAP-019) — the PPS/ESAS-r context as of the signature. `null` only when M9 could
+              // not answer at all; a resolved snapshot with a null PPS is still recorded, because
+              // "we looked and there was none" is a different fact from "we never looked".
+              clinicalContextSnapshot: snapshot,
               j2051MaxSeverity: verdict.maxSeverity ?? "none",
               j2051TriggerFired: verdict.triggerFired,
               updatedAt: at,
@@ -551,6 +635,32 @@ export function createDbHopeBackend(
             .returning(),
           "signTimepoint matched no row",
         );
+        // §D8's compensating control (GAP-019): the missing-PPS gap must be VISIBLE to compliance /
+        // HQRP review, not merely "not blocking". Without this row the gap was invisible — the
+        // assessment signed clean and nothing anywhere recorded that its clinical context was absent.
+        if (ppsMissing && siting) {
+          await t.insert(FINDING).values({
+            organizationId,
+            providerEntityId: siting.providerEntityId,
+            locationId: siting.locationId,
+            hopeAssessmentId: id,
+            ruleId: D8_MISSING_PPS_RULE,
+            severity: "warning",
+            section: "J",
+            message:
+              snapshot === null
+                ? "No PPS on file at signing: the M9 assessment seam could not be reached, so no clinical-context snapshot was taken (D8)."
+                : "No PPS on file at signing: the clinical-context snapshot was taken and contains no PPS score (D8).",
+            evaluatedAt: at,
+            resolved: false,
+          });
+        } else if (ppsMissing) {
+          // NOT NULL siting could not be resolved, so the finding row is impossible. Say so — a
+          // compliance control that silently declines to record itself is the defect this closes.
+          console.warn(
+            `m10: HOPE assessment ${id} signed with no PPS clinical context and the D8 warning finding could not be written (admission ${pre.admissionId} has no resolvable provider entity / location).`,
+          );
+        }
         await emit(t, organizationId, "m10.hope.timepoint_signed", "hope_assessment", id, {
           assessmentId: id,
           rfaKind: r.rfaKind,

@@ -16,7 +16,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import {
   type HopeWriteOutboxPort,
@@ -196,6 +197,101 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     const done = await svc.getSfv(ORG_A, sfv!.id);
     expect(done.status).toBe("completed");
     expect(await eventsFor(sfv!.id)).toContain("m10.hope.sfv_completed");
+  });
+
+  // ── GAP-019 — the §D8 clinical-context snapshot + its compensating warning finding ───────────────
+  //
+  // The DB backend used to skip D8 entirely: `clinical_context_snapshot` was written only by a
+  // CORRECTION copying the original's (always-null) value, so no production HOPE assessment has ever
+  // carried the PPS/ESAS-r context D8 exists to preserve — and the spec's compensating control ("if no
+  // PPS is on file at signing, the validator emits a warning-severity finding") did not exist either,
+  // so the gap was invisible to compliance review rather than merely non-blocking.
+  describe("D8 clinical-context snapshot at sign (GAP-019)", () => {
+    /** Register the M9 + M6 seams the sign path reads. `pps` null ⇒ the missing-PPS case. */
+    function seams(scores: { pps: number | null; esas_r: number | null } | "unavailable"): void {
+      registerSeam("AdmissionStatusReader", {
+        getAdmissionSummary: async (admissionId: string) => ({
+          admissionId,
+          patientId: PATIENT,
+          organizationId: ORG_A,
+          providerEntityId: providerOf[ORG_A],
+          locationId: locationOf[ORG_A],
+          status: "active",
+          admissionAt: "2026-01-05",
+          activatedAt: "2026-01-05",
+          dischargedAt: null,
+          currentElectionPeriodId: null,
+          currentLevelOfCare: "routine_home_care",
+        }),
+      });
+      registerSeam("LatestAssessmentProvider", {
+        latestBatch: async (_patientId: string, scaleTypes: readonly string[]) => {
+          if (scores === "unavailable") throw new Error("M9 seam unavailable");
+          return scaleTypes.flatMap((scaleType) => {
+            const score = scores[scaleType as "pps" | "esas_r"];
+            return score === null ? [] : [{ scaleType, score }];
+          });
+        },
+      });
+    }
+
+    async function d8Findings(assessmentId: string): Promise<Array<{ severity: string }>> {
+      const { rows } = await admin.query(
+        "SELECT severity, rule_id, message FROM hope_validation_finding WHERE hope_assessment_id=$1 AND rule_id=$2",
+        [assessmentId, "D8_CLINICAL_CONTEXT_PPS_MISSING"],
+      );
+      return rows;
+    }
+
+    afterEach(() => __resetSeamsForTest());
+
+    it("snapshots PPS + ESAS-r onto the signed row, and writes NO warning finding", async () => {
+      seams({ pps: 60, esas_r: 4 });
+      const adm = nextAdmission();
+      await seedSchedule(ORG_A, adm);
+      const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
+      const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+      expect(signed.snapshot).toEqual({ pps: 60, esas_r: 4 });
+      expect(await d8Findings(draft.id)).toHaveLength(0);
+    });
+
+    it("records the snapshot AND a warning finding when no PPS is on file", async () => {
+      // "we looked and there was none" is a different fact from "we never looked", so the snapshot is
+      // still written — with a null pps — beside the finding.
+      seams({ pps: null, esas_r: 7 });
+      const adm = nextAdmission();
+      await seedSchedule(ORG_A, adm);
+      const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
+      const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+      expect(signed.status).toBe("signed"); // §7.13 — never blocking
+      expect(signed.snapshot).toEqual({ pps: null, esas_r: 7 });
+      const findings = await d8Findings(draft.id);
+      expect(findings).toHaveLength(1);
+      expect(findings[0]!.severity).toBe("warning");
+    });
+
+    it("still signs, and still records the finding, when the M9 seam cannot be reached at all", async () => {
+      seams("unavailable");
+      const adm = nextAdmission();
+      await seedSchedule(ORG_A, adm);
+      const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
+      const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+      expect(signed.status).toBe("signed");
+      expect(signed.snapshot).toBeNull();
+      expect(await d8Findings(draft.id)).toHaveLength(1);
+    });
+
+    it("with no seams registered at all the signature still succeeds (the old behaviour, unblocked)", async () => {
+      const adm = nextAdmission();
+      await seedSchedule(ORG_A, adm);
+      const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
+      const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+      expect(signed.status).toBe("signed");
+      expect(signed.snapshot).toBeNull();
+      // The finding row needs the NOT NULL siting the M6 seam supplies, so it cannot be written here —
+      // the service logs that instead of dropping it silently.
+      expect(await d8Findings(draft.id)).toHaveLength(0);
+    });
   });
 
   it("correct a signed timepoint supersedes the original (DB trigger), reuses target_date, emits correction_submitted", async () => {

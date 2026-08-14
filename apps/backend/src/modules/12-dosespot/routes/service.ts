@@ -177,18 +177,43 @@ export interface RefillScopeFacts {
   readonly isNamedPrescriber: boolean;
   readonly patientInCaseload: boolean;
 }
+
+/**
+ * The acting identity a §4.7 resolver read is scoped to — BOTH ids, deliberately (GAP-026).
+ *
+ * M12's two axes key on two DIFFERENT id spaces and the single `userId` string this used to take
+ * could only ever be one of them:
+ *   · the named-prescriber axis compares against `*_membership_id` columns → `membershipId`;
+ *   · the caseload axis goes through M5's `CaseloadProvider`, which reads
+ *     `patient_assignment.clinician_user_id` → `userId` (the M2 user id).
+ *
+ * The route layer's `actorOf()` resolves `context.attributes.membershipId` and calls it `userId` (the
+ * codebase-wide "acting membership" convention), but the ABAC layer passed the raw `context.userId`
+ * to the SAME resolver method — so in production `isNamedPrescriber` compared a user id against a
+ * membership id and could never be true. Naming both fields is what stops that recurring.
+ */
+export interface DoseSpotAbacActor {
+  /** M2 user id (`user.id`) — what M5's `CaseloadProvider` keys on. */
+  readonly userId: string;
+  /** The actor's ACTIVE membership id — what every `*_membership_id` column keys on; null ⇒ deny. */
+  readonly membershipId: string | null;
+}
+
 /** The resolver the §4.7 ABAC predicates read facts through (the slice implements it in-memory). */
 export interface DoseSpotAbacResolver {
-  /** `dosespot_prescriber.dea_authorized_schedules` for the actor's membership (null = no roster row). */
+  /**
+   * `dosespot_prescriber.dea_authorized_schedules` for the actor's MEMBERSHIP (null = no roster row).
+   * The parameter is a membership id — `dosespot_prescriber.membership_id` — never a user id.
+   */
   loadAuthorizedSchedules(
     organizationId: string,
-    userId: string,
+    membershipId: string,
   ): Promise<readonly string[] | null>;
   /** The `refill_inbox_scope` facts for a refill id + actor (null = absent / cross-tenant). */
   loadRefillScope(
     organizationId: string,
     refillId: string,
-    userId: string,
+    actor: DoseSpotAbacActor,
   ): Promise<RefillScopeFacts | null>;
 }
 
@@ -289,7 +314,18 @@ export interface MedicationOrderRouteService extends DoseSpotAbacResolver {
     historyRecordId: string,
     decision: "carry_forward" | "discontinue" | "document_only",
   ): Promise<{ resultingOrderId: string | null }>;
-  listRefills(organizationId: string, userId: string): Promise<{ refills: RefillRequestView[] }>;
+  /**
+   * The §2.7 refill inbox, NARROWED to the caller's scope (GAP-026): the refills they are the named
+   * prescriber of, plus those for patients on their caseload. Takes the full {@link DoseSpotAbacActor}
+   * because those two axes key on two different id spaces — see that interface.
+   *
+   * The narrowing lives here rather than in the route's ABAC because `refill_inbox_scope` has no
+   * per-row target on a list and therefore resolves to allow; the service IS the list-side control.
+   */
+  listRefills(
+    organizationId: string,
+    actor: DoseSpotAbacActor,
+  ): Promise<{ refills: RefillRequestView[] }>;
   getRefill(organizationId: string, id: string): Promise<RefillRequestView>;
   approveRefill(
     organizationId: string,
@@ -842,12 +878,12 @@ export function createInMemoryDoseSpotBackend(
     async reconcileHistory(_organizationId, _userId, _historyRecordId, decision) {
       return { resultingOrderId: decision === "carry_forward" ? nextId() : null };
     },
-    async listRefills(organizationId, userId) {
+    async listRefills(organizationId, actor) {
       const all = [...refills.values()].filter(
         (r) =>
           r.organizationId === organizationId &&
-          (r.prescriberMembershipId === userId ||
-            caseload.has(`${organizationId}:${userId}:${r.patientId}`)),
+          ((actor.membershipId !== null && r.prescriberMembershipId === actor.membershipId) ||
+            caseload.has(`${organizationId}:${actor.userId}:${r.patientId}`)),
       );
       return { refills: all.map(viewRefill) };
     },
@@ -993,13 +1029,18 @@ export function createInMemoryDoseSpotBackend(
       const row = prescribers.get(`${organizationId}:${userId}`);
       return row ? row.deaAuthorizedSchedules : null;
     },
-    async loadRefillScope(organizationId, refillId, userId) {
+    async loadRefillScope(organizationId, refillId, actor) {
       const r = refills.get(refillId);
       if (!r || r.organizationId !== organizationId) return null;
       const source = orders.get(r.sourceMedicationOrderId);
+      // Each axis reads the id space it actually keys on (GAP-026). The seeded `caseloadPatientIds`
+      // fixtures are keyed by USER id, matching `patient_assignment.clinician_user_id` in prod.
+      const { userId, membershipId } = actor;
       return {
         isNamedPrescriber:
-          r.prescriberMembershipId === userId || source?.prescriberMembershipId === userId,
+          membershipId !== null &&
+          (r.prescriberMembershipId === membershipId ||
+            source?.prescriberMembershipId === membershipId),
         patientInCaseload: caseload.has(`${organizationId}:${userId}:${r.patientId}`),
       };
     },

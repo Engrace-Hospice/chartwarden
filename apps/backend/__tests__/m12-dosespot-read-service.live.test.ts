@@ -25,6 +25,9 @@ const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audi
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
+/** An actor on neither §2.7 axis — not the named prescriber, not on the patient's caseload. */
+const STRANGER_USER = "33333333-3333-3333-3333-3333333333ff";
+const STRANGER_MEMBERSHIP = "33333333-3333-3333-3333-3333333333fe";
 /** patient_id / admission_id / prescribing_physician_mdm_id are NOT NULL but carry NO SQL FK (cross-module
  * refs stay plain uuid, §3.3) — literals are fine. */
 const PATIENT = "44444444-4444-4444-4444-444444444444";
@@ -166,10 +169,46 @@ describe.skipIf(!DB_URL)("M12 DoseSpot Drizzle read service — LIVE Postgres (M
     expect(orders[0].patientId).toBe(PATIENT);
   });
 
-  it("listRefills returns the org's refill inbox (RLS-scoped)", async () => {
-    const { refills } = await service.listRefills(ORG_A, USER);
+  // GAP-026 — the inbox is NARROWED to the caller's §2.7 scope, not merely RLS-scoped to the org.
+  // `refill_inbox_scope` resolves to allow on a list (no per-row target to gate), so this service call
+  // is the only control on the list side and it used to apply none: every clinician in the tenant saw
+  // every refill. The caseload axis reads M5's `CaseloadProvider`, unregistered in this suite, so the
+  // named-prescriber axis is what separates the two callers below.
+  it("listRefills narrows the inbox to the caller's scope, not the whole org", async () => {
+    const prescriber = { userId: USER, membershipId: seeded[ORG_A].membership };
+    const { refills } = await service.listRefills(ORG_A, prescriber);
     expect(refills.length).toBe(1);
     expect(refills[0].id).toBe(seeded[ORG_A].refillRequest);
+
+    // An actor on neither axis gets an EMPTY inbox — the row is visible to RLS and withheld anyway.
+    const stranger = { userId: STRANGER_USER, membershipId: STRANGER_MEMBERSHIP };
+    expect((await service.listRefills(ORG_A, stranger)).refills).toEqual([]);
+  });
+
+  it("loadRefillScope grants the named prescriber and denies everyone else (GAP-026)", async () => {
+    const facts = await service.loadRefillScope(ORG_A, seeded[ORG_A].refillRequest, {
+      userId: USER,
+      membershipId: seeded[ORG_A].membership,
+    });
+    // The comparison is membership-id to membership-id. The ABAC layer used to pass `context.userId`
+    // here — a different id space — so this was false for every real caller, and with the caseload
+    // axis hardcoded false the predicate denied EVERYONE on a refill detail in production.
+    expect(facts?.isNamedPrescriber).toBe(true);
+    expect(facts?.patientInCaseload).toBe(false); // no CaseloadProvider seam registered here
+
+    const other = await service.loadRefillScope(ORG_A, seeded[ORG_A].refillRequest, {
+      userId: STRANGER_USER,
+      membershipId: STRANGER_MEMBERSHIP,
+    });
+    expect(other).toEqual({ isNamedPrescriber: false, patientInCaseload: false });
+
+    // A cross-tenant / unknown refill id is fail-closed null, never a permissive default.
+    expect(
+      await service.loadRefillScope(ORG_B, seeded[ORG_A].refillRequest, {
+        userId: USER,
+        membershipId: seeded[ORG_A].membership,
+      }),
+    ).toBeNull();
   });
 
   it("RLS: org B cannot see org A's medication order or refill through the service", async () => {
@@ -178,7 +217,10 @@ describe.skipIf(!DB_URL)("M12 DoseSpot Drizzle read service — LIVE Postgres (M
     await expect(service.getOrder(ORG_B, seeded[ORG_A].medicationOrder)).rejects.toMatchObject({
       statusCode: 404,
     });
-    const { refills } = await service.listRefills(ORG_B, USER);
+    const { refills } = await service.listRefills(ORG_B, {
+      userId: USER,
+      membershipId: seeded[ORG_B].membership,
+    });
     expect(refills.every((r) => r.id !== seeded[ORG_A].refillRequest)).toBe(true);
   });
 
