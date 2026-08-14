@@ -81,5 +81,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # AD-05 — bake the identity the /version probe reports, so the runbook's post-deploy
+          # "is the new build actually live?" check can pass. Without these, /version answers
+          # {"version":"dev","gitSha":"unknown"} on every deploy.
+          build-args: |
+            APP_VERSION=${{ github.ref_name }}
+            GIT_SHA=${{ github.sha }}
+            BUILD_TIME=${{ github.event.repository.updated_at }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

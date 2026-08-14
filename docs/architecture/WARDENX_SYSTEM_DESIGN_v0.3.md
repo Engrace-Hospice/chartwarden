@@ -2,7 +2,7 @@
 
 **Status:** v0.3
 **Owner:** Fabrice V. Adjam
-**Companion to:** WARDENX_ARCHITECTURE v0.10
+**Companion to:** WARDENX_ARCHITECTURE v0.12 (file `WARDENX_ARCHITECTURE_v0_11.md`)
 **Purpose:** Define the runtime architecture, deployment topology, and operational contracts of WardenX. The architecture document answers *what and why*; this document answers *how it actually runs*.
 
 **Execution stance:** Local-first development (MacBook Pro + Docker Compose), Proxmox VMs for initial production deployment. All design decisions favor cloud-portability — every component is containerized, every storage interface is portable (S3-compatible, standard PostgreSQL, standard Redis protocol). Cloud migration later is a deployment-target change, not an architecture change.
@@ -379,6 +379,11 @@ sequenceDiagram
 
 ### 2.1 Local Development (MacBook Pro)
 
+> **STATUS: TARGET — NOT BUILT.** There is no `infra/` directory and no compose file at the path
+> below. Local dev today is a bare `docker run` of Postgres (`pgvector/pgvector:pg16`) plus
+> `bun run dev`; there is no local valkey, minio, mailpit or mlflow. `docs/DEVELOPMENT.md` is the
+> maintained runbook for it.
+
 Single-host Docker Compose. All services run as containers. Services exposed on localhost ports.
 
 ```yaml
@@ -457,10 +462,10 @@ services:
 
 | Service | Port | Purpose |
 |---|---|---|
-| frontend | 4180 | TanStack Start dev server |
-| backend | 4181 | Fastify HTTP + Socket.IO |
-| admin | 4182 | WardenX admin console |
-| portal | 4183 | Patient portal |
+| web | 5173 | Vite dev server (react-router; `apps/web`) |
+| portal | 5174 | Patient portal (`apps/portal`) |
+| admin | 5175 | Admin console (`apps/admin`) |
+| backend | 3000 | Fastify HTTP (`PORT`); worker role listens on 3001 (`WORKER_PORT`) |
 | postgres | 5432 | DB |
 | valkey | 6379 | Cache + queue |
 | minio | 9000 | S3 API |
@@ -1381,8 +1386,21 @@ In failure modes, degraded operation continues for many flows (see §10).
 
 ### 10.2 Disaster Recovery (Production, Proxmox)
 
-**RTO target:** 4 hours
-**RPO target:** 15 minutes for PostgreSQL, 1 hour for MinIO
+> **Superseded — see `WARDENX_DR_BCP_v0.1.md` §3.1** (AD-16). RTO/RPO are **per service tier**, not
+> one blanket figure. The numbers below are Tier 2's, and this section stated them as if they
+> covered everything — including Tier 1 (backend API, PostgreSQL primary, eMAR, orders, EVV,
+> on-call), whose targets are **1 hour / 5 minutes**. §10.1's own failure table on the preceding page
+> already said "RTO < 1 hour, RPO < 5 min" for the PostgreSQL primary, contradicting this header.
+> DR/BCP §3.1 is the single source; do not restate targets here.
+>
+> **STATUS: TARGET — NOT BUILT.** No mechanism implements either figure today: there is no streaming
+> replica, no WAL archiving running, and no restore automation. `ops/pgbackrest/pgbackrest.conf.template`
+> is a placeholder config whose own header says it is "NOT wired to any real host/credentials". What
+> IS exercised is `bun run backup:restore-drill`, which proves the backup/restore mechanics against a
+> disposable local cluster. Treat every number here as a target, not a commitment.
+
+**RTO target (Tier 2):** 4 hours
+**RPO target (Tier 2):** 15 minutes for PostgreSQL, 1 hour for MinIO
 
 **Backups:**
 
@@ -1599,20 +1617,24 @@ For production (Proxmox VMs):
 git clone wardenx
 cd wardenx
 bun install
-docker compose -f infra/docker/dev.compose.yaml up -d
+# STATUS: TARGET — NOT BUILT. `infra/` does not exist and there is no compose file at that path.
+# Real local dev: a bare `docker run` of Postgres, then migrate + seed. See docs/DEVELOPMENT.md.
+docker run -d --name wardenx-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx \
+  -p 5440:5432 pgvector/pgvector:pg16
 bun db:migrate
 bun db:seed
 
 # Daily
 bun dev
 # Spins up:
-# - frontend (4180), backend (4181), admin (4182), portal (4183)
+# - web (5173), portal (5174), admin (5175), backend (3000)
 # - All services hot-reload on file save
 
 # Run tests
-bun test                  # unit
-bun test:integration      # uses Testcontainers
-bun test:e2e              # Playwright
+bun run test              # unit + integration (vitest projects)
+bun run test:e2e          # Playwright — exists at e2e/, but NO ci.yml job invokes it
+# NOTE: `bun test:integration` does not exist, and Testcontainers is not installed. Live-DB suites
+# are the `test:*:live` scripts, gated on WARDENX_TEST_DATABASE_URL.
 bun test:rls              # RLS isolation tests
 
 # Migrations
@@ -1621,7 +1643,10 @@ bun drizzle:migrate       # apply
 bun drizzle:studio        # open Drizzle Studio on 4983
 ```
 
-### 12.7 Pre-Commit Hooks (lefthook)
+### 12.7 Pre-Commit Hooks (**`.githooks/`, not lefthook**)
+
+> `lefthook` is not installed. Hooks live in `.githooks/` and are activated with
+> `git config core.hooksPath .githooks`.
 
 ```yaml
 pre-commit:

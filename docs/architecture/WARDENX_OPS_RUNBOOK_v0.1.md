@@ -3,7 +3,7 @@
 **Document ID:** WARDENX_OPS_RUNBOOK
 **Status:** v0.1
 **Owner:** Fabrice V. Adjam (Engineering)
-**Companion to:** WARDENX_ARCHITECTURE v0.9, WARDENX_SYSTEM_DESIGN v0.2, WARDENX_DR_BCP v0.1
+**Companion to:** WARDENX_ARCHITECTURE v0.12 (file `WARDENX_ARCHITECTURE_v0_11.md`), WARDENX_SYSTEM_DESIGN v0.3, WARDENX_DR_BCP v0.1
 **Review cadence:** Quarterly minimum; updated continuously as procedures evolve
 **Last reviewed:** 2026-06-08
 
@@ -156,11 +156,18 @@ Maintenance windows announced to customers ≥ 7 days in advance via status page
 For every deploy, however small:
 
 - [ ] Code merged to `main` (no direct deploys from branches)
-- [ ] All CI checks green (lint, typecheck, unit, integration, RLS, e2e, SBOM)
-- [ ] Container image signed with cosign
-- [ ] Image SBOM attached
+- [ ] All CI checks green — what `ci.yml` **actually** runs: build, `arch:fitness` (20 gates),
+      unit/integration tests, and the live-DB jobs (`rls-live`, `lifecycle-live`, the per-module
+      matrix). Note **lint is `continue-on-error: true`** — a red lint does not fail CI, so read it
+      rather than trusting the check mark.
+- [ ] ~~All CI checks green (… e2e, SBOM)~~ — **NOT BUILT.** `ci.yml` has no e2e job (a Playwright
+      suite exists at `e2e/` and is wired to `test:e2e`, but no workflow invokes it) and no SBOM
+      step. Run `bun run test:e2e` locally against a seeded stack if the change touches the UI.
+- [ ] ~~Container image signed with cosign~~ / ~~Image SBOM attached~~ — **STATUS: TARGET — NOT
+      BUILT.** `cosign`, `syft`, `trivy` and `grype` have zero occurrences repo-wide. Nothing signs
+      the image and nothing produces an SBOM. Do not tick these; they protect nothing today.
 - [ ] Migration files reviewed (if present): forward-only? two-phase pattern if breaking?
-- [ ] Feature flags: any new flags? Default values set? Documented in `docs/feature-flags/`?
+- [ ] Feature flags: any new flags? Default values set? Documented in `docs/feature-flags/`? (**directory does not exist** — flags are currently documented only in the M34 admin surface and the seed)
 - [ ] Customer-facing change? If so, customer communication drafted
 - [ ] Maintenance window if needed (DB schema change, breaking API change)
 - [ ] Status page maintenance announcement scheduled if needed
@@ -175,13 +182,17 @@ gh run list --workflow=ci.yml --status=success --limit=1
 # Verify the SHA you intend to deploy
 
 # 2. Verify image signature and SBOM
-cosign verify --certificate-identity=https://github.com/wardenx/wardenx-monorepo/.github/workflows/ci.yml@refs/heads/main \
-  --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
-  ghcr.io/wardenx/backend:<sha>
+#    STATUS: TARGET — NOT BUILT. There is no signing step and no SBOM, so there is nothing to
+#    verify; a `cosign verify` here fails on a missing signature, it does not prove provenance.
+#    Until image signing exists, the provenance you actually have is the digest: confirm the tag
+#    you are about to deploy resolves to the digest built by the run you checked in step 1.
+docker buildx imagetools inspect ghcr.io/<owner>/wardenx:sha-<sha> --format '{{.Manifest.Digest}}'
 
 # 3. Pull image to all app VMs (parallel; doesn't impact running traffic)
+#    NOTE the real image name is ghcr.io/<repository_owner>/wardenx (deploy.yml's metadata-action),
+#    NOT ghcr.io/wardenx/backend. Tags are `sha-<full-sha>` and `latest` on the default branch.
 for vm in wardenx-app-01 wardenx-app-02; do
-  ssh $vm "docker pull ghcr.io/wardenx/backend:<sha>" &
+  ssh $vm "docker pull ghcr.io/<owner>/wardenx:sha-<sha>" &
 done
 wait
 
@@ -191,13 +202,13 @@ for vm in wardenx-app-01 wardenx-app-02; do
     --name wardenx-backend-green \
     --network wardenx \
     --env-file /etc/wardenx/.env \
-    -p 4191:4181 \
-    ghcr.io/wardenx/backend:<sha>"
+    -p 3000:3000 \
+    ghcr.io/<owner>/wardenx:sha-<sha>"
 done
 
 # 5. Wait for health on green
 for vm in wardenx-app-01 wardenx-app-02; do
-  until curl -sf https://$vm:4191/ready; do
+  until curl -sf https://$vm:3000/ready; do
     sleep 5
     echo "Waiting for green health on $vm"
   done
@@ -242,7 +253,11 @@ done
 Within 15 minutes of deploy completion:
 
 - [ ] `/health` and `/ready` returning 200 on all instances
-- [ ] `/version` returns expected new SHA
+- [ ] `/version` returns the expected new SHA — `curl -sf https://$vm:3000/version` should answer
+      `{"version":"<ref>","gitSha":"<full sha>","buildTime":"…"}`. It reads `APP_VERSION` /
+      `GIT_SHA` / `BUILD_TIME`, which `deploy.yml` injects as Docker build args (AD-05). A response
+      of `{"version":"dev","gitSha":"unknown"}` means the image was built outside that pipeline —
+      treat it as an unidentified build and do not promote it.
 - [ ] Sample API endpoint succeeds (typically: list patients for Engrace) — manual curl
 - [ ] No new Sentry issues at error rate > pre-deploy baseline
 - [ ] Latency p95 within ± 20% of pre-deploy
@@ -332,7 +347,9 @@ psql -h wardenx-db-01 -U postgres -d wardenx -c "SELECT * FROM _wardenx_migratio
 # 6. Let dual-write run for ≥ 1 week to surface any issues
 
 # 7. Backfill script if needed
-DATABASE_URL=... bun packages/db/scripts/backfill-<feature>.ts
+# NOT IMPLEMENTED — there is no `packages/db/scripts/` directory and no backfill harness.
+# Write the backfill as a one-off under `scripts/db/` (where `migrate.ts` and `seed.ts` live) and
+# run it with `bun run scripts/db/<name>.ts`; delete it once applied.
 ```
 
 #### Phase N+1 — Switch reads
@@ -415,35 +432,104 @@ psql -U postgres -d wardenx -c "REINDEX INDEX CONCURRENTLY audit_event_org_creat
 
 #### 5.2.1 Partitioned Tables Inventory
 
+> **Do not hand-maintain this list — derive it.** The table below was wrong in 5 of its 9 rows for
+> most of this document's life: `encounter`, `message` and `feature_flag_evaluation` are not
+> partitioned at all, `encounter_note` does not exist as a table, `claim` is LIST(`provider_entity_id`)
+> with **no** RANGE sub-partition, and `hope_assessment` is RANGE **`target_date`**, not `created_at`.
+> There are **59** partitioned tables, not 9. Get the live inventory from the catalog:
+>
+> ```sql
+> SELECT c.relname AS table_name,
+>        CASE p.partstrat WHEN 'r' THEN 'RANGE' WHEN 'l' THEN 'LIST' WHEN 'h' THEN 'HASH' END AS strategy,
+>        (SELECT string_agg(a.attname, ', ' ORDER BY k.ord)
+>           FROM unnest(p.partattrs) WITH ORDINALITY AS k(attnum, ord)
+>           JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum) AS partition_key
+> FROM pg_partitioned_table p
+> JOIN pg_class c     ON c.oid = p.partrelid
+> JOIN pg_namespace n ON n.oid = c.relnamespace
+> WHERE n.nspname = 'public'
+> ORDER BY 1;
+> ```
+
+The operationally significant ones — the high-volume RANGE-by-time tables whose partitions must keep
+being created (verified against the catalog 2026-08-14):
+
 | Table | Partition by | Cadence | Retention |
 |---|---|---|---|
-| `audit_event` | RANGE created_at | Monthly | Per retention class (Architecture §24) |
-| `claim` | LIST provider_entity_id then RANGE created_at | Quarterly | 7 years |
-| `claim_line` | Co-partitioned with claim | Quarterly | 7 years |
-| `encounter` | LIST organization_id then RANGE created_at | Quarterly | Per state retention |
-| `encounter_note` | Co-partitioned with encounter | Quarterly | Per state retention |
-| `hope_assessment` | LIST organization_id then RANGE created_at | Annually | 6 years |
-| `message` | LIST organization_id then RANGE created_at | Monthly | 6 years |
-| `extraction_job` | RANGE created_at | Monthly | 30 days |
-| `feature_flag_evaluation` | RANGE evaluated_at | Monthly | Per flag kind (varies) |
+| `audit_event` | RANGE `created_at` | Monthly | Per retention class (Architecture §24) |
+| `evv_event` | RANGE `event_at` | Monthly | Per state retention |
+| `administration_record` | RANGE `administered_at` | Monthly | 7 years |
+| `medication_order` | RANGE `created_at` | Monthly | 7 years |
+| `order_record` | RANGE `created_at` | Monthly | 7 years |
+| `clinical_assessment` | RANGE `captured_at` | Monthly | 7 years |
+| `hope_assessment` | RANGE `target_date` | Annually | 7 years (ADR-0004; **not** 6) |
+| `visit` | RANGE `service_date` | Monthly | Per state retention |
+| `document_access_log` | RANGE `accessed_at` | Monthly | Per retention class |
+| `consent_eval_audit` | RANGE `evaluated_at` | Monthly | Per retention class |
+| `extraction_job` | RANGE `queued_at` | Monthly | 30 days |
+| `ai_invocation` | RANGE `invoked_at` | Monthly | Per AI-governance retention |
+
+LIST-partitioned tables (`claim`, `medicaid_claim*`, the `cap_*` lines, `*_state_history`, the M34
+`*_job_event` tables) partition by tenant or period key, not by time — their partitions are created
+by the write path that first needs them, not by a time-based rotation.
 
 #### 5.2.2 Partition Rotation Job
 
-A weekly BullMQ job (`partition.rotate`) verifies that next-3-months of partitions exist for all partitioned tables. If missing, creates them.
+> ### ⚠️ STATUS: NOT IMPLEMENTED — this job does not exist
+>
+> There is **no `partition.rotate` job** anywhere in the tree, and no
+> `packages/db/src/jobs/partition-rotation.ts`. Nothing schedules partition creation. The snippet
+> previously printed here also called `create_message_partition` and `create_outbox_partition`,
+> **neither of which exists** — `outbox_event` is not partitioned at all.
+>
+> What DOES exist is the per-table SQL side: **55 `create_<table>_partition(date)` SECURITY DEFINER
+> functions** shipped by the migrations (`create_audit_partition`, `create_evv_event_partition`,
+> `create_medication_order_partition`, …). They are correct and callable; nothing calls them on a
+> schedule.
+>
+> **Operational consequence — read this before it bites you.** A RANGE-partitioned table with no
+> partition covering `now()` rejects the INSERT outright (`no partition of relation … found for
+> row`). This is a write-path outage on the affected table, not a slow query. Until the job is
+> built, partition creation is a **manual monthly task**; put it on the ops calendar.
+>
+> Manual rotation — create the next three months for every time-partitioned table that has a
+> creator function:
+>
+> ```sql
+> DO $$
+> DECLARE fn text; m date;
+> BEGIN
+>   FOR m IN SELECT generate_series(date_trunc('month', now()),
+>                                   date_trunc('month', now()) + interval '3 months',
+>                                   interval '1 month')::date
+>   LOOP
+>     FOR fn IN SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+>               WHERE n.nspname = 'public' AND p.proname LIKE 'create\_%\_partition'
+>                 -- date-keyed creators ONLY. The LIST-partitioned cap/claim tables also have
+>                 -- create_*_partition functions, but they take a period or tenant uuid; calling
+>                 -- them with a date aborts the whole block on "no function matches".
+>                 AND p.pronargs = 1 AND p.proargtypes[0] = 'date'::regtype
+>     LOOP
+>       EXECUTE format('SELECT %I($1)', fn) USING m;
+>     END LOOP;
+>   END LOOP;
+> END $$;
+> ```
+>
+> Verify afterwards that every time-partitioned parent has a partition covering next month:
+>
+> ```sql
+> SELECT c.relname, count(i.inhrelid) AS partitions
+> FROM pg_partitioned_table p
+> JOIN pg_class c ON c.oid = p.partrelid
+> LEFT JOIN pg_inherits i ON i.inhparent = c.oid
+> WHERE p.partstrat = 'r'
+> GROUP BY 1 ORDER BY 2 ASC;   -- anything with a suspiciously low count needs attention
+> ```
 
-```typescript
-// packages/db/src/jobs/partition-rotation.ts
-export async function rotatePartitions(db: typeof DbClient) {
-  const now = new Date()
-  for (let i = 0; i < 3; i++) {
-    const month = startOfMonth(addMonths(now, i + 1))
-    await db.execute(sql`SELECT create_audit_partition(${month}::date)`)
-    await db.execute(sql`SELECT create_message_partition(${month}::date)`)
-    await db.execute(sql`SELECT create_outbox_partition(${month}::date)`)
-    // ... etc per table
-  }
-}
-```
+**Target design (when the job is built):** a weekly BullMQ job verifies that the next 3 months of
+partitions exist for every RANGE-by-time table and creates the missing ones by calling the
+`create_*_partition` functions above.
 
 #### 5.2.3 Manual Partition Operations
 
@@ -1197,7 +1283,7 @@ Tests run from at least 2 external locations (avoiding single-point-of-monitorin
 | MinIO storage (if cloud) | Storage growth rate; bandwidth costs |
 | Proxmox hosting (if colocated) | Power, bandwidth, hardware service |
 
-Monthly review consolidates into a vendor-spend report stored in `docs/ops/cost-reports/<YYYY-MM>.md`.
+Monthly review consolidates into a vendor-spend report stored in `docs/ops/cost-reports/<YYYY-MM>.md` (**`docs/ops/` does not exist** — create on first report).
 
 ### 10.2 Anthropic Cost Watch — Concrete Procedure
 
@@ -1306,42 +1392,44 @@ Quarterly forecasting:
 
 Steps after sales/contract complete (full automation lives in Module 34 SaaS Tenant Platform; this is the manual fallback / verification):
 
+> **`packages/db/scripts/` DOES NOT EXIST**, and never has. Every `bun packages/db/scripts/*.ts`
+> command previously in this chapter was non-executable. Tenant operations are **HTTP routes on the
+> M34 platform-ops surface**, not CLI scripts — that is deliberate (each one is ABAC-gated,
+> step-up-gated where destructive, and audited; a script bypassing the API would bypass all three).
+> Below, each step is either its real route, or marked **NOT IMPLEMENTED** where no equivalent
+> exists. All routes need a platform-ops session; `$API` is `https://wardenx-app-01:3000`.
+
 ```bash
-# 1. Create Organization record
-# (Via admin console or scripted via packages/db/scripts/create-tenant.ts)
-bun packages/db/scripts/create-tenant.ts \
-  --slug=<slug> \
-  --legal-name="<Legal Name>" \
-  --display-name="<Display>"
+# 1. Create the tenant (organization + tenant_account spine)
+curl -sf -X POST $API/api/v1/platform/tenants \
+  -H "authorization: Bearer $PLATFORM_OPS_TOKEN" -H "content-type: application/json" \
+  -d '{"slug":"<slug>","legalBusinessName":"<Legal Name>","displayName":"<Display>"}'
 
-# 2. Create ProviderEntity (CCN)
-bun packages/db/scripts/create-provider-entity.ts \
-  --org-slug=<slug> \
-  --ccn=<6-digit> \
-  --npi=<10-digit> \
-  --fiscal-intermediary=<MAC-code> \
-  --fye=<MMDD>
+# 2. Create ProviderEntity (CCN)  →  NOT IMPLEMENTED as an operator route.
+#    `provider_entity` has no create route on any surface. Today it is seeded by
+#    `scripts/db/seed.ts` or written directly via psql. Treat as a DB operation and record it in
+#    the change log; do not expect an API.
 
-# 3. Create initial Locations
-# (per setup data)
+# 3. Create initial Locations  →  NOT IMPLEMENTED as an operator route (same as step 2).
 
-# 4. Provision MinIO buckets (§6.6)
+# 4. Provision MinIO buckets (§6.6) — per-tenant bucket is `tenant-<organizationId>`.
 
-# 5. Create initial admin user
-bun packages/db/scripts/create-user.ts \
-  --email=<admin@tenant.com> \
-  --name="<Admin Name>" \
-  --send-invitation
+# 5+6. Invite the first admin. Self-serve signup (M34 §5) mints this as part of the signup-intent
+#      flow; for a sales-led tenant, use the tenant-scoped invitation surface:
+curl -sf -X POST $API/api/v1/invitations \
+  -H "authorization: Bearer $ORG_ADMIN_TOKEN" -H "content-type: application/json" \
+  -d '{"email":"<admin@tenant.com>","roleKeys":["org_admin"]}'
+#      The invitee accepts at POST /api/v1/invitations/accept, which creates the membership.
+#      NOTE: `org_admin` and `administrator` are two DISTINCT roles — see §7's role catalog.
 
-# 6. Attach admin user as Membership with org_admin role
+# 7. Configure tenant settings  →  NOT IMPLEMENTED as an operator route.
+#    `organization_setting` rows (e.g. `org_timezone`, `breakglass_cosign_required`) are written by
+#    the owning module's own admin surface or by psql. There is no generic settings CLI or route.
 
-# 7. Configure tenant settings
-bun packages/db/scripts/set-tenant-settings.ts \
-  --org-slug=<slug> \
-  --setting timezone=America/Los_Angeles \
-  --setting default-language=en-US
-
-# 8. Set initial feature flags
+# 8. Set initial feature flags — the M34 admin surface:
+curl -sf -X POST $API/api/v1/platform/feature-flags \
+  -H "authorization: Bearer $PLATFORM_OPS_TOKEN" -H "content-type: application/json" \
+  -d '{"key":"<flag>","enabled":false,"organizationId":"<orgId>"}'
 # (Phase 1 defaults; Layer 2 and DocLens initially off)
 
 # 9. Configure billing (if subscription tenant)
@@ -1369,13 +1457,12 @@ Effects of suspension:
 - 90-day window before potential closure
 
 ```bash
-# Procedure
-bun packages/db/scripts/suspend-tenant.ts \
-  --org-slug=<slug> \
-  --reason="<reason>" \
-  --until=<date-optional>
+# Procedure — the M34 platform-ops status transition (ABAC + step-up gated, audited).
+curl -sf -X POST $API/api/v1/platform/tenants/<slug>/status \
+  -H "authorization: Bearer $PLATFORM_OPS_TOKEN" -H "content-type: application/json" \
+  -d '{"status":"suspended","reason":"<reason>"}'
 
-# This sets organization.status = 'suspended'
+# This sets tenant_account.status = 'suspended'
 # Better Auth refuses sign-in for suspended orgs
 # Backend middleware blocks mutations except for admin export
 # Audit log entry emitted
@@ -1389,9 +1476,14 @@ Permanent. Triggers data retention countdown.
 ```bash
 # 1. Confirm customer instruction in writing
 # 2. Final data export (offered to customer per BAA termination)
-bun packages/db/scripts/export-tenant-data.ts \
-  --org-slug=<slug> \
-  --output=/mnt/exports/<org>-final-export.tar.gz
+# The tenant-export job (M34 §4.3). It produces a real ustar tar.gz with a manifest sidecar;
+# an oversized bundle is HELD and needs the SEC-052 approval route before it releases.
+curl -sf -X POST $API/api/v1/tenant/tenant-export-jobs \
+  -H "authorization: Bearer $ORG_ADMIN_TOKEN" -H "content-type: application/json" \
+  -d '{"reason":"BAA termination — final export"}'
+# Platform-ops list + oversized approval:
+#   GET  $API/api/v1/platform/tenant-export-jobs
+#   POST $API/api/v1/platform/tenant-export-jobs/<id>/approve-oversized
 
 # 3. Verify export integrity; transmit to customer via secure channel
 
@@ -1416,11 +1508,14 @@ HIPAA Right of Access — patient requests their own records:
 # 3. Tenant agency initiates the export via Module 22 / admin UI
 # 4. WardenX assists with export generation if needed
 
-bun packages/db/scripts/export-patient-records.ts \
-  --org-slug=<slug> \
-  --patient-id=<uuid> \
-  --format=<pdf|fhir|json> \
-  --output=/mnt/exports/<patient>-records.<ext>
+# The M34 DSAR export job (tenant-scoped; the tenant IS the covered entity, so this runs on the
+# tenant's own surface, not platform-ops).
+curl -sf -X POST $API/api/v1/tenant/dsar-export-jobs \
+  -H "authorization: Bearer $ORG_ADMIN_TOKEN" -H "content-type: application/json" \
+  -d '{"patientId":"<uuid>","reason":"HIPAA Right of Access"}'
+#   GET  $API/api/v1/tenant/dsar-export-jobs            — status
+#   POST $API/api/v1/tenant/dsar-export-jobs/<id>/fulfill
+#   POST $API/api/v1/tenant/dsar-export-jobs/<id>/extend — the one 30-day extension
 
 # 5. Tenant delivers to patient per HIPAA timeline (30 days; one 30-day extension allowed)
 # 6. Document fulfillment in audit log
@@ -1433,11 +1528,10 @@ Patient requesting electronic copy in transferable format (HIPAA right):
 ```bash
 # 1. Same identity verification as DSAR
 # 2. Generate FHIR R4 bundle (preferred portable format)
-bun packages/db/scripts/export-patient-records.ts \
-  --org-slug=<slug> \
-  --patient-id=<uuid> \
-  --format=fhir-bundle \
-  --output=/mnt/exports/<patient>-bundle.json
+# NOT IMPLEMENTED as a FHIR bundle. The DSAR job above is the only patient-record export path,
+# and it does not emit a FHIR R4 bundle: M28's FHIR read surface returns hardcoded 404/empty-Bundle
+# with no data path, and bulk `$export` has neither a route nor a worker. Until that lands,
+# portability is served by the DSAR export in its native format.
 
 # 3. Deliver via secure channel
 ```
@@ -1448,11 +1542,11 @@ Legal hold (litigation, audit, investigation) per Architecture §24.3:
 
 ```bash
 # 1. Compliance officer triggers
-bun packages/db/scripts/apply-legal-hold.ts \
-  --org-slug=<slug> \
-  --scope="patient-id=<uuid>" \
-  --reason="<docket>" \
-  --release-conditional-on="<conditions>"
+curl -sf -X POST $API/api/v1/legal-holds \
+  -H "authorization: Bearer $COMPLIANCE_TOKEN" -H "content-type: application/json" \
+  -d '{"scope":{"patientId":"<uuid>"},"reason":"<docket>"}'
+#   GET  $API/api/v1/legal-holds              — active holds
+#   POST $API/api/v1/legal-holds/<id>/release — release when the obligation lapses
 
 # 2. All matching records' retention_class flipped to 'legal_hold'
 # 3. Retention jobs skip 'legal_hold' records
@@ -1586,7 +1680,7 @@ Each policy:
 - Updated for any architectural / regulatory changes
 - Re-signed by compliance officer + WardenX leadership
 - Distributed to workforce (training updates)
-- Filed in `docs/policies/<name>-vYYYY-MM.md`
+- Filed in `docs/policies/<name>-vYYYY-MM.md` (**directory does not exist** — create on first policy)
 
 ### 12.6 Workforce Training
 
@@ -1684,7 +1778,7 @@ Alert: tls_cert_expiry_soon (30 days, 7 days)
 ssh wardenx-edge-01 "/etc/wardenx/lb-cli show"
 
 # 2. Check per-instance latency
-curl -w "@curl-timing.txt" -sf https://wardenx-app-01:4181/health
+curl -w "@curl-timing.txt" -sf https://wardenx-app-01:3000/health
 
 # 3. Check DB connection pool
 ssh wardenx-app-01 "psql -h localhost -p 6432 -U pgbouncer pgbouncer -c 'SHOW POOLS;'"
@@ -1990,7 +2084,7 @@ done
 
 ### A.3 Emergency Contacts
 
-(Stored in `docs/ops/contacts.yaml`, encrypted via SOPS for sensitive entries)
+(Stored in `docs/ops/contacts.yaml`, encrypted via SOPS for sensitive entries — **`docs/ops/` does not exist yet**)
 
 - Fabrice direct: ___
 - Compliance officer / counsel: ___ (when contracted)

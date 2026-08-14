@@ -1,6 +1,6 @@
 # WardenX — Architecture Document
 
-**Status:** v0.12 (supersedes v0.11)
+**Status:** v0.12 (supersedes v0.11) — *the FILENAME still reads `_v0_11`; the file is gate-locked in place (`docs:ui` / the corpus index) and is not renamed on each revision. The header is authoritative for the version; cite the file by path.*
 **Owner:** Fabrice V. Adjam
 **Purpose:** Complete architecture lock for WardenX, a multi-tenant hospice EHR SaaS. This document is the input spec for the Archon workflow engine driving Claude Code. Per-module spec documents (one per module) follow this document and are produced before each module’s build cycle.
 
@@ -18,7 +18,7 @@ an ADR under `docs/adr/`. Module specs re-lock against these in later phases.
 |**OPEN-020 closed:** §24.1 *Sessions* row aligned to **15 min idle / 8 hr work / 24 hr maximum / 5 min screen lock** (matches §7/§14, SEC v0.2). Canonical RLS var `app.org_id`.|ADR-0004 — OPEN-020, M02-F11|
 |**OPEN-021 closed:** clinical-record + HOPE retention default **6 → 7 years from last patient contact** (HIPAA floor 6; longer per `state_retention_override`).|ADR-0004 — OPEN-021, M01-F03|
 |**OPEN-022 closed:** `state_retention_override` is owned by **Module 4** (not Module 39); §25.9 corrected.|ADR-0004 — OPEN-022|
-|**Manifest governance** (recorded in the Architecture Fitness companion `ARCHITECTURE_25_15_FITNESS.md`): outbox/seam consumption needs **no `dependsOn` import edge**; seam interfaces live in `packages/types`; `packages/foundation` is **banned**; foundation helper packages (audit/auth/tenancy + db schema-types) are implicitly importable; one consolidated ADR per module for `dependsOn` deltas.|ADR-0005 — X1/X2/X12, M01-F01, M03-F02/F07|
+|**Manifest governance** (recorded in the Architecture Fitness companion `ARCHITECTURE_25_15_FITNESS.md`): outbox/seam consumption needs **no `dependsOn` import edge**; seam interfaces live in `packages/types`; `packages/shared` / `packages/types` is **banned**; foundation helper packages (audit/auth/tenancy + db schema-types) are implicitly importable; one consolidated ADR per module for `dependsOn` deltas.|ADR-0005 — X1/X2/X12, M01-F01, M03-F02/F07|
 |**Manifest 22↔39 cycle removed:** `M39.dependsOn` drops 22 (Consent consumes Documents via a forward seam); §20 build-order note corrected.|ADR-0006 — M22-DC1/F01|
 |**M8↔M9/M10 read direction settled:** M9/M10 stay downstream of M8; M8's signing-completeness gate consults M9/M10 via boot-registered seams (no manifest inversion).|ADR-0007 — M09-F02, M10-F03|
 |**EVV applicability corrected:** Cures Act EVV is **Medicaid-only**; Medicare-hospice EVV is **operational, never claim-blocking** (no §11.A `regulatory_required` EVV rule for Medicare); HQRP has **no** EVV measure; launch state is **Oregon**.|ADR-0008 — M18-F04/F05|
@@ -117,7 +117,7 @@ an ADR under `docs/adr/`. Module specs re-lock against these in later phases.
 
 |Change                                                                                                            |Driver                          |
 |------------------------------------------------------------------------------------------------------------------|--------------------------------|
-|Renamed `apps/api` → `apps/backend` and `apps/web` → `apps/frontend` (admin and portal unchanged)                 |Naming preference               |
+|Renamed `apps/backend` → `apps/backend` and `apps/web` → `apps/web` (admin and portal unchanged)                 |Naming preference               |
 |Added §7.9 explicitly documenting the three-layer authorization model (RLS + RBAC + ABAC) and why each is required|Clarification — defense in depth|
 
 ## Document Control — Changes from v0.2
@@ -257,6 +257,42 @@ Organization (tenant — the WardenX customer)
 - Passkeys and 2FA seeds may be shared across Organizations for the same user (they’re authentication, not authorization)
 
 -----
+
+> ## ⚠️ §4–§5, §9, §12, §17 — READ THIS FIRST (AD-11/AD-14, verified 2026-08-14)
+>
+> **Several technologies named across the next few sections are not installed, and several paths do
+> not exist.** The build deliberately diverged; the divergences are real decisions, not rot, but
+> they were never written down — so these sections read as present tense for things that were never
+> built. Verified as **absent from every `package.json` in the workspace**:
+>
+> `@tanstack/*` · `socket.io` · `xstate` · `@fastify/*` (any plugin) · `@opentelemetry/*` ·
+> `@sentry/*` · the `minio` client · `puppeteer` · `react-pdf` · `testcontainers` · `msw` ·
+> `recharts` · `iconsax` · `shadcn/ui` · the Stripe SDK · `@anthropic-ai/sdk`.
+>
+> | This document says | Reality |
+> |---|---|
+> | TanStack Start | **Vite 6 + `react-router-dom` ^7** in all three SPAs (a deliberate TASK-066 choice) |
+> | Socket.IO / realtime backbone | **No realtime backbone.** `packages/messaging/src/realtime/*` are pure room-name builders that state they import no socket.io. The **transactional outbox** is what carries cross-module events. |
+> | Python sidecars (§12) for X12 / cost report | **TypeScript.** Zero `.py` files; no `services/`, no `infra/`. The work lives in `packages/x12-837-client`, `packages/x12-835-client`, `packages/cost-report`. The fail-closed `X12_WORKER_NOT_WIRED` port fronts a sidecar that was never built. |
+> | pgcrypto envelope encryption | **Application-layer AES-256-GCM with HKDF per-tenant DEKs.** `pgcrypto` is installed but used only for `gen_random_uuid()` — zero `pgp_sym_encrypt`/`encrypt(` calls across all migrations. *(Highest compliance weight of these.)* |
+> | XState state machines | **Pure transition functions.** Several files say so explicitly, e.g. `saas-tenant-platform/src/onboarding/machine.ts`. |
+> | `@fastify/*` plugins | **Hand-written, "with NO new npm dependency"** (`bootstrap/plugins/security.ts`): CSP/HSTS/CORS/rate limiting. OpenAPI is emitted offline by `scripts/openapi/emit.ts`. No multipart, no SSE. |
+> | Valkey idempotency | **Postgres** (`createDbIdempotencyStore`) — the in-memory Map it replaced was process-local. |
+> | ~60-role catalogue (§7) | **13 roles shipped.** |
+> | `apps/web` | **`apps/web`** |
+> | `apps/backend` | **`apps/backend`** |
+> | `packages/saas` | **`packages/saas-tenant-platform`** |
+> | `apps/mobile/` | **Does not exist.** ADR-0035 makes mobile a Capacitor wrap of `apps/web`, not a separate app. |
+> | `packages/rules-engine` | **Does not exist.** |
+> | §9's `apps/backend/src/{routes,services}` + `packages/db/src/repos` | **Do not exist.** The real layout is per-module vertical slices under `apps/backend/src/modules/NN-name/`. |
+>
+> **26 of the 47 real packages are undocumented here.** `ls packages/` is authoritative.
+>
+> **§12 (Python sidecars) and §17 (dev topology) are `STATUS: TARGET — NOT BUILT` in their
+> entirety.** So is the DR VM fleet described in DR/BCP (Pangolin, PgBouncer, PBS, a MinIO cluster,
+> PagerDuty, Grafana, Sentry). The repo already uses this idiom — `ops/pgbackrest/*.template`,
+> `Dockerfile`, `docker-compose.yml` and `deploy.yml` all carry "SCAFFOLD, NOT VALIDATED" headers;
+> these sections simply never got one.
 
 ## 4. Monorepo Layout
 
@@ -2202,6 +2238,12 @@ See §10 for capability inventory, discipline rules, and §10.7 for model backen
 
 ## 12. Worker Services (Python sidecars)
 
+> **STATUS: TARGET — NOT BUILT.** There are no Python sidecars: zero `.py` files, no `services/`
+> directory, no `infra/`. X12 and cost-report processing are TypeScript
+> (`packages/x12-837-client`, `packages/x12-835-client`, `packages/cost-report`). The fail-closed
+> `X12_WORKER_NOT_WIRED` port fronts the sidecar this section describes. Read as target state.
+
+
 Each runs as a separate Docker container with its own dependencies and lifecycle. Internal HTTP with TypeBox-validated JSON. Per direction, kept as separate services rather than monolith.
 
 |Worker            |Purpose                                                  |Stack                                             |
@@ -2266,7 +2308,7 @@ interface MedicaidAdapter {
 |Funeral Home Access              |Defined data scope only (decedent, time of death, attending, body release); 72-hour default validity                                                                                                            |
 |PHI scrubbing                    |Pino redaction rules; Sentry beforeSend hook; logs never carry PHI                                                                                                                                              |
 |User access reviews              |Quarterly attestation workflow (tenant admin module)                                                                                                                                                            |
-|Incident response                |Runbook in `docs/runbooks/incident-response.md`; 60-day breach notification timer                                                                                                                               |
+|Incident response                |Runbook in `docs/runbooks/incident-response.md` (**not created**; the operative runbook is `docs/architecture/WARDENX_OPS_RUNBOOK_v0.1.md` §14); 60-day breach notification timer                                                                                                                               |
 |Data retention                   |7 years clinical (or longer per state); 7 years audit; EPCS audit 2 years minimum once enabled                                                                                                                  |
 |Subject access                   |Module 34 data export job                                                                                                                                                                                       |
 |Subject deletion                 |Module 34 cryptographic shred job                                                                                                                                                                               |
@@ -2303,6 +2345,13 @@ Test data fixtures in `packages/db/test-fixtures/` — multi-tenant set: Engrace
 -----
 
 ## 17. Local Development (MacBook Pro)
+
+> **STATUS: TARGET — NOT BUILT.** The compose topology below (valkey/minio/mailpit/mlflow via
+> `infra/docker/dev.compose.yaml`) does not exist — there is no `infra/` directory. Real local dev
+> is `bun install`, a `docker run` of Postgres, `bun run db:migrate && bun run db:seed`, then
+> `bun run dev` (web on 5173, portal 5174, admin 5175, backend 3000). See `docs/DEVELOPMENT.md`,
+> which is maintained; this section is not.
+
 
 ```yaml
 # infra/docker/dev.compose.yaml — runs everything needed on Mac
@@ -2352,6 +2401,26 @@ services:
 ## 20. Build Sequence
 
 Strict dependency-ordered. Each module is “done with tests + UI + audit + RBAC” before the next starts.
+
+> **This table is the BUILD-ORDER view. `architecture/module-manifest.ts` is the source of truth for
+> the ENFORCED import graph** (AD-10, 2026-08-14). The manifest's header used to claim its
+> `dependsOn` was "verbatim from ARCHITECTURE §20 dep table" and this table implied the reverse;
+> two artifacts each claiming to mirror the other, while disagreeing, is worse than either alone.
+> The manifest is what `arch:boundaries` actually enforces — if you need to know whether module A may
+> import module B, read the manifest, not this table.
+>
+> Known deliberate divergences, all of which post-date this table:
+>
+> | Module | This table says | Manifest enforces | Why |
+> |---|---|---|---|
+> | 9 Assessments | 8, 38 | 1, 38 | **ADR-0007 seam inversion** — M9 no longer imports M8; the encounter link is a forward seam. Recorded in this document's own changelog and never propagated here. |
+> | 10 HOPE | 8, 9, 36, 38 | 1, 9, 36, 38 | Same ADR-0007 inversion (M8 edge dropped). |
+> | 11 Orders | 6, 8, 36, 38, 40 | 1, 6, 36, 38, 40 | Same ADR-0007 inversion (M8 edge dropped). |
+> | 22 Documents | — | 1, 5 | M22 reads the patient spine directly. |
+> | 35 Subscription Billing | 34 | (see manifest) | M35 may import `@wardenx/auth`, **not** the M34 shell registry. |
+>
+> Every module additionally depends on **1 (Foundation)**, which this table leaves implicit for rows
+> 5 and later; the manifest states it explicitly because the boundary checker needs it.
 
 |# |Module                                                                       |Depends on                                                                                  |
 |--|-----------------------------------------------------------------------------|--------------------------------------------------------------------------------------------|
@@ -2668,7 +2737,7 @@ This section maps each regulatory framework’s requirements to specific WardenX
 |§164.308(a)(3) Workforce Security                         |RBAC + ABAC + onboarding/offboarding workflows                    |Modules 2, 3                          |Membership change audit log                              |
 |§164.308(a)(4) Information Access Management              |RLS + RBAC + ABAC three-layer model                               |§7.9, §8, Module 3                    |Access policy specifications, RLS policy generator output|
 |§164.308(a)(5) Security Awareness and Training            |Training records on user profile; gates to specific actions       |Module 2, §7.7 (volunteers)           |Training completion records                              |
-|§164.308(a)(6) Security Incident Procedures               |Incident response runbook with 60-day breach notification timer   |§14, Module 30                        |Runbook in `docs/runbooks/`, incident records            |
+|§164.308(a)(6) Security Incident Procedures               |Incident response runbook with 60-day breach notification timer   |§14, Module 30                        |Runbook in `docs/architecture/WARDENX_OPS_RUNBOOK_v0.1.md` (`docs/runbooks/` not created), incident records |
 |§164.308(a)(7) Contingency Plan                           |Backup + DR plan (pgBackRest + offsite per ADR-002)               |§14, §19                              |Backup logs, restore drill records                       |
 |§164.308(a)(8) Evaluation                                 |Annual SRA + quarterly access reviews                             |Module 30                             |Quarterly review attestations                            |
 |§164.308(b) Business Associate Contracts                  |BAA register in code                                              |`packages/shared/baa-register.ts`, §14|Signed BAAs filed; register validated in CI              |
@@ -3045,13 +3114,44 @@ Standardized patterns that every module follows. Locks the patterns explicitly; 
 
 ### 25.14 External Service Calls
 
-**Pattern:** Wrap every external call in a circuit breaker. Configure timeout, retry, backoff. Failures propagate as `DegradedError` to clients, never as raw `fetch` rejections. Per-vendor adapter package (`packages/dosespot-client`, `packages/anthropic-client`, etc.) so the rest of the system depends on an interface, not a vendor.
+**Pattern:** Wrap every external call in a circuit breaker. Configure timeout, retry, backoff. Failures propagate as `DegradedError` to clients, never as raw `fetch` rejections. Per-vendor adapter package (`packages/dosespot`, `packages/ai-platform/src/backends/anthropic.ts`, etc.) so the rest of the system depends on an interface, not a vendor.
 
 ### 25.15 Mobile Considerations
 
 **Pattern:** Mobile (Capacitor) apps assume intermittent connectivity. Draft state cached locally; sync on reconnect. EVV check-in/check-out must work offline — store locally, sync later, server reconciles. Biometric unlock at app launch. App-level idle timer (15 min) re-prompts auth.
 
 -----
+
+## 25.16 Load-Bearing Patterns This Document Never Named (AD-17)
+
+Every mechanism below is enforced on `main` today and a new engineer hits it within their first
+week — and none of them appeared anywhere in this document before 2026-08-14. Term frequency across
+the preceding ~3000 lines was: `dependency-cruiser` 0 · `step-up` 0 · `read-audit` 0 ·
+`withPlatformContext` 0 · `worker.ts` 0 · `fitness` 1 · `module-manifest` 1 · `OpenAPI` 1. They are
+summarized here with pointers; the linked file is authoritative in each case.
+
+| Pattern | What it is | Where it lives |
+|---|---|---|
+| **The module manifest** | Single source of truth for every module's `codePaths`, `dependsOn` and `ownedTables` (40 modules, 464 tables). Edit it, then run `bun run scaffold`. **Both** the `.ts` and `.cjs` copies must change together. | `architecture/module-manifest.{ts,cjs}` |
+| **Architecture fitness (22 gates)** | `bun run arch:fitness`. A green run proves architectural coherence, **not** feature completeness. Read the chain from `package.json`, never from prose. | `ARCHITECTURE_25_15_FITNESS.md`, `scripts/check-*.ts` |
+| **dependency-cruiser boundaries** | Enforces the import graph the manifest declares, plus the vendor-adapter mandate, domain purity, and "leaves stay leaves". | `architecture/.dependency-cruiser.cjs` |
+| **Seams (`getSeam`)** | The cross-module call mechanism. A seam creates **no** dependency-cruiser edge — it is typed off `SeamContracts` in the leaf `@wardenx/types`. A seam consumer that binds an uncatalogued event **crashes boot**. | `packages/types/src/seams.ts`, `bootstrap/seams/` |
+| **`withOrgContext` / `withPlatformContext`** | Every tenant-scoped query runs inside `withOrgContext`, which sets `app.org_id` for RLS. `withPlatformContext` is the audited cross-tenant escape hatch. Seams open their **own** context, so a seam call must not sit inside an already-open write transaction. | `packages/tenancy/src/context.ts` |
+| **Step-up ABAC** | `requireStepUp(opKey)` is a `requireAbac` over the `step_up_recent` predicate. It is the one guard that **cannot** be satisfied by a break-glass grant. Tenants may tighten the platform floor per operation (§4.3.2, D9). | `03-authorization/abac-predicates.ts` |
+| **Named ABAC predicates** | `requireAbac(action, "<name>")` resolves a **registered name**, never an inline closure. M3's registry fails closed, so an unregistered name is a permanently dead 403 route with the build green — which `arch:abac-predicates` is what catches. | `packages/auth/src/abac/registry.ts` |
+| **Read-audit** | §164.528 disclosure accounting emitted at request time by a **fail-closed** Fastify plugin; a PHI read route not covered by it fails the gate. | `bootstrap/plugins/read-audit.ts` |
+| **The transactional outbox** | The real cross-module event backbone (there is no realtime backbone). Event names are gate-enforced to the `mN.` prefix. | `packages/db` `outbox_event`, `check-fitness-gaps.ts` |
+| **OpenAPI enrichment ratchet** | `openapi.json` is generated offline. An **unenriched route is legal**, so a per-module ratchet keeps the unenriched count from rising; the generated typed client is diffed in CI. | `scripts/openapi/emit.ts`, `scripts/report-openapi-coverage.ts` |
+| **`worker.ts` / `PROCESS_ROLE`** | One image, two roles. The worker serves no public traffic — it listens on `WORKER_PORT` (3001) for `/health` + `/ready` only. | `apps/backend/src/worker.ts`, `Dockerfile` |
+| **Live suites** | `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`. They run as the **NOBYPASSRLS `wardenx_app`** role, so a missing GRANT or policy fails them. Every `test:*:live` script must be wired to a `ci.yml` job (`arch:live-suites`). | `apps/backend/__tests__/*.live.test.ts` |
+
+**Terminology trap — "Phase" is overloaded.** *Audit-remediation phases* (Phase 0/1/2/3 of the
+production-readiness work) and *product-launch phases* (§20.A's v1 / v1.1 / v1.2 / v2 module cut
+lines) are unrelated numbering schemes that appear in the same documents. Always qualify which.
+
+**Module-spec path convention.** Specs live **flat** at
+`docs/modules/WARDENX_MODULE_NN_<NAME>_SPEC_vX_Y.md`. Two other conventions are cited across this
+corpus; neither matches the tree. `docs/modules/README.md` is the index.
 
 ## 26. Sign-off
 

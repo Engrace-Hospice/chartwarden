@@ -3,7 +3,7 @@
 **Document ID:** WARDENX_AI_GOVERNANCE
 **Status:** v0.2
 **Owner:** Fabrice V. Adjam (Engineering + interim AI Safety; specialized roles contracted as team grows)
-**Companion to:** WARDENX_ARCHITECTURE v0.10 (§10 AI Platform including §10.7 Model Backend Abstraction, §10.5 HearthNote, §10.6 DocLens), WARDENX_SYSTEM_DESIGN v0.3, WARDENX_SECURITY_HARDENING v0.1
+**Companion to:** WARDENX_ARCHITECTURE v0.12 (file `WARDENX_ARCHITECTURE_v0_11.md`; §10 AI Platform including §10.7 Model Backend Abstraction, §10.5 HearthNote, §10.6 DocLens), WARDENX_SYSTEM_DESIGN v0.3, WARDENX_SECURITY_HARDENING v0.2
 **Review cadence:** Quarterly minimum; ad-hoc on new AI capability introduction or significant model change
 **Last reviewed:** 2026-06-08
 
@@ -14,6 +14,45 @@
 **Scope distinction:** This document is the policy and process layer for AI. Implementation specifics live in Module 32 (AI Platform) spec; HearthNote details in architecture §10.5; DocLens details in architecture §10.6; vendor terms in WARDENX_INTEGRATIONS.
 
 ---
+
+> ## `ai.full` — the outermost gate, and why nothing below is dispatching today (AD-15)
+>
+> **This document has never mentioned `ai.full`, and it is the single most important fact about the
+> AI platform's current state.** Everything else here — the 18 catalogued capabilities, the
+> lifecycle FSM, the backend abstraction, the consent and opt-out machinery — sits *inside* a gate
+> that is **OFF platform-wide**.
+>
+> With `ai.full` off, M32 runs in **capability-shell mode**: the §4.1 governance routes are mounted
+> and real (a tenant can record opt-in, a clinician can record an opt-out, the registry answers, the
+> health endpoint reports green), and **all ten M32 inference seams resolve to deny-stubs**. No model
+> is dispatched, no prompt leaves the platform, no token is billed. Reading this document without
+> that context makes an unbuilt inference path look live.
+>
+> Turning it on is not a flag flip in isolation: it requires an `AiInvocationPipeline` that does not
+> exist yet (`apps/backend/src/index.ts` says so at the mount site).
+>
+> ### The kill switch is NOT a feature flag
+>
+> §-references below that describe killing AI as "flipping a flag" are wrong. The kill switch is a
+> row in **`ai_kill_switch_state`**, evaluated as `platformRow.active OR tenantRow.active`:
+>
+> - `organization_id IS NULL` is the **platform-wide** kill; a non-null value is that tenant's own.
+> - The split is by **command**, so a tenant reads the platform row and can never write one.
+> - **No `ai.*_kill` feature flag is seeded anywhere.** The AI capability catalog says in capitals
+>   that killing is not a flag flip; this document should not imply otherwise.
+>
+> ### Also undocumented here, and worth knowing before changing anything
+>
+> - The **8-gate invocation order** is safety-critical and is nowhere in this document.
+> - **Four ports are deliberately unbound** — that is a decision, not an omission.
+> - Immutability of the AI ledgers is a **DB-trigger substrate** (migration 0116), not app logic.
+> - **SEV-1 auto-demotion** exists and is not described.
+> - **R18 hallucination filing currently 503s** on an unbound cipher.
+> - §4.4's 14-section capability-doc template describes **none** of the 18 real capability docs —
+>   all 18 carry 5 headings, and `arch:ai-governance` enforces the 5, not the 14. Align the template
+>   to reality or extend the gate; do not leave a template the corpus and the gate both ignore.
+> - §16.1's `ai.*` event names **can never be outbox event names** — the `mN.` prefix is
+>   gate-enforced (`check-fitness-gaps.ts`). The real events are `m32.*`.
 
 ## 1. Purpose & Scope
 
@@ -1753,4 +1792,4 @@ Direct, honest answer:
 
 ---
 
-**End of WARDENX_AI_GOVERNANCE v0.1.**
+**End of WARDENX_AI_GOVERNANCE v0.2.**
