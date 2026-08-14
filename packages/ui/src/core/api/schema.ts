@@ -12752,6 +12752,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenant-export-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cross-tenant tenant-export jobs; `held=true` narrows to bundles awaiting a SEC-052 co-sign */
+        get: operations["getApiV1PlatformTenantexportjobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenant-export-jobs/{id}/approve-oversized": {
         parameters: {
             query?: never;
@@ -52636,6 +52653,48 @@ export interface operations {
                             /** Format: date-time */
                             occurredAt: string;
                             actorIp: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantexportjobs: {
+        parameters: {
+            query?: {
+                organizationId?: string;
+                status?: "requested" | "generating" | "fulfilled" | "expired" | "cancelled";
+                held?: boolean;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            requestedPurpose: "migration" | "baa_termination" | "compliance_audit" | "surveyor_request";
+                            status: "requested" | "generating" | "fulfilled" | "expired" | "cancelled";
+                            /** Format: date-time */
+                            requestedAt: string;
+                            fulfilledAt: string | null;
+                            bundleSizeBytes: number | null;
+                            /** Format: date-time */
+                            createdAt: string;
                         }[];
                         nextCursor: string | null;
                         hasMore: boolean;

@@ -305,3 +305,10 @@ export function mountTenantPlatformRoutes(
     service: services?.public?.service ?? SLICE_M34_SIGNUP_SERVICE,
   });
 }
+
+// GAP-098 — the boot UPSERT of M34's own platform-default `alert_rule` rows (§4.8). PARTIAL by design:
+// only rules naming an M36 built-in resolver are seeded (see ./alert-rule-seed-persister.ts).
+export {
+  type M34AlertRuleSeedResult,
+  wireM34AlertRuleSeed,
+} from "./alert-rule-seed-persister";

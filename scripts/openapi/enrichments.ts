@@ -1142,6 +1142,8 @@ import {
   SupportSessionEventListResponseSchema as M34SupportSessionEventListResponseSchema,
   SupportSessionListQuerySchema as M34SupportSessionListQuerySchema,
   SupportSessionListResponseSchema as M34SupportSessionListResponseSchema,
+  TenantExportJobListQuerySchema as M34TenantExportJobListQuerySchema,
+  TenantExportJobListResponseSchema as M34TenantExportJobListResponseSchema,
   TenantInvitationViewSchema as M34TenantInvitationViewSchema,
   TenantJobAckSchema as M34TenantJobAckSchema,
   TenantListQuerySchema as M34TenantListQuerySchema,
@@ -9392,6 +9394,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Reject an intent (new → rejected) with a recorded rationale",
     body: M34RejectIntentRequest,
     response: M34RejectIntentAckSchema,
+  },
+
+  // ── tenant export: the platform-ops discovery list (GAP-098) ──
+  "GET /api/v1/platform/tenant-export-jobs": {
+    summary:
+      "Cross-tenant tenant-export jobs; `held=true` narrows to bundles awaiting a SEC-052 co-sign",
+    query: M34TenantExportJobListQuerySchema,
+    response: M34TenantExportJobListResponseSchema,
   },
 
   // ── tenant export: SEC-052 oversized-hold release (GAP-097) ──

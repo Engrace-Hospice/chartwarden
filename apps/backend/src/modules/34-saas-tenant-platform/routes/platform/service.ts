@@ -169,6 +169,42 @@ export interface BaaRecordView {
   readonly documentId: string | null;
   readonly attestedAt: string | null;
 }
+/**
+ * A tenant-export job as the §4.1 platform-ops list renders it (GAP-098).
+ *
+ * `heldForOversizedApproval` is DERIVED from the ledger — the newest `tenant_export_job_event` is an
+ * `oversized_hold` — not stored. It has to be: a SEC-052 hold gives the job no status of its own (it
+ * stays `generating`, GAP-094), which is exactly why a held bundle was invisible. The derivation is the
+ * same test `approveOversizedExport` makes, so a row flagged held here is one that route will accept.
+ *
+ * The `held*` fields come off that hold event's receipt, so they are populated only while held. They
+ * are the operator's decision inputs: co-signing the release of a 60 GB bundle is a different act from
+ * co-signing a 51 GB one, and the size is the reason the hold exists.
+ */
+export interface TenantExportJobView {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly requestedPurpose: string;
+  readonly status: string;
+  readonly requestedAt: string;
+  readonly fulfilledAt: string | null;
+  readonly heldForOversizedApproval: boolean;
+  /** bigint-as-text (migration 0195) — an oversized bundle is past a 32-bit column's ceiling. */
+  readonly heldBundleSizeBytes: string | null;
+  readonly heldRecordCount: number | null;
+  readonly heldAt: string | null;
+  readonly bundleSizeBytes: string | null;
+  readonly bundleDownloadedAt: string | null;
+}
+
+/** Filters for the §4.1 platform-ops tenant-export list (GAP-098). */
+export interface TenantExportJobListFilter {
+  readonly organizationId?: string;
+  readonly status?: string;
+  /** Narrow to bundles awaiting a SEC-052 co-sign — the reason this route exists. */
+  readonly held?: boolean;
+}
+
 export interface CreateBaaRecordArgs {
   readonly tenantAccountId: string;
   readonly addendumVersion: string;
@@ -334,6 +370,12 @@ export interface TenantPlatformRouteService {
     actorUserId: string,
     args: UpdateBaaRecordArgs,
   ): Promise<BaaRecordView>;
+  // ── tenant export: the cross-tenant platform-ops list (§4.1; GAP-098) ──
+  listTenantExportJobs(
+    filter: TenantExportJobListFilter,
+    cursor: string | undefined,
+    limit: number | undefined,
+  ): Promise<CursorPage<TenantExportJobView>>;
   // ── tenant export: SEC-052 oversized-hold release (§3.7; GAP-097) ──
   approveOversizedExport(
     jobId: string,
@@ -402,6 +444,10 @@ export interface TenantPlatformRouteSeed {
     id: string;
     organizationId?: string;
     held?: boolean;
+    requestedPurpose?: string;
+    requestedAt?: string;
+    heldBundleSizeBytes?: string;
+    heldRecordCount?: number;
   }>;
 }
 
@@ -453,7 +499,22 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
   const intents = new Map<string, SignupIntentView>(); // keyed by intent id
   const baaRecords = new Map<string, BaaRecordView>(); // keyed by baa id
   const flags = new Map<string, FeatureFlagView>(); // keyed by `${flagKey}@${organizationId ?? '*'}`
-  const tenantExportJobs = new Map<string, { id: string; organizationId: string; status: string }>(); // keyed by job id
+  // GAP-098: the slice record carries `held` explicitly so its LIST and its APPROVE agree the way the
+  // Drizzle pair do (there, both derive held-ness from the same newest-ledger-event test).
+  const tenantExportJobs = new Map<
+    string,
+    {
+      id: string;
+      organizationId: string;
+      status: string;
+      held: boolean;
+      requestedPurpose: string;
+      requestedAt: string;
+      heldBundleSizeBytes: string | null;
+      heldRecordCount: number | null;
+      heldAt: string | null;
+    }
+  >(); // keyed by job id
   const grants = new Map<
     string,
     {
@@ -567,10 +628,17 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
     });
   }
   for (const j of seed.tenantExportJobs ?? []) {
+    const held = j.held ?? true;
     tenantExportJobs.set(j.id, {
       id: j.id,
       organizationId: j.organizationId ?? uuidFromCounter("e", 1),
-      status: (j.held ?? true) ? "generating" : "fulfilled",
+      status: held ? "generating" : "fulfilled",
+      held,
+      requestedPurpose: j.requestedPurpose ?? "migration",
+      requestedAt: j.requestedAt ?? now(),
+      heldBundleSizeBytes: held ? (j.heldBundleSizeBytes ?? "53687091200") : null,
+      heldRecordCount: held ? (j.heldRecordCount ?? 1_000_000) : null,
+      heldAt: held ? (j.requestedAt ?? now()) : null,
     });
   }
 
@@ -997,6 +1065,30 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
       return view;
     },
 
+    // ── tenant export: the cross-tenant platform-ops list (§4.1; GAP-098) ──
+    async listTenantExportJobs(filter, cursor, limit) {
+      const rows = desc(
+        [...tenantExportJobs.values()]
+          .filter((j) =>
+            filter.organizationId ? j.organizationId === filter.organizationId : true,
+          )
+          .filter((j) => (filter.status ? j.status === filter.status : true))
+          .filter((j) => (filter.held === undefined ? true : j.held === filter.held))
+          .map((j) => ({ ...j, createdAt: j.requestedAt })),
+      );
+      const page = paginate(rows, cursor, limit);
+      return {
+        ...page,
+        items: page.items.map(({ createdAt: _c, held, ...j }) => ({
+          ...j,
+          fulfilledAt: null,
+          heldForOversizedApproval: held,
+          bundleSizeBytes: null,
+          bundleDownloadedAt: null,
+        })),
+      };
+    },
+
     // ── tenant export: SEC-052 oversized-hold release (§3.7; GAP-097) ──
     async approveOversizedExport(jobId, actorMembershipId, args) {
       const job = tenantExportJobs.get(jobId);
@@ -1011,6 +1103,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
       void actorMembershipId;
       void args.approvalReason;
       job.status = "fulfilled";
+      job.held = false; // the list must stop calling it held the moment the release lands
       return { jobId, status: "fulfilled" };
     },
 

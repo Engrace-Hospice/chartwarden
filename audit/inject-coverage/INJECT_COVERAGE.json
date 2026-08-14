@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1241,
-    "coveredRoutes": 1241,
-    "directRoutesReferenced": 1182
+    "routes": 1242,
+    "coveredRoutes": 1242,
+    "directRoutesReferenced": 1183
   },
   "modules": [
     {
@@ -328,12 +328,12 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 49,
+      "routes": 50,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/saas-tenant-platform-inject.test.ts"
       ],
-      "directRoutesReferenced": 48
+      "directRoutesReferenced": 49
     },
     {
       "module": "35-subscription",
