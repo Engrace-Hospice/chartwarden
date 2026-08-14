@@ -5,12 +5,16 @@
 // permission keys, the §4.7 ABAC predicate registration, the §4.1 route mount, the §3.7 `quality_class`
 // eraser registration, the Drizzle-backed route-service builders, and the §4.8 recompute queue producer.
 //
-// NB the FIVE §4.3 published seams (QualityMeasureProvider / IncidentRegisterProvider / QapiProjectProvider /
-// ComplianceStatusProvider / SecurityRiskAssessmentReader) + the §4.4 consumed-seam bundle live in
-// `@wardenx/quality` (registerQualityPublishedSeams / bindQualityConsumedSeams). They are NOT wired into the
-// M1 SeamRegistry here because M30's seam names are not yet members of the M1 `SeamContracts`/`REQUIRED_SEAMS`
-// (M1-owned) — adding those entries is a foundation change outside this slice; until then M30 is reachable
-// cross-module only via its §4.10 outbox events, which is M30's outbox-only posture across boundaries (D6).
+// NB this header once said the FIVE §4.3 published seams + the §4.4 consumed bundle were NOT wired into the
+// M1 SeamRegistry, because M30's seam names were not yet members of M1's `SeamContracts`/`REQUIRED_SEAMS`.
+// That is stale: the published seams ARE registered at boot (see the §4.3 export below and
+// `registerM30PublishedSeams` in the composition root). The §4.4 CONSUMED side is different, and worth
+// stating precisely because its shape has misled an audit before (GAP-065): the backend does NOT assemble
+// `bindQualityConsumedSeams`'s whole-bundle view. The worker binds each measure's source individually — the
+// PRESENT producers (M5–M18, M33) are read directly off their own published seams via `getSeam`, in the
+// narrow structural views `jobs/m30-jobs.ts` declares, and only the FORWARD seams (M23/M27) go through
+// M30's consumer-view adapters below. `bindQualityConsumedSeams` therefore remains a package-level
+// assembly helper with no composition-root caller; it is exercised by `m30-forward-seam-binds.test.ts`.
 
 // §4.10 — the M30 outbox-event catalog (the dispatcher validates each `m30.*` publish against it). The
 // composition root merges this into the platform event catalog at boot (the M33/M34 events-by-mN precedent).
@@ -116,6 +120,13 @@ export {
 // these adapters replace the `QUALITY_FORWARD_SEAM_DENY_STUBS` entries for `billing` and `costReport`
 // (M15/M16 stay stubbed — still unbuilt). Each DEGRADES PER METHOD to the forward-seam marker, so an
 // unavailable read suppresses its measure and never substitutes a zero.
+//
+// CONSUMPTION STATUS (GAP-065 — the audit found these adapters built, unit-tested and then never reached
+// from any composition root): `buildM30CostReportConsumer` is now the default `costReport` binding on
+// `buildM30WorkerDeps`, feeding the CoP 418.310 `cost_report_filing_compliance` measure. The BILLING
+// adapter is still unconsumed — its readers (`claimLineRollup` / `patientDays`) exist for HCI 5/6/7, whose
+// remaining blocker is DATA, not wiring (they need M6/M8 aggregate seams that were never built), so
+// binding it today would light up nothing.
 export {
   buildM30BillingConsumer,
   buildM30CostReportConsumer,

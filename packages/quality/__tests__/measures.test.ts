@@ -775,9 +775,9 @@ describe("measure-period math (periods.ts, D14)", () => {
 // -----------------------------------------------------------------------------
 
 describe("measure catalog + registry FY-activation gate", () => {
-  it("the catalog has 29 entries with unique codes", () => {
-    expect(MEASURE_CATALOG.length).toBe(29);
-    expect(new Set(MEASURE_CATALOG.map((e) => e.code)).size).toBe(29);
+  it("the catalog has 30 entries with unique codes", () => {
+    expect(MEASURE_CATALOG.length).toBe(30);
+    expect(new Set(MEASURE_CATALOG.map((e) => e.code)).size).toBe(30);
   });
 
   it("buildMeasureRegistry resolves a callable calculator for EVERY catalog entry", () => {

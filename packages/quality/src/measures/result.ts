@@ -57,6 +57,15 @@ export interface QualityMeasureValueResult {
   readonly rate: number | null;
   /** Whether the rate met the CMS/per-FY threshold; `null` when not evaluated or `insufficient_n`. */
   readonly thresholdMet: boolean | null;
+  /**
+   * The threshold cut the rate was evaluated AGAINST, or `null` when the calculator supplied none.
+   *
+   * Carried on the result (not just consumed inside {@link ratioResult}) because the breach path needs it
+   * downstream: `m30.measure.threshold_breached` declares a required `threshold` in its catalog schema,
+   * and the worker — which sees only the result — had no way to produce one. That mismatch is why the
+   * emit sat permanently unbound, which in turn meant a red-band recompute could not complete at all.
+   */
+  readonly thresholdValue: number | null;
   /** The public display band. */
   readonly bandColor: MeasureBandColor;
   /** Calculator-version-specific reproducibility snapshot (hashed by the worker). */
@@ -113,6 +122,7 @@ export function ratioResult(args: {
       denominator: args.denominator,
       rate: null,
       thresholdMet: null,
+      thresholdValue: args.threshold?.value ?? null,
       bandColor: "insufficient_n",
       computationSnapshot: args.snapshot,
     };
@@ -136,6 +146,7 @@ export function ratioResult(args: {
     denominator: args.denominator,
     rate,
     thresholdMet,
+    thresholdValue: args.threshold?.value ?? null,
     bandColor,
     computationSnapshot: args.snapshot,
   };
