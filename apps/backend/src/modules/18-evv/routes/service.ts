@@ -82,8 +82,11 @@ export interface LocationView {
   readonly membershipId: string;
   readonly eventId: string;
   readonly visitId: string;
-  readonly lat: number;
-  readonly lng: number;
+  /** GAP-032 — NULL when the stored coordinate is absent or unparseable. Previously a non-nullable
+   *  `number` that the production service always filled with `0`, so a caller could not tell a real
+   *  coordinate from "not recovered"; an explicit null is the honest third state. */
+  readonly lat: number | null;
+  readonly lng: number | null;
   readonly accuracyM: number;
   readonly capturedAt: string;
 }

@@ -173,6 +173,9 @@ jobs:
           # the conjunct that was hardcoded false in the production resolver, blocking every cost-report
           # approve/submit/reopen in every tenant.
           - { name: "M27 elevated approval", scripts: "test:m27:elevated-approval:live" }
+          # GAP-060: M40's §7.6 merge approve/reject + provisional promotion against the REAL
+          # DB-backed service — the audit's finding was that no test ever exercised it.
+          - { name: "M40 governance writes", scripts: "test:m40:governance:live" }
           # GAP-099: the M1 relay's PLATFORM (organization_id IS NULL) delivery path end-to-end — an
           # org-less event reaching a real consumer, its org-less §4.11 receipt, and M40's canonical
           # write path (which had no SECURITY DEFINER function at all until migration 0202).

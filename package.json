@@ -94,6 +94,7 @@
     "test:m33:export-render:live": "vitest run apps/backend/__tests__/gap-051-m33-export-render.live.test.ts",
     "test:m24:nf-facility-snapshot:live": "vitest run apps/backend/__tests__/gap-040-m24-nf-facility-snapshot.live.test.ts",
     "test:m23:remittance-feedback:live": "vitest run apps/backend/__tests__/gap-037-m23-remittance-feedback.live.test.ts",
+    "test:m40:governance:live": "vitest run apps/backend/__tests__/gap-060-m40-governance-writes.live.test.ts",
     "test:m29:nppes-sync:live": "vitest run apps/backend/__tests__/gap-045-m29-nppes-sync.live.test.ts",
     "test:m1:platform-outbox:live": "vitest run apps/backend/__tests__/gap-099-platform-outbox-delivery.live.test.ts",
     "test:m29:unmatched-lab-review:live": "vitest run apps/backend/__tests__/gap-044-m29-unmatched-lab-review.live.test.ts",

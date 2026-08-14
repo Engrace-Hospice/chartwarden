@@ -308,8 +308,11 @@ export const EvvLocationView = Type.Object({
   membershipId: Type.String(),
   eventId: Type.String(),
   visitId: Type.String(),
-  lat: Type.Number(),
-  lng: Type.Number(),
+  // GAP-032 — NULLABLE. The production service used to fill both with a hardcoded `0`, and a
+  // non-nullable `number` gave a client no way to tell that from a genuine coordinate. Null now means
+  // "the stored coordinate could not be recovered", which is a state a map UI must render differently.
+  lat: Type.Union([Type.Number(), Type.Null()]),
+  lng: Type.Union([Type.Number(), Type.Null()]),
   accuracyM: Type.Number(),
   capturedAt: Type.String(),
 });

@@ -23,7 +23,9 @@
 //       `visit`; the posting device is the caller membership's most-recent APPROVED `evv_device` (FK NOT NULL);
 //       `service_type_code` / `posting_discipline_at_recording` are captured `""` (the M38/M2 lookups are not
 //       threaded), `device_attestation_id_at_record` reuses the device's `m2_device_attestation_id`, and the GPS
-//       coordinate is stored as base64(`lat,lng`) in `coords_cipher` (the real DEK pipeline is D10-deferred);
+//       coordinate is stored as base64(`lat,lng`) in `coords_cipher` (the real DEK pipeline is D10-deferred).
+//       GAP-032: ./coords.ts now owns BOTH halves of that format, so `clinicianCurrentLocation` recovers what
+//       the capture wrote — it used to answer a hardcoded (0, 0) for every clinician in every tenant;
 //   (3) gps-quality / geofence decision is the in-mem slice's accuracy-band model (accuracy vs the effective
 //       policy `max_accuracy_m`) — the full haversine-vs-baseline pipeline needs the address-coordinate + DEK
 //       decrypt, deferred; `computed_distance_m` is recorded NULL;
@@ -36,6 +38,7 @@
 import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
+import { decodeStoredCoords, encodeStoredCoords } from "./coords";
 import {
   type EvvAggregatorSubmissionDto,
   type EvvAggregatorSubmissionStatus,
@@ -359,9 +362,8 @@ export function createDbEvvBackend(
           gpsQuality = input.accuracyM <= policy.maxAccuracyM / 2 ? "high" : "acceptable";
           decision = "pass";
         }
-        const coordsCipher = Buffer.from(`${input.coords.lat},${input.coords.lng}`).toString(
-          "base64",
-        );
+        // GAP-032 — through the shared codec, so the read path recovers exactly what this wrote.
+        const coordsCipher = encodeStoredCoords(input.coords);
         const capturedAt = new Date(input.capturedAt);
 
         const [ins] = await tx
@@ -1005,6 +1007,7 @@ export function createDbEvvBackend(
             visitId: EVENT.visitId,
             accuracyM: EVENT.accuracyM,
             capturedAt: EVENT.capturedAt,
+            coordsCipher: EVENT.coordsCipher,
           })
           .from(EVENT)
           .where(membership ? eq(EVENT.postingMembershipId, membership) : undefined)
@@ -1012,15 +1015,20 @@ export function createDbEvvBackend(
         const latestByMember = new Map<string, (typeof rows)[number]>();
         for (const r of rows)
           if (!latestByMember.has(r.membershipId)) latestByMember.set(r.membershipId, r);
-        return [...latestByMember.values()].map((r) => ({
-          membershipId: r.membershipId,
-          eventId: r.eventId,
-          visitId: r.visitId,
-          lat: 0, // TODO(D10): decrypt coords_cipher
-          lng: 0, // TODO(D10): decrypt coords_cipher
-          accuracyM: r.accuracyM,
-          capturedAt: toIso(r.capturedAt),
-        }));
+        return [...latestByMember.values()].map((r) => {
+          // GAP-032 — the real stored coordinate, or an explicit null. Previously a hardcoded (0, 0),
+          // which a caller could not distinguish from a genuine coordinate in the Gulf of Guinea.
+          const coords = decodeStoredCoords(r.coordsCipher);
+          return {
+            membershipId: r.membershipId,
+            eventId: r.eventId,
+            visitId: r.visitId,
+            lat: coords?.lat ?? null,
+            lng: coords?.lng ?? null,
+            accuracyM: r.accuracyM,
+            capturedAt: toIso(r.capturedAt),
+          };
+        });
       });
     },
 
