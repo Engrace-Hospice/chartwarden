@@ -218,10 +218,7 @@ describe("m25.remittance.claim_* → claim adjudication transition (task 55 / GA
     ["m25.remittance.claim_recouped", "remittance_recouped"],
   ] as const)("dispatches %s to the %s transition", async (topic, transition) => {
     const ports = makePorts();
-    const report = await dispatchM23UpstreamEvent(
-      { topic, payload: REMIT } as never,
-      ports,
-    );
+    const report = await dispatchM23UpstreamEvent({ topic, payload: REMIT } as never, ports);
     expect(report.effects).toEqual(["claim_remittance_transition"]);
     expect(report.actedOnIds).toEqual(["c"]);
     expect(ports.applyRemittanceTransition).toHaveBeenCalledWith(

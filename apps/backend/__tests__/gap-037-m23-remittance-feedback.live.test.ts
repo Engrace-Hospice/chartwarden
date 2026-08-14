@@ -23,7 +23,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { M23_OUTBOX_EVENTS, buildM23RemittanceConsumer } from "../src/modules/23-billing-medicare/index";
+import {
+  M23_OUTBOX_EVENTS,
+  buildM23RemittanceConsumer,
+} from "../src/modules/23-billing-medicare/index";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -321,10 +324,9 @@ describe.skipIf(!DB_URL)("GAP-037 M25→M23 remittance feedback — LIVE Postgre
     // Completed, not left pending — a permanently-retrying row would degrade the readiness probe's
     // outbox-depth check.
     expect(await pendingRows("m25.remittance.claim_paid")).toBe(0);
-    const history = await admin.query(
-      "SELECT 1 FROM claim_state_history WHERE claim_id=$1",
-      [CLAIM.redelivered],
-    );
+    const history = await admin.query("SELECT 1 FROM claim_state_history WHERE claim_id=$1", [
+      CLAIM.redelivered,
+    ]);
     expect(history.rowCount).toBe(0);
   });
 

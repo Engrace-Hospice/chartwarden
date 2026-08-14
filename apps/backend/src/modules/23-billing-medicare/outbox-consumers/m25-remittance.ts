@@ -1,3 +1,13 @@
+import { repositories } from "@wardenx/billing";
+import { withOrgContext } from "@wardenx/tenancy";
+import {
+  REMITTANCE_TRANSITION_BY_TOPIC,
+  type RemittancePostedEvent,
+  type RemittanceSkipReason,
+  type RemittanceTransitionPlan,
+  handleRemittancePosted,
+  isRemittanceTopic,
+} from "../consumers/handlers";
 // M23's live `m25.remittance.claim_*` consumer — the 835 → claim-adjudication feedback loop (§2.4 /
 // architecture §11.A, task 55). GAP-037.
 //
@@ -21,16 +31,6 @@ import {
   type WriteOutboxPort,
   buildClaimStateService,
 } from "../services/claim-state-service";
-import { withOrgContext } from "@wardenx/tenancy";
-import { repositories } from "@wardenx/billing";
-import {
-  type RemittancePostedEvent,
-  type RemittanceSkipReason,
-  type RemittanceTransitionPlan,
-  REMITTANCE_TRANSITION_BY_TOPIC,
-  handleRemittancePosted,
-  isRemittanceTopic,
-} from "../consumers/handlers";
 
 export const M23_REMITTANCE_CONSUMER = {
   consumerName: "m23.m25-remittance",
@@ -131,7 +131,10 @@ export function buildM23RemittanceConsumer(deps: M23RemittanceConsumerDeps) {
                 // Idempotent: a re-delivery, or a SECOND 835 line posting the same outcome for one claim,
                 // finds the claim already where this event would put it. Completing the row is right —
                 // throwing would retry a decision that is already recorded.
-                if (claim.state === LANDS_IN[plan.transition] && plan.transition !== "remittance_recouped") {
+                if (
+                  claim.state === LANDS_IN[plan.transition] &&
+                  plan.transition !== "remittance_recouped"
+                ) {
                   deps.onSkipped?.({
                     reason: "already_applied",
                     eventType: event.eventType,
