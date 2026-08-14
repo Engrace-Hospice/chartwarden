@@ -15,6 +15,7 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbAssessmentRouteService } from "../src/modules/09-assessments/assessments-route-service-db";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -85,11 +86,16 @@ describe.skipIf(!DB_URL)("M9 Drizzle read service — LIVE Postgres (M9L)", () =
         [org, providerEntity, location, PATIENT, ADMISSION, membership],
       )
     ).rows[0].id as string;
+    // GAP-086 — effective_date is TWO DAYS BACK, not today. The read service derives the license status in
+    // the ORG's timezone (todayForOrganization) while this seed stamps the DB server's UTC date, so a
+    // same-day effective_date reads as not-yet-in-force ("pending_renewal") for the ~8 hours a day the two
+    // calendars disagree — a test that passes two thirds of the day. The margin makes it time-of-day
+    // independent in either direction.
     const scaleLicense = (
       await admin.query(
         `INSERT INTO scale_license (organization_id, scale_type, license_holder, license_number,
            effective_date, expires_at, status, recorded_by_membership_id)
-         VALUES ($1,'pps','Palliative Perf Scale','LIC-1', now()::date, now()::date + 365, 'active', $2)
+         VALUES ($1,'pps','Palliative Perf Scale','LIC-1', now()::date - 2, now()::date + 365, 'active', $2)
          RETURNING id`,
         [org, membership],
       )
@@ -116,9 +122,9 @@ describe.skipIf(!DB_URL)("M9 Drizzle read service — LIVE Postgres (M9L)", () =
     seeded[ORG_B] = await seedOrg(ORG_B, 2);
     // Prod connects as the NOBYPASSRLS `wardenx_app` role; `withOrgContext` deliberately does NOT SET ROLE.
     // To exercise RLS faithfully, connect AS wardenx_app — NOLOGIN in the migrations, so grant LOGIN here.
-    await admin.query("ALTER ROLE wardenx_app LOGIN");
+    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      connectionString: appRoleUrl(DB_URL as string),
     });
     service = createDbAssessmentRouteService(handle.db);
   }, 120_000);
@@ -159,7 +165,8 @@ describe.skipIf(!DB_URL)("M9 Drizzle read service — LIVE Postgres (M9L)", () =
     const created = await service.createLicense(ORG_A, {
       scaleType: "morse",
       vendor: "New Vendor",
-      effectiveDate: new Date().toISOString().slice(0, 10),
+      // Two days back for the same org-timezone-vs-UTC reason as the seed above.
+      effectiveDate: new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10),
       expiresAt: new Date(Date.now() + 365 * 86_400_000).toISOString().slice(0, 10),
     });
     expect(created.vendor).toBe("New Vendor");

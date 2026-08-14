@@ -10,6 +10,7 @@ import { M11_OUTBOX_EVENTS, buildM11IdgDecisionConsumer } from "../src/modules/1
 import { M12_OUTBOX_EVENTS, buildM12IdgDecisionConsumer } from "../src/modules/12-dosespot/index";
 import { buildM16IdgDecisionConsumer } from "../src/modules/16-bereavement/index";
 import { buildM18VisitPublishedConsumer } from "../src/modules/18-evv/index";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -106,9 +107,9 @@ describe.skipIf(!DB_URL)("M14/M17 clinical consumers — LIVE Postgres", () => {
         [ORG, providerEntityId, locationId, PATIENT, PHYSICIAN],
       )
     ).rows[0].id as string;
-    await admin.query("ALTER ROLE wardenx_app LOGIN");
+    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      connectionString: appRoleUrl(DB_URL as string),
     });
   }, 120_000);
 

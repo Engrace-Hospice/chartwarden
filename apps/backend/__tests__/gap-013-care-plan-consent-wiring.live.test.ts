@@ -36,6 +36,7 @@ import {
   mountCarePlanRoutes,
 } from "../src/modules/07-care-plan/index";
 import { registerConsentSeams } from "../src/modules/39-consent/index";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -78,9 +79,9 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
     await admin.connect();
     await resetSchema();
     await applyMigrations();
-    await admin.query("ALTER ROLE wardenx_app LOGIN");
+    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      connectionString: appRoleUrl(DB_URL as string),
     });
   }, 120_000);
 

@@ -14,6 +14,7 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -79,9 +80,9 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
       [ORG_A, ORG_B],
     );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m6t3@x.test')`, [USER]);
-    await admin.query("ALTER ROLE wardenx_app LOGIN");
+    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      connectionString: appRoleUrl(DB_URL as string),
     });
     svc = createDbAdmissionRouteService(handle.db);
   }, 120_000);

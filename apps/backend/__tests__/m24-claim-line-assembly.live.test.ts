@@ -22,6 +22,7 @@ import {
   type SignedEncounterWindowReaderPort,
   buildDrizzleM24WriteService,
 } from "../src/modules/24-billing-medicaid/routes/write-service-drizzle";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -121,9 +122,9 @@ describe.skipIf(!DB_URL)(
        VALUES ($1,$2,'OR','direct_mmis','TP1','2026-01-01',$3,$3)`,
         [ORG, peId, USER],
       );
-      await admin.query("ALTER ROLE wardenx_app LOGIN");
+      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({
-        connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+        connectionString: appRoleUrl(DB_URL as string),
       });
     }, 120_000);
 

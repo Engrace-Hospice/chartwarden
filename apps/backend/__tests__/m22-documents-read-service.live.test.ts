@@ -17,6 +17,7 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbDocumentBackend } from "../src/modules/22-documents/documents-route-service-db";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -101,9 +102,9 @@ describe.skipIf(!DB_URL)("M22 Drizzle read service — LIVE Postgres (M22L-T01)"
     await seedOrg(ORG_B, 2);
     // Prod connects as the NOBYPASSRLS `wardenx_app` role; `withOrgContext` does NOT SET ROLE. To exercise
     // RLS faithfully, connect AS wardenx_app — it is NOLOGIN in the migrations, so grant LOGIN for the run.
-    await admin.query("ALTER ROLE wardenx_app LOGIN");
+    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      connectionString: appRoleUrl(DB_URL as string),
     });
     service = createDbDocumentBackend(handle.db).service;
   }, 120_000);
@@ -150,24 +151,29 @@ describe.skipIf(!DB_URL)("M22 Drizzle read service — LIVE Postgres (M22L-T01)"
     });
   });
 
-  it("the M22L write lifecycle persists over RLS: uploadDocument round-trips through listDocuments", async () => {
-    // The write lifecycle is live (no route at 501). uploadDocument INSERTs the document + its v1 version and
-    // sets the active head; it round-trips through the RLS-scoped read. The full write suite (m22-documents-write)
-    // exhausts version/tag/patch + intake + overlay/render.
-    const created = await service.uploadDocument(ORG_A, MEMBERSHIP, {
-      patientId: PATIENT,
-      admissionId: null,
-      retentionClass: "clinical_record",
-      aggregateType: "other",
-      aggregateId: null,
-      title: "Smoke upload",
-      patientFacing: false,
-    });
-    expect(created.versionsCount).toBe(1);
+  it("uploadDocument fail-closes DEGRADED rather than persisting a document with unverified bytes", async () => {
+    // GAP-086 — this case used to assert the opposite: that `uploadDocument` INSERTs the document + its v1
+    // version and round-trips through the RLS-scoped read. That was true when it was written and is not
+    // anymore. Uploads were since moved behind `createVerifiedUploadService`, which presigns, then inspects
+    // the stored object and persists only a byte size and SHA-256 it has VERIFIED — so the bare service
+    // method now refuses instead of recording a version whose bytes nobody checked. The stale assertion
+    // survived only because this suite has never run in CI; it is the current contract that gets pinned
+    // here, and the real persisted round-trip lives in the write suite (m22-documents-write), which wires
+    // the object-store port this one deliberately does not.
+    await expect(
+      service.uploadDocument(ORG_A, MEMBERSHIP, {
+        patientId: PATIENT,
+        admissionId: null,
+        retentionClass: "clinical_record",
+        aggregateType: "other",
+        aggregateId: null,
+        title: "Smoke upload",
+        patientFacing: false,
+      }),
+    ).rejects.toMatchObject({ name: "DegradedError" });
+
+    // And the refusal is total — nothing was written on the way to throwing.
     const page = await service.listDocuments(ORG_A, {}, undefined, 100);
-    expect(page.items.some((d) => d.id === created.id)).toBe(true);
-    // RLS: org B cannot see org A's freshly-written document.
-    const bPage = await service.listDocuments(ORG_B, {}, undefined, 100);
-    expect(bPage.items.every((d) => d.id !== created.id)).toBe(true);
+    expect(page.items.every((d) => d.title !== "Smoke upload")).toBe(true);
   });
 });

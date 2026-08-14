@@ -23,8 +23,10 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 import {
   type EvvWriteOutboxPort,
   M18_OUTBOX_EVENTS,
+  buildM18VisitPublishedConsumer,
   createDbEvvBackend,
 } from "../src/modules/18-evv/index";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -77,16 +79,42 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
    * 'proposed' (outside the D6 per-clinician overlap EXCLUDE set) so many visits can share the `now()` window. */
   async function seedVisit(org: string): Promise<string> {
     const s = seeded[org];
-    return (
+    const started = new Date();
+    const ended = new Date(started.getTime() + 60 * 60_000);
+    const visitId = (
       await admin.query(
         `INSERT INTO visit (organization_id, provider_entity_id, location_id, patient_id, admission_id,
            assigned_membership_id, assigned_discipline_at_assignment, visit_purpose, visit_setting,
            scheduled_started_at, scheduled_ended_at, service_date, status)
          VALUES ($1,$2,$3,$4,$5,$6,'rn','routine_visit','patient_home',
-           now(), now() + interval '1 hour', now()::date, 'proposed') RETURNING id`,
-        [org, s.pe, s.location, PATIENT, ADMISSION, s.member],
+           $7, $8, now()::date, 'proposed') RETURNING id`,
+        [org, s.pe, s.location, PATIENT, ADMISSION, s.member, started, ended],
       )
     ).rows[0].id as string;
+    // GAP-086 — an M17 `visit` row alone is NOT enough any more, and this suite predates that: the capture
+    // path resolves siting from M18's OWN `evv_visit_registration` snapshot, which the M17 publication
+    // consumer populates. Without it every capture 404s on "visit not found". Drive the REAL consumer
+    // rather than hand-inserting the snapshot, so the seam itself is under test too.
+    await buildM18VisitPublishedConsumer({ db: handle.db }).handle({
+      id: crypto.randomUUID(),
+      organizationId: org,
+      payload: {
+        organizationId: org,
+        visitId,
+        providerEntityId: s.pe,
+        locationId: s.location,
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        assignedMembershipId: s.member,
+        assignedDiscipline: "rn",
+        visitPurpose: "routine_visit",
+        patientAddressId: null,
+        externalFacilityId: null,
+        scheduledStartedAt: started.toISOString(),
+        scheduledEndedAt: ended.toISOString(),
+      },
+    });
+    return visitId;
   }
   async function seedOpenResolution(org: string, visitId: string): Promise<string> {
     return (
@@ -165,9 +193,9 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
       );
       seeded[org] = { pe, location, member, device };
     }
-    await admin.query("ALTER ROLE wardenx_app LOGIN");
+    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      connectionString: appRoleUrl(DB_URL as string),
     });
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M18_OUTBOX_EVENTS]));
     const outbox: EvvWriteOutboxPort = {

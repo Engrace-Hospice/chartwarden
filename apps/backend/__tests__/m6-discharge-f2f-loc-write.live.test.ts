@@ -17,6 +17,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import { buildIpuSeams } from "../src/modules/37-ipu/seams";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -122,9 +123,9 @@ describe.skipIf(!DB_URL)(
         `INSERT INTO "user" (id,email) VALUES ($1,'m6t4a@x.test'),($2,'m6t4b@x.test'),($3,'m6t4md@x.test')`,
         [USER, OTHER, MD],
       );
-      await admin.query("ALTER ROLE wardenx_app LOGIN");
+      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({
-        connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+        connectionString: appRoleUrl(DB_URL as string),
       });
       // The 3rd arg is the REAL M37 `IpuBedAssignmentProvider` seam (not a fake) — proves the confirm
       // handshake's cross-module read works end-to-end, not just that the M6 side compiles.
