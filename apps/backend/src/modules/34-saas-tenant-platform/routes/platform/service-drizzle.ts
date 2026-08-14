@@ -982,6 +982,18 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const repo = new TenantExportRepository(tx);
         const job = await repo.findById(jobId);
         if (!job) throw new NotFoundError("tenant export job");
+        // SEC-052's second-actor property: the approver must be a DIFFERENT platform-ops
+        // membership than the one that requested the export (spec §3.7). Holding both
+        // `tenant_export.request` and `tenant_export.approve_oversized` must not let one person
+        // release a whole-tenant PHI bundle alone — same control as break-glass's
+        // `bge_cosigner_distinct`.
+        if (job.requestingMembershipId === actorMembershipId) {
+          throw new WardenXError(
+            "TENANT_EXPORT_SELF_APPROVAL",
+            "oversized-hold approval requires a platform-ops actor distinct from the export requestor",
+            403,
+          );
+        }
         // The newest ledger event must be GAP-094's `oversized_hold` row — the same check confirms
         // the job hasn't already been approved (approval appends a newer `oversized_approved` event
         // and flips status off `generating`, so a re-approve attempt fails this the same way an

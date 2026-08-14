@@ -22,13 +22,17 @@ import { createDbClient } from "@wardenx/db";
 import { runWithRequestContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createInMemoryObjectStore, registerDocumentSeams } from "../src/modules/22-documents/index";
+import { m34PlatformBypassAuditor } from "../src/index";
+import {
+  createInMemoryObjectStore,
+  registerDocumentSeams,
+} from "../src/modules/22-documents/index";
 import {
   buildDrizzlePlatformService,
   buildDrizzleTenantService,
   wireM34Tenancy,
 } from "../src/modules/34-saas-tenant-platform/index";
-import { m34PlatformBypassAuditor } from "../src/index";
+import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = `${__dirname}/../../../packages/db/migrations`;
@@ -95,12 +99,15 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
       `CREATE TABLE "tenant_export_job_event_gap097" PARTITION OF "tenant_export_job_event" FOR VALUES IN ('${ORG}')`,
     );
     actorUserId = (
-      await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, ["gap097-actor@x.test"])
+      await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [
+        "gap097-actor@x.test",
+      ])
     ).rows[0].id as string;
 
-    await admin.query("ALTER ROLE wardenx_app LOGIN");
+    // GAP-086: parse the url, never string-replace it — the replace idiom silently no-ops on a
+    // passworded url and the suite runs as superuser with RLS bypassed.
     handle = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
 
     // The platform-ops route surface runs its cross-tenant reads/writes over a SEPARATELY POOLED
@@ -110,7 +117,9 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
     // on tenant_export_job/_event); this test attaches LOGIN + BYPASSRLS to it — the same DEV-ONLY
     // mechanism `scripts/db/migrate.ts` uses for `wardenx_app` under WARDENX_DEV_BYPASSRLS — to stand in
     // for that dedicated role without provisioning a new one just for this test cluster.
-    await admin.query("ALTER ROLE wardenx_admin LOGIN BYPASSRLS");
+    await admin.query(
+      "ALTER ROLE wardenx_admin LOGIN BYPASSRLS PASSWORD 'wardenx_admin_live_test'",
+    );
     // `m34PlatformBypassAuditor` (the mandatory F09 bypass audit) calls the SECURITY DEFINER
     // `audit_writer_insert_platform_event` (migration 0187), EXECUTE-granted only to `wardenx_app` —
     // a real `DATABASE_PLATFORM_URL` role needs its own grant (index.ts's comment on that credential
@@ -119,9 +128,11 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
     await admin.query(
       "GRANT EXECUTE ON FUNCTION audit_writer_insert_platform_event(text, text, uuid, text, text, text, jsonb, text) TO wardenx_admin",
     );
-    platformHandle = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_admin@"),
-    });
+    // Same GAP-086 rule as `handle`: parse, never string-replace (which silently keeps superuser).
+    const platformUrl = new URL(DB_URL as string);
+    platformUrl.username = "wardenx_admin";
+    platformUrl.password = "wardenx_admin_live_test";
+    platformHandle = createDbClient({ connectionString: platformUrl.toString() });
 
     wireM34Tenancy(); // idempotent — registers M34_PLATFORM_JOB_ID on the tenancy allowlist
 
@@ -164,14 +175,22 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
 
     const { service: platformService } = buildDrizzlePlatformService({
       platformDb: platformHandle.db,
-      enqueue: { async enqueue() { throw new Error("not expected in this test"); } },
+      enqueue: {
+        async enqueue() {
+          throw new Error("not expected in this test");
+        },
+      },
       auditBypass: m34PlatformBypassAuditor,
     });
 
     // Pre-approval: the download route 409s (the SEC-052 hold-by-omission the GAP-094 fix already covers).
     const { service: tenantService } = buildDrizzleTenantService({
       db: handle.db,
-      enqueue: { async enqueue() { throw new Error("not expected in this test"); } },
+      enqueue: {
+        async enqueue() {
+          throw new Error("not expected in this test");
+        },
+      },
     });
     await expect(
       runWithRequestContext({ organizationId: ORG, userId: actorUserId }, () =>
@@ -189,7 +208,9 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
       [jobId],
     );
     expect(jobRows[0].status).toBe("fulfilled");
-    expect(jobRows[0].bundle_minio_object_key).toBe(`tenants/${ORG}/exports/tenant/${jobId}.tar.gz`);
+    expect(jobRows[0].bundle_minio_object_key).toBe(
+      `tenants/${ORG}/exports/tenant/${jobId}.tar.gz`,
+    );
     expect(jobRows[0].bundle_sha256).toBe("deadbeef");
     expect(Number(jobRows[0].bundle_size_bytes)).toBe(60 * 1024 * 1024 * 1024);
     expect(jobRows[0].fulfilled_at).not.toBeNull();
@@ -225,7 +246,11 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
 
     const { service: platformService } = buildDrizzlePlatformService({
       platformDb: platformHandle.db,
-      enqueue: { async enqueue() { throw new Error("not expected in this test"); } },
+      enqueue: {
+        async enqueue() {
+          throw new Error("not expected in this test");
+        },
+      },
       auditBypass: m34PlatformBypassAuditor,
     });
 
@@ -246,5 +271,39 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
         approvalReason: "second approval attempt — must be refused",
       }),
     ).rejects.toThrow(/not awaiting oversized-hold approval/);
+  });
+
+  it("refuses the requester approving their own export (403 TENANT_EXPORT_SELF_APPROVAL), then accepts a distinct approver", async () => {
+    // THE two-person property itself: one platform-ops membership can hold both
+    // `tenant_export.request` and `tenant_export.approve_oversized` — the service, not the
+    // permission model, must refuse the requester as approver (spec §3.7 "second actor must be
+    // distinct from the tenant-export requestor"). Before this fix the route checked only
+    // status + hold, and this exact call succeeded.
+    const jobId = await seedHeldJob();
+
+    const { service: platformService } = buildDrizzlePlatformService({
+      platformDb: platformHandle.db,
+      enqueue: {
+        async enqueue() {
+          throw new Error("not expected in this test");
+        },
+      },
+      auditBypass: m34PlatformBypassAuditor,
+    });
+
+    await expect(
+      platformService.approveOversizedExport(jobId, REQUESTING_MEMBERSHIP, {
+        approvalReason: "self-approval attempt — must be refused",
+      }),
+    ).rejects.toThrow(/distinct from the export requestor/);
+
+    // The refusal must not have consumed the hold: the job is still held and still approvable
+    // by a genuinely distinct actor.
+    const { rows } = await admin.query("SELECT status FROM tenant_export_job WHERE id=$1", [jobId]);
+    expect(rows[0].status).toBe("generating");
+    const result = await platformService.approveOversizedExport(jobId, APPROVER_MEMBERSHIP, {
+      approvalReason: "distinct-actor approval after the self-approval refusal",
+    });
+    expect(result).toEqual({ jobId, status: "fulfilled" });
   });
 });

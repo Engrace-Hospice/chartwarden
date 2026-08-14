@@ -47,12 +47,15 @@ export type RecipientResolvedKind =
  * rather than just the boolean.
  *
  *  · `no_active_release`         — no governing `42_cfr_part_2_release` at all. Redact.
- *  · `release_covers_program`    — a release is on file and names NO workforce member, so it
- *                                  authorizes the treating program as a whole (42 CFR §2.12(c)(3):
+ *  · `release_covers_program`    — a release is on file and has NEVER named a workforce member, so
+ *                                  it authorizes the treating program as a whole (42 CFR §2.12(c)(3):
  *                                  communications within a program are not disclosures). Disclose.
  *  · `release_names_actor`       — the release names workforce members and this actor is one. Disclose.
  *  · `release_names_others`      — the release names workforce members and this actor is NOT one.
- *                                  The patient restricted the disclosure; redact.
+ *                                  The patient restricted the disclosure; redact. Also covers a
+ *                                  release whose named recipients have ALL been removed/expired:
+ *                                  the restriction outlives the named parties, so it stays redacted
+ *                                  rather than widening to the whole program.
  *  · `actor_unidentified`        — the release names workforce members but the caller could not say
  *                                  who is asking (no membership id). Redact — an unnameable actor
  *                                  cannot be one of the named.
@@ -152,13 +155,20 @@ export interface ConsentEvaluator {
    * internal staff read is not that disclosure, and answering it through the external path would give
    * the wrong default in both directions.
    *
-   * THE RULE, and why it narrows but never widens. A release that names NO workforce member keeps
-   * meaning what it means today: it authorizes the treating program as a whole (42 CFR §2.12(c)(3)
-   * — communications within a program are not disclosures), so every actor gets the same answer
-   * `evaluateForIngressRedaction` gives. Naming workforce members RESTRICTS the release to them, and
-   * from then on an unnamed actor — of any role, however senior — is redacted. So no existing consent
-   * record changes meaning, no clinician loses a chart they can read today, and the restriction only
-   * ever appears because a patient (or their representative) asked for it.
+   * THE RULE, and why it narrows but never widens. A release that has NEVER named a workforce member
+   * keeps meaning what it means today: it authorizes the treating program as a whole (42 CFR
+   * §2.12(c)(3) — communications within a program are not disclosures), so every actor gets the same
+   * answer `evaluateForIngressRedaction` gives. Naming workforce members RESTRICTS the release to
+   * them, and from then on an unnamed actor — of any role, however senior — is redacted. So no
+   * existing consent record changes meaning, no clinician loses a chart they can read today, and the
+   * restriction only ever appears because a patient (or their representative) asked for it.
+   *
+   * Once restricted, ALWAYS restricted (2026-08-14 review). Removing or expiring the last named
+   * recipient does NOT return the record to program-wide: that would make narrowing a recipient list
+   * to zero grant strictly more access than leaving one name on it, and would silently un-redact a
+   * patient's SUD content org-wide the moment a named clinician left. A restricted release with no
+   * live recipient is `release_names_others` for everyone. Re-widening it is a consent decision the
+   * patient makes (a new record), never a side effect of staff turnover.
    *
    * Fail-closed on every uncertainty: no release, an actor the caller could not name against a
    * restricted release, a store error propagating to the caller.
@@ -419,21 +429,38 @@ export function createConsentEvaluator(store: ConsentStore): ConsentEvaluator {
           ? { expiresAt: new Date(record.expiresAtMs).toISOString() }
           : {}),
       };
-      // Only ACTIVE workforce recipients restrict: a removed or expired one is a restriction the
-      // patient (or time) already lifted, and treating it as live would leave a release permanently
-      // narrowed to someone who no longer works here.
+      // Only ACTIVE workforce recipients grant: a removed or expired one no longer names anybody.
       const namedWorkforce = record.recipients.filter(
         (r) =>
           r.recipientResolvedKind === "workforce_member" &&
           r.removedAtMs === null &&
           (r.expiresAtMs === null || r.expiresAtMs > asOfMs),
       );
-      if (namedWorkforce.length === 0)
+      // But "nobody active" is TWO different releases, and they must not answer the same way
+      // (2026-08-14 review — this was the fail-open):
+      //   · a release that NEVER named a workforce member authorizes the treating program as a
+      //     whole (§2.12(c)(3) — communications within a program are not disclosures). Disclose.
+      //   · a release that named workforce members and now has none active is a patient
+      //     restriction whose named parties left; the restriction does not evaporate with them.
+      //     Removing (or letting expire) the LAST named recipient must never grant strictly more
+      //     access than leaving one name on it, which is exactly what widening to program-wide did.
+      // The store returns removed/expired recipient rows too, so the two cases are distinguishable.
+      if (namedWorkforce.length === 0) {
+        const everNamedWorkforce = record.recipients.some(
+          (r) => r.recipientResolvedKind === "workforce_member",
+        );
+        if (everNamedWorkforce)
+          return {
+            redactSubstanceUseDisorderFields: true,
+            basis: "release_names_others",
+            ...meta,
+          };
         return {
           redactSubstanceUseDisorderFields: false,
           basis: "release_covers_program",
           ...meta,
         };
+      }
       if (args.actor.membershipId === null)
         return { redactSubstanceUseDisorderFields: true, basis: "actor_unidentified", ...meta };
       const named = namedWorkforce.some((r) => r.recipientResolvedId === args.actor.membershipId);

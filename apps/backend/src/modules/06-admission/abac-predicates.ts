@@ -121,7 +121,12 @@ export function buildAdmissionAbacPredicates(
       if (!facts) return false; // fail-closed (absent / cross-tenant)
       const orgWide = context.locationIds.length === 0; // no location restriction = org-wide
       if (orgWide) return true;
-      return facts.locationId !== null && context.locationIds.includes(facts.locationId);
+      // A null location is a referral's DOCUMENTED steady state ("org-level until an admission
+      // activates them" — referrals.ts header): no write path assigns location_id at intake, so an
+      // org-level referral is visible to every org member, location-scoped or not. Denying null here
+      // 404'd every referral for every location-scoped user (2026-08-14 review). The location test
+      // only bites once a location IS assigned.
+      return facts.locationId === null || context.locationIds.includes(facts.locationId);
     },
     "admission.scope": async (context, target) => {
       const id = targetId(target);
@@ -147,14 +152,25 @@ export function buildAdmissionAbacPredicates(
       if (!facts) return false; // fail-closed (absent / cross-tenant)
       return admissionScopeFor(context, facts);
     },
+    // The identity halves of the two CTI sign gates compare `context.userId` (a Better Auth user
+    // id) against the CTI's `hospice_md_id`/`attending_md_id` — M40 physician-DIRECTORY uuids with
+    // no FK (or join anywhere in the schema) to `users`. Until a user↔M40-physician link exists
+    // that comparison can never be true in production, so the ROLE escape is the live path and must
+    // name role keys that actually exist. The previous escapes (`acting_medical_director`,
+    // `attending_physician_collaborator`) existed in no template, seed, or tenant — no CTI could be
+    // signed, so no admission could be certified, in any org (2026-08-14 review). The keys below
+    // follow the repo-wide clinical role-key convention (seed-staff-personas.ts, MD_OR_NP above).
     "cti.is_hospice_md": async (context, target) => {
       const id = targetId(target);
       if (!id) return false;
       const facts = await resolver.loadCti(context.organizationId, id);
       if (!facts) return false;
+      // §418.22(c): the hospice side is certified by the medical director or the physician
+      // designee (hospice physician) — NPs may never certify terminal illness.
       return (
         context.userId === facts.hospiceMedicalDirectorId ||
-        hasRole(context, "acting_medical_director")
+        hasRole(context, "medical_director") ||
+        hasRole(context, "hospice_physician")
       );
     },
     "cti.is_attending": async (context, target) => {
@@ -162,9 +178,12 @@ export function buildAdmissionAbacPredicates(
       if (!id) return false;
       const facts = await resolver.loadCti(context.organizationId, id);
       if (!facts) return false;
+      // The attending signature is also a physician certification (§418.22(c)); when the patient's
+      // chosen attending is the hospice's own physician, that user holds `hospice_physician`.
       return (
         (facts.attendingPhysicianId !== null && context.userId === facts.attendingPhysicianId) ||
-        hasRole(context, "attending_physician_collaborator")
+        hasRole(context, "md") ||
+        hasRole(context, "hospice_physician")
       );
     },
     "f2f.is_hospice_clinician": async (context, target) => {
