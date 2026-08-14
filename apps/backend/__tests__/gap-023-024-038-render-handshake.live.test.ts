@@ -28,7 +28,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
+import { M11_OUTBOX_EVENTS, buildM11DocumentBackrefConsumer } from "../src/modules/11-orders/index";
 import {
   type OrderWriteOutboxPort,
   createDbOrderBackend,
@@ -37,10 +37,18 @@ import {
   type DoseSpotWriteOutboxPort,
   createDbDoseSpotBackend,
 } from "../src/modules/12-dosespot/dosespot-route-service-db";
-import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
-import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
-import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
 import {
+  M12_OUTBOX_EVENTS,
+  buildM12DocumentBackrefConsumer,
+} from "../src/modules/12-dosespot/index";
+import { M13_OUTBOX_EVENTS, buildM13DocumentBackrefConsumer } from "../src/modules/13-emar/index";
+import {
+  M21_OUTBOX_EVENTS,
+  buildM21DocumentBackrefConsumer,
+} from "../src/modules/21-supplies/index";
+import {
+  M22_DOCUMENT_RENDERED_EVENT,
+  M22_OUTBOX_EVENTS,
   buildM22DocumentRequestConsumer,
   createDocumentRenderer,
   createDrizzleDocumentSeamStore,
@@ -59,6 +67,8 @@ const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";
 const PHYSICIAN_MDM = "66666666-6666-6666-6666-666666666666";
 const ABN_ID = "77777777-7777-7777-7777-777777777777";
+const LOCATION = "99999999-9999-4999-8999-999999999991";
+const PROVIDER_ENTITY = "99999999-9999-4999-8999-999999999992";
 
 describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Postgres", () => {
   let admin: Client;
@@ -115,6 +125,12 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
     );
     return rows;
   }
+  /** One column value, by table + id — the back-ref half's proof (superuser read). */
+  async function columnOf(table: string, column: string, id: string): Promise<string | null> {
+    const { rows } = await admin.query(`SELECT ${column} AS v FROM ${table} WHERE id=$1`, [id]);
+    return (rows[0]?.v as string | null) ?? null;
+  }
+
   /** Publish one outbox row directly, as a source module's transactional publisher would. */
   async function seedOutboxRow(e: {
     eventType: string;
@@ -172,6 +188,7 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
       M12_OUTBOX_EVENTS,
       M13_OUTBOX_EVENTS,
       M21_OUTBOX_EVENTS,
+      M22_OUTBOX_EVENTS,
       M23_OUTBOX_EVENTS,
     ]);
     const txPublisher = buildTxOutboxPublisher(catalog);
@@ -198,6 +215,20 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
           return renderer.render(scope, templateKey, payload);
         },
       }),
+      // The §7.2 downstream half, wired exactly as boot wires it: the emit opens its own tx (the render
+      // already committed in the renderer's) and publishes through the same catalog-validating publisher,
+      // so `m22.document.rendered`'s payload is contract-checked too.
+      emitRendered: ({ organizationId, ...payload }) =>
+        withOrgContext(handle.db, { organizationId, userId: "" }, (tx) =>
+          txPublisher.publish(tx as never, {
+            eventName: M22_DOCUMENT_RENDERED_EVENT,
+            payload,
+            organizationId,
+            aggregateKind: "document",
+            aggregateId: payload.documentId,
+            callerModule: "m22",
+          }),
+        ),
     });
 
     // Stub enumerator only — no platform credential needed to exercise per-org claim/deliver/finalize.
@@ -207,7 +238,15 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
     dispatcher = createOutboxDispatcher({
       db: handle.db,
       orgs,
-      consumers: [consumer],
+      consumers: [
+        consumer,
+        // All four back-ref consumers — `m22.document.rendered` declares exactly these, and the dispatcher
+        // holds the row `pending` while any declared consumer module has no live binding.
+        buildM11DocumentBackrefConsumer({ db: handle.db }),
+        buildM12DocumentBackrefConsumer({ db: handle.db }),
+        buildM13DocumentBackrefConsumer({ db: handle.db }),
+        buildM21DocumentBackrefConsumer({ db: handle.db }),
+      ],
       eventCatalog: catalog,
       options: { log: () => {} },
     });
@@ -251,6 +290,25 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
     // The relay recorded the delivery: the request row is no longer pending.
     const after = await outboxFor(draft.id);
     expect(after.find((e) => e.type === "m11.order.document_requested")?.status).toBe("dispatched");
+
+    // The DOWNSTREAM half: M22 announced the render and M11 stamped its own back-ref column — the column
+    // that has existed since M11's schema landed, commented "null until reports rendered", and stayed
+    // NULL because `m22.document.rendered` did not exist.
+    const announced = await admin.query(
+      "SELECT payload FROM outbox_event WHERE event_type='m22.document.rendered' AND aggregate_id=$1",
+      [docs[0].id],
+    );
+    expect(announced.rows).toHaveLength(1);
+    expect(announced.rows[0].payload).toMatchObject({
+      sourceModule: "m11",
+      sourceEvent: "m11.order.document_requested",
+      aggregateType: "order_record",
+      aggregateId: draft.id,
+      documentId: docs[0].id,
+      isFirstVersion: true,
+    });
+    await dispatcher.tick(); // deliver the back-ref event
+    expect(await columnOf("order_record", "document_id", draft.id)).toBe(docs[0].id);
   });
 
   // D14 — the dispatcher redelivers after any crash between render and receipt; the rendered row is the
@@ -314,6 +372,9 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
     expect(docs).toHaveLength(1);
     expect(docs[0].aggregate_type).toBe("medication_order");
     expect(docs[0].patient_id).toBe(PATIENT);
+
+    await dispatcher.tick();
+    expect(await columnOf("medication_order", "document_id", draft.id)).toBe(docs[0].id);
   });
 
   // ── M21 supply documents ─────────────────────────────────────────────────────────────────────────────
@@ -328,6 +389,65 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
     const supplyRequestId = "88888888-8888-4888-8888-888888888881";
     const dispatchId = "88888888-8888-4888-8888-888888888882";
     const returnId = "88888888-8888-4888-8888-888888888883";
+    const templateId = "88888888-8888-4888-8888-888888888884";
+    // The two rows the back-ref half stamps have to EXIST — an UPDATE against an absent row is a silent
+    // zero-row no-op, which is exactly what this assertion must not mistake for success. Seeded as
+    // admin: M21's write domain (request → kit → vendor → dispatch → return) is out of scope here, and
+    // these rows are the target of the stamp, not the subject of the test.
+    // `location` hangs off `provider_entity`, not the org directly (it is NON_ORG_SCOPED — the tenancy
+    // spine reaches it through the provider entity), so the provider goes in first.
+    await admin.query(
+      `INSERT INTO provider_entity (id, organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+       VALUES ($1,$2,'371234','Provider','1234567893','enc','1231') ON CONFLICT DO NOTHING`,
+      [PROVIDER_ENTITY, ORG_A],
+    );
+    await admin.query(
+      `INSERT INTO location (id, provider_entity_id, name, address_line1, city, state, postal_code, timezone)
+       VALUES ($1,$2,'HQ','1 Main','Portland','OR','97201','America/Los_Angeles')
+       ON CONFLICT DO NOTHING`,
+      [LOCATION, PROVIDER_ENTITY],
+    );
+    await admin.query(
+      `INSERT INTO comfort_kit_template (id, organization_id, name)
+       VALUES ($1,$2,'Standard Kit') ON CONFLICT DO NOTHING`,
+      [templateId, ORG_A],
+    );
+    await admin.query(
+      `INSERT INTO comfort_kit_dispatch
+         (id, supply_request_id, organization_id, patient_id, admission_id, location_id,
+          provider_entity_id, comfort_kit_template_id, deployment_site, pharmacy_dispatch_mode,
+          dispatch_source, kit_serial_number, dispatched_by_membership_id,
+          controlled_substance_handling_policy_digest, dispatched_contents_jsonb)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'home','supply_hub_dispatch','supply_hub','KIT-1',$9,
+               'digest','[]'::jsonb)`,
+      [
+        dispatchId,
+        supplyRequestId,
+        ORG_A,
+        PATIENT,
+        ADMISSION,
+        LOCATION,
+        PROVIDER_ENTITY,
+        templateId,
+        memberOf[ORG_A],
+      ],
+    );
+    await admin.query(
+      `INSERT INTO comfort_kit_return
+         (id, dispatch_id, dispatch_partition_dispatched_at, organization_id, m13_deployment_id,
+          patient_id, admission_id, location_id, provider_entity_id, return_required_at, return_due_at)
+       VALUES ($1,$2, now(), $3,$4,$5,$6,$7,$8, now(), now() + interval '3 days')`,
+      [
+        returnId,
+        dispatchId,
+        ORG_A,
+        "88888888-8888-4888-8888-888888888885",
+        PATIENT,
+        ADMISSION,
+        LOCATION,
+        PROVIDER_ENTITY,
+      ],
+    );
     const anchor = {
       orgId: ORG_A,
       patientId: PATIENT,
@@ -392,6 +512,15 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
         "dispatched",
       );
     }
+
+    // M21 is the only requester whose back-ref consumer ROUTES: the BOL lands on the dispatch row, the
+    // return receipt on the return row. Getting this wrong would put both on whichever row the payload's
+    // `dispatchId` named.
+    await dispatcher.tick();
+    expect(await columnOf("comfort_kit_dispatch", "bol_document_id", dispatchId)).toBe(bol[0].id);
+    expect(await columnOf("comfort_kit_return", "receipt_document_id", returnId)).toBe(
+      receipt[0].id,
+    );
   });
 
   // ── GAP-038 ──────────────────────────────────────────────────────────────────────────────────────────

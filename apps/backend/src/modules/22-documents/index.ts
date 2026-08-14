@@ -135,3 +135,4 @@ export {
   type SignedUrlService,
   createSignedUrlService,
 } from "./routes/signed-url-service";
+export { M22_OUTBOX_EVENTS, M22_DOCUMENT_RENDERED_EVENT } from "./events-by-m22";

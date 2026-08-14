@@ -228,6 +228,35 @@ export interface DocumentRequestConsumerDeps {
   }) => void;
   /** Template table override (tests); defaults to the T04 published table. */
   readonly templates?: Readonly<Record<string, TemplateDescriptor>>;
+  /**
+   * The §7.2 downstream half: emits `m22.document.rendered` so the requesting module can stamp its own
+   * back-ref column. Optional — omitted, the render still happens and the document is still reachable
+   * through `document.(aggregate_type, aggregate_id)`; the source row's column simply stays NULL.
+   */
+  readonly emitRendered?: (event: DocumentRenderedEmit) => Promise<void>;
+}
+
+/** The `m22.document.rendered` payload (see ../events-by-m22.ts) as the consumer hands it to the emitter. */
+export interface DocumentRenderedEmit {
+  readonly organizationId: string;
+  readonly documentId: string;
+  readonly documentVersionId: string;
+  readonly versionNumber: number;
+  readonly isFirstVersion: boolean;
+  readonly templateKey: string;
+  readonly aggregateType: string;
+  readonly aggregateId: string;
+  readonly retentionClass: string;
+  readonly patientId: string | null;
+  readonly sourceEvent: string;
+  readonly sourceModule: string;
+  readonly renderedAt: string;
+}
+
+/** `m11.order.document_requested` → `m11`. The producer is the event name's own namespace — M22 reads every
+ *  source module through the event STRING, so the string is also where the requester's identity lives. */
+function sourceModuleOf(eventName: string): string {
+  return eventName.split(".")[0] ?? "";
 }
 
 /**
@@ -289,10 +318,42 @@ export function buildM22DocumentRequestConsumer(
           : {}),
       };
 
+      /** Emit the §7.2 downstream half for a document that now exists. Shared by the render path and the
+       *  re-delivery path — see the `idempotent_skip` note below for why the latter must emit too. */
+      const announce = async (row: {
+        documentId: string;
+        versionId: string;
+        versionNumber: number;
+        renderedAt: string;
+      }): Promise<void> => {
+        if (!deps.emitRendered || !descriptor) return;
+        await deps.emitRendered({
+          organizationId: payload.organizationId,
+          documentId: row.documentId,
+          documentVersionId: row.versionId,
+          versionNumber: row.versionNumber,
+          isFirstVersion: row.versionNumber === 1,
+          templateKey: payload.templateKey,
+          aggregateType: descriptor.aggregateType,
+          aggregateId: payload.aggregateId,
+          retentionClass: descriptor.retentionClass,
+          patientId: payload.patientId ?? null,
+          sourceEvent,
+          sourceModule: sourceModuleOf(sourceEvent),
+          renderedAt: row.renderedAt,
+        });
+      };
+
       const action = decideDocumentRequest(sourceEvent, payload, facts);
       switch (action.kind) {
         case "idempotent_skip":
-          return; // D14 — a re-delivery never produces a second document.
+          // D14 — a re-delivery never produces a second DOCUMENT. It must still ANNOUNCE one: the render
+          // and the emit are two transactions (the renderer opens its own), so a crash between them is
+          // exactly the case that gets redelivered, and returning here would make that the one path where
+          // the back-ref is lost permanently — silently, and only under a crash. Consumers stamp the same
+          // `document_id` they already hold, which is idempotent by construction.
+          if (prior) await announce(prior);
+          return;
         case "unknown_template":
           deps.onRefusal?.({
             eventType: event.eventType,
@@ -333,6 +394,17 @@ export function buildM22DocumentRequestConsumer(
             ...render.content,
             ...(render.sudRedacted ? { sudRedacted: true } : {}),
           });
+          // Re-read rather than trusting the renderer's `{documentId}`: the leaf-typed `DocumentRenderer`
+          // seam returns only that, and the back-ref event carries the version identity too. This read is
+          // the same row the render just wrote, under the same org.
+          if (deps.emitRendered && descriptor) {
+            const written = await deps.store.renderedDocumentForAggregate({
+              aggregateType: descriptor.aggregateType,
+              aggregateId: payload.aggregateId,
+              organizationId: payload.organizationId,
+            });
+            if (written) await announce(written);
+          }
           return;
         }
       }

@@ -85,3 +85,7 @@ export {
   eraseSupplyRecord,
   registerSupplyEraser,
 } from "./erasers/supply-eraser";
+export {
+  M21_DOCUMENT_BACKREF_CONSUMER,
+  buildM21DocumentBackrefConsumer,
+} from "./outbox-consumers/m22-document-rendered";

@@ -148,3 +148,7 @@ export {
   type FhirMedicationRequestPublishResult,
   denyStubFhirMedicationRequestPublisher,
 } from "./seams/m28-fhir-medication-request";
+export {
+  M12_DOCUMENT_BACKREF_CONSUMER,
+  buildM12DocumentBackrefConsumer,
+} from "./outbox-consumers/m22-document-rendered";
