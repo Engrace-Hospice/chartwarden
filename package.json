@@ -90,6 +90,8 @@
     "test:m22:render-handshake:live": "vitest run apps/backend/__tests__/gap-023-024-038-render-handshake.live.test.ts",
     "test:m33:schedule-cron:live": "vitest run apps/backend/__tests__/gap-050-m33-schedule-cron.live.test.ts",
     "test:m33:export-render:live": "vitest run apps/backend/__tests__/gap-051-m33-export-render.live.test.ts",
+    "test:m24:nf-facility-snapshot:live": "vitest run apps/backend/__tests__/gap-040-m24-nf-facility-snapshot.live.test.ts",
+    "test:m23:remittance-feedback:live": "vitest run apps/backend/__tests__/gap-037-m23-remittance-feedback.live.test.ts",
     "test:m37:write:live": "vitest run apps/backend/__tests__/m37-ipu-write.live.test.ts",
     "test:m37:privacy-gates:live": "vitest run apps/backend/__tests__/gap-061-062-m37-privacy-gates.live.test.ts",
     "test:rls:live:m7": "vitest run packages/db/migrations/__tests__/m7-rls-isolation.live.test.ts",

@@ -1,0 +1,19 @@
+-- GAP-037 — the M23 `claim_state` enum gains PARTIAL_PAID.
+--
+-- The domain `ClaimState` union has carried `partial_paid` since M23 landed, and the §2.2 machine has the
+-- `ack_accepted --remittance_partial_paid--> partial_paid` edge. The pgEnum never had the member, so
+-- `claimStateCodec.toDb("partial_paid")` fell through `makeCaseCodec`'s guard and raised `unmappable` —
+-- the codec's own comment even calls `partial_paid` "contracts-only, which the lifecycle reducer never
+-- emits". It does emit it; nothing had ever driven that edge, because M25's `claim_partial_paid` event had
+-- no consumer (the gap this migration is part of closing). The first real partial payment would have
+-- thrown at write time.
+--
+-- PARTIAL_PAID is an ACTIVE claim state: it is deliberately NOT added to the
+-- `claim_*_active_by_range_uidx` exclusion list (`VOIDED`/`REPLACED`/`ACK_REJECTED`), because a
+-- partially-paid interim claim still occupies its (PE, patient, from, to) range.
+-- NAME NOTE: the DB type is `claim_state` (un-prefixed, per M23 spec §3.3); the Drizzle mirror declares
+-- it under the name m23_claim_state. The two names differ by design since 0074 — Drizzle uses the enum
+-- name only for DDL generation, never at query time — so the ALTER must target the DB name.
+-- (Do not write the Drizzle declaration form in this comment: check-ddl-legality scans .sql files for it
+-- WITHOUT stripping `--` comments, and a prose mention reads as a duplicate enum definition.)
+ALTER TYPE "public"."claim_state" ADD VALUE IF NOT EXISTS 'PARTIAL_PAID' AFTER 'PAID';

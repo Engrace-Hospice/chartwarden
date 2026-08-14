@@ -153,6 +153,26 @@ export interface FacilityKindReaderPort {
   ): Promise<ReadonlyMap<string, PlaceOfServiceFacilityKind>>;
 }
 
+/**
+ * M40's LIVE `MdmEntityProvider` seam, narrowed to the one question an R&B arrangement asks it
+ * (GAP-040): what is this nursing facility's canonical display name, right now, at contract time?
+ *
+ * `rb_arrangement.nf_facility_name_snapshot` is a SNAPSHOT — the name as it stood when the contract was
+ * signed, deliberately frozen against later MDM renames, and surfaced verbatim through the read API. It
+ * was written as the literal string "[unresolved — M40 facility resolver deferred]" on every create,
+ * even though M40's provider has been registered over a Drizzle store at boot since M40 landed.
+ *
+ * Resolved through the SEAM rather than a direct `facility` read (the `FacilityKindReaderPort`
+ * escape-valve above) because the seam chases `merged_into_id` (§7.2): a facility canonical that was
+ * merged after the tenant picked it must snapshot the SURVIVOR's name, not a dead row's.
+ */
+export interface FacilityNameResolverPort {
+  resolveFacility(
+    orgId: string,
+    id: string,
+  ): Promise<{ readonly canonical: { readonly displayName: string } } | null>;
+}
+
 /** M5's LIVE `PatientAddressReader` seam (place-of-service follow-up) — the patient's residence kind/
  * facility as of a given date, for RHC/CHC's home-vs-facility Q-code disambiguation. Optional: an absent
  * binding degrades to the LOC-based Q-code default (via `resolvePlaceOfServiceQCode`'s own fallback), not
@@ -201,6 +221,7 @@ export function buildDrizzleM24WriteService(
   signedEncounters?: SignedEncounterWindowReaderPort,
   facilityKindReader?: FacilityKindReaderPort,
   residenceReader?: ResidenceReaderPort,
+  facilityNames?: FacilityNameResolverPort,
 ): M24WriteService {
   const C = schema.medicaidClaim;
   const SUB = schema.medicaidSubmission;
@@ -222,6 +243,32 @@ export function buildDrizzleM24WriteService(
     const rows = await tx.select().from(C).where(eq(C.id, claimId)).limit(1);
     if (!rows[0]) throw new NotFoundError("medicaid claim not found");
     return rows[0];
+  }
+
+  /**
+   * GAP-040 — resolve the NF's canonical display name for the contract snapshot. FAILS the write when
+   * the resolver is unbound or the id resolves to nothing: an R&B arrangement names a real nursing
+   * facility the agency has a pass-through contract with, and a snapshot that says anything other than
+   * that facility's name is worse than no arrangement at all — it is surfaced verbatim on the
+   * arrangement view and read as the contracted party. A placeholder is not a degraded answer here, it
+   * is a wrong one.
+   */
+  async function resolveNfFacilityName(orgId: string, facilityMdmId: string): Promise<string> {
+    if (!facilityNames) {
+      throw new DegradedError(
+        "MDM_FACILITY_RESOLVER_UNBOUND",
+        "the NF facility name cannot be snapshotted — M40's MdmEntityProvider is not bound",
+      );
+    }
+    const resolved = await facilityNames.resolveFacility(orgId, facilityMdmId);
+    if (!resolved) {
+      throw new WardenXError(
+        "NF_FACILITY_NOT_FOUND",
+        `no M40 facility resolves for '${facilityMdmId}' — pick the facility from the master-data list`,
+        422,
+      );
+    }
+    return resolved.canonical.displayName;
   }
   function assertVersion(row: { version: number }, expected: number | null): void {
     if (expected !== null && row.version !== expected) {
@@ -1161,9 +1208,14 @@ export function buildDrizzleM24WriteService(
     },
 
     async createRbArrangement(actor, input: CreateRbArrangementInput) {
+      // GAP-040 — snapshot the NF's canonical name from M40 BEFORE the transaction opens: the seam runs
+      // its own org-scoped read, and holding a write tx across it would pin a pooled connection for the
+      // duration of someone else's query.
+      const nfFacilityNameSnapshot = await resolveNfFacilityName(
+        actor.organizationId,
+        input.nfFacilityMdmId,
+      );
       return withOrgContext(db, actor, async (tx) => {
-        // The NF facility display name is normally snapshotted from M40; the resolver is unbound (deferred),
-        // so the snapshot is a placeholder backfilled when M40 binds. The contract data is tenant-authored.
         const inserted = await tx
           .insert(A)
           .values({
@@ -1171,7 +1223,7 @@ export function buildDrizzleM24WriteService(
             patientId: input.patientId,
             providerEntityId: input.providerEntityId,
             nfFacilityMdmId: input.nfFacilityMdmId,
-            nfFacilityNameSnapshot: "[unresolved — M40 facility resolver deferred]",
+            nfFacilityNameSnapshot,
             effectiveFrom: new Date(input.effectiveFrom),
             effectiveTo: input.effectiveTo ? new Date(input.effectiveTo) : null,
             nfPerDiemRoutineCents: input.nfPerDiemRoutineCents,
