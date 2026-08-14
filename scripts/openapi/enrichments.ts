@@ -43,6 +43,9 @@ import {
   InvitationRescindedResponseSchema as M2InvitationRescindedResponseSchema,
   InvitationResendRequestSchema as M2InvitationResendRequestSchema,
   InvitationResendResponseSchema as M2InvitationResendResponseSchema,
+  ElevatedApprovalGrantRequestSchema as M2ElevatedApprovalGrantRequestSchema,
+  ElevatedApprovalGrantSchema as M2ElevatedApprovalGrantSchema,
+  ElevatedApprovalRevokeRequestSchema as M2ElevatedApprovalRevokeRequestSchema,
   MemberPatchRequestSchema as M2MemberPatchRequestSchema,
   MemberRevokedResponseSchema as M2MemberRevokedResponseSchema,
   MembersListQuerySchema as M2MembersListQuerySchema,
@@ -7094,6 +7097,23 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "DELETE /api/v1/orgs/:id/members/:mId": {
     summary: "Revoke a membership + reap its sessions (member.manage, §7.5)",
     response: M2MemberRevokedResponseSchema,
+  },
+  // M2 Identity §3.7 (GAP-043) — the per-membership NAMED APPROVAL AUTHORITY register. The designation
+  // M27's §4.7 `cost_report_approver_for_provider` predicate reads; these three routes are the only way
+  // a row ever enters `membership_elevated_approval`.
+  "GET /api/v1/orgs/:id/members/:mId/elevated-approvals": {
+    summary: "List a membership's approval-authority designations, live and revoked (member.manage, §3.7)",
+    response: Type.Object({ grants: Type.Array(M2ElevatedApprovalGrantSchema) }),
+  },
+  "POST /api/v1/orgs/:id/members/:mId/elevated-approvals": {
+    summary: "Designate a membership as holding a named approval authority (member.manage, §3.7)",
+    body: M2ElevatedApprovalGrantRequestSchema,
+    response: M2ElevatedApprovalGrantSchema,
+  },
+  "DELETE /api/v1/orgs/:id/members/:mId/elevated-approvals/:kind": {
+    summary: "Revoke a membership's named approval authority; the row is retained as history (member.manage, §3.7)",
+    body: M2ElevatedApprovalRevokeRequestSchema,
+    response: M2ElevatedApprovalGrantSchema,
   },
   "POST /api/v1/users/:id/deactivate": {
     summary: "Full offboard: disable credentials + reap all sessions (user.deactivate, §7.5)",

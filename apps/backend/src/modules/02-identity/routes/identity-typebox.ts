@@ -195,6 +195,37 @@ export const MemberRevokedResponseSchema = Type.Object({
   revoked: Type.Boolean(),
 });
 
+// ── §3.7 named approval authority (GAP-043) ────────────────────────────────────────────────────────
+/** The `elevated_approval_kind` vocabulary — kept as a literal union so the generated client narrows. */
+export const ElevatedApprovalKindSchema = Type.Union([Type.Literal("cost_report_approval")], {
+  description:
+    "A named per-tenant approval authority. `cost_report_approval` designates a membership as authorized to certify a CMS-1984-14 filing (M27 §4.7).",
+});
+
+/** One designation row — live (`revokedAt: null`) or historical. */
+export const ElevatedApprovalGrantSchema = Type.Object({
+  id: Type.String(),
+  membershipId: Type.String(),
+  approvalKind: Type.String(),
+  grantedByMembershipId: Type.String(),
+  grantedAt: Type.String(),
+  grantReason: Type.String(),
+  revokedAt: Type.Union([Type.String(), Type.Null()]),
+  revokedByMembershipId: Type.Union([Type.String(), Type.Null()]),
+  revokedReason: Type.Union([Type.String(), Type.Null()]),
+});
+
+/** POST body — the ≥10-char reason floor matches the `grant_reason` CHECK in migration 0204. */
+export const ElevatedApprovalGrantRequestSchema = Type.Object({
+  approvalKind: ElevatedApprovalKindSchema,
+  grantReason: Type.String({ minLength: 10 }),
+});
+
+/** DELETE body — same reason floor, matching the revocation-consistency CHECK. */
+export const ElevatedApprovalRevokeRequestSchema = Type.Object({
+  revokedReason: Type.String({ minLength: 10 }),
+});
+
 /** POST /api/v1/users/:id/deactivate — full-offboard acknowledgement (§7.5). */
 export const UserDeactivatedResponseSchema = Type.Object({
   deactivated: Type.Boolean(),

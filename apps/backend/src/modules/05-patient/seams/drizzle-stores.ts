@@ -14,7 +14,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import type { PatientIdentity } from "@wardenx/types";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { OutboxPublishPort } from "../../../bootstrap/outbox-persister";
-import type { CareTeamStore } from "./care-team-provider";
+import { PRIMARY_RN_ASSIGNMENT_ROLE, type CareTeamStore } from "./care-team-provider";
 import type { CaseloadStore } from "./caseload-provider";
 import type { PatientMutatorStore } from "./patient-mutator";
 import type { PatientReaderStore } from "./patient-reader";
@@ -465,6 +465,27 @@ export function createDrizzleCareTeamStore(db: DbClient): CareTeamStore {
             ),
           );
         return rows.map((r) => r.clinicianUserId);
+      });
+    },
+
+    // GAP-022 — the RN case manager, for M13's §2.9 D10 caregiver-attested review gate. `patient_assignment`
+    // carries a partial unique index on (patient_id, role) WHERE role='primary_rn' AND unassigned_at IS NULL,
+    // so at most one row can match; `limit(1)` reflects that invariant rather than papering over a bad query.
+    async findPrimaryRn(organizationId, patientId) {
+      return withOrgContext(db, { organizationId, userId: SEAM_SYSTEM_USER_ID }, async (tx) => {
+        const [row] = await tx
+          .select({ clinicianUserId: PA.clinicianUserId })
+          .from(PA)
+          .where(
+            and(
+              eq(PA.organizationId, organizationId),
+              eq(PA.patientId, patientId),
+              eq(PA.role, PRIMARY_RN_ASSIGNMENT_ROLE),
+              isNull(PA.unassignedAt),
+            ),
+          )
+          .limit(1);
+        return row?.clinicianUserId ?? null;
       });
     },
   };

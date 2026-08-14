@@ -6,6 +6,7 @@
 // wireModuleSeams()).
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
+import { getSeam } from "../../bootstrap/index";
 import { registerEmarAbacPredicates as _registerM13Abac } from "./abac-predicates";
 import { type EmarWriteOutboxPort, createDbEmarBackend } from "./emar-route-service-db";
 import { registerEmarRoutes as _registerM13Routes } from "./routes/emar-routes";
@@ -21,7 +22,11 @@ export function mountEmarRoutes(
   db: DbClient,
   outbox?: EmarWriteOutboxPort,
 ): void {
-  const backend = createDbEmarBackend(db, outbox);
+  // GAP-022 — the §2.9 D10 caregiver-review gate's RN-case-manager fact, through M5's published
+  // CareTeamProvider seam. `getSeam` is the M1 registry (M13 dependsOn 1) and the seam INTERFACE is a
+  // @wardenx/types leaf, so this adds no M13→M5 compile edge. Passed as a thunk so it resolves per call,
+  // after wireModuleSeams() has registered M5's provider.
+  const backend = createDbEmarBackend(db, outbox, () => getSeam("CareTeamProvider"));
   _registerM13Abac({ resolver: backend });
   _registerM13Routes(app, { service: backend });
 }

@@ -15,13 +15,19 @@
 //
 // The REAL Drizzle fact-loader `buildDrizzleM27AbacResolver(db)` loads each fact under `withOrgContext`
 // (RLS scopes every read to `app.org_id`), mirroring the M30 §4.7 resolver shape (the composition root
-// binds the db handle). The cost-report fact (`provider_entity_id` + `state`) and the actor's membership
-// provider scope (`membership.default_provider_entity_id`) are real reads. ONE reach stays a genuinely-
-// unlanded fail-closed deny-stub — NOT faked: the per-tenant elevated-approval flag
-// (`hasElevatedApproval`, the M2 SESSION_POLICY per-membership policy the spec keys on) is not a landed
-// column / seam, so the Drizzle resolver returns false (the approver predicate denies until that policy
-// lands). Default-deny throughout: a missing / cross-tenant fact row, an actor with no active membership,
-// an out-of-scope provider, an unlanded elevated-approval reach all resolve to deny. Never fails open.
+// binds the db handle). All THREE reaches are real reads now: the cost-report fact (`provider_entity_id` +
+// `state`), the actor's membership provider scope (`membership.default_provider_entity_id`), and — since
+// GAP-043 — the per-tenant elevated-approval designation, through M2's `ElevatedApprovalReader` seam over
+// `membership_elevated_approval` (migration 0204).
+//
+// `hasElevatedApproval` USED TO BE HARDCODED `false` HERE, in the resolver that boots in every deployment
+// with a database, because the fact it needed had no table, no column and no seam anywhere in the system
+// ("a real read here would fabricate a fact M27 cannot resolve" — correct at the time). The approver
+// predicate calls it unconditionally on its last line, so override_validation / approve_for_submit /
+// submit / submit_past_deadline / reopen_submitted were ALL unreachable for every caller in every tenant:
+// the CMS-1984-14 filing workflow had no end state. Default-deny throughout is unchanged — a missing /
+// cross-tenant fact row, an actor with no active membership, an out-of-scope provider, and an
+// un-designated membership all resolve to deny. Never fails open.
 //
 // IDENTITY NOTE: the actor's provider scope is keyed on the SERVER-assembled `context.providerEntityIds`
 // (the M40 `provider_entity_scope` source the routes already trust) AND, as an RLS-backed supplement, the
@@ -35,7 +41,9 @@ import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "
 import type { CostReportDb, CostReportState } from "@wardenx/cost-report";
 import { schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
+import type { ElevatedApprovalReader } from "@wardenx/types";
 import { and, eq } from "drizzle-orm";
+import { getSeam } from "../../bootstrap/index";
 
 /**
  * The §4.7 predicate names M27 OWNS and registers into M3 (three). `inOrg` (M3) and `provider_entity_scope`
@@ -145,11 +153,17 @@ export const denyStubM27AbacResolver: ReadingM27AbacResolver = {
  * scopes every statement to `app.org_id` — the M30 resolver precedent. The `cost_report` row is point-read
  * by id (org + RLS scope the row); the membership's provider scope is read from `membership`.
  *
- * The M2 elevated-approval reach stays a fail-closed deny-stub: the per-membership elevated-approval flag
- * is NOT a landed column / seam, so a real read here would fabricate a fact M27 cannot resolve. It returns
- * false → `cost_report_approver_for_provider` denies until that per-tenant policy lands.
+ * The M2 elevated-approval reach (GAP-043) resolves through the `ElevatedApprovalReader` seam rather than
+ * a direct table read: `membership_elevated_approval` is M2's table, and `arch:tables` exempts only the
+ * narrow identity cohort (organization/membership/user/session/role/membership_role) from cross-module
+ * direct reads — a new table does not join that list by being convenient. Resolved LAZILY per call, since
+ * the composition root registers M27's predicates before `wireModuleSeams()` runs.
  */
-export function buildDrizzleM27AbacResolver(db: CostReportDb): ReadingM27AbacResolver {
+export function buildDrizzleM27AbacResolver(
+  db: CostReportDb,
+  /** Injected for tests; production resolves M2's registered seam. */
+  elevatedApprovals: () => ElevatedApprovalReader = () => getSeam("ElevatedApprovalReader"),
+): ReadingM27AbacResolver {
   const CR = schema.costReport;
   const M = schema.memberships;
 
@@ -196,9 +210,15 @@ export function buildDrizzleM27AbacResolver(db: CostReportDb): ReadingM27AbacRes
       });
     },
 
-    // M2 per-tenant elevated-approval flag — NOT a landed column / seam. Fail-closed: the approver denies.
-    async hasElevatedApproval() {
-      return false;
+    // GAP-043 — the per-tenant designation, from M2. `COST_REPORT_APPROVAL_KIND` is a literal here rather
+    // than an import: M27 must not take a compile edge on M2's module, and the value is the one the spec's
+    // own §4.7 pseudo-code names (`hasElevatedApproval(ctx.membershipId, 'cost_report_approval')`).
+    async hasElevatedApproval(ctx, membershipId) {
+      return elevatedApprovals().hasElevatedApproval({
+        organizationId: ctx.organizationId,
+        membershipId,
+        kind: "cost_report_approval",
+      });
     },
   };
 }
@@ -314,7 +334,10 @@ export function buildM27AbacPredicates(
       if (!inScope) return false;
       const membershipId = actorMembershipId(context);
       if (!membershipId) return false;
-      // The elevated-approval reach is unlanded (fail-closed deny-stub in the Drizzle resolver) → denies.
+      // GAP-043 — a REAL read now (M2's `membership_elevated_approval` via the ElevatedApprovalReader
+      // seam). Note there is deliberately NO permission-based bypass on this conjunct, unlike the scope
+      // check above: `cost_report.edit_any_provider` widens WHICH providers you may act on, it does not
+      // make you a signatory. Both halves must hold.
       return resolver.hasElevatedApproval(readContextOf(context), membershipId);
     },
 

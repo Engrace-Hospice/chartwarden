@@ -278,6 +278,12 @@ export interface IdentityRouteDeps {
    * Omitted → the route falls back to a relative path only (no origin to safely guess).
    */
   webAppBaseUrl?: string;
+  /**
+   * GAP-043 — the per-membership NAMED APPROVAL AUTHORITY surface (§3.7). Omitted → the three
+   * elevated-approval routes are not mounted at all, rather than mounted over a store that cannot
+   * persist: a 404 on an unmounted route is honest, a 200 from a write nobody can read back is not.
+   */
+  elevatedApprovals?: import("./elevated-approvals").ElevatedApprovalService;
 }
 
 // --- Slice in-memory adapters ------------------------------------------------------------

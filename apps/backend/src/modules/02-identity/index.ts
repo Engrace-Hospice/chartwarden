@@ -10,6 +10,23 @@ export {
   type IdentitySeamDeps,
   registerIdentitySeams,
 } from "./seams";
+// GAP-043 — the §3.7 per-membership NAMED APPROVAL AUTHORITY surface: the `ElevatedApprovalReader` seam
+// M27's §4.7 approver predicate reads, and the grant/revoke service its admin routes drive.
+export {
+  type ElevatedApprovalGrantView,
+  type ElevatedApprovalKind,
+  type ElevatedApprovalService,
+  type ElevatedApprovalStore,
+  type SeedElevatedApproval,
+  COST_REPORT_APPROVAL_KIND,
+  ELEVATED_APPROVAL_KINDS,
+  createDrizzleElevatedApprovalStore,
+  createElevatedApprovalReader,
+  createElevatedApprovalService,
+  createInMemoryElevatedApprovalStore,
+  getElevatedApprovalReader,
+  registerElevatedApprovalSeam,
+} from "./elevated-approvals";
 export {
   type ResolvedStepUpPolicy,
   type SessionStepUpState,
@@ -105,6 +122,10 @@ import {
   createDbInvitationStore as _dbInvitations,
   createDbUserDirectory as _dbUserDirectory,
 } from "./identity-stores-db";
+import {
+  createDrizzleElevatedApprovalStore as _drizzleElevatedApprovalStore,
+  createElevatedApprovalService as _elevatedApprovalService,
+} from "./elevated-approvals";
 import { createDbMembershipRepository as _dbMemberships } from "./membership-repository";
 import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
 import { createDbSessionWriter as _dbSessionWriter } from "./session-writer-db";
@@ -150,6 +171,10 @@ export function mountIdentityRoutes(
     collaborators: _collabStore().store, // no table exists — see the header
     users: _dbUserDirectory(db),
     audit: db,
+    // GAP-043 — the §3.7 named-approval-authority write surface over the real table. This is what makes
+    // M27's approver predicate reachable: the seam READS `membership_elevated_approval`, these routes are
+    // the only thing that ever puts a row in it.
+    elevatedApprovals: _elevatedApprovalService(_drizzleElevatedApprovalStore(db)),
     ...(invite?.emailTransport ? { emailTransport: invite.emailTransport } : {}),
     ...(invite?.webAppBaseUrl ? { webAppBaseUrl: invite.webAppBaseUrl } : {}),
   };

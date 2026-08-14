@@ -15,6 +15,13 @@ import { getSeam, registerSeam } from "../../../bootstrap/index";
 export interface CareTeamStore {
   /** Every distinct clinician user id with an OPEN patient_assignment for (org, patient). */
   listMembers(organizationId: string, patientId: string): Promise<readonly string[]>;
+  /**
+   * The clinician user id on the OPEN `primary_rn` assignment for (org, patient), or null (GAP-022).
+   * Separate from {@link listMembers} rather than a filter the caller applies afterwards: the role lives
+   * on the assignment row, and returning every member's role to let a consumer pick would leak the whole
+   * roster to answer a one-clinician question.
+   */
+  findPrimaryRn(organizationId: string, patientId: string): Promise<string | null>;
 }
 
 /** Build the real {@link CareTeamProvider} over an injected store (slice in-memory; Drizzle in prod). */
@@ -22,6 +29,9 @@ export function createCareTeamProvider(store: CareTeamStore): CareTeamProvider {
   return {
     async careTeamMembers({ organizationId, patientId }) {
       return store.listMembers(organizationId, patientId);
+    },
+    async primaryRnUserId({ organizationId, patientId }) {
+      return store.findPrimaryRn(organizationId, patientId);
     },
   };
 }
@@ -50,7 +60,12 @@ export interface SeedCareTeamAssignment {
   readonly organizationId: string;
   readonly patientId: string;
   readonly clinicianUserId: string;
+  /** The `patient_assignment_role` value; defaults to a non-case-manager role (GAP-022). */
+  readonly role?: string;
 }
+
+/** The `patient_assignment_role` member that IS the RN case manager (§3.5; one open row per patient). */
+export const PRIMARY_RN_ASSIGNMENT_ROLE = "primary_rn";
 
 /** An in-memory {@link CareTeamStore} for the slice/tests. Deterministic, no I/O. */
 export function createInMemoryCareTeamStore(seed: readonly SeedCareTeamAssignment[] = []): {
@@ -58,14 +73,23 @@ export function createInMemoryCareTeamStore(seed: readonly SeedCareTeamAssignmen
 } {
   const key = (o: string, p: string) => `${o} ${p}`;
   const byPatient = new Map<string, Set<string>>();
+  const primaryRnByPatient = new Map<string, string>();
   for (const a of seed) {
     const k = key(a.organizationId, a.patientId);
     (byPatient.get(k) ?? byPatient.set(k, new Set()).get(k)!).add(a.clinicianUserId);
+    // First seeded primary_rn wins — mirrors the DB's partial unique index (at most one open row), so a
+    // seed that violates it behaves like the DB would rather than silently picking the last writer.
+    if (a.role === PRIMARY_RN_ASSIGNMENT_ROLE && !primaryRnByPatient.has(k)) {
+      primaryRnByPatient.set(k, a.clinicianUserId);
+    }
   }
   return {
     store: {
       async listMembers(organizationId, patientId) {
         return [...(byPatient.get(key(organizationId, patientId)) ?? [])];
+      },
+      async findPrimaryRn(organizationId, patientId) {
+        return primaryRnByPatient.get(key(organizationId, patientId)) ?? null;
       },
     },
   };

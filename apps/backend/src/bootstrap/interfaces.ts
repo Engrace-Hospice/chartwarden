@@ -40,6 +40,7 @@ export type {
   CertificationReader,
   ComfortKitDispatchProvider,
   CredentialReader,
+  ElevatedApprovalReader,
   DataClass,
   DataEraser,
   AdmissionOnsetReader,

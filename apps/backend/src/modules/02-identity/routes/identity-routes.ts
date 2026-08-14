@@ -461,6 +461,105 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     return reply.code(200).send({ revoked: true });
   });
 
+  // --- §3.7 Named approval authority (GAP-043) ------------------------------------------
+  // The ENTRANCE for `membership_elevated_approval`. M27's §4.7 `cost_report_approver_for_provider`
+  // predicate reads this designation through M2's `ElevatedApprovalReader` seam; without a way to make
+  // one, wiring that read would have left the approver gate denying for a new reason instead of the old
+  // one. Gated on `member.manage` — the same permission every sibling member-lifecycle route uses, since
+  // designating a signatory is a membership-administration act. (Deliberately NOT step-up gated: the
+  // sibling routes are not, and adding a ceremony here only would be an inconsistency, not a control.
+  // The step-up requirement lives where the spec puts it — on M27's submit/reopen actions themselves.)
+  const requireElevatedApprovals = () => {
+    const service = deps.elevatedApprovals;
+    if (!service) throw new WardenXError("NOT_FOUND", "not found", 404);
+    return service;
+  };
+
+  /** Resolve + validate the target membership belongs to this org (no cross-tenant designation). */
+  async function targetMembership(request: FastifyRequest, orgId: string, mId: string) {
+    assertOrgMatch(request, orgId);
+    const membership = await deps.memberships.get(mId);
+    if (!membership || membership.organizationId !== orgId) {
+      throw new WardenXError("NOT_FOUND", "membership not found", 404);
+    }
+    return membership;
+  }
+
+  app.get("/api/v1/orgs/:id/members/:mId/elevated-approvals", async (request) => {
+    await requirePermission("member.manage")(request);
+    const service = requireElevatedApprovals();
+    const { id: orgId, mId } = request.params as { id: string; mId: string };
+    await targetMembership(request, orgId, mId);
+    // Live AND revoked, newest first — the point of the register is that a surveyor can see who held
+    // the authority when, not just who holds it today.
+    return { grants: await service.list(orgId, mId) };
+  });
+
+  app.post("/api/v1/orgs/:id/members/:mId/elevated-approvals", async (request, reply) => {
+    await requirePermission("member.manage")(request);
+    const service = requireElevatedApprovals();
+    const { id: orgId, mId } = request.params as { id: string; mId: string };
+    await targetMembership(request, orgId, mId);
+    const actor = await resolveActor(deps, request);
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const kind = readString(body, "approvalKind");
+    const grantReason = readString(body, "grantReason");
+    if (grantReason.trim().length < 10) {
+      throw new ValidationError("grantReason too short", [
+        {
+          field: "grantReason",
+          code: "TOO_SHORT",
+          message: "grantReason must be at least 10 characters (the CHECK constraint agrees)",
+        },
+      ]);
+    }
+    // The granter is a MEMBERSHIP, not a user: the FK targets `membership`, and an authority granted by
+    // "some user" would not say which of their org memberships acted.
+    if (!actor.membershipId) throw new UnauthorizedError();
+    const grant = await service.grant({
+      organizationId: orgId,
+      membershipId: mId,
+      kind,
+      grantedByMembershipId: actor.membershipId,
+      grantReason,
+    });
+    return reply.code(201).send(grant);
+  });
+
+  app.delete(
+    "/api/v1/orgs/:id/members/:mId/elevated-approvals/:kind",
+    async (request, reply) => {
+      await requirePermission("member.manage")(request);
+      const service = requireElevatedApprovals();
+      const { id: orgId, mId, kind } = request.params as {
+        id: string;
+        mId: string;
+        kind: string;
+      };
+      await targetMembership(request, orgId, mId);
+      const actor = await resolveActor(deps, request);
+      const revokedReason = readString(request.body, "revokedReason");
+      if (revokedReason.trim().length < 10) {
+        throw new ValidationError("revokedReason too short", [
+          {
+            field: "revokedReason",
+            code: "TOO_SHORT",
+            message: "revokedReason must be at least 10 characters (the CHECK constraint agrees)",
+          },
+        ]);
+      }
+      if (!actor.membershipId) throw new UnauthorizedError();
+      const revoked = await service.revoke({
+        organizationId: orgId,
+        membershipId: mId,
+        kind,
+        revokedByMembershipId: actor.membershipId,
+        revokedReason,
+      });
+      return reply.code(200).send(revoked);
+    },
+  );
+
   app.post("/api/v1/users/:id/deactivate", async (request, reply) => {
     // §4.7: org_admin (own org) or platform_ops (any) hold `user.deactivate`; the resolver
     // grants it per the assigned role templates.

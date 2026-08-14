@@ -3584,3 +3584,11 @@ export const credentialDiscipline = pgEnum("credential_discipline", [
  *  `revoked` both fail it (fail-closed) but are kept distinct for the audit trail (why access
  *  stopped, not just that it did). */
 export const credentialStatus = pgEnum("credential_status", ["active", "suspended", "revoked"]);
+
+/** `elevated_approval_kind` — GAP-043, `membership_elevated_approval.approval_kind`. A NAMED authority a
+ *  tenant grants to a specific membership, over and above the RBAC permission that lets it reach the
+ *  route at all. `cost_report_approval` is the first: M27's §4.7 `cost_report_approver_for_provider`
+ *  predicate keys on it (spec pseudo-code `hasElevatedApproval(membershipId, 'cost_report_approval')`),
+ *  because certifying a CMS-1984-14 filing is a named-officer act, not something every membership
+ *  holding `cost_report.approve_for_submit` should inherit. Additive: a new authority adds a member. */
+export const elevatedApprovalKind = pgEnum("elevated_approval_kind", ["cost_report_approval"]);
