@@ -37,6 +37,7 @@ import {
   labMatchMethod,
   labResultStatus,
   labTerminologyValidation,
+  labUnmatchedResolution,
   labValueType,
 } from "./enums";
 
@@ -125,6 +126,16 @@ export const labObservationInboundLink = pgTable(
     candidatePatientId: uuid("candidate_patient_id"),
     candidateMatchLevel: hl7InboundMatchLevel("candidate_match_level"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // ── §4.2 review-queue EXIT (GAP-044, migration 0200) ──
+    // `resolved_at IS NULL` IS the unmatched queue. All three of resolution/resolved_at/resolved_by are
+    // written together or not at all (`lol_resolution_consistent`); a discard additionally requires a
+    // ≥10-char reason (`lol_discard_reason_required`, §5.2.4). Both CHECKs live in SQL — Drizzle cannot
+    // express the cross-column shape, and the queue's audit trail is exactly what must not drift.
+    resolution: labUnmatchedResolution("resolution"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedByMembershipId: uuid("resolved_by_membership_id"),
+    /** The bind's optional note or the discard's REQUIRED reason — one reviewer justification column. */
+    resolutionReason: text("resolution_reason"),
   },
   (t) => ({
     observationIdx: index("idx_lol_observation").on(t.observationId),

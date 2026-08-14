@@ -33,6 +33,12 @@ import {
 } from "@wardenx/types";
 
 import { canExternalFeedTransition, externalFeedCoApprovalSatisfied } from "../feed/lifecycle";
+import type { UnmatchedReviewRefused } from "../inbound/unmatched-lab-review";
+import {
+  type UnmatchedLabQueueItem,
+  planUnmatchedBind,
+  planUnmatchedDiscard,
+} from "../inbound/unmatched-lab-review";
 import {
   ProposalAlreadyDecidedError,
   ProposalRejectRationaleRequiredError,
@@ -179,6 +185,22 @@ export interface UnmatchedLabView {
   readonly candidatePatientId: string | null;
   readonly candidateMatchLevel: string | null;
   readonly createdAt: string;
+  /**
+   * The OBX rows persisted under the RESERVED observation id (GAP-044). §5.2.4 requires the reviewer's
+   * detail panel to show the result — you cannot decide which patient a lab belongs to from an id and a
+   * LOINC alone. Empty only for a result whose ORU carried no non-PDF OBX segments.
+   */
+  readonly values: readonly LabObservationValueView[];
+}
+
+/** The outcome of a §4.2 review decision — the route maps a refusal to its HTTP status. */
+export interface UnmatchedReviewResult {
+  readonly observationId: string;
+  readonly resolution: "manually_matched" | "discarded";
+  readonly resolvedAt: string;
+  readonly resolvedByMembershipId: string;
+  /** The bound patient (bind only). */
+  readonly patientId?: string;
 }
 
 export interface NppesProviderView {
@@ -382,6 +404,28 @@ export interface M29Store {
     orgId: string,
     filter: { limit?: number; cursor?: string },
   ): Promise<Page<UnmatchedLabView>>;
+  /**
+   * GAP-044 — bind an unmatched result to a patient: materialize the deferred `lab_observation` parent
+   * under the reserved id, flip the link to `manual`, stamp the reviewer, emit
+   * `m29.lab_observation.manually_matched`. All in ONE transaction.
+   */
+  bindUnmatchedObservation(
+    orgId: string,
+    membershipId: string,
+    observationId: string,
+    args: { patientId: string; note?: string },
+  ): Promise<UnmatchedReviewResult>;
+  /**
+   * GAP-044 — discard an unmatched result: soft-tombstone the link row with a ≥10-char reason (§5.2.4),
+   * emit `m29.lab_observation.discarded`. The link + its value rows are RETAINED (§8, 180 days); they
+   * simply stop surfacing in the queue.
+   */
+  discardUnmatchedObservation(
+    orgId: string,
+    membershipId: string,
+    observationId: string,
+    args: { reason: string },
+  ): Promise<UnmatchedReviewResult>;
 }
 
 /** Thrown for a Phase-1-deferred surface — mapped to a 501 by the route (honest "not yet", not a 404). */
@@ -389,6 +433,43 @@ export class M29StoreError extends WardenXError {
   constructor(message: string, statusCode = 501) {
     super("NOT_IMPLEMENTED", message, statusCode);
     this.name = "M29StoreError";
+  }
+}
+
+/**
+ * The narrow M5 read the manual bind needs — structurally a subset of the `PatientReader` seam M29 already
+ * consumes for the match cascade. Declared here so the store takes no seam-registry import; the
+ * composition root passes `getPatientReader()` straight in.
+ */
+export interface M29BindPatientResolver {
+  findById(input: {
+    organizationId: string;
+    id: string;
+  }): Promise<{ readonly id: string; readonly providerEntityId?: string | null } | null>;
+}
+
+/**
+ * Map a pure review refusal to its wire error. Shared by both store implementations so the in-memory
+ * route tests exercise the SAME status codes production returns.
+ */
+export function throwReviewRefusal(refusal: UnmatchedReviewRefused): never {
+  switch (refusal.reason) {
+    case "already_resolved":
+    case "not_an_unmatched_result":
+    case "no_result_values":
+      throw new ConflictError(refusal.message);
+    case "reason_too_short":
+      throw new ValidationError(refusal.message, [
+        { field: "reason", code: "TOO_SHORT", message: refusal.message },
+      ]);
+    case "patient_not_found":
+      throw new ValidationError(refusal.message, [
+        { field: "patientId", code: "NOT_FOUND", message: refusal.message },
+      ]);
+    case "patient_has_no_provider_entity":
+      throw new ValidationError(refusal.message, [
+        { field: "patientId", code: "NO_PROVIDER_ENTITY", message: refusal.message },
+      ]);
   }
 }
 
@@ -405,17 +486,24 @@ export interface InMemoryM29Seed {
   readonly observations?: readonly (Partial<LabObservationDetail> & { organizationId: string })[];
 }
 
+/** A seedable unmatched-lab queue item (the link row + its persisted OBX values). */
+export type MemUnmatchedLab = UnmatchedLabQueueItem & { readonly obrPlacerOrderNumber: string | null };
+
 /** A deterministic in-memory {@link M29Store} — the route/abac tests seed it and pin the clock. */
-export function createInMemoryM29Store(opts: { now?: () => string } = {}): M29Store & {
+export function createInMemoryM29Store(
+  opts: { now?: () => string; patients?: M29BindPatientResolver } = {},
+): M29Store & {
   seedFeed(orgId: string, feed: Partial<MemFeed> & { id: string }): MemFeed;
   seedProposal(orgId: string, p: Partial<MemProposal> & { id: string }): MemProposal;
   seedObservation(orgId: string, o: Partial<LabObservationDetail> & { id: string }): void;
+  seedUnmatched(orgId: string, u: Partial<MemUnmatchedLab> & { observationId: string }): void;
 } {
   const now = opts.now ?? (() => new Date().toISOString());
   const feeds = new Map<string, MemFeed & { organizationId: string }>();
   const creds = new Map<string, MemCredential & { organizationId: string }>();
   const proposals = new Map<string, MemProposal & { organizationId: string }>();
   const observations = new Map<string, LabObservationDetail & { organizationId: string }>();
+  const unmatched = new Map<string, { -readonly [K in keyof MemUnmatchedLab]: MemUnmatchedLab[K] }>();
 
   const feedDetailOf = (f: MemFeed): FeedDetail => ({ ...f });
 
@@ -541,6 +629,32 @@ export function createInMemoryM29Store(opts: { now?: () => string } = {}): M29St
     });
   }
 
+  function seedUnmatched(
+    orgId: string,
+    u: Partial<MemUnmatchedLab> & { observationId: string },
+  ): void {
+    unmatched.set(u.observationId, {
+      linkId: u.linkId ?? randomUUID(),
+      organizationId: orgId,
+      observationId: u.observationId,
+      sourceMessageId: u.sourceMessageId ?? randomUUID(),
+      obrPlacerOrderNumber: u.obrPlacerOrderNumber ?? null,
+      matchMethod: u.matchMethod ?? "unmatched",
+      candidatePatientId: u.candidatePatientId ?? null,
+      resolvedAt: u.resolvedAt ?? null,
+      createdAt: u.createdAt ?? new Date(now()),
+      values: u.values ?? [],
+    });
+  }
+
+  const requireUnmatched = (orgId: string, observationId: string) => {
+    const item = unmatched.get(observationId);
+    if (!item || item.organizationId !== orgId) {
+      throw new NotFoundError("lab_observation_inbound_link", observationId);
+    }
+    return item;
+  };
+
   const page = <T>(items: readonly T[], limit?: number): Page<T> => ({
     items: items.slice(0, limit ?? 50),
   });
@@ -549,6 +663,7 @@ export function createInMemoryM29Store(opts: { now?: () => string } = {}): M29St
     seedFeed,
     seedProposal,
     seedObservation,
+    seedUnmatched,
 
     async listFeeds(orgId, filter) {
       const items = [...feeds.values()]
@@ -800,8 +915,92 @@ export function createInMemoryM29Store(opts: { now?: () => string } = {}): M29St
       const o = observations.get(observationId);
       return o && o.organizationId === orgId ? { ...o } : null;
     },
-    async listUnmatchedObservations() {
-      return { items: [] };
+    async listUnmatchedObservations(orgId, filter) {
+      const items = [...unmatched.values()]
+        .filter((u) => u.organizationId === orgId && u.resolvedAt === null)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .map(
+          (u): UnmatchedLabView => ({
+            id: u.linkId,
+            observationId: u.observationId,
+            sourceMessageId: u.sourceMessageId,
+            obrPlacerOrderNumber: u.obrPlacerOrderNumber,
+            matchMethod: u.matchMethod,
+            candidatePatientId: u.candidatePatientId,
+            candidateMatchLevel: null,
+            createdAt: u.createdAt.toISOString(),
+            values: u.values.map((v) => ({
+              obxSetId: v.obxSetId,
+              loincCode: v.loincCode,
+              loincDisplayText: v.loincDisplayText,
+              valueType: "ST",
+              numericValue: null,
+              stringValue: null,
+              units: null,
+              referenceRange: null,
+              abnormalFlag: v.abnormalFlag,
+            })),
+          }),
+        );
+      return page(items, filter.limit);
+    },
+
+    async bindUnmatchedObservation(orgId, membershipId, observationId, args) {
+      const item = requireUnmatched(orgId, observationId);
+      const patient = (await opts.patients?.findById({ organizationId: orgId, id: args.patientId })) ?? null;
+      if (patient === null) {
+        throwReviewRefusal({
+          kind: "refused",
+          reason: "patient_not_found",
+          message: `patient ${args.patientId} does not resolve in this tenant`,
+        });
+      }
+      const decidedAt = new Date(now());
+      const decision = planUnmatchedBind(item, {
+        patient: { patientId: patient.id, providerEntityId: patient.providerEntityId ?? null },
+        decidedByMembershipId: membershipId,
+        ...(args.note === undefined ? {} : { note: args.note }),
+        now: decidedAt,
+      });
+      if (decision.kind === "refused") throwReviewRefusal(decision);
+      item.matchMethod = "manual";
+      item.candidatePatientId = decision.linkPatch.candidatePatientId;
+      item.resolvedAt = decidedAt;
+      // The deferred parent materializes here too, so a bound result is immediately readable.
+      seedObservation(orgId, {
+        id: observationId,
+        patientId: decision.linkPatch.candidatePatientId,
+        loincCode: decision.observation.loincCode,
+        loincDisplayText: decision.observation.loincDisplayText,
+        abnormalSummary: decision.observation.abnormalSummary,
+        observationDate: decision.observation.observationDate.toISOString(),
+        receivedAt: decision.observation.receivedAt?.toISOString() ?? decidedAt.toISOString(),
+      });
+      return {
+        observationId,
+        resolution: "manually_matched",
+        resolvedAt: decidedAt.toISOString(),
+        resolvedByMembershipId: membershipId,
+        patientId: decision.linkPatch.candidatePatientId,
+      };
+    },
+
+    async discardUnmatchedObservation(orgId, membershipId, observationId, args) {
+      const item = requireUnmatched(orgId, observationId);
+      const decidedAt = new Date(now());
+      const decision = planUnmatchedDiscard(item, {
+        reason: args.reason,
+        decidedByMembershipId: membershipId,
+        now: decidedAt,
+      });
+      if (decision.kind === "refused") throwReviewRefusal(decision);
+      item.resolvedAt = decidedAt;
+      return {
+        observationId,
+        resolution: "discarded",
+        resolvedAt: decidedAt.toISOString(),
+        resolvedByMembershipId: membershipId,
+      };
     },
   };
 }

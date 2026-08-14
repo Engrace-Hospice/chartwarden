@@ -50,6 +50,48 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
 
+  // ── §4.2 / §4.10 unmatched-lab review decisions (GAP-044) ─────────────────────────────────────────
+  // Both are record-only. The spec's §4.10 table lists M4 (and M11 for the bind) as consumers, but M4 is
+  // the AUDIT module — its record is the write-audit trigger on the row itself, not an outbox
+  // subscription — and M11's `order_record.fulfillment_status` flip keys on `m29.lab_observation
+  // .attached`/`.received`, which a manual bind of an UNMATCHED result does not produce: an unmatched lab
+  // has no OBR-2 placer, therefore no M11 order to fulfil. Declaring a consumer nobody binds would leave
+  // every decision permanently `pending`; the row IS the durable record here.
+  {
+    eventName: "m29.lab_observation.manually_matched",
+    moduleOwner: "m29",
+    description:
+      "A reviewer bound an unmatched lab result to a patient (§4.2) — the deferred lab_observation parent was materialized under the reserved id and the inbound link flipped to match_method='manual'.",
+    payloadSchema: Type.Object({
+      observationId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+      sourceMessageId: Type.String({ minLength: 1 }),
+      loincCode: Type.String(),
+      abnormalSummary: Type.String({ minLength: 1 }),
+      decidedByMembershipId: Type.String({ minLength: 1 }),
+      decidedAt: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m29.lab_observation.discarded",
+    moduleOwner: "m29",
+    description:
+      "A reviewer discarded an unmatched lab result (§4.2/§5.2.4, reason ≥10 chars) — the link row and its OBX values are retained per §8 (180 days) but stop surfacing in the queue. No lab_observation was ever created.",
+    payloadSchema: Type.Object({
+      observationId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      sourceMessageId: Type.String({ minLength: 1 }),
+      decidedByMembershipId: Type.String({ minLength: 1 }),
+      decidedAt: Type.String({ minLength: 1 }),
+      reason: Type.String({ minLength: 10 }),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+
   // ── §4.7 / §4.10 NPPES platform sync (GAP-045) ────────────────────────────────────────────────────
   // These five are PLATFORM-WIDE: every row publishes with `organization_id IS NULL` (one public CMS
   // directory, no tenant it belongs to). `provider_synced` / `provider_deactivated` declare `m40` because

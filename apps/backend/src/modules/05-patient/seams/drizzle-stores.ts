@@ -43,6 +43,7 @@ type PatientRow = {
   dob: string;
   sexAssignedAtBirth: string;
   mergedIntoId: string | null;
+  providerEntityId: string | null;
 };
 
 const PATIENT_COLUMNS = {
@@ -54,6 +55,7 @@ const PATIENT_COLUMNS = {
   dob: P.dob,
   sexAssignedAtBirth: P.sexAssignedAtBirth,
   mergedIntoId: P.mergedIntoId,
+  providerEntityId: P.providerEntityId,
 } as const;
 
 type SeamTx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
@@ -106,6 +108,8 @@ async function identitiesFor(tx: SeamTx, rows: readonly PatientRow[]): Promise<P
     administrativeSex: r.sexAssignedAtBirth,
     ...(ssnByPatient.has(r.id) ? { ssnLast4: ssnByPatient.get(r.id) } : {}),
     ...(r.mergedIntoId !== null ? { mergedIntoId: r.mergedIntoId } : {}),
+    // GAP-044 — the agency M29's manual lab bind stamps on the materialized observation (ARCH-011).
+    providerEntityId: r.providerEntityId,
   }));
 }
 

@@ -117,6 +117,7 @@ import {
   createDrizzlePatientMutatorStore,
   createDrizzlePatientReaderStore,
   getPatientCoverageReader,
+  getPatientReader,
   mountPatientRoutes,
   registerPatientErasers,
   registerPatientSeams,
@@ -2982,8 +2983,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // GAP-045 — the §4.1.4 NPPES sync trigger is REAL: it enqueues onto the same
           // `nppes-sync-platform` queue the D11 nightly repeatable fires (503 when this deployment has no
           // queue connection, never a blanket 501).
+          // GAP-044 — the §4.2 unmatched-lab review queue's exit. `patients` is a THUNK: the manual bind
+          // resolves its target (and that patient's agency, ARCH-011) through M5's PatientReader seam,
+          // which is registered by `wireModuleSeams()` AFTER this mount runs.
           mountM29Routes(app, {
-            store: createDrizzleM29Store(dbHandle.db, { outbox: m29OutboxPublisher }),
+            store: createDrizzleM29Store(dbHandle.db, {
+              outbox: m29OutboxPublisher,
+              patients: () => getPatientReader(),
+            }),
             ...(m29NppesSync ? { nppesSyncTrigger: m29NppesSync.trigger } : {}),
           });
         }

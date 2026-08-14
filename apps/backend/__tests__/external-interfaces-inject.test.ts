@@ -31,11 +31,13 @@
 //   - `POST /nppes/sync-runs` answers 403 for a normal tenant actor — `nppes_platform_job_caller` is
 //     platform-only by design (W-XI-12; a tenant session carries no platform-operator fact). This file also
 //     proves the guard chain is wired past that ABAC gate (not merely closed by accident): with a
-//     test-local `isPlatformOperator` attribute set, the SAME request reaches the handler and answers 501 —
-//     the honest "the platform scheduler owns this job, no tenant-triggered path in Phase 1" deferral.
-//   - `POST /observations/:id/attach-patient` and `POST /observations/:id/discard` both answer 501 — manual
-//     bind/discard of an unmatched lab result is T-29.13, explicitly deferred per the route file's header.
+//     test-local `isPlatformOperator` attribute set, the SAME request reaches the handler and — since
+//     GAP-045 — ENQUEUES a real sync run (202), or 503s when this deployment has no queue connection.
 // None of these is a guessed status: each is read off the route/store source before being asserted.
+//
+// GAP-044/045 moved three routes off that list. `POST /nppes/sync-runs` now enqueues (above), and the two
+// unmatched-lab review exits — `POST /observations/:id/attach-patient` and `.../discard` — are real writes
+// against a seeded queue item, no longer 501s pointing at the FRONTEND task T-29.13.
 import {
   createInMemoryEffectivePermissionStore,
   createPredicateRegistry,
@@ -96,8 +98,13 @@ const PROPOSAL_REJECT = "20000000-0000-4000-8000-000000000003";
 const PROPOSAL_DEFER = "20000000-0000-4000-8000-000000000004";
 
 const OBS_ABNORMAL = "30000000-0000-4000-8000-000000000001";
+/** The RESERVED observation id of a seeded unmatched-lab queue item (GAP-044) — no parent row bears it. */
+const OBS_UNMATCHED = "30000000-0000-4000-8000-000000000002";
 const OBS_PATIENT = "40000000-0000-4000-8000-000000000001";
 const ATTACH_PATIENT = "40000000-0000-4000-8000-000000000002";
+/** A patient with no `provider_entity_id` — the ARCH-011 refusal path on the manual bind. */
+const PATIENT_NO_AGENCY = "40000000-0000-4000-8000-000000000003";
+const PROVIDER_ENTITY = "50000000-0000-4000-8000-0000000000e1";
 
 // The twenty-one §4.7 keys M29 contributes (`M29_PERMISSION_KEY_LIST`).
 const ALL_M29_PERMISSIONS = [...M29_PERMISSION_KEY_LIST];
@@ -156,7 +163,18 @@ function buildM29TestAbacResolver(
 }
 
 function makeServer(opts: { nppesSyncTrigger?: NppesSyncTriggerPort } = {}) {
-  const store = createInMemoryM29Store({ now: () => NOW });
+  const store = createInMemoryM29Store({
+    now: () => NOW,
+    // The M5 `PatientReader` slice the manual unmatched-lab bind resolves its target through — the agency
+    // it returns is what ARCH-011 requires on the materialized `lab_observation`.
+    patients: {
+      async findById({ id }) {
+        if (id === ATTACH_PATIENT) return { id, providerEntityId: PROVIDER_ENTITY };
+        if (id === PATIENT_NO_AGENCY) return { id, providerEntityId: null };
+        return null;
+      },
+    },
+  });
 
   const grantStore = createInMemoryEffectivePermissionStore(
     PERMISSION_SEED.map((s) => ({
@@ -216,6 +234,22 @@ function makeServer(opts: { nppesSyncTrigger?: NppesSyncTriggerPort } = {}) {
         units: "mg/dL",
         referenceRange: "70-110",
         abnormalFlag: "HH",
+      },
+    ],
+  });
+
+  // One unmatched-lab queue item: the reserved observation id plus the OBX rows ingest persisted under
+  // it. The `lab_observation` parent deliberately does NOT exist — the bind is what creates it.
+  store.seedUnmatched(ORG, {
+    observationId: OBS_UNMATCHED,
+    values: [
+      {
+        obxSetId: 1,
+        loincCode: "718-7",
+        loincDisplayText: "Hemoglobin",
+        terminologyValidation: "valid",
+        abnormalFlag: "L",
+        receivedAt: new Date(NOW),
       },
     ],
   });
@@ -682,7 +716,7 @@ describe("M29-external-interfaces-inject — §4.2 clinician lab surface (routes
     await app.close();
   });
 
-  it("route 29 — GET /observations/unmatched → 200 (real, if empty, page)", async () => {
+  it("route 29 — GET /observations/unmatched surfaces the queue item WITH its result values (§5.2.4)", async () => {
     const { app } = makeServer();
     const res = await app.inject({
       method: "GET",
@@ -690,7 +724,13 @@ describe("M29-external-interfaces-inject — §4.2 clinician lab surface (routes
       headers: SUPER,
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().items).toEqual([]);
+    const [item] = res.json().items;
+    expect(item.observationId).toBe(OBS_UNMATCHED);
+    expect(item.matchMethod).toBe("unmatched");
+    // The reviewer cannot decide which patient a result belongs to from an id and a LOINC alone; the
+    // detail panel is the whole point of the queue.
+    expect(item.values).toHaveLength(1);
+    expect(item.values[0]).toMatchObject({ loincCode: "718-7", abnormalFlag: "L" });
     await app.close();
   });
 
@@ -706,29 +746,85 @@ describe("M29-external-interfaces-inject — §4.2 clinician lab surface (routes
     await app.close();
   });
 
-  it("route 31 — POST /observations/:id/attach-patient → 501 (manual bind of an unmatched result is T-29.13; step-up)", async () => {
+  it("route 31 — POST /observations/:id/attach-patient BINDS the unmatched result (GAP-044; step-up)", async () => {
     const { app } = makeServer();
     const res = await app.inject({
       method: "POST",
-      url: `/api/clinical/labs/observations/${OBS_ABNORMAL}/attach-patient`,
+      url: `/api/clinical/labs/observations/${OBS_UNMATCHED}/attach-patient`,
       headers: SUPER,
-      payload: { patientId: ATTACH_PATIENT },
+      payload: { patientId: ATTACH_PATIENT, note: "MRN typo on the sender side" },
     });
-    expect(res.statusCode).toBe(501);
-    expect(res.json().error.code).toBe("NOT_IMPLEMENTED");
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      observationId: OBS_UNMATCHED,
+      resolution: "manually_matched",
+      patientId: ATTACH_PATIENT,
+    });
+    // Bound items leave the queue.
+    const queue = await app.inject({
+      method: "GET",
+      url: "/api/clinical/labs/observations/unmatched",
+      headers: SUPER,
+    });
+    expect(queue.json().items).toHaveLength(0);
     await app.close();
   });
 
-  it("route 32 — POST /observations/:id/discard → 501 (discard lands with the manual bind, T-29.13; step-up)", async () => {
+  it("route 31 — a second bind of the same result is a 409, not a silent re-bind", async () => {
+    const { app } = makeServer();
+    const bind = () =>
+      app.inject({
+        method: "POST",
+        url: `/api/clinical/labs/observations/${OBS_UNMATCHED}/attach-patient`,
+        headers: SUPER,
+        payload: { patientId: ATTACH_PATIENT },
+      });
+    expect((await bind()).statusCode).toBe(200);
+    expect((await bind()).statusCode).toBe(409);
+    await app.close();
+  });
+
+  it("route 31 — a patient with no provider entity is refused (ARCH-011), not filed against a null agency", async () => {
     const { app } = makeServer();
     const res = await app.inject({
       method: "POST",
-      url: `/api/clinical/labs/observations/${OBS_ABNORMAL}/discard`,
+      url: `/api/clinical/labs/observations/${OBS_UNMATCHED}/attach-patient`,
+      headers: SUPER,
+      payload: { patientId: PATIENT_NO_AGENCY },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.message).toMatch(/provider entity/i);
+    await app.close();
+  });
+
+  it("route 32 — POST /observations/:id/discard tombstones the queue item (GAP-044; step-up)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/clinical/labs/observations/${OBS_UNMATCHED}/discard`,
       headers: SUPER,
       payload: { reason: "duplicate result, already reconciled" },
     });
-    expect(res.statusCode).toBe(501);
-    expect(res.json().error.code).toBe("NOT_IMPLEMENTED");
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ observationId: OBS_UNMATCHED, resolution: "discarded" });
+    const queue = await app.inject({
+      method: "GET",
+      url: "/api/clinical/labs/observations/unmatched",
+      headers: SUPER,
+    });
+    expect(queue.json().items).toHaveLength(0);
+    await app.close();
+  });
+
+  it("route 32 — a sub-10-character discard reason is refused at the boundary (§5.2.4)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/clinical/labs/observations/${OBS_UNMATCHED}/discard`,
+      headers: SUPER,
+      payload: { reason: "dupe" },
+    });
+    expect(res.statusCode).toBe(422);
     await app.close();
   });
 

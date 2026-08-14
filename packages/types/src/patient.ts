@@ -147,6 +147,13 @@ export interface PatientIdentity {
   readonly administrativeSex: "M" | "F" | "U" | "O" | string;
   readonly ssnLast4?: string;
   readonly mergedIntoId?: string;
+  /**
+   * The patient's agency (`patient.provider_entity_id`, ARCH-011). Added for GAP-044: M29's manual
+   * unmatched-lab bind must materialize a `lab_observation`, whose `provider_entity_id` is NOT NULL, and
+   * M29 may not read M5's table to find it. Optional and possibly `null` — a patient row may predate
+   * agency assignment, and a consumer that needs it must fail closed rather than invent one.
+   */
+  readonly providerEntityId?: string | null;
 }
 
 /**
