@@ -130,6 +130,74 @@ jobs:
       - name: ${{ matrix.suite.name }} — cross-tenant isolation proof (real Postgres + real RLS)
         run: bun run ${{ matrix.suite.script }}
 
+  lifecycle-live:
+    # GAP-086: the 25 per-module read/write LIFECYCLE suites had scripts in package.json and no runner
+    # anywhere — no CI job, no git hook (.githooks/pre-push runs build/arch:fitness/test, and `bun run test`
+    # never sets WARDENX_TEST_DATABASE_URL). They self-SKIP without that variable rather than failing, so
+    # the corpus looked green while 205 assertions had never once executed outside their authors' laptops.
+    #
+    # These are a different proof from `rls-live` above, which asserts the POLICIES at the table level.
+    # These drive the production Drizzle route services — the real write lifecycles, the real transactional
+    # outbox publisher, the real seams — as the NOBYPASSRLS `wardenx_app` role. Turning them on found 23 of
+    # 25 red, including a suite whose license assertion only held for two thirds of any given day.
+    #
+    # Grouped per MODULE (read + write in one runner) rather than one job per script: every suite resets the
+    # schema and replays the migrations itself, so they compose sequentially, and 13 runners instead of 25
+    # halves the per-job migration replay for identical coverage.
+    name: Lifecycle — ${{ matrix.suite.name }} (live Postgres)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - { name: "M6 Admission", scripts: "test:m6:read:live test:m6:write:live" }
+          - { name: "M7 Care Plan", scripts: "test:m7:read:live test:m7:write:live" }
+          - { name: "M8 Encounters", scripts: "test:m8:read:live test:m8:write:live" }
+          - { name: "M9 Assessments", scripts: "test:m9:read:live test:m9:write:live" }
+          - { name: "M10 HOPE", scripts: "test:m10:read:live test:m10:write:live" }
+          - { name: "M11 Orders", scripts: "test:m11:read:live test:m11:write:live" }
+          - { name: "M12 DoseSpot", scripts: "test:m12:read:live test:m12:write:live" }
+          - { name: "M13 eMAR", scripts: "test:m13:read:live test:m13:write:live" }
+          - { name: "M14 IDG", scripts: "test:m14:read:live test:m14:write:live" }
+          - { name: "M17 Scheduling", scripts: "test:m17:read:live test:m17:write:live" }
+          - { name: "M18 EVV", scripts: "test:m18:read:live test:m18:write:live" }
+          - { name: "M22 Documents", scripts: "test:m22:read:live test:m22:write:live" }
+          - { name: "M37 IPU", scripts: "test:m37:write:live" }
+    env:
+      WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+      - name: Install dependencies (frozen lockfile)
+        run: bun install --frozen-lockfile
+      # Same explicit `docker run` + raised lock limit as rls-live, and for the same reason (see that job's
+      # note): these suites replay the full migration set, partitioned parents included, in one transaction.
+      - name: Start Postgres (pgvector image; raised lock limit)
+        run: |
+          docker run -d --name wardenx-ci-pg-lifecycle \
+            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_test \
+            -p 5432:5432 pgvector/pgvector:pg16 \
+            -c max_locks_per_transaction=4096
+          for i in $(seq 1 60); do
+            docker exec wardenx-ci-pg-lifecycle pg_isready -U postgres -d wardenx_test && exit 0
+            sleep 1
+          done
+          echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg-lifecycle; exit 1
+      # A suite that self-skips is a FAILURE here, not a pass: skipping silently is exactly the state this
+      # job exists to end. `--passWithNoTests=false` is vitest's default, but the describe-level
+      # `skipIf(!DB_URL)` would still exit 0 with every case skipped, so assert the variable is set first.
+      - name: ${{ matrix.suite.name }} — production write/read lifecycle over real Postgres + RLS
+        run: |
+          test -n "$WARDENX_TEST_DATABASE_URL" || { echo "WARDENX_TEST_DATABASE_URL unset — the suites would silently skip" >&2; exit 1; }
+          for script in ${{ matrix.suite.scripts }}; do
+            echo "::group::$script"
+            bun run "$script"
+            echo "::endgroup::"
+          done
+
   migration-gate:
     # TASK-040E (OPS-016): scripts/db/migrate.ts is the real production migration path. This job
     # proves it against a disposable database — both the happy path (full chain applies cleanly)

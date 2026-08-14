@@ -29,6 +29,7 @@ import {
   buildM14WorkerDeps,
   runReviewClockSweepCron,
 } from "../src/modules/14-idg/index";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -157,9 +158,9 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
         )
       ).rows[0].id as string;
     }
-    await admin.query("ALTER ROLE wardenx_app LOGIN");
+    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      connectionString: appRoleUrl(DB_URL as string),
     });
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M14_OUTBOX_EVENTS]));
     outbox = {
@@ -233,9 +234,24 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     const m = await seedMeeting(ORG_A, "live");
     await svc.recordAttendance(ORG_A, MEMBER, m, { membershipId: MEMBER, discipline: "rn" });
     await svc.addAgendaItem(ORG_A, MEMBER, m, { kind: "patient_review", patientId: PATIENT });
+    // GAP-086 — `payload` is REQUIRED (`idg_decision.payload` is NOT NULL and the route contract carries a
+    // kind-bearing union). Omitting it, as this suite did, made Drizzle fall through to the column default
+    // and the insert die on a 23502 — the whole reason this case failed the moment it ran anywhere.
     const actionable = await svc.recordDecision(ORG_A, MEMBER, m, {
       patientId: PATIENT,
       decisionKind: "care_plan_update",
+      payload: {
+        kind: "care_plan_update",
+        mutations: [
+          {
+            op: "problem_add",
+            icd10Code: null,
+            snomedCode: null,
+            description: "Increased dyspnea at rest",
+            problemKind: "terminal",
+          },
+        ],
+      },
     });
     expect(actionable.status).toBe("open");
     expect(await eventsFor(actionable.id)).toContain("m14.decision.recorded_open");
@@ -243,6 +259,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     const note = await svc.recordDecision(ORG_A, MEMBER, m, {
       patientId: null,
       decisionKind: "team_note",
+      payload: { kind: "team_note", noteText: "Team reviewed the caseload; no patient-scoped action." },
     });
     expect(await eventsFor(note.id)).not.toContain("m14.decision.recorded_open");
 

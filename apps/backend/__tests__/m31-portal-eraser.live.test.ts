@@ -20,6 +20,7 @@ import type { PatientId } from "@wardenx/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildDrizzlePortalEraseStore, erasePortalRecord } from "../src/modules/31-portal/eraser";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
@@ -131,9 +132,9 @@ describe.skipIf(!DB_URL)("M31 portal destruction eraser — LIVE Postgres (§3.7
     await seedVisit(PATIENT, "in_progress"); // active → must be aborted
     await seedVisit(PATIENT, "ended_clean"); // already ended → ref still shredded
 
-    await admin.query("ALTER ROLE wardenx_app LOGIN");
+    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      connectionString: appRoleUrl(DB_URL as string),
     });
 
     // Run the REAL eraser exactly as registerPortalErasers wires it.

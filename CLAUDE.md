@@ -123,6 +123,16 @@ the prose docs in `docs/architecture/`.
   inputs do not exist yet is expressed as a *registered* predicate that denies and says why
   (`deviceAttestationValid` in `packages/auth/src/abac/registry.ts`), never as an unregistered
   name — both refuse identically, only the first is distinguishable from a mistake.
+- `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
+  Every `test:m<N>:…:live` script in `package.json` must be invoked by a job in
+  `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so
+  with no database it reports SKIPPED rather than failed and `bun run test` stays green either
+  way; a script in `package.json` looks wired but nothing distinguishes one CI runs from one
+  nothing has ever run. That pairing (GAP-086) left the 25 clinical-core **lifecycle** suites —
+  205 assertions over the real Drizzle write paths — unexecuted outside their authors' laptops,
+  and 23 of 25 were red once run. Two CI jobs now cover them: `rls-live` (table-level policy
+  proof) and `lifecycle-live` (the production route services as the NOBYPASSRLS `wardenx_app`
+  role, grouped per module).
 - `scripts/audit-fitness.ts` — point-in-time enforcement audit (module matrix, table
   ownership, dependency graph/cycles); writes `audit/FITNESS_ENFORCEMENT_AUDIT.md`.
 - `scripts/report-implementation-status.ts` — per-module **implementation-status matrix**

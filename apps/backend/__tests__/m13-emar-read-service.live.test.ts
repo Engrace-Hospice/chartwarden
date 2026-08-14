@@ -20,6 +20,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbEmarBackend } from "../src/modules/13-emar/emar-route-service-db";
 import { createDrizzleEmarSeamStore } from "../src/modules/13-emar/seams/drizzle-store";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -129,9 +130,9 @@ describe.skipIf(!DB_URL)("M13 Drizzle read service — LIVE Postgres (M13L-T01)"
     // Prod connects as the NOBYPASSRLS `wardenx_app` role; `withOrgContext` does NOT SET ROLE. To exercise
     // RLS faithfully, connect the client AS wardenx_app — it is NOLOGIN in the migrations, so grant LOGIN
     // for the throwaway run.
-    await admin.query("ALTER ROLE wardenx_app LOGIN");
+    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      connectionString: appRoleUrl(DB_URL as string),
     });
     service = createDbEmarBackend(handle.db);
   }, 120_000);
