@@ -624,10 +624,28 @@ For external clinical/regulatory collaborators (Module 7.6 External Collaborator
 
 #### 5.3.1 Brute Force / Credential Stuffing
 
-- Per-username rate limit: 5 failed attempts per 10 min → 15 min lockout
-- Per-IP rate limit: 30 failed attempts per 10 min → temporary block
-- Captcha after 3 failed attempts (invisible Cloudflare Turnstile preferred)
-- Velocity monitoring: spike in failed logins across many accounts → defensive mode (mandatory captcha for all)
+- Per-username rate limit: 5 failed attempts per 10 min → 15 min lockout — **built** (AC-05)
+- Per-IP rate limit: 30 failed attempts per 10 min → temporary block — **built** (AC-05)
+- Captcha after 3 failed attempts (invisible Cloudflare Turnstile preferred) — **NOT built**
+- Velocity monitoring: spike in failed logins across many accounts → defensive mode (mandatory captcha for all) — **NOT built**
+
+> **Implementation status (AC-05, 2026-08-14).** The two failed-attempt budgets are enforced by
+> `createCredentialThrottle` (`packages/auth/src/identity/credential-throttle.ts`), bound at the
+> `/api/auth/*` mount — the one place that sees both the submitted credential and Better Auth's
+> verdict. Usernames are SHA-256'd before they become counter keys, so no address reaches the
+> shared Valkey keyspace. Both budgets fail OPEN on a counter-store outage, so a Valkey blip cannot
+> lock the whole tenant base out of the product.
+>
+> Two deviations from the wording above, both deliberate:
+> **(1)** the refusal is a fixed, self-healing 10-minute window rather than a distinct 15-minute
+> lockout state. A hard lockout is a denial-of-service vector — anyone who knows an address can
+> spend its budget on purpose — so there is no lock row to clear and no admin unlock queue to build,
+> which is also what NIST 800-63B §5.2.2 prefers. **(2)** a successful sign-in clears the USERNAME
+> budget but deliberately not the IP's: one valid credential inside a stuffing run is exactly when
+> an attacker would want the slate wiped.
+>
+> Captcha and velocity monitoring remain unbuilt: `captcha` / `turnstile` have no implementation
+> anywhere in the tree, and both need a third-party integration decision rather than code.
 
 #### 5.3.2 Phishing
 
