@@ -37,11 +37,19 @@ import {
 import { runWithRequestContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createInMemoryObjectStore, registerDocumentSeams } from "../src/modules/22-documents/index";
+import {
+  createInMemoryObjectStore,
+  registerDocumentSeams,
+} from "../src/modules/22-documents/index";
 import { getDocumentRenderer } from "../src/modules/22-documents/index";
 import { deriveTenantBucket } from "../src/modules/22-documents/lifecycle/storage";
+import {
+  buildDrizzleTenantService,
+  buildM34WorkerDeps,
+  buildM34WorkerPorts,
+} from "../src/modules/34-saas-tenant-platform/index";
 import { tenantExportManifestObjectKey } from "../src/modules/34-saas-tenant-platform/tenant-export-bundle-sink";
-import { buildDrizzleTenantService, buildM34WorkerDeps, buildM34WorkerPorts } from "../src/modules/34-saas-tenant-platform/index";
+import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -118,11 +126,12 @@ describe.skipIf(!DB_URL)("GAP-094 — M34 tenant export, LIVE Postgres", () => {
       `CREATE TABLE "tenant_export_job_event_gap094" PARTITION OF "tenant_export_job_event" FOR VALUES IN ('${ORG}')`,
     );
     actorUserId = (
-      await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, ["gap094-actor@x.test"])
+      await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [
+        "gap094-actor@x.test",
+      ])
     ).rows[0].id as string;
-    await admin.query("ALTER ROLE wardenx_app LOGIN");
     handle = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
 
     const objectStore = createInMemoryObjectStore();
@@ -162,7 +171,11 @@ describe.skipIf(!DB_URL)("GAP-094 — M34 tenant export, LIVE Postgres", () => {
         tenantExport: {
           objectStore: {
             async putObject({ organizationId, objectKey, bytes }) {
-              return objects.putObject({ bucket: deriveTenantBucket(organizationId), objectKey, bytes });
+              return objects.putObject({
+                bucket: deriveTenantBucket(organizationId),
+                objectKey,
+                bytes,
+              });
             },
           },
           render: {
@@ -236,11 +249,18 @@ describe.skipIf(!DB_URL)("GAP-094 — M34 tenant export, LIVE Postgres", () => {
       "SELECT event_kind, module_key FROM tenant_export_job_event WHERE tenant_export_job_id=$1 ORDER BY occurred_at",
       [jobId],
     );
-    expect(eventRows.map((r) => r.event_kind)).toEqual(["generating", "shard_receipt", "shard_receipt", "fulfilled"]);
-    expect(eventRows.filter((r) => r.event_kind === "shard_receipt").map((r) => r.module_key).sort()).toEqual([
-      "m05",
-      "m06",
+    expect(eventRows.map((r) => r.event_kind)).toEqual([
+      "generating",
+      "shard_receipt",
+      "shard_receipt",
+      "fulfilled",
     ]);
+    expect(
+      eventRows
+        .filter((r) => r.event_kind === "shard_receipt")
+        .map((r) => r.module_key)
+        .sort(),
+    ).toEqual(["m05", "m06"]);
   });
 
   it("tenantExportDownloadUrl mints a real presigned URL once fulfilled, and 409s while still generating", async () => {
@@ -267,7 +287,10 @@ describe.skipIf(!DB_URL)("GAP-094 — M34 tenant export, LIVE Postgres", () => {
       )
     ).rows[0].id as string;
 
-    const { service } = buildDrizzleTenantService({ db: handle.db, enqueue: { async enqueue() {} } });
+    const { service } = buildDrizzleTenantService({
+      db: handle.db,
+      enqueue: { async enqueue() {} },
+    });
 
     const download = await runWithRequestContext({ organizationId: ORG, userId: actorUserId }, () =>
       service.tenantExportDownloadUrl(ORG, fulfilledJobId, ACTOR_MEMBERSHIP),

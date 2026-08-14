@@ -22,13 +22,14 @@ import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createDrizzleCareTeamStore, registerPatientSeams } from "../src/modules/05-patient/index";
 import {
   createDrizzleAlertEmitter,
   getAlertEmitter,
   registerMessagingSeams,
   wireAlertRuleSeed,
 } from "../src/modules/36-messaging/index";
-import { createDrizzleCareTeamStore, registerPatientSeams } from "../src/modules/05-patient/index";
+import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -75,8 +76,9 @@ describe.skipIf(!DB_URL)("GAP-096 — M36 AlertEmitter, LIVE Postgres", () => {
     ).rows[0].id as string;
   }
   async function insertMember(email: string, roleId: string): Promise<string> {
-    const userId = (await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [email]))
-      .rows[0].id as string;
+    const userId = (
+      await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [email])
+    ).rows[0].id as string;
     const membershipId = (
       await admin.query(
         `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
@@ -120,12 +122,14 @@ describe.skipIf(!DB_URL)("GAP-096 — M36 AlertEmitter, LIVE Postgres", () => {
       [patientId, ORG, clinicianUserId],
     );
 
-    await admin.query("ALTER ROLE wardenx_app LOGIN");
     handle = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
 
-    registerPatientSeams({ db: handle.db, careTeam: { store: createDrizzleCareTeamStore(handle.db) } });
+    registerPatientSeams({
+      db: handle.db,
+      careTeam: { store: createDrizzleCareTeamStore(handle.db) },
+    });
     registerMessagingSeams({ emitter: createDrizzleAlertEmitter(handle.db) });
   }, 180_000);
 

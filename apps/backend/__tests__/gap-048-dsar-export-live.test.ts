@@ -43,7 +43,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { createDrizzlePatientReaderStore } from "../src/modules/05-patient/index";
 import { registerPatientSeams } from "../src/modules/05-patient/index";
-import { createInMemoryObjectStore, registerDocumentSeams } from "../src/modules/22-documents/index";
+import {
+  createInMemoryObjectStore,
+  registerDocumentSeams,
+} from "../src/modules/22-documents/index";
 import { getDocumentRenderer } from "../src/modules/22-documents/index";
 import {
   M34_OUTBOX_EVENTS,
@@ -51,6 +54,7 @@ import {
   buildM34WorkerDeps,
   buildM34WorkerPorts,
 } from "../src/modules/34-saas-tenant-platform/index";
+import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -140,16 +144,20 @@ describe.skipIf(!DB_URL)("GAP-048 — M34 DSAR export, LIVE Postgres", () => {
     // The M4 write-audit trigger FKs `app.user_id` to a real `user` row — `requestDsarExport`'s route
     // layer sets it from the ambient request context (empty in this test, so it must be set explicitly).
     actorUserId = (
-      await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, ["gap048-actor@x.test"])
+      await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [
+        "gap048-actor@x.test",
+      ])
     ).rows[0].id as string;
-    await admin.query("ALTER ROLE wardenx_app LOGIN");
     handle = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
 
     // Real seams: PatientReader (M5, Drizzle-backed) + Document{Renderer,StorageProvider} (M22, real
     // Drizzle-independent renderer logic over an in-memory object store — see file docstring).
-    registerPatientSeams({ db: handle.db, readerStore: createDrizzlePatientReaderStore(handle.db) });
+    registerPatientSeams({
+      db: handle.db,
+      readerStore: createDrizzlePatientReaderStore(handle.db),
+    });
     objects = createInMemoryObjectStore().store;
     registerDocumentSeams({ objects });
     __resetModule34SeamsForTest();
@@ -193,7 +201,8 @@ describe.skipIf(!DB_URL)("GAP-048 — M34 DSAR export, LIVE Postgres", () => {
             },
           },
           render: {
-            render: (args) => getDocumentRenderer().render({ orgId: args.organizationId }, "dsar_bundle", args),
+            render: (args) =>
+              getDocumentRenderer().render({ orgId: args.organizationId }, "dsar_bundle", args),
           },
           outbox: {
             publish: (publishTx, input) =>
@@ -203,7 +212,10 @@ describe.skipIf(!DB_URL)("GAP-048 — M34 DSAR export, LIVE Postgres", () => {
       });
       // `orgScope` is added HERE, not in `buildM34WorkerDeps` (whose parameter type cannot express it)
       // — exactly as `registerM34DsarExportWorker` does with `{ ...deps, orgScope: data.orgId }`.
-      return runDsarExportJob(jobInput, buildM34WorkerPorts({ ...ports, orgScope: ORG }).dsarExport);
+      return runDsarExportJob(
+        jobInput,
+        buildM34WorkerPorts({ ...ports, orgScope: ORG }).dsarExport,
+      );
     })();
 
     // The fan-out actually ran (one resource from the fake m05 shard).
@@ -309,7 +321,9 @@ describe.skipIf(!DB_URL)("GAP-048 — M34 DSAR export, LIVE Postgres", () => {
     expect(captured[0]?.payload).toMatchObject({ orgId: ORG, patientId });
     const tenantAccountId = (captured[0]?.payload as { tenantAccountId?: string }).tenantAccountId;
     expect(tenantAccountId).toBeTruthy();
-    const { rows } = await admin.query("SELECT id FROM tenant_account WHERE organization_id=$1", [ORG]);
+    const { rows } = await admin.query("SELECT id FROM tenant_account WHERE organization_id=$1", [
+      ORG,
+    ]);
     expect(tenantAccountId).toBe(rows[0].id);
   });
 });

@@ -40,6 +40,7 @@ import {
   registerSchedulingSeams,
 } from "../src/modules/17-scheduling/index";
 import { createDrizzleCredentialStore } from "../src/modules/17-scheduling/seams/credentials-drizzle-store";
+import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -147,9 +148,8 @@ describe.skipIf(!DB_URL)("GAP-093 — M17 membership_credential + D8 gate — LI
     );
     rn = { userId, membershipId };
 
-    await admin.query("ALTER ROLE wardenx_app LOGIN");
     handle = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
   }, 180_000);
 
@@ -188,7 +188,10 @@ describe.skipIf(!DB_URL)("GAP-093 — M17 membership_credential + D8 gate — LI
       },
     ]);
     registerEffectivePermissionResolver(grantStore);
-    registerPatientSeams({ db: handle.db, caseload: { store: createDrizzleCaseloadStore(handle.db) } });
+    registerPatientSeams({
+      db: handle.db,
+      caseload: { store: createDrizzleCaseloadStore(handle.db) },
+    });
     registerSchedulingSeams({ credentials: { store: createDrizzleCredentialStore(handle.db) } });
 
     const backend = createDbSchedulingBackend(handle.db);
@@ -227,7 +230,11 @@ describe.skipIf(!DB_URL)("GAP-093 — M17 membership_credential + D8 gate — LI
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/visits",
-      headers: { "x-test-user": rn.userId, "x-test-membership": rn.membershipId, "x-test-org": org },
+      headers: {
+        "x-test-user": rn.userId,
+        "x-test-membership": rn.membershipId,
+        "x-test-org": org,
+      },
       payload: visitPayload(),
     });
     expect(res.statusCode).toBe(403);
@@ -236,7 +243,11 @@ describe.skipIf(!DB_URL)("GAP-093 — M17 membership_credential + D8 gate — LI
 
   it("grant → 201 create → revoke → 403 again, round-tripping through the real membership_credential table", async () => {
     const app = bootApp(rn.userId);
-    const headers = { "x-test-user": rn.userId, "x-test-membership": rn.membershipId, "x-test-org": org };
+    const headers = {
+      "x-test-user": rn.userId,
+      "x-test-membership": rn.membershipId,
+      "x-test-org": org,
+    };
 
     // grant an 'rn' credential, effective well in the past, non-expiring
     const grantRes = await app.inject({
