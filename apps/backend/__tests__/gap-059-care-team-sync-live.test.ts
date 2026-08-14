@@ -218,4 +218,49 @@ describe.skipIf(!DB_URL)("GAP-059 — M5 CareTeamProvider + M36 syncCareTeamChan
     const noop = await provider.syncCareTeamChannel(org, patientId);
     expect(noop.membershipChanged).toBe(false);
   });
+
+  // Code review 2026-08-14 — `syncCareTeamChannel` used to call the M5 `CareTeamProvider` seam from
+  // INSIDE its own `withOrgContext`, and that seam's Drizzle store opens its own `withOrgContext` on the
+  // same pooled handle. One sync therefore needed TWO simultaneous pool connections. In production the
+  // pool is `max: 10` with no `connectionTimeoutMillis`, and M31's portal routes call this per request,
+  // so ten concurrent portal reads held all ten connections and each waited forever for an eleventh —
+  // a pool-wide hang, not a slow path.
+  //
+  // A `max: 1` pool turns that latent shape into a deterministic, fast assertion: the nested version
+  // can NEVER complete (the inner read waits on the one connection the outer transaction is holding),
+  // while the hoisted version needs only one connection at a time. This is the whole defect expressed
+  // as a single call, with no concurrency staging to get flaky.
+  it("needs only ONE pooled connection at a time (a max:1 pool must still complete)", async () => {
+    const single = createDbClient({
+      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      max: 1,
+    });
+    // The seam MUST resolve against the same single-connection handle — if the inner read borrowed a
+    // different pool it would never contend, and the test would pass either way.
+    registerPatientSeams({
+      db: single.db,
+      careTeam: { store: createDrizzleCareTeamStore(single.db) },
+    });
+    try {
+      const provider = createDbMessagingProvider(single.db);
+      const result = await Promise.race([
+        provider.syncCareTeamChannel(org, patientId),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("syncCareTeamChannel deadlocked on a max:1 pool")),
+            5_000,
+          ),
+        ),
+      ]);
+      expect(result.channelId).toBeTruthy();
+    } finally {
+      // Not awaited: if the call above deadlocked, its transaction still holds the only connection and
+      // `pool.end()` would block on it, converting a clean assertion failure into a hung suite.
+      void single.close().catch(() => {});
+      registerPatientSeams({
+        db: handle.db,
+        careTeam: { store: createDrizzleCareTeamStore(handle.db) },
+      });
+    }
+  });
 });

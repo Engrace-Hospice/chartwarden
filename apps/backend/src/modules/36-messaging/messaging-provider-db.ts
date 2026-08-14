@@ -207,6 +207,28 @@ export function createDbMessagingProvider(
     // real roster (M5 CareTeamProvider). Auto-sourced rows only: a `source:'manual'` add (admin
     // override) is left alone, never re-added and never removed by the reconciler.
     async syncCareTeamChannel(orgId, patientId) {
+      // The M5 roster read runs BEFORE the write transaction opens, and must stay there.
+      //
+      // `CareTeamProvider`'s production store is `createDrizzleCareTeamStore(db)`, whose `listMembers`
+      // opens its OWN `withOrgContext` — i.e. its own `db.transaction()` — on this same pooled handle.
+      // Calling it from inside the transaction below therefore held TWO pool connections for the
+      // duration of one sync: the outer transaction's, plus the one the seam needs to make progress.
+      // The pool is `max: 10` with no `connectionTimeoutMillis`, and M31's portal routes call this per
+      // request, so ten concurrent portal reads for a patient each held a transaction open while
+      // waiting for connection #11 — a pool-wide deadlock that never times out and takes every other
+      // request in the process down with it, until restart.
+      //
+      // Hoisting costs NOTHING in consistency, which is the part worth being explicit about: because
+      // the seam acquires a SEPARATE connection, its read was never inside this transaction's snapshot
+      // to begin with. Nesting bought an illusion of atomicity, not the fact of it. And the M11
+      // "read within tx" rule does not apply here — `patient_assignment` is not written by this
+      // transaction, so there is no same-tx write this read could miss.
+      const roster = new Set(
+        await getSeam("CareTeamProvider").careTeamMembers({
+          organizationId: orgId,
+          patientId,
+        }),
+      );
       return withOrgContext(
         db,
         { organizationId: orgId, userId: SYNC_SYSTEM_USER_ID },
@@ -238,12 +260,6 @@ export function createDbMessagingProvider(
                   .returning({ id: CH.id })
               )[0] as { id: string }).id;
 
-          const roster = new Set(
-            await getSeam("CareTeamProvider").careTeamMembers({
-              organizationId: orgId,
-              patientId,
-            }),
-          );
           const activeMembers = (await tx
             .select({ id: CM.id, userId: CM.userId, source: CM.source })
             .from(CM)
