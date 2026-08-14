@@ -115744,6 +115744,385 @@
         }
       }
     },
+    "/api/v1/orgs/{id}/members/{mId}/elevated-approvals": {
+      "get": {
+        "operationId": "getApiV1OrgsByIdMembersByMIdElevatedapprovals",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "List a membership's approval-authority designations, live and revoked (member.manage, §3.7)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "grants"
+                  ],
+                  "properties": {
+                    "grants": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "membershipId",
+                          "approvalKind",
+                          "grantedByMembershipId",
+                          "grantedAt",
+                          "grantReason",
+                          "revokedAt",
+                          "revokedByMembershipId",
+                          "revokedReason"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "membershipId": {
+                            "type": "string"
+                          },
+                          "approvalKind": {
+                            "type": "string"
+                          },
+                          "grantedByMembershipId": {
+                            "type": "string"
+                          },
+                          "grantedAt": {
+                            "type": "string"
+                          },
+                          "grantReason": {
+                            "type": "string"
+                          },
+                          "revokedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "revokedByMembershipId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "revokedReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1OrgsByIdMembersByMIdElevatedapprovals",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Designate a membership as holding a named approval authority (member.manage, §3.7)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "membershipId",
+                    "approvalKind",
+                    "grantedByMembershipId",
+                    "grantedAt",
+                    "grantReason",
+                    "revokedAt",
+                    "revokedByMembershipId",
+                    "revokedReason"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "membershipId": {
+                      "type": "string"
+                    },
+                    "approvalKind": {
+                      "type": "string"
+                    },
+                    "grantedByMembershipId": {
+                      "type": "string"
+                    },
+                    "grantedAt": {
+                      "type": "string"
+                    },
+                    "grantReason": {
+                      "type": "string"
+                    },
+                    "revokedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "revokedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "revokedReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "approvalKind",
+                  "grantReason"
+                ],
+                "properties": {
+                  "approvalKind": {
+                    "description": "A named per-tenant approval authority. `cost_report_approval` designates a membership as authorized to certify a CMS-1984-14 filing (M27 §4.7).",
+                    "const": "cost_report_approval",
+                    "type": "string"
+                  },
+                  "grantReason": {
+                    "minLength": 10,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orgs/{id}/members/{mId}/elevated-approvals/{kind}": {
+      "delete": {
+        "operationId": "deleteApiV1OrgsByIdMembersByMIdElevatedapprovalsByKind",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Revoke a membership's named approval authority; the row is retained as history (member.manage, §3.7)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "membershipId",
+                    "approvalKind",
+                    "grantedByMembershipId",
+                    "grantedAt",
+                    "grantReason",
+                    "revokedAt",
+                    "revokedByMembershipId",
+                    "revokedReason"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "membershipId": {
+                      "type": "string"
+                    },
+                    "approvalKind": {
+                      "type": "string"
+                    },
+                    "grantedByMembershipId": {
+                      "type": "string"
+                    },
+                    "grantedAt": {
+                      "type": "string"
+                    },
+                    "grantReason": {
+                      "type": "string"
+                    },
+                    "revokedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "revokedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "revokedReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "revokedReason"
+                ],
+                "properties": {
+                  "revokedReason": {
+                    "minLength": 10,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/patients": {
       "get": {
         "operationId": "getApiV1Patients",

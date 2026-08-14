@@ -49,6 +49,7 @@ import {
   copilotProviderDenyStub,
   costReportFilingStatusReaderDenyStub,
   credentialReaderDenyStub,
+  elevatedApprovalReaderDenyStub,
   deathDischargeReaderDenyStub,
   denialOutcomePredictionProviderDenyStub,
   dischargeReaderDenyStub,
@@ -185,6 +186,16 @@ export const REQUIRED_SEAMS = [
   { key: "CaseloadProvider", ownerModule: 5, phi: true, denyStub: caseloadDenyStub },
   { key: "CareTeamProvider", ownerModule: 5, phi: true, denyStub: careTeamDenyStub },
   { key: "CredentialReader", ownerModule: 17, phi: false, denyStub: credentialReaderDenyStub },
+  // M2 (§3.7, GAP-043) — does a membership hold a named per-tenant approval authority? Not PHI (a staff
+  // designation). The deny-stub answers `false` rather than throwing, unlike its neighbours: the only
+  // consumer is an ABAC predicate whose whole contract is fail-closed, and a throw there is an opaque
+  // 500 where a deny is the specified behaviour.
+  {
+    key: "ElevatedApprovalReader",
+    ownerModule: 2,
+    phi: false,
+    denyStub: elevatedApprovalReaderDenyStub,
+  },
   { key: "PatientReader", ownerModule: 5, phi: true, denyStub: patientReaderDenyStub },
   // M5 (§3.4) — the coverage list M23/M24 resolve a claim's billed payer from. PHI: carries the
   // member/subscriber id, so it is boot-validated and fail-closed like the other M5 reads.

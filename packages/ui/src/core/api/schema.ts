@@ -11789,6 +11789,41 @@ export interface paths {
         patch: operations["patchApiV1OrgsByIdMembersByMId"];
         trace?: never;
     };
+    "/api/v1/orgs/{id}/members/{mId}/elevated-approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a membership's approval-authority designations, live and revoked (member.manage, §3.7) */
+        get: operations["getApiV1OrgsByIdMembersByMIdElevatedapprovals"];
+        put?: never;
+        /** Designate a membership as holding a named approval authority (member.manage, §3.7) */
+        post: operations["postApiV1OrgsByIdMembersByMIdElevatedapprovals"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{id}/members/{mId}/elevated-approvals/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a membership's named approval authority; the row is retained as history (member.manage, §3.7) */
+        delete: operations["deleteApiV1OrgsByIdMembersByMIdElevatedapprovalsByKind"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients": {
         parameters: {
             query?: never;
@@ -49803,6 +49838,131 @@ export interface operations {
                         email: string | null;
                         lastLoginAt: string | null;
                         accountStatus: ("created" | "active" | "suspended" | "deactivated") | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OrgsByIdMembersByMIdElevatedapprovals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                mId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        grants: {
+                            id: string;
+                            membershipId: string;
+                            approvalKind: string;
+                            grantedByMembershipId: string;
+                            grantedAt: string;
+                            grantReason: string;
+                            revokedAt: string | null;
+                            revokedByMembershipId: string | null;
+                            revokedReason: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrgsByIdMembersByMIdElevatedapprovals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                mId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * @description A named per-tenant approval authority. `cost_report_approval` designates a membership as authorized to certify a CMS-1984-14 filing (M27 §4.7).
+                     * @constant
+                     */
+                    approvalKind: "cost_report_approval";
+                    grantReason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        membershipId: string;
+                        approvalKind: string;
+                        grantedByMembershipId: string;
+                        grantedAt: string;
+                        grantReason: string;
+                        revokedAt: string | null;
+                        revokedByMembershipId: string | null;
+                        revokedReason: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1OrgsByIdMembersByMIdElevatedapprovalsByKind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                mId: string;
+                kind: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revokedReason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        membershipId: string;
+                        approvalKind: string;
+                        grantedByMembershipId: string;
+                        grantedAt: string;
+                        grantReason: string;
+                        revokedAt: string | null;
+                        revokedByMembershipId: string | null;
+                        revokedReason: string | null;
                     };
                 };
             };

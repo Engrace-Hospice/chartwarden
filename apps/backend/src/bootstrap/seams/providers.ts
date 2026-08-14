@@ -44,6 +44,7 @@ import type {
   DocumentRenderer,
   DocumentStorageProvider,
   ElectionPeriodReader,
+  ElevatedApprovalReader,
   EncounterCreator,
   EvvAggregatorReferenceReader,
   EvvBracketResolver,
@@ -151,11 +152,27 @@ export const careTeamDenyStub: CareTeamProvider = {
   careTeamMembers() {
     throw new NotImplementedError("CareTeamProvider");
   },
+  primaryRnUserId() {
+    throw new NotImplementedError("CareTeamProvider");
+  },
 };
 
 export const credentialReaderDenyStub: CredentialReader = {
   activeCredentialsAsOf() {
     throw new NotImplementedError("CredentialReader");
+  },
+};
+
+/**
+ * GAP-043 — DENIES rather than throws, deliberately breaking this file's pattern. Its only consumer is
+ * M27's `cost_report_approver_for_provider` ABAC predicate, and every other conjunct in that predicate
+ * resolves an absent fact to `false`; a throw would turn "this membership is not a designated signatory"
+ * — the ordinary, expected answer for almost every membership — into a 500. The fail-closed posture is
+ * identical either way; only the caller's experience of the normal case differs.
+ */
+export const elevatedApprovalReaderDenyStub: ElevatedApprovalReader = {
+  async hasElevatedApproval() {
+    return false;
   },
 };
 

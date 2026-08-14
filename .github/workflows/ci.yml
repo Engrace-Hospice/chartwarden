@@ -157,7 +157,10 @@ jobs:
           - { name: "M10 HOPE", scripts: "test:m10:read:live test:m10:write:live" }
           - { name: "M11 Orders", scripts: "test:m11:read:live test:m11:write:live" }
           - { name: "M12 DoseSpot", scripts: "test:m12:read:live test:m12:write:live" }
-          - { name: "M13 eMAR", scripts: "test:m13:read:live test:m13:write:live" }
+          - {
+              name: "M13 eMAR",
+              scripts: "test:m13:read:live test:m13:write:live test:m13:rn-case-manager:live",
+            }
           - { name: "M14 IDG", scripts: "test:m14:read:live test:m14:write:live" }
           - { name: "M17 Scheduling", scripts: "test:m17:read:live test:m17:write:live" }
           - { name: "M18 EVV", scripts: "test:m18:read:live test:m18:write:live" }
@@ -166,6 +169,10 @@ jobs:
           - { name: "M24 NF facility snapshot", scripts: "test:m24:nf-facility-snapshot:live" }
           - { name: "M29 NPPES platform sync", scripts: "test:m29:nppes-sync:live" }
           - { name: "M29 unmatched-lab review", scripts: "test:m29:unmatched-lab-review:live" }
+          # GAP-043: M27's approver gate over M2's real `membership_elevated_approval` designation —
+          # the conjunct that was hardcoded false in the production resolver, blocking every cost-report
+          # approve/submit/reopen in every tenant.
+          - { name: "M27 elevated approval", scripts: "test:m27:elevated-approval:live" }
           # GAP-099: the M1 relay's PLATFORM (organization_id IS NULL) delivery path end-to-end — an
           # org-less event reaching a real consumer, its org-less §4.11 receipt, and M40's canonical
           # write path (which had no SECURITY DEFINER function at all until migration 0202).

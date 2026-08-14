@@ -193,6 +193,8 @@ export const MODULES: ModuleDef[] = [
       "passkey",
       "organization_invitation",
       "tenant_step_up_policy_override",
+      // GAP-043: the per-membership named-approval-authority registry M27's approver predicate keys on.
+      "membership_elevated_approval",
     ],
   },
   {

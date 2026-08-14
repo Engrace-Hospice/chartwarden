@@ -30,6 +30,11 @@ import {
 } from "@wardenx/auth";
 import type { DbClient } from "@wardenx/db";
 import { registerSeam } from "../../bootstrap/index";
+import {
+  createDrizzleElevatedApprovalStore,
+  createElevatedApprovalReader,
+  createInMemoryElevatedApprovalStore,
+} from "./elevated-approvals";
 import { createOrganizationReader } from "./organization-reader";
 import { createTenantOrgCreationProvider } from "./tenant-org-creation-provider";
 
@@ -53,6 +58,17 @@ export function registerIdentitySeams(deps: IdentitySeamDeps = {}): void {
   const auditorLinks = deps.auditorLinks ?? createInMemoryAuditorMagicLinkIssuer().issuer;
   registerSeam("SessionContextResolver", createSessionContextResolver(sessions));
   registerSeam("AuditorSessionMinter", createAuditorSessionMinter(auditorLinks));
+  // GAP-043 — the per-membership named-approval-authority reader M27's §4.7 approver predicate keys on.
+  // With a db it reads `membership_elevated_approval` under RLS; without one the in-memory store answers
+  // `false` for everything, which is the same fail-closed shape the slice gets from every other seam here.
+  registerSeam(
+    "ElevatedApprovalReader",
+    createElevatedApprovalReader(
+      deps.db
+        ? createDrizzleElevatedApprovalStore(deps.db)
+        : createInMemoryElevatedApprovalStore().store,
+    ),
+  );
   // M34 §7.1 step 3 — the real org-creation provider, only when a DB client is present (the registry's
   // fail-closed deny-stub stands in slice/tests).
   const organizationDb = deps.organizationDb ?? deps.db;

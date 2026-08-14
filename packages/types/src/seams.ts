@@ -149,6 +149,7 @@ export type SeamName =
   | "CaseloadProvider" // M5/M17 — which patients an actor may see
   | "CareTeamProvider" // M5 — every user id currently on a patient's care team (M36 channel auto-sync, D5)
   | "CredentialReader" // M17 — a membership's active clinical-license/certification rows as-of a date (§1.1 D8, GAP-093)
+  | "ElevatedApprovalReader" // M2 — does a membership hold a named per-tenant approval authority (GAP-043)
   | "PatientReader" // M5 — patient identity/demographics reads (§4.8; M29 cascade)
   | "PatientCoverageReader" // M5 — §3.4 coverage list; M23/M24 resolve which payer a claim bills
   | "PatientCaregiverReader" // M5 — TASK-015: is a user the patient's primary caregiver (M31 portal ABAC); deny-stub only
@@ -495,6 +496,35 @@ export interface CareTeamProvider {
     organizationId: string;
     patientId: string;
   }): Promise<readonly string[]>;
+  /**
+   * The patient's RN CASE MANAGER — the user id on the open `primary_rn` assignment, or null when the
+   * patient has none (GAP-022). A role-filtered form of {@link careTeamMembers}, not a synonym for it:
+   * M13's §2.9 D10 RN-review gate on caregiver-attested doses is specifically the case manager's to
+   * clear, so "is on the care team" would widen a named-clinician duty into a whole-team one.
+   * `patient_assignment` carries a partial unique index enforcing at most one open `primary_rn` per
+   * patient, so this is single-valued by construction.
+   */
+  primaryRnUserId(input: { organizationId: string; patientId: string }): Promise<string | null>;
+}
+
+/**
+ * M2 — does a membership hold a NAMED per-tenant approval authority right now (GAP-043)?
+ *
+ * Deliberately narrower than "what authorities does this membership hold": the only consumer is an ABAC
+ * predicate answering one yes/no question, and a list-shaped seam would invite a caller to enumerate a
+ * tenant's signatories for a purpose the grant was not made for. Leaf-safe (ids + a kind string).
+ *
+ * `kind` is a plain string rather than an enum type because this leaf package cannot import
+ * `@wardenx/db`'s pgEnum; callers pass their own constant (M27 passes `"cost_report_approval"`). An
+ * unrecognized kind resolves to `false`, never to an error — the predicate's whole contract is
+ * fail-closed.
+ */
+export interface ElevatedApprovalReader {
+  hasElevatedApproval(input: {
+    organizationId: string;
+    membershipId: string;
+    kind: string;
+  }): Promise<boolean>;
 }
 
 /** One clinical-license/certification grant, as {@link CredentialReader} reports it (GAP-093). */
@@ -685,6 +715,7 @@ export interface SeamContracts {
   CaseloadProvider: CaseloadProvider;
   CareTeamProvider: CareTeamProvider;
   CredentialReader: CredentialReader;
+  ElevatedApprovalReader: ElevatedApprovalReader;
   PatientReader: PatientReader;
   PatientCoverageReader: PatientCoverageReader;
   PatientCaregiverReader: PatientCaregiverReader;

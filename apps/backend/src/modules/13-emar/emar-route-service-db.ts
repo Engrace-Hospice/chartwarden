@@ -105,6 +105,30 @@ export interface EmarWriteOutboxPort {
 }
 const NOOP_OUTBOX: EmarWriteOutboxPort = { async publish() {} };
 
+/**
+ * The M5 care-team reach M13's §2.9 D10 caregiver-review gate needs (GAP-022): who is this patient's RN
+ * CASE MANAGER? Restated locally as a one-method port (the `CareTeamProvider` seam's `primaryRnUserId`
+ * half) so this module takes no compile edge on M5 — the composition root passes a thunk over
+ * `getSeam("CareTeamProvider")`.
+ */
+export interface EmarCaseManagerPort {
+  primaryRnUserId(input: {
+    organizationId: string;
+    patientId: string;
+  }): Promise<string | null>;
+}
+
+/**
+ * Fail-closed default: no patient has a resolvable case manager, so `caregiver_attested_review_required`
+ * denies. This is what the slice/unit tests get, and it is the SAME answer the old hardcoded `false`
+ * produced — the difference is that production now binds a real reader instead of inheriting the stub.
+ */
+const UNBOUND_CASE_MANAGER: EmarCaseManagerPort = {
+  async primaryRnUserId() {
+    return null;
+  },
+};
+
 const ADM = schema.administrationRecords;
 const SD = schema.scheduledDoses;
 const MD = schema.missedDoses;
@@ -183,9 +207,16 @@ const toDecisionView = (d: typeof RD.$inferSelect): ReconciliationDecisionView =
 export function createDbEmarBackend(
   db: DbClient,
   outbox: EmarWriteOutboxPort = NOOP_OUTBOX,
+  /**
+   * GAP-022 — the M5 case-manager reader. A THUNK, not an instance: seams are registered by the
+   * composition root's `wireModuleSeams()`, which runs after the route mount, so resolving at
+   * construction time would capture the pre-registration state.
+   */
+  caseManager: () => EmarCaseManagerPort = () => UNBOUND_CASE_MANAGER,
 ): EmarRouteService {
   const withOrg = <T>(orgId: string, fn: (tx: DbClient) => Promise<T>): Promise<T> =>
     withOrgContext(db, { organizationId: orgId, userId: "" }, fn as never) as Promise<T>;
+  const careTeam = caseManager;
 
   /** Emit one `m13.*` event on the caller's tx (validated + persisted by the bound publisher). */
   async function emit(
@@ -310,19 +341,36 @@ export function createDbEmarBackend(
     async loadCaregiverReviewFacts(
       orgId,
       administrationId,
-      _actorUserId,
+      actorUserId,
     ): Promise<CaregiverReviewAbacFacts | null> {
-      return withOrg(orgId, async (tx) => {
+      // GAP-022 — `actorIsRnCaseManager` was hardcoded `false` here, and since the predicate is
+      // `requiresRnReview && actorIsRnCaseManager`, BOTH §2.9 D10 caregiver-review routes
+      // (acknowledge-caregiver / dispute-caregiver) returned 404-on-deny for every caller in every
+      // tenant — the RN review step M31's caregiver-attested doses require had no reachable actor.
+      const row = await withOrg(orgId, async (tx) => {
         const [r] = await tx
-          .select({ requiresRnReview: ADM.requiresRnReview })
+          .select({ requiresRnReview: ADM.requiresRnReview, patientId: ADM.patientId })
           .from(ADM)
           .where(eq(ADM.id, administrationId))
           .limit(1);
-        if (!r) return null;
-        // TODO(M13L-T02): `actorIsRnCaseManager` needs the M5 CaseloadProvider (patient → RN case manager),
-        // outside M13's tables → fail closed until wired.
-        return { requiresRnReview: r.requiresRnReview, actorIsRnCaseManager: false };
+        return r ?? null;
       });
+      if (!row) return null;
+      // The case-manager read is a SEPARATE org-scoped call, not folded into the tx above: the answer
+      // lives on M5's `patient_assignment` and M13 must not read that table (`arch:tables`), so it comes
+      // through M5's published CareTeamProvider seam. Resolved lazily per call — the composition root
+      // registers seams after the route mount, so a construction-time resolve would capture nothing.
+      const caseManagerUserId = await careTeam().primaryRnUserId({
+        organizationId: orgId,
+        patientId: row.patientId,
+      });
+      return {
+        requiresRnReview: row.requiresRnReview,
+        // Both id spaces are USER ids: `patient_assignment.clinician_user_id` references `user`, and the
+        // ABAC context's `userId` is what `loadWitnessFacts` already resolves memberships by. An unassigned
+        // patient (null case manager) can never match, so an absent assignment still fails closed.
+        actorIsRnCaseManager: caseManagerUserId !== null && caseManagerUserId === actorUserId,
+      };
     },
     async loadWorksheetTriggerKind(orgId, worksheetId) {
       return withOrg(orgId, async (tx) => {

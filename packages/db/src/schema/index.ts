@@ -14,6 +14,8 @@ export * from "./locations";
 // (NON_ORG_SCOPED); membership is org-scoped (three-column rule applies).
 export * from "./users";
 export * from "./memberships";
+// GAP-043 — the M2 per-membership named-approval-authority registry (`cost_report_approval` first).
+export * from "./membership-elevated-approvals";
 export * from "./sessions";
 export * from "./accounts";
 export * from "./verifications";
