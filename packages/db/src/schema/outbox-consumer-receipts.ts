@@ -10,9 +10,12 @@ export const outboxConsumerReceipts = pgTable(
   "outbox_consumer_receipt",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** NULL for a PLATFORM-wide event's receipt (GAP-099, migration 0201) — mirrors `outbox_event
+     *  .organization_id`, which migration 0186 made nullable for the same reason. Org receipts are
+     *  unchanged; only the SECURITY DEFINER `report_writer_*_platform_receipt*` path writes NULL. */
+    organizationId: uuid("organization_id").references(() => organizations.id, {
+      onDelete: "cascade",
+    }),
     eventId: uuid("event_id")
       .notNull()
       .references(() => outboxEvents.id, { onDelete: "cascade" }),

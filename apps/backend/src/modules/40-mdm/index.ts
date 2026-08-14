@@ -16,14 +16,27 @@ export {
 // M40-T07 — the §4.1–4.2 route inventory behind `requirePermission` on the §4.4 keys (registered
 // into M3's catalog as M40_CONTRIBUTED_PERMISSIONS); merge approval & re-pointing (§7.6).
 export { type MdmRouteDeps, registerMdmRoutes } from "./routes/mdm-routes";
-// M40-T09 — the M29 NPPES-sync outbox consumers (§4.7). Phase-1 forward-seam/deny-stub: declared but
-// not live-wired until M29 (Wave H); the T08 nightly job is the Phase-1 authoritative sync path.
+// M40-T09 — the M29 NPPES-sync outbox consumers (§4.7). LIVE since GAP-099: the composition root
+// registers `buildM29NppesPlatformConsumers` on the dispatcher's PLATFORM binding list (these events are
+// org-less), so the canonical now tracks NPPES within minutes instead of waiting on the T08 nightly delta.
 export {
   type M29ConsumerDescriptor,
   M29_NPPES_CONSUMERS,
   M29_CONSUMERS_DEFERRED,
+  buildM29NppesPlatformConsumers,
   createM29NppesConsumerHandlers,
 } from "./outbox-consumers/m29-nppes-consumers";
+export {
+  type M40ActiveOrgPort,
+  type M40AlertPort,
+  type M40NppesConsumerDeps,
+  type M40OutboxPublishPort,
+  type NppesApplyRecord,
+  buildNppesConsumerPorts,
+} from "./outbox-consumers/nppes-consumer-ports";
+// GAP-099 — M40's own outbox contributions (`m40.canonical.*`). See events-by-m40.ts for why this file
+// only appears now: until migration 0202 the canonical tables had no write path, so nothing to announce.
+export { M40_OUTBOX_EVENTS } from "./events-by-m40";
 // M40-T10 — the REAL `mdm_tenant_overlays` eraser (D7 tenant offboarding, §7.8): deletes the org's
 // overlay/provisional/baa rows; canonical reference entities are never touched. The §5 screens DEFER
 // — the M40 manifest has no frontend codePath (the Wave-A deferral rule: a screen needs a manifest UI

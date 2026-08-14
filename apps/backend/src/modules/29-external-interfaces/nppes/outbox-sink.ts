@@ -7,17 +7,17 @@
 // would multiply one platform record into N identical tenant rows. The M1 publisher already routes a null
 // `organizationId` through the migration-0186 SECURITY DEFINER insert, so this needs no new infrastructure.
 //
-// HONEST LIMIT, RECORDED HERE BECAUSE IT IS LOAD-BEARING: the boot dispatcher's `pollPlatform()` pass can
-// CLAIM and finalize platform rows but cannot yet DELIVER them to a consumer — the
+// DELIVERY (was the load-bearing limit here; CLOSED by GAP-099). When this sink was written the boot
+// dispatcher's `pollPlatform()` pass could CLAIM and finalize platform rows but not DELIVER them: the
 // `OutboxConsumerBinding`/`DispatchableOutboxEvent` pair is non-null-organizationId by design (~150
-// org-scoped bindings depend on it) and no `PlatformOutboxConsumerBinding` type exists. So M40's
-// `m40.nppes-provider-synced-applier` cannot receive these events until that path is built, and the rows
-// will sit `pending` with `last_error = 'deferred: one or more declared consumers are not live'` —
-// DURABLE and honestly reported, never dropped. That is the pre-existing state of every platform-wide
-// event in this system (the `m33.mv.*` rows behave identically today), not something this sink introduces:
-// before GAP-045 the sync never ran at all, so there was no row to defer. `declaredConsumers: ["m40"]` on
-// the two provider events is the correct declaration regardless — declaring `[]` to make them dispatch
-// immediately would make `buildOutboxRoutingPlan` THROW at boot the day M40's binding lands.
+// org-scoped bindings depend on it) and no platform equivalent existed, so M40's
+// `m40.nppes-provider-synced-applier` could not receive these events and every row sat `pending` with
+// `last_error = 'deferred: one or more declared consumers are not live'` — durable and honestly reported,
+// but never acted on. GAP-099 built the missing three pieces (`PlatformOutboxConsumerBinding`, the
+// migration-0201 org-less receipt path, and the migration-0202 `mdm_canonical_writer_*` functions that
+// gave M40's canonical a write path at all), and both appliers are now live. `declaredConsumers: ["m40"]`
+// was the correct declaration throughout — declaring `[]` to make the rows dispatch immediately would
+// have made `buildOutboxRoutingPlan` THROW at boot the day M40's binding landed.
 //
 // Each publish opens its OWN transaction. The orchestrator is a long walk over thousands of NPIs; holding
 // one transaction across the whole run would pin a connection for its duration and lose every event on a
