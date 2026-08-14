@@ -21,6 +21,11 @@
  *      Postgres rejects the statement outright ("is not a materialized view"), so this write path has never
  *      once succeeded since M30 shipped. Fixed to a documented no-op — a plain view has nothing to refresh.
  *
+ * GAP-067 later extended this suite with the `m30.outbreak_detection` proof (the fourth §4.8 work queue):
+ * its trailing-window org event read had no repo method behind it at all and its §4.10 emit was unbound, so
+ * the processor threw M30WorkerPortUnbound on its very first data read. Both are now bound
+ * (`InfectionRepository.listEventsForOrgWindow` + the same tx-scoped `m30` outbox publisher).
+ *
  * This test constructs the REAL `registerM30Workers` (not a hand-rolled copy of its logic) against a real
  * throwaway Redis, so the actual per-job `withOrgContext` wrap + `processingLogFactory` + `outboxPublisher`
  * wiring all run for real — `Job.waitUntilFinished` awaits real BullMQ consumption, not a direct function
@@ -98,8 +103,17 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         .filter((x) => x.endsWith(".sql"))
         .sort()) {
         let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
-        if (stripVector)
-          sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "vector".*$/m, "-- (vector stripped)");
+        if (stripVector) {
+          // GAP-067: this suite's original one-line stripper only ever matched the QUOTED, first
+          // occurrence, so `WARDENX_TEST_NO_PGVECTOR=1` never actually worked here — it died on 0014's
+          // unquoted `EXTENSION IF NOT EXISTS vector`. All three strips are required (the M4/M7 form):
+          // the extension appears both quoted (0001) and unquoted (0014) → `/gm`; 0014 also declares an
+          // `embedding vector(384)` COLUMN whose type must still resolve → shim to `text`; and its
+          // `USING hnsw (…)` index needs a pgvector-only access method → drop the line.
+          sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- (vector stripped)");
+          sql = sql.replace(/\bvector\(\d+\)/g, "text");
+          sql = sql.replace(/^.*USING hnsw \(.*$/gm, "-- (hnsw stripped)");
+        }
         await admin.query(sql);
       }
     }
@@ -345,6 +359,103 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       expect(outbox.emissions.some((e) => e.eventName === "m30.risk_register.refreshed")).toBe(
         true,
       );
+    });
+
+    // GAP-067 — before this, `outbreakDetection.events.recentForOrg` and `outbox.emitOutbreakOpened` were
+    // both fail-closed thunks with no production override anywhere: the processor threw
+    // M30WorkerPortUnbound on its very FIRST data read, so no assertion beyond "it throws" was possible and
+    // none existed. This runs the real §7.8 detector through the real worker over real Postgres.
+    it("outbreak-detection: the REAL worker runs the org-wide trailing-window detector end-to-end — opens a case, emits m30.infection.outbreak_opened, and dedupes the window on a re-run (GAP-067)", async () => {
+      const PATHOGEN = "influenza a";
+      const BODY_SITE = "respiratory tract";
+      const FILED_BY = "00000000-0000-0000-0000-0000000000f1";
+      const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString();
+
+      // Three events on ONE (provider, pathogen, body_site) triple inside the 14-day window — the D11
+      // ≥3-events/14d threshold. Seeded directly (not through R-91) precisely so the worker's own
+      // org-wide read is what has to find them: the R-91 write path runs its own inline detector and
+      // would have opened the case itself, proving nothing about this port.
+      const eventIds: string[] = [];
+      for (const d of [5, 3, 1]) {
+        const inserted = await admin.query(
+          `INSERT INTO infection_surveillance_event
+             (organization_id, provider_entity_id, observed_at, pathogen, body_site,
+              transmission_context, filed_by_membership_id)
+           VALUES ($1,$2,$3,$4,$5,'unknown',$6) RETURNING id`,
+          [ORG, PROVIDER_ENTITY, daysAgo(d), PATHOGEN, BODY_SITE, FILED_BY],
+        );
+        eventIds.push(inserted.rows[0].id);
+      }
+
+      if (!workers) workers = registerM30Workers(deps());
+      const queueEvents = new QueueEvents("m30.outbreak_detection", { connection });
+      await queueEvents.waitUntilReady();
+      const q = new Queue("m30.outbreak_detection", { connection });
+
+      /** Enqueue one detection job keyed on a triggering event, and await the REAL worker's verdict. */
+      async function runDetection(surveillanceEventId: string): Promise<{
+        outcome: string;
+        clustersDetected: number;
+        casesOpened: number;
+      }> {
+        // `data.jobId` is the processing_log idempotency key (raw, colon-delimited); the BullMQ custom id
+        // is the sanitized form — BullMQ rejects ':' in a custom id (the WX-PR-013/014 bug class).
+        const key = `outbreak_detection:${ORG}:${surveillanceEventId}`;
+        const job = await q.add(
+          "m30.outbreak_detection",
+          { jobId: key, organizationId: ORG, surveillanceEventId },
+          { jobId: key.replace(/:/g, "__") },
+        );
+        try {
+          return await job.waitUntilFinished(queueEvents, 20_000);
+        } catch (err) {
+          const reloaded = await q.getJob(job.id!);
+          throw new Error(`job did not complete cleanly: ${reloaded?.failedReason}`, { cause: err });
+        }
+      }
+
+      try {
+        const first = await runDetection(eventIds[2]!);
+        expect(first.outcome).toBe("detected");
+        expect(first.clustersDetected).toBe(1);
+        expect(first.casesOpened).toBe(1);
+
+        const cases = await admin.query(
+          `SELECT id, status, triggering_event_count FROM infection_outbreak_case
+             WHERE organization_id=$1 AND pathogen=$2 AND body_site=$3`,
+          [ORG, PATHOGEN, BODY_SITE],
+        );
+        expect(cases.rows).toHaveLength(1);
+        expect(cases.rows[0].status).toBe("open");
+        expect(Number(cases.rows[0].triggering_event_count)).toBe(3);
+
+        const opened = outbox.emissions.filter(
+          (e) => e.eventName === "m30.infection.outbreak_opened",
+        );
+        expect(opened).toHaveLength(1);
+        expect(opened[0]!.payload.caseId).toBe(cases.rows[0].id);
+        expect(opened[0]!.payload.eventCount).toBe(3);
+
+        // A SECOND job under a different triggering event (so `processing_log` does NOT short-circuit it)
+        // re-detects the same cluster and must dedupe on the `uq_outbreak_window` unique instead: the
+        // detector still reports the cluster, but no second case and no second M36 alert (V-18).
+        const second = await runDetection(eventIds[1]!);
+        expect(second.outcome).toBe("detected");
+        expect(second.clustersDetected).toBe(1);
+        expect(second.casesOpened).toBe(0);
+
+        const casesAfter = await admin.query(
+          "SELECT count(*)::int AS n FROM infection_outbreak_case WHERE organization_id=$1",
+          [ORG],
+        );
+        expect(Number(casesAfter.rows[0].n)).toBe(1);
+        expect(
+          outbox.emissions.filter((e) => e.eventName === "m30.infection.outbreak_opened"),
+        ).toHaveLength(1);
+      } finally {
+        await q.close();
+        await queueEvents.close();
+      }
     });
 
     it("missing producer — enqueueForOrg / enqueueRefresh fail closed (typed M30WorkerPortUnbound) rather than silently dropping the nightly fan-out when no BullMQ connection is bound", async () => {

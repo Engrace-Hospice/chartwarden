@@ -80,6 +80,29 @@ export class InfectionRepository {
       .orderBy(asc(E.observedAt));
   }
 
+  /**
+   * The ORG-WIDE trailing-window scan the `m30.outbreak_detection` worker's detector consumes (§7.8 /
+   * D11): every surveillance event in the org observed at or after `windowStart`, oldest first.
+   *
+   * Distinct from both neighbours on purpose. {@link listEventsForOutbreakWindow} spans ONE
+   * (provider, pathogen, body_site) triple — enough for the write path's inline re-check of the triple
+   * the just-recorded event belongs to, but blind to a cluster forming on any OTHER triple; the worker
+   * re-runs the detector over the whole org so it sees them all, and the pure
+   * `detectOutbreakClusters` does the grouping. {@link listEventsForOrg} is the §4.1.2 keyset-paged
+   * PHI list — a page boundary would silently truncate the detector's input set, so this read is NOT
+   * paged: its bound is the window (14 days), not a page size.
+   */
+  async listEventsForOrgWindow(
+    organizationId: string,
+    windowStart: Date,
+  ): Promise<readonly schema.InfectionSurveillanceEvent[]> {
+    return this.db
+      .select()
+      .from(E)
+      .where(and(eq(E.organizationId, organizationId), gte(E.observedAt, windowStart)))
+      .orderBy(asc(E.observedAt), asc(E.id));
+  }
+
   /** An org's surveillance events (PHI list, §4.1.2 cursor), keyset-paged, newest-observed first. */
   async listEventsForOrg(
     organizationId: string,

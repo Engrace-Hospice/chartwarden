@@ -188,8 +188,10 @@ export interface M30WorkerDeps {
    * (`{orgId, measureId, periodEnd, rate, severityBand}`) does not satisfy the catalog's declared
    * `m30.measure.threshold_breached` schema (`indicatorId` + `threshold` are required and simply are not
    * available at this port — a genuine, separate, pre-existing mismatch this task does not invent values to
-   * paper over). `cahps_export` / `outbreak_detection` / `cahps_monthly_sample` / `sra_reminders` outbox
-   * ports are untouched — out of scope, see the module-level TODO block.
+   * paper over). GAP-067 additionally binds `outbreak_detection`'s `emitOutbreakOpened` through this same
+   * port (its payload DOES satisfy its catalog schema, so there was nothing to work around — only wiring).
+   * `cahps_export` / `cahps_monthly_sample` / `sra_reminders` outbox ports remain untouched — out of scope,
+   * see the module-level TODO block.
    */
   readonly outboxPublisher?: {
     publish(
@@ -1336,15 +1338,33 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
   };
 
   // ── m30.outbreak_detection (withOrgContext, serial per org) — §7.8 / D11 / V-18 ────────────────────────
-  // BOUND: the outbreak-case dedupe/create (the `uq_outbreak_window` oracle). UNBOUND (lazy): the trailing-
-  // window org event read (no repo method spans the whole org window yet) and the §4.10 outbreak emit.
+  // FULLY BOUND (GAP-067): the trailing-window org event read, the outbreak-case dedupe/create (the
+  // `uq_outbreak_window` oracle) and the §4.10 outbreak emit. Every port here is live — the processor no
+  // longer throws M30WorkerPortUnbound on its first data read.
+  //
+  // WHY NOTHING ENQUEUES ONTO `m30.outbreak_detection` (the audit noticed the queue has no producer, and
+  // that is deliberate, not a second missing binding): the R-91 write path already runs the SAME pure
+  // detector inline, inside the recording transaction (routes/write-service-drizzle.ts
+  // `recordInfectionEvent`), and a cluster can only ever cross the ≥3-events/14d threshold on the arrival
+  // of its own third event — which is precisely the write that re-checks it. The worker's org-wide sweep
+  // therefore finds nothing the inline check missed; it exists as the §7.8 re-detection path (backfills,
+  // corrections, a future retention/anonymization pass that mutates `observed_at`) and stays correct now
+  // that its ports are real. Adding a producer in the R-91 path was considered and rejected: the shared
+  // `buildM30RecomputeEnqueue` fails CLOSED with no Valkey (correct for R-04/R-96, whose whole purpose is
+  // the enqueue), so wiring it here would turn a supported queue-less deployment into one that cannot
+  // record an infection event at all — trading a redundant sweep for a clinical-write outage.
   const outbreakDetection: OutbreakDetectionPorts = {
     processingLog,
     events: {
-      recentForOrg: () =>
-        unboundWorkerPort(
-          "outbreakDetection.events.recentForOrg",
-          "bind to an `InfectionRepository` org-wide trailing-window read (observed_at ≥ now−windowDays) — the repo exposes per-(provider,pathogen,body_site) windows + org keyset paging, not this org-wide scan yet",
+      // GAP-067 — BOUND over the new `InfectionRepository.listEventsForOrgWindow` (the org-wide scan the
+      // repo genuinely did not expose before; the per-(provider,pathogen,body_site) window read only
+      // covers the triple the write path already re-checks inline). `windowDays` comes from the worker
+      // (OUTBREAK_WINDOW_DAYS) rather than being re-derived here, so the detector's window and this
+      // read's window can never drift apart.
+      recentForOrg: (orgId, windowDays) =>
+        infectionRepo.listEventsForOrgWindow(
+          orgId,
+          new Date(now().getTime() - windowDays * 24 * 60 * 60 * 1000),
         ),
     },
     cases: {
@@ -1359,11 +1379,27 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
       create: (values) => infectionRepo.createOutbreak(values),
     },
     outbox: {
-      emitOutbreakOpened: () =>
-        unboundWorkerPort(
-          "outbreakDetection.outbox.emitOutbreakOpened",
-          "bind to the live transactional-outbox dispatcher (m30.infection.outbreak_opened → M36 high alert)",
-        ),
+      // GAP-067 — BOUND over `deps.outboxPublisher` (the same tx-scoped `m30` publisher the command
+      // routes and `measureRecompute.emitValueEmitted` use). Unlike `emitThresholdBreached` there is no
+      // payload/schema mismatch to work around: the worker's payload is field-for-field the
+      // `m30.infection.outbreak_opened` catalog schema, and is already emitted with exactly these keys by
+      // the write path's inline detector (routes/write-service-drizzle.ts). Called unconditionally for
+      // every newly-opened case, so an unbound publisher must stay fail-closed rather than drop the
+      // M36 §4.9 `outbreak_detected` high alert silently.
+      emitOutbreakOpened: deps.outboxPublisher
+        ? (payload) =>
+            deps.outboxPublisher!.publish(db, {
+              eventName: "m30.infection.outbreak_opened",
+              payload,
+              organizationId: payload.orgId,
+              aggregateKind: "infection_outbreak_case",
+              aggregateId: payload.caseId,
+            })
+        : () =>
+            unboundWorkerPort(
+              "outbreakDetection.outbox.emitOutbreakOpened",
+              "bind `deps.outboxPublisher` (bindCallerModule(txOutboxPublisher, 'm30')) — m30.infection.outbreak_opened → M36 high alert",
+            ),
     },
   };
 
@@ -1901,8 +1937,9 @@ export function buildM30WorkerDeps(deps: {
 //
 // Still TODO(integrator — the still-missing infra seams the typed throws above name), all explicitly OUT OF
 // SCOPE for WX-PR-014 (see docs/audits/…/14-task-backlog.md for the full justification per item):
-//   • the REMAINING `emit*` / cron `outbox` ports (cahps-export / outbreak-detection / cahps-monthly-sample /
-//     sra-reminders, plus measure-recompute's `emitThresholdBreached`) — bind them and those emits light up.
+//   • the REMAINING `emit*` / cron `outbox` ports (cahps-export / cahps-monthly-sample / sra-reminders, plus
+//     measure-recompute's `emitThresholdBreached`) — bind them and those emits light up. (outbreak-detection's
+//     emit is no longer on this list — GAP-067 bound it, along with its trailing-window read.)
 //   • the M1 envelope-DEK helper (the CAHPS `decrypt` / `bindingConfig` ports + the cron `insertSampled`) —
 //     until bound, CAHPS export denies (terminal export_failed) and the monthly sample write denies; register
 //     it in bootstrap/seams so the DEK resolves (never plaintext caregiver PHI at rest, §3.6/§8).
