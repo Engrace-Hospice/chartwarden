@@ -9,8 +9,10 @@ import {
   createDbActorEnrichmentReader,
   createDbAdminMembershipReader,
   createDbEffectivePermissionStore,
+  createCredentialThrottle,
   createDbSessionContextStore,
   createIdentityAuth,
+  createInMemoryFailedLoginStore,
   getIdentitySession,
   registerAbacRegistry,
   registerDbEffectivePermissionResolver,
@@ -63,7 +65,12 @@ import {
   wireOutboxCatalog,
 } from "./bootstrap/outbox-persister";
 import { createDbIdempotencyStore } from "./bootstrap/plugins/idempotency-store-db";
-import { createRedisRateLimitStore } from "./bootstrap/plugins/rate-limit-store";
+import {
+  createBudgetedRateLimiter,
+  createInMemoryRateLimitStore,
+  createRedisFailedLoginStore,
+  createRedisRateLimitStore,
+} from "./bootstrap/plugins/rate-limit-store";
 import {
   buildOrgProviderEntityLister,
   buildPrimaryProviderEntityResolver,
@@ -73,6 +80,14 @@ import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolv
 
 /** The @wardenx/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
+// AC-04 — the sentinel the `/ready` object-store check HEADs. Neither the bucket nor the key is
+// expected to exist: a 404 is the healthy answer, and the point is that the request COMPLETED
+// (endpoint reachable, SigV4 accepted, credentials valid). Names are PHI-free and tenant-free by
+// construction, so the probe can never touch a real tenant bucket (`tenant-<orgId>`).
+const READINESS_PROBE_BUCKET = "wardenx-readiness";
+const READINESS_PROBE_KEY = ".probe";
+/** AC-05 — SECURITY_HARDENING §22.1: 5 signup intents per IP per hour on the public surface. */
+const PUBLIC_SIGNUP_HOURLY_LIMIT = 5;
 // M24 (WX-PR-011) — the per-state adapter registry + the Oregon launch-gateway (real+fake transport). Lives
 // in @wardenx/medicaid-adapters (M24's `dependsOn` PURE-domain leaf), not the backend module barrel — mirrors
 // how the M23 X12/MAC gateway lives inside the backend module instead (the one placement difference is that
@@ -2387,6 +2402,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           : DEFAULT_RATE_LIMIT_TIERS.authenticatedPerMinute,
       }
     : undefined;
+  // AC-04 — the object-store client the `/ready` probe reaches through. Built off the SAME MINIO_*
+  // env contract M22 uses; absent when object storage is not configured, in which case the probe
+  // omits the check entirely (reporting "ok") rather than failing a deployment that has no MinIO.
+  const readinessS3Config = s3ObjectStoreConfigFromEnv(process.env);
+  const readinessObjectStore = readinessS3Config ? createS3ObjectStore(readinessS3Config) : null;
   const app = buildServer({
     db: dbHandle?.db,
     authenticate,
@@ -2416,6 +2436,22 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             await redisHealthClient.ping();
           }
         : undefined,
+      // AC-04 — a real object-store reach. A HEAD on a sentinel key exercises the endpoint, the
+      // SigV4 signature and the credentials in one round trip: an unreachable endpoint rejects, bad
+      // credentials come back 403 and throw, and the expected 404 (`inspectObject` → null) is the
+      // healthy answer. It deliberately does NOT assert any bucket exists — buckets are per tenant
+      // (`tenant-<orgId>`), so there is no single bucket to probe, and a missing one is a config
+      // error surfaced at first use rather than an outage.
+      ...(readinessObjectStore
+        ? {
+            pingObjectStore: async () => {
+              await readinessObjectStore.inspectObject({
+                bucket: READINESS_PROBE_BUCKET,
+                objectKey: READINESS_PROBE_KEY,
+              });
+            },
+          }
+        : {}),
       outboxPendingDepth,
       outboxDepthThreshold: Number(process.env.OUTBOX_READY_DEPTH_THRESHOLD ?? 500),
       capabilities: {
@@ -2519,17 +2555,34 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               db: dbHandle.db,
               enqueue: m34TenantEnqueue.enqueue,
             }),
-            ...(platformDbHandle
-              ? {
-                  public: {
+            // AC-05 — SECURITY_HARDENING §22.1's 5/IP/hour on the public signup surface. The route
+            // has always composed the preHandler; the composition root never injected a limiter, so
+            // `createAllowAllRateLimiter()` stood and the budget was unlimited. Note this is
+            // deliberately OUTSIDE the `platformDbHandle` branch: the limiter must bind whether or
+            // not the first-admin acceptance service does, or the surface that IS mounted stays
+            // unlimited. Cluster-wide over Valkey when REDIS_URL is set; per-replica otherwise —
+            // which still bounds a single-instance deployment, where one replica IS the cluster.
+            public: {
+              rateLimiter: createBudgetedRateLimiter(
+                rateLimitStore ?? createInMemoryRateLimitStore(),
+                {
+                  limit: PUBLIC_SIGNUP_HOURLY_LIMIT,
+                  windowMs: 3_600_000,
+                  keyPrefix: "m34:signup:ip",
+                  onStoreError: (err) =>
+                    app.log.warn({ err }, "signup rate-limit store unavailable — failing open"),
+                },
+              ),
+              ...(platformDbHandle
+                ? {
                     service: buildFirstAdminAcceptanceService({
                       db: dbHandle.db,
                       platformDb: platformDbHandle.db,
                       auditBypass: m34PlatformBypassAuditor,
                     }),
-                  },
-                }
-              : {}),
+                  }
+                : {}),
+            },
           });
           // M33 (Phase 2C) — mount the Reporting READ + WRITE + EXPORT/DRILLDOWN surfaces over the DRIZZLE
           // route services. Reads run under withReportSession (replica-over-primary, RLS-scoped, read-only,
@@ -3071,7 +3124,22 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // notes in registerModuleRoutes). WARDENX_INMEM_ASSERT=warn is the audit's one-iteration rollback.
   assertNoInMemoryBindingsOnDbBoot({ dbPresent: dbHandle !== undefined });
   if (dbHandle && auth) {
-    registerIdentityAuth(app, auth); // AUTH-T02: mount /api/auth/* (needs BETTER_AUTH_SECRET/URL in prod)
+    // AC-05 — SECURITY_HARDENING §5.3.1's per-username + per-IP FAILED-attempt budgets. The global
+    // SD-055 tier does cover /api/auth/* (it exempts no path, unlike the CSRF plugin), but it counts
+    // ALL requests by IP at 30/min and so does nothing about a slow distributed run against one
+    // named account — the credential-stuffing shape §5.3.1 actually names. Cluster-wide over Valkey
+    // when REDIS_URL is set; per-replica otherwise. Usernames are hashed before they become keys.
+    registerIdentityAuth(app, auth, {
+      credentialThrottle: createCredentialThrottle(
+        rateLimitRedisClient
+          ? createRedisFailedLoginStore(rateLimitRedisClient)
+          : createInMemoryFailedLoginStore(),
+        {
+          onStoreError: (err) =>
+            app.log.warn({ err }, "credential-throttle store unavailable — failing open"),
+        },
+      ),
+    }); // AUTH-T02: mount /api/auth/* (needs BETTER_AUTH_SECRET/URL in prod)
     app.addHook("onClose", () => dbHandle.close());
   }
   // Close the separate M35 platform-ops credential pool on shutdown (when configured).

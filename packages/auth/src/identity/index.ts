@@ -47,6 +47,20 @@ export {
   createInMemorySessionContextStore,
 } from "./session-seam";
 export {
+  type CredentialOutcome,
+  type CredentialThrottle,
+  type CredentialThrottlePolicy,
+  type FailedLoginStore,
+  CREDENTIAL_THROTTLE_POLICY,
+  CredentialThrottleError,
+  createCredentialThrottle,
+  createInMemoryFailedLoginStore,
+  credentialKey,
+  isGuardedSignInPath,
+  outcomeOfStatus,
+  usernameFromBody,
+} from "./credential-throttle";
+export {
   type StepUpOverrideRecord,
   type StepUpOverrideStore,
   createInMemoryStepUpOverrideStore,

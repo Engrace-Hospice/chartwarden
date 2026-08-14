@@ -223,6 +223,7 @@ import {
   registerTenantPlatformRoutes as _registerTenantPlatformRoutes,
 } from "./routes/platform/index";
 import {
+  type RateLimiter as _PublicSignupRateLimiter,
   type SignupIntentRouteService as _SignupIntentRouteService,
   registerPublicSignupRoutes as _registerPublicSignupRoutes,
 } from "./routes/public/signup-intents";
@@ -278,7 +279,12 @@ export function mountTenantPlatformRoutes(
   services?: {
     platform?: { service: _TenantPlatformRouteService };
     tenant?: { service: _TenantRouteService };
-    public?: { service: _SignupIntentRouteService };
+    public?: {
+      service?: _SignupIntentRouteService;
+      /** AC-05 — §22.1's 5/IP/hour limiter. Absent ⇒ `createAllowAllRateLimiter()`, i.e. UNLIMITED,
+       *  which is what the composition root left it as: the port existed and nothing ever filled it. */
+      rateLimiter?: _PublicSignupRateLimiter;
+    };
   },
 ): void {
   void db; // the Drizzle services already hold the platform/org-pooled handles (services.* below).
@@ -301,8 +307,11 @@ export function mountTenantPlatformRoutes(
   _registerTenantTenantRoutes(app, { service: tenantService });
 
   // ── public, session-less self-serve signup surface (503-gated by default; D14) ──
+  // The route has always composed its `requireUnderRateLimit` preHandler; what was missing was a
+  // limiter to inject, so the §22.1 budget resolved to `createAllowAllRateLimiter()` (AC-05).
   _registerPublicSignupRoutes(app, {
     service: services?.public?.service ?? SLICE_M34_SIGNUP_SERVICE,
+    ...(services?.public?.rateLimiter ? { rateLimiter: services.public.rateLimiter } : {}),
   });
 }
 

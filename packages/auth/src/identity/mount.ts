@@ -6,6 +6,13 @@
 // to exercise the plumbing). The instance itself is created by createIdentityAuth(db) and is mounted
 // only when a production DB client is present (composition root); slice/tests don't mount it.
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import {
+  type CredentialThrottle,
+  CredentialThrottleError,
+  isGuardedSignInPath,
+  outcomeOfStatus,
+  usernameFromBody,
+} from "./credential-throttle";
 
 /** The slice of a Better Auth instance the bridge needs (structural — `Auth` satisfies it). */
 export interface MountableAuth {
@@ -15,6 +22,15 @@ export interface MountableAuth {
 export interface RegisterIdentityAuthOptions {
   /** Path prefix Better Auth serves under (must match the instance's basePath). Default `/api/auth`. */
   basePath?: string;
+  /**
+   * AC-05 — the §5.3.1 brute-force guard. Absent ⇒ no per-username/per-IP failed-attempt budget
+   * (only the global SD-055 per-minute tier applies), which is what production ran until now.
+   *
+   * It hangs here rather than on a separate preHandler because this bridge is the ONE place that
+   * sees both the credential in the request and Better Auth's verdict in the response — the guard
+   * needs both, and Better Auth's own hooks are version-coupled internals.
+   */
+  credentialThrottle?: CredentialThrottle;
 }
 
 /** Convert a Fastify request to a web `Request` (Fastify-parsed JSON body is re-serialized). */
@@ -41,8 +57,30 @@ export function registerIdentityAuth(
   opts: RegisterIdentityAuthOptions = {},
 ): void {
   const basePath = opts.basePath ?? "/api/auth";
+  const throttle = opts.credentialThrottle;
   app.all(`${basePath}/*`, async (request, reply) => {
+    // §5.3.1 — refuse a spent budget BEFORE the credential is checked, so a locked-out account
+    // costs an attacker an Argon2id verification of nothing. Only the credential-checking paths are
+    // guarded: sign-out, callbacks and session reads are not credential guesses.
+    const guarded = throttle !== undefined && isGuardedSignInPath(request.url, basePath);
+    const username = guarded ? usernameFromBody(request.body) : null;
+    if (guarded) {
+      try {
+        await throttle.assertUnderBudget({ username, ip: request.ip || "unknown" });
+      } catch (err) {
+        if (err instanceof CredentialThrottleError)
+          reply.header("Retry-After", String(err.retryAfterSeconds));
+        throw err; // rendered by M1's error-handler as the canonical envelope
+      }
+    }
     const res = await auth.handler(toWebRequest(request));
+    if (guarded) {
+      await throttle.record({
+        username,
+        ip: request.ip || "unknown",
+        outcome: outcomeOfStatus(res.status),
+      });
+    }
     reply.status(res.status);
     // Forward headers; Set-Cookie must go as a list (Headers.forEach folds duplicates into one string).
     const setCookies = res.headers.getSetCookie?.() ?? [];

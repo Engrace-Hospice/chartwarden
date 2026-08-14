@@ -51,6 +51,75 @@ end
 return current
 `;
 
+/**
+ * AC-05 — a BUDGETED limiter over a {@link RateLimitStore}, for the per-route budgets that are
+ * far tighter than the global SD-055 per-minute tiers (M34 §22.1's 5/IP/hour on public signup being
+ * the first). Structurally satisfies M34's own `RateLimiter` port — the composition root wires the
+ * two together, so neither module imports the other.
+ *
+ * `retryAfterSeconds` is the window length, an honest UPPER bound: this is a fixed-window counter
+ * and the store does not expose the key's remaining TTL, so the true wait is always ≤ what we
+ * report. The same choice `security.ts` makes for the global tier.
+ *
+ * Fails OPEN on a store outage, matching `applySecurityBaseline`: rate limiting is a
+ * defense-in-depth AVAILABILITY control, not an authorization gate, and a Valkey blip must not
+ * take down the surface it protects. The caller logs it.
+ */
+export function createBudgetedRateLimiter(
+  store: RateLimitStore,
+  opts: {
+    limit: number;
+    windowMs: number;
+    keyPrefix: string;
+    onStoreError?: (err: unknown) => void;
+  },
+): { consume(key: string): Promise<{ allowed: boolean; retryAfterSeconds?: number }> } {
+  return {
+    async consume(key) {
+      let count: number;
+      try {
+        count = await store.increment(`${opts.keyPrefix}:${key}`, opts.windowMs);
+      } catch (err) {
+        opts.onStoreError?.(err);
+        return { allowed: true };
+      }
+      if (count <= opts.limit) return { allowed: true };
+      return { allowed: false, retryAfterSeconds: Math.ceil(opts.windowMs / 1000) };
+    },
+  };
+}
+
+/**
+ * AC-05 — the cluster-wide {@link FailedLoginStore} M2's §5.3.1 credential throttle reads through.
+ * Same fixed-window INCR/PEXPIRE primitive as the limiter above, plus the READ (`failureCount`) the
+ * guard needs to refuse BEFORE a credential is checked, and the DEL that clears a username's budget
+ * on a successful sign-in. Keys are already hashed by the caller — no address reaches Valkey.
+ *
+ * Structurally satisfies `@wardenx/auth`'s `FailedLoginStore`; the composition root wires the two,
+ * so M1's plugin layer takes no dependency on M2's package.
+ */
+export function createRedisFailedLoginStore(redis: Redis): {
+  recordFailure(key: string, windowMs: number): Promise<number>;
+  failureCount(key: string): Promise<number>;
+  clear(key: string): Promise<void>;
+} {
+  const k = (key: string) => `ratelimit:${key}`;
+  return {
+    async recordFailure(key, windowMs) {
+      const result = await redis.eval(INCREMENT_SCRIPT, 1, k(key), windowMs);
+      return typeof result === "number" ? result : Number(result);
+    },
+    async failureCount(key) {
+      const raw = await redis.get(k(key));
+      const n = raw === null ? 0 : Number(raw);
+      return Number.isFinite(n) ? n : 0;
+    },
+    async clear(key) {
+      await redis.del(k(key));
+    },
+  };
+}
+
 /** Cluster-wide store over the shared Valkey/Redis connection. Keys are namespaced under
  *  `ratelimit:` so they're visually distinguishable from BullMQ's own keys on the same instance
  *  (M34 queues and this limiter intentionally share one Valkey deployment, not one keyspace). */

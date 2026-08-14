@@ -20,6 +20,15 @@ export interface ReadinessProbeDeps {
   readonly pingDb?: () => Promise<void>;
   /** Redis/Valkey PING; omitted when `REDIS_URL` is unset (no BullMQ workers run either). */
   readonly pingRedis?: () => Promise<void>;
+  /**
+   * Object-store reachability (AC-04); omitted when the `MINIO_*` env contract is absent.
+   *
+   * `minio` used to be hard-coded "ok" here while `routes/health.ts` advertised it as a checked
+   * dependency and folded it into `allOk`, so `/ready` stayed green through a total object-storage
+   * outage — and DR/BCP §6.3's storage-failover detection reads exactly this signal. A dependency
+   * listed but never checked is worse than one not listed.
+   */
+  readonly pingObjectStore?: () => Promise<void>;
   /** Current outbox `pending`-row backlog depth across active orgs; omitted when the dispatcher isn't running. */
   readonly outboxPendingDepth?: () => Promise<number>;
   /** Depth at/above which `outbox` reports "fail" — a growing backlog signals a stuck dispatcher. */
@@ -96,18 +105,21 @@ export function buildReadinessProbe(deps: ReadinessProbeDeps): ReadinessProbe {
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const threshold = deps.outboxDepthThreshold ?? DEFAULT_OUTBOX_DEPTH_THRESHOLD;
   return async (): Promise<ReadinessChecks> => {
-    const [db, valkey, outbox] = await Promise.all([
+    const [db, valkey, minio, outbox] = await Promise.all([
       checkReachable(deps.pingDb, "db", timeoutMs, log),
       checkReachable(deps.pingRedis, "valkey", timeoutMs, log),
+      // MinIO stays OPTIONAL infra — `bootstrap/env.ts` does not require `MINIO_*` in production and
+      // the M22 object store falls back to a REFUSING port (never a silent no-op) when unconfigured.
+      // So an unconfigured deployment omits the ping and reports "ok", exactly as db/valkey do: no
+      // configured dependency means nothing to be unready about. What changed is that a CONFIGURED
+      // one is now actually reached.
+      checkReachable(deps.pingObjectStore, "minio", timeoutMs, log),
       checkOutboxDepth(deps.outboxPendingDepth, threshold, timeoutMs, log),
     ]);
-    // MinIO is optional infra (bootstrap/env.ts does not require MINIO_* in production; the M22
-    // object store falls back to a REFUSING port, not a silent no-op, when unconfigured) — TASK-040B
-    // scopes DB/Redis/outbox only, so this stays the historical "ok" default.
     return {
       db,
       valkey,
-      minio: "ok",
+      minio,
       outbox,
       ...(deps.capabilities ? { capabilities: deps.capabilities } : {}),
     };
