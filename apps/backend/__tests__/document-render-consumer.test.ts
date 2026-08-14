@@ -20,6 +20,7 @@ import {
   normalizeDocumentRequest,
 } from "../src/modules/22-documents/index";
 import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
+import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
 
 const ORG = "00000000-0000-4000-8000-0000000000ee";
 const PAT = "00000000-0000-4000-8000-0000000000aa";
@@ -28,6 +29,8 @@ const ADMISSION = "00000000-0000-4000-8000-0000000000cc";
 const SUPPLY_REQUEST = "00000000-0000-4000-8000-0000000000d1";
 const DISPATCH = "00000000-0000-4000-8000-0000000000d2";
 const RETURN = "00000000-0000-4000-8000-0000000000d3";
+const RUN = "00000000-0000-4000-8000-0000000000d4";
+const EXPORT = "00000000-0000-4000-8000-0000000000d5";
 
 function delivered(over: Partial<DispatchableOutboxEvent> = {}): DispatchableOutboxEvent {
   return {
@@ -192,6 +195,61 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
     expect(receipt.payload.aggregateId).toBe(RETURN);
   });
 
+  // M33 (GAP-051) — the second one-wire-name-two-producers case, discriminated by `aggregateType`
+  // instead of a bespoke field, because the two artifacts are two different document_aggregate_types.
+  it("routes M33's two producers to their own templates and keeps the whole payload as content", () => {
+    const snapshot = {
+      viewId: "00000000-0000-4000-8000-0000000000f0",
+      format: "pdf",
+      organizationId: ORG,
+      snapshotQuery: "SELECT $1",
+      idempotencyKey: RUN,
+      title: "Daily Census",
+      columns: [{ key: "census_day", sourceKey: "census_day", kind: "dimension" }],
+      rows: [{ census_day: "2026-08-01" }],
+      rowCount: 1,
+    };
+
+    const scheduled = normalizeDocumentRequest({
+      eventType: "m33.scheduled_report.render_requested",
+      organizationId: ORG,
+      aggregateId: RUN, // the report_schedule_run OCCURRENCE
+      payload: { ...snapshot, aggregateType: "report_schedule_run", scheduleId: "s1", runId: RUN },
+    });
+    expect(scheduled.payload.templateKey).toBe("scheduled_report");
+    expect(scheduled.payload.aggregateId).toBe(RUN);
+    // A report is aggregate-only (D6) — no chart target, so no patient on the document.
+    expect(scheduled.payload.patientId).toBeNull();
+    expect(scheduled.payload.title).toBe("Daily Census");
+    // No `contentField`: the WHOLE payload is the report, rows included.
+    expect(scheduled.payload.content).toMatchObject({ rows: snapshot.rows, rowCount: 1 });
+
+    const adhoc = normalizeDocumentRequest({
+      eventType: "m33.scheduled_report.render_requested",
+      organizationId: ORG,
+      aggregateId: EXPORT,
+      payload: {
+        ...snapshot,
+        aggregateType: "report_export",
+        exportId: EXPORT,
+        aggregateId: EXPORT,
+      },
+    });
+    expect(adhoc.payload.templateKey).toBe("report_export");
+    expect(adhoc.payload.aggregateId).toBe(EXPORT);
+  });
+
+  it("throws on an M33 aggregateType M22 has no template for", () => {
+    expect(() =>
+      normalizeDocumentRequest({
+        eventType: "m33.scheduled_report.render_requested",
+        organizationId: ORG,
+        aggregateId: RUN,
+        payload: { aggregateType: "report_dashboard", title: "x" },
+      }),
+    ).toThrow(/report_dashboard' maps to no M22 template/);
+  });
+
   // A guess here would file the wrong document under a real patient's chart; a dead letter would not.
   it("throws on a documentKind M22 has no template for, rather than guessing", () => {
     expect(() =>
@@ -257,13 +315,14 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
     expect(doc).not.toBeNull();
   });
 
-  it("subscribes to the events M11/M12/M13/M23 declare — and nothing else", () => {
+  it("subscribes to the events M11/M12/M13/M21/M23/M33 declare — and nothing else", () => {
     expect(harness().consumer.eventTypes).toEqual([
       "m11.order.document_requested",
       "m12.medication_order.document_requested",
       "m13.reconciliation.document_requested",
       "m21.supply_request.document_requested",
       "m23.abn.required",
+      "m33.scheduled_report.render_requested",
     ]);
   });
 
@@ -281,6 +340,7 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
         ...M13_OUTBOX_EVENTS,
         ...M21_OUTBOX_EVENTS,
         ...M23_OUTBOX_EVENTS,
+        ...M33_OUTBOX_EVENTS,
       ].map((e) => [e.eventName, e]),
     );
     for (const eventName of M22_DOCUMENT_REQUEST_EVENTS) {

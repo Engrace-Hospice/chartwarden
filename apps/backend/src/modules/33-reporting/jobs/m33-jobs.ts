@@ -35,6 +35,7 @@ import {
   DashboardTileCacheRepository,
   type DrilldownAuditInput,
   type DrilldownAuditPorts,
+  type ExportRenderRequestPayload,
   type LagProbePorts,
   type MvRefreshEnqueueOutcome,
   type MvRefreshJob,
@@ -62,6 +63,7 @@ import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { eq, sql } from "drizzle-orm";
 import type Redis from "ioredis";
 import { getSeam } from "../../../bootstrap/index";
+import { buildDrizzleTileSqlExecutor } from "../sql-executor";
 import { M33_PLATFORM_JOB_ID } from "../wiring";
 import {
   type ExportRenderJob,
@@ -225,6 +227,10 @@ export function buildM33WorkerPorts(deps: M33WorkerDeps): M33WorkerPortBundles {
   const db = deps.db;
   const primaryDb = deps.primaryDb ?? deps.db;
 
+  // GAP-051 — the SAME `translateSpec`-result executor the read/export route services use, so the
+  // scheduled runner materializes its snapshot through one code path, not a second copy.
+  const snapshotExecutor = buildDrizzleTileSqlExecutor();
+
   const catalogRepo = new ReportCatalogRepository(primaryDb); // materialized_view_metadata registry (§3.3)
   const runRepo = new ReportRunRepository(primaryDb); // report_run + report_schedule_run ledgers
   const scheduleRepo = new ReportScheduleRepository(db); // report_schedule (org-scoped reads)
@@ -387,15 +393,14 @@ export function buildM33WorkerPorts(deps: M33WorkerDeps): M33WorkerPortBundles {
     // no new translation logic invented here. A `deny_stub` translation (the MV isn't materialized yet)
     // throws rather than emitting a fabricated snapshot query (D6 — never fail open).
     //
-    // ONE FLAGGED, NOT-INVENTED GAP: `SnapshotQueryPort.build` returns `snapshotQuery: string` alone (no
-    // separate params channel), and the `m33.scheduled_report.render_requested` wire event
-    // (events-by-m33.ts) mirrors that — `snapshotQuery: Type.String()`, nothing else. But `translateSpec`
-    // deliberately keeps SQL text and bound params SEPARATE (D4 — no raw-SQL / no string-interpolated
-    // values); the text this port returns still carries literal `$1, $2, …` placeholders with no
-    // accompanying params array in the wire contract. That is a pre-existing gap in the package's own
-    // interface + event schema (predates this task), not something introduced here — M22's eventual
-    // render consumer will need either a `params` field added to the event schema or a safe literal-inliner
-    // before it can actually execute this query. Flagged, not silently worked around.
+    // THE FLAGGED GAP IS CLOSED (GAP-051), the other way round. `SnapshotQueryPort.build` used to return
+    // `snapshotQuery: string` alone and the wire event mirrored it, while `translateSpec` deliberately
+    // keeps SQL text and bound params SEPARATE (D4) — so the text shipped to M22 carried literal `$1, $2,
+    // …` markers with no params channel anywhere in the contract. The resolution is NOT to add a `params`
+    // field: M22 has no reporting database to run the query against, and executing SQL text handed over an
+    // event is the exact raw-SQL surface D4 exists to prevent. The port that owns the query, the tx and
+    // the RLS scope EXECUTES it here and ships the ROWS — the same content-in-the-event shape every other
+    // §7.2 requester uses. `snapshotQuery` stays on the wire as provenance (what was rendered).
     snapshot: {
       async build({ reportViewId, organizationId }) {
         const view = await new ReportViewRepository(db).findById(reportViewId);
@@ -437,7 +442,27 @@ export function buildM33WorkerPorts(deps: M33WorkerDeps): M33WorkerPortBundles {
             `report base '${base.baseKey}' MV '${base.mvKey}' is not yet materialized (status='registered') — cannot build a scheduled-run snapshot`,
           );
         }
-        return { snapshotQuery: translation.sql, viewId: view.id, viewName: view.displayName };
+        // Executes on `db` — which, for this queue, IS the per-job `withOrgContext` tx (see
+        // `registerM33Workers`), so the SELECT runs under the requesting tenant's own RLS scope.
+        const { rows, rowCount } = await snapshotExecutor.execute(db, {
+          sql: translation.sql,
+          params: translation.params,
+        });
+        return {
+          snapshotQuery: translation.sql,
+          viewId: view.id,
+          viewName: view.displayName,
+          snapshot: {
+            columns: translation.columns.map((c) => ({
+              key: c.outputKey,
+              sourceKey: c.sourceKey,
+              kind: c.kind,
+              ...(c.unit ? { unit: c.unit } : {}),
+            })),
+            rows: rows as Record<string, unknown>[],
+            rowCount,
+          },
+        };
       },
     },
     // BOUND over `deps.outboxPublisher` (the SAME tx-scoped `m33` publisher the write-service command routes
@@ -511,28 +536,22 @@ export function buildM33WorkerPorts(deps: M33WorkerDeps): M33WorkerPortBundles {
   // `m33.scheduled_report.render_requested`, built by two DIFFERENT package producers with two DIFFERENT
   // payload shapes — `ExportRenderRequestPayload` (the ad-hoc PDF/XLSX route path:
   // `exportId/viewId/format/organizationId/snapshotQuery/idempotencyKey/aggregateType/aggregateId`) vs
-  // `RunnerOutboxPort`'s payload (the scheduled-run cron path, bound above:
-  // `scheduleId/runId/viewId/format/organizationId/snapshotQuery/idempotencyKey`). The catalog's schema
-  // (events-by-m33.ts) now marks `scheduleId`/`runId` Optional specifically so BOTH real payload shapes
+  // `RunnerOutboxPort`'s payload (the scheduled-run cron path, bound above). The catalog's schema
+  // (events-by-m33.ts) marks `scheduleId`/`runId` Optional specifically so BOTH real payload shapes
   // validate — this was a genuine package-level event-catalog gap (one wire name serving two producers, only
-  // one of which conformed), fixed at the schema, not by fabricating fields on either payload.
+  // one of which conformed), fixed at the schema, not by fabricating fields on either payload. Since
+  // GAP-051 both also carry an explicit `aggregateType`, because their artifacts are two DIFFERENT
+  // `document_aggregate_type`s and M22 resolves the template key from it.
   const exportRenderOutbox: {
-    emitRenderRequested(payload: {
-      readonly exportId: string;
-      readonly viewId: string;
-      readonly format: "pdf" | "xlsx";
-      readonly organizationId: string;
-      readonly snapshotQuery: string;
-      readonly idempotencyKey: string;
-      readonly aggregateType: string;
-      readonly aggregateId: string;
-    }): Promise<void>;
+    emitRenderRequested(payload: ExportRenderRequestPayload): Promise<void>;
   } = {
     emitRenderRequested: deps.outboxPublisher
       ? (payload) =>
           deps.outboxPublisher!.publish(db, {
             eventName: "m33.scheduled_report.render_requested",
-            payload,
+            // Spread + widen: the publisher takes an open record, and a declared interface has no index
+            // signature. The catalog still validates every field against the declared TypeBox schema.
+            payload: { ...payload } as unknown as Record<string, unknown>,
             organizationId: payload.organizationId,
             aggregateKind: payload.aggregateType,
             aggregateId: payload.aggregateId,

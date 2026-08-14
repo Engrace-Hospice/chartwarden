@@ -4,6 +4,13 @@
 // catalog at boot (the M34 events-by-m34 precedent).
 export { M33_OUTBOX_EVENTS } from "./events-by-m33";
 
+// GAP-051 — the §1.1 render handshake's DOWNSTREAM half: the live `m22.document.rendered` consumer that
+// settles a scheduled-report occurrence `delivered` with its M22 `document_id`.
+export {
+  M33_DOCUMENT_BACKREF_CONSUMER,
+  buildM33DocumentBackrefConsumer,
+} from "./outbox-consumers/m22-document-rendered";
+
 // §4.6 — the thirty-three permission keys M33 contributes to M3's catalog (the auth-package mirror-row
 // projector consumes `M33_CONTRIBUTED_PERMISSIONS`; the route layer gates on these keys, later phase).
 export {

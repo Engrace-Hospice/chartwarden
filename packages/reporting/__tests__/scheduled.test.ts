@@ -173,7 +173,21 @@ function makeRunnerPorts(
       snapshot: {
         build: async () => {
           calls.push("snapshot.build");
-          return { snapshotQuery: "SELECT 1", viewId: "view_1", viewName: "Census" };
+          return {
+            snapshotQuery: "SELECT 1",
+            viewId: "view_1",
+            viewName: "Census",
+            // GAP-051 — the port MATERIALIZES: the rows travel with the render request, because M22
+            // has no reporting database to run `snapshotQuery` against.
+            snapshot: {
+              columns: [
+                { key: "census_day", sourceKey: "census_day", kind: "dimension" as const },
+                { key: "active", sourceKey: "active_patient_count", kind: "measure" as const },
+              ],
+              rows: [{ census_day: "2026-03-01", active: 12 }],
+              rowCount: 1,
+            },
+          };
         },
       },
       outbox: {
@@ -221,6 +235,21 @@ describe("M33 §2.2 / W-R-04 runner — the §1.1 render handshake", () => {
       calls.indexOf("settle:rendered_pending"),
     );
     expect((renderRequests[0] as { idempotencyKey: string }).idempotencyKey).toBe("run_1");
+    // GAP-051 — the request carries the RENDERABLE snapshot (M22 renders content, it does not execute
+    // `snapshotQuery`), and the `aggregateType` that tells M22 which of this wire name's two producers
+    // sent it — and therefore which template / document_aggregate_type applies.
+    const sent = renderRequests[0] as {
+      aggregateType: string;
+      title: string;
+      rows: unknown[];
+      rowCount: number;
+      columns: unknown[];
+    };
+    expect(sent.aggregateType).toBe("report_schedule_run");
+    expect(sent.title).toBe("Census");
+    expect(sent.rowCount).toBe(1);
+    expect(sent.rows).toHaveLength(1);
+    expect(sent.columns).toHaveLength(2);
   });
 
   it("is idempotent — a run already past `queued` is a no-op (§2.6)", async () => {

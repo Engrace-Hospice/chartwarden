@@ -42,6 +42,11 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   "m13.reconciliation.document_requested", // medication_reconciliation_worksheet
   "m21.supply_request.document_requested", // supply_bill_of_lading | comfort_kit_return_receipt
   "m23.abn.required", // abn — CMS-R-131 (GAP-038: M23's declared name, not `m23.abn.document_requested`)
+  // GAP-051 — M33's PDF/XLSX render handshake. Its name says `scheduled_report`, but ONE wire name serves
+  // BOTH producers (the cron path and the ad-hoc "export now" route), discriminated by `aggregateType`.
+  // M33 has declared `declaredConsumers: ["m22"]` on it since it landed; with nothing bound, every render
+  // request — including the scheduled path, which genuinely emits — sat `pending` forever.
+  "m33.scheduled_report.render_requested", // report_export | scheduled_report
 ] as const;
 
 /** §4.11 render-request events the SPEC anticipates but no module's event catalog declares yet. Listed —

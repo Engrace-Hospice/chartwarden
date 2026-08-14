@@ -23,9 +23,11 @@ import {
   DrilldownDekUnavailable,
   type DrilldownFilterEncryptionPort,
   DrilldownTemplateError,
+  EMPTY_SNAPSHOT,
   type ExportRenderOutboxPort,
   PdfRowLimitExceeded,
   type ReadReplicaSessionPort,
+  type RenderSnapshot,
   type ReplicaLagGatePort,
   ReportCatalogRepository,
   ReportDefinitionRepository,
@@ -285,7 +287,7 @@ export function createDrizzleM33ExportDrilldownBackend(deps: M33ExportDrilldownD
     actor: M33WriteActor,
     viewId: string,
     query: ExportQuery,
-  ): Promise<{ translation: Translation; rowLimit: number }> => {
+  ): Promise<{ translation: Translation; rowLimit: number; viewName: string }> => {
     const view = await new ReportViewRepository(db).findById(viewId);
     if (!view || view.organizationId !== actor.organizationId)
       throw new NotFoundError("report view");
@@ -317,16 +319,16 @@ export function createDrizzleM33ExportDrilldownBackend(deps: M33ExportDrilldownD
       translatorBase,
       scopeEnvelope(actor, query),
     );
-    return { translation, rowLimit };
+    return { translation, rowLimit, viewName: view.displayName };
   };
 
   /** `translateViewOn` over its own freshly-opened read session (used where the session need not stay open
-   *  past the translation itself — `estimateCsvExport`/`requestExport` never execute the translated SQL). */
+   *  past the translation itself — `estimateCsvExport` never executes the translated SQL). */
   const translateView = (
     actor: M33WriteActor,
     viewId: string,
     query: ExportQuery,
-  ): Promise<{ translation: Translation; rowLimit: number }> =>
+  ): Promise<{ translation: Translation; rowLimit: number; viewName: string }> =>
     read(actor.organizationId, (db) => translateViewOn(db, actor, viewId, query));
 
   const service: M33ExportDrilldownRouteService = {
@@ -367,7 +369,38 @@ export function createDrizzleM33ExportDrilldownBackend(deps: M33ExportDrilldownD
 
     async requestExport(actor, viewId, format, idempotencyKey) {
       if (!deps.exportOutbox) throw new ExportRenderUnbound();
-      const { translation, rowLimit } = await translateView(actor, viewId, {});
+      // GAP-051 — ONE read session spans translate → EXECUTE, exactly as `streamCsvExport` does and for
+      // the same reason: the executor must run on the tx carrying the RLS/read-only/statement_timeout
+      // GUCs. This path used to translate only and ship the query TEXT to M22, which could never have
+      // rendered from it (no reporting database, and the `$1, $2, …` markers have no params attached).
+      const { translation, rowLimit, viewName, snapshot } = await read(
+        actor.organizationId,
+        async (db) => {
+          const resolved = await translateViewOn(db, actor, viewId, {});
+          // A deny-stub base (an unmaterialized MV, D6) renders an EMPTY report rather than fabricating
+          // rows — the same forward-seam choice the tile and CSV paths make.
+          if (resolved.translation.kind !== "sql" || !deps.tiles) {
+            return { ...resolved, snapshot: EMPTY_SNAPSHOT };
+          }
+          const { rows, rowCount } = await deps.tiles.execute(db, {
+            sql: resolved.translation.sql,
+            params: resolved.translation.params,
+          });
+          return {
+            ...resolved,
+            snapshot: {
+              columns: resolved.translation.columns.map((c) => ({
+                key: c.outputKey,
+                sourceKey: c.sourceKey,
+                kind: c.kind,
+                ...(c.unit ? { unit: c.unit } : {}),
+              })),
+              rows: rows as Record<string, unknown>[],
+              rowCount,
+            } satisfies RenderSnapshot,
+          };
+        },
+      );
       const exportId = idempotencyKey || newId();
       const snapshotQuery = translation.kind === "sql" ? translation.sql : "";
       const input = {
@@ -376,6 +409,8 @@ export function createDrizzleM33ExportDrilldownBackend(deps: M33ExportDrilldownD
         organizationId: actor.organizationId,
         snapshotQuery,
         rowLimit,
+        title: viewName,
+        snapshot,
       };
       // §4.8 PDF gate is inside requestPdfRender (throws PdfRowLimitExceeded → the route 413s). XLSX: no gate.
       if (format === "pdf") {

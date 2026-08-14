@@ -29,6 +29,47 @@ export const PDF_MAX_ROW_LIMIT = 5_000 as const;
 
 // ── the render-request payload ────────────────────────────────────────────────────────────────────────────
 
+/**
+ * ONE COLUMN of a materialized snapshot, as M22 needs it to lay out a table (GAP-051). Mirrors the
+ * translator's own `TileColumn` without importing it — this is the WIRE shape, and it crosses a module
+ * boundary, so it is declared here rather than re-exported from the translator.
+ */
+export interface SnapshotColumn {
+  /** The output alias each row object is keyed by (the translator's `outputKey` — a tenant alias if the
+   *  saved spec supplied one, else the catalog key). */
+  readonly key: string;
+  /** The catalog key the column derives from — stable across tenant aliasing, so a renderer can look up
+   *  the human label. Deliberately NOT a `label`: the translator emits no display text and inventing one
+   *  here would put fabricated headers on a real report. */
+  readonly sourceKey: string;
+  readonly kind: "dimension" | "measure";
+  /** Present for measures: the unit the measure catalog declares (drives numeric formatting). */
+  readonly unit?: string;
+}
+
+/**
+ * The MATERIALIZED snapshot — the actual content of the rendered report (GAP-051).
+ *
+ * The handshake used to carry only `snapshotQuery`, a parameterized SELECT with literal `$1, $2, …`
+ * markers and NO accompanying params array (the translator keeps text and bound values separate by design,
+ * D4). M22 could never have rendered from that: it has no reporting database, no params to bind, and
+ * executing SQL text handed to it over an event is exactly the raw-SQL surface D4 exists to prevent. So
+ * M33 — which owns the query, the read session and the RLS scope — executes it and sends the ROWS, the
+ * same content-in-the-event shape every other §7.2 requester (M11/M12/M13/M21) already uses.
+ *
+ * Bounded by construction: `translateSpec` compiles the view's `row_limit` into the SELECT itself, and the
+ * PDF path additionally caps at {@link PDF_MAX_ROW_LIMIT}. Rows are aggregate-only (D6 — no row-level PHI),
+ * which is what makes them safe to carry in an outbox payload at all.
+ */
+export interface RenderSnapshot {
+  readonly columns: readonly SnapshotColumn[];
+  readonly rows: readonly Record<string, unknown>[];
+  readonly rowCount: number;
+}
+
+/** An empty snapshot — a deny-stub base (an unmaterialized MV, D6) resolves to this rather than to rows. */
+export const EMPTY_SNAPSHOT: RenderSnapshot = { columns: [], rows: [], rowCount: 0 };
+
 /** The fields an export handler needs to build a render-request (the resolved snapshot + its identity). */
 export interface ExportRenderRequestInput {
   /** The export job id — the §2.6 idempotency oracle + the `aggregateId` M22 keys its reply back by. */
@@ -36,10 +77,15 @@ export interface ExportRenderRequestInput {
   /** The saved view the export materializes. */
   readonly viewId: string;
   readonly organizationId: string;
-  /** The parameterized snapshot SELECT the translator built (aggregate-only; no row-level PHI, D6). */
+  /** The parameterized snapshot SELECT the translator built (aggregate-only; no row-level PHI, D6). Carried
+   *  for PROVENANCE — what was rendered — not for execution; see {@link RenderSnapshot}. */
   readonly snapshotQuery: string;
   /** The view's resolved row limit (drives the PDF §4.8 gate). */
   readonly rowLimit: number;
+  /** The saved view's display name — becomes the rendered document's title. */
+  readonly title: string;
+  /** The executed snapshot M22 renders. */
+  readonly snapshot: RenderSnapshot;
 }
 
 /** The typed `m33.scheduled_report.render_requested` payload M22 consumes (§4.10). `idempotencyKey = exportId`
@@ -51,9 +97,19 @@ export interface ExportRenderRequestPayload {
   readonly organizationId: string;
   readonly snapshotQuery: string;
   readonly idempotencyKey: string;
-  /** The §1.1 back-ref discriminator the reply consumer matches on (so it acts only on export replies). */
+  /**
+   * The §1.1 back-ref discriminator the reply consumer matches on (so it acts only on export replies) —
+   * AND, since GAP-051, the discriminator M22 resolves the template key from: this wire name serves two
+   * producers whose artifacts are two different `document_aggregate_type`s, so the payload has to say which.
+   */
   readonly aggregateType: typeof M33_EXPORT_AGGREGATE_TYPE;
   readonly aggregateId: string;
+  /** The rendered document's title (the saved view's display name). */
+  readonly title: string;
+  /** The materialized snapshot M22 renders — see {@link RenderSnapshot}. */
+  readonly columns: readonly SnapshotColumn[];
+  readonly rows: readonly Record<string, unknown>[];
+  readonly rowCount: number;
 }
 
 /** The injected outbox port the export handlers emit the render-request through (bound to the live transactional
@@ -99,6 +155,10 @@ export function buildExportRenderRequest(
     idempotencyKey: input.exportId,
     aggregateType: M33_EXPORT_AGGREGATE_TYPE,
     aggregateId: input.exportId,
+    title: input.title,
+    columns: input.snapshot.columns,
+    rows: input.snapshot.rows,
+    rowCount: input.snapshot.rowCount,
   };
 }
 

@@ -59,6 +59,7 @@ describe("M22-T06 — §4.11 outbox subscriptions catalog", () => {
       "m13.reconciliation.document_requested",
       "m21.supply_request.document_requested",
       "m23.abn.required",
+      "m33.scheduled_report.render_requested",
     ]);
   });
 

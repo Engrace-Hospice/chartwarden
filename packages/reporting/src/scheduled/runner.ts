@@ -19,6 +19,8 @@
 // M39/translator import here). The {@link partitionRecipients} + {@link decideRunDisposition} decision cores
 // are total functions unit-asserted independently of the I/O.
 import type { schema } from "@wardenx/db";
+import type { RenderSnapshot, SnapshotColumn } from "../export/render-request";
+import { M33_SCHEDULED_REPORT_AGGREGATE_TYPE } from "./delivery";
 
 /** The reason string stamped on the run + emitted when a run auto-pauses for a fully-revoked recipient set. */
 export const ALL_RECIPIENTS_REVOKED_REASON = "ALL_RECIPIENTS_REVOKED" as const;
@@ -60,15 +62,24 @@ export interface RecipientScopeValidationPort {
   isRecipientEntitled(membershipId: string, organizationId: string): Promise<boolean>;
 }
 
-/** Compiles the view's saved spec → the parameterized snapshot SELECT (translator on the read replica). */
+/**
+ * Compiles the view's saved spec → the parameterized snapshot SELECT AND EXECUTES it (translator on the
+ * read replica). GAP-051: this used to return the query text alone, which M22 could not render from — it
+ * has no reporting database and no params to bind, and the text carries literal `$1, $2, …` markers whose
+ * values the translator deliberately keeps in a separate channel (D4). The port that owns the read session
+ * is the one that must materialize, so it returns the rows too.
+ */
 export interface SnapshotQueryPort {
   build(input: {
     readonly reportViewId: string;
     readonly organizationId: string;
   }): Promise<{
+    /** The executed SELECT, carried for PROVENANCE (what was rendered), not for execution downstream. */
     readonly snapshotQuery: string;
     readonly viewId: string;
     readonly viewName: string;
+    /** The materialized result M22 renders (see {@link RenderSnapshot}). */
+    readonly snapshot: RenderSnapshot;
   }>;
 }
 
@@ -82,6 +93,18 @@ export interface RunnerOutboxPort {
     readonly organizationId: string;
     readonly snapshotQuery: string;
     readonly idempotencyKey: string;
+    /**
+     * GAP-051 — which of this wire name's TWO producers emitted, so M22 can resolve the right template
+     * (and therefore the right `document_aggregate_type`). The ad-hoc export path sends `report_export`;
+     * this one sends `report_schedule_run`, the aggregate `delivery.ts` already keys its back-ref on.
+     */
+    readonly aggregateType: typeof M33_SCHEDULED_REPORT_AGGREGATE_TYPE;
+    /** The rendered document's title (the saved view's display name). */
+    readonly title: string;
+    /** The materialized snapshot M22 renders. */
+    readonly columns: readonly SnapshotColumn[];
+    readonly rows: readonly Record<string, unknown>[];
+    readonly rowCount: number;
   }): Promise<void>;
   emitFailed(payload: {
     readonly scheduleId: string;
@@ -262,14 +285,15 @@ export async function handleScheduledRun(
   // proceed: run → running, build the snapshot, request the M22 render, park at rendered_pending.
   await ports.runs.settle(job.runId, scheduledFor, { status: "running", startedAt: ports.now() });
 
-  const { snapshotQuery, viewId } = await ports.snapshot.build({
+  const { snapshotQuery, viewId, viewName, snapshot } = await ports.snapshot.build({
     reportViewId: schedule.reportViewId,
     organizationId: job.organizationId,
   });
 
   // The §1.1 render handshake: M22 renders the snapshot (PDF/XLSX; CSV is delivered as a stored artifact too)
   // and replies `m22.document.rendered` keyed by `runId`; delivery.ts writes the document back. The
-  // idempotencyKey = runId gives M22 at-most-once render across a redelivered request.
+  // idempotencyKey = runId gives M22 at-most-once render across a redelivered request. The snapshot travels
+  // WITH the request (GAP-051) — M22 renders content, it does not run M33's SQL.
   await ports.outbox.emitRenderRequested({
     scheduleId: job.scheduleId,
     runId: job.runId,
@@ -278,6 +302,11 @@ export async function handleScheduledRun(
     organizationId: job.organizationId,
     snapshotQuery,
     idempotencyKey: job.runId,
+    aggregateType: M33_SCHEDULED_REPORT_AGGREGATE_TYPE,
+    title: viewName,
+    columns: snapshot.columns,
+    rows: snapshot.rows,
+    rowCount: snapshot.rowCount,
   });
 
   await ports.runs.settle(job.runId, scheduledFor, { status: "rendered_pending" });

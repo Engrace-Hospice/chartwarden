@@ -21,6 +21,7 @@ import {
   createInMemoryDocumentSeamStore,
   createInMemoryObjectStore,
 } from "../src/modules/22-documents/index";
+import { buildM33DocumentBackrefConsumer } from "../src/modules/33-reporting/index";
 
 const ORG = "00000000-0000-4000-8000-0000000000ee";
 const PAT = "00000000-0000-4000-8000-0000000000aa";
@@ -51,13 +52,15 @@ const rendered = (over: Record<string, unknown> = {}) => ({
 // ── the announcement ────────────────────────────────────────────────────────────────────────────────────
 
 describe("m22.document.rendered — the event that did not exist", () => {
-  it("declares exactly the four consumers that are bound, not the ones that are interested", () => {
+  it("declares exactly the consumers that are bound, not the ones that are interested", () => {
     const entry = M22_OUTBOX_EVENTS.find((e) => e.eventName === M22_DOCUMENT_RENDERED_EVENT);
     expect(entry).toBeDefined();
     // M14/M23/M25/M27/M39 all NAME this event in their subscription maps. Listing them here without a
     // live binding would hold every render's back-ref row `pending` forever — the dispatcher's staged-
-    // deployment rule — so each is added on the commit that binds its handler.
-    expect(entry?.declaredConsumers).toEqual(["m11", "m12", "m13", "m21"]);
+    // deployment rule — so each is added on the commit that binds its handler. (M33 arrived on GAP-051's.)
+    // It cuts both ways: the dispatcher THROWS at construction on a module that binds an event it is not
+    // declared for, so this list and the bound set move together or boot fails.
+    expect(entry?.declaredConsumers).toEqual(["m11", "m12", "m13", "m21", "m33"]);
   });
 
   it("announces the render with the routing the requesting module keys on", async () => {
@@ -183,5 +186,44 @@ describe("the back-ref consumers ignore every document they did not request", ()
     await expect(
       consumer.handle(rendered({ sourceModule: "m21", aggregateType: "comfort_kit_receipt" })),
     ).resolves.toBeUndefined();
+  });
+});
+
+// ── M33's back-ref consumer (GAP-051) ───────────────────────────────────────────────────────────────────
+//
+// M33's is not a column stamp: a rendered scheduled report SETTLES its occurrence `delivered` and emits the
+// §4.9 fan-out, so it composes the package's decider/applier. Its routing also differs from the four above —
+// it keys on `aggregateType` alone, because M33 owns TWO document aggregate types and only one of them has a
+// row to settle.
+describe("M33's delivery consumer", () => {
+  const consumer = buildM33DocumentBackrefConsumer({ db: NEVER_DB });
+
+  it("subscribes to m22.document.rendered as m33", () => {
+    expect(consumer.eventTypes).toEqual([M22_DOCUMENT_RENDERED_EVENT]);
+    expect(consumer.consumerModule).toBe("m33");
+  });
+
+  it("does nothing for another module's rendered document", async () => {
+    await expect(
+      consumer.handle(rendered({ sourceModule: "m11", aggregateType: "order_record" })),
+    ).resolves.toBeUndefined();
+  });
+
+  it("does nothing for M33's OTHER artifact — the ad-hoc export has no row to settle", async () => {
+    // `report_export` is reachable by `document.(aggregate_type, aggregate_id)` alone; there is no
+    // `report_export` table, so touching the database here would be a bug, not a stamp.
+    await expect(
+      consumer.handle(rendered({ sourceModule: "m33", aggregateType: "report_export" })),
+    ).resolves.toBeUndefined();
+  });
+
+  it("does nothing when the reply is missing the run or document id", async () => {
+    for (const missing of [{ documentId: null }, { aggregateId: undefined }]) {
+      await expect(
+        consumer.handle(
+          rendered({ sourceModule: "m33", aggregateType: "report_schedule_run", ...missing }),
+        ),
+      ).resolves.toBeUndefined();
+    }
   });
 });
