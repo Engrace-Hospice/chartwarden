@@ -23,6 +23,7 @@
 import {
   type AuditorMagicLinkIssuer,
   type SessionContextStore,
+  type StepUpOverrideStore,
   createAuditorSessionMinter,
   createInMemoryAuditorMagicLinkIssuer,
   createInMemorySessionContextStore,
@@ -36,6 +37,7 @@ import {
   createInMemoryElevatedApprovalStore,
 } from "./elevated-approvals";
 import { createOrganizationReader } from "./organization-reader";
+import { createDrizzleStepUpOverrideStore } from "./step-up-override-store";
 import { createTenantOrgCreationProvider } from "./tenant-org-creation-provider";
 
 /** Injected production adapters for M2's published seams (slice defaults to in-memory). */
@@ -44,6 +46,9 @@ export interface IdentitySeamDeps {
   sessions?: SessionContextStore;
   /** Mints the one-time auditor magic-link token (Valkey TTL store in production). */
   auditorLinks?: AuditorMagicLinkIssuer;
+  /** Per-tenant step-up policy overrides (§4.3.2, D9). Defaults to the Drizzle store when a `db`
+   *  is present, and to absent otherwise — absent means "every operation resolves to the floor". */
+  stepUpOverrides?: StepUpOverrideStore;
   /** DB client for the `TenantOrgCreationProvider` (M34 §7.1 step 3) + the `OrganizationReader`
    *  (M35 admin lists, M35A-T03). Absent in slice/tests → the registry's fail-closed deny-stubs stand
    *  (org creation resolves `unavailable`; the reader resolves no names). */
@@ -56,7 +61,12 @@ export interface IdentitySeamDeps {
 export function registerIdentitySeams(deps: IdentitySeamDeps = {}): void {
   const sessions = deps.sessions ?? createInMemorySessionContextStore().store;
   const auditorLinks = deps.auditorLinks ?? createInMemoryAuditorMagicLinkIssuer().issuer;
-  registerSeam("SessionContextResolver", createSessionContextResolver(sessions));
+  // AC-03 — the per-tenant step-up override (§4.3.2, D9) rides on the SAME seam M3's
+  // `step_up_recent` predicate already resolves, so no new seam and no new dependsOn edge. Without
+  // a db the store is absent and every operation resolves to the platform floor: an override may
+  // only ever TIGHTEN, so having none is the strict end, not a fail-open default.
+  const stepUpOverrides = deps.stepUpOverrides ?? (deps.db ? createDrizzleStepUpOverrideStore(deps.db) : undefined);
+  registerSeam("SessionContextResolver", createSessionContextResolver(sessions, stepUpOverrides));
   registerSeam("AuditorSessionMinter", createAuditorSessionMinter(auditorLinks));
   // GAP-043 — the per-membership named-approval-authority reader M27's §4.7 approver predicate keys on.
   // With a db it reads `membership_elevated_approval` under RLS; without one the in-memory store answers

@@ -5,12 +5,14 @@
 // name, carrying the operation key as the target. Every high-PHI route's step-up ceremony resolves
 // through here — so the freshness decision has ONE home.
 //
-// The resolver delegates to M2's published `SessionContextResolver` seam (§4.7) to read the session's
-// `lastStepUpAt`/`lastStepUpFactor` (a typed contract, never a direct read of the M1-owned `session`
-// table), then to the pure `isStepUpRecent` decision (packages/auth · step-up.ts) against the platform
-// floor `STEP_UP_POLICY`. Fail-closed throughout: no session id on the request, no org, or a missing/
-// stale/non-qualifying step-up all deny. Registered once, idempotently (the registry is single-owner /
-// no-clear, so re-boot in tests is idempotent via `registerPredicateIdempotent`).
+// The resolver delegates to M2's published `SessionContextResolver` seam (§4.7) for BOTH halves of the
+// decision — the session's `lastStepUpAt`/`lastStepUpFactor` (a typed contract, never a direct read of
+// the M1-owned `session` table) and the effective policy for the operation, which is the platform floor
+// `STEP_UP_POLICY` tightened by the tenant's `tenant_step_up_policy_override` row (§4.3.2, D9) — then to
+// the pure `isStepUpRecent` decision (packages/auth · step-up.ts). Fail-closed throughout: no session id
+// on the request, no org, or a missing/stale/non-qualifying step-up all deny. Registered once,
+// idempotently (the registry is single-owner / no-clear, so re-boot in tests is idempotent via
+// `registerPredicateIdempotent`).
 import {
   type AbacContext,
   type AbacTarget,
@@ -22,6 +24,15 @@ import { getSeam } from "../../bootstrap/index";
 
 /** The single predicate name M3 owns for the step-up ceremony (the §4.2.1 freshness gate). */
 export const M3_STEP_UP_PREDICATE = "step_up_recent";
+
+/**
+ * The operation key used when a caller gates on `step_up_recent` WITHOUT naming an operation
+ * (a bare `requireAbac(_, "step_up_recent")` rather than `requireStepUp(opKey)`). No tenant row
+ * can carry this key — `tenant_step_up_policy_override.operation_key` is written by the tenant's
+ * own configuration — so it resolves to the platform floor, which is the correct reading of an
+ * unnamed operation: unconfigurable, therefore un-tightenable, therefore the floor.
+ */
+export const M3_STEP_UP_FLOOR_KEY = "__unspecified__";
 
 /** The M3-BASE org-scoping predicate name. The predicate itself is INTRINSIC — seeded into every
  *  registry from `@wardenx/auth` (`M3_INTRINSIC_PREDICATES`), beside provider_entity_scope /
@@ -40,17 +51,34 @@ export function registerAuthorizationAbacPredicates(deps: { now?: () => number }
   const now = deps.now ?? (() => Date.now());
   registerPredicateIdempotent(
     M3_STEP_UP_PREDICATE,
-    async (context: AbacContext, _target: AbacTarget) => {
+    async (context: AbacContext, target: AbacTarget) => {
       const sessionId =
         typeof context.attributes.sessionId === "string" ? context.attributes.sessionId : null;
       if (!sessionId || !context.organizationId) return false; // fail-closed
-      // The platform floor applies uniformly; per-operation tightening (target.operationKey →
-      // tenant_step_up_policy_override) is M2-T05's resolver and layers on top once it lands.
-      const state = await getSeam("SessionContextResolver").resolveStepUpState(
-        { orgId: context.organizationId },
-        sessionId,
+      const scope = { orgId: context.organizationId };
+      const resolver = getSeam("SessionContextResolver");
+      // AC-03 — the per-operation tightening is ON the live path now. `requireStepUp(opKey)` puts
+      // the operation key in the target, M2 resolves `tenant_step_up_policy_override` for it, and
+      // the result is the floor INTERSECTED/MIN'd with the tenant's row. Before this the raw floor
+      // was evaluated and a tenant's tightening was silently ignored — the table has never been
+      // read by anything. An unkeyed call (no operationKey) resolves the floor, same as before.
+      const operationKey =
+        typeof target.operationKey === "string" ? target.operationKey : M3_STEP_UP_FLOOR_KEY;
+      const [state, policy] = await Promise.all([
+        resolver.resolveStepUpState(scope, sessionId),
+        resolver.resolveStepUpPolicy(scope, operationKey),
+      ]);
+      // `isStepUpRecent` reads a `StepUpPolicy`; the resolved policy carries only the two fields
+      // that tighten, so the lockout knobs come from the floor unchanged (they are not per-operation).
+      return isStepUpRecent(
+        state,
+        {
+          ...STEP_UP_POLICY,
+          qualifyingFactors: policy.qualifyingFactors,
+          defaultMaxAgeSec: policy.maxAgeSec,
+        },
+        now(),
       );
-      return isStepUpRecent(state, STEP_UP_POLICY, now());
     },
   );
 }

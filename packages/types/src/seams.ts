@@ -633,6 +633,21 @@ export interface SessionStepUpFields {
 }
 
 /**
+ * The effective step-up policy for one (organization, operation) AFTER the tenant's
+ * `tenant_step_up_policy_override` row has been tightened against the platform floor
+ * `STEP_UP_POLICY` (M2 spec §4.3.2, D9). Tighten-only: `qualifyingFactors` is an INTERSECTION
+ * with the floor's set and `maxAgeSec` is a MIN against the floor's window, so a resolved policy
+ * can only ever be harder to satisfy than the floor — never easier.
+ *
+ * The shape lives in this leaf because M2 PRODUCES it and M3's `step_up_recent` predicate
+ * CONSUMES it through the seam; neither imports the other's package.
+ */
+export interface ResolvedStepUpPolicy {
+  readonly qualifyingFactors: readonly StepUpFactor[];
+  readonly maxAgeSec: number;
+}
+
+/**
  * M2 — resolves an authenticated, org-scoped request (by session id) to its actor identity
  * and step-up state. Consumed by M3 (`step_up_recent`), M4 (actor for the audit trail), and
  * every module that needs an authenticated request context (§4.7). Resolution is org-scoped:
@@ -641,6 +656,13 @@ export interface SessionStepUpFields {
 export interface SessionContextResolver {
   resolveActor(scope: OrgScope, sessionId: string): Promise<ResolvedActor | null>;
   resolveStepUpState(scope: OrgScope, sessionId: string): Promise<SessionStepUpFields | null>;
+  /**
+   * The effective (post-tighten) step-up policy for an operation in this org — the floor when the
+   * tenant has configured no override. M3's `step_up_recent` predicate evaluates the session's
+   * step-up state against THIS rather than against the raw floor, which is what makes a tenant's
+   * per-operation tightening (WebAuthn-only, or a 60-second window on eRx signing) actually bind.
+   */
+  resolveStepUpPolicy(scope: OrgScope, operationKey: string): Promise<ResolvedStepUpPolicy>;
 }
 
 /**

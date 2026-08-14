@@ -206,6 +206,13 @@ jobs:
           # read-then-write would let two concurrent co-signers through) and `bge_cosigner_distinct`
           # (migration 0210) holds when the store is bypassed — neither is provable off a database.
           - { name: "M3 break-glass co-signature", scripts: "test:m3:break-glass:live" }
+          # AC-03: the §4.3.2/D9 step-up tighten-only invariant. `trg_tenant_step_up_tighten_only`
+          # was asserted by name in a code comment and existed in no migration, and nothing had ever
+          # read `tenant_step_up_policy_override` — so a tenant that TIGHTENED step-up was silently
+          # ignored. This suite proves the trigger refuses a loosening row at write time and the
+          # store/seam make a tightening bind at evaluation time, and it DERIVES its boundary cases
+          # from `STEP_UP_POLICY` so the TS floor and the SQL floor cannot drift apart in silence.
+          - { name: "M2 step-up override", scripts: "test:m2:step-up-override:live" }
           # GAP-079: M4's §2.5 read-audit EMISSION over the M26 Cap + M39 Consent read surfaces —
           # proves the events land in the partitioned audit_event table carrying the patient id the
           # §164.528 accounting query joins on, as the NOBYPASSRLS app role.

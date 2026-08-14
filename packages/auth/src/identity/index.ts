@@ -47,6 +47,12 @@ export {
   createInMemorySessionContextStore,
 } from "./session-seam";
 export {
+  type StepUpOverrideRecord,
+  type StepUpOverrideStore,
+  createInMemoryStepUpOverrideStore,
+  tightenStepUpPolicy,
+} from "./step-up-policy";
+export {
   type AuditorMagicLinkIssuer,
   type AuditorSessionMintInput,
   createAuditorSessionMinter,
