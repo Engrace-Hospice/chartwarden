@@ -4,6 +4,7 @@
 // arch:gaps event-catalog / seam-registry gates, so consuming `m6.*`/`m11.*`/… adds no edge; M22 deps
 // stay `[1, 5]`).
 export {
+  M22_ANTICIPATED_DOCUMENT_REQUEST_EVENTS,
   M22_DOCUMENT_REQUEST_EVENTS,
   decideDocumentRequest,
   type DocumentRequestAction,
@@ -29,3 +30,9 @@ export {
   M22_DOCUMENT_REQUEST_BINDINGS_DEFERRED,
   type DocumentRequestBinding,
 } from "./bindings";
+export {
+  MalformedRenderRequestError,
+  buildM22DocumentRequestConsumer,
+  normalizeDocumentRequest,
+  type DocumentRequestConsumerDeps,
+} from "./render-consumer";

@@ -1,0 +1,299 @@
+// apps/backend/src/modules/22-documents/outbox-consumers/render-consumer.ts — GAP-023/024/038. The LIVE
+// §4.11 render-handshake consumer: the half that was forward-declared in ./bindings.ts and never built.
+//
+// Before this file NOTHING drained a `*.document_requested` row. The pure decider (T06
+// {@link decideDocumentRequest}), the two real seam gates (M39 consent / M40 BAA), the T04
+// `DocumentRenderer`, and — since GAP-095 — a Drizzle document-row write store all existed and were
+// individually tested; the dispatcher was simply never told about any of them. So M13's
+// `finalize-reconciliation` (the ONE source module that genuinely emits) wrote an outbox row that sat
+// `pending` forever, and the audit's "M22 is ready and waiting for this event" (GAP-023) was true only of
+// a `const` array of strings. This binding closes the loop: normalize → resolve facts → decide → render.
+//
+// Why the normalizer exists: each source module owns its own payload wire shape (M11/M12 emit
+// `{orderId, formTemplate, renderPayload}`, M13 `{worksheetId, …}`, M23's ABN a flat financial record) and
+// M22 must not import any of them (deps stay `[1, 5]` — event STRINGS only, §4 boundary rule). The §4.11
+// {@link DocumentRequestPayload} is M22's own canonical shape; {@link normalizeDocumentRequest} is the pure,
+// per-event adapter into it. An event whose payload does not normalize THROWS — the dispatcher retries then
+// dead-letters it (§7.2), which is the honest outcome for a malformed render request; it is never a silent
+// no-op that would leave a signed clinical artifact permanently un-rendered with a green outbox.
+import type {
+  DispatchableOutboxEvent,
+  OutboxConsumerBinding,
+} from "../../../bootstrap/outbox-dispatcher";
+import { getDocumentRenderer } from "../seams";
+import { PLATFORM_TEMPLATE_TABLE, type TemplateDescriptor } from "../seams/renderer";
+import type { DocumentSeamStore } from "../seams/store";
+import { resolveExternalBaaActive } from "./baa-gate";
+import { M22_DOCUMENT_RENDER_CONSUMER } from "./bindings";
+import { resolveSudConsentPresent } from "./consent-gate";
+import {
+  type DocumentRequestEvent,
+  type DocumentRequestFacts,
+  type DocumentRequestPayload,
+  M22_DOCUMENT_REQUEST_EVENTS,
+  decideDocumentRequest,
+} from "./decide-document-request";
+
+// ── The per-event payload adapter (pure) ────────────────────────────────────────────────────────────────
+
+/** How one source module's wire payload maps onto M22's canonical {@link DocumentRequestPayload}. Kept as
+ * DATA (not a switch) so adding a source module is one row, and so the whole mapping is assertable. */
+interface RequestShape {
+  /** Payload field(s) holding the source aggregate id — the first present, non-empty string wins. */
+  readonly aggregateIdFields: readonly string[];
+  /** The M22 template key, when the source module's own form-template name is NOT one (M13 asks for
+   *  `reconciliation_worksheet_v1`; M22's published key is `medication_reconciliation_worksheet`). */
+  readonly templateKey?: string;
+  /** Payload field holding the source's own template name, used when {@link templateKey} is absent. */
+  readonly templateKeyField?: string;
+  /** Payload field holding the render content blob (passed through to the byte renderer). */
+  readonly contentField?: string;
+}
+
+/** The §4.11 wire shapes, one per LIVE consumed event (see {@link M22_DOCUMENT_REQUEST_EVENTS}). */
+const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
+  // M11 §4.4 — "mirror of `m11.order.signed`". `formTemplate` IS the M22 key (`order_record`).
+  "m11.order.document_requested": {
+    aggregateIdFields: ["orderId"],
+    templateKeyField: "formTemplate",
+    contentField: "renderPayload",
+  },
+  // M12 §4.4 — same shape as M11; `formTemplate` is `medication_order`.
+  "m12.medication_order.document_requested": {
+    aggregateIdFields: ["orderId"],
+    templateKeyField: "formTemplate",
+    contentField: "renderPayload",
+  },
+  // M13 — the one source module that already emitted before this consumer existed. Its `formTemplate`
+  // (`reconciliation_worksheet_v1`) is M13's OWN form name, not an M22 published key, so the key is fixed
+  // here rather than read off the payload.
+  "m13.reconciliation.document_requested": {
+    aggregateIdFields: ["worksheetId"],
+    templateKey: "medication_reconciliation_worksheet",
+    contentField: "renderPayload",
+  },
+  // M23 §4.10 (GAP-038) — the CMS-R-131 ABN. A flat financial record, no `formTemplate` field at all: the
+  // event name itself names the artifact, so the template key is fixed and the whole payload is content.
+  "m23.abn.required": {
+    aggregateIdFields: ["abnId"],
+    templateKey: "abn",
+  },
+};
+
+/** Raised when a delivered render request cannot be read into M22's canonical shape (unknown event name,
+ * missing aggregate id, or a template key the payload never names). The dispatcher retries then
+ * dead-letters — a malformed render request is evidence, never a silent skip. */
+export class MalformedRenderRequestError extends Error {
+  readonly code = "MALFORMED_RENDER_REQUEST";
+  constructor(eventType: string, why: string) {
+    super(`render request '${eventType}' is not renderable: ${why}`);
+    this.name = "MalformedRenderRequestError";
+  }
+}
+
+const str = (v: unknown): string | undefined =>
+  typeof v === "string" && v.length > 0 ? v : undefined;
+
+/**
+ * Adapt one source module's delivered payload into M22's canonical §4.11 {@link DocumentRequestPayload}
+ * (pure). `organizationId` comes from the OUTBOX ROW, never the payload body — the row is the RLS-scoped,
+ * dispatcher-verified tenant anchor; a payload-carried org would be caller-asserted (M23's ABN payload does
+ * carry one, and it is deliberately ignored here).
+ *
+ * @throws MalformedRenderRequestError when the event is not a known §4.11 request or the payload lacks the
+ * aggregate identity / template key the render needs.
+ */
+export function normalizeDocumentRequest(
+  eventType: string,
+  organizationId: string,
+  rawPayload: unknown,
+): { event: DocumentRequestEvent; payload: DocumentRequestPayload } {
+  const shape = (REQUEST_SHAPES as Record<string, RequestShape | undefined>)[eventType];
+  if (!shape) throw new MalformedRenderRequestError(eventType, "not a §4.11 render-request event");
+  if (!rawPayload || typeof rawPayload !== "object") {
+    throw new MalformedRenderRequestError(eventType, "payload is not an object");
+  }
+  const p = rawPayload as Record<string, unknown>;
+
+  const aggregateId = shape.aggregateIdFields.map((f) => str(p[f])).find((v) => v !== undefined);
+  if (!aggregateId) {
+    throw new MalformedRenderRequestError(
+      eventType,
+      `payload names no aggregate id (looked at ${shape.aggregateIdFields.join(", ")})`,
+    );
+  }
+
+  const templateKey =
+    shape.templateKey ?? (shape.templateKeyField ? str(p[shape.templateKeyField]) : undefined);
+  if (!templateKey) {
+    throw new MalformedRenderRequestError(
+      eventType,
+      `payload names no template (expected '${shape.templateKeyField}')`,
+    );
+  }
+
+  const rawContent = shape.contentField ? p[shape.contentField] : p;
+  const content =
+    rawContent && typeof rawContent === "object" ? (rawContent as Record<string, unknown>) : {};
+
+  // The chart-target patient may live on the envelope (M21/M23 style) or inside the content blob (M11/M12
+  // thread it through `renderPayload`, whose schema is `Type.Unknown()` — no catalog change needed).
+  const patientId = str(p.patientId) ?? str(content.patientId) ?? null;
+
+  return {
+    event: eventType as DocumentRequestEvent,
+    payload: {
+      organizationId,
+      templateKey,
+      aggregateId,
+      patientId,
+      content,
+      ...(p.isSudClass === true || content.isSudClass === true ? { isSudClass: true } : {}),
+      ...(str(p.title) ? { title: str(p.title) as string } : {}),
+    },
+  };
+}
+
+// ── The live consumer ───────────────────────────────────────────────────────────────────────────────────
+
+export interface DocumentRequestConsumerDeps {
+  /** The document-ROW store — the idempotency fact (`renderedDocumentForAggregate`) comes from the real
+   *  `document` table, not a separate dedup registry: the rendered row IS the durable record of the render,
+   *  so a re-delivery after a crash between render and receipt still cannot double-render. */
+  readonly store: DocumentSeamStore;
+  /** Overridable for tests; production resolves M22's own registered `DocumentRenderer` seam lazily (the
+   *  seam is registered at boot, before the dispatcher starts, but resolving per-call keeps a re-registered
+   *  seam — every test boot does this — from being captured at construction time). */
+  readonly renderer?: () => {
+    render(
+      scope: { orgId: string },
+      templateKey: string,
+      payload: unknown,
+    ): Promise<{ documentId: string }>;
+  };
+  /** Structured sink for the three REFUSAL outcomes (unknown template / SUD consent absent / BAA inactive).
+   *  A refusal is a decision with a reason, not an error: it must be visible without being a dead letter. */
+  readonly onRefusal?: (refusal: {
+    readonly eventType: string;
+    readonly organizationId: string;
+    readonly aggregateId: string;
+    readonly kind: "unknown_template" | "sud_consent_absent" | "baa_inactive";
+    readonly detail: string;
+  }) => void;
+  /** Template table override (tests); defaults to the T04 published table. */
+  readonly templates?: Readonly<Record<string, TemplateDescriptor>>;
+}
+
+/**
+ * Build the LIVE §4.11 render-handshake consumer (GAP-023/024/038). One binding drains every consumed
+ * `*.document_requested` queue: it normalizes the source payload, resolves {@link DocumentRequestFacts}
+ * (idempotency from the `document` table, the template descriptor from the T04 table, and — only when the
+ * payload flags them — the M39 consent and M40 BAA gates), calls the pure {@link decideDocumentRequest},
+ * and executes the returned action through the T04 `DocumentRenderer`.
+ *
+ * `unknown_template` THROWS (retry-then-dead-letter per §7.2 — a template that has not been published yet
+ * may be published in a minute, and the request must survive until it is). The two GATE refusals do NOT
+ * throw: they are settled decisions — a SUD render with no consent must never be retried into existence —
+ * so the row completes and the refusal goes to {@link DocumentRequestConsumerDeps.onRefusal}.
+ */
+export function buildM22DocumentRequestConsumer(
+  deps: DocumentRequestConsumerDeps,
+): OutboxConsumerBinding {
+  const templates = deps.templates ?? PLATFORM_TEMPLATE_TABLE;
+  const renderer = deps.renderer ?? getDocumentRenderer;
+
+  return {
+    consumerName: M22_DOCUMENT_RENDER_CONSUMER,
+    consumerModule: "m22",
+    eventTypes: [...M22_DOCUMENT_REQUEST_EVENTS],
+    async handle(event: DispatchableOutboxEvent): Promise<void> {
+      const { event: sourceEvent, payload } = normalizeDocumentRequest(
+        event.eventType,
+        event.organizationId,
+        event.payload,
+      );
+
+      const descriptor = templates[payload.templateKey];
+      const prior = descriptor
+        ? await deps.store.renderedDocumentForAggregate({
+            aggregateType: descriptor.aggregateType,
+            aggregateId: payload.aggregateId,
+            organizationId: payload.organizationId,
+          })
+        : null;
+
+      const facts: DocumentRequestFacts = {
+        alreadyRendered: prior !== null,
+        templateKnown: descriptor !== undefined,
+        aggregateType: descriptor?.aggregateType ?? null,
+        retentionClass: descriptor?.retentionClass ?? null,
+        // Both gates are resolved ONLY when the payload flags them (the decider reads them only then), so a
+        // routine clinical render never pays for an M39/M40 seam call.
+        ...(payload.isSudClass === true && payload.patientId
+          ? {
+              sudConsentPresent: await resolveSudConsentPresent({
+                organizationId: payload.organizationId,
+                patientId: payload.patientId,
+              }),
+            }
+          : {}),
+        ...(payload.externalRecipient
+          ? {
+              externalBaaActive: await resolveExternalBaaActive({
+                organizationId: payload.organizationId,
+                recipient: payload.externalRecipient,
+              }),
+            }
+          : {}),
+      };
+
+      const action = decideDocumentRequest(sourceEvent, payload, facts);
+      switch (action.kind) {
+        case "idempotent_skip":
+          return; // D14 — a re-delivery never produces a second document.
+        case "unknown_template":
+          deps.onRefusal?.({
+            eventType: event.eventType,
+            organizationId: payload.organizationId,
+            aggregateId: payload.aggregateId,
+            kind: "unknown_template",
+            detail: action.templateKey,
+          });
+          // Retry-then-DLQ (§7.2): the request outlives a not-yet-published template.
+          throw new MalformedRenderRequestError(
+            event.eventType,
+            `no published M22 template for key '${action.templateKey}'`,
+          );
+        case "sud_consent_absent":
+          deps.onRefusal?.({
+            eventType: event.eventType,
+            organizationId: payload.organizationId,
+            aggregateId: payload.aggregateId,
+            kind: "sud_consent_absent",
+            detail: action.templateKey,
+          });
+          return; // §7.16 — settled refusal, never retried into a plaintext SUD render.
+        case "baa_inactive":
+          deps.onRefusal?.({
+            eventType: event.eventType,
+            organizationId: payload.organizationId,
+            aggregateId: payload.aggregateId,
+            kind: "baa_inactive",
+            detail: action.mdmEntityId,
+          });
+          return; // §4.12 — settled refusal; no out-of-network disclosure without an active BAA.
+        case "render": {
+          const { render } = action;
+          await renderer().render({ orgId: payload.organizationId }, render.templateKey, {
+            aggregateId: render.aggregateId,
+            patientId: render.patientId,
+            ...(render.title ? { title: render.title } : {}),
+            ...render.content,
+            ...(render.sudRedacted ? { sudRedacted: true } : {}),
+          });
+          return;
+        }
+      }
+    },
+  };
+}

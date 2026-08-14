@@ -450,6 +450,25 @@ export function createDbOrderBackend(
       signedAt: at.toISOString(),
       viaVerbal: fromVerbal,
     });
+    // GAP-023 — the §4.4 M22 render handshake. The catalog has declared this event as a "mirror of
+    // `m11.order.signed`" since M11-T04 and M22's consumer allowlist has named it just as long, but NO code
+    // path ever emitted it: a signed order's PDF was never requested, let alone rendered. `formTemplate` is
+    // M22's PUBLISHED template key (`order_record`), not an M11-local form name — M22 resolves the
+    // descriptor by that key and refuses an unknown one. `patientId` rides inside `renderPayload` (whose
+    // catalog schema is `Type.Unknown()`, so this needs no payload-schema change) because the rendered
+    // `document` row is chart-filed against the patient; without it the PDF would file with a NULL patient.
+    await emit(tx, organizationId, "m11.order.document_requested", id, {
+      orderId: id,
+      formTemplate: "order_record",
+      renderPayload: {
+        patientId: r.patientId,
+        admissionId: r.admissionId,
+        kind: r.kind,
+        signedAt: at.toISOString(),
+        signerMembershipId: userId,
+        viaVerbal: fromVerbal,
+      },
+    });
     if (onBehalf && onBehalfArgs) {
       await emit(tx, organizationId, "m11.order.signed_on_behalf", id, {
         orderId: id,

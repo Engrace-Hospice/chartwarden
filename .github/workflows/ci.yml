@@ -167,6 +167,10 @@ jobs:
           # proves the events land in the partitioned audit_event table carrying the patient id the
           # §164.528 accounting query joins on, as the NOBYPASSRLS app role.
           - { name: "M4 read-audit", scripts: "test:m4:read-audit:live" }
+          # GAP-023/024/038: M22's §4.11 render handshake end-to-end — a real signed order/med order
+          # through the real outbox dispatcher into real `document`/`document_version` rows. Nothing in
+          # this chain was executed before: the consumer did not exist and neither emitter fired.
+          - { name: "M22 render handshake", scripts: "test:m22:render-handshake:live" }
     env:
       WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
     steps:

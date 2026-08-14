@@ -1038,7 +1038,13 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
       emit("m13.reconciliation.document_requested", {
         worksheetId: id,
         formTemplate: "reconciliation_worksheet_v1",
-        renderPayload: {},
+        // Mirrors the Drizzle write path (GAP-023/024/038): M22's live render consumer files the document
+        // against this patient's chart, so the request must name one.
+        renderPayload: {
+          patientId: w.patientId,
+          admissionId: w.admissionId,
+          triggerKind: w.triggerKind,
+        },
       });
       return wView(w);
     },

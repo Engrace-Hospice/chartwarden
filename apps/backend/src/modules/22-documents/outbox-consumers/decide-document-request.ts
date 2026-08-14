@@ -8,9 +8,13 @@
 // names ONE template key + carries a typed payload; M22 resolves the template descriptor, plans a render
 // (the T04 `DocumentRenderer` logic), and — once the bytes land — emits `m22.document.rendered` so the
 // requesting module's own `m22-document-backref` consumer can apply `document_id` (the W2 §7.2 handshake's
-// downstream half). This file ships the PURE, fully-tested {@link decideDocumentRequest}; the live wiring
-// (binding the boot outbox dispatcher to this decider + executing the returned action through the T04
-// renderer seam + the M1 outbox) is forward-declared/deferred in ./bindings.ts.
+// downstream half). This file ships the PURE, fully-tested {@link decideDocumentRequest}; the LIVE consumer
+// that resolves the facts and executes the returned action through the T04 renderer is ./render-consumer.ts
+// (GAP-023/024/038 — it was forward-declared and unbuilt until then). The `m22.document.rendered` emit that
+// closes the downstream half still does not exist: M22 has no event catalog, so every source module's
+// `m22-document-backref` consumer remains unfed and no `document_id` is stamped back onto the source row.
+// The rendered document is still discoverable from the source aggregate — `document.(aggregate_type,
+// aggregate_id)` IS the back-ref — so a render is useful without the stamp, but the stamp is not done.
 //
 // Why local types, no producer imports: M22 `dependsOn` is `[1, 5]` (§ manifest). M22 reads every source
 // module SOLELY through the foundation outbox event STRING — never a `dependsOn` edge or a producer-package
@@ -23,17 +27,39 @@ import type { DocumentAggregateType, DocumentRetentionClass } from "@wardenx/typ
 
 // ── The §4.11 `*.document_requested` events M22 renders (string literals — no producer import) ──────────
 
-/** The eight source-module render-request event names M22 subscribes to (§4.11). One template per event;
- * M6's discharge/election variants are discriminated by the payload, not the event name. */
+/** The source-module render-request event names M22 LIVE-subscribes to (§4.11) — every one of which some
+ * module's event catalog actually declares, so a row can genuinely arrive. One template per event.
+ *
+ * GAP-023/024/038 rewrote this list. It previously held eight names, five of which
+ * (`m6.document_requested`, `m9.assessment.document_requested`, `m14.packet.document_requested`,
+ * `m16.bereavement.document_requested`, `m23.abn.document_requested`) are declared by NO module's event
+ * catalog — see {@link M22_ANTICIPATED_DOCUMENT_REQUEST_EVENTS}. The boot dispatcher routes off the catalog,
+ * so those names could never be delivered: subscribing to them read as coverage while covering nothing, and
+ * it is what made the M23 ABN mismatch (M23 declares `m23.abn.required`) invisible for a whole audit cycle. */
 export const M22_DOCUMENT_REQUEST_EVENTS = [
+  "m11.order.document_requested", // order_record (M11 §4.4, mirror of m11.order.signed)
+  "m12.medication_order.document_requested", // medication_order (M12 §4.4, mirror of signed)
+  "m13.reconciliation.document_requested", // medication_reconciliation_worksheet
+  "m23.abn.required", // abn — CMS-R-131 (GAP-038: M23's declared name, not `m23.abn.document_requested`)
+] as const;
+
+/** §4.11 render-request events the SPEC anticipates but no module's event catalog declares yet. Listed —
+ * not subscribed — deliberately: a consumer bound to a name nothing can emit is indistinguishable from
+ * working, whereas an undelivered row on a catalog-declared event sits visibly `pending` in the outbox.
+ * Moving a name up into {@link M22_DOCUMENT_REQUEST_EVENTS} means: the producer declares AND emits it, and
+ * `REQUEST_SHAPES` in ./render-consumer.ts gains its payload adapter.
+ *
+ * Also here (declared + LIVE-emitting, but needing template descriptors M22 has not published):
+ * `m21.supply_request.document_requested` (bill_of_lading / return_receipt — M21 emits it twice today) and
+ * `m37.body_release.document_requested`. Their rows accumulate `pending`. */
+export const M22_ANTICIPATED_DOCUMENT_REQUEST_EVENTS = [
   "m6.document_requested", // election_statement / cti / f2f / nor / revocation / discharge_summary
   "m9.assessment.document_requested", // assessment record PDF
-  "m11.order.document_requested", // order_record
-  "m12.medication_order.document_requested", // medication_order
-  "m13.reconciliation.document_requested", // medication_reconciliation_worksheet
+  "m13.administration_record.document_requested", // eMAR record PDF (GAP-025, declared but never emitted)
   "m14.packet.document_requested", // idg_patient_packet / idg_minutes
   "m16.bereavement.document_requested", // bereavement_letter (letterKind discriminator)
-  "m23.abn.document_requested", // abn (forward seam — M23 not yet landed)
+  "m21.supply_request.document_requested", // bill_of_lading / packing_list / DEA-1304 return receipt
+  "m37.body_release.document_requested", // IPU body-release record
 ] as const;
 
 /** One of the §4.11 render-request event names M22 consumes. */
