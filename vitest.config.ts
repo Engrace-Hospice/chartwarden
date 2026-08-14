@@ -20,7 +20,11 @@ import { defineConfig } from "vitest/config";
  * the include/exclude base, split only on which glob (dom vs. everything else) and its environment.
  */
 const EXCLUDE = ["**/node_modules/**", "**/dist/**", "scripts/__fixtures__/**"];
-const DOM_GLOB = "apps/**/*.dom.test.tsx";
+// GAP-080: `packages/**` was outside the dom project, so a hook or component that lives in
+// @wardenx/ui — where the shared UI surface actually lives — had no jsdom project to run in at all.
+// Both globs are listed rather than one `**/*.dom.test.tsx` so the exclude below stays a literal
+// mirror of the include (the node project subtracts exactly these).
+const DOM_GLOBS = ["apps/**/*.dom.test.tsx", "packages/**/*.dom.test.tsx"];
 
 export default defineConfig({
   test: {
@@ -36,7 +40,7 @@ export default defineConfig({
             "apps/**/*.test.tsx",
             "packages/**/*.test.ts",
           ],
-          exclude: [...EXCLUDE, DOM_GLOB],
+          exclude: [...EXCLUDE, ...DOM_GLOBS],
           testTimeout: 30_000,
         },
       },
@@ -46,7 +50,7 @@ export default defineConfig({
           name: "dom",
           environment: "jsdom",
           setupFiles: ["./vitest.setup.dom.ts"],
-          include: [DOM_GLOB],
+          include: DOM_GLOBS,
           exclude: EXCLUDE,
           testTimeout: 30_000,
         },

@@ -5,8 +5,10 @@ import {
   StatusPill,
   cardSurface,
   ghostBorder,
+  setSearchTerm,
   t,
   useApiClient,
+  useSearchTerm,
 } from "@wardenx/ui";
 // apps/web/src/modules/05-patient — Global Search Results (cross-cutting; M5 owns it, M5→M2 edge).
 // Spec: docs/design/screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md — "Use Work Queue."
@@ -53,6 +55,11 @@ const FUTURE_FACETS = [
 // localStorage/sessionStorage, which would survive in browser storage long after the session and
 // leak through a shared/forensic device. They live in process memory only (this module-scoped
 // array), so they vanish on reload/navigation away. Capped at 6, most-recent-first.
+//
+// GAP-080 closed the OTHER door into the same exposure: the needle also used to round-trip through
+// `?q=` in the visible URL, which is browser storage by another name (history entry, omnibox
+// autocomplete, on-disk session restore) and, unlike this array, survives a reload. The term is now
+// handed over in memory via `@wardenx/ui`'s `useSearchTerm`, on exactly the posture this array has.
 const recentTerms: string[] = [];
 
 function readRecent(): string[] {
@@ -80,10 +87,22 @@ function initialsOf(...parts: string[]): string {
 export function GlobalSearchResults(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
+  // The active needle lives in memory (GAP-080) — never in the URL. `useSearchParams` is retained
+  // only to SCRUB a legacy `?q=`: nothing in this app writes one any more, so one can now only
+  // arrive from OUTSIDE (a bookmark or a pasted link made before this change, or a hand-typed URL).
+  // Such a link is honored once, and the query string is stripped from the history entry in the same
+  // tick with `replace: true` so it is not left in the back/forward stack.
   const [params, setParams] = useSearchParams();
-  const urlQuery = params.get("q")?.trim() ?? "";
+  const staged = useSearchTerm();
+  const legacyUrlQuery = params.get("q")?.trim() ?? "";
+  useEffect(() => {
+    if (!legacyUrlQuery) return;
+    setSearchTerm(legacyUrlQuery);
+    setParams({}, { replace: true });
+  }, [legacyUrlQuery, setParams]);
+  const activeQuery = staged || legacyUrlQuery;
 
-  const [term, setTerm] = useState(urlQuery);
+  const [term, setTerm] = useState(activeQuery);
   const [facet, setFacet] = useState<Facet>("all");
   const [patients, setPatients] = useState<PatientHit[] | null>(null);
   const [staff, setStaff] = useState<StaffHit[] | null>(null);
@@ -154,21 +173,21 @@ export function GlobalSearchResults(): JSX.Element {
     [client],
   );
 
-  // Run whenever the URL query changes (deep-link from the shell top-nav search).
+  // Run whenever the staged needle changes — either the shell top-nav search handed one over
+  // (including while this screen is already mounted) or this screen's own form staged one.
   useEffect(() => {
-    setTerm(urlQuery);
-    void runSearch(urlQuery);
-  }, [urlQuery, runSearch]);
+    setTerm(activeQuery);
+    void runSearch(activeQuery);
+  }, [activeQuery, runSearch]);
 
   function submit(e: FormEvent): void {
     e.preventDefault();
-    const next = term.trim();
-    setParams(next ? { q: next } : {}, { replace: false });
+    setSearchTerm(term);
   }
 
   const showPatients = facet === "all" || facet === "patient";
   const showStaff = facet === "all" || facet === "staff";
-  const hasQuery = urlQuery.length > 0;
+  const hasQuery = activeQuery.length > 0;
   const total =
     (showPatients ? (patients?.length ?? 0) : 0) + (showStaff ? (staff?.length ?? 0) : 0);
 
@@ -205,18 +224,18 @@ export function GlobalSearchResults(): JSX.Element {
         </div>
 
         {!hasQuery ? (
-          <EmptyQuery recent={recent} onPick={(t) => setParams({ q: t })} />
+          <EmptyQuery recent={recent} onPick={setSearchTerm} />
         ) : loading ? (
           <LoadingSpinner />
         ) : total === 0 ? (
           <EmptyState
-            title={`No results for “${urlQuery}”.`}
+            title={`No results for “${activeQuery}”.`}
             description="Searching your caseload and organization. Try a different name or MRN."
           />
         ) : (
           <>
             <p style={summaryLine}>
-              {total} result{total === 1 ? "" : "s"} for “{urlQuery}” · across patients, staff,
+              {total} result{total === 1 ? "" : "s"} for “{activeQuery}” · across patients, staff,
               documents, orders
             </p>
             {showPatients ? (

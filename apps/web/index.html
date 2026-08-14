@@ -2,6 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- PHI hygiene (GAP-080): record URLs carry patient identifiers (/patients/<id>), so this
+         document must never hand its URL to another origin. The backend already sets
+         Referrer-Policy: no-referrer on API responses; the SPA document is served by the static
+         host, which those headers do not cover. -->
+    <meta name="referrer" content="no-referrer" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>WardenX</title>
   </head>

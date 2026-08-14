@@ -141,6 +141,15 @@ describe("each gate goes RED on its planted violation", () => {
     expect(r.out).toMatch(/99-fixture/);
   });
 
+  it("org-index coverage — organization_id present but past the seekable prefix", () => {
+    const r = gate("check-org-index-coverage.ts", join(FIX, "org-indexes"));
+    expect(r.status).not.toBe(0);
+    expect(r.out).toMatch(/fixture_uncovered_note/);
+    // The COVERED sibling must not be flagged — the fixture's whole point is that the gate
+    // discriminates by key POSITION, not by whether organization_id is mentioned at all.
+    expect(r.out).not.toMatch(/fixture_covered_note/);
+  });
+
   it("client:check — schema.ts stale relative to openapi.json", () => {
     const r = clientCheck(join(FIX, "client-check"), "/tmp/wardenx-client-schema-fixture-red.ts");
     expect(r.status).not.toBe(0);
@@ -165,6 +174,7 @@ describe("every gate stays GREEN on the repo-root baseline", () => {
       run("bun", ["run", join(SCRIPTS, "report-openapi-coverage.ts"), "--check"], ROOT).status,
     ).toBe(0));
   it("abac-predicates", () => expect(gate("check-abac-predicates.ts", ROOT).status).toBe(0));
+  it("org-index coverage", () => expect(gate("check-org-index-coverage.ts", ROOT).status).toBe(0));
   it("design-tokens", () => expect(gate("check-design-tokens.ts", ROOT).status).toBe(0));
   it("ui-parity", () =>
     expect(run("bun", ["run", join(SCRIPTS, "report-ui-parity.ts"), "--check"], ROOT).status).toBe(

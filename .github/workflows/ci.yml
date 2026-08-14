@@ -48,6 +48,14 @@ jobs:
       - name: Unit + integration suite (bun run test)
         run: bun run test
 
+      # GAP-087: `bun audit` was cited twice as a control and invoked by nothing — not here, not in
+      # deploy.yml, not in the pre-push hook, not anywhere in the `arch:fitness` chain. It is a real
+      # step now, and BLOCKING at high/critical: a dependency does not have to change to become
+      # vulnerable, so a one-time manual sweep can never be the control. Deliberately NOT inside
+      # `arch:fitness` — that chain is hermetic, and this one calls the advisory registry.
+      - name: Dependency vulnerability audit (audit:deps)
+        run: bun run audit:deps
+
       - name: Lint (non-blocking advisory)
         run: bun run lint
         continue-on-error: true

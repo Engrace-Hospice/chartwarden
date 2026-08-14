@@ -35,6 +35,13 @@ export type {
 export { CorrelationIdProvider, useCorrelationId } from "./hooks/use-correlation-id";
 export { useFeatureFlag } from "./hooks/use-feature-flag";
 export { useIsDegraded } from "./hooks/use-system-status";
+// In-memory search-needle hand-off — PHI must never ride in the URL (GAP-080).
+export {
+  __resetSearchTermForTest,
+  clearSearchTerm,
+  setSearchTerm,
+  useSearchTerm,
+} from "./hooks/use-search-term";
 
 // Theme tokens (plain data — no styling runtime)
 export { brandColors, colors, statusColors } from "./theme/colors";
