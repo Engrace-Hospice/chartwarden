@@ -40,25 +40,25 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   "m11.order.document_requested", // order_record (M11 §4.4, mirror of m11.order.signed)
   "m12.medication_order.document_requested", // medication_order (M12 §4.4, mirror of signed)
   "m13.reconciliation.document_requested", // medication_reconciliation_worksheet
+  "m21.supply_request.document_requested", // supply_bill_of_lading | comfort_kit_return_receipt
   "m23.abn.required", // abn — CMS-R-131 (GAP-038: M23's declared name, not `m23.abn.document_requested`)
 ] as const;
 
 /** §4.11 render-request events the SPEC anticipates but no module's event catalog declares yet. Listed —
  * not subscribed — deliberately: a consumer bound to a name nothing can emit is indistinguishable from
  * working, whereas an undelivered row on a catalog-declared event sits visibly `pending` in the outbox.
- * Moving a name up into {@link M22_DOCUMENT_REQUEST_EVENTS} means: the producer declares AND emits it, and
- * `REQUEST_SHAPES` in ./render-consumer.ts gains its payload adapter.
+ * Moving a name up into {@link M22_DOCUMENT_REQUEST_EVENTS} means: the producer declares AND emits it,
+ * `REQUEST_SHAPES` in ./render-consumer.ts gains its payload adapter, and M22 publishes a template
+ * descriptor for every artifact it can ask for (M21's move needed mig 0196 for the two aggregate types).
  *
- * Also here (declared + LIVE-emitting, but needing template descriptors M22 has not published):
- * `m21.supply_request.document_requested` (bill_of_lading / return_receipt — M21 emits it twice today) and
- * `m37.body_release.document_requested`. Their rows accumulate `pending`. */
+ * `m37.body_release.document_requested` is declared but has no emitter and no published template; the rest
+ * are declared by no catalog at all. */
 export const M22_ANTICIPATED_DOCUMENT_REQUEST_EVENTS = [
   "m6.document_requested", // election_statement / cti / f2f / nor / revocation / discharge_summary
   "m9.assessment.document_requested", // assessment record PDF
   "m13.administration_record.document_requested", // eMAR record PDF (GAP-025, declared but never emitted)
   "m14.packet.document_requested", // idg_patient_packet / idg_minutes
   "m16.bereavement.document_requested", // bereavement_letter (letterKind discriminator)
-  "m21.supply_request.document_requested", // bill_of_lading / packing_list / DEA-1304 return receipt
   "m37.body_release.document_requested", // IPU body-release record
 ] as const;
 

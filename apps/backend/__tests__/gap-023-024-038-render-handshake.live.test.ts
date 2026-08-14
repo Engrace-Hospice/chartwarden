@@ -22,6 +22,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
@@ -38,6 +39,7 @@ import {
 } from "../src/modules/12-dosespot/dosespot-route-service-db";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
 import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
+import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
 import {
   buildM22DocumentRequestConsumer,
   createDocumentRenderer,
@@ -65,6 +67,7 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
   let meds: ReturnType<typeof createDbDoseSpotBackend>;
   let dispatcher: ReturnType<typeof createOutboxDispatcher>;
   let objects: ReturnType<typeof createInMemoryObjectStore>;
+  let publisher: ReturnType<typeof buildTxOutboxPublisher>;
   const memberOf: Record<string, string> = {};
   /** Every template key the consumer actually asked the renderer for, in order. */
   const renderedKeys: string[] = [];
@@ -168,9 +171,11 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
       M11_OUTBOX_EVENTS,
       M12_OUTBOX_EVENTS,
       M13_OUTBOX_EVENTS,
+      M21_OUTBOX_EVENTS,
       M23_OUTBOX_EVENTS,
     ]);
     const txPublisher = buildTxOutboxPublisher(catalog);
+    publisher = txPublisher;
     const m11Outbox: OrderWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m11" }),
     };
@@ -311,6 +316,84 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
     expect(docs[0].patient_id).toBe(PATIENT);
   });
 
+  // ── M21 supply documents ─────────────────────────────────────────────────────────────────────────────
+
+  // M21 has been emitting this from BOTH write paths since it landed, with no consumer and no published
+  // template on the M22 side — its rows just accumulated `pending`. Standing up M21's full write domain
+  // (supply_request → comfort_kit → vendor → dispatch → return) is out of scope here, so the request is
+  // published through the REAL catalog-validating transactional publisher under M21's own declared schema:
+  // a payload shaped differently from what `events-by-m21.ts` declares is refused before it reaches the
+  // relay, which is the part of the contract this proves.
+  it("renders both M21 supply artifacts, each filed against the right source aggregate", async () => {
+    const supplyRequestId = "88888888-8888-4888-8888-888888888881";
+    const dispatchId = "88888888-8888-4888-8888-888888888882";
+    const returnId = "88888888-8888-4888-8888-888888888883";
+    const anchor = {
+      orgId: ORG_A,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      providerEntityId: PHYSICIAN_MDM,
+      locationId: PHYSICIAN_MDM,
+    };
+    await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, async (tx) => {
+      // The bill of lading — envelope aggregate is the DISPATCH.
+      await publisher.publish(tx as never, {
+        eventName: "m21.supply_request.document_requested",
+        payload: {
+          ...anchor,
+          supplyRequestId,
+          dispatchId,
+          documentKind: "bill_of_lading",
+          requestedAt: new Date().toISOString(),
+        },
+        organizationId: ORG_A,
+        aggregateKind: "comfort_kit_dispatch",
+        aggregateId: dispatchId,
+        callerModule: "m21",
+      });
+      // The DEA-1304 return receipt — envelope aggregate is the RETURN, while the body still carries
+      // `dispatchId`. Reading the body would file this against the dispatch and collide with the BOL.
+      await publisher.publish(tx as never, {
+        eventName: "m21.supply_request.document_requested",
+        payload: {
+          ...anchor,
+          supplyRequestId,
+          dispatchId,
+          documentKind: "return_receipt",
+          requestedAt: new Date().toISOString(),
+        },
+        organizationId: ORG_A,
+        aggregateKind: "comfort_kit_return",
+        aggregateId: returnId,
+        callerModule: "m21",
+      });
+    });
+
+    await dispatcher.tick();
+
+    const bol = await documentsFor(dispatchId);
+    expect(bol).toHaveLength(1);
+    expect(bol[0].aggregate_type).toBe("supply_bill_of_lading");
+    expect(bol[0].retention_class).toBe("operational"); // a shipping manifest, not a chart artifact
+    expect(bol[0].patient_id).toBe(PATIENT);
+
+    const receipt = await documentsFor(returnId);
+    expect(receipt).toHaveLength(1);
+    expect(receipt[0].aggregate_type).toBe("comfort_kit_return_receipt");
+    // A controlled-substance disposition record — compliance, not the clinical class its deployment-side
+    // sibling (`comfort_kit_receipt`, M13) carries.
+    expect(receipt[0].retention_class).toBe("compliance");
+    expect(receipt[0].title).toBe("Comfort Kit Return Receipt");
+
+    // Both requests completed at the relay — no pending backlog left behind.
+    for (const id of [dispatchId, returnId]) {
+      const rows = await outboxFor(id);
+      expect(rows.find((r) => r.type === "m21.supply_request.document_requested")?.status).toBe(
+        "dispatched",
+      );
+    }
+  });
+
   // ── GAP-038 ──────────────────────────────────────────────────────────────────────────────────────────
 
   // M23 has no ABN write path at all (no table, no route, no emitter — only the catalog entry), so the
@@ -363,7 +446,7 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
 
   it("renders under the requesting org only — org B never sees org A's rendered documents", async () => {
     const { rows } = await admin.query(
-      "SELECT DISTINCT organization_id FROM document WHERE aggregate_type IN ('order_record','medication_order','abn')",
+      "SELECT DISTINCT organization_id FROM document WHERE aggregate_type IN ('order_record','medication_order','abn','supply_bill_of_lading','comfort_kit_return_receipt')",
     );
     expect(rows.map((r) => r.organization_id)).toEqual([ORG_A]);
 
@@ -375,7 +458,7 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
       await b.query("BEGIN");
       await b.query("SELECT set_config('app.org_id', $1, true)", [ORG_B]);
       const { rows: seen } = await b.query(
-        "SELECT count(*)::int AS n FROM document WHERE aggregate_type IN ('order_record','medication_order','abn')",
+        "SELECT count(*)::int AS n FROM document WHERE aggregate_type IN ('order_record','medication_order','abn','supply_bill_of_lading','comfort_kit_return_receipt')",
       );
       expect(seen[0].n).toBe(0);
       await b.query("COMMIT");

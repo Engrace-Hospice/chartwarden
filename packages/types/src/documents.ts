@@ -79,6 +79,10 @@ export type DocumentAggregateType =
   | "medication_reconciliation_worksheet"
   | "patient_medication_list"
   | "comfort_kit_receipt"
+  // M21 supply artifacts (mig 0196). `comfort_kit_receipt` above is M13's kit-DEPLOYMENT receipt;
+  // these two are M21's dispatch manifest and its controlled-substance RETURN receipt.
+  | "supply_bill_of_lading"
+  | "comfort_kit_return_receipt"
   | "idg_patient_packet"
   | "idg_minutes"
   | "aide_poc"

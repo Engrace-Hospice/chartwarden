@@ -9,6 +9,7 @@ import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/regist
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
 import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
+import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
 import {
   M22_DOCUMENT_REQUEST_EVENTS,
   MalformedRenderRequestError,
@@ -23,6 +24,10 @@ import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
 const ORG = "00000000-0000-4000-8000-0000000000ee";
 const PAT = "00000000-0000-4000-8000-0000000000aa";
 const ORDER = "00000000-0000-4000-8000-0000000000bb";
+const ADMISSION = "00000000-0000-4000-8000-0000000000cc";
+const SUPPLY_REQUEST = "00000000-0000-4000-8000-0000000000d1";
+const DISPATCH = "00000000-0000-4000-8000-0000000000d2";
+const RETURN = "00000000-0000-4000-8000-0000000000d3";
 
 function delivered(over: Partial<DispatchableOutboxEvent> = {}): DispatchableOutboxEvent {
   return {
@@ -73,10 +78,14 @@ function harness(
 
 describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module's own wire shape", () => {
   it("reads M11's {orderId, formTemplate, renderPayload} — patientId from inside renderPayload", () => {
-    const { event, payload } = normalizeDocumentRequest("m11.order.document_requested", ORG, {
-      orderId: ORDER,
-      formTemplate: "order_record",
-      renderPayload: { patientId: PAT, kind: "lab" },
+    const { event, payload } = normalizeDocumentRequest({
+      eventType: "m11.order.document_requested",
+      organizationId: ORG,
+      payload: {
+        orderId: ORDER,
+        formTemplate: "order_record",
+        renderPayload: { patientId: PAT, kind: "lab" },
+      },
     });
     expect(event).toBe("m11.order.document_requested");
     expect(payload).toEqual({
@@ -89,10 +98,14 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
   });
 
   it("reads M12's identical shape", () => {
-    const { payload } = normalizeDocumentRequest("m12.medication_order.document_requested", ORG, {
-      orderId: ORDER,
-      formTemplate: "medication_order",
-      renderPayload: { patientId: PAT },
+    const { payload } = normalizeDocumentRequest({
+      eventType: "m12.medication_order.document_requested",
+      organizationId: ORG,
+      payload: {
+        orderId: ORDER,
+        formTemplate: "medication_order",
+        renderPayload: { patientId: PAT },
+      },
     });
     expect(payload.templateKey).toBe("medication_order");
     expect(payload.aggregateId).toBe(ORDER);
@@ -100,10 +113,14 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
 
   // M13's `formTemplate` is M13's OWN form name, not an M22 published key — the shape table fixes the key.
   it("maps M13's reconciliation_worksheet_v1 onto M22's published template key", () => {
-    const { payload } = normalizeDocumentRequest("m13.reconciliation.document_requested", ORG, {
-      worksheetId: ORDER,
-      formTemplate: "reconciliation_worksheet_v1",
-      renderPayload: { patientId: PAT },
+    const { payload } = normalizeDocumentRequest({
+      eventType: "m13.reconciliation.document_requested",
+      organizationId: ORG,
+      payload: {
+        worksheetId: ORDER,
+        formTemplate: "reconciliation_worksheet_v1",
+        renderPayload: { patientId: PAT },
+      },
     });
     expect(payload.templateKey).toBe("medication_reconciliation_worksheet");
     expect(payload.aggregateId).toBe(ORDER);
@@ -122,7 +139,11 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
       reasonNoncovered: "not related to terminal diagnosis",
       requiredBy: "2026-09-01T00:00:00.000Z",
     };
-    const { payload } = normalizeDocumentRequest("m23.abn.required", ORG, abn);
+    const { payload } = normalizeDocumentRequest({
+      eventType: "m23.abn.required",
+      organizationId: ORG,
+      payload: abn,
+    });
     expect(payload.templateKey).toBe("abn");
     expect(payload.aggregateId).toBe(ORDER);
     expect(payload.patientId).toBe(PAT);
@@ -131,20 +152,82 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
     expect(payload.organizationId).toBe(ORG);
   });
 
+  // M21 — ONE event, TWO artifacts, and the identity is on the ENVELOPE. Both bodies carry `dispatchId`;
+  // only the outbox row distinguishes the dispatch (BOL) from the return (receipt), so reading the body
+  // would file the return receipt against the dispatch.
+  it("routes M21's documentKind discriminator to the right template, keyed off the envelope id", () => {
+    const bol = normalizeDocumentRequest({
+      eventType: "m21.supply_request.document_requested",
+      organizationId: ORG,
+      aggregateId: DISPATCH,
+      payload: {
+        orgId: ORG,
+        patientId: PAT,
+        admissionId: ADMISSION,
+        supplyRequestId: SUPPLY_REQUEST,
+        dispatchId: DISPATCH,
+        documentKind: "bill_of_lading",
+        requestedAt: "2026-08-13T00:00:00.000Z",
+      },
+    });
+    expect(bol.payload.templateKey).toBe("supply_bill_of_lading");
+    expect(bol.payload.aggregateId).toBe(DISPATCH);
+    expect(bol.payload.patientId).toBe(PAT);
+
+    const receipt = normalizeDocumentRequest({
+      eventType: "m21.supply_request.document_requested",
+      organizationId: ORG,
+      aggregateId: RETURN, // the RETURN row, not the dispatchId the body still carries
+      payload: {
+        orgId: ORG,
+        patientId: PAT,
+        admissionId: ADMISSION,
+        supplyRequestId: SUPPLY_REQUEST,
+        dispatchId: DISPATCH,
+        documentKind: "return_receipt",
+        requestedAt: "2026-08-13T00:00:00.000Z",
+      },
+    });
+    expect(receipt.payload.templateKey).toBe("comfort_kit_return_receipt");
+    expect(receipt.payload.aggregateId).toBe(RETURN);
+  });
+
+  // A guess here would file the wrong document under a real patient's chart; a dead letter would not.
+  it("throws on a documentKind M22 has no template for, rather than guessing", () => {
+    expect(() =>
+      normalizeDocumentRequest({
+        eventType: "m21.supply_request.document_requested",
+        organizationId: ORG,
+        aggregateId: DISPATCH,
+        payload: { dispatchId: DISPATCH, documentKind: "packing_list" },
+      }),
+    ).toThrow(/packing_list' maps to no M22 template/);
+  });
+
   it("throws on an event that is not a §4.11 render request", () => {
-    expect(() => normalizeDocumentRequest("m11.order.signed", ORG, { orderId: ORDER })).toThrow(
-      MalformedRenderRequestError,
-    );
+    expect(() =>
+      normalizeDocumentRequest({
+        eventType: "m11.order.signed",
+        organizationId: ORG,
+        payload: { orderId: ORDER },
+      }),
+    ).toThrow(MalformedRenderRequestError);
   });
 
   it("throws when the payload names no aggregate id or no template", () => {
     expect(() =>
-      normalizeDocumentRequest("m11.order.document_requested", ORG, {
-        formTemplate: "order_record",
+      normalizeDocumentRequest({
+        eventType: "m11.order.document_requested",
+        organizationId: ORG,
+        payload: { formTemplate: "order_record" },
       }),
     ).toThrow(/names no aggregate id/);
     expect(() =>
-      normalizeDocumentRequest("m11.order.document_requested", ORG, { orderId: ORDER }),
+      normalizeDocumentRequest({
+        eventType: "m11.order.document_requested",
+        organizationId: ORG,
+        payload: { orderId: ORDER },
+      }),
     ).toThrow(/names no template/);
   });
 });
@@ -179,6 +262,7 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       "m11.order.document_requested",
       "m12.medication_order.document_requested",
       "m13.reconciliation.document_requested",
+      "m21.supply_request.document_requested",
       "m23.abn.required",
     ]);
   });
@@ -191,9 +275,13 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
   // declaration that names m22 as a consumer, so a producer-side rename fails here rather than at boot.
   it("every subscribed event is declared by its producer, with m22 among its consumers", () => {
     const declared = new Map(
-      [...M11_OUTBOX_EVENTS, ...M12_OUTBOX_EVENTS, ...M13_OUTBOX_EVENTS, ...M23_OUTBOX_EVENTS].map(
-        (e) => [e.eventName, e],
-      ),
+      [
+        ...M11_OUTBOX_EVENTS,
+        ...M12_OUTBOX_EVENTS,
+        ...M13_OUTBOX_EVENTS,
+        ...M21_OUTBOX_EVENTS,
+        ...M23_OUTBOX_EVENTS,
+      ].map((e) => [e.eventName, e]),
     );
     for (const eventName of M22_DOCUMENT_REQUEST_EVENTS) {
       const entry = declared.get(eventName);
