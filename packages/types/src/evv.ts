@@ -276,8 +276,11 @@ export interface EvvLocationDto {
   readonly membershipId: MembershipId;
   readonly eventId: EvvEventId;
   readonly visitId: VisitId;
-  readonly lat: number;
-  readonly lng: number;
+  /** GAP-032 — NULL when the stored coordinate is absent or unparseable, rather than a fabricated `0`.
+   *  M20's safety board projects these away entirely before rendering (§4.4 minimum-necessary), so the
+   *  nullability lands on direct consumers only. */
+  readonly lat: number | null;
+  readonly lng: number | null;
   readonly accuracyM: number;
   readonly capturedAt: IsoInstant;
 }

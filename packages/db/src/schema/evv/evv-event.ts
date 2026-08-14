@@ -71,7 +71,12 @@ export const evvEvent = pgTable(
     eventAt: timestamp("event_at", { withTimezone: true }).notNull(), // = capturedAt; the partition key
 
     // GPS coordinate, encrypted at rest (D10):
-    coordsCipher: text("coords_cipher").notNull(), // base64 ciphertext of "lat,lng"; DENYLISTED (§3.6)
+    // ⚠️ NOT CIPHERTEXT YET, despite the column name and the `coords_dek_version` beside it: today this
+    // holds plain `base64("lat,lng")` and the §D10 per-tenant DEK envelope pipeline is still deferred. The
+    // name reads as "encrypted at rest" to anyone auditing the schema, which it is not — flagged here so
+    // the next reader does not mistake the format for a control. Encoded/decoded ONLY through
+    // `apps/backend/src/modules/18-evv/coords.ts` (GAP-032). DENYLISTED from the audit trail (§3.6).
+    coordsCipher: text("coords_cipher").notNull(),
     coordsDekVersion: integer("coords_dek_version").notNull(),
     accuracyM: real("accuracy_m").notNull(), // device-reported accuracy (m); DENYLISTED (§3.6)
     gpsQuality: evvEventGpsQuality("gps_quality").notNull(),

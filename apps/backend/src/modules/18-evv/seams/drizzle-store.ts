@@ -16,11 +16,14 @@
 // Event reads that feed a bracket take only ACTIVE rows (`superseded_by_event_id IS NULL` — the D2 per-leaf
 // active-pair invariant makes that at most one check-in + one check-out per visit).
 //
-// COORDINATES (D10). GPS coordinates exist ONLY as `evv_event.coords_cipher` (field-encrypted, per-tenant
-// DEK) and NO decrypt pipeline exists yet. The coordinate-bearing `EvvLocationProvider` reads follow the
-// M18L route service's posture EXACTLY (`clinicianCurrentLocation`): real event metadata (event/visit ids,
-// accuracy, captured-at) with `lat`/`lng` ZEROED and the same TODO(D10) marker — never an invented
-// coordinate, and never a silently different signal than the route surface ships. Every other projection is
+// COORDINATES (D10, GAP-032). GPS coordinates exist ONLY as `evv_event.coords_cipher`. The
+// coordinate-bearing `EvvLocationProvider` reads follow the M18L route service's posture EXACTLY
+// (`clinicianCurrentLocation`): both now recover the stored coordinate through the shared `../coords`
+// codec — the same one the capture wrote it with — and both return `lat: null`/`lng: null` when the
+// payload is absent or unparseable. They previously ZEROED both fields behind a `TODO(D10)`, which a
+// caller could not distinguish from a genuine coordinate. ⚠️ The column is NOT encrypted despite its name:
+// it holds `base64("lat,lng")` and the per-tenant DEK pipeline is still deferred (see ../coords.ts) —
+// decoding base64 is not decryption and nothing here closes that. Every other projection is
 // coordinate-free; the portal verification surface is timestamp + lay identity only (§4.6).
 //
 // METRICS HONESTY (UI-003). The route service's `metrics()` HARDCODES `complianceRate: 1` /
@@ -34,6 +37,7 @@
 // already handle — nothing here answers a fixed rate.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContextFromRequest } from "@wardenx/tenancy";
+import { decodeStoredCoords } from "../coords";
 import type {
   EvvAggregatorSubmissionDto,
   EvvBracketDto,
@@ -147,20 +151,26 @@ function classify(input: {
   return { bracketState: "no_evv_path", compliance: "not_required" };
 }
 
-/** Project an event-metadata row to the D10 location DTO — coordinates ZEROED, the route-service posture. */
+/**
+ * Project an event-metadata row to the D10 location DTO (GAP-032). Recovers the stored coordinate through
+ * the same codec the capture wrote it with; an absent or unparseable payload yields an explicit null pair,
+ * never a zeroed one — the route service's posture, now that both sides agree.
+ */
 function toLocationDto(r: {
   membershipId: string;
   eventId: string;
   visitId: string;
   accuracyM: number;
   capturedAt: Date;
+  coordsCipher?: string | null;
 }): EvvLocationDto {
+  const coords = decodeStoredCoords(r.coordsCipher);
   return {
     membershipId: r.membershipId,
     eventId: r.eventId,
     visitId: r.visitId,
-    lat: 0, // TODO(D10): decrypt coords_cipher — same marker as the route service's clinicianCurrentLocation
-    lng: 0, // TODO(D10): decrypt coords_cipher
+    lat: coords?.lat ?? null,
+    lng: coords?.lng ?? null,
     accuracyM: r.accuracyM,
     capturedAt: iso(r.capturedAt),
   } as EvvLocationDto;
@@ -354,6 +364,7 @@ export function createDrizzleEvvSeamStore(db: DbClient): EvvSeamStore {
             visitId: EVENT.visitId,
             accuracyM: EVENT.accuracyM,
             capturedAt: EVENT.capturedAt,
+            coordsCipher: EVENT.coordsCipher, // GAP-032 — decoded by toLocationDto
           })
           .from(EVENT)
           .where(and(eq(EVENT.postingMembershipId, membershipId), gte(EVENT.eventAt, cutoff)))
@@ -373,6 +384,7 @@ export function createDrizzleEvvSeamStore(db: DbClient): EvvSeamStore {
             visitId: EVENT.visitId,
             accuracyM: EVENT.accuracyM,
             capturedAt: EVENT.capturedAt,
+            coordsCipher: EVENT.coordsCipher, // GAP-032 — decoded by toLocationDto
           })
           .from(EVENT)
           .where(gte(EVENT.eventAt, cutoff))

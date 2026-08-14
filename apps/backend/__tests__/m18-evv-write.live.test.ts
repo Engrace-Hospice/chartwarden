@@ -251,6 +251,65 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
     const bracket = await svc.bracketForVisit(ORG_A, visit);
     expect(bracket.bracketState).toBe("present");
     expect("coordsCipher" in (bracket.checkInEvent ?? {})).toBe(false);
+
+    // GAP-032 — the coordinate-bearing read recovers what the capture actually stored. This returned a
+    // hardcoded (0, 0) for every clinician in every tenant, and `lat`/`lng` were non-nullable, so no
+    // caller could tell that from a real coordinate. The last-known row is the check-OUT (newest first).
+    const located = await svc.clinicianCurrentLocation(ORG_A, member);
+    const mine = located.find((l) => l.membershipId === member);
+    expect(mine?.lat).toBeCloseTo(45.523, 6);
+    expect(mine?.lng).toBeCloseTo(-122.6789, 6);
+    expect(mine?.eventId).toBe(co.eventId);
+  });
+
+  it("clinician-current-location reports lat/lng NULL when the stored coordinate is unreadable", async () => {
+    const s = seeded[ORG_A];
+    const visit = await seedVisit(ORG_A);
+    // A row this deploy cannot decode — an older/newer encoding, a restore, a future format change.
+    // INSERTED raw rather than UPDATEd over a captured row: `evv_event` carries an append-only
+    // immutability trigger (EVV_EVENT_APPEND_ONLY_IMMUTABLE_COLUMN) that refuses to let `coords_cipher`
+    // change in place, which is a guard worth leaving intact — so the bad payload arrives at INSERT.
+    const device = (
+      await admin.query(
+        "SELECT id, m2_device_attestation_id FROM evv_device WHERE membership_id = $1 AND status = 'approved' LIMIT 1",
+        [s.member],
+      )
+    ).rows[0];
+    const eventId = (
+      await admin.query(
+        `INSERT INTO evv_event (organization_id, provider_entity_id, location_id, visit_id, patient_id,
+           patient_address_id, kind, service_type_code, posting_membership_id,
+           posting_discipline_at_recording, evv_device_id, captured_at, event_at, coords_cipher,
+           coords_dek_version, accuracy_m, gps_quality, device_attestation_id_at_record)
+         VALUES ($1,$2,$3,$4,$5,$6,'check_in','',$7,'',$8,
+                 now() + interval '1 hour', now() + interval '1 hour',
+                 'not-decodable',1,5,'high',$9)
+         RETURNING id`,
+        [
+          ORG_A,
+          s.pe,
+          s.location,
+          visit,
+          PATIENT,
+          null,
+          s.member,
+          device.id,
+          device.m2_device_attestation_id,
+        ],
+      )
+    ).rows[0].id as string;
+
+    // The read collapses to ONE row per clinician (their newest sighting), which is why the row above is
+    // stamped an hour ahead — otherwise an earlier test's capture would still be this member's latest.
+    const located = await svc.clinicianCurrentLocation(ORG_A, s.member);
+    const mine = located.find((l) => l.membershipId === s.member);
+    expect(mine?.eventId).toBe(eventId);
+    // "Unavailable", not a substituted coordinate — the whole reason the DTO became nullable instead of
+    // keeping zero as a de-facto sentinel (0,0 is a real place).
+    expect(mine?.lat).toBeNull();
+    expect(mine?.lng).toBeNull();
+    // The rest of the row still reports — an unreadable coordinate does not erase the sighting.
+    expect(mine?.accuracyM).toBe(5);
   });
 
   it("capture with accuracy beyond the policy (unattested) is an outside-geofence breach", async () => {
