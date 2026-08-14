@@ -31,7 +31,8 @@
 //       real: it reads the PACKET-included set (§2.3 D9's authoritative signal) for the meeting, floors each
 //       patient at `packet.since_cursor_iso + 15d` (the packet worker already resolved that cursor to "last
 //       review OR admission activation" — no second fact source needed), and a patient is covered iff another
-//       non-cancelled/non-rescheduled meeting that also includes them is scheduled on/before their floor. An
+//       NOT-YET-ADJOURNED meeting (`COVERING_MEETING_STATUSES`) that also includes them is scheduled on/before
+//       their floor — an adjourned meeting is what the floor is measured FROM, never what satisfies it. An
 //       agenda-only inclusion (pre-`BUILD_PACKETS`) has no packet-resolved cursor to check and is NOT
 //       evaluated — the same authoritative-vs-Phase-1-signal split `patientIncluded` already draws. `ADJOURN`
 //       now really stamps `last_idg_reviewed_at` (previously only `frozen_at` was set, so the floor could
@@ -226,13 +227,29 @@ export function createDbIdgBackend(
     return !!ag;
   }
   const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
+  /** The `idg_meeting_status` values a meeting can hold and STILL deliver a review that covers a patient's
+   * 15-day floor — i.e. everything before it adjourns. This is an ALLOWLIST on purpose. It was previously a
+   * `notInArray(["cancelled","rescheduled"])` denylist, which also admitted `adjourned`: since a patient's
+   * `since_cursor_iso` is set BY their last adjourned meeting, that meeting always satisfies
+   * `scheduledStart <= cursor + 15d`, so every patient with any review history looked permanently covered and
+   * the breach set was empty for all but a patient whose ONLY packet was on the meeting being cancelled.
+   * An adjourned meeting is a review that already happened — it is what the floor is measured FROM, never
+   * what satisfies it. (No lower time bound is needed on top of this: an overdue-but-still-pending meeting
+   * remains a real future review, and if it is later cancelled this same guard runs for it.) */
+  const COVERING_MEETING_STATUSES = [
+    "scheduled",
+    "packets_building",
+    "packets_ready",
+    "live",
+  ] as const;
   /** M14-F01 / ADR-0018 D2 (GAP-020) — the per-patient 15-day review-floor breach set a proposed
    * CANCEL/RESCHEDULE would leave uncovered. Scoped to PACKET-included patients (§2.3 D9's authoritative
    * inclusion signal); an agenda-only patient has no packet-resolved review cursor to check (documented, not
    * silent — see the module header). Each packet's `since_cursor_iso` is already the "last review OR
    * admission activation" cursor the §2.4 packet worker resolved when it built the packet, so the floor is
    * just that cursor + 15 days — no second fact source to thread in. A patient is COVERED (no breach) when
-   * another non-cancelled/non-rescheduled meeting that also includes them is scheduled on/before their floor. */
+   * another NOT-YET-ADJOURNED meeting (`COVERING_MEETING_STATUSES`) that also includes them is scheduled
+   * on/before their floor. */
   async function computeReviewFloorBreaches(
     tx: DbClient,
     orgId: string,
@@ -266,7 +283,7 @@ export function createDbIdgBackend(
             eq(PKT.organizationId, orgId),
             eq(PKT.patientId, p.patientId),
             ne(PKT.idgMeetingId, meetingId),
-            notInArray(MTG.status, ["cancelled", "rescheduled"] as never),
+            inArray(MTG.status, COVERING_MEETING_STATUSES as never),
             lte(MTG.scheduledStart, floorAt),
           ),
         )

@@ -355,11 +355,22 @@ export function buildDrizzleIpuRouteService(
     organizationId: string,
     target: { roomId: string; incomingPatientId: string },
   ): Promise<RoomOccupancyDecision> {
+    // `FOR UPDATE` on the ROOM row is what makes this gate a gate rather than an advisory opinion.
+    // The check is read-occupants-then-write-assignment, and the write lands on a BED, so bed-level
+    // uniqueness cannot serialize two coordinators filling two different beds of the same semi-private
+    // room: under READ COMMITTED each transaction's occupant read misses the other's uncommitted
+    // assignment, both see `occupantPatientIds = []`, both take the `occupantCount === 0` allow path
+    // without ever consulting M5, and both commit — producing exactly the mixed-sex placement this
+    // gate exists to prevent. Locking the room serializes them, so the second transaction re-reads
+    // the occupants only after the first has committed and sees the room as occupied.
+    // The room row is the ONLY row locked here, and it is taken before any write, so there is no
+    // lock-ordering cycle with the admission/bed reads in `assignBed`.
     const [room] = await t
       .select({ kind: schema.ipuRoom.kind })
       .from(schema.ipuRoom)
       .where(eq(schema.ipuRoom.id, target.roomId))
-      .limit(1);
+      .limit(1)
+      .for("update");
     if (!room) throw new NotFoundError("ipu_room not found");
 
     // Everyone currently holding a bed in this room: an un-ended assignment on any bed of the room,

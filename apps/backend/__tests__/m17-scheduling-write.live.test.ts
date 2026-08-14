@@ -504,14 +504,14 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
   describe("GAP-030 — SchedulingAbacResolver over real data", () => {
     const resolver = () => svc as unknown as SchedulingAbacResolver;
 
-    it("resolveDiscipline resolves a real, unexpired role grant's key", async () => {
+    it("resolveDisciplines resolves a real, unexpired role grant's key", async () => {
       // The top-level beforeAll already links `member` to the shared ORG_A 'rn' role (GAP-031's
       // fixture requirement — the service-layer gate needs a real qualifying discipline now too).
       const { member } = seeded[ORG_A];
-      await expect(resolver().resolveDiscipline(ORG_A, member)).resolves.toBe("rn");
+      await expect(resolver().resolveDisciplines(ORG_A, member)).resolves.toEqual(["rn"]);
     });
 
-    it("resolveDiscipline returns null for a membership with no qualifying role grant (fail-closed)", async () => {
+    it("resolveDisciplines returns [] for a membership with no qualifying role grant (fail-closed)", async () => {
       const suffix = `${Date.now()}-norole`;
       const user = (
         await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`m17w-${suffix}@x.test`])
@@ -523,10 +523,44 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
           [user, ORG_A, seeded[ORG_A].pe, JSON.stringify([seeded[ORG_A].location])],
         )
       ).rows[0].id as string;
-      await expect(resolver().resolveDiscipline(ORG_A, membership)).resolves.toBeNull();
+      await expect(resolver().resolveDisciplines(ORG_A, membership)).resolves.toEqual([]);
     });
 
-    it("resolveDiscipline ignores an EXPIRED role grant (fail-closed)", async () => {
+    // Code review 2026-08-14 — this used to be `roleRows.find(...)` over an UNORDERED query, so which
+    // discipline a multi-discipline membership resolved to (and therefore whether the D8 gate passed, and
+    // which credential kind was looked for) depended on Postgres row order.
+    it("resolveDisciplines returns EVERY held discipline, deterministically ordered", async () => {
+      const suffix = `${Date.now()}-multi`;
+      const user = (
+        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`m17w-${suffix}@x.test`])
+      ).rows[0].id as string;
+      const membership = (
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status, default_provider_entity_id, default_location_ids)
+           VALUES ($1,$2,'active',$3,$4::jsonb) RETURNING id`,
+          [user, ORG_A, seeded[ORG_A].pe, JSON.stringify([seeded[ORG_A].location])],
+        )
+      ).rows[0].id as string;
+      // Insert `rn` LAST so a naive `find()` over insertion order would answer "msw".
+      for (const key of ["msw", "rn"]) {
+        // ORG_A already carries an 'rn' role from the top-level seed — reuse it rather than colliding on
+        // the (organization_id, key) unique index.
+        const roleId = (
+          await admin.query(
+            `INSERT INTO role (organization_id, key, name, category) VALUES ($1,$2,$2,'clinical_staff')
+             ON CONFLICT (organization_id, key) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
+            [ORG_A, key],
+          )
+        ).rows[0].id as string;
+        await admin.query(
+          `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)`,
+          [ORG_A, membership, roleId],
+        );
+      }
+      await expect(resolver().resolveDisciplines(ORG_A, membership)).resolves.toEqual(["msw", "rn"]);
+    });
+
+    it("resolveDisciplines ignores an EXPIRED role grant (fail-closed)", async () => {
       const suffix = `${Date.now()}`;
       const user = (
         await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`m17w-exp-${suffix}@x.test`])
@@ -548,7 +582,7 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
         `INSERT INTO membership_role (organization_id, membership_id, role_id, expires_at) VALUES ($1,$2,$3,$4)`,
         [ORG_A, membership, roleId, new Date(Date.now() - DAY).toISOString()],
       );
-      await expect(resolver().resolveDiscipline(ORG_A, membership)).resolves.toBeNull();
+      await expect(resolver().resolveDisciplines(ORG_A, membership)).resolves.toEqual([]);
     });
 
     it("isInCaseload resolves a real open patient_assignment via the real M5 CaseloadProvider seam", async () => {

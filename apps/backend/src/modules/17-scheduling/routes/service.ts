@@ -136,8 +136,9 @@ export interface OptimizeDayInput {
 
 // ── seed (the §9.3 RLS/ABAC tests + the resolver inject the dataset; default empty = fail-closed) ──────────
 export interface SchedulingSeed {
-  /** membershipId → discipline (drives `discipline_matches_visit`). */
-  readonly disciplines?: Record<string, SchedulingDiscipline>;
+  /** membershipId → the discipline(s) it holds (drives `discipline_matches_visit`). A membership may hold
+   *  SEVERAL; a bare value is accepted as the one-element case. */
+  readonly disciplines?: Record<string, SchedulingDiscipline | readonly SchedulingDiscipline[]>;
   /** membershipIds whose required credentials are ACTIVE (drives `clinician_credentials_active`). */
   readonly credentialedMemberships?: readonly string[];
   /** `membershipId|patientId` pairs in caseload (drives `within_caseload_or_unassigned_pool`). */
@@ -187,7 +188,7 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
   private readonly newId: () => string;
   private readonly routing?: RoutingProvider;
   private readonly routeOptimizationEnabled: boolean;
-  private readonly disciplines: Map<string, SchedulingDiscipline>;
+  private readonly disciplines: Map<string, SchedulingDiscipline[]>;
   private readonly credentialed: Set<string>;
   private readonly caseload: Set<string>;
   private readonly unassignedPoolOrgs: Set<string>;
@@ -208,7 +209,12 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     this.newId = deps.newId;
     this.routing = deps.routing;
     this.routeOptimizationEnabled = deps.routeOptimizationEnabled ?? false;
-    this.disciplines = new Map(Object.entries(deps.seed?.disciplines ?? {}));
+    this.disciplines = new Map(
+      Object.entries(deps.seed?.disciplines ?? {}).map(([k, v]) => [
+        k,
+        Array.isArray(v) ? [...v] : [v as SchedulingDiscipline],
+      ]),
+    );
     this.credentialed = new Set(deps.seed?.credentialedMemberships ?? []);
     this.caseload = new Set(deps.seed?.caseload ?? []);
     this.unassignedPoolOrgs = new Set(deps.seed?.unassignedPoolOrgs ?? []);
@@ -628,11 +634,11 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
   }
 
   // ── SchedulingAbacResolver (§4.7) — resolves over the same dataset ────────────────────────────────────
-  async resolveDiscipline(
+  async resolveDisciplines(
     _orgId: string,
     membershipId: string,
-  ): Promise<SchedulingDiscipline | null> {
-    return this.disciplines.get(membershipId) ?? null;
+  ): Promise<SchedulingDiscipline[]> {
+    return this.disciplines.get(membershipId) ?? [];
   }
 
   async credentialsActiveForPurpose(
@@ -736,9 +742,10 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
 
   /** Compute the §1.1 D8 pre-schedule gate synchronously over the seeded facts (the publish/edit/reassign gate). */
   private gatePassedSync(orgId: string, record: VisitRecord): boolean {
-    const discipline = this.disciplines.get(record.assignedMembershipId);
-    const disciplineOk =
-      discipline != null && VISIT_PURPOSE_DISCIPLINES[record.visitPurpose].includes(discipline);
+    const held = this.disciplines.get(record.assignedMembershipId) ?? [];
+    const disciplineOk = held.some((d) =>
+      VISIT_PURPOSE_DISCIPLINES[record.visitPurpose].includes(d),
+    );
     const credentialsOk = this.credentialed.has(record.assignedMembershipId);
     const pto = [...this.timeOff.values()].some(
       (t) =>

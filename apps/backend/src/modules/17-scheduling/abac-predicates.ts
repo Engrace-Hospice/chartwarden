@@ -49,8 +49,10 @@ function isVisitPurpose(purpose: string): purpose is VisitPurpose {
  * cross-tenant facts).
  */
 export interface SchedulingAbacResolver {
-  /** The membership's discipline (drives `discipline_matches_visit`), or null when absent / cross-tenant. */
-  resolveDiscipline(orgId: string, membershipId: string): Promise<SchedulingDiscipline | null>;
+  /** EVERY scheduling discipline the membership holds (drives `discipline_matches_visit`); empty when
+   *  absent / cross-tenant. Plural on purpose: a membership can hold more than one discipline role, and
+   *  collapsing that to a single arbitrary value made the predicate non-deterministic. */
+  resolveDisciplines(orgId: string, membershipId: string): Promise<SchedulingDiscipline[]>;
   /** True when the membership holds every credential the purpose requires, ACTIVE as of `serviceDate`. */
   credentialsActiveForPurpose(
     orgId: string,
@@ -105,9 +107,9 @@ export function buildSchedulingAbacPredicates(
       const visitPurpose = targetStr(target, "visitPurpose");
       if (!membershipId || !visitPurpose) return false; // incomplete target → deny
       if (!isVisitPurpose(visitPurpose)) return false; // unknown purpose → deny
-      const discipline = await resolver.resolveDiscipline(context.organizationId, membershipId);
-      if (discipline === null) return false; // absent / cross-tenant → deny
-      return VISIT_PURPOSE_DISCIPLINES[visitPurpose].includes(discipline);
+      const held = await resolver.resolveDisciplines(context.organizationId, membershipId);
+      if (held.length === 0) return false; // absent / cross-tenant → deny
+      return held.some((d) => VISIT_PURPOSE_DISCIPLINES[visitPurpose].includes(d));
     },
     not_on_pto: async (context, target) => {
       const membershipId = targetStr(target, "membershipId");

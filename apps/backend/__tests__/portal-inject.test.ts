@@ -360,6 +360,9 @@ function makeServer(
   opts: {
     readonly medicationOrderRedacted?: boolean;
     readonly telehealthWebhookSignatureValid?: boolean;
+    /** Make M36's care-team roster reconcile fail (the GAP-059 condition), so the send path's
+     *  refusal-vs-disclosure behaviour can be asserted. */
+    readonly careTeamSyncThrows?: boolean;
   } = {},
 ) {
   const backend = createFakePortalStore();
@@ -434,14 +437,17 @@ function makeServer(
     "MedicationOrderProvider",
     fakeMedicationOrderProvider as unknown as MedicationOrderProvider,
   );
+  const messagingCalls = { sendMessage: 0 };
   const fakeMessagingProvider = {
     async syncCareTeamChannel() {
+      if (opts.careTeamSyncThrows) throw new Error("care-team roster reconcile failed");
       return { channelId: "channel-1" };
     },
     async openChannel() {
       return { channelId: "channel-1" };
     },
     async sendMessage() {
+      messagingCalls.sendMessage += 1;
       return { messageId: "msg-1" };
     },
   };
@@ -521,7 +527,7 @@ function makeServer(
       : FAKE_TELEHEALTH_ADAPTER;
   const deps: PortalRouteDeps = { store: backend.store, telehealth, now: () => new Date(NOW) };
   mountM31Routes(app, deps);
-  return { app, backend };
+  return { app, backend, messagingCalls };
 }
 
 const CAREGIVER = {
@@ -591,6 +597,36 @@ describe("M31 route smoke — the M1 boundary", () => {
       payload: {},
     });
     expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+
+  // Code review 2026-08-14 — the send path used to wrap `syncCareTeamChannel` in a bare `try {} catch {}`
+  // and carry on. A failed roster reconcile means the `care_team` channel's membership is stale, which
+  // includes clinicians M5 has since REMOVED from the care team — so swallowing the error turned a
+  // reconciliation failure into a PHI disclosure. Refusing the send is the only safe outcome.
+  it("REFUSES the send when the care-team roster reconcile fails (no message written)", async () => {
+    const { app, messagingCalls } = makeServer({ careTeamSyncThrows: true });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/portal/messages/send",
+      headers: { ...CAREGIVER, "idempotency-key": "k-sync-fail" },
+      payload: { body: "Is Dad's morphine dose still the same?" },
+    });
+    expect(res.statusCode).toBeGreaterThanOrEqual(500);
+    expect(messagingCalls.sendMessage).toBe(0);
+    await app.close();
+  });
+
+  it("sends normally when the roster reconcile succeeds (the fix does not break the happy path)", async () => {
+    const { app, messagingCalls } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/portal/messages/send",
+      headers: { ...CAREGIVER, "idempotency-key": "k-sync-ok" },
+      payload: { body: "Is Dad's morphine dose still the same?" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(messagingCalls.sendMessage).toBe(1);
     await app.close();
   });
 });
