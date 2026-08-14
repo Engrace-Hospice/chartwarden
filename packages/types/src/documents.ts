@@ -83,6 +83,9 @@ export type DocumentAggregateType =
   // these two are M21's dispatch manifest and its controlled-substance RETURN receipt.
   | "supply_bill_of_lading"
   | "comfort_kit_return_receipt"
+  // M33 report artifacts (mig 0197) — the ad-hoc export, and one scheduled-report OCCURRENCE's render.
+  | "report_export"
+  | "report_schedule_run"
   | "idg_patient_packet"
   | "idg_minutes"
   | "aide_poc"

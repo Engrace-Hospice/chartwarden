@@ -17,9 +17,11 @@
 //
 // DECLARED CONSUMERS ARE THE BOUND ONES, NOT THE INTERESTED ONES. The dispatcher keeps a row `pending` on a
 // slow re-check clock while any catalog-declared consumer module has no live binding (staged deployment,
-// deliberately). Listing M14/M23/M25/M27/M39 here because their subscription maps name the event would
-// leave EVERY render's back-ref event pending forever — a permanent backlog that reads as an outage. Each
-// belongs here on the commit that binds its handler.
+// deliberately) — and it THROWS at construction if a module binds an event it is not declared for, so the
+// list and the bindings move together, in one commit, in both directions. Listing M14/M23/M25/M27/M39 here
+// because their subscription maps name the event would leave EVERY render's back-ref event pending forever
+// — a permanent backlog that reads as an outage. Each belongs here on the commit that binds its handler;
+// M33 joined on GAP-051's.
 import { Type } from "@sinclair/typebox";
 import type { ModuleEventContribution } from "@wardenx/types";
 
@@ -57,7 +59,7 @@ export const M22_OUTBOX_EVENTS: ModuleEventContribution = [
       sourceModule: Id,
       renderedAt: Iso,
     }),
-    declaredConsumers: ["m11", "m12", "m13", "m21"],
+    declaredConsumers: ["m11", "m12", "m13", "m21", "m33"],
     isOutboxOnly: true,
   },
 ];

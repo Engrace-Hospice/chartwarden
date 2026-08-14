@@ -87,6 +87,7 @@ import {
 // The §4.4 / M10-real HOPE consumer interface the M30 worker deps bind (composed from the three live M10
 // §D10 readers via `getSeam` in the worker-runner block below).
 import type { QualityHopeConsumer } from "@wardenx/quality";
+import type { DsarDocumentUploadRequest } from "@wardenx/saas-tenant-platform";
 import {
   createDrizzleIdentityEraserStore,
   mountIdentityRoutes,
@@ -108,8 +109,8 @@ import {
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
 import {
   M5_OUTBOX_EVENTS,
-  buildM29ProposalApplierConsumer,
   buildM5DeathCascadeConsumer,
+  buildM29ProposalApplierConsumer,
   createDrizzleCareTeamStore,
   createDrizzleCaseloadStore,
   createDrizzlePatientEraseStore,
@@ -555,6 +556,7 @@ import {
   buildDrizzleM33ExportDrilldownService,
   buildDrizzleM33ReadService,
   buildDrizzleM33WriteService,
+  buildM33DocumentBackrefConsumer,
   buildM33MvRefreshEnqueue,
   buildM33ReadEnqueue,
   buildM33WorkerDeps,
@@ -599,7 +601,6 @@ import {
   validateModule34Seams,
   wireM34Tenancy,
 } from "./modules/34-saas-tenant-platform/index";
-import type { DsarDocumentUploadRequest } from "@wardenx/saas-tenant-platform";
 // M35 (Subscription Billing) boot surface — the §4.11 outbox catalog, the §4.8 ABAC predicates, and the
 // §4.1–4.3 route mount over the single Drizzle route service. The write path emits `m35.*` events through
 // the bound transactional-outbox publisher; the platform-ops cross-tenant reads/writes run through the
@@ -725,7 +726,10 @@ export function wireModuleSeams(
   // over the deny-stub when a DB client is present too (FB-T05).
   registerMessagingSeams(
     deps.db
-      ? { emitter: createDrizzleAlertEmitter(deps.db), provider: createDbMessagingProvider(deps.db) }
+      ? {
+          emitter: createDrizzleAlertEmitter(deps.db),
+          provider: createDbMessagingProvider(deps.db),
+        }
       : {},
   );
   // M40 — MdmEntityProvider (§4.5) + BaaStatusProvider (§4.6 §7.7 as-of gate). Production backs both
@@ -3710,7 +3714,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M14 cron-schedule registration failed");
     }
-    app.log.info({ queues: m14Workers.length }, "M14 §4.8 BullMQ review-clock-sweep cron constructed");
+    app.log.info(
+      { queues: m14Workers.length },
+      "M14 §4.8 BullMQ review-clock-sweep cron constructed",
+    );
 
     // TASK-040C (OPS-005/006) — the `wardenx_bullmq_queue_jobs` gauge, over one dedicated read-only
     // `Queue` handle per UNIQUE queue name actually constructed above (derived from the Workers'
@@ -3850,6 +3857,28 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           buildM12DocumentBackrefConsumer({ db: dbHandle.db }),
           buildM13DocumentBackrefConsumer({ db: dbHandle.db }),
           buildM21DocumentBackrefConsumer({ db: dbHandle.db }),
+          // GAP-051 — M33's half. Unlike the four above it does more than stamp a column: a rendered
+          // scheduled report settles its occurrence `delivered` and emits the §4.9 fan-out, which is why
+          // it composes the package's own decider/applier rather than a one-line UPDATE. The ad-hoc
+          // "export now" artifact has no table to stamp and is deliberately not handled — see the file.
+          buildM33DocumentBackrefConsumer({
+            db: dbHandle.db,
+            emitDelivered: ({ organizationId, ...payload }) =>
+              withOrgContext(dbHandle.db, { organizationId, userId: "" }, (tx) =>
+                m33OutboxPublisher.publish(tx as never, {
+                  eventName: "m33.scheduled_report.delivered",
+                  payload: { ...payload, organizationId },
+                  organizationId,
+                  aggregateKind: "report_schedule_run",
+                  aggregateId: payload.runId,
+                }),
+              ),
+            onDisposition: (action) =>
+              app.log.info(
+                { disposition: action.kind },
+                "M33 scheduled-report delivery: nothing to settle",
+              ),
+          }),
           // WX-PR-012 — the LIVE `m25.parse-and-post` consumer: M25 self-pulls (no other module produces
           // `m25.edi.835_received`), so this drives the parse + transactional-post + denial-seed half of
           // the pipeline the `remittance.receive` route's `receiveAdvice` emits into. The same

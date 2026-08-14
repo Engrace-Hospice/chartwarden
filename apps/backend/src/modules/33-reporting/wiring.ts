@@ -30,6 +30,7 @@ import type { DbClient } from "@wardenx/db";
 import {
   type CsvExportOutboxPort,
   type DrilldownAuditOutboxPort,
+  type ExportRenderOutboxPort,
   MetricsProviderImpl,
   type ReadReplicaSessionPort,
   type ReplicaLagGatePort,
@@ -37,23 +38,22 @@ import {
   type ReportingDb,
 } from "@wardenx/reporting";
 import { isValidTimeZone } from "@wardenx/shared/dates";
-import { registerPlatformJob } from "@wardenx/tenancy";
+import { registerPlatformJob, withOrgContext } from "@wardenx/tenancy";
 
 import { getSeam, registerSeam } from "../../bootstrap/index";
 import {
   CronExpressionInvalidError,
   type CronPort,
-  type ExportSqlExecutor,
   type M33ExportDrilldownRouteService,
   type M33ReadEnqueuePort,
   type M33ReadRouteService,
   type M33WriteRouteService,
-  type TileSqlExecutor,
   type WriteOutboxPort,
   createDrizzleM33ExportDrilldownBackend,
   createDrizzleM33ReadBackend,
   createDrizzleM33WriteBackend,
 } from "./routes/index";
+import { buildDrizzleTileSqlExecutor } from "./sql-executor";
 
 /**
  * The registered platform-job id M33's platform-scoped §4.8 workers (the on-PRIMARY MV refresh, the lag
@@ -238,51 +238,6 @@ export const LIVE_CRON: CronPort = {
 // ── (2) the Drizzle-backed route services (READ + WRITE + EXPORT/DRILLDOWN) ───────────────────────────
 
 /**
- * Reconstruct `translateSpec`'s parameterized SQL text (literal `$1, $2, … $n` placeholders + a matching
- * `params` array, kept SEPARATE by design — D4, no raw-SQL/string-interpolated values) as a real
- * drizzle-orm `SQL` object `db.execute` can run. drizzle-orm's public API has no "text + params array"
- * constructor (`sql.raw(str)` is TEXT-ONLY, no param binding), so this splits the text on its `$<n>`
- * markers and rebuilds the query as a `sql.join` of alternating raw-text `sql.raw()` chunks and bound
- * `` sql`${value}` `` param chunks, in the SAME left-to-right order the text already encodes — drizzle then
- * re-numbers those chunks into `$1, $2, …` on render, which is identical to the input numbering because the
- * chunk order matches it exactly. Every bound value still passes through drizzle's own parameter binding
- * (a real `pg` driver parameter, never string-interpolated) — this is a re-encoding of the SAME
- * already-safe parameterized query, not a new SQL-construction surface.
- */
-function toParameterizedSql(text: string, params: readonly unknown[]) {
-  const parts = text.split(/\$(\d+)/);
-  const chunks: ReturnType<typeof sql.raw>[] = [];
-  for (let i = 0; i < parts.length; i += 1) {
-    const part = parts[i];
-    if (part === undefined) continue;
-    if (i % 2 === 0) {
-      if (part.length > 0) chunks.push(sql.raw(part));
-    } else {
-      const value = params[Number(part) - 1];
-      chunks.push(sql`${value}`);
-    }
-  }
-  return sql.join(chunks);
-}
-
-/**
- * The real Drizzle-backed {@link TileSqlExecutor} / {@link ExportSqlExecutor} — executes a `translateSpec`
- * result on the CALLER-SUPPLIED `db` (the active `withReportSession` tx), never a statically-captured
- * connection (see both interfaces' doc comments for why that would silently defeat RLS). Shared by the READ
- * service's tile reads and the EXPORT service's CSV stream / row-count paths — one executor, two ports with
- * the same shape.
- */
-function buildDrizzleTileSqlExecutor(): TileSqlExecutor & ExportSqlExecutor {
-  return {
-    async execute(db, { sql: text, params }) {
-      const result = await db.execute(toParameterizedSql(text, params));
-      const rows = result.rows;
-      return { rows, rowCount: result.rowCount ?? rows.length };
-    },
-  };
-}
-
-/**
  * Build the production READ route service (§4.1 #1–#7, #37–#42) over the read-replica-over-primary
  * session. Tile/metric/dashboard reads run under `withReportSession` (RLS-scoped, read-only, tiered
  * statement_timeout); the MV-admin commands enqueue the on-PRIMARY `report.mv_refresh` job through the
@@ -336,11 +291,14 @@ export function buildDrizzleM33WriteService(deps: {
  * SAME field-name adaptation `apps/backend/src/modules/33-reporting/jobs/m33-jobs.ts` makes for the
  * `report.drilldown_audit_flush` worker's identical emit).
  *
- * STILL fail-closed/forward-seam (genuine infra gaps, not this file's to invent): `exportOutbox` (PDF/XLSX →
- * 503 `ExportRenderUnbound` — `ExportRenderRequestPayload` does not satisfy the
- * `m33.scheduled_report.render_requested` catalog schema, the same package-level mismatch the jobs file
- * documents) and `drilldownEncryption` (→ `DrilldownDekUnavailable` deny — the M1 envelope-DEK/KMS provider
- * does not exist anywhere in this codebase yet).
+ * `exportOutbox` is BOUND too as of GAP-051 (PDF/XLSX used to 503 `ExportRenderUnbound`), over the same
+ * `deps.outbox` publisher: the render request goes out as `m33.scheduled_report.render_requested` with the
+ * aggregate the reply keys back by (`report_export` / the exportId). The payload carries the executed rows,
+ * so this is a real handshake, not a request M22 could never answer.
+ *
+ * STILL fail-closed (a genuine infra gap, not this file's to invent): `drilldownEncryption` (→
+ * `DrilldownDekUnavailable` deny — the M1 envelope-DEK/KMS provider does not exist anywhere in this
+ * codebase yet).
  */
 export function buildDrizzleM33ExportDrilldownService(deps: {
   db: DbClient;
@@ -364,10 +322,35 @@ export function buildDrizzleM33ExportDrilldownService(deps: {
     evaluateForReporting: (input) =>
       (getSeam("ConsentEvaluator") as ReportingConsentConsumer).evaluateForReporting(input),
   };
+
+  /**
+   * Publish one §4.10 event through the tx-scoped publisher, INSIDE the tenant's own `withOrgContext`.
+   *
+   * All three of these emits used to hand the publisher `deps.db` — the bare pool — with no org context
+   * around it, and the row's own `organizationId` was expected to carry the day. It does not:
+   * `outbox_event`'s RLS policy is `organization_id = current_setting('app.org_id', true)::uuid`, and on a
+   * POOLED connection that has already served one `withOrgContext`/`withReportSession` transaction, a
+   * custom GUC set with `set_config(…, true)` does not revert to unset — it reverts to the EMPTY STRING.
+   * `''::uuid` then raises `invalid input syntax for type uuid: ""` (22P02), so the publish blew up with a
+   * cast error rather than either succeeding or failing cleanly as an RLS denial — and only on a reused
+   * connection, which is every connection in a warm process and no connection in a fresh unit test.
+   */
+  const publishInOrgTx = (input: {
+    readonly eventName: string;
+    readonly payload: Record<string, unknown>;
+    readonly organizationId: string;
+    readonly aggregateKind: string;
+    readonly aggregateId: string;
+  }): Promise<void> =>
+    withOrgContext<DbClient, void>(
+      deps.db,
+      { organizationId: input.organizationId, userId: "" },
+      (tx) => deps.outbox!.publish(tx, input),
+    );
   const csvOutbox: CsvExportOutboxPort | undefined = deps.outbox
     ? {
         emitCsvStreamed: (payload) =>
-          deps.outbox!.publish(deps.db, {
+          publishInOrgTx({
             eventName: "m33.export.csv_streamed",
             payload,
             organizationId: payload.organizationId,
@@ -379,7 +362,7 @@ export function buildDrizzleM33ExportDrilldownService(deps: {
   const drilldownOutbox: DrilldownAuditOutboxPort | undefined = deps.outbox
     ? {
         emitDrilldown: (payload) =>
-          deps.outbox!.publish(deps.db, {
+          publishInOrgTx({
             eventName: "m33.drilldown.emitted",
             payload: {
               drilldownTraceId: payload.drilldownTraceId,
@@ -398,6 +381,22 @@ export function buildDrizzleM33ExportDrilldownService(deps: {
           }),
       }
     : undefined;
+  // GAP-051 — the §1.1 render handshake for the ad-hoc "export now" routes (#33/#34). The aggregate is the
+  // EXPORT (`report_export` / exportId), which is what M22's reply keys back by; `idempotencyKey =
+  // exportId` gives at-most-once render across a redelivered request. Unbound (no publisher), the service
+  // keeps raising `ExportRenderUnbound` rather than dropping the request.
+  const exportOutbox: ExportRenderOutboxPort | undefined = deps.outbox
+    ? {
+        emitRenderRequested: (payload) =>
+          publishInOrgTx({
+            eventName: "m33.scheduled_report.render_requested",
+            payload: { ...payload },
+            organizationId: payload.organizationId,
+            aggregateKind: payload.aggregateType,
+            aggregateId: payload.aggregateId,
+          }),
+      }
+    : undefined;
   return createDrizzleM33ExportDrilldownBackend({
     db: deps.db,
     replica: buildLiveReplicaSession(deps.db),
@@ -406,5 +405,6 @@ export function buildDrizzleM33ExportDrilldownService(deps: {
     consent,
     csvOutbox,
     drilldownOutbox,
+    exportOutbox,
   });
 }

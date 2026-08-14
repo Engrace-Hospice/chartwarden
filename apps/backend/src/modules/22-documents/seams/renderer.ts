@@ -120,6 +120,21 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "compliance",
     defaultTitle: "Comfort Kit Return Receipt",
   },
+  // M33's two report artifacts (GAP-051, mig 0197), keyed by the `aggregateType` discriminator on
+  // `m33.scheduled_report.render_requested`. Both are `operational`: a report snapshot is aggregate-only
+  // (D6 — no row-level PHI reaches the renderer), so neither is a clinical record nor compliance evidence.
+  // `scheduled_report` files against the OCCURRENCE, not the schedule — a weekly report renders a new
+  // document every week, and `report_schedule_run.document_id` is the column waiting for it.
+  report_export: {
+    aggregateType: "report_export",
+    retentionClass: "operational",
+    defaultTitle: "Report Export",
+  },
+  scheduled_report: {
+    aggregateType: "report_schedule_run",
+    retentionClass: "operational",
+    defaultTitle: "Scheduled Report",
+  },
   evv_verification: {
     aggregateType: "evv_verification",
     retentionClass: "operational",

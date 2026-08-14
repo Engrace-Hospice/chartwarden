@@ -73,15 +73,42 @@ export const M33_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m33.scheduled_report.render_requested",
     moduleOwner: "m33",
     description:
-      'The schedule runner reached a due occurrence and requested a PDF/XLSX render; M22 renders the snapshot and wires the document back (the §1.1 render handshake). Carries the idempotency key for at-most-once render. TWO producers share this wire name: the scheduled-run cron path (carries scheduleId+runId) and the ad-hoc "export now" route path (carries exportId+aggregateType instead, TypeBox permits the extra properties) — scheduleId/runId are Optional so both validate; a consumer must not assume either is present.',
+      'A PDF/XLSX render was requested; M22 renders the snapshot and wires the document back (the §1.1 render handshake). Carries the idempotency key for at-most-once render. TWO producers share this wire name: the scheduled-run cron path (carries scheduleId+runId, aggregateType `report_schedule_run`) and the ad-hoc "export now" route path (carries exportId instead, aggregateType `report_export`) — scheduleId/runId are Optional so both validate; a consumer must not assume either is present, and `aggregateType` is the discriminator M22 resolves the template key from. The MATERIALIZED snapshot travels with the request (columns/rows/rowCount): M22 renders content, it does not execute `snapshotQuery`, which rides along only as provenance.',
     payloadSchema: Type.Object({
       scheduleId: Type.Optional(id),
       runId: Type.Optional(id),
+      /** Present on the ad-hoc "export now" path (= `aggregateId`); absent on the scheduled path. */
+      exportId: Type.Optional(id),
       viewId: id,
       format: Type.Union([Type.Literal("pdf"), Type.Literal("xlsx"), Type.Literal("csv")]),
       organizationId: id,
+      /** PROVENANCE only — the executed SELECT. Its `$1, $2, …` markers have no params channel by design
+       *  (D4), and M22 has no reporting database; the rows below are what gets rendered. */
       snapshotQuery: Type.String(),
       idempotencyKey: id,
+      /** Which producer emitted — and therefore which M22 template / `document_aggregate_type` applies. */
+      aggregateType: Type.Union([
+        Type.Literal("report_export"),
+        Type.Literal("report_schedule_run"),
+      ]),
+      /** The rendered document's title (the saved view's display name). */
+      title: Type.String(),
+      /** The materialized snapshot. Aggregate-only (D6 — no row-level PHI) and bounded by the view's own
+       *  `row_limit`, compiled into the SELECT by `translateSpec`, plus the §4.8 PDF cap on that path. */
+      columns: Type.Array(
+        Type.Object({
+          /** The output alias each row object is keyed by (a tenant alias if the spec supplied one). */
+          key: id,
+          /** The catalog key it derives from — stable across tenant aliasing. The translator emits no
+           *  display text, so there is deliberately no `label`: a fabricated one would print on a real
+           *  report as though it were the tenant's own. */
+          sourceKey: id,
+          kind: Type.Union([Type.Literal("dimension"), Type.Literal("measure")]),
+          unit: Type.Optional(Type.String()),
+        }),
+      ),
+      rows: Type.Array(Type.Record(Type.String(), Type.Unknown())),
+      rowCount: Type.Integer({ minimum: 0 }),
     }),
     declaredConsumers: ["m22"],
     isOutboxOnly: true,

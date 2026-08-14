@@ -55,6 +55,10 @@ import {
   createInMemoryObjectStore,
 } from "../src/modules/22-documents/index";
 import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
+import {
+  M33_OUTBOX_EVENTS,
+  buildM33DocumentBackrefConsumer,
+} from "../src/modules/33-reporting/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -188,6 +192,11 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
       M12_OUTBOX_EVENTS,
       M13_OUTBOX_EVENTS,
       M21_OUTBOX_EVENTS,
+      // GAP-051 — M22's ONE render consumer now also subscribes to M33's request event, and
+      // `m22.document.rendered` declares m33 among its consumers. BOTH halves have to be present here:
+      // the dispatcher refuses to construct on an event its catalog does not know, and it holds every
+      // back-ref row `pending` while a declared consumer module has no live binding.
+      M33_OUTBOX_EVENTS,
       M22_OUTBOX_EVENTS,
       M23_OUTBOX_EVENTS,
     ]);
@@ -246,6 +255,7 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
         buildM12DocumentBackrefConsumer({ db: handle.db }),
         buildM13DocumentBackrefConsumer({ db: handle.db }),
         buildM21DocumentBackrefConsumer({ db: handle.db }),
+        buildM33DocumentBackrefConsumer({ db: handle.db }),
       ],
       eventCatalog: catalog,
       options: { log: () => {} },

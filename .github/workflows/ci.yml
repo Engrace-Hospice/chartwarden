@@ -175,6 +175,10 @@ jobs:
           # all three compute `next_run_at` through a port that was a fail-closed stub, so no tenant
           # could create a schedule at all and the §4.8 scheduled-run cron had nothing to fire.
           - { name: "M33 schedule cron", scripts: "test:m33:schedule-cron:live" }
+          # GAP-051: the M33 PDF/XLSX export → M22 render → back-ref chain end-to-end. Nothing in it
+          # ran before: the export outbox was unbound, M22 consumed the request event nowhere, and the
+          # request carried a SQL string M22 could never have executed.
+          - { name: "M33 export render", scripts: "test:m33:export-render:live" }
     env:
       WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
     steps:

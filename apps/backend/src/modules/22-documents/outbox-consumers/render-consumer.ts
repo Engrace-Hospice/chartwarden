@@ -107,6 +107,24 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     aggregateIdFields: ["abnId"],
     templateKey: "abn",
   },
+  // M33 §1.1 (GAP-051) — ONE wire name, TWO producers: the `report.scheduled_run` cron path
+  // (`report_schedule_run`, aggregate = the run) and the ad-hoc "export now" route (`report_export`,
+  // aggregate = the export). They are two different `document_aggregate_type`s, so the payload's own
+  // `aggregateType` picks the template. The identity is taken from the ENVELOPE for the same reason M21's
+  // is: both producers set the outbox row's aggregate correctly, and only the ad-hoc payload happens to
+  // repeat it in the body. No `contentField` — the WHOLE payload is the report (columns + rows + the
+  // format + the snapshot query's provenance), which is exactly what the renderer should receive.
+  "m33.scheduled_report.render_requested": {
+    aggregateIdFields: [],
+    aggregateIdFromEvent: true,
+    templateKeyByField: {
+      field: "aggregateType",
+      map: {
+        report_export: "report_export",
+        report_schedule_run: "scheduled_report",
+      },
+    },
+  },
 };
 
 /** Raised when a delivered render request cannot be read into M22's canonical shape (unknown event name,
