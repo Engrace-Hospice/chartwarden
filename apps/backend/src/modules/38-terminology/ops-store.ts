@@ -115,7 +115,10 @@ export interface TerminologyOpsStore {
   /** Register a source version through the loader function — idempotent on (system, version). */
   registerVersion(input: RegisterVersionInput): Promise<RegisterVersionResult>;
   /** Record an embeddings-refresh request against the system's ACTIVE version. */
-  requestEmbeddingRefresh(system: CodeSystemId, requestedBy: string): Promise<EmbeddingRefreshResult>;
+  requestEmbeddingRefresh(
+    system: CodeSystemId,
+    requestedBy: string,
+  ): Promise<EmbeddingRefreshResult>;
   /** The cross-tenant governance view of tenant value-set extensions. */
   listTenantExtensions(
     query: TenantExtensionGovernanceQuery,
@@ -159,8 +162,7 @@ export function createInMemoryTerminologyOpsStore(seed: TerminologyOpsSeed = {})
 
     async deprecationsSince(since, system) {
       return (seed.deprecations ?? []).filter(
-        (d) =>
-          d.deprecationEffective >= since && (system === undefined || d.systemId === system),
+        (d) => d.deprecationEffective >= since && (system === undefined || d.systemId === system),
       );
     },
 

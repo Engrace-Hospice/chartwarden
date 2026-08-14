@@ -70,7 +70,11 @@ const TENANT_ADMIN_H = {
   "x-test-org": ORG,
   "x-test-roles": "org_admin",
 };
-const COMPLIANCE_H = { "x-test-user": "compliance_1", "x-test-org": ORG, "x-test-roles": "compliance" };
+const COMPLIANCE_H = {
+  "x-test-user": "compliance_1",
+  "x-test-org": ORG,
+  "x-test-roles": "compliance",
+};
 const RN_H = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "clinical_rn" };
 
 /** A code-usage producer over a fixed row set — stands in for M7's problem-list reader. */

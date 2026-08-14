@@ -83,15 +83,15 @@ export {
 import type { DbClient } from "@wardenx/db";
 import { createTerminologyProvider } from "@wardenx/terminology";
 import type { FastifyInstance } from "fastify";
-import { registerAdminTerminologyRoutes as _registerAdminTerminologyRoutes } from "./routes/admin-terminology-routes";
-import { registerTerminologyRoutes as _registerTerminologyRoutes } from "./routes/terminology-routes";
+import { getSeam } from "../../bootstrap/index";
 import {
   carePlanCodeUsageProducer as _carePlanCodeUsageProducer,
   createRemediationService as _createRemediationService,
 } from "./remediation-service";
+import { registerAdminTerminologyRoutes as _registerAdminTerminologyRoutes } from "./routes/admin-terminology-routes";
+import { registerTerminologyRoutes as _registerTerminologyRoutes } from "./routes/terminology-routes";
 import { createDbTerminologyOpsStore as _createDbTerminologyOpsStore } from "./terminology-ops-store-db";
 import { createDbTerminologyStore as _createDbTerminologyStore } from "./terminology-store-db";
-import { getSeam } from "../../bootstrap/index";
 
 /**
  * Mount the M38 terminology REST routes (validate / lookup / search / value-set expand+is-member /

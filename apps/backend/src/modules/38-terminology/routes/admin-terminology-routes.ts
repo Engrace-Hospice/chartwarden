@@ -125,10 +125,7 @@ export function registerAdminTerminologyRoutes(
     { preHandler: [LOAD, LOAD_PLATFORM] },
     async (request) => {
       const { system } = parse(AdminSystemParamsSchema, request.params);
-      const result = await ops.requestEmbeddingRefresh(
-        system as CodeSystemId,
-        operatorOf(request),
-      );
+      const result = await ops.requestEmbeddingRefresh(system as CodeSystemId, operatorOf(request));
       // The version is resolved server-side from the ACTIVE row, so "no active version" is a real
       // refusal rather than a silently-logged no-op against nothing.
       if (!result.logged || result.versionId === null) {

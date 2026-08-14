@@ -1,15 +1,21 @@
 import { PlatformOpsShell } from "@wardenx/admin-ui-shell";
 import type { PlatformNavItem } from "@wardenx/admin-ui-shell";
 import type { ScreenRegistry } from "@wardenx/types";
-import { ApiClientProvider, CorrelationIdProvider, ErrorBoundary, t } from "@wardenx/ui";
+import {
+  ApiClientProvider,
+  CorrelationIdProvider,
+  ErrorBoundary,
+  LoadingSpinner,
+  t,
+} from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
 // apps/admin — the Platform-Ops console SPA shell (M34 §5.1, ADR-0030). The WardenX-staff control-plane
 // analogue of apps/web/src/shell + apps/portal's shell: it composes the cross-cutting providers around a
 // react-router router built from the admin screen registry, framed by the @wardenx/admin-ui-shell
 // PlatformOpsShell chrome (top bar + nav rail). The shell reads the registry but imports NO module slice
 // directly — slices register at composition (main.tsx), the same discipline the M1 web shell keeps.
-import { createElement, useMemo } from "react";
-import type { CSSProperties, JSX } from "react";
+import { Suspense, createElement, useMemo } from "react";
+import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, Outlet, RouterProvider, createBrowserRouter, useLocation } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
 import type { AdminScreen, AdminScreenDescriptor } from "./shell/registry";
@@ -92,6 +98,19 @@ export interface AdminAppProps {
   correlationId?: string;
 }
 
+/**
+ * Suspense boundary for a lazily-loaded route screen — the apps/web shell's `withSuspense` (TASK-033
+ * route-level code-splitting), which this console lacked.
+ *
+ * Without it a slice registering `lazy()` screens renders BLANK rather than erroring: React suspends,
+ * finds no boundary, and the route contributes nothing. That is why every admin slice so far imports its
+ * screens eagerly — and why the console's initial bundle is 412 kB against a 350 kB budget with no way
+ * for a slice to opt out. One boundary makes per-slice code-splitting possible for all of them.
+ */
+function withSuspense(element: ReactNode): JSX.Element {
+  return <Suspense fallback={<LoadingSpinner label="Loading…" />}>{element}</Suspense>;
+}
+
 export function AdminApp({
   registry,
   client,
@@ -104,7 +123,7 @@ export function AdminApp({
     const chromed = screens.filter((s) => s.chrome !== false);
     const nav = buildNav(chromed);
     const routes: RouteObject[] = [
-      ...chromeless.map((s) => ({ path: s.path, element: createElement(s.screen) })),
+      ...chromeless.map((s) => ({ path: s.path, element: withSuspense(createElement(s.screen)) })),
       {
         // Pathless layout route: wraps the landing + every chromed screen in the console frame,
         // gated on an authenticated, platform_ops-holding session (RequireChrome).
@@ -117,7 +136,7 @@ export function AdminApp({
           { index: true, element: <AdminHome /> },
           ...chromed.map((s) => ({
             path: s.path.replace(/^\//, ""),
-            element: createElement(s.screen),
+            element: withSuspense(createElement(s.screen)),
           })),
         ],
       },

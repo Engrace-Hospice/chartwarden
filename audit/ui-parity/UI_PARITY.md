@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 39 module screen-sets registered · 278 screens wired across web/portal/admin.
-- **admin**: 26 screen(s)
+**Coverage:** 113 documented screen specs · 41 module screen-sets registered · 290 screens wired across web/portal/admin.
+- **admin**: 34 screen(s)
 - **portal**: 13 screen(s)
-- **web**: 239 screen(s)
+- **web**: 243 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -239,6 +239,10 @@
 | web | 27-cost-report | `cost_report.snapshots` | `/cost-reports/snapshots` | `cost_report.read_snapshot_detail` | ✅ |
 | web | 30-quality | `quality.hub` | `/quality` | `quality.measure.read` | ✅ |
 | web | 30-quality | `quality.qapi-incidents` | `/quality/qapi` | `incident.read` | ✅ |
+| web | 32-ai-platform | `ai.compliance` | `/compliance/ai` | `ai.invocation.read` | ✅ |
+| web | 32-ai-platform | `ai.opt-in` | `/organization/ai/opt-in` | `ai.tenant_opt_in` | ✅ |
+| web | 32-ai-platform | `ai.routing` | `/organization/ai/routing` | `ai.tenant_opt_in` | ✅ |
+| web | 32-ai-platform | `ai.my-preferences` | `/me/ai-preferences` | `ai.clinician_opt_out.read` | ✅ |
 | web | 33-reporting | `reporting.catalog` | `/reports` | `report.dashboard.list` | ✅ |
 | web | 33-reporting | `reporting.dashboard` | `/reports/dashboards/:dashboardId` | `report.dashboard.read` | ✅ |
 | web | 33-reporting | `reporting.role-dashboard` | `/reports/role/:roleKey` | `report.dashboard.read` | ✅ |
@@ -270,6 +274,14 @@
 | web | 40-mdm | `mdm.console` | `/mdm` | `(none)` | ✅ |
 | admin | 01-ops | `admin.ops.outbox` | `/admin/ops/outbox` | `member.manage` | ✅ |
 | admin | 01-ops | `admin.ops.outbox-detail` | `/admin/ops/outbox/:id` | `member.manage` | ✅ |
+| admin | 32-ai-platform | `admin.ai-capabilities` | `/admin/ai-platform/capabilities` | `ai.capability.read` | ✅ |
+| admin | 32-ai-platform | `admin.ai-capability-detail` | `/admin/ai-platform/capabilities/:capabilityId` | `ai.capability.read` | ✅ |
+| admin | 32-ai-platform | `admin.ai-kill-switches` | `/admin/ai-platform/kill-switches` | `ai.kill_switch.read` | ✅ |
+| admin | 32-ai-platform | `admin.ai-invocations` | `/admin/ai-platform/invocations` | `ai.invocation.read` | ✅ |
+| admin | 32-ai-platform | `admin.ai-hallucinations` | `/admin/ai-platform/hallucinations` | `ai.hallucination.triage` | ✅ |
+| admin | 32-ai-platform | `admin.ai-tokens` | `/admin/ai-platform/tokens` | `ai.tokens.read` | ✅ |
+| admin | 32-ai-platform | `admin.ai-evaluations` | `/admin/ai-platform/evaluations` | `ai.capability.read` | ✅ |
+| admin | 32-ai-platform | `admin.ai-drift` | `/admin/ai-platform/drift` | `ai.capability.read` | ✅ |
 | admin | 34-saas-platform | `saas.tenants` | `/tenants` | `tenant.list_platform` | ✅ |
 | admin | 34-saas-platform | `saas.tenant-overview` | `/tenants/:orgSlug` | `tenant.read_platform` | ✅ |
 | admin | 34-saas-platform | `saas.support-sessions` | `/support/sessions` | `support_session.list_platform` | ✅ |

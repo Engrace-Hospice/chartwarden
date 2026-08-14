@@ -253,9 +253,8 @@ describe.skipIf(!DB_URL)("GAP-063 M38 admin surface + remediation — LIVE Postg
       });
       expect(second.created).toBe(false);
       expect(second.versionId).toBe(first.versionId);
-      const count = (
-        await admin.query("SELECT count(*)::int AS n FROM code_system_version")
-      ).rows[0].n;
+      const count = (await admin.query("SELECT count(*)::int AS n FROM code_system_version"))
+        .rows[0].n;
       expect(count).toBe(1);
       // The losing call must not overwrite the winner's provenance either.
       const row = (
@@ -265,8 +264,9 @@ describe.skipIf(!DB_URL)("GAP-063 M38 admin surface + remediation — LIVE Postg
       ).rows[0];
       expect(row.source_file_ref).toBe("minio://x");
       // …and it appends no second ledger entry.
-      expect((await admin.query("SELECT count(*)::int AS n FROM terminology_update_log")).rows[0].n)
-        .toBe(1);
+      expect(
+        (await admin.query("SELECT count(*)::int AS n FROM terminology_update_log")).rows[0].n,
+      ).toBe(1);
     });
 
     it("refuses a system that is not in the code_system catalog", async () => {
@@ -338,8 +338,9 @@ describe.skipIf(!DB_URL)("GAP-063 M38 admin surface + remediation — LIVE Postg
       const result = await ops.requestEmbeddingRefresh("snomed", OPERATOR);
       expect(result.logged).toBe(false);
       expect(result.versionId).toBeNull();
-      expect((await admin.query("SELECT count(*)::int AS n FROM terminology_update_log")).rows[0].n)
-        .toBe(0);
+      expect(
+        (await admin.query("SELECT count(*)::int AS n FROM terminology_update_log")).rows[0].n,
+      ).toBe(0);
     });
   });
 
