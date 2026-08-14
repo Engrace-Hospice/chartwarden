@@ -31,6 +31,11 @@ if [ ! -d node_modules ]; then
   exit 1
 fi
 
-echo "pre-push: updating main → running fitness gate (build + arch:fitness + test)…"
+echo "pre-push: updating main → running fitness gate (build + arch:fitness + test + audit:deps)…"
 bun run build && bun run arch:fitness && bun run test
+# GAP-087: dependency advisories are the one gate input that changes WITHOUT the tree changing, so
+# a push that alters nothing about dependencies can still be the first push after an advisory lands.
+# `audit:deps` reaches the advisory registry; offline it warns rather than blocking (it hard-fails
+# only under CI, where a silent skip would be indistinguishable from a pass).
+bun run audit:deps
 echo "pre-push: ✓ gate green — allowing push to main."

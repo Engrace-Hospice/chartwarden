@@ -152,6 +152,7 @@
     "arch:abac-predicates": "bun run scripts/check-abac-predicates.ts",
     "arch:live-suites": "bun run scripts/check-live-suite-coverage.ts",
     "arch:org-indexes": "bun run scripts/check-org-index-coverage.ts",
+    "audit:deps": "bun run scripts/check-dependency-vulnerabilities.ts",
     "arch:audit-denylist-sync": "bun run scripts/check-audit-denylist-sync.ts",
     "arch:audit-exceptions": "bun run scripts/check-audit-exceptions.ts",
     "arch:openapi-coverage": "bun run scripts/report-openapi-coverage.ts --check",
