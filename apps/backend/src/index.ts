@@ -605,6 +605,7 @@ import {
   registerSaasTenantPlatformErasers,
   registerTenantPlatformAbacPredicates,
   validateModule34Seams,
+  wireM34AlertRuleSeed,
   wireM34Tenancy,
 } from "./modules/34-saas-tenant-platform/index";
 // M35 (Subscription Billing) boot surface — the §4.11 outbox catalog, the §4.8 ABAC predicates, and the
@@ -3119,6 +3120,28 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     wireAlertRuleSeed(dbHandle.db).catch((err) => {
       app.log.error(err, "alert_rule platform-default seed population failed");
     });
+  }
+
+  // GAP-098 — the same boot-populate for M34's own platform-default rules, whose header has called this
+  // "the Phase 2D boot UPSERT" since the file was written while nothing performed it. PARTIAL by design:
+  // only rules naming an M36 BUILT-IN resolver are seeded, because M36's registry THROWS on an unknown
+  // resolver name and M34's own two resolvers are implemented but never registered at boot — seeding
+  // those would turn a dormant rule into a failing emit. The skipped count is logged rather than
+  // swallowed so the remaining gap stays visible.
+  if (dbHandle) {
+    wireM34AlertRuleSeed(dbHandle.db)
+      .then((result) => {
+        if (result.skipped > 0) {
+          app.log.warn(
+            { seeded: result.seeded, skipped: result.skipped, resolvers: result.skippedResolvers },
+            "M34 alert_rule seed is PARTIAL — rules naming an unregistered recipient resolver were " +
+              "skipped; they stay dormant until registerM34AlertResolvers is bound at boot",
+          );
+        }
+      })
+      .catch((err) => {
+        app.log.error(err, "M34 alert_rule platform-default seed population failed");
+      });
   }
 
   // ── worker-runner section (the M4-T11 BullMQ worker-construction precedent) ──────────────────────────

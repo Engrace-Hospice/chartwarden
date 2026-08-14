@@ -94,6 +94,9 @@ const TENANT_ACME_ID = "10000000-0000-4000-8000-000000000001";
 const TENANT_DESTROY_ID = "10000000-0000-4000-8000-000000000002";
 const GRANT_ID = "20000000-0000-4000-8000-000000000001";
 const MEMBER_PLATFORM_OPS = "30000000-0000-4000-8000-000000000001";
+// GAP-098 — the platform-ops tenant-export discovery list's fixtures.
+const EXPORT_HELD_ID = "60000000-0000-4000-8000-000000000981";
+const EXPORT_RELEASED_ID = "60000000-0000-4000-8000-000000000982";
 const MEMBER_GRANTOR = "30000000-0000-4000-8000-000000000002";
 const MEMBER_ORG_ADMIN = "30000000-0000-4000-8000-000000000003";
 const INTENT_QUALIFY_ID = "40000000-0000-4000-8000-000000000001";
@@ -128,6 +131,7 @@ const PLATFORM_OPS_PERMISSIONS = [
   "support_session.close",
   "signup_intent.list_platform",
   "signup_intent.qualify",
+  "tenant_export.list_platform",
   "platform_tenant_baa.read_platform",
   "feature_flag.read_platform",
   "feature_flag.write_platform",
@@ -184,6 +188,12 @@ function buildTestAbacResolver(): TenantPlatformAbacResolver {
 
 function makeServer() {
   const platformSeed: TenantPlatformRouteSeed = {
+    // GAP-098 — one HELD bundle and one already-released job, so the `?held=true` filter has something
+    // to include AND something to exclude (a filter proven only against an all-held set proves nothing).
+    tenantExportJobs: [
+      { id: EXPORT_HELD_ID, organizationId: ORG, held: true, heldBundleSizeBytes: "64424509440" },
+      { id: EXPORT_RELEASED_ID, organizationId: ORG, held: false },
+    ],
     tenants: [
       { id: TENANT_ACME_ID, orgSlug: "acme", legalBusinessName: "Acme Hospice", status: "active" },
       {
@@ -807,6 +817,96 @@ describe("M34-saas-tenant-platform-inject — tenant export jobs", () => {
     expect(download.statusCode).toBe(200);
     expect(download.json().url).toBeTypeOf("string");
 
+    await app.close();
+  });
+});
+
+// ── platform: tenant-export-approval.ts — the GAP-098 discovery list ─────────────────────────────────
+describe("M34-saas-tenant-platform-inject — platform-ops tenant-export discovery (GAP-098)", () => {
+  it("no auth headers → 401", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({ method: "GET", url: "/api/v1/platform/tenant-export-jobs" });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("an actor without tenant_export.list_platform → 403", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenant-export-jobs",
+      headers: NOPERM,
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("holding the key WITHOUT the platform_ops role → 403", async () => {
+    // The conjunct that matters on a cross-tenant surface: `tenant_lifecycle_platform_ops`. A tenant
+    // admin who acquired the permission key must not be able to enumerate every tenant's exports.
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenant-export-jobs",
+      headers: { ...ORG_ADMIN, "x-test-roles": "org_admin" },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("lists every export job for a platform operator", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenant-export-jobs",
+      headers: PLATFORM_OPS,
+    });
+    expect(res.statusCode).toBe(200);
+    const ids = res.json().items.map((j: { id: string }) => j.id);
+    expect(ids).toContain(EXPORT_HELD_ID);
+    expect(ids).toContain(EXPORT_RELEASED_ID);
+    await app.close();
+  });
+
+  it("?held=true narrows to the bundles awaiting a co-sign, with the size to decide on", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenant-export-jobs?held=true",
+      headers: PLATFORM_OPS,
+    });
+    expect(res.statusCode).toBe(200);
+    const items = res.json().items as {
+      id: string;
+      heldForOversizedApproval: boolean;
+      heldBundleSizeBytes: string | null;
+    }[];
+    expect(items.map((j) => j.id)).toEqual([EXPORT_HELD_ID]);
+    expect(items[0]?.heldForOversizedApproval).toBe(true);
+    // A string, never a number — an oversized bundle is past 2^31 by definition (GAP-097).
+    expect(items[0]?.heldBundleSizeBytes).toBe("64424509440");
+    await app.close();
+  });
+
+  it("?held=false is a real filter, not a no-op", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenant-export-jobs?held=false",
+      headers: PLATFORM_OPS,
+    });
+    expect(res.json().items.map((j: { id: string }) => j.id)).toEqual([EXPORT_RELEASED_ID]);
+    await app.close();
+  });
+
+  it("rejects a malformed limit rather than silently clamping the query", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenant-export-jobs?limit=999",
+      headers: PLATFORM_OPS,
+    });
+    expect(res.statusCode).toBe(422);
     await app.close();
   });
 });

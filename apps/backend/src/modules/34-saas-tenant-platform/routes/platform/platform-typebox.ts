@@ -21,6 +21,7 @@ import type {
   SignupIntentView as ServiceSignupIntentView,
   SupportSessionEventView as ServiceSupportSessionEventView,
   SupportSessionView as ServiceSupportSessionView,
+  TenantExportJobView as ServiceTenantExportJobView,
   TenantInvitationView as ServiceTenantInvitationView,
   TenantOverview as ServiceTenantOverview,
   TenantSummaryView as ServiceTenantSummaryView,
@@ -221,6 +222,15 @@ export const KillSwitchRequest = Type.Object({
 });
 
 // ── queries (cursor / keyset pagination — §4.1) ───────────────────────────────────────────────────────
+/** `tenant_export_job_status` (packages/db/src/enums.ts). */
+const TENANT_EXPORT_STATUS = [
+  "requested",
+  "generating",
+  "fulfilled",
+  "expired",
+  "cancelled",
+] as const;
+
 const PageQuery = {
   cursor: Type.Optional(Type.String({ maxLength: 256 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
@@ -254,6 +264,16 @@ export const SessionEventListQuerySchema = Type.Object(PageQuery);
 export const SignupIntentListQuerySchema = Type.Object({
   status: Type.Optional(lit(SIGNUP_INTENT_STATUS)),
   source: Type.Optional(lit(SIGNUP_INTENT_SOURCE)),
+  ...PageQuery,
+});
+
+// §4.1 — GET /platform/tenant-export-jobs (across tenants; GAP-098). `held` is the discovery filter:
+// a SEC-052 oversized hold does NOT get its own status (the job stays `generating` and the hold lives
+// in the ledger), so `status` alone cannot separate "still assembling" from "waiting for a co-signer".
+export const TenantExportJobListQuerySchema = Type.Object({
+  organizationId: Type.Optional(Type.String({ format: "uuid" })),
+  status: Type.Optional(lit(TENANT_EXPORT_STATUS)),
+  held: Type.Optional(Type.Boolean()),
   ...PageQuery,
 });
 
@@ -363,6 +383,30 @@ export const BaaRecordViewSchema = Type.Object({
   attestedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
 });
 export const BaaRegisterListResponseSchema = CursorPageOf(BaaRecordViewSchema);
+
+/**
+ * A tenant-export job as the platform-ops list renders it (GAP-098). `heldForOversizedApproval` is
+ * DERIVED from the ledger (the newest event is an `oversized_hold`), not stored — it is the same test
+ * the approve-oversized route makes, so a row this list flags held is one that route will accept.
+ * `bundleSizeBytes` is a STRING: the column is a bigint-as-text (migration 0195, GAP-097) because an
+ * oversized bundle is by definition past a 32-bit column's ceiling.
+ */
+export const TenantExportJobViewSchema = Type.Object({
+  id: Type.String(),
+  organizationId: Type.String(),
+  requestedPurpose: Type.String(),
+  status: lit(TENANT_EXPORT_STATUS),
+  requestedAt: Type.String({ format: "date-time" }),
+  fulfilledAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  heldForOversizedApproval: Type.Boolean(),
+  /** The held bundle's size, from the hold ledger event — the basis a co-signer decides on. */
+  heldBundleSizeBytes: Type.Union([Type.String(), Type.Null()]),
+  heldRecordCount: Type.Union([Type.Integer(), Type.Null()]),
+  heldAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  bundleSizeBytes: Type.Union([Type.String(), Type.Null()]),
+  bundleDownloadedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+});
+export const TenantExportJobListResponseSchema = CursorPageOf(TenantExportJobViewSchema);
 
 export const FeatureFlagViewSchema = Type.Object({
   id: Type.String(),
@@ -495,6 +539,7 @@ type _SessionEvent = Conforms<
 type _Intent = Conforms<Static<typeof SignupIntentViewSchema>, ServiceSignupIntentView>;
 type _Baa = Conforms<Static<typeof BaaRecordViewSchema>, ServiceBaaRecordView>;
 type _Flag = Conforms<Static<typeof FeatureFlagViewSchema>, ServiceFeatureFlagView>;
+type _ExportJob = Conforms<Static<typeof TenantExportJobViewSchema>, ServiceTenantExportJobView>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope (M22 `parse`). */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

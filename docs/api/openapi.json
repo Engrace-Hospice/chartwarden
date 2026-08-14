@@ -126152,6 +126152,213 @@
         }
       }
     },
+    "/api/v1/platform/tenant-export-jobs": {
+      "get": {
+        "operationId": "getApiV1PlatformTenantexportjobs",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Cross-tenant tenant-export jobs; `held=true` narrows to bundles awaiting a SEC-052 co-sign",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "requested",
+                  "type": "string"
+                },
+                {
+                  "const": "generating",
+                  "type": "string"
+                },
+                {
+                  "const": "fulfilled",
+                  "type": "string"
+                },
+                {
+                  "const": "expired",
+                  "type": "string"
+                },
+                {
+                  "const": "cancelled",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "held",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "requestedPurpose",
+                          "status",
+                          "requestedAt",
+                          "fulfilledAt",
+                          "bundleSizeBytes",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "requestedPurpose": {
+                            "anyOf": [
+                              {
+                                "const": "migration",
+                                "type": "string"
+                              },
+                              {
+                                "const": "baa_termination",
+                                "type": "string"
+                              },
+                              {
+                                "const": "compliance_audit",
+                                "type": "string"
+                              },
+                              {
+                                "const": "surveyor_request",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "requested",
+                                "type": "string"
+                              },
+                              {
+                                "const": "generating",
+                                "type": "string"
+                              },
+                              {
+                                "const": "fulfilled",
+                                "type": "string"
+                              },
+                              {
+                                "const": "expired",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "requestedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "fulfilledAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "bundleSizeBytes": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/platform/tenant-export-jobs/{id}/approve-oversized": {
       "post": {
         "operationId": "postApiV1PlatformTenantexportjobsByIdApproveoversized",

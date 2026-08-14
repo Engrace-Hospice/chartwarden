@@ -20,6 +20,7 @@ import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   ApproveOversizedExportRequest,
+  TenantExportJobListQuerySchema,
   TenantExportJobParamsSchema,
   parse,
 } from "./platform-typebox";
@@ -43,6 +44,11 @@ function actorOf(request: FastifyRequest): { membershipId: string } {
 const jobIdOf = (request: FastifyRequest): string =>
   parse(TenantExportJobParamsSchema, request.params).id;
 
+const LIST = requirePermission("tenant_export.list_platform") as PreHandler;
+const ABAC_LIST = requireAbac(
+  "tenant_export.list_platform",
+  "tenant_lifecycle_platform_ops",
+) as PreHandler;
 const APPROVE = requirePermission("tenant_export.approve_oversized") as PreHandler;
 const ABAC_PLATFORM_OPS = requireAbac(
   "tenant_export.approve_oversized",
@@ -56,7 +62,32 @@ export function registerTenantExportApprovalRoutes(
 ): void {
   const { service } = deps;
 
-  // 1 — SEC-052 second-actor release of an oversized-hold bundle (§3.7). GAP-097.
+  // 1 — the cross-tenant tenant-export job list (§4.1). GAP-098.
+  //
+  // THE DISCOVERY SURFACE the release route below never had. `tenant_export.list_platform` has been a
+  // declared permission key since M34-T-phase with ZERO route registrations — the tenant-side
+  // `.list_own`/`.request`/`.download` were all wired and the platform-ops list simply never was, so a
+  // SEC-052 hold could only be acted on by an operator who already knew the job id from a support
+  // ticket. `?held=true` is the query that answers "what is waiting on me".
+  //
+  // NO STEP-UP, unlike the approve route below. This route discloses job METADATA — org, purpose,
+  // status, bundle size — and no bundle content or download URL; the step-up ceremony belongs on the
+  // act that releases PHI, not on the list that says one is pending. Gating discovery behind a
+  // re-auth would also push operators back to the out-of-band channel this route exists to replace.
+  app.get(
+    "/api/v1/platform/tenant-export-jobs",
+    { preHandler: [LIST, ABAC_LIST] },
+    async (request) => {
+      const q = parse(TenantExportJobListQuerySchema, request.query);
+      return service.listTenantExportJobs(
+        { organizationId: q.organizationId, status: q.status, held: q.held },
+        q.cursor,
+        q.limit,
+      );
+    },
+  );
+
+  // 2 — SEC-052 second-actor release of an oversized-hold bundle (§3.7). GAP-097.
   app.post(
     "/api/v1/platform/tenant-export-jobs/:id/approve-oversized",
     { preHandler: [APPROVE, ABAC_PLATFORM_OPS, STEP_UP_APPROVE] },

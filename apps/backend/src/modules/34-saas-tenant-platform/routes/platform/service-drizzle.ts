@@ -50,7 +50,7 @@ import {
 import { type PlatformBypassAuditor, withPlatformContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
-import { type CursorPage, paginate } from "./concurrency";
+import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf, paginate } from "./concurrency";
 import type {
   BaaRecordView,
   CloseSupportSessionArgs,
@@ -67,6 +67,7 @@ import type {
   StatusTransitionArgs,
   SupportSessionEventView,
   SupportSessionView,
+  TenantExportJobView,
   TenantOverview,
   TenantPlatformRouteService,
   TenantSummaryView,
@@ -913,6 +914,69 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     },
 
     // ── tenant export: SEC-052 oversized-hold release (§3.7; GAP-097) ──
+    // ── tenant export: the cross-tenant platform-ops list (§4.1; GAP-098) ──
+    //
+    // Unlike the sibling lists on this surface, this one paginates IN SQL (`listPlatformPage`'s keyset)
+    // rather than fetching every row and slicing in memory. `tenant_export_job` grows without bound
+    // across every tenant, and the `held` filter's predicate is a correlated EXISTS over the partitioned
+    // ledger — running that over the whole table to then throw most of it away is the one place on this
+    // surface where the in-memory-paginate shortcut would actually hurt. The cursor CODEC is the shared
+    // one, so the wire shape matches every other platform list.
+    async listTenantExportJobs(filter, cursor, limit): Promise<CursorPage<TenantExportJobView>> {
+      return inPlatformCtx("platform-ops list tenant export jobs", async (tx) => {
+        const repo = new TenantExportRepository(tx);
+        const size = pageSizeOf(limit);
+        const keyset = cursor ? decodeCursor(cursor) : undefined;
+        // limit + 1 so `hasMore` is answered by the read itself, never by a second count query.
+        const rows = await repo.listPlatformPage({
+          organizationId: filter.organizationId,
+          status: filter.status as schema.TenantExportJob["status"] | undefined,
+          heldOnly: filter.held === true,
+          cursor: keyset ? { requestedAt: new Date(keyset.createdAt), id: keyset.id } : undefined,
+          limit: size + 1,
+        });
+        const hasMore = rows.length > size;
+        const page = hasMore ? rows.slice(0, size) : rows;
+        const holds = await repo.holdStateForJobs(page.map((r) => r.id));
+
+        const items: TenantExportJobView[] = page.map((job) => {
+          const event = holds.get(job.id);
+          // The FLAG and the `held` FILTER must agree — both halves, same as the repo predicate.
+          const held = event !== undefined && job.status === "generating";
+          const receipt = (held ? (event?.shardReceipt ?? {}) : {}) as {
+            bundleSizeBytes?: number;
+            recordCount?: number;
+          };
+          return {
+            id: job.id,
+            organizationId: job.organizationId,
+            requestedPurpose: job.requestedPurpose,
+            status: job.status,
+            requestedAt: job.requestedAt.toISOString(),
+            fulfilledAt: job.fulfilledAt?.toISOString() ?? null,
+            heldForOversizedApproval: held,
+            // Stringified, not narrowed to a JS number: an oversized bundle is past 2^31 by definition
+            // and the column is bigint-as-text for exactly that reason (GAP-097 / migration 0195).
+            heldBundleSizeBytes:
+              typeof receipt.bundleSizeBytes === "number" ? String(receipt.bundleSizeBytes) : null,
+            heldRecordCount: typeof receipt.recordCount === "number" ? receipt.recordCount : null,
+            heldAt: held ? (event?.occurredAt.toISOString() ?? null) : null,
+            bundleSizeBytes: job.bundleSizeBytes,
+            bundleDownloadedAt: job.bundleDownloadedAt?.toISOString() ?? null,
+          };
+        });
+        const last = page[page.length - 1];
+        return {
+          items,
+          nextCursor:
+            hasMore && last
+              ? encodeCursor({ createdAt: last.requestedAt.toISOString(), id: last.id })
+              : null,
+          hasMore,
+        };
+      });
+    },
+
     async approveOversizedExport(jobId, actorMembershipId, args) {
       return inPlatformCtx("platform-ops approve oversized tenant export", async (tx) => {
         const repo = new TenantExportRepository(tx);
@@ -959,7 +1023,10 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           organizationId: job.organizationId,
           tenantExportJobId: jobId,
           eventKind: "oversized_approved",
-          shardReceipt: { approvalReason: args.approvalReason, approvedByMembershipId: actorMembershipId },
+          shardReceipt: {
+            approvalReason: args.approvalReason,
+            approvedByMembershipId: actorMembershipId,
+          },
           occurredAt: now,
         });
         return { jobId, status: "fulfilled" };

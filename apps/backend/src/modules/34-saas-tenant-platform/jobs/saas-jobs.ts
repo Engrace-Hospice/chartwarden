@@ -2,6 +2,10 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { audit } from "@wardenx/audit";
 import type { DbClient } from "@wardenx/db";
+// M34 `dependsOn` already includes 36; alert-rules.ts takes the same @wardenx/messaging type import.
+// `getSeam("AlertEmitter")` is an opaque rich-seam (`unknown` in the registry), so the consumer casts
+// to its own view — the M36 `getAlertEmitter()` precedent.
+import type { AlertEmitter } from "@wardenx/messaging";
 // apps/backend/src/modules/34-saas-tenant-platform/jobs/saas-jobs.ts — M34 Phase 2D LIVE BullMQ wiring
 // for the §4.3 jobs. The thin, infra-touching adapter that turns the @wardenx/saas-tenant-platform pure
 // workers (catalog in ./index.ts) into running BullMQ `Worker`s + the four cron-schedule `Queue`s. All job
@@ -676,7 +680,10 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
   const dsarExport: DsarExportWorkerPorts = {
     now,
     async resolveSubject(orgId, patientId) {
-      const identity = await getSeam("PatientReader").findById({ organizationId: orgId, id: patientId });
+      const identity = await getSeam("PatientReader").findById({
+        organizationId: orgId,
+        id: patientId,
+      });
       if (!identity) {
         return unbound(
           "dsarExport.resolveSubject",
@@ -817,7 +824,11 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
           "bind the composition-root M22 DocumentRenderer adapter (tenantExport.render)",
         );
       }
-      return deps.tenantExport.render.render({ organizationId: orgId, aggregateId: jobId, bundleSha256 });
+      return deps.tenantExport.render.render({
+        organizationId: orgId,
+        aggregateId: jobId,
+        bundleSha256,
+      });
     },
     async markFulfilled(input): Promise<void> {
       await tenantExportRepo.update(input.jobId, {
@@ -842,12 +853,23 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
     // isn't 'fulfilled', so the hold is enforced by omission — no new status/column needed. GAP-097 built
     // the release side: `POST /api/v1/platform/tenant-export-jobs/:id/approve-oversized`
     // (routes/platform/tenant-export-approval.ts) reads THIS event's `shardReceipt` (the bundle artifact
-    // handles recorded below) to flip the job to `fulfilled` once a platform-ops actor co-signs. The M36
-    // platform-ops alert this port's own doc comment names is not wired (no discovery surface yet for
-    // WHICH job needs approval — logged separately, GAP-097's own follow-up).
+    // handles recorded below) to flip the job to `fulfilled` once a platform-ops actor co-signs.
+    //
+    // GAP-098 — the M36 alert this port's own doc comment has always promised ("the worker records the
+    // hold (ledger row + M36 alert to platform-ops)") is now emitted. Without it the hold was silent in
+    // both directions: the job stays `generating` so nothing in a status list distinguishes it, and the
+    // release route takes a job id that no surface handed out. The alert is the PUSH half of that
+    // discovery; `GET /api/v1/platform/tenant-export-jobs?held=true` is the pull half.
+    //
+    // THE LEDGER ROW COMES FIRST, and the emit cannot undo it. The hold row is the record the approve
+    // route reads to release the bundle; an alert-delivery failure (M36 unbound, a resolver throwing,
+    // the messaging tables unavailable) must not take the hold with it, or a bundle would be assembled,
+    // uploaded, and then unreachable by ANY path. So the emit is best-effort and its failure is logged,
+    // not propagated — the pull surface is the one that must always work.
     async holdForOversizedApproval(input): Promise<void> {
+      const orgId = requireTenantExportOrgId();
       await tenantExportRepo.appendEvent({
-        organizationId: requireTenantExportOrgId(),
+        organizationId: orgId,
         tenantExportJobId: input.jobId,
         eventKind: "oversized_hold",
         shardReceipt: {
@@ -858,6 +880,31 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
         },
         occurredAt: now(),
       });
+      try {
+        // No PHI: a job id, an org id, and the bundle's SIZE — which is the whole basis on which a
+        // platform-ops actor decides whether to co-sign. The object key and sha256 stay OUT of the
+        // payload (§4.7 sanitizes, but an alert body that names the artifact handle is a step toward
+        // a bundle being fetched from a notification rather than through the audited release route).
+        await (getSeam("AlertEmitter") as AlertEmitter).emit(orgId, {
+          eventType: "m34.tenant_export.oversized_hold",
+          payload: {
+            jobId: input.jobId,
+            orgId,
+            bundleSizeBytes: input.bundleSizeBytes,
+            recordCount: input.recordCount,
+          },
+          severity: "critical",
+          correlationId: randomUUID(),
+        });
+      } catch (error) {
+        // console.warn is the sink this app already uses outside a request scope (bootstrap/index.ts,
+        // readiness-probe.ts) — a worker port has no Fastify logger. The message names the pull surface
+        // so whoever reads it knows the hold is still actionable.
+        const reason = error instanceof Error ? error.message : String(error);
+        console.warn(
+          `m34.tenant_export.oversized_hold alert emit failed for job ${input.jobId} (org ${orgId}): ${reason}. The hold IS recorded and is releasable via GET /api/v1/platform/tenant-export-jobs?held=true`,
+        );
+      }
     },
   };
 
@@ -1069,9 +1116,9 @@ export function registerM34DsarExportWorker(deps: M34WorkerDeps): Worker {
         deps.db,
         { organizationId: data.orgId, userId: M34_DSAR_WORKER_SYSTEM_USER_ID },
         (tx) =>
-          dsarExportProcessor(buildM34WorkerPorts({ ...deps, db: tx as unknown as DbClient }).dsarExport)(
-            data,
-          ),
+          dsarExportProcessor(
+            buildM34WorkerPorts({ ...deps, db: tx as unknown as DbClient }).dsarExport,
+          )(data),
       );
     },
     { connection: deps.connection, concurrency: 4 },
@@ -1089,7 +1136,10 @@ export function registerM34DsarExportWorker(deps: M34WorkerDeps): Worker {
  */
 export function registerM34TenantExportWorker(deps: M34WorkerDeps): Worker {
   if (!deps.tenantExport) {
-    throw new M34WorkerPortUnbound("tenantExport", "the object-store and DocumentRenderer adapters are required");
+    throw new M34WorkerPortUnbound(
+      "tenantExport",
+      "the object-store and DocumentRenderer adapters are required",
+    );
   }
   return new Worker(
     M34_QUEUES.export,

@@ -185,6 +185,11 @@ jobs:
           # dead — every loader write matched zero rows. This suite runs as NOBYPASSRLS wardenx_app,
           # so it fails if 0206's policy or its SECURITY DEFINER functions go missing.
           - { name: "M38 terminology admin", scripts: "test:m38:admin:live" }
+          # GAP-098: the SEC-052 oversized-hold DISCOVERY surface — the cross-tenant platform-ops list
+          # (`tenant_export.list_platform` had zero route registrations) and the M36 alert the hold port
+          # promised in its doc comment and never emitted. Held-ness is derived from the newest ledger
+          # event, so this suite is what keeps that derivation agreeing with the release route's.
+          - { name: "M34 oversized-hold discovery", scripts: "test:m34:hold-discovery:live" }
           - { name: "M37 IPU", scripts: "test:m37:write:live" }
           - { name: "M37 privacy gates", scripts: "test:m37:privacy-gates:live" }
           # GAP-079: M4's §2.5 read-audit EMISSION over the M26 Cap + M39 Consent read surfaces —
