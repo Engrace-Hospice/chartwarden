@@ -276,6 +276,24 @@ export interface CarePlanOverdueStatus {
   readonly nextReviewDueAt: IsoInstant | null;
 }
 
+/**
+ * One problem-list row that references a terminology code, projected for M38's §7.3 deprecation
+ * remediation rollup (GAP-063). Deliberately NOT PHI-bearing beyond the row id: the report tells a
+ * Compliance Officer *which codes* need remediation and *how many* records use each, so the code +
+ * a record id for drill-down is the whole minimum-necessary payload — no description, no patient id.
+ *
+ * `systemId` is a plain string, not `CodeSystemId`: @wardenx/types is a LEAF and may not import
+ * @wardenx/terminology (`leaves-stay-leaves`). M38 narrows it on receipt; an unrecognised system id
+ * simply matches no deprecation mapping.
+ */
+export interface CarePlanCodeUsageRecord {
+  readonly recordId: string;
+  /** Record class for the rollup's per-area breakdown — always `"problem_list"` from this producer. */
+  readonly recordType: string;
+  readonly systemId: string;
+  readonly code: string;
+}
+
 // ── §7.8 CarePlanReader seam interface ──────────────────────────────────────────────────────────────
 
 /**
@@ -306,4 +324,19 @@ export interface CarePlanReader {
     organizationId: string,
     window: { from: string; to: string },
   ): Promise<{ readonly numerator: number; readonly denominator: number }>;
+
+  /**
+   * ORG-LEVEL problem-list terminology-code usage — M38's `/api/v1/terminology/remediation` input
+   * (GAP-063). The spec's §7.3 rollup names three record classes (problem list, claim line, order);
+   * this is the problem-list one. M38 owns no patient data and cannot read `problem` (it `dependsOn`
+   * [1,2,3,4]), so the producer projects its own rows and M38 joins them against `deprecation_mapping`.
+   *
+   * Returns only rows whose `(systemId, code)` is in `codes` — the caller passes the currently
+   * deprecated set, so an org with no exposure costs one indexed lookup and returns nothing. Active
+   * (non-resolved) problems only: remediating a resolved problem's code is not compliance work.
+   */
+  terminologyCodeUsageForOrg(
+    organizationId: string,
+    codes: ReadonlyArray<{ readonly systemId: string; readonly code: string }>,
+  ): Promise<ReadonlyArray<CarePlanCodeUsageRecord>>;
 }

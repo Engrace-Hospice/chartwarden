@@ -9,6 +9,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { AdminApp } from "./app";
 import { opsAdminScreens } from "./modules/01-ops";
+import { aiPlatformAdminScreens } from "./modules/32-ai-platform";
 import { saasPlatformAdminScreens } from "./modules/34-saas-platform";
 import { subscriptionAdminScreens } from "./modules/35-subscription-billing";
 import { adminAuthScreens } from "./shell/auth-screens";
@@ -25,6 +26,7 @@ registry.register(adminAuthScreens); // M1 shell — the console's own login flo
 registry.register(opsAdminScreens); // WX-PR-020 (OPS-004) operator recovery — outbox status
 registry.register(saasPlatformAdminScreens); // M34 §5.1 platform-ops control plane (migrated from apps/web)
 registry.register(subscriptionAdminScreens); // M35 §5.2 subscription-billing (M35A-T04)
+registry.register(aiPlatformAdminScreens); // M32 §5.1 AI Safety Owner console (GAP-049)
 
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error('Root element "#root" not found');

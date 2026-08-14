@@ -72,6 +72,15 @@ export function createCarePlanReader(
     ) {
       return store.fifteenDayCycleCountsForOrg(organizationId, window);
     },
+    async terminologyCodeUsageForOrg(
+      organizationId: string,
+      codes: readonly { readonly systemId: string; readonly code: string }[],
+    ) {
+      // No codes asked for → no rows possible; skip the round-trip entirely (M38 sends the
+      // currently-deprecated set, which is empty for a system with no deprecations loaded).
+      if (codes.length === 0) return [];
+      return store.terminologyCodeUsageForOrg(organizationId, codes);
+    },
     async isReviewOverdue(patientId: PatientId) {
       const clock = await store.activeCarePlanClock(patientId);
       if (clock === null) return null;

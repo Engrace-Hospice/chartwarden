@@ -648,6 +648,7 @@ import {
   createDbTerminologyStore,
   createDrizzleTerminologyEraseStore,
   mountTerminologyRoutes,
+  registerTerminologyAbacPredicates,
   registerTerminologyErasers,
   registerTerminologySeams,
 } from "./modules/38-terminology/index";
@@ -1221,6 +1222,12 @@ export function wireModuleSeams(
   // state_trading_partner_credential_admin). Pass the DB handle so the Drizzle fact resolver binds under RLS;
   // with no db it defaults to the deny-stub (default-deny).
   registerM24AbacPredicates({ db: deps.db });
+  // M38 — the one §4.4 ABAC resolver (`terminology_admin_platform_ops`), the platform-only conjunct on
+  // the `/api/v1/admin/terminology/*` surface. Role-only (the `platform_ops` M3 RBAC role on a staff
+  // session), so no DB handle: there is no owner row to load — a canonical terminology load has no
+  // tenant. Registered under M38's OWN name rather than borrowing M34's identical-today
+  // `tenant_lifecycle_platform_ops`, because the registry is single-owner per name (GAP-063).
+  registerTerminologyAbacPredicates();
   // M33 — register the platform job id on the @wardenx/tenancy allowlist so the §4.8 platform-scoped
   // workers (the on-PRIMARY MV refresh, the lag probe, the tenant eraser) may enter withPlatformContext
   // (the allowlist starts empty → fail-closed). The M34 `wireM34Tenancy` precedent.
@@ -2483,7 +2490,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           mountSchedulingRoutes(app, dbHandle.db, m17OutboxPublisher); // M17 — reads + the write lifecycle over Drizzle+RLS, m17.* transactional outbox
           mountEvvRoutes(app, dbHandle.db, m18OutboxPublisher); // M18 — reads + the write lifecycle over Drizzle+RLS, m18.evv.* transactional outbox
           mountDocumentRoutes(app, dbHandle.db); // M22 — reads + the write lifecycle over Drizzle+RLS (no producer outbox: M22's outbox is the consumer-side render handshake)
-          mountTerminologyRoutes(app, dbHandle.db); // M38 — terminology read surface + tenant value-set extensions (FB-T01)
+          mountTerminologyRoutes(app, dbHandle.db); // M38 — terminology read surface + tenant value-set extensions (FB-T01), the §4.1 value-set catalog + §7.3 remediation report + the platform-ops admin surface (GAP-063)
           mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
           mountConsentRoutes(app, dbHandle.db, {
             outbox: m39OutboxPublisher,

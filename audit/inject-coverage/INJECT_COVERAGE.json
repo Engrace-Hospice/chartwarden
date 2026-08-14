@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1235,
-    "coveredRoutes": 1235,
-    "directRoutesReferenced": 1176
+    "routes": 1241,
+    "coveredRoutes": 1241,
+    "directRoutesReferenced": 1182
   },
   "modules": [
     {
@@ -366,13 +366,14 @@
     },
     {
       "module": "38-terminology",
-      "routes": 8,
+      "routes": 14,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/terminology-admin-routes.test.ts",
         "apps/backend/__tests__/terminology-routes-mount.test.ts",
         "apps/backend/__tests__/terminology-routes.test.ts"
       ],
-      "directRoutesReferenced": 8
+      "directRoutesReferenced": 14
     },
     {
       "module": "39-consent",

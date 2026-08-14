@@ -1599,6 +1599,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/terminology/{system}/load": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register a source version for a code system (platform-ops + step-up, §4.2) */
+        post: operations["postApiV1AdminTerminologyBySystemLoad"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/terminology/{system}/refresh-embeddings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request an embeddings recompute at the active version (platform-ops, §4.2) */
+        post: operations["postApiV1AdminTerminologyBySystemRefreshembeddings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/terminology/value-set-extensions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cross-tenant view of tenant value-set extensions (platform-ops, §4.1) */
+        get: operations["getApiV1AdminTerminologyValuesetextensions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/terminology/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Platform terminology load history (platform-ops, §4.1) */
+        get: operations["getApiV1AdminTerminologyVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/administrations": {
         parameters: {
             query?: never;
@@ -17353,6 +17421,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/terminology/remediation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** This tenant's records still using recently-deprecated codes (§7.3) */
+        get: operations["getApiV1TerminologyRemediation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/terminology/value-sets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Catalog of platform value sets (§4.1) */
+        get: operations["getApiV1TerminologyValuesets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/terminology/value-sets/{id}/expand": {
         parameters: {
             query?: never;
@@ -22588,6 +22690,161 @@ export interface operations {
                 content: {
                     "application/json": {
                         ok: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminTerminologyBySystemLoad: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                system: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    version: string;
+                    sourceFileRef: string;
+                    checksum: string;
+                    /** Format: date */
+                    releasedOn?: string;
+                    /** Format: date */
+                    effectiveFrom?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        versionId: string;
+                        status: string;
+                        created: boolean;
+                        /** @constant */
+                        ingestion: "pending_loader_worker";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminTerminologyBySystemRefreshembeddings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                system: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        versionId: string;
+                        /** @constant */
+                        status: "embedding";
+                        /** @constant */
+                        recompute: "pending_embeddings_worker";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdminTerminologyValuesetextensions: {
+        parameters: {
+            query?: {
+                valueSetId?: string;
+                organizationId?: string;
+                includeRemoved?: boolean;
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            extensionId: string;
+                            valueSetId: string;
+                            organizationId: string;
+                            systemId: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                            code: string;
+                            reason: string;
+                            addedBy: string | null;
+                            removedAt: string | null;
+                            createdAt: string;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdminTerminologyVersions: {
+        parameters: {
+            query?: {
+                system?: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            logId: string;
+                            systemId: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                            versionId: string | null;
+                            version: string | null;
+                            versionStatus: string | null;
+                            action: string;
+                            conceptCount: number;
+                            newCodes: number;
+                            retiredCodes: number;
+                            affectedValueSets: number;
+                            summary: {
+                                [key: string]: unknown;
+                            };
+                            at: string;
+                        }[];
                     };
                 };
             };
@@ -65801,6 +66058,84 @@ export interface operations {
                             guidance: string | null;
                         };
                         asOf: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TerminologyRemediation: {
+        parameters: {
+            query?: {
+                since?: string;
+                system?: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        since: string;
+                        totalAffected: number;
+                        affectedCodeCount: number;
+                        coveredRecordTypes: string[];
+                        items: {
+                            systemId: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                            deprecatedCode: string;
+                            deprecationEffective: string;
+                            successorCodes: string[];
+                            mappingKind: "equivalent" | "broader" | "narrower" | "none" | "see_other";
+                            guidance: string | null;
+                            affectedRecordCount: number;
+                            sampleRecordIds: string[];
+                            affectedByType: {
+                                [key: string]: number;
+                            };
+                            recommendedAction: "update_to_successor" | "manual_review";
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TerminologyValuesets: {
+        parameters: {
+            query?: {
+                scope?: "platform" | "hospice" | "hqrp";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            name: string;
+                            description: string | null;
+                            scope: "platform" | "hospice" | "hqrp";
+                            updatedAt: string;
+                        }[];
                     };
                 };
             };

@@ -974,7 +974,16 @@ export const MODULES: ModuleDef[] = [
   {
     id: 32,
     name: "AI Platform",
-    codePaths: ["packages/ai-platform", "apps/backend/src/modules/32-ai-platform"],
+    codePaths: [
+      "packages/ai-platform",
+      "apps/backend/src/modules/32-ai-platform",
+      // §5.1 AI Safety Owner console — platform-ops, so it lands in the apps/admin shell M34 owns
+      // (ADR-0030: each module owns its own slice and registers into the shell at composition).
+      "apps/admin/src/modules/32-ai-platform",
+      // §5.2-§5.5 — Compliance Officer, Tenant Admin and clinician surfaces are TENANT-scoped, so they
+      // live in the tenant app beside the other per-module slices, not in the platform-ops console.
+      "apps/web/src/modules/32-ai-platform",
+    ],
     // "parallel from Module 5 onward" — AI Platform provides capabilities; it depends on foundation only.
     dependsOn: [1, 2, 3, 4],
     ownedTables: [

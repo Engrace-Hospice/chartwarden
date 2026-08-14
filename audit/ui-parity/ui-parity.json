@@ -14,6 +14,7 @@
   },
   "registeredModules": [
     "admin/01-ops",
+    "admin/32-ai-platform",
     "admin/34-saas-platform",
     "admin/35-subscription-billing",
     "portal/31-portal",
@@ -44,6 +45,7 @@
     "web/26-cap",
     "web/27-cost-report",
     "web/30-quality",
+    "web/32-ai-platform",
     "web/33-reporting",
     "web/34-saas",
     "web/35-subscription",
@@ -1736,6 +1738,38 @@
     },
     {
       "app": "web",
+      "module": "32-ai-platform",
+      "moduleId": 32,
+      "id": "ai.compliance",
+      "path": "/compliance/ai",
+      "permission": "ai.invocation.read"
+    },
+    {
+      "app": "web",
+      "module": "32-ai-platform",
+      "moduleId": 32,
+      "id": "ai.opt-in",
+      "path": "/organization/ai/opt-in",
+      "permission": "ai.tenant_opt_in"
+    },
+    {
+      "app": "web",
+      "module": "32-ai-platform",
+      "moduleId": 32,
+      "id": "ai.routing",
+      "path": "/organization/ai/routing",
+      "permission": "ai.tenant_opt_in"
+    },
+    {
+      "app": "web",
+      "module": "32-ai-platform",
+      "moduleId": 32,
+      "id": "ai.my-preferences",
+      "path": "/me/ai-preferences",
+      "permission": "ai.clinician_opt_out.read"
+    },
+    {
+      "app": "web",
       "module": "33-reporting",
       "moduleId": 33,
       "id": "reporting.catalog",
@@ -1981,6 +2015,70 @@
       "id": "admin.ops.outbox-detail",
       "path": "/admin/ops/outbox/:id",
       "permission": "member.manage"
+    },
+    {
+      "app": "admin",
+      "module": "32-ai-platform",
+      "moduleId": 32,
+      "id": "admin.ai-capabilities",
+      "path": "/admin/ai-platform/capabilities",
+      "permission": "ai.capability.read"
+    },
+    {
+      "app": "admin",
+      "module": "32-ai-platform",
+      "moduleId": 32,
+      "id": "admin.ai-capability-detail",
+      "path": "/admin/ai-platform/capabilities/:capabilityId",
+      "permission": "ai.capability.read"
+    },
+    {
+      "app": "admin",
+      "module": "32-ai-platform",
+      "moduleId": 32,
+      "id": "admin.ai-kill-switches",
+      "path": "/admin/ai-platform/kill-switches",
+      "permission": "ai.kill_switch.read"
+    },
+    {
+      "app": "admin",
+      "module": "32-ai-platform",
+      "moduleId": 32,
+      "id": "admin.ai-invocations",
+      "path": "/admin/ai-platform/invocations",
+      "permission": "ai.invocation.read"
+    },
+    {
+      "app": "admin",
+      "module": "32-ai-platform",
+      "moduleId": 32,
+      "id": "admin.ai-hallucinations",
+      "path": "/admin/ai-platform/hallucinations",
+      "permission": "ai.hallucination.triage"
+    },
+    {
+      "app": "admin",
+      "module": "32-ai-platform",
+      "moduleId": 32,
+      "id": "admin.ai-tokens",
+      "path": "/admin/ai-platform/tokens",
+      "permission": "ai.tokens.read"
+    },
+    {
+      "app": "admin",
+      "module": "32-ai-platform",
+      "moduleId": 32,
+      "id": "admin.ai-evaluations",
+      "path": "/admin/ai-platform/evaluations",
+      "permission": "ai.capability.read"
+    },
+    {
+      "app": "admin",
+      "module": "32-ai-platform",
+      "moduleId": 32,
+      "id": "admin.ai-drift",
+      "path": "/admin/ai-platform/drift",
+      "permission": "ai.capability.read"
     },
     {
       "app": "admin",

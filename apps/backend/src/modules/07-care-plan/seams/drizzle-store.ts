@@ -22,7 +22,9 @@
 // the plan carries no SUD-flagged problem (the verdict would be unobservable).
 import { type DbClient, schema } from "@wardenx/db";
 import { getRequestContext, withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
-import { and, asc, eq, gte, lt, ne, sql } from "drizzle-orm";
+import type { CarePlanCodeUsageRecord } from "@wardenx/types";
+import { and, asc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
+import type { PgColumn } from "drizzle-orm/pg-core";
 import { getSeam } from "../../../bootstrap/index";
 import type {
   CarePlanClockRecord,
@@ -219,6 +221,65 @@ export function createDrizzleCarePlanReaderStore(db: DbClient): CarePlanReaderSt
             numerator: Number(row?.numerator) || 0,
             denominator: Number(row?.denominator) || 0,
           };
+        },
+      );
+    },
+
+    /**
+     * ORG-LEVEL problem-list terminology-code usage — M38's §7.3 remediation report input (GAP-063).
+     *
+     * `problem` carries the two code columns M38's Phase-1 systems can deprecate (`icd10_code`,
+     * `snomed_code`), so the read is two indexed `IN` probes, one per column, restricted to the
+     * (system, code) pairs the caller asked about. Systems with no column here (loinc, rxnorm, …)
+     * simply contribute nothing — a problem list does not carry a lab or drug code.
+     *
+     * ACTIVE problems only: a resolved or inactive problem's code is history, not remediation work.
+     * A row whose BOTH codes are deprecated yields two records — two distinct remediation actions —
+     * so the caller's totals count code-usages, not distinct rows. Aggregate-ish by construction: the
+     * projection is the row id + the code, never the description or the patient (D6 minimum necessary).
+     */
+    terminologyCodeUsageForOrg(organizationId, codes) {
+      const wantedFor = (system: string): string[] => [
+        ...new Set(codes.filter((c) => c.systemId === system).map((c) => c.code)),
+      ];
+      const icd10 = wantedFor("icd10cm");
+      const snomed = wantedFor("snomed");
+      if (icd10.length === 0 && snomed.length === 0) return Promise.resolve([]);
+
+      return withOrgContext(
+        db,
+        { organizationId, userId: CARE_PLAN_READER_SYSTEM_USER_ID },
+        async (tx) => {
+          // The two code columns are structurally identical but nominally distinct in Drizzle's types
+          // (the literal column name is part of the type), so the probe takes the widened `PgColumn`.
+          const probe = async (
+            column: PgColumn,
+            systemId: string,
+            wanted: string[],
+          ): Promise<CarePlanCodeUsageRecord[]> => {
+            if (wanted.length === 0) return [];
+            const rows = await tx
+              .select({ recordId: PROB.id, code: column })
+              .from(PROB)
+              .where(
+                and(
+                  eq(PROB.organizationId, organizationId),
+                  eq(PROB.status, "active"),
+                  inArray(column, wanted),
+                ),
+              )
+              .orderBy(asc(PROB.id));
+            return rows.flatMap((r) =>
+              r.code === null
+                ? [] // unreachable under `inArray`, but the column is nullable — keep the narrowing honest
+                : [{ recordId: r.recordId, recordType: "problem_list", systemId, code: r.code }],
+            );
+          };
+          const [fromIcd10, fromSnomed] = await Promise.all([
+            probe(PROB.icd10Code, "icd10cm", icd10),
+            probe(PROB.snomedCode, "snomed", snomed),
+          ]);
+          return [...fromIcd10, ...fromSnomed];
         },
       );
     },

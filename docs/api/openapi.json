@@ -12711,6 +12711,577 @@
         }
       }
     },
+    "/api/v1/admin/terminology/{system}/load": {
+      "post": {
+        "operationId": "postApiV1AdminTerminologyBySystemLoad",
+        "tags": [
+          "38-terminology"
+        ],
+        "summary": "Register a source version for a code system (platform-ops + step-up, §4.2)",
+        "parameters": [
+          {
+            "name": "system",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "versionId",
+                    "status",
+                    "created",
+                    "ingestion"
+                  ],
+                  "properties": {
+                    "versionId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "created": {
+                      "type": "boolean"
+                    },
+                    "ingestion": {
+                      "const": "pending_loader_worker",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "version",
+                  "sourceFileRef",
+                  "checksum"
+                ],
+                "properties": {
+                  "version": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "sourceFileRef": {
+                    "minLength": 1,
+                    "maxLength": 512,
+                    "type": "string"
+                  },
+                  "checksum": {
+                    "minLength": 8,
+                    "maxLength": 128,
+                    "type": "string"
+                  },
+                  "releasedOn": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/terminology/{system}/refresh-embeddings": {
+      "post": {
+        "operationId": "postApiV1AdminTerminologyBySystemRefreshembeddings",
+        "tags": [
+          "38-terminology"
+        ],
+        "summary": "Request an embeddings recompute at the active version (platform-ops, §4.2)",
+        "parameters": [
+          {
+            "name": "system",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "versionId",
+                    "status",
+                    "recompute"
+                  ],
+                  "properties": {
+                    "versionId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "const": "embedding",
+                      "type": "string"
+                    },
+                    "recompute": {
+                      "const": "pending_embeddings_worker",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/terminology/value-set-extensions": {
+      "get": {
+        "operationId": "getApiV1AdminTerminologyValuesetextensions",
+        "tags": [
+          "38-terminology"
+        ],
+        "summary": "Cross-tenant view of tenant value-set extensions (platform-ops, §4.1)",
+        "parameters": [
+          {
+            "name": "valueSetId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeRemoved",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "extensionId",
+                          "valueSetId",
+                          "organizationId",
+                          "systemId",
+                          "code",
+                          "reason",
+                          "addedBy",
+                          "removedAt",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "extensionId": {
+                            "type": "string"
+                          },
+                          "valueSetId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "systemId": {
+                            "anyOf": [
+                              {
+                                "const": "icd10cm",
+                                "type": "string"
+                              },
+                              {
+                                "const": "icd10pcs",
+                                "type": "string"
+                              },
+                              {
+                                "const": "snomed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "loinc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rxnorm",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ndc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hcpcs",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cvx",
+                                "type": "string"
+                              },
+                              {
+                                "const": "revenue",
+                                "type": "string"
+                              },
+                              {
+                                "const": "carc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rarc",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "addedBy": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "removedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/terminology/versions": {
+      "get": {
+        "operationId": "getApiV1AdminTerminologyVersions",
+        "tags": [
+          "38-terminology"
+        ],
+        "summary": "Platform terminology load history (platform-ops, §4.1)",
+        "parameters": [
+          {
+            "name": "system",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "icd10cm",
+                  "type": "string"
+                },
+                {
+                  "const": "icd10pcs",
+                  "type": "string"
+                },
+                {
+                  "const": "snomed",
+                  "type": "string"
+                },
+                {
+                  "const": "loinc",
+                  "type": "string"
+                },
+                {
+                  "const": "rxnorm",
+                  "type": "string"
+                },
+                {
+                  "const": "ndc",
+                  "type": "string"
+                },
+                {
+                  "const": "hcpcs",
+                  "type": "string"
+                },
+                {
+                  "const": "cvx",
+                  "type": "string"
+                },
+                {
+                  "const": "revenue",
+                  "type": "string"
+                },
+                {
+                  "const": "carc",
+                  "type": "string"
+                },
+                {
+                  "const": "rarc",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "logId",
+                          "systemId",
+                          "versionId",
+                          "version",
+                          "versionStatus",
+                          "action",
+                          "conceptCount",
+                          "newCodes",
+                          "retiredCodes",
+                          "affectedValueSets",
+                          "summary",
+                          "at"
+                        ],
+                        "properties": {
+                          "logId": {
+                            "type": "string"
+                          },
+                          "systemId": {
+                            "anyOf": [
+                              {
+                                "const": "icd10cm",
+                                "type": "string"
+                              },
+                              {
+                                "const": "icd10pcs",
+                                "type": "string"
+                              },
+                              {
+                                "const": "snomed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "loinc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rxnorm",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ndc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hcpcs",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cvx",
+                                "type": "string"
+                              },
+                              {
+                                "const": "revenue",
+                                "type": "string"
+                              },
+                              {
+                                "const": "carc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rarc",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "versionId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "versionStatus": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "action": {
+                            "type": "string"
+                          },
+                          "conceptCount": {
+                            "type": "integer"
+                          },
+                          "newCodes": {
+                            "type": "integer"
+                          },
+                          "retiredCodes": {
+                            "type": "integer"
+                          },
+                          "affectedValueSets": {
+                            "type": "integer"
+                          },
+                          "summary": {
+                            "type": "object",
+                            "patternProperties": {
+                              "^(.*)$": {}
+                            }
+                          },
+                          "at": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/administrations": {
       "get": {
         "operationId": "getApiV1Administrations",
@@ -178966,6 +179537,390 @@
                           "type": "null"
                         }
                       ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/terminology/remediation": {
+      "get": {
+        "operationId": "getApiV1TerminologyRemediation",
+        "tags": [
+          "38-terminology"
+        ],
+        "summary": "This tenant's records still using recently-deprecated codes (§7.3)",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "system",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "icd10cm",
+                  "type": "string"
+                },
+                {
+                  "const": "icd10pcs",
+                  "type": "string"
+                },
+                {
+                  "const": "snomed",
+                  "type": "string"
+                },
+                {
+                  "const": "loinc",
+                  "type": "string"
+                },
+                {
+                  "const": "rxnorm",
+                  "type": "string"
+                },
+                {
+                  "const": "ndc",
+                  "type": "string"
+                },
+                {
+                  "const": "hcpcs",
+                  "type": "string"
+                },
+                {
+                  "const": "cvx",
+                  "type": "string"
+                },
+                {
+                  "const": "revenue",
+                  "type": "string"
+                },
+                {
+                  "const": "carc",
+                  "type": "string"
+                },
+                {
+                  "const": "rarc",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "since",
+                    "totalAffected",
+                    "affectedCodeCount",
+                    "coveredRecordTypes",
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "since": {
+                      "type": "string"
+                    },
+                    "totalAffected": {
+                      "type": "integer"
+                    },
+                    "affectedCodeCount": {
+                      "type": "integer"
+                    },
+                    "coveredRecordTypes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "systemId",
+                          "deprecatedCode",
+                          "deprecationEffective",
+                          "successorCodes",
+                          "mappingKind",
+                          "guidance",
+                          "affectedRecordCount",
+                          "sampleRecordIds",
+                          "affectedByType",
+                          "recommendedAction"
+                        ],
+                        "properties": {
+                          "systemId": {
+                            "anyOf": [
+                              {
+                                "const": "icd10cm",
+                                "type": "string"
+                              },
+                              {
+                                "const": "icd10pcs",
+                                "type": "string"
+                              },
+                              {
+                                "const": "snomed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "loinc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rxnorm",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ndc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hcpcs",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cvx",
+                                "type": "string"
+                              },
+                              {
+                                "const": "revenue",
+                                "type": "string"
+                              },
+                              {
+                                "const": "carc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rarc",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "deprecatedCode": {
+                            "type": "string"
+                          },
+                          "deprecationEffective": {
+                            "type": "string"
+                          },
+                          "successorCodes": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "mappingKind": {
+                            "anyOf": [
+                              {
+                                "const": "equivalent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "broader",
+                                "type": "string"
+                              },
+                              {
+                                "const": "narrower",
+                                "type": "string"
+                              },
+                              {
+                                "const": "none",
+                                "type": "string"
+                              },
+                              {
+                                "const": "see_other",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "guidance": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "affectedRecordCount": {
+                            "type": "integer"
+                          },
+                          "sampleRecordIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "affectedByType": {
+                            "type": "object",
+                            "patternProperties": {
+                              "^(.*)$": {
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          "recommendedAction": {
+                            "anyOf": [
+                              {
+                                "const": "update_to_successor",
+                                "type": "string"
+                              },
+                              {
+                                "const": "manual_review",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/terminology/value-sets": {
+      "get": {
+        "operationId": "getApiV1TerminologyValuesets",
+        "tags": [
+          "38-terminology"
+        ],
+        "summary": "Catalog of platform value sets (§4.1)",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "platform",
+                  "type": "string"
+                },
+                {
+                  "const": "hospice",
+                  "type": "string"
+                },
+                {
+                  "const": "hqrp",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "name",
+                          "description",
+                          "scope",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "scope": {
+                            "anyOf": [
+                              {
+                                "const": "platform",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hospice",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hqrp",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
                     }
                   }
                 }

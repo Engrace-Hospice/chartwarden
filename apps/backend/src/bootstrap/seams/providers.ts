@@ -620,6 +620,9 @@ export const carePlanReaderDenyStub: CarePlanReader = {
   fifteenDayCycleCountsForOrg() {
     throw new NotImplementedError("CarePlanReader");
   },
+  terminologyCodeUsageForOrg() {
+    throw new NotImplementedError("CarePlanReader");
+  },
 };
 
 // M8 (Encounters) owned seams (§4.7). LEAF-TYPED (interfaces in @wardenx/types) like M6/M7's readers,
