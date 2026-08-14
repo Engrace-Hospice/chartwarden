@@ -45,9 +45,9 @@ export const hippsCalculation = pgTable(
     // Period-segment breakdown (typed):
     segments: jsonb("segments").$type<HippsCalculationSegments>().notNull(), // [{ levelOfCare, dateFrom, dateTo, ratePerDiemCents, hippsCharPosition }]
 
-    // First-7-days-vs-days-8+ for RHC (CMS payment-period model):
-    rhcDays1to7: integer("rhc_days_1_to_7").notNull().default(0),
-    rhcDays8Plus: integer("rhc_days_8_plus").notNull().default(0),
+    // ADR-0001 RHC day-60 two-tier day counts (RHC-High days 1-60 / RHC-Low day 61+, 80 FR 47142):
+    rhcDays1to60: integer("rhc_days_1_to_60").notNull().default(0),
+    rhcDays61Plus: integer("rhc_days_61_plus").notNull().default(0),
 
     calculatedAt: timestamp("calculated_at", { withTimezone: true }).notNull().defaultNow(),
   },

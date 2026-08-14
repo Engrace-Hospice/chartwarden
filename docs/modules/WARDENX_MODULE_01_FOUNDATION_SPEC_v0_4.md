@@ -1,5 +1,8 @@
 # Module 1 — Foundation Specification
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Module ID:** 1
 **Phase:** 1 (foundation — prerequisite for everything)
 **Owns (per manifest codePaths):** `apps/backend/src/bootstrap` (server, seam registry, request context, Pino, OTel, error envelope), `packages/db` (foundation tables + schema + audit trigger generator), `packages/shared` (outbox dispatcher, idempotency middleware), `packages/tenancy` (`withOrgContext` + RLS policy generator), `packages/types` (seam interface types).
@@ -31,7 +34,7 @@
 - **v0.3** — Three pieces of consolidation work driven by patterns that recurred across the v0.3 owner-module specs and the M29 implementation track:
   - **Open Questions → Resolved Decisions.** The v0.2 "Open Questions" section listed 5 items pending ADR. By the time M3 v0.3 / M2 v0.3 / etc. shipped, all 5 had been decided in-flight by what got built. They were ratified as **D1–D5** binding decisions, aligning M1's spec format with every other module's lock-grade convention.
   - **Organization-settings collision-guard trigger** — hosting M5 v0.3's request. M5 v0.3 introduced `organization.settings.hl7_internal_mrn_authority` as a tenant-scoped configuration that maps to the HL7 PID-3.4 assigning authority. The platform must prevent two organizations from claiming the same authority code (cross-tenant collision would corrupt MRN namespacing in inbound ADT messages). M1 hosts the trigger as **D6**, since M1 owns the `organization` table.
-  - **Cross-Module Schema Request (CMSR) doc shape** — across v0.3 PRs, 7 specs requested schema changes on tables owned by other modules (M29→M4 retention class, M5→M1 trigger, M40→M29 platform-shared read, M3→all-modules seam validation, M11→M1 outbox events, M6→M1 outbox events, M4→M5 patient.deceased_date reads). Each request had ad-hoc shape. **D7** pins a typed registry file at `packages/foundation/src/cross-module-schema-requests/registry.json` + per-request YAML files. A CI rule enforces that any v0.3+ spec PR with a cross-module schema change has a matching CMSR entry.
+  - **Cross-Module Schema Request (CMSR) doc shape** — across v0.3 PRs, 7 specs requested schema changes on tables owned by other modules (M29→M4 retention class, M5→M1 trigger, M40→M29 platform-shared read, M3→all-modules seam validation, M11→M1 outbox events, M6→M1 outbox events, M4→M5 patient.deceased_date reads). Each request had ad-hoc shape. **D7** pins a typed registry file at `packages/foundation/src/cross-module-schema-requests/registry.json` + per-request YAML files *(TARGET — never created: no CMSR registry or CI rule exists anywhere in the repo, and `packages/foundation` is banned by ADR-0005 D3; a revived registry would live under `docs/` or `scripts/`)*.
   - **Outbox event catalog formalization** — paired with M4 v0.3's audit action catalog. With 29 outbox events in M11 v0.3 alone (up from M11 v0.2's 24), the platform needs a central registry to enforce the M3 v0.3 D9 "modules own their `mN.` namespace" convention at the event level as well. **D8** introduces `outbox_event_catalog` (platform-shared table) and a boot-validation step in M1's startup sequence.
 - **v0.2** — Enhanced feature flag governance: added rollout percentage targeting, tenant/user targeting predicates, kill-switch semantics, migration-flag pattern. Added §3.10.1 (enhanced schema), §4.2.1 (evaluation API), §13 (feature flag governance patterns). Initial lock-grade publication with 5 open questions deferred to ADR.
 - **v0.1** — Initial draft
@@ -1694,7 +1697,7 @@ The trigger reads the registry at row-write time. The trigger is intentionally s
 
 ### 3.16 The Cross-Module Schema Request Registry
 
-Cross-Module Schema Requests (CMSRs) are documented in a typed registry (Decision D7). Each request is a YAML file at `packages/foundation/src/cross-module-schema-requests/<request-id>.yaml`, with an auto-generated `registry.json` index and a CI rule that enforces coverage on spec PRs.
+Cross-Module Schema Requests (CMSRs) were to be documented in a typed registry (Decision D7 — TARGET, never built; see the D7 annotation). Each request is a YAML file at `packages/foundation/src/cross-module-schema-requests/<request-id>.yaml`, with an auto-generated `registry.json` index and a CI rule that enforces coverage on spec PRs.
 
 #### 3.16.1 Directory structure
 
@@ -3023,8 +3026,8 @@ describe('RLS cross-tenant isolation', () => {
 
 | Suite | Tests |
 |---|---|
-| `apps/frontend/e2e/foundation.spec.ts` | App boots, degraded banner appears when system status set to degraded |
-| `apps/frontend/e2e/health-page.spec.ts` | Health page renders system status |
+| `apps/web/e2e/foundation.spec.ts` | App boots, degraded banner appears when system status set to degraded |
+| `apps/web/e2e/health-page.spec.ts` | Health page renders system status |
 
 ### 9.5 Performance Tests
 
@@ -3092,7 +3095,7 @@ Tasks ordered by build sequence. **S** = small (< 0.5 day), **M** = medium (0.5-
 | 24 | Wire Socket.IO with Valkey adapter; emit `system.status_changed`, `feature_flag.updated` events | M | 18 |
 | 25 | Bootstrap Better Auth in `packages/auth` (minimal — full flows in Module 2) | M | 7 |
 | 26 | Write `packages/ui` shared components (error-boundary, degraded-banner, providers, hooks) | L | — (parallel) |
-| 27 | Bootstrap `apps/frontend` TanStack Start app with shell, providers, and a placeholder dashboard | L | 26 |
+| 27 | Bootstrap `apps/web` TanStack Start app with shell, providers, and a placeholder dashboard | L | 26 |
 | 28 | Bootstrap `apps/mobile` Capacitor wrapping a mobile-optimized TanStack Start variant | L | 26 |
 | 29 | Bootstrap `apps/admin` and `apps/portal` shells | M | 26 |
 | 30 | Write dev seed script `packages/db/scripts/seed.ts` creating Engrace + 2 test users | M | 7 |

@@ -1,5 +1,8 @@
 # Module 26 — Cap Management Specification
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Spec version:** v0.3 — outbox events **and** M36 alert-payload types migrated to the `m26.`
 namespace (`m26.cap.*`) per M01 D8 `outbox_event_catalog` / M36 D10 alert-catalog / M03 D9
 ("modules own their `mN.` namespace"). Permission keys (`cap.event.read`, …) are intentionally
@@ -410,7 +413,7 @@ A patient/agency can have multiple unresolved events at different scopes simulta
 | `cap_period.status` → `'active'` | (1) Emit `m26.cap.year_opened` |
 | `cap_period.status` → `'in_settlement'` | (1) Emit `m26.cap.year_closing`; (2) enqueue `cap-settlement-proposer` |
 | `cap_settlement.status` → `'final'` | (1) Update `cap_period.status='settled'`; (2) emit `m26.cap.year_closed` and `m26.cap.settlement_finalized` |
-| `cap_psr_import.parse_status` → `'parsed'` | (1) Enqueue `psr-reconcile` job; (2) emit `m26.cap.psr_imported` |
+| `cap_psr_import.parse_status` → `'parsed'` | (1) Enqueue `psr-reconcile` job; (2) emit `m26.cap.psr_variance_raised` when variances exist (the once-specced `psr_imported` event was never cataloged) |
 | `cap_psr_reconciliation` row inserted with variance above threshold | (1) Emit `m26.cap.psr_variance_raised`; (2) dispatch M36 alert |
 
 ### 2.5 Concurrency
@@ -557,7 +560,7 @@ INSERT INTO cap_period_platform_constant (cap_year, aggregate_cap_amount_cents, 
   VALUES ('FY2024', 3349401, 0.2000, ...),
          ('FY2025', 3446534, 0.2000, ...),
          ('FY2026', NULL,    0.2000, ...) ON CONFLICT DO NOTHING;
--- FY2026 amount left NULL until CMS publishes the FY2026 Hospice Wage Index Final Rule (typically July 2026 prior to cap year start Oct 1 2026)
+-- FY2026 amount left NULL until CMS publishes the FY2026 Hospice Wage Index Final Rule (typically July 2025 prior to the FY2026 cap year, which runs Oct 1 2025 → Sep 30 2026 (ADR-0002; see packages/cap-management/src/cap-year.ts))
 ```
 
 Migration runs are explicit-phased like every other module: enum types first, platform tables next (so tenant tables can FK to them), tenant tables, indexes, RLS, audit triggers, eraser registration, seed data last. The partition-by-cap-period pattern lets a settled cap year be ATTACH/DETACH-managed for archival without touching live tenant data.
@@ -1636,7 +1639,7 @@ All cap alerts route through M36's standard delivery channels (in-app banner, em
 
 ### 4.10 Outbox Events
 
-M26 publishes nine outbox event types. Each is versioned (`v1` suffix) and consumers reference the versioned event name; schema evolution adds new versions rather than mutating existing ones.
+M26 publishes nine outbox event types. The `.v1` suffix below is the PAYLOAD-SCHEMA version convention — the registered event names in `events-by-m26.ts` are the UNSUFFIXED forms (`m26.cap.accrual_recorded`, …), and consumers subscribe to those; schema evolution adds new payload versions rather than mutating existing ones.
 
 | Event Name | Payload Shape | Consumers | Description |
 |---|---|---|---|
@@ -1961,7 +1964,7 @@ Each scenario below is expressed as a Given/When/Then specification. All scenari
 3. The prior settlement row is rolled back from `status='final'` to `status='proposed'` for re-proposal (the row is retained and updated in place per §3.3; M4 captures the prior `final` state on the UPDATE)
 4. The frozen projection snapshots from close are marked `superseded` (retained, but new live snapshots take precedence in seam reads)
 5. The missed $15,000 accrual is now eligible to be recorded (typically via re-ingestion of the M25 remittance once corrected)
-6. `m26.cap.year_opened.v1` is NOT re-emitted (this is a reopen, not a new open); instead, a `cap.year_reopened.v1` event is emitted (added to the outbox event catalog in §4.10 — for clarity, listed there as a sub-variant of `m26.cap.year_opened` with a `reopen=true` flag in the payload)
+6. `m26.cap.year_opened.v1` is NOT re-emitted (this is a reopen, not a new open); instead, a `m26.cap.year_reopened` event is emitted (TARGET — not yet in events-by-m26.ts or §4.10 — for clarity, listed there as a sub-variant of `m26.cap.year_opened` with a `reopen=true` flag in the payload)
 7. The `audit_event` trail records the reopen event with `severity=high`, the actor, the step-up assertion id, and the reason text (M26-F04)
 8. After re-recording the accrual and recomputing the projection, a new settlement is proposed and finalized (rerunning scenario 7.10)
 

@@ -2701,7 +2701,7 @@ These remain genuinely open and need decision before specific modules are spec�
 |-------|------------------------------------------------------------------------------------------------------------------------------|-------------------|
 |ADR-001|Subscription pricing model (per-seat, per-patient-month, hybrid)                                                              |Module 35 spec     |
 |ADR-002|Off-site disaster recovery destination                                                                                        |Production cutover |
-|ADR-003|Telehealth video vendor (Daily.co, Twilio Video, build with WebRTC native)                                                    |Module 31 spec     |
+|ADR-003|Telehealth video vendor — **RESOLVED (ADR-0041): Daily.co default behind the `TelehealthProvider` port; BAA + credential scope remain onboarding gates**|Resolved           |
 |ADR-004|Mortality prediction model — own training (XGBoost on Engrace data) vs. published model adaptation                            |Module 32 deep spec|
 |ADR-005|CAHPS Hospice Survey vendor partnership default                                                                               |Module 30 spec     |
 |ADR-006|EPCS enablement timeline (architecture present, certification kickoff date)                                                   |Module 12 spec     |

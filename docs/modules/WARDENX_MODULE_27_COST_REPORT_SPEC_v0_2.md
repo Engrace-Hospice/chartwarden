@@ -1,5 +1,8 @@
 # Module 27 — Cost Report Specification
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Module ID:** 27
 **Phase:** 1 (v1 — required for Engrace go-live; CMS-1984-14 cost reports are due **5 months after the fiscal year end** under 42 CFR §413.24(f) and are a condition of continued Medicare hospice participation under 42 CFR §418.310 — a missed filing risks suspension of interim payments and triggers an automatic late-filing penalty schedule. Engrace's first WardenX-filed cost report is the FY ending after the platform go-live date; the report is annual but the inputs accumulate from day one of the fiscal year, which means M27 must be operational from day one of Engrace's first WardenX fiscal year even though the filing itself is months out. M27 is Tier 4 in DR/BCP — no patient-care impact on outage — but it is *not optional* for revenue; the Medicare hospice payment system reconciles to cost-report data via the aggregate cap settlement and the inpatient cap settlement, both of which determine clawbacks at year-end. The phase-1 cut covers full CMS-1984-14 worksheet support (S, S-1, S-2, A, A-1, A-2, A-3, A-4, A-6, A-8, A-8-1, B, B-1, C, F, F-1, F-2 — the realigned 17-worksheet set, see the banner above), Xero trial-balance import + per-tenant cost-center mapping, Gusto wage-data import for Worksheet S-1 statistics, the bad-debt log, the pre-submission validation framework (architecture §11.B), ECR + Print Image (PI) file generation, snapshot-on-submit lockdown, the filing-deadline compliance window engine, and the reopen-with-elevated-approval workflow. Phase 1 ships with NGS-J6-specific MAC validation rules — additional MAC profiles (CGS, Palmetto, Noridian, WPS, FCSO, NHIC) ship as additive rule sets in the same library, not new code. Phase 2 deferred items: probabilistic ML reconciliation of EHR-derived vs. claim-billed patient days, multi-year trend analysis dashboards, and automated MCReF portal submission (Phase 1 is manual upload per the integrations doc).)
 
@@ -1436,7 +1439,7 @@ Idempotency: every outbox emit is keyed on `(costReportId, eventType, transition
 
 ### 5.1 Web Screens
 
-All screens are in `apps/frontend/src/routes/cost-reports/` (TanStack Start). M27 is a desktop-first workflow — accountants and compliance officers operate on dual monitors with the cost report, the Xero web UI, and supporting documents open side-by-side. Mobile and portal surfaces are out of scope.
+All screens are in `apps/web/src/routes/cost-reports/` (TanStack Start). M27 is a desktop-first workflow — accountants and compliance officers operate on dual monitors with the cost report, the Xero web UI, and supporting documents open side-by-side. Mobile and portal surfaces are out of scope.
 
 | Screen | Path | Description |
 |---|---|---|
@@ -1733,7 +1736,7 @@ PR boundaries labeled A–H for merge sequencing. Sizes: S (≤1 day), M (1-3 da
 | **E1** | `apps/backend/src/modules/27-cost-report/routes/` — all 35+ routes with TypeBox validation, permission middleware, ABAC middleware, idempotency middleware, audit-read declarations | L | D1, A3, A4 |
 | **E2** | `apps/backend/src/modules/27-cost-report/workers/` — all 8 BullMQ workers with retry/backoff/idempotency-key wiring | M | D1 |
 | **E3** | `apps/backend/src/modules/27-cost-report/module.ts` — Fastify plugin registration + route mounting + worker registration + boot.ts wiring | S | E1, E2 |
-| **F1** | `apps/frontend/src/routes/cost-reports/` — Cost Report Overview, Workbench, Worksheet Editor (table editors for all 21 worksheets), Mapping Editor (drag-and-drop), Importers, Bad-Debt Log, Validation Worklist, Snapshot Browser, ECR Submissions, Compliance Window, Rule Library Admin | L | E1 (route contracts) |
+| **F1** | `apps/web/src/routes/cost-reports/` — Cost Report Overview, Workbench, Worksheet Editor (table editors for all 21 worksheets), Mapping Editor (drag-and-drop), Importers, Bad-Debt Log, Validation Worklist, Snapshot Browser, ECR Submissions, Compliance Window, Rule Library Admin | L | E1 (route contracts) |
 | **F2** | Platform Rule-Suggestion Review screen (`/admin/cost-report/rule-suggestions`) for WardenX platform team | M | F1 |
 | **G1** | Seed data migrations: 28 platform-default validation rules, ~70 platform-default cost-center mappings, the `cms_cost_center_v1984_14` M38 value set | M | A1 |
 | **G2** | Test fixtures: `engrace-fy2026-cost-report.json`, CMS example reports, Xero/Gusto stubs, MAC rejection codes, seam-stub fixtures | M | G1, B1 |

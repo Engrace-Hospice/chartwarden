@@ -1,5 +1,8 @@
 # Module 20 — Field Safety Specification
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Spec version:** v0.3.1 — ADR-0021 §20.B template additions: M20-F09 (§2.7 DR Tier 1 declaration for the SOS path, DR-013 customer-SLA caveat, degraded-mode availability table, BCP re-entry; DR-010/013, INT-031) and M20-F15 (§8.8 Audit & Observability section: PHI write-audit event catalog, business-event audit entries, Prometheus metrics catalog, retention class summary; ARCH-003). No existing decisions, routes, schema, or the SOS/life-safety state machine were altered. Prior v0.3 — the §4.10 outbox events and §4.9 M36 alert payloads migrated to the
 `m20.safety.*` namespace per M01 D8 / M36 D10 / M03 D9 (22 names: sos_alert_raised/acknowledged/
 escalated/resolved/cancel_attempted_rejected, sos_terminus_reached, sos_anomaly_volume,

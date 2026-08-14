@@ -1,10 +1,13 @@
 # Module 40 — Master Data Management Specification
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Module ID:** 40
 **Phase:** 1 (foundation tier — lands immediately after Modules 1–4 and 36, before Module 5 and every clinical/billing/interop consumer)
-**Depends on:** 1 (Foundation — `wardenx_app`/`wardenx_admin` role split, RLS generator, `withOrgContext`/`withPlatformContext`, `audit()` helper, outbox dispatcher, idempotency middleware, partitioned-table conventions), 2 (Identity — actor resolution for admin merge/approval; org/membership scoping for overlays), 3 (Authorization — every MDM mutation is permissioned; merge approval and platform-canonical writes are gated keys; `BaaStatusProvider` seam REQUIRED by M3's boot-gate), 4 (Audit — every canonical write, every merge, every NPPES delta is audited; canonical write-audit triggers use the M4 generator), 29 (External Interfaces — `m29.nppes.provider_synced`, `m29.nppes.provider_deactivated`, and `m29.nppes_sync_run.completed` outbox events consumed for platform-deduplicated NPPES sync)
+**Depends on:** 1 (Foundation — `wardenx_app`/`wardenx_admin` role split, RLS generator, `withOrgContext`/`withPlatformContext`, `audit()` helper, outbox dispatcher, idempotency middleware, partitioned-table conventions), 2 (Identity — actor resolution for admin merge/approval; org/membership scoping for overlays), 3 (Authorization — every MDM mutation is permissioned; merge approval and platform-canonical writes are gated keys; `BaaStatusProvider` seam REQUIRED by M3's boot-gate), 4 (Audit — every canonical write, every merge, every NPPES delta is audited; canonical write-audit triggers use the M4 generator), 29 *(relationship inventory only — NOT a manifest edge; manifest M40.dependsOn=[1,2,3,4], and a 29 edge would close the illegal 29↔40 cycle, M40-F03)* (External Interfaces — `m29.nppes.provider_synced`, `m29.nppes.provider_deactivated`, and `m29.nppes_sync_run.completed` outbox events consumed for platform-deduplicated NPPES sync)
 **Consumed by:** 5 (Patient — `attending_physician_id` → ExternalPhysician), 6 (Admission — F2F physician eligibility, ordering/certifying physician), 11/12 (Orders/DoseSpot — ordering ExternalPhysician, dispensing Pharmacy), 17 (Scheduling — referral source), 21 (Supplies/DME — DmeVendor), 22 (Documents — recipient routing to MDM entities; BAA gate via `MdmEntityProvider.baaStatus`), 23/24 (Billing Medicare/Medicaid — Payer hierarchy, payer-keyed rates), 27 (Cost Report — Payer rate schedules), 28 (FHIR Gateway — Practitioner/Organization resource mapping; BAA gate), 29 (External Interfaces — HL7 ADT sender facilities; inbound BAA gate via `BaaStatusProvider.baaStatusBySendingFacility`, outbound BAA gate via `BaaStatusProvider.baaStatusByMdmEntity`), 33 (Reporting — read-side cross-tenant analytics over canonical), 37 (IPU — FuneralHome for body release)
-**Owns:** `apps/backend/src/modules/40-mdm`, the seven canonical/overlay tables, the omnibus `MdmEntityProvider` seam, the focused `BaaStatusProvider` seam, the MDM destruction `eraseFn`.
+**Owns:** `apps/backend/src/modules/40-mdm` (+ `packages/mdm`), the canonical/overlay tables — as-built: 3 canonical (`external_physician`, `facility`, `payer`) + 1 overlay + 7 supporting = the manifest's 11 `ownedTables`, not the once-planned seven-canonical set — the omnibus `MdmEntityProvider` seam, the focused `BaaStatusProvider` seam, the MDM destruction `eraseFn`.
 **Spec status:** Re-locked v0.5 (Phase-2 remediation; supersedes Locked v0.4)
 
 > **Phase-2 remediation (2026-06-11).** **M40-F01 (BLOCKER, ADR-0011 D1):** the
@@ -1718,11 +1721,11 @@ MDM has two distinct UI surfaces: per-tenant overlay management (in the tenant a
 
 | Screen | App | Route | Actor | Purpose |
 |---|---|---|---|---|
-| Entity directory | `apps/frontend` | `/admin/mdm/:kind` | org_admin / intake / billing | search/filter canonical + overlay; mark preferred / do-not-refer |
-| Entity detail | `apps/frontend` | `/admin/mdm/:kind/:id` | same | canonical pane (read-only) + overlay pane (editable) + relationship tree + BAA status |
-| Propose new | `apps/frontend` | `/admin/mdm/:kind/new` | role-gated by `propose` | identifier-first form; shows fuzzy candidates inline; writes provisional if no match |
-| BAA register | `apps/frontend` | `/admin/mdm/baa` | Compliance Officer | tenant's BAAs across all MDM kinds; upload document; expiration calendar |
-| Provisional queue | `apps/frontend` | `/admin/mdm/provisional` | org_admin | tenant's pending provisionals + their resolution state |
+| Entity directory | `apps/web` | `/admin/mdm/:kind` | org_admin / intake / billing | search/filter canonical + overlay; mark preferred / do-not-refer |
+| Entity detail | `apps/web` | `/admin/mdm/:kind/:id` | same | canonical pane (read-only) + overlay pane (editable) + relationship tree + BAA status |
+| Propose new | `apps/web` | `/admin/mdm/:kind/new` | role-gated by `propose` | identifier-first form; shows fuzzy candidates inline; writes provisional if no match |
+| BAA register | `apps/web` | `/admin/mdm/baa` | Compliance Officer | tenant's BAAs across all MDM kinds; upload document; expiration calendar |
+| Provisional queue | `apps/web` | `/admin/mdm/provisional` | org_admin | tenant's pending provisionals + their resolution state |
 | Merge requests | `apps/admin` | `/mdm/merges` | platform_ops | every pending merge with evidence; approve (step-up) / reject |
 | NPPES sync console | `apps/admin` | `/mdm/nppes` | platform_ops | last 90 days of sync runs, error drill-down, on-demand lookup |
 | Provisional review | `apps/admin` | `/mdm/provisional` | platform_ops | provisionals across all tenants; promote / merge / reject |
@@ -2103,7 +2106,7 @@ Five spec refinements worth recording:
 - [ ] Compatibility test passes: callers of `MdmEntityProvider.baaStatus` see unchanged semantics
 - [ ] Cross-module assertion tests pass with M29's fixtures
 - [ ] BAA Valkey cache 60-second TTL respected; minute-granularity asOf bucketing verified
-- [ ] Cruiser passes — M40 doesn't import M29 schema directly; consumes M29 events via outbox foundation; reads `nppes_provider` via raw SQL (the M29-owned table is in the same Postgres schema by design — platform-shared tables)
+- [ ] Cruiser passes — M40 doesn't import M29 schema directly; consumes M29 events via outbox foundation; does NOT read M29's `nppes_provider` table at all (packages/mdm/src/nppes-consumers/apply.ts — the raw-SQL read described here was removed; see the header remediation banner)
 - [ ] **M29 owner** sign-off on the `BaaStatusProvider` contract + the `m29.nppes.provider_synced` payload shape including `changedFields` semantics
 - [ ] **M3 owner** sign-off on the seam validation boot-gate extension
 - [ ] **M22 owner** sign-off on the compatibility shim (M22's document-disclosure paths call `MdmEntityProvider.baaStatus`)

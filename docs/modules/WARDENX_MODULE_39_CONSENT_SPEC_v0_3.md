@@ -1,5 +1,8 @@
 # Module 39 — Consent & Authorization Management Specification
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Spec version:** v0.3 — the outbox events + M36 alert payloads migrated to the `m39.consent.*`
 namespace per M01 D8 / M36 D10 / M03 D9 (events: created/signed/revoked/expired/expiring_soon/
 recipient_added/recipient_removed/renewal_cycle_opened/renewed/supersedes/repointed; alerts:
@@ -1774,7 +1777,7 @@ export const CursorPagedResponse = <T extends TSchema>(itemSchema: T) => Type.Ob
 
 ### 5.1 Web Inventory
 
-All screens live under `apps/frontend/src/modules/39-consent/` and share TanStack Query keys + TanStack Router routes.
+All screens live under `apps/web/src/modules/39-consent/` and share TanStack Query keys + TanStack Router routes.
 
 | # | Path | Screen | Notes |
 |---|---|---|---|
@@ -2122,7 +2125,7 @@ All spans correlate via the request `traceId` propagated through the M1 outbox e
 - **Legal hold:** the M4 legal-hold mechanism extends retention indefinitely while the hold is active; the eraser refuses to delete consent records under hold.
 - **Destruction-cert eraser** (registered under the data-class key `consent` — M39-F04 / ADR-0251 / ARCH-234; the M4 boot validator keys erasers by data class, not by the descriptive `consent_record_subtree` label):
   - Refuses if any consent record on the patient has an active legal hold (unless `legalHoldOverride=true`).
-  - Does **NOT** delete `consent_eval_audit` — that table is immutable audit (INSERT-only, `trg_cea_immutable`); its destruction is routed through M4's audit-partition retention / destruction-cert workflow (M39-F04 / ADR-0251). The eraser schedules eval-audit destruction with M4 but never issues a `DELETE` against the immutable audit table.
+  - Does **NOT** delete `consent_eval_audit` — that table is immutable audit (INSERT-only, `trg_cea_immutable`); its destruction is routed through M4's audit-partition retention / destruction-cert workflow (M39-F04 / ADR-0251, ARCH-234). The eraser schedules eval-audit destruction with M4 but never issues a `DELETE` against the immutable audit table.
   - Cascade-deletes the projection (`delegated_access`).
   - Cascade-deletes the satellite tables (`consent_renewal_cycle`, `consent_expiration_reminder`, `consent_revocation`, `consent_record_dpoa_agent`, `consent_record_recipient`, `consent_document_link`) in FK order.
   - Finally deletes the consent records in supersession-chain order (leaves first), walking the self-FK.

@@ -105,7 +105,7 @@ export function passingContext(): ValidationContext {
           dateFrom: "2026-03-01",
           dateTo: "2026-03-31",
           ratePerDiemCents: 200_00,
-          rhcDayBucket: "days_8_plus",
+          rhcDayBucket: "days_61_plus",
         },
       ],
     },

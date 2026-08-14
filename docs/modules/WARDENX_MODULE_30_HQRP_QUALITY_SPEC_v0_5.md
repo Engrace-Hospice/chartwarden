@@ -1,5 +1,8 @@
 # WardenX Module 30 — HQRP & Quality
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Spec version:** v0.5 — convention review: M30's outbox events, M36 alert payloads, and audit
 actions already conform to the `m30.` namespace (`m30.measure.*`, `m30.cahps.*`, `m30.qapi.*`,
 `m30.cop.*`, `m30.sra.*`, `m30.incident.*`, `m30.mortality_review.*`, `m30.infection.*`,
@@ -2599,7 +2602,7 @@ The two-person cosign service explicitly checks `session.lastStepUpAt` against `
 
 ## §5 — UI Surfaces
 
-M30 surfaces span three frontends: the staff web app (`apps/frontend/web`), the field mobile app (`apps/frontend/mobile`, Capacitor), and the patient/caregiver portal (`apps/frontend/portal`, read-only). The portal touches M30 only for CAHPS post-survey "thank-you" landing pages; clinical, QAPI, SRA, and incident surfaces are staff-web exclusive. Mobile carries a constrained subset: incident reporting and infection-surveillance event entry.
+M30 surfaces span three frontends: the staff web app (`apps/web/web`), the field mobile app (`apps/web/mobile`, Capacitor), and the patient/caregiver portal (`apps/web/portal`, read-only). The portal touches M30 only for CAHPS post-survey "thank-you" landing pages; clinical, QAPI, SRA, and incident surfaces are staff-web exclusive. Mobile carries a constrained subset: incident reporting and infection-surveillance event entry.
 
 All routes mount under `/quality/*` in web; under `/quality/*` in mobile with a 3-tab IA (Incidents | Infection | More). Surface IDs (S-NN) below are referenced from §7 acceptance criteria.
 
@@ -3070,7 +3073,7 @@ The destruction certification workflow (architecture v0.11 §24.2) produces, on 
 
 ### 8.6 CAHPS vendor security mandate
 
-The pluggable adapter (D5 / §4.5) imposes contractual minimums on every vendor implementation. The mandate is documented in `packages/cahps-vendors/SECURITY_MANDATE.md` and enforced via adapter unit tests that ship as part of `packages/cahps-vendors/` — adapters that fail mandate tests cannot ship:
+The pluggable adapter (D5 / §4.5) imposes contractual minimums on every vendor implementation. The mandate is to be documented in `packages/cahps-vendors/SECURITY_MANDATE.md` (NOT YET WRITTEN — §12's checklist item remains open) and enforced via adapter unit tests that ship as part of `packages/cahps-vendors/` — adapters that fail mandate tests cannot ship:
 
 1. **Decedent data minimization.** The exported file MUST contain only: decedent identifier (org-internal, not MRN), date of death, caregiver name (encrypted at rest, included in export only after `pushExport` consent check), caregiver phone OR email (not both), language preference, exclusion reason if any. NO clinical data is permitted in the export — diagnoses, medications, encounter notes are out of scope.
 2. **Adapter-level access logging.** Every `renderExport` / `pushExport` / `parseResultIngest` call logs an M4 audit row with adapter version, file hash, and recipient.

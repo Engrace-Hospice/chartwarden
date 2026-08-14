@@ -1,5 +1,8 @@
 # Module 37 — Inpatient Unit (IPU) Management Specification
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Module ID:** 37
 **Phase:** 3 (activated for tenants that operate inpatient units; not Engrace go-live blocker per architecture §20 priority table — Engrace runs routine-home-care + continuous-home-care + arranged inpatient care today, not an agency-owned IPU; M37 lands when the first IPU-operating tenant onboards or when an existing tenant operationalizes its own GIP/IRC unit). The spec is **lock-grade-now / build-on-demand**: every forward-seam consumer (M6, M21, M27, M33, M22, M23) already ships the typed reader M37 wires against, every M37-published outbox event is already named in the producing modules' specs, and the schema can be installed and exercised against fixtures without an IPU operationally existing — once a tenant flips the IPU feature flag in M34 (when M34 lands) or via the platform-admin `feature_flag('ipu_module_enabled', orgId)` (which exists today in M1's flag registry per architecture §20.5), the routes light up and the seam consumers fire.
 
@@ -1947,7 +1950,7 @@ If the screening checklist reports fever, the restriction's `restriction_kind='f
 
 ### 6.1 Screen Inventory
 
-M37 publishes 14 web screens and 6 mobile (Capacitor) screens under `apps/frontend/src/modules/37-ipu/`.
+M37 publishes 14 web screens and 6 mobile (Capacitor) screens under `apps/web/src/modules/37-ipu/`.
 
 | # | Screen | Surface | Path | Purpose |
 |---|---|---|---|---|
@@ -2346,9 +2349,9 @@ PR boundaries labeled A–J for the merge sequence. Sizes: S (≤1 day), M (1-3 
 | 28 | `crons/` — 8 BullMQ crons (`rn-coverage-watchdog`, `irc-cap-watchdog`, `gip-criteria-staleness-sweep`, `bed-cleaning-sla-watchdog`, `iv-bedside-check-watchdog`, `restraint-reassessment-watchdog`, `equipment-inspection-watchdog`, `census-snapshot-builder`, `nursing-note-shift-watchdog`, `transfer-completion-watchdog`, `postclose-settlement-sweep`, `reservation-expiry-watchdog`) | M | 17, 26 | F |
 | 29 | `abac/predicates/` — 5 predicates with M2 / M40 / M5 seam consumption | M | M3 predicate registry, M5 seam, M40 seam | F |
 | 30 | `apps/backend/src/modules/37-ipu/boot.ts` — seam registration, ABAC predicate registration, eraseFn registration with M4, M36 alert-kind + recipient-resolver registration, `validateIpuAIBlock()` run | M | 27-29, M2 / M3 / M4 / M36 / M40 | F |
-| 31 | `apps/frontend/src/modules/37-ipu/` — 14 web screens (Unit Dashboard, Bed Grid, Intake Worklist, Admission Detail tabbed, GIP Criteria modal, GIP Reassessment Panel injected into M8, IRC Detail, RN Coverage View, Shift Schedule, Restraint Management, Visitor Front Desk, Equipment Inventory, Body Release, Operational Dashboard) | L | 16 | G |
-| 32 | `apps/frontend/src/modules/37-ipu/mobile/` — 6 Capacitor screens with biometric step-up integration | M | 31 | G |
-| 33 | `apps/frontend/src/modules/37-ipu/offline/` — SQLCipher meal-log + visitor-check-in offline queue + sync worker | M | 32 | G |
+| 31 | `apps/web/src/modules/37-ipu/` — 14 web screens (Unit Dashboard, Bed Grid, Intake Worklist, Admission Detail tabbed, GIP Criteria modal, GIP Reassessment Panel injected into M8, IRC Detail, RN Coverage View, Shift Schedule, Restraint Management, Visitor Front Desk, Equipment Inventory, Body Release, Operational Dashboard) | L | 16 | G |
+| 32 | `apps/web/src/modules/37-ipu/mobile/` — 6 Capacitor screens with biometric step-up integration | M | 31 | G |
+| 33 | `apps/web/src/modules/37-ipu/offline/` — SQLCipher meal-log + visitor-check-in offline queue + sync worker | M | 32 | G |
 | 34 | Unit + integration + security + RLS + E2E + perf test suites per §9 | L | all of D-G | H |
 | 35 | M36 typed-alert wiring (14 alert kinds + 4 recipient resolvers) + M22 `body_release_authorization` template registration + M28 FHIR mapping export + M30 incident-report consumer hook-up against fixtures + M33 MV consumer fixture for `mv_ipu_census_org_day` | M | 30 | H |
 | 36 | M38 value-set seeds: `ipu_equipment_v1`, `ipu_diet_v1`, `ipu_restraint_kind_v1`, `body_disposition_v1`, `ipu_visitor_relationship_v1`, `ipu_meal_refusal_reason_v1`, `ipu_treatment_v1` | S | M38 catalog | H |

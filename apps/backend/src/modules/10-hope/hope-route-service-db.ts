@@ -670,9 +670,11 @@ export function createDbHopeBackend(
           wasLate: r.wasLate,
         });
         if (verdict.triggerFired) {
-          // D4 — exactly one SFV per source timepoint; D3 anchored to signed_at (org TZ defaults to UTC here).
+          // D4 — exactly one SFV per source timepoint; due_at anchored to the ASSESSMENT date, never
+          // the signature (ADR-0018 D1 — a late signing must not extend the federal window).
           const descriptor = planSfvCreation({
             triggeringAssessmentId: id,
+            assessmentDate: r.targetDate.toISOString(),
             signedAt: at.toISOString(),
             timeZone: "UTC",
           });

@@ -1,5 +1,8 @@
 # Module 4 — Audit & Compliance Log Specification
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Module ID:** 4
 **Phase:** 1 (foundation tier — lands immediately after Module 3, before Module 36 and the clinical modules)
 **Owns:** `apps/backend/src/modules/04-audit`, `packages/audit`; the **capture/query/lifecycle layers over Module 1's `audit_event` table** (capture layers, query surface, retention/destruction policy — the `audit_event` *table itself* is M1-owned and helper-only, M04-F02), the destruction-certificate workflow, the `audit_denylist_catalog` + `audit_action_catalog` platform-shared tables, and the read-audit `auditRead` config consumed by every PHI route.

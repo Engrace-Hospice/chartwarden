@@ -1,5 +1,8 @@
 # Module 3 — Authorization Specification
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Spec version:** v0.3 — the remaining bare-prefix outbox events (`m3.role.assigned/revoked/
 updated`) **and the §8.1 audit actions** (`m3.authz.denied`, `m3.authz.escalation_blocked`,
 `m3.breakglass.invoked/access/cosigned/revoked/expired`, `m3.engagement.created/closed/
@@ -11,7 +14,7 @@ unchanged. (Prior: v0.2.)
 
 **Module ID:** 3
 **Phase:** 1 (foundation tier — lands immediately after Module 2)
-**Depends on:** **2** (Identity & Organization — `user`, `membership`, sessions and the four session classes, `proposedRoleKeys` handshake). Module 1 helper surfaces (`packages/tenancy` `withOrgContext` + RLS generator, `packages/audit` helper, `packages/db/src/schema` types) are reached via the **`FOUNDATION_HELPER_PACKAGES`** implicit-import set (ADR-0005 D4), **not** a `dependsOn` edge — so the manifest `dependsOn: [2]` is correct and unchanged (resolves M03-F02; the prior header's "Depends on: 1, 2" contradicted the manifest).
+**Depends on:** **2** (Identity & Organization — `user`, `membership`, sessions and the four session classes, `proposedRoleKeys` handshake). Module 1 helper surfaces (`packages/tenancy` `withOrgContext` + RLS generator, `packages/audit` helper, `packages/db/src/schema` types) are reached via the **`FOUNDATION_HELPER_PACKAGES`** implicit-import set (ADR-0005 D4), **not** a `dependsOn` edge — so most M1 surfaces need no edge. (The live manifest reads `dependsOn: [1, 2]` — the `+1` was re-added for M3's production RBAC data layer, whose effective-permission Drizzle store needs M1's `@wardenx/db` client; see the manifest's inline comment.)
 **Consumed by:** every module that exposes a protected route or reads PHI. Direct early consumers: 4 (Audit — authorization decisions are audited), 5/6/7/8+ (all clinical modules declare permissions + ABAC predicates), 30 (auditor engagements for surveys), 31 (portal/collaborator scopes), 34 (provisions default roles at tenant onboarding)
 **Spec status:** Re-locked v0.3 (Phase-1 audit remediation; supersedes Locked v0.2) — counter-signed with M2 v0.5 per the step-up contract handshake
 
@@ -26,7 +29,7 @@ unchanged. (Prior: v0.2.)
 | Finding | Sev | Resolution |
 |---|---|---|
 | **M03-F01** | BLOCKER | **Step-up contract implemented:** `step_up_recent` predicate added (§4.2, inputs from the M2-published session interface + `resolveStepUpPolicy`); `step_up.override.manage` permission key added (§3.3); `requireStepUp(opKey)` route binding defined. M2 v0.4's W-M2-08/W-M2-10 acceptance and M29's privileged routes are now gateable. Re-locked jointly with M2 v0.5. |
-| M03-F02 | MAJOR | Header corrected to `Depends on: 2`; M1 helper surfaces reached via `FOUNDATION_HELPER_PACKAGES` (ADR-0005 D4), not a `dependsOn` edge — manifest `[2]` stands. |
+| M03-F02 | MAJOR | Header corrected to `Depends on: 2`; M1 helper surfaces reached via `FOUNDATION_HELPER_PACKAGES` (ADR-0005 D4), not a `dependsOn` edge — manifest later re-added `1` for the RBAC Drizzle store — live edge set is `[1, 2]`. |
 | M03-F03 | MAJOR | Five cross-module predicates (`oncall_shift_active`, `bereavement_window`, `volunteer_gates_satisfied`, `supervisor_of_author`, `consent_permits`) generalized to **boot-registered provider seams** with deny-stub defaults (§4.2.1), added to `REQUIRED_SEAMS`, enforced by `validateSeams()`. No M3 code reads a non-dependency table. |
 | M03-F04 | MAJOR | Break-glass / engagement notifications now emit `m3.*` **outbox events** consumed by M36's alert rules (§4.5); M3 no longer writes M36's `alert.new` directly. `permissions.changed` stays the one permitted direct Socket.IO emit. |
 | M03-F05 | MAJOR | `organization_id` added to `role_permission` (nullable; template rows NULL) and `membership_role` (NOT NULL); bespoke RLS specified for `role_permission` (read own+template, write own only), generic policy for `membership_role`; both exempted from `wardenx_enable_rls()`. |
@@ -833,7 +836,7 @@ by `status` checks; cache-invalidation is a set-delete, inherently idempotent).
 
 ## 5. Frontend Screens
 
-Delivered in `apps/frontend` / `apps/admin`. Authorization is mostly *invisible plumbing*; the visible surfaces are the admin tools for managing it plus the break-glass and engagement consoles.
+Delivered in `apps/web` / `apps/admin`. Authorization is mostly *invisible plumbing*; the visible surfaces are the admin tools for managing it plus the break-glass and engagement consoles.
 
 ### 5.1 Screen Inventory
 

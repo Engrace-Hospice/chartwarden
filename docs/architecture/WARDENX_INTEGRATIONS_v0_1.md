@@ -142,7 +142,7 @@ The master list. Every external connection appears here exactly once. New integr
 |18|Hospital ADT feed|Inbound|HL7 v2 over MLLP|Yes|Yes (with sending facility)|per-tenant / per-feed|29, 5|`apps/backend/src/modules/29-external-interfaces` (module-side; `packages/hl7-worker` extraction deferred — ADR-0028)|Tier 3|
 |19|Lab feeds|Inbound|HL7 v2 / LOINC over MLLP or SFTP|Yes|Yes (with lab)|per-tenant / per-feed|29, 9|`apps/backend/src/modules/29-external-interfaces` (see row 18; `packages/hl7-worker` deferred)|Tier 3|
 |20|NPI Registry (NPPES)|Outbound query|REST (public)|No (provider directory)|No|platform|5, 23, 40|`packages/mdm`|Tier 4|
-|21|Telehealth video (Daily.co — ADR-003)|Bidirectional|REST + WebRTC + webhooks|Yes (video is PHI)|Yes|platform or per-tenant (TBD ADR-003)|31|`packages/telehealth-client`|Tier 3|
+|21|Telehealth video (Daily.co — ADR-0041)|Bidirectional|REST + WebRTC + webhooks|Yes (video is PHI)|Yes|platform or per-tenant (per ADR-0041 — finalized at onboarding)|31|`packages/telehealth-client`|Tier 3|
 |22|Map / routing (Mapbox vs OSRM — ADR-007)|Outbound|REST|No (addresses are PHI-adjacent — see §6.22)|Conditional (see §6.22)|platform|17|`packages/routing-client`|Tier 4|
 |23|Terminology source feeds (CMS ICD-10, NLM/UMLS SNOMED, Regenstrief LOINC, RxNorm)|Inbound (scheduled)|File download / API + license|No|No (reference data)|platform (license creds)|38|`packages/terminology`|Tier 4|
 |24|FHIR Gateway (outbound/inbound interop)|Bidirectional|FHIR R4 REST + bulk NDJSON|Yes|Per-recipient (varies)|per-tenant / per-recipient|28|`packages/fhir`|Tier 3|
@@ -264,7 +264,7 @@ The compliance-facing summary. Surveyors and customer security reviewers receive
 |Twilio (SMS + Voice)|No (by rule)|BAA|Twilio|TBD|Defense-in-depth; no PHI in payload by code rule|
 |Postmark|No (by rule)|BAA|Postmark/ActiveCampaign|TBD|Defense-in-depth; no PHI in payload by code rule|
 |CAHPS vendor|Yes (decedent caregiver PII)|BAA|Tenant-selected approved vendor|Per-tenant; TBD at tenant onboarding|Vendor is tenant-configurable (ADR-005 default)|
-|Telehealth (Daily.co)|Yes|BAA|Daily.co (pending ADR-003)|TBD — gated on ADR-003|Video stream is PHI|
+|Telehealth (Daily.co)|Yes|BAA|Daily.co (ADR-0041)|TBD — BAA must read EXECUTED before production PHI video|Video stream is PHI|
 |Hospital ADT feed|Yes|BAA / data-sharing agreement|Sending hospital/HIE|Per-feed; TBD at feed setup|Counterparty is the data source|
 |Lab feed|Yes|BAA|Reference lab|Per-feed; TBD at feed setup||
 |Medicare MAC (NGS)|Yes|EDI Trading Partner Agreement + enrollment (not a BAA)|CMS / NGS|Per-ProviderEntity enrollment|CMS is regulator/contractor|
@@ -513,17 +513,17 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
 - **Rate-limit posture:** NPPES public-API throttling; adapter paces + caches aggressively (provider data is slow-changing).
 - **Failure handling:** Tier 4; validation rule degrades to `warn` with cached data when NPPES is unreachable.
 
-### 6.21 Telehealth Video — Daily.co (Module 31; ADR-003 open)
+### 6.21 Telehealth Video — Daily.co (Module 31; decided — ADR-0041)
 
-- **Purpose:** Video visits embedded in scheduling; audio-only fallback. Vendor-pluggable behind `packages/telehealth-client`; default Daily.co pending ADR-003 (alternatives: Twilio Video, native WebRTC).
+- **Purpose:** Video visits embedded in scheduling; audio-only fallback. Vendor-pluggable behind `packages/telehealth-client`; default **Daily.co (ADR-0041)** with Twilio Video / native WebRTC as interface-conformant scaffolds.
 - **Direction & protocol:** Bidirectional REST (room/token creation) + WebRTC media + webhooks (room events).
-- **Credential model:** Platform or per-tenant (TBD with ADR-003) API key; short-lived room tokens minted per visit.
+- **Credential model:** Platform or per-tenant (finalized at tenant onboarding per ADR-0041) API key; short-lived room tokens minted per visit.
 - **BAA / PHI:** Video stream is PHI; BAA required (gated on ADR-003 vendor selection).
 - **Sandbox vs prod:** Vendor sandbox; synthetic visits.
 - **Webhooks (inbound):** Room lifecycle (joined/left/ended); signature-verified, idempotent.
 - **Retry/idempotency:** Room creation idempotent per `telehealth_visit_id`.
 - **Failure handling:** Tier 3; audio-only fallback; if vendor down, visit reschedules — no chart-write dependency.
-- **Open item:** ADR-003 must close before Module 31 telehealth ships; this section is finalized then.
+- **Open item:** vendor decision CLOSED (ADR-0041). Remaining gates are operational: executed BAA (§5) and credential-scope selection at onboarding.
 
 ### 6.22 Map / Routing — Mapbox vs OSRM (Module 17; ADR-007 open)
 
@@ -655,7 +655,7 @@ The Module 34 onboarding workflow touches several integrations. This is the inte
 |Payroll connect|Gusto|Per-tenant OAuth consent|Sandbox wage pull|
 |CAHPS vendor select|CAHPS|Approved vendor chosen (ADR-005 default); creds + BAA|Vendor sandbox exchange|
 |AI feature opt-in|Anthropic / Local AI|Per-capability opt-in with informed consent (BAA, audit, cost); routing preference (prefer_cloud/local/etc.)|BAA + ZDR confirmed before any cloud AI; eval datasets green|
-|Telehealth enable (if used)|Daily.co|Per-ADR-003 setup; BAA|Sandbox visit|
+|Telehealth enable (if used)|Daily.co|Per-ADR-0041 setup; BAA|Sandbox visit|
 |Feed setup (if used)|ADT / Lab|Per-feed channel + allowlist + BAA with source|Synthetic message round-trip|
 |Subscription activate|Stripe|Customer + subscription created (plan per ADR-001)|Test-mode lifecycle verified|
 |Go-live health checks|All|DoseSpot health, Anthropic test call, Twilio test SMS, sample claim validation (per DR_BCP §go-live checklist)|All green|
@@ -672,7 +672,7 @@ the consuming module ships:
 |ADR|Affects|This catalog section|Decision needed|
 |---|-------|---------------------|----------------|
 |ADR-001|Stripe plan model (per-seat / per-patient-month / hybrid)|§6.11|Determines usage-metering wiring|
-|ADR-003|Telehealth vendor (Daily.co / Twilio Video / native WebRTC)|§6.21|Finalizes credential scope + BAA counterparty|
+|ADR-003|Telehealth vendor — **RESOLVED (ADR-0041): Daily.co default**|§6.21|Remaining: BAA execution + credential scope at onboarding|
 |ADR-005|CAHPS vendor default|§6.8|Sets the default partner + BAA|
 |ADR-006|EPCS certification timeline|§6.1|Enables controlled-substance prescribing path|
 |ADR-007|Routing provider (Mapbox vs OSRM self-hosted)|§6.22|Decides whether patient addresses leave the perimeter + BAA need|

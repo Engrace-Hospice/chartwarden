@@ -145,6 +145,14 @@ the prose docs in `docs/architecture/`.
   namespace). Warn-only `<!-- verified-against: sha · date -->` staleness stamps. The six build
   divergences the 2026-08-13 audit surfaced are recorded as ADR-0036…0040 (+ ADR-0030/0032/0035
   for the frontend stack).
+- `scripts/check-module-docs.ts` — **module-spec corpus gate** (`bun run arch:module-docs`, in
+  `arch:fitness`). Different contract from the architecture gate because specs are PROPOSALS:
+  no cited-path rule (planned paths are legal); enforces index parity (40 rows ↔ 40 files),
+  the **re-lock-in-place versioning convention** (filename version is pinned; the HEADER is
+  authoritative and the index "Spec ver" column must track it — it sat 1–2 re-locks stale for
+  26 of 40 modules before this gate), four-digit ADR-citation resolution (audit-era
+  "ADR-NNNN / ARCH-nnn" composite citations exempt as a historical namespace), relative-link
+  integrity, and the "implementation proposal" authority marker every spec now carries.
 - `scripts/audit-fitness.ts` — point-in-time enforcement audit (module matrix, table
   ownership, dependency graph/cycles); writes `audit/FITNESS_ENFORCEMENT_AUDIT.md`.
 - `scripts/report-implementation-status.ts` — per-module **implementation-status matrix**

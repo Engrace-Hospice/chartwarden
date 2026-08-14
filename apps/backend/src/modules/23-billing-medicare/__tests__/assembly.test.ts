@@ -41,8 +41,8 @@ const ACTOR: ClaimAssemblyActor = {
 
 const RATE_TABLE = {
   // TODO(CMS-fixture): the published FY per-diem amounts replace these representative values.
-  rhcDays1to7PerDiemCents: 20_000,
-  rhcDays8PlusPerDiemCents: 16_000,
+  rhcDays1to60PerDiemCents: 20_000,
+  rhcDays61PlusPerDiemCents: 16_000,
   chcPerDiemCents: 150_000,
   ircPerDiemCents: 50_000,
   gipPerDiemCents: 100_000,
@@ -255,8 +255,8 @@ describe("server-authoritative assembly — produces claim + lines + hipps in on
     expect(store.lines[0].lineChargeCents).toBe(140_000);
 
     expect(store.hipps).toHaveLength(1);
-    expect(store.hipps[0].rhcDays1to7).toBe(7);
-    expect(store.hipps[0].rhcDays8Plus).toBe(0);
+    expect(store.hipps[0].rhcDays1to60).toBe(7);
+    expect(store.hipps[0].rhcDays61Plus).toBe(0);
 
     // The initial §11.A validation run executed (the trivial pass rule) + recorded the result.
     expect(store.runs.size).toBe(1);

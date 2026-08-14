@@ -1,5 +1,8 @@
 # Module 7 — Care Plan (IPOC) Specification
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Spec version:** v0.3 — the §2.4 outbox events migrated to the `m7.` namespace
 (`m7.care_plan.*`, `m7.problem.*`, `m7.goal.*`, `m7.intervention.*`) per the M01 D8
 `outbox_event_catalog` / M03 D9 convention, plus the T+13 alert payload

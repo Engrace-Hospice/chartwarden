@@ -1,5 +1,8 @@
 # Module 9 — Clinical Assessments Suite Specification
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Spec version:** v0.3 — the §2.4 outbox events **and** §8.1 audit actions migrated to the
 `m9.` namespace (`m9.assessment.*`, `m9.scale.*`; audit actions `m9.assessment.viewed`,
 `m9.assessment.disclosed`, `m9.assessment.correction`, `m9.assessment.erased_under_certificate`)

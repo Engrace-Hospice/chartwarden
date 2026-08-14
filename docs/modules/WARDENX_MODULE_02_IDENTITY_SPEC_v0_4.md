@@ -1,5 +1,8 @@
 # Module 2 — Identity & Organization Specification
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Module ID:** 2
 **Phase:** 1 (foundation tier — lands immediately after Module 1)
 **Owns:** `apps/backend/src/modules/02-identity`, Better Auth session machinery, the four session classes (`staff`, `auditor`, `external_collaborator`, `funeral_home`), MFA primitives (TOTP, WebAuthn passkey, SMS fallback), and step-up authentication state.
@@ -1212,7 +1215,7 @@ This lets the client UX preemptively trigger a step-up modal when the user click
 
 ## 5. Frontend Screens
 
-Delivered in `apps/frontend` (admin + clinical web) and `apps/admin`; portal auth surfaces are consumed by `apps/portal` (Module 31). Mobile variants in `apps/mobile` (Capacitor) per ADR-008.
+Delivered in `apps/web` (admin + clinical web) and `apps/admin`; portal auth surfaces are consumed by `apps/portal` (Module 31). Mobile variants in `apps/mobile` (Capacitor) per ADR-008.
 
 ### 5.1 Screen Inventory
 
@@ -1432,7 +1435,7 @@ These are **cross-module** events written transactionally to the outbox via the 
 
 | Event | Published when | Payload (shape) | Consumers |
 |---|---|---|---|
-| `m2.organization.created` | an organization/tenant is first provisioned (org row insert) | `{ organizationId, name, createdAt, createdByMembershipId }` | M22 (per-tenant MinIO bucket provisioning), M35 (subscription billing onboarding) |
+| `m2.organization.created` *(TARGET — never cataloged; M35's shipped M2 inputs are `m2.organization.activated` / `.suspended` / `.closed` + `m2.session.created`, see packages/types/src/subscription-billing.ts)* | an organization/tenant is first provisioned (org row insert) | `{ organizationId, name, createdAt, createdByMembershipId }` | M22 (per-tenant MinIO bucket provisioning), M35 (subscription billing onboarding) |
 | `m2.membership.updated` | a membership row mutates (role, status, or other membership attributes change) | `{ membershipId, organizationId, userId, changedFields, updatedAt }` | M33 (predicate-cache invalidation) |
 | `m2.session.created` | a new session row is issued (login / session establishment) | `{ sessionId, userId, organizationId, createdAt }` | M35 (subscription billing) |
 
@@ -1446,7 +1449,7 @@ These are **cross-module** events written transactionally to the outbox via the 
 > compliance session** (no clinical writes) per OPS-054. The lifecycle outbox events
 > `m2.organization.activated` / `m2.organization.suspended` / `m2.organization.closed` are **contracted
 > now** (emitted in the same transaction as the status write via `OrgRepository`), so M35's billing
-> hooks bind to a real producer. `m2.organization.created` remains as before.
+> hooks bind to a real producer. `m2.organization.created` remains a target-state name (never cataloged — see the §8.1.1 table note).
 >
 > **Forward note.** Discrete membership-lifecycle signals (`m2.membership.accepted` / `m2.membership.suspended` / `m2.membership.revoked`) are currently surfaced only as audit rows (§8.1); consumers that need them today read `m2.membership.updated` (with `changedFields` carrying the status transition). Dedicated outbox events may be added if a consumer requires per-transition routing.
 >
