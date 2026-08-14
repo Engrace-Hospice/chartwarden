@@ -13,22 +13,31 @@
 // the contract has ONE definition; M3 consumes it through M2's published session seam
 // (M2-T07) rather than re-deriving the freshness/factor math (which would risk drift).
 //
+// AC-03 — the tighten math itself now lives in @wardenx/auth (`identity/step-up-policy.ts`) and is
+// re-exported below. It had to move because the `SessionContextResolver` seam implementation is in
+// that package, and that seam is what M3's predicate actually calls; while the only copy sat here,
+// the seam had no way to reach it and the resolver had ZERO production callers. Read the override
+// through the `StepUpOverrideStore` port on that seam, not through a second reader here.
+//
 // SLICE NOTE: the override is read through an injected `StepUpOverrideReader` port — the slice
 // has no live DB. Production injects the reader that selects `tenant_step_up_policy_override`
 // (M2-owned, org-scoped) inside `withOrgContext` so RLS scopes the read by `app.org_id`.
-import { STEP_UP_POLICY, type StepUpFactor } from "@wardenx/types";
+import { type StepUpOverrideRecord, tightenStepUpPolicy } from "@wardenx/auth";
+import type { ResolvedStepUpPolicy, StepUpFactor } from "@wardenx/types";
 
 /** A resolved (post-tighten) step-up policy for one (organization, operation). */
-export interface ResolvedStepUpPolicy {
-  readonly qualifyingFactors: readonly StepUpFactor[];
-  readonly maxAgeSec: number;
-}
+export type { ResolvedStepUpPolicy };
 
 /** A tenant override row's policy-bearing fields (mirrors `tenant_step_up_policy_override`). */
-export interface StepUpOverride {
-  readonly qualifyingFactors: readonly StepUpFactor[];
-  readonly maxAgeSec: number;
-}
+export type StepUpOverride = StepUpOverrideRecord;
+
+/**
+ * Tighten-only resolution (§4.3.2, D9) — re-exported from @wardenx/auth, which is where the ONE
+ * definition lives now. It moved because the seam implementation M3's `step_up_recent` predicate
+ * calls sits in that package and could not import this module; a copy here would be the drift this
+ * file's header warns about.
+ */
+export { tightenStepUpPolicy };
 
 /** Port over the M2-owned `tenant_step_up_policy_override` table (org-scoped, RLS). */
 export interface StepUpOverrideReader {
@@ -36,28 +45,6 @@ export interface StepUpOverrideReader {
     organizationId: string;
     operationKey: string;
   }): Promise<StepUpOverride | null> | StepUpOverride | null;
-}
-
-/**
- * Tighten-only resolution (§4.3.2, D9): with no override, the platform floor stands; with
- * one, intersect the qualifying factors against the floor and take the min freshness window.
- * Adding SMS or extending maxAgeSec beyond the floor is impossible by construction — the DB
- * `trg_tenant_step_up_tighten_only` trigger is the at-rest guard; this is its app-layer twin.
- */
-export function tightenStepUpPolicy(
-  override: StepUpOverride | null | undefined,
-): ResolvedStepUpPolicy {
-  if (!override) {
-    return {
-      qualifyingFactors: STEP_UP_POLICY.qualifyingFactors,
-      maxAgeSec: STEP_UP_POLICY.defaultMaxAgeSec,
-    };
-  }
-  const floor = new Set<StepUpFactor>(STEP_UP_POLICY.qualifyingFactors);
-  return {
-    qualifyingFactors: override.qualifyingFactors.filter((f) => floor.has(f)),
-    maxAgeSec: Math.min(override.maxAgeSec, STEP_UP_POLICY.defaultMaxAgeSec),
-  };
 }
 
 /** Load + tighten the policy for an (organization, operation). */

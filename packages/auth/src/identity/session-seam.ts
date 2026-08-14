@@ -17,10 +17,12 @@
 import type {
   OrgScope,
   ResolvedActor,
+  ResolvedStepUpPolicy,
   SessionContextResolver,
   SessionStepUpFields,
   StepUpFactor,
 } from "@wardenx/types";
+import { type StepUpOverrideStore, tightenStepUpPolicy } from "./step-up-policy";
 
 /** A session row as the resolver needs it (sourced from the M1-owned `session` table). */
 export interface SessionContextRecord {
@@ -43,8 +45,18 @@ export interface SessionContextStore {
   ): Promise<SessionContextRecord | null> | SessionContextRecord | null;
 }
 
-/** Build the `SessionContextResolver` seam over a `SessionContextStore`. */
-export function createSessionContextResolver(store: SessionContextStore): SessionContextResolver {
+/**
+ * Build the `SessionContextResolver` seam over a `SessionContextStore`.
+ *
+ * `overrides` is the per-tenant step-up policy store (§4.3.2, D9). It is OPTIONAL and its absence
+ * means "this deployment has no override table to read" — every operation then resolves to the
+ * platform floor, which is the strictest thing an absent tenant configuration can mean. It is not
+ * a fail-open default: an override can only ever tighten, so having none is the safe end.
+ */
+export function createSessionContextResolver(
+  store: SessionContextStore,
+  overrides?: StepUpOverrideStore,
+): SessionContextResolver {
   /** Read + org-scope guard shared by both resolver methods. */
   const readScoped = async (scope: OrgScope, sessionId: string) => {
     const row = await store.read(scope, sessionId);
@@ -67,6 +79,11 @@ export function createSessionContextResolver(store: SessionContextStore): Sessio
       const row = await readScoped(scope, sessionId);
       if (!row) return null;
       return { lastStepUpAt: row.lastStepUpAt, lastStepUpFactor: row.lastStepUpFactor };
+    },
+    async resolveStepUpPolicy(scope, operationKey): Promise<ResolvedStepUpPolicy> {
+      // `tightenStepUpPolicy(null)` IS the floor, so a missing store and a missing row take the
+      // same path — there is no branch here that can hand back something looser than the floor.
+      return tightenStepUpPolicy(overrides ? await overrides.find(scope, operationKey) : null);
     },
   };
 }

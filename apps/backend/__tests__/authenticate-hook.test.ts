@@ -2,7 +2,7 @@
 // Unit-tests the authenticate hook factory with a stub snapshot reader + stub SessionContextResolver
 // (no better-auth / no DB). The real session read + DB-backed resolver are verified in the AUTH-T06
 // live-PG lane; the DB-backed SessionContextStore reconciliation lands in AUTH-T05.
-import type { ResolvedActor, SessionContextResolver } from "@wardenx/types";
+import { type ResolvedActor, type SessionContextResolver, STEP_UP_POLICY } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
 import { createSessionAuthenticate } from "../src/bootstrap/index";
@@ -30,6 +30,13 @@ const reqWith = (headers: Record<string, string> = {}): { req: FastifyRequest; c
 const resolverReturning = (actor: ResolvedActor | null): SessionContextResolver => ({
   resolveActor: async () => actor,
   resolveStepUpState: async () => null,
+  // The authenticate hook never calls this; it is here so the double stays a complete
+  // implementation of the seam (`apps/backend/__tests__` is not type-checked by `tsc -b`, so a
+  // missing method would surface only as a runtime TypeError in whichever test grew into it).
+  resolveStepUpPolicy: async () => ({
+    qualifyingFactors: STEP_UP_POLICY.qualifyingFactors,
+    maxAgeSec: STEP_UP_POLICY.defaultMaxAgeSec,
+  }),
 });
 
 describe("createSessionAuthenticate (AUTH-T03)", () => {

@@ -335,6 +335,9 @@ export const sessionContextResolverDenyStub: SessionContextResolver = {
   resolveStepUpState() {
     throw new NotImplementedError("SessionContextResolver");
   },
+  resolveStepUpPolicy() {
+    throw new NotImplementedError("SessionContextResolver");
+  },
 };
 
 export const auditorSessionMinterDenyStub: AuditorSessionMinter = {
