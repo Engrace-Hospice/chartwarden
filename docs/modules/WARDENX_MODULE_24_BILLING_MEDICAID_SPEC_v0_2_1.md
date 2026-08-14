@@ -1,5 +1,8 @@
 # WardenX — Module 24: Billing — Medicaid — Specification
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Version:** 0.2.1
 **Status:** Locked
 **Owner:** Fabrice V. Adjam (WardenX)
@@ -1904,7 +1907,7 @@ export const M24_ALERTS = {
 
 ### 5.2 Mobile (Capacitor) Variants
 
-**M24 has no mobile surface.** All M24 routes are denied to `apps/frontend/src/capacitor/*` by dependency-cruiser (mirror of M23 §5.2). The justification is identical: Medicaid claim assembly, submission, validation override, and R&B contract management are administrative billing-office workflows that take place at a workstation, not in the field. The clinician's mobile app interacts with M8 (encounters), M17 (visits), M18 (EVV); the M24 surfaces a clinician would encounter (an EVV-blocked claim) are surfaced upstream in M18's mobile surface and the clinician resolves at M8/M18, not M24.
+**M24 has no mobile surface.** All M24 routes are denied to `apps/web/src/capacitor/*` by dependency-cruiser (mirror of M23 §5.2). The justification is identical: Medicaid claim assembly, submission, validation override, and R&B contract management are administrative billing-office workflows that take place at a workstation, not in the field. The clinician's mobile app interacts with M8 (encounters), M17 (visits), M18 (EVV); the M24 surfaces a clinician would encounter (an EVV-blocked claim) are surfaced upstream in M18's mobile surface and the clinician resolves at M8/M18, not M24.
 
 ### 5.3 Portal Variants (M31-consumed)
 
@@ -2380,7 +2383,7 @@ Lock-grade sign-off requires every item below to be green. Each item is verifiab
 - [ ] **Adapter mandate:** `packages/medicaid-adapters/` is the only path to state Medicaid endpoints; per-state subpackages enforced; dependency-cruiser CI green.
 - [ ] **Metrics scraped** (claim-assemble-latency, claim-submit-latency, ack-pull-latency, AR-dashboard-latency, denial-rate-rolling, rb-billing-rate-rolling, state-channel-availability-rolling, validation-rule-failure-frequency-by-key, override-rate-by-rule, eligibility-staleness-rate, MCO-assignment-change-rate) + Grafana dashboards per Ops Runbook §9.
 - [ ] **WCAG 2.1 AA** verified on every screen in §5.1: Medicaid AR Dashboard, Claim Workbench, Claim Editor, Assembly Wizard, Validation Worklist, Override Modal, Submission Confirmation, Submissions Timeline, Acknowledgments Timeline, Replacement/Void Builder, R&B Arrangements List + Detail, R&B Day Override, Validation Rule Config, Eligibility Center, Trading Partner Credentials, Override Audit View, Metrics Surface, Surveyor Read View. axe-core scan green.
-- [ ] **No mobile / no portal surface** — dependency-cruiser asserts no `apps/frontend/src/modules/24-billing-medicaid/` import from `apps/frontend/src/capacitor/*` or `apps/portal/*`.
+- [ ] **No mobile / no portal surface** — dependency-cruiser asserts no `apps/web/src/modules/24-billing-medicaid/` import from `apps/web/src/capacitor/*` or `apps/portal/*`.
 - [ ] **Eraser** registered with M4 destruction-cert workflow under retention class `billing_record`; 7-year retention enforced at partition-rotation + MinIO object-lock layers; state retention overrides for jurisdictions exceeding federal floor; PHI-bearing free-text fields cryptographically shredded; trading partner credential ciphers cryptographically shredded at org-destruction; destruction-cert records affected-row counts per table.
 - [ ] **Performance targets** in §9.7 met under load-test fixtures (assemble p95 < 800ms; submit p95 < 250ms; ack-pull p95 < 8s; AR Dashboard p95 < 600ms for 5,000 active claims; eligibility refresh p95 < 3s; validation run p95 < 1.5s for 13 rules + custom rules under 5; R&B daily sweep < 60min for 1,000-patient agency).
 - [ ] **DR/BCP scenarios** per `WARDENX_DR_BCP_v0_1.md` §10.4.5 (state channel outage Tier-3) tested: claims queue, channel recovery, auto-resume; no claim loss; no manual intervention required for outages under 5 days.

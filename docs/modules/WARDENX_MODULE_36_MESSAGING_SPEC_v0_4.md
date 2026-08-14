@@ -1,5 +1,8 @@
 # Module 36 — Secure Messaging & Alerts Specification
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Module ID:** 36
 **Phase:** 1 (foundation tier — lands immediately after Module 4, alongside Modules 38 and 40, before Module 5 and every clinical/operational consumer)
 **Depends on:** 1 (Foundation — Socket.IO+Valkey adapter wired in `apps/backend/src/bootstrap`, `withOrgContext`/`withPlatformContext`, outbox dispatcher, idempotency middleware, RLS generator, `audit()` helper, per-tenant DEK envelope-encryption helper, BullMQ on Valkey, system status event; outbox events newly consumed), 2 (Identity — user/membership/session for actor + recipient resolution; per-user notification preferences attach to the M2 user; `m2.session.step_up_lockout` alert payload), 3 (Authorization — `messaging.*` and `alert.*` permission keys; channel visibility joins ABAC predicates like `caseload_membership` for per-patient care-team channels), 4 (Audit — every message-read, every alert-delivered, every channel-membership change is audited via M4 triggers; cross-tenant operational support requires break-glass). **M36-F01 (BLOCKER) — `dependsOn` stays `[1,2,3,4]`.** M36 is a foundation-tier module that lands **before** every clinical module (ARCH-230); adding 5/6/11/22/40 would create cycles (M5/M11 each depend on 36 → `36→5→36`, `36→11→36`) and invert the build order. The typed alert payloads from those modules are **contributed**, not consumed via an import edge: each source module (which already depends on 36) registers its `alerts-by-mN.ts` entries at its own boot, with payload **types in the leaf `packages/types`** — M36 validates the catalog at boot without importing any later module (ADR-0005 D1; `packages/foundation` is banned, ADR-0005 D3). Outbox-event consumption likewise needs no edge.
@@ -21,7 +24,7 @@ the illegal DDL is removed. The spec now passes `arch:fitness` (checks 10/12).
 | **M36-F06a** | MAJOR (X9) | **The two alert subsystems are unified:** `alerts.dispatch(payloadType)` is the **single catalog-validated entry point**; `alert_rule` is the per-tenant **routing layer** beneath it (it does not define a parallel dispatch path). One path, one severity ladder per layer. |
 | **M36-F06c** | MAJOR | The tighten-only trigger compares the **enums directly** (Postgres orders by definition order INFO<…<CRITICAL) — the `::text` casts that forced lexicographic collation (wrongly rejecting WARN→CRITICAL) are removed. |
 | **M36-F06d** | MAJOR | The `notification_delivery` voice-SOS CHECK no longer uses an `EXISTS (SELECT … FROM alert)` **subquery** (illegal in PostgreSQL): `alert_category`/`alert_severity` are denormalized onto the row and the CHECK is a local-column comparison — **caught by `check-ddl-legality`**. |
-| M36-F06e/f/g | MINOR | Table count reconciled to 13 (11 core + 2 catalog); the promised `Conversation` entity is dropped (Channel/Message is the model); `m36.notification.delivery_failed` payload field corrected to `recipientUserId` (matches the table). *(ADR-0024 (2026-06-13) subsequently moved `notification_template` + `tenant_notification_template_overlay` from M14 to M36 — owned-table count is now **15** = 13 + 2; see §3.13 / §4.11.)* |
+| M36-F06e/f/g | MINOR | Table count reconciled to 13 (11 core + 2 catalog); the promised `Conversation` entity is dropped (Channel/Message is the model); `m36.notification.delivery_failed` *(TARGET — no M36 outbox catalog exists yet; M19/M20 already subscribe to this name, so it is a subscription without a producer until events-by-m36 lands)* payload field corrected to `recipientUserId` (matches the table). *(ADR-0024 (2026-06-13) subsequently moved `notification_template` + `tenant_notification_template_overlay` from M14 to M36 — owned-table count is now **15** = 13 + 2; see §3.13 / §4.11.)* |
 | **M36-F02** | MAJOR | Retention corrected to the §24.1 matrix: clinical-coordination channels (`care_team`/`discipline`/`location`/`on_call`/`dm`/`bereavement`) are **`care_related` (6+ yr)**; only the non-clinical `announcement` channel stays `operational`. Author "delete" is a **visibility tombstone** — `body_cipher` is retained until retention expiry, not zeroed (record integrity, §164.530(j)). Bereavement's 13-month window is the channel display/program window (M16-F01), not a destruction clock. |
 | **M36-F03** | MAJOR | **Message-body integrity** added (HIPAA §164.312(c)/ARCH-206): a `body_sha256` over plaintext (pre-encryption) on `message` + a scheduled **hash-verification job** with audit output. |
 | **M36-F04** | MAJOR | `message` partitioned **LIST `organization_id` → RANGE `created_at`** (SD-027) and registered in `partition.rotate`; **`organization_id` added to `channel_member` and `message_receipt`** with the canonical RLS template + SD-028 composite index; PE/location columns added/deviation documented (ARCH-011). |
@@ -2145,14 +2148,14 @@ async function composeAndDispatch(input: {
 
 | Screen | App | Route | Actor | Purpose |
 |---|---|---|---|---|
-| Inbox | `apps/frontend` | `/messages` | every user | channel list with unread + latest preview |
-| Channel view | `apps/frontend` | `/messages/:channelId` | members | threaded; receipts; presence; @-mention |
-| New DM | `apps/frontend` | `/messages/dm/new` | every user | search coworker; open or focus DM |
-| Notification preferences | `apps/frontend` | `/settings/notifications` | self | routing map; quiet hours; vacation forwarding |
-| Endpoint management | `apps/frontend` | `/settings/notifications/endpoints` | self | register push / verify SMS / verify email |
-| Alert inbox | `apps/frontend` | `/alerts` | every user | recent alerts; deep-link to source |
-| Alert rules | `apps/frontend` | `/admin/alerts/rules` | org_admin / Compliance | enable/disable; recipient override; channel override |
-| Tenant announcements | `apps/frontend` | `/admin/announcements` | org_admin / Tenant Admin | post tenant-wide message |
+| Inbox | `apps/web` | `/messages` | every user | channel list with unread + latest preview |
+| Channel view | `apps/web` | `/messages/:channelId` | members | threaded; receipts; presence; @-mention |
+| New DM | `apps/web` | `/messages/dm/new` | every user | search coworker; open or focus DM |
+| Notification preferences | `apps/web` | `/settings/notifications` | self | routing map; quiet hours; vacation forwarding |
+| Endpoint management | `apps/web` | `/settings/notifications/endpoints` | self | register push / verify SMS / verify email |
+| Alert inbox | `apps/web` | `/alerts` | every user | recent alerts; deep-link to source |
+| Alert rules | `apps/web` | `/admin/alerts/rules` | org_admin / Compliance | enable/disable; recipient override; channel override |
+| Tenant announcements | `apps/web` | `/admin/announcements` | org_admin / Tenant Admin | post tenant-wide message |
 | Bereavement counselor inbox | `apps/portal` | `/care/messages` | bereavement counselor (staff) + family (portal) | 13-month channel UI |
 | Delivery health | `apps/admin` | `/messaging/deliveries` | platform_ops | failed deliveries, endpoint expirations, vendor degradation |
 
@@ -2325,7 +2328,7 @@ These are M36-owned outbox events published via the M1 outbox dispatcher for dow
 
 | Event | Payload | Consumers | Notes |
 |---|---|---|---|
-| `m36.notification.delivery_failed` | `{ notificationId, recipientMembershipId, organizationId, channel, failureReason, failedAt }` | M19 (On-Call), M20 (Field Safety), M26 (Cap) | Emitted when a `notification_delivery` row settles to a terminal failed status (after retries are exhausted per D7) — i.e. a notification/alert the consumer requested could not be delivered to a recipient on a given channel. `notificationId` is the `notification_delivery.id`; `failureReason` mirrors `notification_delivery.fail_reason`; `channel` is the `notification_channel` enum value. Lets consumers trigger escalation (e.g. M19 on-call re-route, M20 field-safety redundancy, M26 cap-projection re-notify). PHI-free by construction — carries IDs and the failure class only. |
+| `m36.notification.delivery_failed` *(TARGET — no M36 outbox catalog exists yet; M19/M20 already subscribe to this name, so it is a subscription without a producer until events-by-m36 lands)* | `{ notificationId, recipientMembershipId, organizationId, channel, failureReason, failedAt }` | M19 (On-Call), M20 (Field Safety), M26 (Cap) | Emitted when a `notification_delivery` row settles to a terminal failed status (after retries are exhausted per D7) — i.e. a notification/alert the consumer requested could not be delivered to a recipient on a given channel. `notificationId` is the `notification_delivery.id`; `failureReason` mirrors `notification_delivery.fail_reason`; `channel` is the `notification_channel` enum value. Lets consumers trigger escalation (e.g. M19 on-call re-route, M20 field-safety redundancy, M26 cap-projection re-notify). PHI-free by construction — carries IDs and the failure class only. |
 
 ### 8.2 Metrics (Prometheus)
 

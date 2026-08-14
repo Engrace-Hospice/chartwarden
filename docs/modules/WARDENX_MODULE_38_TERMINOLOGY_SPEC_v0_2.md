@@ -1,5 +1,8 @@
 # Module 38 — Clinical Terminology Service Specification
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Module ID:** 38
 **Phase:** 1 (foundation tier — lands after Modules 1–4 and 36, alongside Module 40, before Module 5 and every clinical/billing/interop consumer)
 **Depends on:** 1 (Foundation — `wardenx_app`/`wardenx_admin` role split, RLS generator, `withOrgContext`/`withPlatformContext`, `audit()` helper, outbox dispatcher, idempotency middleware, partitioned-table conventions, pgvector extension policy), 2 (Identity — actor resolution for admin loads and tenant value-set extensions), 3 (Authorization — `terminology.*` permission keys; admin-load and deprecation-report gated), 4 (Audit — version loads, deprecation reports, tenant value-set edits all audited; canonical write-audit triggers via M4 generator)
@@ -1114,10 +1117,10 @@ M38 is mostly machinery consumed by other modules' UIs (problem list, order entr
 
 | Screen | App | Route | Actor | Purpose |
 |---|---|---|---|---|
-| Code lookup | `apps/frontend` | `/admin/terminology/search` | any role with `terminology.read` | system-aware search (exact / fuzzy / semantic); show full concept, deprecation status |
-| Value set browser | `apps/frontend` | `/admin/terminology/value-sets` | same | catalog of value sets; expand any value set; see tenant extensions |
-| Value set extension | `apps/frontend` | `/admin/terminology/value-sets/:id/extend` | Coder, Compliance Officer, org_admin | add/remove tenant additions with reason |
-| Deprecation remediation | `apps/frontend` | `/admin/terminology/remediation` | Coder, Compliance Officer | this tenant's records affected by recent deprecations; drill to the specific record |
+| Code lookup | `apps/web` | `/admin/terminology/search` | any role with `terminology.read` | system-aware search (exact / fuzzy / semantic); show full concept, deprecation status |
+| Value set browser | `apps/web` | `/admin/terminology/value-sets` | same | catalog of value sets; expand any value set; see tenant extensions |
+| Value set extension | `apps/web` | `/admin/terminology/value-sets/:id/extend` | Coder, Compliance Officer, org_admin | add/remove tenant additions with reason |
+| Deprecation remediation | `apps/web` | `/admin/terminology/remediation` | Coder, Compliance Officer | this tenant's records affected by recent deprecations; drill to the specific record |
 | Version history | `apps/admin` | `/terminology/versions` | platform_ops | every load; success/failure; diff summary |
 | Load a version | `apps/admin` | `/terminology/load` | platform_ops | upload source file; preview diff in a staged view; confirm with step-up; trigger load |
 | Extension governance | `apps/admin` | `/terminology/extensions` | platform_ops | cross-tenant view of who's extending what (with their reasons) |

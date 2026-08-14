@@ -1,5 +1,8 @@
 # Module 5 — Patient & Demographics Specification
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Module ID:** 5
 **Phase:** 1 (first clinical module — gates everything in Phases 2–4)
 **Owns:** `apps/backend/src/modules/05-patient`, the patient spine schema (16 tables + the v0.3 schema additions), the `CaseloadProvider` seam, the `PatientReader` seam, and the `PatientMutator` seam.
@@ -366,6 +369,8 @@ stateDiagram-v2
 | `hl7_internal_mrn_authority` (per-tenant) | must NOT collide with any existing `patient_identifier.issuer` value for the tenant | on `organization.settings` write (trigger-enforced, D14) |
 
 ### 2.6 Side Effects
+
+> **Naming note:** the `patient.*` topics below are in-module shorthand; the canonical wire names are the `m5.`-prefixed forms in `apps/backend/src/modules/05-patient/events-by-m5.ts` (e.g. `m5.patient.created`), and the two amendment outcomes are a single `m5.patient.amendment_decided` event.
 
 | When | What | Where consumed |
 |---|---|---|
@@ -2381,7 +2386,7 @@ if (recentAudit?.some((a: any) => a.payload?.sourceRef?.id === payload.proposalI
 
 ## 5. Frontend Screens
 
-Delivered in `apps/frontend` (admin + clinical web). Portal-side amendment submission lives in `apps/portal` (Module 31, consumes our routes).
+Delivered in `apps/web` (admin + clinical web). Portal-side amendment submission lives in `apps/portal` (Module 31, consumes our routes).
 
 ### 5.1 Screen Inventory
 

@@ -1,5 +1,8 @@
 # Module 6 — Admission, Election & Certification Specification
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Module ID:** 6
 **Phase:** 1 (clinical spine — Engrace go-live blocker; lands immediately after Module 5 Patient and Module 39 Consent)
 **Depends on:** 1 (Foundation — `packages/db`, `packages/tenancy`, `withOrgContext`, RLS generator, `audit()` helper, outbox helper, idempotency, error envelope), 2 (Identity — session/actor resolution), 3 (Authorization — `requirePermission` / `requireAbac` contract; the catalog this module contributes to), 4 (Audit — write-audit trigger generator, read-audit helper, destruction-cert workflow, retention classes), 5 (Patient & Demographics — `Patient`, `Payer`, `PrivacyFlag`), 29 (External Interfaces — inbound HL7 v2 ADT proposal-accepted outbox events consumed by the `AdmissionEventApplier`), 38 (Terminology — ICD-10 validation, hospice diagnosis value sets, level-of-care revenue/Q-code mapping), 39 (Consent & Authorization Management — election authority verification, DPOA gating for proxy-signed elections, 42 CFR Part 2 redaction), 40 (Master Data Management — `ExternalPhysician` for attending NPIs, `Facility` for transfer/place-of-service references, `ReferralSource`)
@@ -55,7 +58,7 @@ This list is binding. Every item here is owned by another module and reached via
 - **Patient demographics, payers, addresses, caregivers, privacy flags** — Module 5. M6 references `patient.id`; it does not write to M5 tables.
 - **DPOA verification, advance-directive content, election-by-proxy authority, 42 CFR Part 2 consent** — Module 39. When an election is signed by a representative rather than the patient, M6 calls M39 to verify the active DPOA-healthcare consent before allowing the signature; the consent is M39's record.
 - **The signed-form PDF artifact** (ElectionStatement, Revocation, CTI form, F2F form, Notice of Rights, Discharge Summary, NOMNC) — Module 22. M6 emits a structured event with the data; M22 renders the document from its FormTemplate library, stores it under retention class `compliance`, and back-references the `document_id` on the M6 row.
-- **The NOE/NOTR wire artifact submitted to the MAC** — Module 23. M6's `election.activated` and `revocation.signed` outbox events are M23's trigger. M23 owns the 5-day timeliness math against the *filing* and the claim-validation gate; M6 owns the underlying *clinical effective date*.
+- **The NOE/NOTR wire artifact submitted to the MAC** — Module 23. M6's `m6.election.signed` / `m6.election.period_started` and `m6.revocation.created` outbox events (the as-built names) are M23's trigger. M23 owns the 5-day timeliness math against the *filing* and the claim-validation gate; M6 owns the underlying *clinical effective date*.
 - **The visit note for the F2F encounter** (the narrative, vitals, the clinician's documentation) — Module 8. M6 owns the F2F *attestation* (the cert-gating fact); when a clinical note exists, it lives in M8 and is referenced from M6 via `encounter_id`.
 - **The HOPE assessment, PPS/FAST/PAINAD/ESAS, the comprehensive assessment content** — Module 9. M6 holds the compliance clock for the 48-hour initial and 5-day comprehensive assessments; M9 signals completion via outbox `assessment.signed` and M6 closes the corresponding ComplianceWindow.
 - **The care plan (IPOC)** — Module 7. The 5-day care-plan gate fires from M6's compliance engine; the plan itself is M7's domain.
@@ -1250,7 +1253,7 @@ The `AdmissionEventApplier` composes existing tables (`discharge_event`, `compli
 
 ### 3.5 Owned Tables Update for `module-manifest.ts`
 
-The manifest's M6 entry currently has `ownedTables: []`. With this spec it becomes:
+The manifest's M6 entry now carries the twelve owned tables (this patch was applied — note `election_addendum` is mandated by ADR-0015 D1 but is in neither the manifest nor the schema yet). At lock time it was:
 
 ```typescript
 { id: 6, name: "Admission, Election & Certification",
@@ -2787,7 +2790,7 @@ This method already exists (per the `compliance_window` table operations). The M
 -----
 ## 5. Frontend Screens
 
-All M6 screens live in `apps/frontend/src/modules/06-admission/`. They are built on TanStack Router + TanStack Query + Mantine v7 (architecture §16), with form validation by `@tanstack/react-form` + TypeBox-derived validators (single source of truth: route schema → form schema generator from `packages/domain/admission/src/schemas/`). All screens are WCAG 2.1 AA: keyboard-traversable, color-contrast-checked at 4.5:1 minimum, every form field has `aria-label`/`aria-describedby` for errors. Routes follow the architecture's `/app/...` convention.
+All M6 screens live in `apps/web/src/modules/06-admission/`. They are built on TanStack Router + TanStack Query + Mantine v7 (architecture §16), with form validation by `@tanstack/react-form` + TypeBox-derived validators (single source of truth: route schema → form schema generator from `packages/domain/admission/src/schemas/`). All screens are WCAG 2.1 AA: keyboard-traversable, color-contrast-checked at 4.5:1 minimum, every form field has `aria-label`/`aria-describedby` for errors. Routes follow the architecture's `/app/...` convention.
 
 ### 5.1 Screen Inventory
 
@@ -3548,7 +3551,7 @@ Test is parameterized to also run under **break-glass active**: break-glass with
 
 ### 9.6 E2E (Playwright)
 
-`apps/frontend/test/e2e/m6/*.spec.ts`:
+`apps/web/test/e2e/m6/*.spec.ts`:
 
 | Scenario | Coverage |
 |---|---|

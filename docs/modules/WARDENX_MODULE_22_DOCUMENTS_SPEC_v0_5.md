@@ -1,5 +1,8 @@
 # Module 22 — Document Management Specification
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 **Spec version:** v0.5 — the §4.10 outbox events + §4.9 M36 alert payloads migrated to the
 `m22.` namespace per M01 D8 / M36 D10 / M03 D9 (47 names across `m22.document.*`,
 `m22.intake.*`, `m22.extraction.*`, `m22.form_template.published`, `m22.tenant_overlay.published`,
@@ -2279,7 +2282,7 @@ The `BaaStatusProvider` is registered in M3's `REQUIRED_SEAMS` list per M40 v0.3
 -----
 ## 5. UI Surfaces
 
-M22 ships three categories of UI: (a) **clinician-facing web surfaces** under `apps/frontend/src/modules/22-documents/`, (b) **field-clinician mobile surfaces** under `apps/mobile/src/modules/22-documents/` (Capacitor), and (c) **portal surfaces** under `apps/portal/src/modules/22-documents/` consumed by M31 (Patient/Family Portal — forward-seam). All three share the same TanStack Query keys and TanStack Router routes (`/documents`, `/documents/:documentId`, `/intake`, `/intake/:batchId`) where applicable.
+M22 ships three categories of UI: (a) **clinician-facing web surfaces** under `apps/web/src/modules/22-documents/`, (b) **field-clinician mobile surfaces** under `apps/mobile/src/modules/22-documents/` (Capacitor), and (c) **portal surfaces** under `apps/portal/src/modules/22-documents/` consumed by M31 (Patient/Family Portal — forward-seam). All three share the same TanStack Query keys and TanStack Router routes (`/documents`, `/documents/:documentId`, `/intake`, `/intake/:batchId`) where applicable.
 
 ### 5.1 Screen Inventory (Web)
 
@@ -2337,7 +2340,7 @@ These screens are owned by the portal app shell (M31) but consume M22 reader sea
 
 ### 5.4 Component Library Integration
 
-All screens use the `@wardenx/ui` design system (M1-owned). M22-specific components ship from `packages/forms/components/` and `apps/frontend/src/modules/22-documents/components/`:
+All screens use the `@wardenx/ui` design system (M1-owned). M22-specific components ship from `packages/forms/components/` and `apps/web/src/modules/22-documents/components/`:
 
 - `<DocumentList />` — virtualized list, server-side pagination via TanStack Query infinite query; columns are user-configurable and persisted in M40 user preferences
 - `<DocumentPreview />` — wraps `<iframe>` / PDF.js per browser capability; falls back to download link

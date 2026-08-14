@@ -1,5 +1,8 @@
 # WardenX — Module 35 — Subscription Billing — Lock-Grade Spec v0.3
 
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) are ground truth for as-built behavior. Mechanism choices named here may be superseded — see ADR-0036…0040 and ADR-0030/0032/0035 for the recorded divergences (outbox not Socket.IO, TypeScript not Python sidecars, app-layer AES-256-GCM not pgcrypto, pure transition tables not XState, hand-rolled HTTP hardening not `@fastify/*`, Vite + react-router not TanStack Start).
+
+
 > **Status:** Locked v0.3 — buildable
 > **v0.3 change:** outbox events / alert payloads migrated to the `m35.` namespace
 > (`m35.subscription.*`, `m35.invoice.*`, `m35.payment_method.*`, `m35.dunning.*`,
@@ -2095,7 +2098,7 @@ The **outbound Stripe idempotency key** (§4.13, `stripe_api_call_audit`) is a *
 
 ### 5.1 Web Application (Tenant-Facing, TanStack Router)
 
-All M35 tenant screens live under `apps/frontend/src/modules/35-subscription-billing/` and are gated by route loaders that fetch typed DTOs (not raw Drizzle rows). The chrome banner ("Billing blocked — please update payment method") is mounted globally based on `GET /v1/billing/status` polled every 5 minutes.
+All M35 tenant screens live under `apps/web/src/modules/35-subscription-billing/` and are gated by route loaders that fetch typed DTOs (not raw Drizzle rows). The chrome banner ("Billing blocked — please update payment method") is mounted globally based on `GET /v1/billing/status` polled every 5 minutes.
 
 | Route | Primary actor | Purpose |
 |---|---|---|
@@ -2895,7 +2898,7 @@ The build is organized into four phases. Each task is granular enough to map to 
 - **T-27** Implement promo code flow + `promo_applicable_to_subscription` predicate
 - **T-28** Implement `revenue-snapshot` cron + `RevenueMetricsProvider` seam
 - **T-29** Implement `payment-method-expiry-watch` cron + alerts
-- **T-30** Frontend: tenant subscription / plan picker / payment methods / invoices / usage screens (apps/frontend)
+- **T-30** Frontend: tenant subscription / plan picker / payment methods / invoices / usage screens (apps/web)
 - **T-31** Frontend: dunning banner + billing-blocked chrome
 - **T-32** Frontend: admin plan editor + meter management (apps/admin)
 - **T-33** Frontend: admin subscriptions / refunds / promos / revenue dashboards
@@ -2942,7 +2945,7 @@ The build is organized into four phases. Each task is granular enough to map to 
 | **D20** | Published seams | **Six seams** (`SubscriptionStateProvider`, `BillingStatusProvider`, `UsageMeteringIngest`, `PatientCounterProvider`, `RevenueMetricsProvider`, `PlanCatalogReader`) registered into M1's typed `SeamRegistry`. Boot refuses on missing registration. | (a) Three seams (collapse the read-paths) — kills clean separation of concerns. (b) Twelve seams (one per route) — over-decomposition; brittle interfaces. | M28 D17 / M29 D-pattern |
 | **D21** | Outbox subscription catalog | **8 inbound subscriptions:** `m2.organization.{activated,suspended,closed}`, `m2.session.created`, `m5.patient.{created,status_changed,deceased,merged}`. Each handler idempotent on `source_event_id`. | Skipping `m5.patient.merged` — leaves pseudonym aggregates wrong post-merge. Skipping `m2.session.created` — kills per-user metering. | §4.12 |
 | **D22** | STRIDE coverage | **Per §8.3 table** — 16 named threats mapped to specific mitigations. The HMAC pseudonym (D6) makes the worst-case breach scenario commercial-only, not PHI. | A weaker threat model that ignores tampering-at-rest or insider-approver — opens audit gaps. | §8.3 |
-| **D23** | Manifest patch | **`M35.dependsOn = [1, 2, 3, 4, 5, 28, 29, 32, 36, 38]`** (the architecture's `[34]` was build-sequence shorthand, not a code dependency); `M35.codePaths = ['packages/subscription-billing', 'apps/backend/src/modules/35-subscription-billing']`; `M35.ownedTables` populated with 19 tables (12 tenant-scoped + 5 platform-shared + 2 platform-only Stripe audit); 5 ABAC predicates registered into M3; 6 seams published. (ratified by ADR-0025 — M35.dependsOn drops 34; seam both ways.) | Keeping `dependsOn=[34]` — omits the actual import surface (M2 OrganizationReader, M5 outbox subscriptions, M36 alerts, M38 currency, M4 audit, etc.). | §13.1 |
+| **D23** | Manifest patch | **`M35.dependsOn = [1, 2, 3, 4, 5, 28, 29, 32, 36, 38]`** (the architecture's `[34]` was build-sequence shorthand, not a code dependency); `M35.codePaths = ['packages/subscription-billing', 'apps/backend/src/modules/35-subscription-billing']`; `M35.ownedTables` populated with 19 tables (12 tenant-scoped + 5 platform-shared + 2 platform-only Stripe audit); 5 ABAC predicates registered into M3; 6 seams published. (ADR-0025 ratifies ONLY the removal of `34` and leaves the rest of the edge set out of scope; the LIVE manifest reads `dependsOn: [1]`, four codePaths incl. the web/admin slices, and 21 ownedTables — this row's fuller edge list is the relationship inventory, not the manifest.) | Keeping `dependsOn=[34]` — omits the actual import surface (M2 OrganizationReader, M5 outbox subscriptions, M36 alerts, M38 currency, M4 audit, etc.). | §13.1 |
 | **D24** | Direction of M34↔M35 dependency | **M34 depends on M35** (M34 consumes M35's `SubscriptionStateProvider` + `BillingStatusProvider` for its tenant admin console). **M35 does NOT depend on M34.** M35 reads M2's `Organization.status` directly and consumes `OnboardingStatusProvider` from M34 as a forward-seam deny-stub (real wiring when M34 locks). (ratified by ADR-0025 — M35.dependsOn drops 34; seam both ways.) | Reverse direction per architecture §20 sketch — that direction couples M35 to a not-yet-existing M34 and inverts the actual seam ownership (M35 is upstream of M34 in the read-direction graph). | §1.2 boundaries; manifest dependency-direction discipline (memory) |
 
 -----

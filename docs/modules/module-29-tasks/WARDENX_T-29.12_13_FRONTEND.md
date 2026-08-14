@@ -58,7 +58,7 @@ Per architecture §15: TanStack Router + TanStack Query + TanStack Form, shadcn/
 **Shared infra files (both PRs depend on these):**
 
 ```
-apps/frontend/src/modules/29-external-interfaces/
+apps/web/src/modules/29-external-interfaces/
 ├── _shared/
 │   ├── api-client.ts                    # typed fetch wrappers for the M29 REST surface
 │   ├── hooks/
@@ -90,7 +90,7 @@ apps/frontend/src/modules/29-external-interfaces/
 ### 2.1 API client
 
 ```tsx
-// apps/frontend/src/modules/29-external-interfaces/_shared/api-client.ts
+// apps/web/src/modules/29-external-interfaces/_shared/api-client.ts
 import { z } from 'zod'
 
 const BASE = '/api/v1/hl7'
@@ -174,7 +174,7 @@ export const m29Api = {
 ### 2.2 TanStack Query hooks (representative — proposals)
 
 ```tsx
-// apps/frontend/src/modules/29-external-interfaces/_shared/hooks/use-proposals.ts
+// apps/web/src/modules/29-external-interfaces/_shared/hooks/use-proposals.ts
 import { useQuery, useMutation, useQueryClient, queryOptions } from '@tanstack/react-query'
 import { m29Api } from '../api-client'
 
@@ -234,7 +234,7 @@ export function useDiscardProposal() {
 The M36 Socket.IO client publishes events on `org:<orgId>` rooms. M29 subscribes to relevant event names and invalidates cached queries.
 
 ```tsx
-// apps/frontend/src/modules/29-external-interfaces/_shared/hooks/use-realtime-inbox.ts
+// apps/web/src/modules/29-external-interfaces/_shared/hooks/use-realtime-inbox.ts
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSocket } from '@wardenx/foundation/realtime'
@@ -287,7 +287,7 @@ Mounted once at the M29 routes layout level so every M29 page benefits.
 ### 3.1 `FeedListPage.tsx`
 
 ```tsx
-// apps/frontend/src/modules/29-external-interfaces/feed-admin/FeedListPage.tsx
+// apps/web/src/modules/29-external-interfaces/feed-admin/FeedListPage.tsx
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -402,7 +402,7 @@ function CredentialExpiryBadge({ expiresAt }: { expiresAt: string | null }) {
 Shows feed configuration, recent message volume sparkline, the active credential, the rotation history, the partner-IP allowlist.
 
 ```tsx
-// apps/frontend/src/modules/29-external-interfaces/feed-admin/FeedDetailPage.tsx
+// apps/web/src/modules/29-external-interfaces/feed-admin/FeedDetailPage.tsx
 import { useParams } from '@tanstack/react-router'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -478,7 +478,7 @@ export function FeedDetailPage() {
 This is the most consequential T-29.12 component because it gates real PKI changes.
 
 ```tsx
-// apps/frontend/src/modules/29-external-interfaces/feed-admin/CredentialRotationCard.tsx
+// apps/web/src/modules/29-external-interfaces/feed-admin/CredentialRotationCard.tsx
 import { useState } from 'react'
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -693,7 +693,7 @@ function ExecuteDialog({ rotation }: { rotation: any }) {
 ### 3.4 `NppesAdminPage.tsx` (sync runs + provider lookup)
 
 ```tsx
-// apps/frontend/src/modules/29-external-interfaces/nppes-admin/NppesAdminPage.tsx
+// apps/web/src/modules/29-external-interfaces/nppes-admin/NppesAdminPage.tsx
 import { useState } from 'react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -809,7 +809,7 @@ function ProviderLookup() {
 ### 4.1 `ProposalInboxPage.tsx`
 
 ```tsx
-// apps/frontend/src/modules/29-external-interfaces/proposals/ProposalInboxPage.tsx
+// apps/web/src/modules/29-external-interfaces/proposals/ProposalInboxPage.tsx
 import { useState } from 'react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
@@ -891,7 +891,7 @@ function ProposalList({ ownerModule }: { ownerModule?: 'm5' | 'm6' }) {
 ### 4.2 `ProposalReviewPage.tsx` (diff + accept/reject/discard)
 
 ```tsx
-// apps/frontend/src/modules/29-external-interfaces/proposals/ProposalReviewPage.tsx
+// apps/web/src/modules/29-external-interfaces/proposals/ProposalReviewPage.tsx
 import { useState } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -1056,7 +1056,7 @@ function ProposalDecisionPanel({ proposal }: { proposal: any }) {
 ## 5. T-29.13 Deliverable B: Unmatched Lab Queue
 
 ```tsx
-// apps/frontend/src/modules/29-external-interfaces/unmatched-labs/UnmatchedLabsPage.tsx
+// apps/web/src/modules/29-external-interfaces/unmatched-labs/UnmatchedLabsPage.tsx
 import { useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -1156,7 +1156,7 @@ function UnmatchedLabCard({ item }: { item: { observation: any; link: any } }) {
 ## 6. T-29.13 Deliverable C: SUD Privileged Unredact
 
 ```tsx
-// apps/frontend/src/modules/29-external-interfaces/unmatched-labs/SudUnredactRequestDialog.tsx
+// apps/web/src/modules/29-external-interfaces/unmatched-labs/SudUnredactRequestDialog.tsx
 import { useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -1262,7 +1262,7 @@ export function SudUnredactRequestDialog({
 ## 7. Routing
 
 ```tsx
-// apps/frontend/src/modules/29-external-interfaces/routes.ts
+// apps/web/src/modules/29-external-interfaces/routes.ts
 import { createRoute, createRootRouteWithContext } from '@tanstack/react-router'
 
 export const m29Route = createRoute({
