@@ -5,9 +5,13 @@ import type { DbClient } from "@wardenx/db";
 // This is M30's FIRST M1 publish. Before it, `registerQualityPublishedSeams` existed in @wardenx/quality
 // with no caller anywhere in apps/backend, and M30's seam names were not members of the M1
 // `SeamContracts` / `REQUIRED_SEAMS` — so M30 was reachable cross-module ONLY through its §4.10 outbox
-// events. M22's quality report, M28's FHIR MeasureReport/AdverseEvent, M33's executive dashboards and
-// M34's FY-rollover tenant gate had no read path to the measure ledger, the incident register, QAPI, CoP
-// status, or the SRA posture.
+// events, with no read path to the measure ledger, the incident register, QAPI, CoP status, or the SRA
+// posture.
+//
+// GAP-066 — WHO CONSUMES THIS TODAY: nobody. The four consumers this file used to name (M22's quality
+// report, M28's FHIR MeasureReport/AdverseEvent, M33's executive dashboards, M34's FY-rollover tenant
+// gate) are unbuilt FEATURES, not unwired bindings — none of those surfaces exists. The impls below are
+// live and tested against the M1 registry; they are simply the read path a future consumer will use.
 //
 // The package owns the wiring shape: `registerQualityPublishedSeams(registrar, seams)` takes the M1
 // `registerSeam` as an injected PORT so @wardenx/quality keeps its no-apps-backend edge. This file is the

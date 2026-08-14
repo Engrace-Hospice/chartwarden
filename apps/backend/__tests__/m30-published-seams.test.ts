@@ -8,6 +8,13 @@
 // These tests pin the two halves that matter: the seams are DECLARED (so boot validation covers them and
 // an unbound consumer gets a fail-closed throw rather than a fabricated quality number), and they RESOLVE
 // once M30 registers the live providers.
+//
+// GAP-066 — what this file does NOT prove, and was mistaken for proof: that anything CONSUMES these five.
+// Nothing does. This suite is the only `getSeam("QualityMeasureProvider")` caller in the repo, and it
+// tests the publish/resolve mechanics, not a cross-module read. The four intended consumers (M22's
+// quality report, M28's FHIR MeasureReport/AdverseEvent, M33's executive dashboards, M34's FY-rollover
+// tenant gate) are unbuilt features. A real consumer, when one lands, brings its OWN live test asserting
+// real M30 data comes back through the seam — this file stays about the registry contract.
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   REQUIRED_SEAMS,
