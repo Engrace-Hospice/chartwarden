@@ -1137,7 +1137,15 @@ export function createDbEmarBackend(
           {
             worksheetId: id,
             formTemplate: "reconciliation_worksheet_v1",
-            renderPayload: {},
+            // GAP-023/024/038 — `renderPayload` was `{}` because nothing consumed this event; M22's live
+            // render consumer now files the resulting `document` against a patient, and an empty payload
+            // would file it with a NULL `patient_id` on a chart artifact that plainly has one.
+            renderPayload: {
+              patientId: w.patientId,
+              admissionId: w.admissionId,
+              triggerKind: w.triggerKind,
+              finalizedAt: finalizedAt.toISOString(),
+            },
           },
         );
         return readWorksheet(tx, id);

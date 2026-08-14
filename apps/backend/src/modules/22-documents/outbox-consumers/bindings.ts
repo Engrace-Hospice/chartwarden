@@ -1,14 +1,15 @@
-// apps/backend/src/modules/22-documents/outbox-consumers/bindings.ts — M22-T06 the §4.11 forward-declared
-// (event → consumer) bindings. PHASE-1 DEFERRED (M7-T08 / M6-T11 precedent).
+// apps/backend/src/modules/22-documents/outbox-consumers/bindings.ts — M22-T06 the §4.11 (event → consumer)
+// bindings. LIVE since GAP-023/024/038.
 //
-// Each `*.document_requested` event (and the two real-seam gates it threads through) is DECLARED here — the
-// contract the boot outbox dispatcher will bind to once the live render worker lands — but is NOT live-wired
-// into the dispatcher yet. What ships now is the PURE, fully-tested decision core ({@link decideDocumentRequest})
-// plus the two impure seam resolvers ({@link resolveSudConsentPresent} / {@link resolveExternalBaaActive}).
-// Wiring later is: for each binding, register the handler that (1) resolves `DocumentRequestFacts` from the
-// outbox-dedup registry + the T04 template table + (when the payload flags it) the M39/M40 seams, (2) calls
-// `decideDocumentRequest`, (3) executes the returned action through the T04 `DocumentRenderer` seam, and
-// (4) emits `m22.document.rendered` with the back-ref so the source module applies `document_id`.
+// Each consumed `*.document_requested` event is declared here and routed to the single shared render
+// consumer that ./render-consumer.ts builds and `apps/backend/src/index.ts` registers with the boot outbox
+// dispatcher: it (1) resolves `DocumentRequestFacts` from the `document` table + the T04 template table +
+// (when the payload flags it) the M39/M40 seams, (2) calls `decideDocumentRequest`, and (3) executes the
+// returned action through the T04 `DocumentRenderer` seam.
+//
+// STILL NOT DONE: step (4), emitting `m22.document.rendered` with the back-ref so the source module stamps
+// `document_id` on its own row. That needs an M22 event catalog, which does not exist — see the note in
+// ./decide-document-request.ts.
 //
 // The event names are STRING literals only — M22 reads every source module solely through the foundation
 // outbox, never a `dependsOn` edge or a producer-package import (§4 boundary rule, M22 deps stay `[1, 5]`).
@@ -33,5 +34,7 @@ export const M22_DOCUMENT_REQUEST_BINDINGS: readonly DocumentRequestBinding[] =
     consumerName: M22_DOCUMENT_RENDER_CONSUMER,
   }));
 
-/** True in Phase 1 — no live render worker; the bindings are declared but not wired into the dispatcher. */
-export const M22_DOCUMENT_REQUEST_BINDINGS_DEFERRED = true;
+/** False since GAP-023/024/038 — `buildM22DocumentRequestConsumer` is registered with the boot dispatcher.
+ * Kept (rather than deleted) so the assertion that used to pin it `true` now pins it `false`: this flag is
+ * the one place a reader can check whether the §4.11 handshake is theory or wiring. */
+export const M22_DOCUMENT_REQUEST_BINDINGS_DEFERRED = false;

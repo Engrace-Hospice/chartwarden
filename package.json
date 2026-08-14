@@ -87,6 +87,7 @@
     "test:m22:write:live": "vitest run apps/backend/__tests__/m22-documents-write.live.test.ts",
     "test:m22:read:live": "vitest run apps/backend/__tests__/m22-documents-read-service.live.test.ts",
     "test:m4:read-audit:live": "vitest run apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts",
+    "test:m22:render-handshake:live": "vitest run apps/backend/__tests__/gap-023-024-038-render-handshake.live.test.ts",
     "test:m37:write:live": "vitest run apps/backend/__tests__/m37-ipu-write.live.test.ts",
     "test:rls:live:m7": "vitest run packages/db/migrations/__tests__/m7-rls-isolation.live.test.ts",
     "test:rls:live:m8": "vitest run packages/db/migrations/__tests__/m8-rls-isolation.live.test.ts",

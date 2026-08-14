@@ -922,6 +922,17 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       { orderId: id, kind: r.kind, signedBy: userId, onBehalf },
       `${id}:signed`,
     );
+    // GAP-023 — the §4.4 M22 render handshake, mirroring the Drizzle write path's emission so the slice
+    // and production agree on the event stream a sign produces.
+    emit(
+      "m11.order.document_requested",
+      {
+        orderId: id,
+        formTemplate: "order_record",
+        renderPayload: { patientId: r.patientId, kind: r.kind, signedAt: r.signedAt },
+      },
+      `${id}:document_requested`,
+    );
     return Promise.resolve(view(r));
   }
 }

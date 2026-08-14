@@ -174,6 +174,42 @@ export function createDbDoseSpotBackend(
   }
 
   /** Load a medication_order row (RLS-scoped) or the non-leaking 404. */
+  /**
+   * GAP-024 — the §4.4 M22 render handshake for a signed medication order. Declared in the catalog as a
+   * "mirror of `signed`" since M12-T04 and named in M22's consumer allowlist just as long, but emitted from
+   * nowhere: the medication-order PDF was never requested. Shared by BOTH sign paths (the ordinary
+   * `signOrder` and the EPCS `signControlledComplete`) so the controlled-substance route cannot quietly
+   * skip the render the moment EPCS is enabled.
+   *
+   * `formTemplate` is M22's PUBLISHED template key (`medication_order`) — M22 refuses a key it cannot
+   * resolve. `patientId` rides inside `renderPayload` (catalog schema `Type.Unknown()`, so no payload-schema
+   * change) because the rendered `document` files against the patient's chart.
+   */
+  async function emitDocumentRequest(
+    tx: DbClient,
+    organizationId: string,
+    order: MoRow,
+    signedAt: Date,
+  ): Promise<void> {
+    await emit(
+      tx,
+      organizationId,
+      "m12.medication_order.document_requested",
+      "medication_order",
+      order.id,
+      {
+        orderId: order.id,
+        formTemplate: "medication_order",
+        renderPayload: {
+          patientId: order.patientId,
+          admissionId: order.admissionId,
+          signedAt: signedAt.toISOString(),
+          isControlledSubstance: order.isControlledSubstance,
+        },
+      },
+    );
+  }
+
   async function loadOrder(tx: DbClient, id: string): Promise<MoRow> {
     const [r] = await tx.select().from(MO).where(eq(MO.id, id)).limit(1);
     if (!r) throw new NotFoundError(`medication order ${id} not found`);
@@ -394,6 +430,7 @@ export function createDbDoseSpotBackend(
           signedAt: at.toISOString(),
           viaVerbal: fromVerbal,
         });
+        await emitDocumentRequest(tx, organizationId, r, at);
         return readOrder(tx, id);
       });
     },
@@ -435,6 +472,7 @@ export function createDbDoseSpotBackend(
           viaEpcs: true,
           secondFactorType: "totp",
         });
+        await emitDocumentRequest(tx, organizationId, r, at);
         return readOrder(tx, id);
       });
     },

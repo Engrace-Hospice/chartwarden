@@ -56,6 +56,14 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     defaultTitle: "Face-to-Face Encounter",
   },
   nor: { aggregateType: "nor", retentionClass: "compliance", defaultTitle: "Notice of Right" },
+  // GAP-038 — the CMS-R-131 Advance Beneficiary Notice M23 requests via `m23.abn.required`. Same class as
+  // the other CMS beneficiary notices above (`nor`): a signed notice of non-coverage is compliance
+  // evidence, not a clinical record.
+  abn: {
+    aggregateType: "abn",
+    retentionClass: "compliance",
+    defaultTitle: "Advance Beneficiary Notice of Noncoverage",
+  },
   election_statement: {
     aggregateType: "election_statement",
     retentionClass: "compliance",

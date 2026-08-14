@@ -325,6 +325,7 @@ import {
   registerSupplyEraser,
 } from "./modules/21-supplies/index";
 import {
+  buildM22DocumentRequestConsumer,
   createDrizzleDocumentEraseStore,
   createDrizzleDocumentReaderStore,
   createDrizzleDocumentSeamStore,
@@ -1358,16 +1359,12 @@ export function wireModuleSeams(
   // note in the same diff.
   if (deps.db) {
     const t2 = "TASK-002 (bind Drizzle seam stores)";
-    // M22 (narrowed by TASK-002): the five readers are Drizzle and the object store REFUSES loudly
-    // (DegradedError) — what remains in-memory is the renderer's document-ROW write store, which is
-    // unreachable-for-success anyway (every render refuses at the object write) but is still a Map
-    // wearing a contract, so it stays on the ledger until the MinIO adapter + Drizzle write store land.
-    noteInMemoryBinding({
-      kind: "seam",
-      label:
-        "M22 registerDocumentSeams — DocumentRenderer's document-row WRITE store in-memory (readers Drizzle; object store refuses pending the MinIO adapter)",
-      task: "M22 MinIO adapter + Drizzle render-write store",
-    });
+    // M22's note is GONE (GAP-023/024/038 removes it): GAP-095 bound `store:` to the real Drizzle
+    // document-row write store — twenty lines above, at the registerDocumentSeams call — but left this
+    // note behind, so a stale line kept claiming a Map stood behind the renderer and, since this ledger
+    // REFUSES a production boot, kept refusing one. The remaining M22 gap is the object store, and that
+    // one binds `createRefusingObjectStore()` (a loud DegradedError naming the missing MINIO_* contract)
+    // rather than a Map: refusing is the correct posture, not a fake-success this ledger exists to catch.
     if (!deps.outboxPublisher) {
       // Slice boots that pass a db but no catalog publisher keep the in-memory PatientMutator.
       noteInMemoryBinding({
@@ -3797,6 +3794,27 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // m6-owned acceptances can never complete off M5's skip.
           buildM6ProposalAcceptedConsumer({ db: dbHandle.db, outbox: m6OutboxPublisher }),
           buildM39ConsentRenderConsumer(dbHandle.db),
+          // M22 §4.11 (GAP-023/024/038) — the LIVE render handshake. Every `*.document_requested` row was
+          // written by a source module and drained by NOBODY: the decider, the two gates, the renderer and
+          // (since GAP-095) the Drizzle document-row store all existed, but no binding ever joined them, so
+          // M13's finalize-reconciliation request sat `pending` forever. `store:` is a SECOND
+          // `createDrizzleDocumentSeamStore` instance over the same tables as the one behind the renderer
+          // seam — each opens its own `withOrgContext` per call, so sharing an instance would buy nothing.
+          buildM22DocumentRequestConsumer({
+            store: createDrizzleDocumentSeamStore(dbHandle.db),
+            // A gate refusal is a settled decision, not a delivery failure — the row completes, so without
+            // this sink a refused SUD/BAA render would be silent. Not the DLQ path (that is a throw).
+            onRefusal: (r) =>
+              app.log.warn(
+                {
+                  event: r.eventType,
+                  org: r.organizationId,
+                  aggregate: r.aggregateId,
+                  detail: r.detail,
+                },
+                `M22 render refused: ${r.kind}`,
+              ),
+          }),
           // WX-PR-012 — the LIVE `m25.parse-and-post` consumer: M25 self-pulls (no other module produces
           // `m25.edi.835_received`), so this drives the parse + transactional-post + denial-seed half of
           // the pipeline the `remittance.receive` route's `receiveAdvice` emits into. The same

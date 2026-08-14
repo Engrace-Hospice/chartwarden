@@ -1,15 +1,17 @@
 // apps/backend/__tests__/document-consumers.test.ts — M22-T06 the §4.11 outbox subscriptions + §4.12
-// disclosure gates. Exercises the pure {@link decideDocumentRequest} over several source-module render
-// requests (M6 / M9 / M11 / M12 / M13 / M14 / M16 / M23), the D14 idempotency no-op, the §7.16 SUD-consent
-// gate, and the §4.12 external-BAA presign gate — plus the two impure real-seam resolvers
-// ({@link resolveSudConsentPresent} / {@link resolveExternalBaaActive}) over fake seams registered into the
-// M1 registry. No DB; the render handshake stays pure, the binding is forward-declared/deferred.
+// disclosure gates. Exercises the pure {@link decideDocumentRequest} over each LIVE source-module render
+// request (M11 / M12 / M13 / M23), the D14 idempotency no-op, the §7.16 SUD-consent gate, and the §4.12
+// external-BAA presign gate — plus the two impure real-seam resolvers ({@link resolveSudConsentPresent} /
+// {@link resolveExternalBaaActive}) over fake seams registered into the M1 registry. No DB.
+// The consumer that feeds this decider from the dispatcher is ./document-render-consumer.test.ts (unit)
+// and ./gap-023-024-038-render-handshake.live.test.ts (over real Postgres).
 import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
   type DocumentRequestEvent,
   type DocumentRequestFacts,
   type DocumentRequestPayload,
+  M22_ANTICIPATED_DOCUMENT_REQUEST_EVENTS,
   M22_DOCUMENT_RENDER_CONSUMER,
   M22_DOCUMENT_REQUEST_BINDINGS,
   M22_DOCUMENT_REQUEST_BINDINGS_DEFERRED,
@@ -50,21 +52,32 @@ function facts(over: Partial<DocumentRequestFacts> = {}): DocumentRequestFacts {
 // ── §4.11 event catalog + forward-declared binding ──────────────────────────────────────────────────────
 
 describe("M22-T06 — §4.11 outbox subscriptions catalog", () => {
-  it("subscribes to exactly the eight `*.document_requested` source-module events", () => {
+  it("subscribes to exactly the render-request events some module's catalog actually declares", () => {
     expect(M22_DOCUMENT_REQUEST_EVENTS).toEqual([
-      "m6.document_requested",
-      "m9.assessment.document_requested",
       "m11.order.document_requested",
       "m12.medication_order.document_requested",
       "m13.reconciliation.document_requested",
-      "m14.packet.document_requested",
-      "m16.bereavement.document_requested",
-      "m23.abn.document_requested",
+      "m23.abn.required",
     ]);
   });
 
-  it("forward-declares one binding per event, all routed to the shared render consumer, DEFERRED", () => {
-    expect(M22_DOCUMENT_REQUEST_BINDINGS_DEFERRED).toBe(true);
+  // GAP-038 — the regression this list exists to prevent. M22 used to subscribe to
+  // `m23.abn.document_requested`, a name NO module declares; M23's catalog declares `m23.abn.required`.
+  // The dispatcher routes off the catalog, so the subscription was permanently unreachable while looking
+  // exactly like coverage.
+  it("names no event that is not in some module's catalog (the ABN-mismatch regression)", () => {
+    expect(M22_DOCUMENT_REQUEST_EVENTS as readonly string[]).not.toContain(
+      "m23.abn.document_requested",
+    );
+    expect(M22_DOCUMENT_REQUEST_EVENTS).toContain("m23.abn.required");
+    // The anticipated list is where a name with no declaring producer belongs — listed, NOT subscribed.
+    for (const e of M22_ANTICIPATED_DOCUMENT_REQUEST_EVENTS) {
+      expect(M22_DOCUMENT_REQUEST_EVENTS).not.toContain(e);
+    }
+  });
+
+  it("declares one binding per event, all routed to the shared render consumer, LIVE", () => {
+    expect(M22_DOCUMENT_REQUEST_BINDINGS_DEFERRED).toBe(false); // GAP-023/024/038 wired the dispatcher
     expect(M22_DOCUMENT_REQUEST_BINDINGS).toHaveLength(M22_DOCUMENT_REQUEST_EVENTS.length);
     for (const b of M22_DOCUMENT_REQUEST_BINDINGS) {
       expect(b.consumerName).toBe(M22_DOCUMENT_RENDER_CONSUMER);
@@ -82,12 +95,10 @@ describe("M22-T06 — decideDocumentRequest renders + emits a back-ref (§4.11)"
     aggregateType: DocumentRequestFacts["aggregateType"];
     retentionClass: DocumentRequestFacts["retentionClass"];
   }> = [
-    {
-      event: "m6.document_requested",
-      templateKey: "cti",
-      aggregateType: "cti",
-      retentionClass: "compliance",
-    },
+    // One row per LIVE consumed event, each paired with the template that event genuinely asks for (the
+    // pairs `REQUEST_SHAPES` in render-consumer.ts produces). The table used to carry M6/M9/M14/M16 rows
+    // for events no module declares — the decider is generic over (event, template), so those rows proved
+    // nothing the four real ones do not.
     {
       event: "m11.order.document_requested",
       templateKey: "order_record",
@@ -107,28 +118,10 @@ describe("M22-T06 — decideDocumentRequest renders + emits a back-ref (§4.11)"
       retentionClass: "clinical_record",
     },
     {
-      event: "m14.packet.document_requested",
-      templateKey: "idg_patient_packet",
-      aggregateType: "idg_patient_packet",
-      retentionClass: "clinical_record",
-    },
-    {
-      event: "m16.bereavement.document_requested",
-      templateKey: "bereavement_letter",
-      aggregateType: "bereavement_letter",
-      retentionClass: "bereavement",
-    },
-    {
-      event: "m23.abn.document_requested",
+      event: "m23.abn.required",
       templateKey: "abn",
       aggregateType: "abn",
-      retentionClass: "operational",
-    },
-    {
-      event: "m9.assessment.document_requested",
-      templateKey: "encounter",
-      aggregateType: "encounter",
-      retentionClass: "clinical_record",
+      retentionClass: "compliance", // GAP-038 — the published descriptor's real class (a CMS notice)
     },
   ];
 
@@ -157,7 +150,7 @@ describe("M22-T06 — decideDocumentRequest renders + emits a back-ref (§4.11)"
 
   it("passes the template content + override title straight through to the planned render", () => {
     const action = decideDocumentRequest(
-      "m6.document_requested",
+      "m11.order.document_requested",
       payload({ content: { electionDate: "2026-01-01" }, title: "Hospice Election" }),
       facts(),
     );
@@ -168,7 +161,7 @@ describe("M22-T06 — decideDocumentRequest renders + emits a back-ref (§4.11)"
 
   it("plans a patient-independent render (intake/batch) when patientId is absent", () => {
     const action = decideDocumentRequest(
-      "m6.document_requested",
+      "m11.order.document_requested",
       payload({ patientId: null }),
       facts(),
     );
@@ -182,7 +175,7 @@ describe("M22-T06 — decideDocumentRequest renders + emits a back-ref (§4.11)"
 describe("M22-T06 — idempotent re-delivery never double-renders (D14)", () => {
   it("returns idempotent_skip when a prior render already back-refs the (event, aggregate)", () => {
     const action = decideDocumentRequest(
-      "m6.document_requested",
+      "m11.order.document_requested",
       payload(),
       facts({ alreadyRendered: true }),
     );
@@ -204,7 +197,7 @@ describe("M22-T06 — idempotent re-delivery never double-renders (D14)", () => 
 describe("M22-T06 — unknown template is retried-then-dead-lettered, no document row (§7.2)", () => {
   it("returns unknown_template when the key has no published descriptor", () => {
     const action = decideDocumentRequest(
-      "m6.document_requested",
+      "m11.order.document_requested",
       payload({ templateKey: "not_a_real_template" }),
       facts({ templateKnown: false, aggregateType: null, retentionClass: null }),
     );
@@ -248,7 +241,7 @@ describe("M22-T06 — §7.16 SUD-class render refuses when M39 consent is absent
 
   it("does not invoke the SUD gate for a non-SUD request", () => {
     const action = decideDocumentRequest(
-      "m6.document_requested",
+      "m11.order.document_requested",
       payload({ isSudClass: false }),
       facts({ sudConsentPresent: undefined }),
     );
