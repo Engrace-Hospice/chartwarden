@@ -81,14 +81,37 @@ export interface ReviewView {
   readonly createdAt: string;
 }
 
+/**
+ * Who performed a write (GAP-039). TWO ids, because M22 records them in two different places and they
+ * live in different id spaces:
+ *   • `userId` — the `user.id`. It becomes `app.user_id`, which M4's audit triggers read into
+ *     `audit_event.actor_user_id` (an FK to `user`). Passing a membership id here does not merely
+ *     mislabel the actor, it violates that FK.
+ *   • `membershipId` — the `organization_membership.id` the M22 `*_by_membership_id` columns record
+ *     (`added_by`, `uploaded_by`, `reviewer`, `resolved_by`, `published_by`). Those are plain uuid with
+ *     no SQL FK, so a wrong id there is silent.
+ *
+ * Every write takes this rather than a bare string: the two ids are structurally interchangeable and
+ * were once confused here — `openReview` wrote the raw user id into `reviewer_membership_id`.
+ * This is the same shape `verified-upload.ts` already threads through the upload path.
+ */
+export interface DocumentWriteActor {
+  readonly userId: string;
+  readonly membershipId: string;
+}
+
 /** The §4.1 route service the handlers compose over. Every method is org-scoped (RLS in prod). */
 export interface DocumentRouteService {
   uploadDocument(
     organizationId: OrgId,
-    actorUserId: string,
+    actor: DocumentWriteActor,
     args: UploadDocumentArgs,
   ): Promise<DocumentView>;
-  uploadVersion(organizationId: OrgId, documentId: string): Promise<VersionView>;
+  uploadVersion(
+    organizationId: OrgId,
+    actor: DocumentWriteActor,
+    documentId: string,
+  ): Promise<VersionView>;
   getDocument(organizationId: OrgId, documentId: string): Promise<DocumentView>;
   listVersions(
     organizationId: OrgId,
@@ -105,22 +128,31 @@ export interface DocumentRouteService {
   ): Promise<CursorPage<DocumentView>>;
   patchDocument(
     organizationId: OrgId,
+    actor: DocumentWriteActor,
     documentId: string,
     patch: { title?: string; patientFacing?: boolean; attachToDisclosures?: boolean },
   ): Promise<DocumentView>;
   addTag(
     organizationId: OrgId,
+    actor: DocumentWriteActor,
     documentId: string,
     tag: { tagKind: string; tagKey: string; tagValue: string | null },
   ): Promise<TagView>;
-  removeTag(organizationId: OrgId, documentId: string, tagId: string): Promise<void>;
+  removeTag(
+    organizationId: OrgId,
+    actor: DocumentWriteActor,
+    documentId: string,
+    tagId: string,
+  ): Promise<void>;
   exportPhiBundle(
     organizationId: OrgId,
+    actor: DocumentWriteActor,
     args: { patientId: string; purpose: string },
   ): Promise<{ documentBundleId: string }>;
   // intake
   uploadBatch(
     organizationId: OrgId,
+    actor: DocumentWriteActor,
     args: { patientId: string | null; sourceChannel: string },
   ): Promise<IntakeBatchView>;
   getBatch(organizationId: OrgId, batchId: string): Promise<IntakeBatchView>;
@@ -132,6 +164,7 @@ export interface DocumentRouteService {
   ): Promise<CursorPage<{ id: string; createdAt: string; docType: string }>>;
   confirmClassification(
     organizationId: OrgId,
+    actor: DocumentWriteActor,
     batchId: string,
   ): Promise<{ batchId: string; status: IntakeBatchStatus }>;
   listJobs(
@@ -149,7 +182,11 @@ export interface DocumentRouteService {
     id: string;
     candidates: CursorPage<{ id: string; createdAt: string; riskLevel: string }>;
   }>;
-  openReview(organizationId: OrgId, batchId: string, actorUserId: string): Promise<ReviewView>;
+  openReview(
+    organizationId: OrgId,
+    actor: DocumentWriteActor,
+    batchId: string,
+  ): Promise<ReviewView>;
   getReview(
     organizationId: OrgId,
     reviewId: string,
@@ -162,29 +199,35 @@ export interface DocumentRouteService {
   }>;
   recordDecision(
     organizationId: OrgId,
+    actor: DocumentWriteActor,
     reviewId: string,
     args: { candidateId: string; decision: string },
   ): Promise<{ decisionId: string }>;
   bulkApprove(
     organizationId: OrgId,
+    actor: DocumentWriteActor,
     reviewId: string,
     candidateIds: readonly string[],
   ): Promise<{ bulkApproveBatchId: string; decisionsCreated: number }>;
   resolveDiscrepancy(
     organizationId: OrgId,
+    actor: DocumentWriteActor,
     reviewId: string,
     discrepancyId: string,
   ): Promise<{ discrepancyId: string; status: "resolved" }>;
   completeReview(
     organizationId: OrgId,
+    actor: DocumentWriteActor,
     reviewId: string,
   ): Promise<{ reviewId: string; status: "complete" }>;
   abandonReview(
     organizationId: OrgId,
+    actor: DocumentWriteActor,
     reviewId: string,
   ): Promise<{ reviewId: string; status: "abandoned" }>;
   discardBatch(
     organizationId: OrgId,
+    actor: DocumentWriteActor,
     batchId: string,
   ): Promise<{ batchId: string; status: "discarded" }>;
   // templates / overlays / admin
@@ -204,6 +247,7 @@ export interface DocumentRouteService {
   ): Promise<{ key: string; versionId: string }>;
   publishTemplateVersion(
     organizationId: OrgId,
+    actor: DocumentWriteActor,
     key: string,
     args: { versionLabel: string },
   ): Promise<{ key: string; versionId: string }>;
@@ -212,11 +256,16 @@ export interface DocumentRouteService {
   ): Promise<{ overlays: { templateKey: string; overlayId: string }[] }>;
   publishOverlay(
     organizationId: OrgId,
+    actor: DocumentWriteActor,
     templateKey: string,
     ifVersion: number,
   ): Promise<{ overlayId: string; version: number }>;
   getFormFill(organizationId: OrgId, fillId: string): Promise<{ id: string; status: string }>;
-  retryRender(organizationId: OrgId, fillId: string): Promise<{ id: string; status: "queued" }>;
+  retryRender(
+    organizationId: OrgId,
+    actor: DocumentWriteActor,
+    fillId: string,
+  ): Promise<{ id: string; status: "queued" }>;
 }
 
 // ── in-memory records + slice ─────────────────────────────────────────────────────────────────────────
@@ -379,7 +428,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
   let overlayVersion = 0;
 
   const service: DocumentRouteService = {
-    async uploadDocument(organizationId, _actorUserId, args) {
+    async uploadDocument(organizationId, _actor, args) {
       const id = uuidFromCounter("c", ++created);
       const rec: DocumentRecord = {
         id,
@@ -410,7 +459,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       docs.set(id, rec);
       return toDocView(rec);
     },
-    async uploadVersion(organizationId, documentId) {
+    async uploadVersion(organizationId, _actor, documentId) {
       const r = loadDoc(organizationId, documentId);
       const versionNumber = r.versions.length + 1;
       const v = {
@@ -478,7 +527,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       );
       return paginate(rows, cursor, limit);
     },
-    async patchDocument(organizationId, documentId, patch) {
+    async patchDocument(organizationId, _actor, documentId, patch) {
       const r = loadDoc(organizationId, documentId);
       if (r.legalHoldActive)
         throw new WardenXError(
@@ -494,7 +543,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       r.updatedAt = now();
       return toDocView(r);
     },
-    async addTag(organizationId, documentId, tag) {
+    async addTag(organizationId, _actor, documentId, tag) {
       const r = loadDoc(organizationId, documentId);
       if (r.legalHoldActive)
         throw new WardenXError(
@@ -512,7 +561,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       r.tags.set(id, view);
       return view;
     },
-    async removeTag(organizationId, documentId, tagId) {
+    async removeTag(organizationId, _actor, documentId, tagId) {
       const r = loadDoc(organizationId, documentId);
       if (r.legalHoldActive)
         throw new WardenXError(
@@ -522,11 +571,11 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
         );
       if (!r.tags.delete(tagId)) throw new NotFoundError("tag");
     },
-    async exportPhiBundle(organizationId, _args) {
+    async exportPhiBundle(organizationId, _actor, _args) {
       void organizationId;
       return { documentBundleId: subId() };
     },
-    async uploadBatch(organizationId, args) {
+    async uploadBatch(organizationId, _actor, args) {
       const id = uuidFromCounter("b", ++created);
       const rec: BatchRecord = {
         id,
@@ -565,7 +614,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       const rows = desc([{ id: subId(), createdAt: now(), docType: "discharge_summary" }]);
       return paginate(rows, cursor, limit);
     },
-    async confirmClassification(organizationId, batchId) {
+    async confirmClassification(organizationId, _actor, batchId) {
       const r = loadBatch(organizationId, batchId);
       r.status = "classifier_complete";
       return { batchId: r.id, status: r.status };
@@ -580,7 +629,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       const rows = desc([{ id: subId(), createdAt: now(), riskLevel: "low" }]);
       return { id: jobId, candidates: paginate(rows, cursor, limit) };
     },
-    async openReview(organizationId, batchId, _actorUserId) {
+    async openReview(organizationId, _actor, batchId) {
       const b = loadBatch(organizationId, batchId);
       const id = subId();
       const review = { id, status: "in_progress" as ExtractionReviewStatus, createdAt: now() };
@@ -594,30 +643,30 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       const rows = desc<{ id: string; createdAt: string }>([]);
       return { id: review.id, status: review.status, decisions: paginate(rows, cursor, limit) };
     },
-    async recordDecision(organizationId, reviewId, _args) {
+    async recordDecision(organizationId, _actor, reviewId, _args) {
       loadReview(organizationId, reviewId);
       return { decisionId: subId() };
     },
-    async bulkApprove(organizationId, reviewId, candidateIds) {
+    async bulkApprove(organizationId, _actor, reviewId, candidateIds) {
       loadReview(organizationId, reviewId);
       return { bulkApproveBatchId: subId(), decisionsCreated: candidateIds.length };
     },
-    async resolveDiscrepancy(organizationId, reviewId, discrepancyId) {
+    async resolveDiscrepancy(organizationId, _actor, reviewId, discrepancyId) {
       loadReview(organizationId, reviewId);
       return { discrepancyId, status: "resolved" };
     },
-    async completeReview(organizationId, reviewId) {
+    async completeReview(organizationId, _actor, reviewId) {
       const { batch, review } = loadReview(organizationId, reviewId);
       review.status = "complete";
       batch.status = "writeback_complete";
       return { reviewId: review.id, status: "complete" };
     },
-    async abandonReview(organizationId, reviewId) {
+    async abandonReview(organizationId, _actor, reviewId) {
       const { review } = loadReview(organizationId, reviewId);
       review.status = "abandoned";
       return { reviewId: review.id, status: "abandoned" };
     },
-    async discardBatch(organizationId, batchId) {
+    async discardBatch(organizationId, _actor, batchId) {
       const r = loadBatch(organizationId, batchId);
       r.status = "discarded";
       return { batchId: r.id, status: "discarded" };
@@ -635,7 +684,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       void organizationId;
       return { key, versionId };
     },
-    async publishTemplateVersion(organizationId, key, _args) {
+    async publishTemplateVersion(organizationId, _actor, key, _args) {
       void organizationId;
       return { key, versionId: subId() };
     },
@@ -643,7 +692,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       void organizationId;
       return { overlays: [] };
     },
-    async publishOverlay(organizationId, templateKey, ifVersion) {
+    async publishOverlay(organizationId, _actor, templateKey, ifVersion) {
       void organizationId;
       // §2.5 optimistic concurrency — the caller's If-Match version must match the current.
       if (ifVersion !== overlayVersion) {
@@ -661,7 +710,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       void organizationId;
       return { id: fillId, status: "rendered" };
     },
-    async retryRender(organizationId, fillId) {
+    async retryRender(organizationId, _actor, fillId) {
       void organizationId;
       return { id: fillId, status: "queued" };
     },

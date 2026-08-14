@@ -27,6 +27,10 @@ const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const MEMBER = "33333333-3333-3333-3333-333333333333"; // document created_by etc. carry no FK — literal ok
 const PATIENT = "44444444-4444-4444-4444-444444444444";
+const MEMBERSHIP = "77777777-7777-4777-8777-777777777777";
+/** GAP-039 — every write carries BOTH ids: the audit actor (`user.id`, FK-checked by audit_event)
+ *  and the membership the `*_by_membership_id` columns record. */
+const ACTOR = { userId: MEMBER, membershipId: MEMBERSHIP };
 
 describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)", () => {
   let admin: Client;
@@ -249,21 +253,23 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
 
   it("patchDocument updates fields; addTag/removeTag round-trip", async () => {
     const docId = await seedDocument(ORG_A);
-    const patched = await svc.patchDocument(ORG_A, docId, {
+    const patched = await svc.patchDocument(ORG_A, ACTOR, docId, {
       title: "Renamed",
       patientFacing: true,
     });
     expect(patched.title).toBe("Renamed");
     expect(patched.patientFacing).toBe(true);
-    const tag = await svc.addTag(ORG_A, docId, {
+    const tag = await svc.addTag(ORG_A, ACTOR, docId, {
       tagKind: "structured",
       tagKey: "phase",
       tagValue: "IIA",
     });
     expect(tag.tagKey).toBe("phase");
-    await svc.removeTag(ORG_A, docId, tag.id);
+    await svc.removeTag(ORG_A, ACTOR, docId, tag.id);
     // Removing again is a 404 (the row is gone).
-    await expect(svc.removeTag(ORG_A, docId, tag.id)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(svc.removeTag(ORG_A, ACTOR, docId, tag.id)).rejects.toMatchObject({
+      statusCode: 404,
+    });
   });
 
   it("an active legal hold blocks patch/tag mutations (409)", async () => {
@@ -273,39 +279,39 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
        VALUES ($1,$2,gen_random_uuid())`,
       [ORG_A, docId],
     );
-    await expect(svc.patchDocument(ORG_A, docId, { title: "x" })).rejects.toMatchObject({
+    await expect(svc.patchDocument(ORG_A, ACTOR, docId, { title: "x" })).rejects.toMatchObject({
       statusCode: 409,
     });
     await expect(
-      svc.addTag(ORG_A, docId, { tagKind: "free", tagKey: "k", tagValue: "v" }),
+      svc.addTag(ORG_A, ACTOR, docId, { tagKind: "free", tagKey: "k", tagValue: "v" }),
     ).rejects.toMatchObject({ statusCode: 409 });
   });
 
   it("intake batch → classify-confirm → review open/decision/bulk/complete drives the machine", async () => {
-    const batch = await svc.uploadBatch(ORG_A, { patientId: PATIENT, sourceChannel: "fax" });
+    const batch = await svc.uploadBatch(ORG_A, ACTOR, { patientId: PATIENT, sourceChannel: "fax" });
     expect(batch.status).toBe("uploaded");
-    const confirmed = await svc.confirmClassification(ORG_A, batch.id);
+    const confirmed = await svc.confirmClassification(ORG_A, ACTOR, batch.id);
     expect(confirmed.status).toBe("classifier_complete");
 
-    const review = await svc.openReview(ORG_A, batch.id, MEMBER);
+    const review = await svc.openReview(ORG_A, ACTOR, batch.id);
     expect(review.status).toBe("in_progress");
     expect(
       (await admin.query("SELECT status FROM intake_upload_batch WHERE id=$1", [batch.id])).rows[0]
         .status,
     ).toBe("in_review");
 
-    const dec = await svc.recordDecision(ORG_A, review.id, {
+    const dec = await svc.recordDecision(ORG_A, ACTOR, review.id, {
       candidateId: "99999999-9999-4999-8999-999999999999",
       decision: "approve",
     });
     expect(dec.decisionId).toBeTruthy();
-    const bulk = await svc.bulkApprove(ORG_A, review.id, [
+    const bulk = await svc.bulkApprove(ORG_A, ACTOR, review.id, [
       "88888888-8888-4888-8888-888888888881",
       "88888888-8888-4888-8888-888888888882",
     ]);
     expect(bulk.decisionsCreated).toBe(2);
 
-    const completed = await svc.completeReview(ORG_A, review.id);
+    const completed = await svc.completeReview(ORG_A, ACTOR, review.id);
     expect(completed.status).toBe("complete");
     expect(
       (await admin.query("SELECT status FROM intake_upload_batch WHERE id=$1", [batch.id])).rows[0]
@@ -315,7 +321,7 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
 
   it("resolveDiscrepancy closes an open discrepancy; abandonReview + discardBatch terminate", async () => {
     const batch = await seedBatch(ORG_A);
-    const review = await svc.openReview(ORG_A, batch, MEMBER);
+    const review = await svc.openReview(ORG_A, ACTOR, batch);
     const disc = (
       await admin.query(
         `INSERT INTO extraction_discrepancy (organization_id, intake_upload_batch_id, discrepancy_kind,
@@ -324,29 +330,29 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
         [ORG_A, batch],
       )
     ).rows[0].id as string;
-    const resolved = await svc.resolveDiscrepancy(ORG_A, review.id, disc);
+    const resolved = await svc.resolveDiscrepancy(ORG_A, ACTOR, review.id, disc);
     expect(resolved.status).toBe("resolved");
     expect(
       (await admin.query("SELECT status FROM extraction_discrepancy WHERE id=$1", [disc])).rows[0]
         .status,
     ).toBe("resolved");
 
-    const abandoned = await svc.abandonReview(ORG_A, review.id);
+    const abandoned = await svc.abandonReview(ORG_A, ACTOR, review.id);
     expect(abandoned.status).toBe("abandoned");
-    const discarded = await svc.discardBatch(ORG_A, batch);
+    const discarded = await svc.discardBatch(ORG_A, ACTOR, batch);
     expect(discarded.status).toBe("discarded");
   });
 
   it("publishOverlay enforces §2.5 optimistic concurrency; retryRender re-queues a form fill", async () => {
     // First publish requires If-Match version 0 → becomes version 1.
-    const first = await svc.publishOverlay(ORG_A, "election_statement", 0);
+    const first = await svc.publishOverlay(ORG_A, ACTOR, "election_statement", 0);
     expect(first.version).toBe(1);
     // A stale If-Match (0 again) now conflicts (412).
-    await expect(svc.publishOverlay(ORG_A, "election_statement", 0)).rejects.toMatchObject({
+    await expect(svc.publishOverlay(ORG_A, ACTOR, "election_statement", 0)).rejects.toMatchObject({
       statusCode: 412,
     });
     // The next publish at the correct version succeeds.
-    const second = await svc.publishOverlay(ORG_A, "election_statement", 1);
+    const second = await svc.publishOverlay(ORG_A, ACTOR, "election_statement", 1);
     expect(second.version).toBe(2);
 
     // retryRender flips a failed form_fill back to queued.
@@ -358,18 +364,97 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
         [ORG_A, tmpl.election.versionId],
       )
     ).rows[0].id as string;
-    const retried = await svc.retryRender(ORG_A, fill);
+    const retried = await svc.retryRender(ORG_A, ACTOR, fill);
     expect(retried.status).toBe("queued");
     expect(
       (await admin.query("SELECT status FROM form_fill WHERE id=$1", [fill])).rows[0].status,
     ).toBe("queued");
   });
 
+  it("GAP-039: every write is attributed — audit actor + membership, not NULL and not a sentinel", async () => {
+    // Before GAP-039 these writes ran under `withOrgContext(userId: "")`, so M4's trigger resolved
+    // `NULLIF(current_setting('app.user_id', true), '')::uuid` to NULL and the entire M22 write history
+    // recorded WHAT changed and nothing about WHO. The `*_by_membership_id` columns took a hardcoded
+    // sentinel constant. Both ids were sitting on `request.context` the whole time.
+    // Everything the ADMIN (superuser) seeds happens first: its inserts fire the same triggers with no
+    // `app.user_id` set, and a seed row's unattributed event would mask the very thing under test.
+    const docId = await seedDocument(ORG_A);
+    const seededBatch = await seedBatch(ORG_A);
+    const disc = (
+      await admin.query(
+        `INSERT INTO extraction_discrepancy (organization_id, intake_upload_batch_id, discrepancy_kind,
+           field_path, candidate_a_id, candidate_b_id)
+         VALUES ($1,$2,'cross_source','patient.dob',gen_random_uuid(),gen_random_uuid()) RETURNING id`,
+        [ORG_A, seededBatch],
+      )
+    ).rows[0].id as string;
+    await admin.query("DELETE FROM audit_event WHERE organization_id = $1", [ORG_A]);
+
+    // From here every row change is the production service's, through the app role.
+    await svc.patchDocument(ORG_A, ACTOR, docId, { title: "Attributed" });
+    const tag = await svc.addTag(ORG_A, ACTOR, docId, {
+      tagKind: "structured",
+      tagKey: "attr",
+      tagValue: "yes",
+    });
+    const batch = await svc.uploadBatch(ORG_A, ACTOR, { patientId: PATIENT, sourceChannel: "fax" });
+    const review = await svc.openReview(ORG_A, ACTOR, seededBatch);
+    await svc.resolveDiscrepancy(ORG_A, ACTOR, review.id, disc);
+    // §2.5 If-Match is the CURRENT overlay-row count, which earlier cases in this suite have already
+    // advanced — read it rather than assuming a fresh template.
+    const overlayVersion = Number(
+      (
+        await admin.query(
+          `SELECT count(*)::int AS n FROM tenant_template_overlay WHERE organization_id = $1
+             AND template_id = $2`,
+          [ORG_A, tmpl.election.templateId],
+        )
+      ).rows[0].n,
+    );
+    await svc.publishOverlay(ORG_A, ACTOR, "election_statement", overlayVersion);
+    // The DELETE trigger must be attributed too; a second tag survives for the column assertion below.
+    await svc.removeTag(ORG_A, ACTOR, docId, tag.id);
+    await svc.addTag(ORG_A, ACTOR, docId, {
+      tagKind: "structured",
+      tagKey: "attr2",
+      tagValue: "kept",
+    });
+
+    // 1. The M4 write triggers recorded the acting USER on every row they touched.
+    const events = await admin.query(
+      "SELECT event_type, actor_user_id::text FROM audit_event WHERE organization_id = $1",
+      [ORG_A],
+    );
+    expect(events.rows.length).toBeGreaterThan(0);
+    const unattributed = events.rows.filter((r) => r.actor_user_id === null);
+    expect(unattributed).toEqual([]);
+    expect(new Set(events.rows.map((r) => r.actor_user_id))).toEqual(new Set([MEMBER]));
+
+    // 2. The `*_by_membership_id` columns hold the real MEMBERSHIP — a different id space, and the
+    //    reason a write takes a `DocumentWriteActor` instead of one string that could be either.
+    for (const [table, column, filter] of [
+      ["document_tag", "added_by_membership_id", `document_id = '${docId}'`],
+      ["intake_upload_batch", "uploaded_by_membership_id", `id = '${batch.id}'`],
+      ["extraction_review", "reviewer_membership_id", `id = '${review.id}'`],
+      ["extraction_discrepancy", "resolved_by_membership_id", `id = '${disc}'`],
+      ["tenant_template_overlay", "published_by_membership_id", "is_active = true"],
+    ] as const) {
+      const { rows } = await admin.query(
+        `SELECT ${column}::text AS v FROM ${table} WHERE organization_id = $1 AND ${filter}`,
+        [ORG_A],
+      );
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) expect(row.v).toBe(MEMBERSHIP);
+    }
+  });
+
   it("RLS: org B cannot patch or read org A's document (404 under the wardenx_app policy)", async () => {
     const docId = await seedDocument(ORG_A);
     await expect(svc.getDocument(ORG_B, docId)).rejects.toMatchObject({ statusCode: 404 });
-    await expect(svc.patchDocument(ORG_B, docId, { title: "hijack" })).rejects.toMatchObject({
-      statusCode: 404,
-    });
+    await expect(svc.patchDocument(ORG_B, ACTOR, docId, { title: "hijack" })).rejects.toMatchObject(
+      {
+        statusCode: 404,
+      },
+    );
   });
 });
