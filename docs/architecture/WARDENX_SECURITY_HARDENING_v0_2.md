@@ -48,6 +48,12 @@ Five principles drive every decision in this document:
 1. **Least privilege.** Every identity (human, service, role) gets exactly the access it needs and nothing more.
 1. **Privacy by design.** PHI handling defaults to most-restrictive; data minimization in collection, retention, and disclosure.
 1. **Fail closed.** When a security check fails, deny access. Never default to allow on error.
+   **One deliberate exception: rate limiting.** The global limiter (`bootstrap/plugins/security.ts`),
+   the public-signup budget and the §5.3.1 credential throttle all fail **OPEN** when their counter
+   store is unreachable. That is correct and intended: a limiter is an *availability* control, not
+   an authorization gate, and a Valkey blip must not take down 100% of API traffic (or lock every
+   user out of sign-in) to avoid briefly under-enforcing a quota. Authorization, RLS, consent and
+   audit have no such exception — they fail closed without qualification.
 1. **Auditable and verifiable.** Every privileged action is logged, every control is testable, every claim is provable.
 
 -----
@@ -180,7 +186,13 @@ STRIDE categories:
 
 - **Strong passwords** — minimum 12 characters, complexity rules, breach-password check (HaveIBeenPwned API or k-anonymity equivalent)
 - **2FA required for clinical roles** — TOTP, SMS fallback for accessibility but TOTP preferred; passkey (WebAuthn) supported and preferred for highest assurance
-- **Session controls** — HttpOnly Secure SameSite=Strict cookies; **15-minute idle**, 8-hour work-session, 24-hour absolute; UI screen-lock (5-min soft re-auth); binding to IP+user-agent prefix (with grace for mobile carrier IP changes); biometric re-auth on mobile
+- **Session controls** — HttpOnly Secure **SameSite=Lax** cookies; **15-minute idle**, 8-hour
+  work-session, 24-hour absolute; UI screen-lock (5-min soft re-auth); binding to IP+user-agent
+  prefix (with grace for mobile carrier IP changes); biometric re-auth on mobile.
+  > **⚠️ Declared, not enforced (AD-13).** `SESSION_POLICY.byClass` carries these windows and has
+  > **no runtime reader** — only M31's portal lifecycle evaluates its own class. `betterAuth({session})`
+  > sets `additionalFields` only: **no `expiresIn`, no `updateAge`, no cookie config, and no IP or
+  > user-agent binding.** Nothing expires a web session on idle today.
 - **Suspicious activity detection** — login from new geography, new device, off-hours pattern triggers re-auth and alert
 - **Rate limiting** — 5 failed logins per username per 10 min → temporary lockout; 30 failed logins per IP per 10 min → temporary block
 - **Phishing-resistant auth for high-privilege** — passkeys required for `platform_ops` and `org_admin` roles
@@ -450,7 +462,7 @@ have a built resolver and register into M3's registry, and a missing predicate d
 **HSTS:**
 
 - Strict-Transport-Security on all customer-facing endpoints
-- `max-age=63072000; includeSubDomains; preload`
+- `max-age=31536000; includeSubDomains; preload` *(1 year — `security.ts:52`. This document previously said `63072000`/2 years; the code is the shipped value.)*
 - Submitted to HSTS preload list
 
 **Cipher suite restrictions (TLS 1.2 fallback):**
@@ -561,7 +573,7 @@ Per NIST SP 800-63B current guidance:
 |-----------------------|-----------------------------------------------------------------------|
 |Session ID             |256-bit CSPRNG random                                                  |
 |Session storage        |DB (canonical) + Valkey (hot cache)                                    |
-|Cookie attributes      |HttpOnly, Secure, SameSite=Strict, Path=/                              |
+|Cookie attributes      |HttpOnly, Secure, **SameSite=Lax**, Path=/ — Lax, not Strict (`csrf.ts:127`; Better Auth's session cookie is likewise Lax). The double-submit CSRF token is what covers the gap Lax leaves. |
 |Session token in cookie|Yes, signed                                                            |
 |CSRF token             |Required for all state-changing requests; double-submit cookie pattern |
 |Idle timeout           |15 minutes (all clinical sessions); biometric re-auth on mobile         |
@@ -613,7 +625,7 @@ For external clinical/regulatory collaborators (Module 7.6 External Collaborator
 
 ### 5.2 Session Hijacking Defense
 
-- Cookie attributes prevent CSRF (`SameSite=Strict`) and theft via XSS (`HttpOnly`)
+- Cookie attributes limit CSRF (**`SameSite=Lax`**, not Strict) and prevent theft via XSS (`HttpOnly`); the **double-submit CSRF token** (`bootstrap/plugins/csrf.ts`) is the actual CSRF control. There is **no Origin/Referer check**.
 - Token rotation on privilege escalation (e.g., sudo into admin context)
 - Re-authentication required for sensitive actions (export, role change, password change)
 - Session anomaly detection: same session from two different IPs simultaneously → forced re-auth
@@ -695,12 +707,10 @@ fastify.route({
   preHandler: [
     authenticate,                        // 401 if no session
     requireRole(['admissions_nurse', 'rn', 'org_admin']),  // 403 if wrong role
-    requireAbac('admission.create', {     // 403 if predicate fails
-      predicate: (ctx, params) => {
-        // Server-side predicate evaluation
-        return canAdmitPatient(ctx, params.id)
-      }
-    }),
+    // The real signature takes a registry-resolved predicate NAME (a string), never an inline
+    // closure — M3's named-predicate registry is what makes a predicate auditable and what
+    // `arch:abac-predicates` verifies exists. An inline closure does not compile.
+    requireAbac('admission.create', 'caseload_or_scope'),  // 403 if the predicate denies
   ],
   handler: async (req, reply) => {
     // RLS still applies at DB layer — defense in depth
@@ -740,7 +750,21 @@ All privileged operations:
 
 ### 6.5 Service-to-Service Authorization
 
-Backend ↔ Workers communication uses mTLS + bearer token:
+> ### ⚠️ STATUS: TARGET — NOT BUILT. The section below describes none of what runs (AD-13).
+>
+> **What actually runs** (`apps/backend/src/bootstrap/plugins/authenticate.ts`): a single
+> **static shared secret** in `INTERNAL_SERVICE_TOKEN` (≥32 chars, enforced by `bootstrap/env.ts`
+> in production), compared with a timing-safe equality check. There is **no mTLS, no signature,
+> no expiry, and no per-request context binding**. The tenant the internal call operates on is
+> taken from a **caller-supplied `x-internal-org-id` header** — so anything holding the shared
+> secret can act on any tenant, and the secret does not rotate on its own.
+>
+> That is a real gap, not a documentation error, and it deserves an explicit decision rather than a
+> silent correction: either build toward the target below, or accept the shared-secret model and
+> record why (and then at minimum add rotation and constrain which orgs a given credential may
+> assert). **Do not read this section as a description of a control that exists.**
+
+**Target design** (unbuilt): Backend ↔ Workers communication uses mTLS + bearer token:
 
 - mTLS certificate identifies the calling service
 - Bearer token authenticates the specific request and carries correlation/org/user context
@@ -1135,7 +1159,7 @@ Content-Security-Policy: default-src 'self';
 - `X-Frame-Options: DENY`
 - `X-Content-Type-Options: nosniff`
 - `Referrer-Policy: strict-origin-when-cross-origin`
-- `Permissions-Policy: camera=(), microphone=(), geolocation=(self), payment=()`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=(self), payment=()` — **NOT SET. `security.ts` never emits this header.** Documented target only.
 - `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`
 
 #### 9.6.3 XSS Defense
@@ -1470,7 +1494,7 @@ All mobile actions audited identically to web actions, plus:
 
 |Control                    |Implementation                                                     |
 |---------------------------|-------------------------------------------------------------------|
-|Append-only at DB layer    |`wardenx_app` role has only INSERT, SELECT on `audit_event`        |
+|Append-only at DB layer    |`wardenx_app` role has only INSERT, SELECT on `audit_event`. **Carve-out (AD-13):** migration `0157:84` also grants `SELECT, DELETE ON audit_event TO wardenx_destruction` — deliberate, documented in-file, and required by the partitioned crypto-erase adapter that a tenant shred runs. It is a NOLOGIN role reachable only through the destruction credential. **The integrity report inspects `wardenx_app` only and cannot detect grant drift on that second role** — check it explicitly during a privilege review. |
 |Append-only at architecture|No application code path modifies historical audit                 |
 |Partition immutability     |Partitioned table; partitions detached for archival, never modified|
 |Backup as cross-reference  |pgBackRest archive provides historical state for tamper detection  |
@@ -2089,4 +2113,4 @@ M33 is the tenant-facing reporting plane. Its governing security rule is **minim
 
 -----
 
-**End of WARDENX_SECURITY_HARDENING v0.1.**
+**End of WARDENX_SECURITY_HARDENING v0.2.**

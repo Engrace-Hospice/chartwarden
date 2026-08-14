@@ -7,7 +7,7 @@ artifacts live in `architecture/` and `scripts/`.
 
 > **Phase-0 remediation (2026-06-11, ADR-0005).** The manifest-governance rules below were
 > clarified to resolve the corpus's #1 build blocker (manifest rewrites + designed-in cycles).
-> See **"Seam & outbox contracts"**, **"Foundation helper reachability"**, and **"`packages/foundation`
+> See **"Seam & outbox contracts"**, **"Foundation helper reachability"**, and **"`packages/shared` / `packages/types`
 > is banned"** below; the authoritative rationale is `docs/adr/ADR-0005-manifest-single-source-of-truth.md`.
 
 -----
@@ -58,9 +58,9 @@ helper-only-table rule still blocks `audit_event`/`outbox_event`/`idempotency_ke
 `no-circular` still forbids the foundation tier (M1–M3) from closing a cycle through a helper
 (the foundation tier audits via M1's trigger mechanism, not `audit()`).
 
-### `packages/foundation` is banned (ADR-0005 D3)
+### `packages/shared` / `packages/types` is banned (ADR-0005 D3)
 
-`packages/foundation` is in no manifest codePath and no architecture §4 package list. Its invented
+`packages/shared` / `packages/types` is in no manifest codePath and no architecture §4 package list. Its invented
 contents are re-homed: outbox helper → `packages/shared`; `withOrgContext` + RLS generator →
 `packages/tenancy`; `audit()` → `packages/audit`; seam interfaces + policy constants →
 `packages/types`; schema/crypto/registries → `packages/db` or the owning feature package.
@@ -76,8 +76,8 @@ contents are re-homed: outbox helper → `packages/shared`; `withOrgContext` + R
 | 5 | **Helper-only tables** | dependency-cruiser + ownership check | Direct schema import of `audit_event` / `outbox_event` / `idempotency_key` outside their helper. |
 | 6 | **Table ownership** | `scripts/check-table-ownership.ts` | The leak RLS cannot catch: same-tenant cross-module table access. Cross-module reads must go through the owner's repository, not its schema. |
 | 7 | **No cycles** | dependency-cruiser (`no-circular`) | Dependency cycles that destroy independent build/test/reasoning. |
-| 8 | **Explicit authz** (already in place) | Biome `require-explicit-authz` (Module 3) | A PHI route shipping without `requirePermission` + ABAC. |
-| 9 | **Read-audit** (already in place) | Biome `require-read-audit` (Module 4) | A PHI route shipping without read-audit capture. |
+| 8 | **Explicit authz** | `scripts/check-abac-predicates.ts` (`arch:abac-predicates`) | Every `requireAbac(_, "<name>")` must name a predicate some module registers. M3's registry fails closed, so a typo'd name is a permanently dead 403 endpoint with the build green. **NOT a Biome rule** — earlier revisions of this table claimed `require-explicit-authz` was "already in place"; `biome.json` has no custom rules and Biome 1.9.4 has no plugin API, so that rule never existed. |
+| 9 | **Read-audit** | `apps/backend/src/bootstrap/plugins/read-audit.ts` (runtime, fail-closed) + `arch:audit-denylist-sync` | A PHI read escaping the §164.528 accounting. Enforced at REQUEST TIME by a fail-closed coverage gate, not by a linter — the claimed Biome `require-read-audit` likewise never existed. |
 | 10 | **Tenancy invariants** (ADR-0010) | `scripts/check-tenancy.ts` | A PHI table missing `organization_id`/`provider_entity_id`/`location_id`; an RLS policy keyed on any variable other than `app.org_id`; an `OR organization_id IS NULL` tenant-write or permissive-`OR` `FOR ALL` policy. |
 | 11 | **Ownership evasions / RLS bypass** (ADR-0011) | `scripts/check-table-ownership.ts` (extended) | Raw SQL or a PL/pgSQL trigger naming another module's table; `withPlatformContext` touching PHI with no org predicate; a migration writing a helper-only table outside its helper path. |
 | 12 | **PostgreSQL DDL legality** (ADR-0022) | `scripts/check-ddl-legality.ts` | A partitioned table's UNIQUE/PK not including the partition column; a subquery inside a CHECK constraint; a duplicate enum-type definition of the same kind — DDL that fails at migration time. |
@@ -94,19 +94,19 @@ RLS enforces the **tenant** boundary: rows must match `app.org_id`. It says noth
 
 ## Wiring (package.json + CI)
 
-```jsonc
-// package.json (root)
-{
-  "scripts": {
-    "arch:boundaries": "depcruise apps packages --config architecture/.dependency-cruiser.cjs",
-    "arch:tables": "bun run scripts/check-table-ownership.ts",
-    "arch:tenancy": "bun run scripts/check-tenancy.ts",
-    "arch:ddl": "bun run scripts/check-ddl-legality.ts",
-    "arch:graph": "depcruise apps packages --config architecture/.dependency-cruiser.cjs --output-type dot | dot -T svg > docs/architecture-graph.svg",
-    "arch:fitness": "bun run arch:boundaries && bun run arch:tables && bun run arch:tenancy && bun run arch:ddl"
-  }
-}
-```
+> **Do not read the gate list from this document — read it from `package.json`.** This section used
+> to inline a four-gate `arch:fitness`; the real chain is **22 gates** and grows. `ci.yml` already
+> made this fix for its own stage label. The authoritative list is the `arch:fitness` script:
+>
+> ```bash
+> bun run --silent arch:fitness --help 2>/dev/null; node -e "console.log(require('./package.json').scripts['arch:fitness'].split('&&').map(s=>s.trim()).join('\n'))"
+> ```
+>
+> As of 2026-08-14 that is: `arch:parity`, `arch:boundaries`, `arch:tables`, `arch:tenancy`,
+> `arch:ddl`, `arch:gaps`, `arch:ai-governance`, `arch:plan-integrity`, `arch:status-matrix`,
+> `arch:ui-parity`, `arch:frame-fidelity`, `arch:design-tokens`, `arch:abac-predicates`,
+> `arch:live-suites`, `arch:org-indexes`, `arch:audit-denylist-sync`, `arch:audit-exceptions`,
+> `docs:ui`, `openapi:check`, `arch:openapi-coverage`, `arch:inject-coverage`, `client:check`.
 
 > **Layout (realized 2026-06-11).** The kit now lives in its intended layout: the manifest
 > (`architecture/module-manifest.{ts,cjs}`) and the depcruise config (`architecture/.dependency-cruiser.cjs`,
@@ -120,7 +120,8 @@ RLS enforces the **tenant** boundary: rows must match `app.org_id`. It says noth
 CI runs `arch:fitness` as its own stage, after typecheck and before unit tests, in the existing pipeline:
 
 ```
-lint (Biome incl. require-explicit-authz, require-read-audit)
+lint (Biome — NOTE: `continue-on-error: true` in ci.yml, so a red lint does NOT fail the build;
+      it carries no custom rules, see checks 8/9 above)
   → typecheck
   → arch:fitness  (boundaries + adapter mandate + domain/FHIR direction + table ownership + cycles)   ← NEW STAGE
   → unit tests
@@ -151,4 +152,11 @@ A failing fitness check blocks merge exactly like a failing test. The visual gra
 | `scripts/check-tenancy.ts` | check 10 (ADR-0010 tenancy/RLS invariants) |
 | `scripts/check-ddl-legality.ts` | check 12 (ADR-0022 PostgreSQL DDL legality) |
 
-> The manifest is currently authoritative for Modules 1–4 (specced) and encodes the full §20 dependency graph for all 40. As each module is specced, fill its `ownedTables` and confirm its `codePaths`; the checks then tighten automatically.
+> **Superseded (2026-08-14).** The manifest is now authoritative for **all 40 modules** — every one
+> has `codePaths`, `dependsOn` and a filled `ownedTables` (**464 tables**), and `arch:parity` keeps
+> the generated `apps/`+`packages/` tree 1:1 with it. The tightening described above has completed;
+> nothing is left to fill in.
+>
+> **`scripts/audit-fitness.ts` is wired to no `package.json` script** — it is a point-in-time
+> enforcement audit (module matrix, table ownership, dependency graph/cycles) writing
+> `audit/FITNESS_ENFORCEMENT_AUDIT.md`. Run it directly: `bun run scripts/audit-fitness.ts`.

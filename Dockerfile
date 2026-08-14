@@ -31,6 +31,17 @@ RUN bun install --frozen-lockfile
 
 USER bun
 ENV NODE_ENV=production
+
+# AD-05 — the /version probe (bootstrap/routes/health.ts) reads APP_VERSION / GIT_SHA / BUILD_TIME.
+# Nothing set them, so /version always answered {"version":"dev","gitSha":"unknown"} and the
+# runbook's post-deploy "confirm the new SHA is live" check could never pass. deploy.yml injects
+# these as build args; a plain local `docker build` still gets the honest "dev"/"unknown" defaults.
+ARG APP_VERSION=dev
+ARG GIT_SHA=unknown
+ARG BUILD_TIME=unknown
+ENV APP_VERSION=$APP_VERSION \
+    GIT_SHA=$GIT_SHA \
+    BUILD_TIME=$BUILD_TIME
 # 3000 = API (PORT default, apps/backend/src/index.ts); 3001 = worker (WORKER_PORT default,
 # health/ready-only — TASK-040A). Both exposed since either role can run from this one image.
 EXPOSE 3000 3001

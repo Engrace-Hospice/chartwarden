@@ -3,7 +3,7 @@
 **Document ID:** WARDENX_DR_BCP
 **Status:** v0.1
 **Owner:** Fabrice V. Adjam (Engineering + Compliance — currently single accountable owner; roles split as team grows)
-**Companion to:** WARDENX_ARCHITECTURE v0.9, WARDENX_SYSTEM_DESIGN v0.2
+**Companion to:** WARDENX_ARCHITECTURE v0.12 (file `WARDENX_ARCHITECTURE_v0_11.md`), WARDENX_SYSTEM_DESIGN v0.3
 **Review cadence:** Annual minimum; ad-hoc on architecture changes, vendor changes, or post-incident
 **Last reviewed:** 2026-06-08
 
@@ -37,13 +37,13 @@ It is also the source-of-truth document for the obligations WardenX makes to cus
 
 ### 1.4 Relationship to Other Documents
 
-| Document | Relationship |
-|---|---|
-| WARDENX_ARCHITECTURE v0.9 §24 Data Retention | Defines what must be preserved during recovery; this doc defines how |
-| WARDENX_SYSTEM_DESIGN v0.2 §10 Failure Modes | High-level failure-mode behaviors; this doc operationalizes |
-| WARDENX_OPS_RUNBOOK | Step-by-step routine ops (deploys, migrations); shares some content with this doc |
-| WARDENX_SECURITY_HARDENING | Defines threat model; this doc handles realized threats |
-| HIPAA Security Policies | Higher-level policy; this doc is implementation |
+| Document                                      | Relationship                                                                      |
+| --------------------------------------------- | --------------------------------------------------------------------------------- |
+| WARDENX_ARCHITECTURE v0.12 §24 Data Retention | Defines what must be preserved during recovery; this doc defines how              |
+| WARDENX_SYSTEM_DESIGN v0.3 §10 Failure Modes | High-level failure-mode behaviors; this doc operationalizes                       |
+| WARDENX_OPS_RUNBOOK                           | Step-by-step routine ops (deploys, migrations); shares some content with this doc |
+| WARDENX_SECURITY_HARDENING                    | Defines threat model; this doc handles realized threats                           |
+| HIPAA Security Policies                       | Higher-level policy; this doc is implementation                                   |
 
 ---
 
@@ -53,47 +53,66 @@ It is also the source-of-truth document for the obligations WardenX makes to cus
 
 WardenX uses ICS (Incident Command System)-style role definitions. **At current solo-developer phase, multiple roles converge to Fabrice; this is an acknowledged single-point-of-failure risk.** Backup contact and contracted relief required before WardenX has more than 3 customer tenants.
 
-| Role | Responsibilities | Current Owner | Required Backup |
-|---|---|---|---|
-| **Incident Commander (IC)** | Declares incident, sets priorities, owns all decisions during incident, communicates with customers | Fabrice | TBD (contract on-call relief by tenant #3) |
-| **Technical Lead** | Executes recovery procedures, owns technical decisions, runs runbooks | Fabrice | TBD |
-| **Communications Lead** | Status page updates, customer notifications, vendor escalations | Fabrice | TBD |
-| **Compliance Officer** | HIPAA breach notification assessment, regulatory communications, audit trail preservation | Fabrice (interim); contracted compliance counsel before first customer | Contracted counsel |
-| **Customer Liaison (per agency)** | Each customer agency designates one staff member as their primary point of contact during incidents; their backup is identified in their tenant settings | Customer-owned | Customer-owned |
+| Role                                    | Responsibilities                                                                                                                                         | Current Owner                                                          | Required Backup                           |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------- |
+| **Incident Commander (IC)**       | Declares incident, sets priorities, owns all decisions during incident, communicates with customers                                                      | Fabrice                                                                | TBD (contract on-call relief by tenant#3) |
+| **Technical Lead**                | Executes recovery procedures, owns technical decisions, runs runbooks                                                                                    | Fabrice                                                                | TBD                                       |
+| **Communications Lead**           | Status page updates, customer notifications, vendor escalations                                                                                          | Fabrice                                                                | TBD                                       |
+| **Compliance Officer**            | HIPAA breach notification assessment, regulatory communications, audit trail preservation                                                                | Fabrice (interim); contracted compliance counsel before first customer | Contracted counsel                        |
+| **Customer Liaison (per agency)** | Each customer agency designates one staff member as their primary point of contact during incidents; their backup is identified in their tenant settings | Customer-owned                                                         | Customer-owned                            |
 
 ### 2.2 On-Call Schedule
 
-| Phase | Coverage |
-|---|---|
-| Engrace only (current) | Fabrice 24/7, with explicit blackout periods documented in advance (e.g., scheduled time off → automated read-only degraded mode prepared in advance) |
-| 2-3 customer tenants | Fabrice + contracted on-call relief (8 PM - 8 AM coverage minimum) |
-| 4+ tenants or first enterprise contract | Formal on-call rotation with at least 2 engineers |
+| Phase                                   | Coverage                                                                                                                                               |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Engrace only (current)                  | Fabrice 24/7, with explicit blackout periods documented in advance (e.g., scheduled time off → automated read-only degraded mode prepared in advance) |
+| 2-3 customer tenants                    | Fabrice + contracted on-call relief (8 PM - 8 AM coverage minimum)                                                                                     |
+| 4+ tenants or first enterprise contract | Formal on-call rotation with at least 2 engineers                                                                                                      |
 
 ### 2.3 Severity Classification
 
 Incidents are classified at declaration and may be reclassified as conditions change. Classification drives response time, communication cadence, and post-incident review requirements.
 
-| Severity | Definition | Examples | Response Time | Comms Cadence |
-|---|---|---|---|---|
-| **SEV-1** | Patient care impacted; data loss; PHI exposure; total outage | DB primary failed; ransomware detected; PHI exposed in error; all backends down | IC engaged within 5 min; tech lead within 15 min | Initial status within 15 min; updates every 30 min until resolved |
-| **SEV-2** | Significant degradation; partial outage; single critical feature unavailable | DoseSpot outage; one backend instance crashed; intermittent errors >5% | IC engaged within 15 min | Initial status within 30 min; updates every 1 hr |
-| **SEV-3** | Minor degradation; workarounds available; single non-critical feature affected | Reporting slow; one Python worker failing; degraded AI features | IC engaged within 1 hr (business hours) or 8 AM next day (off-hours) | Updates every 4 hr |
-| **SEV-4** | No customer impact; internal observability concern | Disk usage approaching threshold; non-prod alerting; backup verification soft failure | Next business day | Internal only |
+| Severity        | Definition                                                                     | Examples                                                                              | Response Time                                                        | Comms Cadence                                                     |
+| --------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| **SEV-1** | Patient care impacted; data loss; PHI exposure; total outage                   | DB primary failed; ransomware detected; PHI exposed in error; all backends down       | IC engaged within 5 min; tech lead within 15 min                     | Initial status within 15 min; updates every 30 min until resolved |
+| **SEV-2** | Significant degradation; partial outage; single critical feature unavailable   | DoseSpot outage; one backend instance crashed; intermittent errors >5%                | IC engaged within 15 min                                             | Initial status within 30 min; updates every 1 hr                  |
+| **SEV-3** | Minor degradation; workarounds available; single non-critical feature affected | Reporting slow; one Python worker failing; degraded AI features                       | IC engaged within 1 hr (business hours) or 8 AM next day (off-hours) | Updates every 4 hr                                                |
+| **SEV-4** | No customer impact; internal observability concern                             | Disk usage approaching threshold; non-prod alerting; backup verification soft failure | Next business day                                                    | Internal only                                                     |
 
 ### 2.4 Authority Matrix
 
-| Decision | SEV-1 | SEV-2 | SEV-3 | SEV-4 |
-|---|---|---|---|---|
-| Activate kill switch | IC | IC or Tech Lead | Tech Lead | Tech Lead |
-| Failover to DR site | IC | IC | N/A | N/A |
-| Notify customers | Comms Lead under IC direction | Comms Lead | Tech Lead | None |
-| Notify regulators (HIPAA breach) | Compliance Officer (after IC + counsel review) | Compliance Officer if PHI exposure | None | None |
-| Restore from backup | IC approval; Tech Lead executes | Tech Lead | Tech Lead | Tech Lead |
-| Engage external vendor escalation | IC or Tech Lead | Tech Lead | Tech Lead | Tech Lead |
-| Engage outside counsel | IC | IC | None | None |
-| Engage forensic firm (suspected breach) | IC + counsel | IC + counsel | None | None |
+| Decision                                | SEV-1                                          | SEV-2                              | SEV-3     | SEV-4     |
+| --------------------------------------- | ---------------------------------------------- | ---------------------------------- | --------- | --------- |
+| Activate kill switch                    | IC                                             | IC or Tech Lead                    | Tech Lead | Tech Lead |
+| Failover to DR site                     | IC                                             | IC                                 | N/A       | N/A       |
+| Notify customers                        | Comms Lead under IC direction                  | Comms Lead                         | Tech Lead | None      |
+| Notify regulators (HIPAA breach)        | Compliance Officer (after IC + counsel review) | Compliance Officer if PHI exposure | None      | None      |
+| Restore from backup                     | IC approval; Tech Lead executes                | Tech Lead                          | Tech Lead | Tech Lead |
+| Engage external vendor escalation       | IC or Tech Lead                                | Tech Lead                          | Tech Lead | Tech Lead |
+| Engage outside counsel                  | IC                                             | IC                                 | None      | None      |
+| Engage forensic firm (suspected breach) | IC + counsel                                   | IC + counsel                       | None      | None      |
 
 ---
+
+
+> ## ⚠️ STATUS: TARGET — NOT BUILT (AD-08, 2026-08-14)
+>
+> **The infrastructure this document operates on does not exist yet.** There is no Proxmox VM fleet,
+> no Pangolin edge, no PgBouncer, no Proxmox Backup Server, no MinIO cluster, and no PagerDuty /
+> Grafana / Sentry. No streaming replica and no WAL archiving are running.
+> `ops/pgbackrest/pgbackrest.conf.template` is a placeholder whose own header states it is "NOT
+> wired to any real host/credentials".
+>
+> What IS exercised: `bun run backup:restore-drill` (`scripts/db/backup-restore-drill.ts`), which
+> proves the backup/restore mechanics against a disposable local cluster.
+>
+> Every RTO/RPO figure, failover procedure and host name below is therefore a **target**, not a
+> commitment, and the `ssh wardenx-app-01`-style commands name hosts that do not exist. The
+> procedures are still worth keeping — they are the plan — but do not read them as operable today.
+> The repo uses this idiom already (`ops/pgbackrest/*.template`, `Dockerfile`,
+> `docker-compose.yml`, `deploy.yml` all carry "SCAFFOLD, NOT VALIDATED" headers); this document
+> simply never carried one.
 
 ## 3. Recovery Objectives
 
@@ -101,13 +120,13 @@ Incidents are classified at declaration and may be reclassified as conditions ch
 
 Services classified by patient-care criticality. Tier determines RTO/RPO targets and resource allocation during incidents.
 
-| Tier | Definition | Services | RTO Target | RPO Target |
-|---|---|---|---|---|
-| **Tier 1 — Critical patient care** | Loss directly affects active patient care, medication administration, or imminent safety | Backend API (encounter save, eMAR, orders), PostgreSQL primary read+write, Valkey (session), Socket.IO (real-time alerts), Module 18 EVV, Module 19 On-Call | **1 hour** | **5 minutes** |
-| **Tier 2 — Clinical operations** | Loss impedes clinical workflow but doesn't immediately threaten patient safety | HearthNote Layer 1, HOPE Engine, IDG, Care Plan, Documents, FHIR Gateway read | **4 hours** | **15 minutes** |
-| **Tier 3 — Revenue & Reporting** | Loss impedes billing/reporting but not clinical care | Module 23 (Billing-Medicare), Module 24 (Billing-Medicaid), Module 25 (Remittance), Module 33 (Reporting), Module 30 (HQRP) | **24 hours** | **1 hour** |
-| **Tier 4 — Augmenting & Optional** | Nice-to-have; gracefully degrades | HearthNote Layer 2 (LLM), DocLens, AI predictions, Telehealth, ML training | **72 hours** | **24 hours** |
-| **Tier 5 — Cold archival** | Historical data accessed rarely | Archived audit partitions, retired ML models, archived intake artifacts | **1 week** | **24 hours** |
+| Tier                                      | Definition                                                                               | Services                                                                                                                                                    | RTO Target         | RPO Target           |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | -------------------- |
+| **Tier 1 — Critical patient care** | Loss directly affects active patient care, medication administration, or imminent safety | Backend API (encounter save, eMAR, orders), PostgreSQL primary read+write, Valkey (session), Socket.IO (real-time alerts), Module 18 EVV, Module 19 On-Call | **1 hour**   | **5 minutes**  |
+| **Tier 2 — Clinical operations**   | Loss impedes clinical workflow but doesn't immediately threaten patient safety           | HearthNote Layer 1, HOPE Engine, IDG, Care Plan, Documents, FHIR Gateway read                                                                               | **4 hours**  | **15 minutes** |
+| **Tier 3 — Revenue & Reporting**   | Loss impedes billing/reporting but not clinical care                                     | Module 23 (Billing-Medicare), Module 24 (Billing-Medicaid), Module 25 (Remittance), Module 33 (Reporting), Module 30 (HQRP)                                 | **24 hours** | **1 hour**     |
+| **Tier 4 — Augmenting & Optional** | Nice-to-have; gracefully degrades                                                        | HearthNote Layer 2 (LLM), DocLens, AI predictions, Telehealth, ML training                                                                                  | **72 hours** | **24 hours**   |
+| **Tier 5 — Cold archival**         | Historical data accessed rarely                                                          | Archived audit partitions, retired ML models, archived intake artifacts                                                                                     | **1 week**   | **24 hours**   |
 
 ### 3.2 Tier Mapping Rationale
 
@@ -129,12 +148,12 @@ Every incident records actual RTO and RPO achieved. Post-incident review compare
 
 Internal RTO/RPO targets are typically tighter than what is committed to customers in service agreements. This allows for variance without breaching contract.
 
-| Tier | Internal Target | Customer SLA |
-|---|---|---|
-| Tier 1 | 1 hr RTO / 5 min RPO | 2 hr RTO / 15 min RPO |
-| Tier 2 | 4 hr RTO / 15 min RPO | 8 hr RTO / 1 hr RPO |
-| Tier 3 | 24 hr RTO / 1 hr RPO | 48 hr RTO / 4 hr RPO |
-| Tier 4 | 72 hr RTO / 24 hr RPO | No SLA |
+| Tier   | Internal Target       | Customer SLA          |
+| ------ | --------------------- | --------------------- |
+| Tier 1 | 1 hr RTO / 5 min RPO  | 2 hr RTO / 15 min RPO |
+| Tier 2 | 4 hr RTO / 15 min RPO | 8 hr RTO / 1 hr RPO   |
+| Tier 3 | 24 hr RTO / 1 hr RPO  | 48 hr RTO / 4 hr RPO  |
+| Tier 4 | 72 hr RTO / 24 hr RPO | No SLA                |
 
 ---
 
@@ -189,12 +208,12 @@ recovery-option=recovery_target_action=promote
 
 #### 4.1.2 Backup Schedule
 
-| Type | Frequency | Retention | Repository |
-|---|---|---|---|
-| Full backup | Sunday 02:00 UTC | 14 backups (local), 30 (backup VM), 90 (off-site) | repo1, repo2, repo3 |
-| Differential backup | Wednesday 02:00 UTC | 7 (local), 14 (backup VM), 30 (off-site) | repo1, repo2, repo3 |
-| Incremental backup | Daily 02:00 UTC except Sun/Wed | 6 (local), 13 (backup VM), 29 (off-site) | repo1, repo2, repo3 |
-| WAL archiving | Continuous (every WAL segment) | 14 days local, 30 days backup VM, 90 days off-site | repo1, repo2, repo3 |
+| Type                | Frequency                      | Retention                                          | Repository          |
+| ------------------- | ------------------------------ | -------------------------------------------------- | ------------------- |
+| Full backup         | Sunday 02:00 UTC               | 14 backups (local), 30 (backup VM), 90 (off-site)  | repo1, repo2, repo3 |
+| Differential backup | Wednesday 02:00 UTC            | 7 (local), 14 (backup VM), 30 (off-site)           | repo1, repo2, repo3 |
+| Incremental backup  | Daily 02:00 UTC except Sun/Wed | 6 (local), 13 (backup VM), 29 (off-site)           | repo1, repo2, repo3 |
+| WAL archiving       | Continuous (every WAL segment) | 14 days local, 30 days backup VM, 90 days off-site | repo1, repo2, repo3 |
 
 **Resulting recovery granularity:** Any point in time within the last 14 days at full granularity; daily snapshots up to 90 days off-site.
 
@@ -219,17 +238,17 @@ Every backup is verified within 1 hour of completion:
 
 #### 4.2.1 Per-Bucket Strategy
 
-| Bucket prefix | Versioning | Object Lock | Replication target |
-|---|---|---|---|
-| `tenants/<org>/documents/` | Enabled | None | wardenx-backup-01 (real-time async) + off-site weekly |
-| `tenants/<org>/generated/` | Enabled | None | wardenx-backup-01 weekly |
-| `tenants/<org>/intake/` | Disabled (ephemeral) | None | None — 30-day lifecycle |
-| `tenants/<org>/claims/` | Enabled | Compliance, 7 years | wardenx-backup-01 (real-time) + off-site daily |
-| `tenants/<org>/cost-reports/` | Enabled | Compliance, 7 years | wardenx-backup-01 (real-time) + off-site daily |
-| `tenants/<org>/exports/` | Enabled | None | wardenx-backup-01 weekly |
-| `tenants/<org>/recordings/` | Enabled | Per-consent terms | wardenx-backup-01 daily |
-| `platform/form-templates/` | Enabled | None | wardenx-backup-01 daily + off-site weekly |
-| `platform/ml-models/` | Enabled | None | wardenx-backup-01 daily + off-site monthly |
+| Bucket prefix                   | Versioning           | Object Lock         | Replication target                                    |
+| ------------------------------- | -------------------- | ------------------- | ----------------------------------------------------- |
+| `tenants/<org>/documents/`    | Enabled              | None                | wardenx-backup-01 (real-time async) + off-site weekly |
+| `tenants/<org>/generated/`    | Enabled              | None                | wardenx-backup-01 weekly                              |
+| `tenants/<org>/intake/`       | Disabled (ephemeral) | None                | None — 30-day lifecycle                              |
+| `tenants/<org>/claims/`       | Enabled              | Compliance, 7 years | wardenx-backup-01 (real-time) + off-site daily        |
+| `tenants/<org>/cost-reports/` | Enabled              | Compliance, 7 years | wardenx-backup-01 (real-time) + off-site daily        |
+| `tenants/<org>/exports/`      | Enabled              | None                | wardenx-backup-01 weekly                              |
+| `tenants/<org>/recordings/`   | Enabled              | Per-consent terms   | wardenx-backup-01 daily                               |
+| `platform/form-templates/`    | Enabled              | None                | wardenx-backup-01 daily + off-site weekly             |
+| `platform/ml-models/`         | Enabled              | None                | wardenx-backup-01 daily + off-site monthly            |
 
 #### 4.2.2 MinIO Replication Configuration
 
@@ -249,6 +268,7 @@ mc replicate status wardenx-primary/tenants
 #### 4.2.3 Off-Site Replication
 
 Off-site target (initially TBD per ADR-002) receives:
+
 - Daily incremental replication of `claims/` and `cost-reports/` (compliance-critical, low volume)
 - Weekly full replication of `documents/`
 - Monthly full replication of `platform/`
@@ -256,6 +276,7 @@ Off-site target (initially TBD per ADR-002) receives:
 ### 4.3 Valkey Backups
 
 Valkey is **not the system of record** — all critical data is in PostgreSQL. Valkey holds:
+
 - Sessions (loss → re-login required for active users)
 - Cache (loss → cold-start performance impact)
 - BullMQ queues (loss → jobs may be re-executed; idempotency required)
@@ -281,25 +302,25 @@ save 60 10000
 
 ### 4.4 Application State
 
-| Asset | Storage | Backup |
-|---|---|---|
-| Container images | GHCR (GitHub Container Registry) | GHCR retains by tag; we also pull-and-archive monthly snapshots to backup VM |
-| Source code | GitHub (primary) + weekly mirror to wardenx-backup-01 | Git is itself a distributed backup; mirror provides off-platform redundancy |
-| Build artifacts | GitHub Actions cache + GHCR | Re-buildable from source; not separately backed up |
-| Secrets (SOPS-encrypted) | In Git (encrypted) | Inherits Git backup; age keys held offline in two locations |
-| Configurations | In Git + on each VM | Configs are immutable per deploy; backups via Proxmox VM snapshots |
+| Asset                    | Storage                                               | Backup                                                                       |
+| ------------------------ | ----------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Container images         | GHCR (GitHub Container Registry)                      | GHCR retains by tag; we also pull-and-archive monthly snapshots to backup VM |
+| Source code              | GitHub (primary) + weekly mirror to wardenx-backup-01 | Git is itself a distributed backup; mirror provides off-platform redundancy  |
+| Build artifacts          | GitHub Actions cache + GHCR                           | Re-buildable from source; not separately backed up                           |
+| Secrets (SOPS-encrypted) | In Git (encrypted)                                    | Inherits Git backup; age keys held offline in two locations                  |
+| Configurations           | In Git + on each VM                                   | Configs are immutable per deploy; backups via Proxmox VM snapshots           |
 
 ### 4.5 Proxmox VM Backups
 
 Weekly full VM backups to wardenx-backup-01 via Proxmox Backup Server (PBS):
 
-| VM | Backup frequency | Retention |
-|---|---|---|
-| All app/worker VMs | Weekly | 4 weeks |
-| Database VMs (db-01, db-02) | Daily VM snapshot (in addition to pgBackRest) | 7 daily, 4 weekly |
-| MinIO VM (storage-01) | Weekly | 4 weeks (data is bucket-replicated separately) |
-| Backup VM (backup-01) | Snapshot mirrored to off-site monthly | 3 months |
-| Edge, Obs VMs | Weekly | 4 weeks |
+| VM                          | Backup frequency                              | Retention                                      |
+| --------------------------- | --------------------------------------------- | ---------------------------------------------- |
+| All app/worker VMs          | Weekly                                        | 4 weeks                                        |
+| Database VMs (db-01, db-02) | Daily VM snapshot (in addition to pgBackRest) | 7 daily, 4 weekly                              |
+| MinIO VM (storage-01)       | Weekly                                        | 4 weeks (data is bucket-replicated separately) |
+| Backup VM (backup-01)       | Snapshot mirrored to off-site monthly         | 3 months                                       |
+| Edge, Obs VMs               | Weekly                                        | 4 weeks                                        |
 
 **VM-level backups exist for fast bare-metal recovery; PostgreSQL pgBackRest and MinIO replication are the authoritative data backups.**
 
@@ -323,15 +344,15 @@ All backups are encrypted at rest:
 
 Each backup type has a verification procedure run on schedule:
 
-| Backup type | Test frequency | What's verified |
-|---|---|---|
-| pgBackRest backup | Daily (automated) | Backup integrity, retention policy applied, repo healthy |
-| pgBackRest restore | Monthly (manual + automated) | Full restore to sandbox VM; checksum compare; smoke queries run |
-| MinIO replication | Continuous (MinIO status) | Replication lag < 1 min; object count matches |
-| MinIO object restore | Monthly | Random sample of 100 objects pulled from backup; bit-identical to primary |
-| Proxmox VM backup | Monthly | Random VM restored to alternate Proxmox node; boots cleanly |
-| Off-site restore | Quarterly | Full PG restore from off-site repo to sandbox; full procedure timed |
-| Secret decryption | Quarterly | Verify off-site age keys still decrypt SOPS-encrypted secrets |
+| Backup type          | Test frequency               | What's verified                                                           |
+| -------------------- | ---------------------------- | ------------------------------------------------------------------------- |
+| pgBackRest backup    | Daily (automated)            | Backup integrity, retention policy applied, repo healthy                  |
+| pgBackRest restore   | Monthly (manual + automated) | Full restore to sandbox VM; checksum compare; smoke queries run           |
+| MinIO replication    | Continuous (MinIO status)    | Replication lag < 1 min; object count matches                             |
+| MinIO object restore | Monthly                      | Random sample of 100 objects pulled from backup; bit-identical to primary |
+| Proxmox VM backup    | Monthly                      | Random VM restored to alternate Proxmox node; boots cleanly               |
+| Off-site restore     | Quarterly                    | Full PG restore from off-site repo to sandbox; full procedure timed       |
+| Secret decryption    | Quarterly                    | Verify off-site age keys still decrypt SOPS-encrypted secrets             |
 
 ---
 
@@ -361,6 +382,7 @@ restore_command = 'pgbackrest --stanza=wardenx archive-get %f %p'
 **Asynchronous replication trade-off:** Allows replica to lag slightly (<1 sec typical, <30 sec worst case during heavy write spikes) without slowing the primary. Acceptable for hospice EHR — losing 30 sec of writes in a failover is a known cost.
 
 **Monitoring:**
+
 - Prometheus alerts: replication lag > 60 sec (SEV-3), > 5 min (SEV-2), > 30 min (SEV-1 — replication broken)
 - Replication slot age monitored — slots not consumed will fill WAL and crash primary if left unattended
 
@@ -386,6 +408,7 @@ Some state intentionally not replicated to keep complexity bounded:
 ### 6.1 PostgreSQL Primary → Replica Promotion
 
 **Trigger conditions** (any of):
+
 - Primary unresponsive for > 5 min with no recovery sign
 - Primary disk failure detected
 - Primary VM corrupted beyond easy recovery
@@ -416,7 +439,7 @@ psql -h wardenx-db-02 -U postgres -c "SELECT pg_is_in_recovery();"
 for vm in wardenx-app-01 wardenx-app-02; do
   ssh $vm "sudo systemctl restart wardenx-backend"
   sleep 30
-  curl -sf https://$vm:4181/ready || echo "FAIL on $vm"
+  curl -sf https://$vm:3000/ready || echo "FAIL on $vm"
 done
 
 # Step 7: Verify writes succeed
@@ -432,15 +455,18 @@ done
 Three approaches, in order of preference:
 
 **Method A — PgBouncer host swap (preferred):**
+
 - PgBouncer config has both hosts defined; on failover, edit `/etc/pgbouncer/pgbouncer.ini` to swap `host=` value, run `RELOAD` command
 - Application unaware; connections pick up on next checkout
 
 **Method B — DNS-based:**
+
 - Internal DNS record `db-primary.wardenx.internal` updates to point to new primary
 - TTL 30 sec; takes up to 30 sec to propagate
 - Application connection pool drops stale connections, reconnects to new target
 
 **Method C — Application config reload:**
+
 - Application reads DB host from a config file or environment variable
 - Update via Ansible or systemd; rolling restart
 
@@ -536,7 +562,7 @@ for service in wardenx-backend wardenx-worker-billing wardenx-worker-intake; do
 done
 
 # Step 5: Verify backend can read/write to backup MinIO
-curl -sf https://wardenx-app-01:4181/api/v1/admin/storage/health
+curl -sf https://wardenx-app-01:3000/api/v1/admin/storage/health
 
 # Step 6: Plan recovery of primary MinIO
 # If hardware failure, replace and restore from backup
@@ -590,6 +616,7 @@ This is the highest-impact failure short of total site loss. Backends are health
 ### 6.7 Total Site (Datacenter / Proxmox Cluster) Failure
 
 **Trigger conditions:**
+
 - Fire, flood, theft, prolonged power outage at hosting site
 - Hardware catastrophe affecting all Proxmox nodes
 - Ransomware affecting hypervisor
@@ -732,13 +759,13 @@ After any recovery, before resuming customer traffic:
 
 ### 8.1 Continuous Verification
 
-| Verification | Frequency | Method | Failure response |
-|---|---|---|---|
-| pgBackRest backup completes | Daily | pgBackRest exit code + `info` command | SEV-3 alert; investigate same day |
-| WAL archiving keeping up | Continuous | Prometheus metric of WAL backlog | SEV-2 alert if backlog > 5 min |
-| MinIO replication lag | Continuous | MinIO replication metrics | SEV-3 alert if lag > 5 min, SEV-2 if > 30 min |
-| Valkey snapshot to backup | Every 15 min | File freshness check on backup VM | SEV-3 alert if no snapshot in 30 min |
-| PBS VM backup completes | Weekly | PBS job status | SEV-3 alert |
+| Verification                | Frequency    | Method                                 | Failure response                              |
+| --------------------------- | ------------ | -------------------------------------- | --------------------------------------------- |
+| pgBackRest backup completes | Daily        | pgBackRest exit code +`info` command | SEV-3 alert; investigate same day             |
+| WAL archiving keeping up    | Continuous   | Prometheus metric of WAL backlog       | SEV-2 alert if backlog > 5 min                |
+| MinIO replication lag       | Continuous   | MinIO replication metrics              | SEV-3 alert if lag > 5 min, SEV-2 if > 30 min |
+| Valkey snapshot to backup   | Every 15 min | File freshness check on backup VM      | SEV-3 alert if no snapshot in 30 min          |
+| PBS VM backup completes     | Weekly       | PBS job status                         | SEV-3 alert                                   |
 
 ### 8.2 Monthly Restore Drill
 
@@ -767,7 +794,7 @@ psql -d wardenx -c "SELECT COUNT(*) FROM audit_event WHERE created_at > NOW() - 
 #    rls-isolation.live.test.ts's assertions against the restored instance.
 
 # 6. Compare data checksums for sample tables
-# 7. Document drill results in docs/dr-drills/<date>.md
+# 7. Document drill results in docs/dr-drills/<date>.md   (NOTE: this directory does not exist — create it with the first drill)
 # 8. Destroy sandbox; certificate that destruction occurred
 ```
 
@@ -835,14 +862,14 @@ psql -d wardenx -c "SELECT COUNT(*) FROM audit_event WHERE created_at > NOW() - 
 
 ### 8.5 Drill Calendar (2026)
 
-| Date | Drill | Owner |
-|---|---|---|
-| First Sat each month | Monthly restore drill | Fabrice |
-| 2026-03-15 | Q1 failover drill | Fabrice |
-| 2026-06-15 | Q2 failover drill | Fabrice |
-| 2026-09-15 | Q3 failover drill | Fabrice |
-| 2026-12-15 | Q4 failover drill | Fabrice |
-| 2026-08-01 | Annual full DR exercise | Fabrice + contracted assistance |
+| Date                 | Drill                   | Owner                           |
+| -------------------- | ----------------------- | ------------------------------- |
+| First Sat each month | Monthly restore drill   | Fabrice                         |
+| 2026-03-15           | Q1 failover drill       | Fabrice                         |
+| 2026-06-15           | Q2 failover drill       | Fabrice                         |
+| 2026-09-15           | Q3 failover drill       | Fabrice                         |
+| 2026-12-15           | Q4 failover drill       | Fabrice                         |
+| 2026-08-01           | Annual full DR exercise | Fabrice + contracted assistance |
 
 ---
 
@@ -850,13 +877,13 @@ psql -d wardenx -c "SELECT COUNT(*) FROM audit_event WHERE created_at > NOW() - 
 
 ### 9.1 Internal Communication During Incident
 
-| Channel | Purpose | Used For |
-|---|---|---|
-| Phone (Fabrice's direct line) | Wake-up notification | SEV-1 page from PagerDuty |
-| Slack / Signal | Real-time coordination | All severity levels during incident |
-| Status page (status.wardenx.app) | Customer-facing public log | SEV-1 and SEV-2 |
-| Email distribution list (incidents@wardenx.app) | Compliance & legal CC | SEV-1, suspected breach |
-| Incident retrospective doc | Permanent record | All SEV-1 and SEV-2 post-incident |
+| Channel                                         | Purpose                    | Used For                            |
+| ----------------------------------------------- | -------------------------- | ----------------------------------- |
+| Phone (Fabrice's direct line)                   | Wake-up notification       | SEV-1 page from PagerDuty           |
+| Slack / Signal                                  | Real-time coordination     | All severity levels during incident |
+| Status page (status.wardenx.app)                | Customer-facing public log | SEV-1 and SEV-2                     |
+| Email distribution list (incidents@wardenx.app) | Compliance & legal CC      | SEV-1, suspected breach             |
+| Incident retrospective doc                      | Permanent record           | All SEV-1 and SEV-2 post-incident   |
 
 ### 9.2 Customer Communication
 
@@ -983,21 +1010,21 @@ HIPAA Privacy Rule §164.404 requires notification when there is "unauthorized a
 
 ### 9.4 Vendor Escalation Contacts
 
-Maintained as a separate doc (`docs/architecture/vendor-escalation.md`) updated quarterly:
+Maintained as a separate doc (`docs/architecture/vendor-escalation.md` — **NOT YET CREATED**) updated quarterly:
 
-| Vendor | Service | Standard support | Escalation contact | BAA status |
-|---|---|---|---|---|
-| DoseSpot | E-prescribing | ticket portal | Account manager phone | Yes |
-| Anthropic | AI API | console | Enterprise support | TBD (BAA negotiation) |
-| Twilio | SMS/Voice | console | Enterprise support | Yes (HIPAA edition) |
-| Postmark | Email | console | Account manager | Yes (HIPAA tier) |
-| Stripe | Subscription billing | console | Account manager | N/A (no PHI) |
-| NGS (MAC J6) | Medicare claims | MAC support | EDI hotline | Per CMS terms |
-| Oregon Medicaid (OHA) | Medicaid claims | provider services | OHA EDI contact | Per state contract |
-| iQIES (CMS) | HOPE submission | CMS QIES help desk | regional CMS contact | Per CMS terms |
-| Xero | Accounting MCP | console | account manager | N/A (no PHI in API surface used) |
-| Gusto | Payroll | console | account manager | N/A (no PHI) |
-| Proxmox / hardware vendor | Infrastructure | vendor support | next-business-day contract | N/A |
+| Vendor                    | Service              | Standard support   | Escalation contact         | BAA status                       |
+| ------------------------- | -------------------- | ------------------ | -------------------------- | -------------------------------- |
+| DoseSpot                  | E-prescribing        | ticket portal      | Account manager phone      | Yes                              |
+| Anthropic                 | AI API               | console            | Enterprise support         | TBD (BAA negotiation)            |
+| Twilio                    | SMS/Voice            | console            | Enterprise support         | Yes (HIPAA edition)              |
+| Postmark                  | Email                | console            | Account manager            | Yes (HIPAA tier)                 |
+| Stripe                    | Subscription billing | console            | Account manager            | N/A (no PHI)                     |
+| NGS (MAC J6)              | Medicare claims      | MAC support        | EDI hotline                | Per CMS terms                    |
+| Oregon Medicaid (OHA)     | Medicaid claims      | provider services  | OHA EDI contact            | Per state contract               |
+| iQIES (CMS)               | HOPE submission      | CMS QIES help desk | regional CMS contact       | Per CMS terms                    |
+| Xero                      | Accounting MCP       | console            | account manager            | N/A (no PHI in API surface used) |
+| Gusto                     | Payroll              | console            | account manager            | N/A (no PHI)                     |
+| Proxmox / hardware vendor | Infrastructure       | vendor support     | next-business-day contract | N/A                              |
 
 ---
 
@@ -1005,13 +1032,13 @@ Maintained as a separate doc (`docs/architecture/vendor-escalation.md`) updated 
 
 ### 10.1 Disaster Categories
 
-| Category | Scope | Examples |
-|---|---|---|
-| Local | Single VM or service | VM crash; software bug |
-| Cluster | Single Proxmox host | Host hardware failure; host crash |
-| Site | All Proxmox hosts at primary location | Datacenter fire/flood; extended power outage; ransomware affecting hypervisor |
-| Regional | Multiple sites in geographic area | Earthquake; widespread utility failure |
-| Vendor | External vendor outage | Anthropic down; AWS down (if cloud-deployed) |
+| Category | Scope                                 | Examples                                                                      |
+| -------- | ------------------------------------- | ----------------------------------------------------------------------------- |
+| Local    | Single VM or service                  | VM crash; software bug                                                        |
+| Cluster  | Single Proxmox host                   | Host hardware failure; host crash                                             |
+| Site     | All Proxmox hosts at primary location | Datacenter fire/flood; extended power outage; ransomware affecting hypervisor |
+| Regional | Multiple sites in geographic area     | Earthquake; widespread utility failure                                        |
+| Vendor   | External vendor outage                | Anthropic down; AWS down (if cloud-deployed)                                  |
 
 ### 10.2 Site Disaster Response Plan
 
@@ -1053,14 +1080,17 @@ Maintained as a separate doc (`docs/architecture/vendor-escalation.md`) updated 
 The off-site DR target is flagged in Architecture v0.9 as ADR-002. Options under consideration:
 
 **Option A: Second Proxmox cluster at separate physical site**
+
 - Pro: Full architectural parity; no cloud lock-in; encrypted backup transit
 - Con: Capex; requires physical security for second site; geographical proximity may not satisfy regional disaster scope
 
 **Option B: Cloud (AWS / GCP / Hetzner) as cold DR**
+
 - Pro: Geographic diversity; no capex; spinning up takes minutes
 - Con: BAA required (AWS HIPAA-eligible, GCP HIPAA-eligible, Hetzner not HIPAA-friendly in US); ongoing cost for cold infrastructure; vendor lock-in if it becomes warm
 
 **Option C: Hybrid — cold offsite encrypted backups + on-demand cloud spinup**
+
 - Pro: Lowest ongoing cost; cloud only when needed
 - Con: Cloud spinup adds to RTO; requires automation tested regularly
 
@@ -1073,6 +1103,7 @@ The off-site DR target is flagged in Architecture v0.9 as ADR-002. Options under
 #### 10.4.1 Ransomware
 
 **Detection signals:**
+
 - Mass file encryption alerts (Crowdstrike-equivalent endpoint detection if deployed)
 - Unusual database query patterns (large-scale DELETE or UPDATE)
 - Backups failing or being deleted
@@ -1092,6 +1123,7 @@ The off-site DR target is flagged in Architecture v0.9 as ADR-002. Options under
 10. Notify state attorney general (where applicable per state breach law)
 
 **Specific protections in WardenX architecture against ransomware:**
+
 - pgBackRest backups encrypted with keys not on primary infrastructure
 - Off-site backups not accessible from primary network
 - MinIO object lock on compliance buckets (claims, cost reports) — cannot be overwritten or deleted for 7 years
@@ -1102,6 +1134,7 @@ The off-site DR target is flagged in Architecture v0.9 as ADR-002. Options under
 #### 10.4.2 Insider Threat / Malicious Access
 
 **Detection signals:**
+
 - Unusual access patterns in audit log (off-hours, bulk reads, unfamiliar IPs)
 - Failed RLS denials in logs (attempted cross-tenant access)
 - Unexpected role changes
@@ -1245,13 +1278,13 @@ The Weekly BCP Print job (scheduled via BullMQ) generates these printables for e
 
 This document satisfies the requirements of HIPAA Security Rule §164.308(a)(7) Contingency Plan implementation specifications:
 
-| HIPAA Requirement | Section of this doc satisfying |
-|---|---|
-| §164.308(a)(7)(ii)(A) Data Backup Plan (required) | §4 Backup Architecture |
-| §164.308(a)(7)(ii)(B) Disaster Recovery Plan (required) | §6 Failover Procedures, §7 Recovery Procedures, §10 Regional Disaster Scenarios |
-| §164.308(a)(7)(ii)(C) Emergency Mode Operation Plan (required) | §11 Business Continuity for Clinical Operations |
-| §164.308(a)(7)(ii)(D) Testing and Revision Procedures (addressable) | §8 Backup Verification & Restore Drills |
-| §164.308(a)(7)(ii)(E) Applications and Data Criticality Analysis (addressable) | §3 Recovery Objectives — service tiers |
+| HIPAA Requirement                                                               | Section of this doc satisfying                                                     |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| §164.308(a)(7)(ii)(A) Data Backup Plan (required)                              | §4 Backup Architecture                                                            |
+| §164.308(a)(7)(ii)(B) Disaster Recovery Plan (required)                        | §6 Failover Procedures, §7 Recovery Procedures, §10 Regional Disaster Scenarios |
+| §164.308(a)(7)(ii)(C) Emergency Mode Operation Plan (required)                 | §11 Business Continuity for Clinical Operations                                   |
+| §164.308(a)(7)(ii)(D) Testing and Revision Procedures (addressable)            | §8 Backup Verification & Restore Drills                                           |
+| §164.308(a)(7)(ii)(E) Applications and Data Criticality Analysis (addressable) | §3 Recovery Objectives — service tiers                                           |
 
 Additionally referenced HIPAA controls:
 
@@ -1278,13 +1311,13 @@ If WardenX customer agencies operate an IPU (Module 37), CMS CoP §418.113 Emerg
 
 ### 14.1 Review Schedule
 
-| Review | Frequency | Owner |
-|---|---|---|
-| Full document review | Annual | Fabrice |
-| Post-incident review-driven updates | After every SEV-1 and SEV-2 | Fabrice |
-| Architecture-change-driven updates | When Architecture or System Design changes | Fabrice |
-| Vendor-change-driven updates | When a vendor in §9.4 changes | Fabrice |
-| Drill-result-driven updates | After each quarterly failover drill or annual DR exercise | Fabrice |
+| Review                              | Frequency                                                 | Owner   |
+| ----------------------------------- | --------------------------------------------------------- | ------- |
+| Full document review                | Annual                                                    | Fabrice |
+| Post-incident review-driven updates | After every SEV-1 and SEV-2                               | Fabrice |
+| Architecture-change-driven updates  | When Architecture or System Design changes                | Fabrice |
+| Vendor-change-driven updates        | When a vendor in §9.4 changes                            | Fabrice |
+| Drill-result-driven updates         | After each quarterly failover drill or annual DR exercise | Fabrice |
 
 ### 14.2 Update Triggers
 
@@ -1306,9 +1339,9 @@ Specific events that trigger immediate document updates:
 
 ### 14.4 Sign-off Trail
 
-| Version | Date | Reviewer | Notes |
-|---|---|---|---|
-| v0.1 | 2026-06-08 | Fabrice | Initial document; spans Phase 1 operational requirements |
+| Version | Date       | Reviewer | Notes                                                    |
+| ------- | ---------- | -------- | -------------------------------------------------------- |
+| v0.1    | 2026-06-08 | Fabrice  | Initial document; spans Phase 1 operational requirements |
 
 ---
 
@@ -1320,12 +1353,12 @@ This addendum operationalizes the disaster-recovery and forensic-reconstruction 
 
 Module 34's tables map onto the §3.1 service tiers as below. The governing principle: the per-tenant key ring is the spine — without it, no tenant data decrypts — so it shares Tier-1 status with the tenant account and BAA register. (Module spec §8.6 states the customer-SLA-aligned Tier-1 target as RPO 15 min / RTO 1 hr; the internal Tier-1 target in §3.4 is tighter.)
 
-| M34 asset | Tier | Rationale |
-|---|---|---|
-| `tenant_account`, `tenant_key_ring`, `platform_tenant_baa_record` | **Tier 1** | The platform spine. The DEK ciphertext in `tenant_key_ring` is part of the Tier-1 backup; without it no envelope column decrypts. |
-| `tenant_account_status_event`, `tenant_invitation`, `onboarding_task`, `support_consent_grant`, `support_session`, `support_session_event`, `tenant_key_destruction_log`, `dsar_export_job`, `tenant_export_job` | **Tier 2** | Lifecycle, onboarding, support, and export operational state; reconstructable or deferrable for hours without patient-care impact. |
-| `tenant_signup_intent`, `tenant_signup_token` | **Tier 3** | Pre-provisioning self-serve state; loss re-requests the signup. |
-| `onboarding_task_template` | **Tier 3 (rebuildable)** | Platform reference data; `compliance`-retained but re-seedable from `onboarding_task_template` seed — restore from backup or re-seed, whichever is faster. |
+| M34 asset                                                                                                                                                                                                                          | Tier                           | Rationale                                                                                                                                                      |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tenant_account`, `tenant_key_ring`, `platform_tenant_baa_record`                                                                                                                                                            | **Tier 1**               | The platform spine. The DEK ciphertext in`tenant_key_ring` is part of the Tier-1 backup; without it no envelope column decrypts.                             |
+| `tenant_account_status_event`, `tenant_invitation`, `onboarding_task`, `support_consent_grant`, `support_session`, `support_session_event`, `tenant_key_destruction_log`, `dsar_export_job`, `tenant_export_job` | **Tier 2**               | Lifecycle, onboarding, support, and export operational state; reconstructable or deferrable for hours without patient-care impact.                             |
+| `tenant_signup_intent`, `tenant_signup_token`                                                                                                                                                                                  | **Tier 3**               | Pre-provisioning self-serve state; loss re-requests the signup.                                                                                                |
+| `onboarding_task_template`                                                                                                                                                                                                       | **Tier 3 (rebuildable)** | Platform reference data;`compliance`-retained but re-seedable from `onboarding_task_template` seed — restore from backup or re-seed, whichever is faster. |
 
 **Key-ring / KEK split across DR.** The DEK ciphertext rides in the Tier-1 PostgreSQL backup (§4.1); the wrapping KEK lives in the HSM and is backed up separately via the HSM vendor procedure (Security Hardening §4 / §8.4). A restore reunites ciphertext + KEK. A **destroyed** tenant's DEK is `NULL` in Tier-1 backups too — once shredded, no backup resurrects the data. This is the cryptographic-shred property holding across DR (module spec §8.6).
 
@@ -1333,13 +1366,13 @@ Module 34's tables map onto the §3.1 service tiers as below. The governing prin
 
 The `tenant.shred` worker executes a four-phase sequence (module spec §3.5 / §7.2). Recovery after a crash is governed **entirely** by the per-phase receipts in `tenant_key_destruction_log` — never by guesswork. The worker is idempotent: re-running it resumes from the last completed marker and skips completed phases. The operator's only job is to confirm the last marker and re-invoke.
 
-| Phase | Marker written to `tenant_key_destruction_log` | Action | Recoverable after crash? |
-|---|---|---|---|
-| **Phase 1** | one receipt row per eraseFn (rows-erased + sha256, **or** `refused_part_two_retention`) | every M4-registered eraseFn called | Yes — nothing destroyed yet |
-| **Gate** | `dek_destruction_aborted_part_two_retention` (only if any refusal) | abort before Phase 3; re-defer tenant `destruction_pending → retained` | Yes — DEK preserved |
-| **Phase 2** | `minio_scope_destroyed` | per-tenant MinIO scope destroyed (M1 helper) | Objects gone; ciphertext still sealed under the DEK — recoverable only from the MinIO backup tier (§4.2) |
-| **Phase 3** | `dek_destroyed` | DEK zeroed via `m34_destroy_tenant_key_ring` (`current_dek_kek_wrapped_ciphertext = NULL`, `prior_dek_versions` cleared) | **NO — irreversible boundary** |
-| **Phase 4** | `certificate_finalized` | M4 certificate finalized; `tenant_account.status → destroyed`; `m34.tenant.destroyed` outbox | Yes — idempotent certificate filing |
+| Phase             | Marker written to`tenant_key_destruction_log`                                                | Action                                                                                                                        | Recoverable after crash?                                                                                   |
+| ----------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Phase 1** | one receipt row per eraseFn (rows-erased + sha256,**or** `refused_part_two_retention`) | every M4-registered eraseFn called                                                                                            | Yes — nothing destroyed yet                                                                               |
+| **Gate**    | `dek_destruction_aborted_part_two_retention` (only if any refusal)                           | abort before Phase 3; re-defer tenant`destruction_pending → retained`                                                      | Yes — DEK preserved                                                                                       |
+| **Phase 2** | `minio_scope_destroyed`                                                                      | per-tenant MinIO scope destroyed (M1 helper)                                                                                  | Objects gone; ciphertext still sealed under the DEK — recoverable only from the MinIO backup tier (§4.2) |
+| **Phase 3** | `dek_destroyed`                                                                              | DEK zeroed via`m34_destroy_tenant_key_ring` (`current_dek_kek_wrapped_ciphertext = NULL`, `prior_dek_versions` cleared) | **NO — irreversible boundary**                                                                      |
+| **Phase 4** | `certificate_finalized`                                                                      | M4 certificate finalized;`tenant_account.status → destroyed`; `m34.tenant.destroyed` outbox                              | Yes — idempotent certificate filing                                                                       |
 
 **Resume procedure:**
 
@@ -1355,8 +1388,37 @@ ORDER BY recorded_at DESC;
 # 2. Re-invoke the worker (idempotent). It reads the markers and skips completed phases.
 #    Phases 1-2 incomplete  → safe to re-run end-to-end.
 #    Phase 3 recorded       → DATA ALREADY DESTROYED; re-run only files the Phase 4 certificate.
-DATABASE_URL=... bun packages/saas-tenant-platform/scripts/resume-shred.ts --org-id=<orgId>
+#
+#    THERE IS NO CLI. Resume is the SAME platform-ops route that started the shred, re-posted with
+#    the SAME destruction-certificate id:
+curl -sf -X POST https://wardenx-app-01:3000/api/v1/platform/tenants/<orgSlug>/shred \
+  -H "authorization: Bearer <platform-ops session>" \
+  -H "content-type: application/json" \
+  -d '{"destructionCertificateId":"<the SAME certificate id as the original run>"}'
 ```
+
+> **Two things an operator must know before re-posting.**
+>
+> **(a) There is no `resume-shred.ts`.** Earlier revisions of this runbook cited
+> `packages/saas-tenant-platform/scripts/resume-shred.ts`; that file has never existed, and neither
+> has the directory. The idempotency lives in the worker and its receipts, not in a separate script,
+> so the route IS the resume mechanism.
+>
+> **(b) The re-post may silently no-op if the old job record is still in Valkey.** The enqueue uses
+> a deterministic BullMQ `jobId` of `${tenantAccountId}+${destructionCertificateId}`
+> (`shredJobId`, `jobs/index.ts`), which is exactly what makes a duplicate POST safe — and it also
+> means BullMQ will refuse to add a second job under a jobId it still holds, including a *failed* or
+> *completed* one inside its retention window. If the re-post returns a job id but the worker never
+> runs, remove the stale record first and re-post:
+>
+> ```bash
+> # Inspect, then remove, the retained job record for this shred
+> redis-cli -h wardenx-valkey-01 --scan --pattern 'bull:tenant.shred:*<destructionCertificateId>*'
+> redis-cli -h wardenx-valkey-01 DEL 'bull:tenant.shred:<tenantAccountId>+<destructionCertificateId>'
+> ```
+>
+> Confirm the Phase markers again (step 1) before and after — they, not the queue, are the record of
+> what has actually happened to the tenant's key material.
 
 **The irreversible boundary is Phase 3.** Before Phase 3, a crash is fully recoverable — no data has been destroyed, and a re-run completes cleanly. After Phase 3, the DEK is gone; even a Tier-1 backup restore cannot resurrect the data, and a Phase-4-only crash leaves you with destroyed data and an unfiled certificate — re-running files it.
 
@@ -1366,31 +1428,60 @@ DATABASE_URL=... bun packages/saas-tenant-platform/scripts/resume-shred.ts --org
 
 When a surveyor, auditor, or court asks *"which WardenX engineer accessed patient X's chart, when, and under what authority?"*, the answer is reconstructed deterministically from three tables plus the M4 audit projection. No WardenX engineer can reach tenant PHI without either a support session or break-glass (module spec §7.4 / D21).
 
-```sql
--- 1. Every platform-ops PHI access of patient X in the window (the critical audit projection)
-SELECT occurred_at, actor_membership_id, action, resource_kind, severity
-FROM audit_event
-WHERE patient_id = '<patientId>'
-  AND actor_kind = 'platform_ops_via_support_session'
-  AND occurred_at BETWEEN '<from>' AND '<to>'
-ORDER BY occurred_at;
+> **Column contract (verified against the live schema 2026-08-14).** `audit_event` has **no
+> `patient_id`, no `occurred_at`, no `actor_membership_id` and no `action`** — the real columns are
+> `created_at`, `actor_user_id`, `event_type`, `resource_kind`, `resource_id`, `context`. The patient
+> is the `resource_id` of a row whose `resource_kind` is the patient-scoped aggregate, not a column
+> of its own. `actor_kind` is the four-value enum `('user','system','integration',
+> 'external_collaborator')` — `platform_ops_via_support_session` and `break_glass` are **not**
+> members of it; the authority under which an access happened is carried by `event_type` and
+> `context`, not by `actor_kind`. `support_session_event` is the table that does carry `patient_id`
+> and `occurred_at`. Every statement below has been executed against a migrated database.
 
--- 2. Tie each access to the session, and the session to the consent that authorized it
-SELECT s.id AS session_id, s.started_at, s.expires_at,
-       e.patient_id, e.occurred_at, e.context,
-       g.id AS grant_id, g.grant_reason, g.scope,
-       g.granted_by_membership_id, s.actor_membership_id
+```sql
+-- 1. Every bypass-authority PHI access in the window (the critical audit projection).
+--    The AUTHORITY lives in event_type, not actor_kind:
+--      m3.breakglass.access    — one resource read under an open emergency grant (§7.4, per access)
+--      m3.breakglass.invoked   — the grant being opened
+--      platform.bypass_invoked — an M34 platform-ops cross-tenant read (the M4 bypass auditor)
+SELECT a.created_at, a.actor_user_id, a.event_type, a.resource_kind, a.resource_id,
+       a.severity, a.context
+FROM audit_event a
+WHERE a.organization_id = '<organizationId>'
+  AND a.severity = 'critical'
+  AND a.event_type IN ('m3.breakglass.access', 'm3.breakglass.invoked', 'platform.bypass_invoked')
+  AND a.created_at BETWEEN '<from>' AND '<to>'
+ORDER BY a.created_at;
+
+-- 2. Tie each platform-ops access to its session, and the session to the consent that authorized it.
+--    Both joins carry organization_id: these tables are LIST-partitioned by it, so including it lets
+--    the planner prune to the tenant's partition instead of scanning every tenant's.
+SELECT s.id AS session_id, s.started_at, s.expires_at, s.actor_membership_id,
+       e.patient_id, e.occurred_at, e.event_kind, e.resource_kind, e.resource_id,
+       g.id AS grant_id, g.grant_reason, g.scope, g.grantor_membership_id
 FROM support_session_event e
-JOIN support_session s        ON s.id = e.support_session_id
-JOIN support_consent_grant g  ON g.id = s.support_consent_grant_id
+JOIN support_session s       ON s.id = e.support_session_id
+                            AND s.organization_id = e.organization_id
+JOIN support_consent_grant g ON g.id = s.support_consent_grant_id
+                            AND g.organization_id = s.organization_id
 WHERE e.patient_id = '<patientId>'
   AND e.occurred_at BETWEEN '<from>' AND '<to>'
 ORDER BY e.occurred_at;
+
+-- 3. The break-glass path has its own register (no support session exists for it). `cosigned_by` is
+--    the second person when the tenant set `breakglass_cosign_required`; a CHECK constraint
+--    (bge_cosigner_distinct) guarantees it is never the invoker.
+SELECT b.id, b.actor_user_id, b.cosigned_by, b.target_patient_id, b.reason,
+       b.status, b.started_at, b.expires_at
+FROM break_glass_event b
+WHERE b.target_patient_id = '<patientId>'
+  AND b.started_at BETWEEN '<from>' AND '<to>'
+ORDER BY b.started_at;
 ```
 
 **Reading the result:** the join proves, for every access, that (a) a tenant compliance officer issued a consent grant, (b) the grant was on file at session start, and (c) the actor on the session was distinct from the grantor (D16). The M4 audit row carries the resource body; the `support_session_event` row carries the PHI-free access metadata. A Part 2-heightened session (module spec §7.4 step 4a) shows `severity=critical` with the Part 2 marker and **no** write events — support over Part 2 patients is read-only.
 
-**Post-shred reconstruction.** The forensic metadata survives a tenant shred: `audit_event`, `support_session`, `support_session_event`, and `support_consent_grant` are `compliance`-retained (7 yr) and reference patients by FK only (§14A.1 / §8.4 of the spec). So even after the patient's PHI body is cryptographically inaccessible, the disclosure-accounting story — who touched what, when, under whose consent — remains fully reconstructable for the full retention window. The break-glass path (no-consent emergency, D21) appears here as `actor_kind='break_glass'`, `severity=critical`, and is reviewed by the compliance officer within 24 h (Ops Runbook break-glass procedure).
+**Post-shred reconstruction.** The forensic metadata survives a tenant shred: `audit_event`, `support_session`, `support_session_event`, and `support_consent_grant` are `compliance`-retained (7 yr) and reference patients by FK only (§14A.1 / §8.4 of the spec). So even after the patient's PHI body is cryptographically inaccessible, the disclosure-accounting story — who touched what, when, under whose consent — remains fully reconstructable for the full retention window. The break-glass path (no-consent emergency, D21) is **not** an `actor_kind` — it appears as `event_type='m3.breakglass.access'` at `severity='critical'` in `audit_event`, with its own row in `break_glass_event` (query 3 above), and is reviewed by the compliance officer within 24 h (Ops Runbook break-glass procedure).
 
 ---
 
@@ -1449,25 +1540,25 @@ PHI exposure suspected
 
 ## 16. Appendix B — Glossary
 
-| Term | Definition |
-|---|---|
-| **RTO** | Recovery Time Objective — how quickly service is restored after failure |
-| **RPO** | Recovery Point Objective — maximum acceptable data loss measured in time |
-| **PITR** | Point-In-Time Recovery — restoring database to a specific timestamp |
-| **WAL** | Write-Ahead Log — PostgreSQL's transaction log used for replication and PITR |
-| **BCP** | Business Continuity Plan — keeping operations running through disruption |
-| **DR** | Disaster Recovery — restoring after major failure |
-| **SEV-1/2/3/4** | Severity classification — see §2.3 |
-| **IC** | Incident Commander — single decision-maker during incident |
-| **BAA** | Business Associate Agreement — HIPAA contract with vendor handling PHI |
-| **PHI** | Protected Health Information per HIPAA |
-| **MAC** | Medicare Administrative Contractor — processes Medicare claims |
-| **IPU** | Inpatient Unit — hospice inpatient setting under CoP 418.108/110 |
-| **NOE** | Notice of Election — hospice enrollment filing required within 5 days |
-| **CTI** | Certification of Terminal Illness — required for hospice election |
-| **CoP** | Conditions of Participation — CMS requirements for hospice agencies |
-| **HQRP** | Hospice Quality Reporting Program |
-| **HOPE** | Hospice Outcomes & Patient Evaluation — current assessment tool |
+| Term                  | Definition                                                                    |
+| --------------------- | ----------------------------------------------------------------------------- |
+| **RTO**         | Recovery Time Objective — how quickly service is restored after failure      |
+| **RPO**         | Recovery Point Objective — maximum acceptable data loss measured in time     |
+| **PITR**        | Point-In-Time Recovery — restoring database to a specific timestamp          |
+| **WAL**         | Write-Ahead Log — PostgreSQL's transaction log used for replication and PITR |
+| **BCP**         | Business Continuity Plan — keeping operations running through disruption     |
+| **DR**          | Disaster Recovery — restoring after major failure                            |
+| **SEV-1/2/3/4** | Severity classification — see §2.3                                          |
+| **IC**          | Incident Commander — single decision-maker during incident                   |
+| **BAA**         | Business Associate Agreement — HIPAA contract with vendor handling PHI       |
+| **PHI**         | Protected Health Information per HIPAA                                        |
+| **MAC**         | Medicare Administrative Contractor — processes Medicare claims               |
+| **IPU**         | Inpatient Unit — hospice inpatient setting under CoP 418.108/110             |
+| **NOE**         | Notice of Election — hospice enrollment filing required within 5 days        |
+| **CTI**         | Certification of Terminal Illness — required for hospice election            |
+| **CoP**         | Conditions of Participation — CMS requirements for hospice agencies          |
+| **HQRP**        | Hospice Quality Reporting Program                                             |
+| **HOPE**        | Hospice Outcomes & Patient Evaluation — current assessment tool              |
 
 ---
 

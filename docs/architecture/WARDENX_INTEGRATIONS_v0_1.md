@@ -1,7 +1,7 @@
 # WardenX — Integration Catalog
 
 **Document ID:** WARDENX_INTEGRATIONS
-**Status:** v0.2 (Phase-5 remediation, 2026-06-11 — ADR-0020)
+**Status:** v0.2 (Phase-5 remediation, 2026-06-11 — ADR-0020) — *the FILENAME still reads `_v0_1`; same convention as ARCHITECTURE. The header is authoritative for the version.*
 
 > **Phase-5 remediation (ADR-0020).** Eight external surfaces that modules had shipped without the
 > mandatory INT-002 five-step addition (X8) are now catalogued: inventory rows **26–33** (§2), BAA-
@@ -9,8 +9,41 @@
 > BAA / trading-partner agreement (INT-014 hard gate)** before production PHI flows; the external
 > triage vendor additionally on a **QSOA** for 42 CFR Part 2 data; HIBP carries no PHI and needs no
 > BAA. No Phase-1 "done" gate may depend on an un-executed-BAA PHI surface.
+> ## ⚠️ WIRING STATUS — READ BEFORE USING THIS CATALOG (AD-12, 2026-08-14)
+>
+> **This document describes the intended contract layer. Almost none of it is connected.** Every
+> inventory row below is a *design*, not a live integration, unless it appears in the short list of
+> what is actually wired. Real network `fetch` calls exist in exactly **6** non-test files in the
+> whole repo.
+>
+> **Actually wired:**
+> - **Inbound webhooks** — Twilio and Postmark receivers are the most complete external surface.
+> - **NPPES** (`packages/mdm`) — the provider-registry sync, with a nightly cron.
+> - **S3/MinIO** — the zero-dependency SigV4 adapter (`22-documents/seams/s3-object-store.ts`).
+> - **Better Auth** — the only installed third-party SDK. **It has no inventory row below**, which
+>   is an INT-002 violation by this document's own rule; add one.
+>
+> **NOT wired (partial list — treat every other row as unproven):**
+> - **No MAC transport at all.** Not "J6 only" — there is no outbound X12 claim transport of any
+>   kind. `packages/x12-837-client` builds the interchange; nothing sends it.
+> - HETS 270/271 eligibility · DoseSpot HTTP · iQIES submission · web-push · local/on-prem AI
+>   backends · terminology loaders · external triage vendors — **absent**.
+> - SHP CAHPS is transport-unwired (only the `manual` vendor path needs no transport).
+> - **M28 FHIR** reads return hardcoded 404 / empty Bundle with no data path; bulk `$export` has
+>   neither a route nor a worker.
+> - **Outbound email is a no-op in production.**
+>
+> **Adapter paths:** 15 of the 33 cited package paths are wrong, superseded by ADR-0028/0029 (which
+> post-date this document by one day), and **eight of the cited packages were never created**.
+> The real package list is `ls packages/`. Notably `packages/ai-platform/src/backends/anthropic.ts` does not exist —
+> `packages/ai-platform/src/backends/anthropic.ts` is the adapter, and its own header rebuts this
+> document by name.
+>
+> **§11's open-items table cites ADR numbers belonging to unrelated ADRs.** The real governing ADRs
+> for this document are **0019, 0026, 0028, 0029**.
+
 **Owner:** Fabrice V. Adjam (Engineering)
-**Companion to:** WARDENX_ARCHITECTURE v0.10 (§2 System Context, §8 Tenant Isolation, §10.7 Model Backend Abstraction, §25.14 External Service Calls, Module Catalog §11), WARDENX_SYSTEM_DESIGN v0.3, WARDENX_SECURITY_HARDENING v0.1, WARDENX_AI_GOVERNANCE v0.2, WARDENX_DR_BCP v0.1, WARDENX_OPS_RUNBOOK v0.1
+**Companion to:** WARDENX_ARCHITECTURE v0.12 (file `WARDENX_ARCHITECTURE_v0_11.md`; §2 System Context, §8 Tenant Isolation, §10.7 Model Backend Abstraction, §25.14 External Service Calls, Module Catalog §11), WARDENX_SYSTEM_DESIGN v0.3, WARDENX_SECURITY_HARDENING v0.2, WARDENX_AI_GOVERNANCE v0.2, WARDENX_DR_BCP v0.1, WARDENX_OPS_RUNBOOK v0.1
 **Review cadence:** Quarterly minimum; ad-hoc on new integration introduction, vendor contract change, BAA renewal, or API version deprecation
 **Last reviewed:** 2026-06-08
 
@@ -80,11 +113,16 @@ See **Scope distinction** above. In short: this is the contract, not the threat 
 
 ## 2. Integration Inventory
 
+> **The `Adapter package` column is unreliable — see the wiring-status banner at the top of this
+> document.** 15 of the 33 paths are wrong (superseded by ADR-0028/0029) and **eight of the named
+> packages were never created**. `ls packages/` is authoritative for what exists;
+> `grep -rl "fetch(" apps packages --include=*.ts` is authoritative for what actually calls out.
+
 The master list. Every external connection appears here exactly once. New integrations are added here first, then get a §6 contract section, then a module may consume them.
 
 |#|Integration|Direction|Protocol|PHI?|BAA req'd|Cred scope|Owning module(s)|Adapter pkg|DR tier|
 |--|-----------|---------|--------|----|---------|----------|----------------|-----------|-------|
-|1|DoseSpot (e-prescribe)|Bidirectional|REST + webhooks|Yes|Yes|per-tenant (clinic reg)|12|`packages/dosespot-client`|Tier 2|
+|1|DoseSpot (e-prescribe)|Bidirectional|REST + webhooks|Yes|Yes|per-tenant (clinic reg)|12|`packages/dosespot`|Tier 2|
 |2|Surescripts (via DoseSpot)|Downstream of DoseSpot|—|Yes|via DoseSpot|n/a (DoseSpot-mediated)|12|(through DoseSpot)|Tier 2|
 |3|Medicare MAC — NGS J6 (Engrace)|Outbound + ack|EDI X12 (837I, 999, 277CA, 835) + file drop/portal|Yes|N/A (CMS contractor)|per-provider-entity|23, 25|`packages/x12-worker`|Tier 2|
 |4|MAC eligibility — HETS|Outbound query|EDI X12 270/271|Yes|N/A (CMS)|per-provider-entity|5, 23|`packages/x12-worker`|Tier 3|
@@ -99,17 +137,17 @@ The master list. Every external connection appears here exactly once. New integr
 |13|Twilio — Voice (SOS escalation)|Outbound|REST + TwiML/webhooks|No (no PHI in payload)|Yes (BAA)|platform|20, 36|`packages/twilio-client`|Tier 1 (field safety)|
 |14|Postmark (email)|Outbound|REST + bounce/delivery webhooks|No (no PHI in payload by rule)|Yes (BAA)|platform|36|`packages/postmark-client`|Tier 3|
 |15|Web Push (VAPID)|Outbound|Web Push Protocol|No (no PHI in payload)|N/A (browser push services)|platform (VAPID keys)|36|`packages/webpush`|Tier 2 (alert path)|
-|16|Anthropic API (cloud AI)|Outbound|REST (Messages API)|Yes (with ZDR + redaction)|Yes (BAA + ZDR)|platform|32 (consumed by 8, 10, 22, 36)|`packages/anthropic-client`|Tier 3|
-|17|Local AI — Ollama / vLLM / sentence-transformers|Internal (WardenX-operated)|HTTP (loopback/VPC)|Yes (stays in perimeter)|N/A (no third party)|platform (no external cred)|32|`packages/ai` backends|Tier 3|
+|16|Anthropic API (cloud AI)|Outbound|REST (Messages API)|Yes (with ZDR + redaction)|Yes (BAA + ZDR)|platform|32 (consumed by 8, 10, 22, 36)|`packages/ai-platform/src/backends/anthropic.ts`|Tier 3|
+|17|Local AI — Ollama / vLLM / sentence-transformers|Internal (WardenX-operated)|HTTP (loopback/VPC)|Yes (stays in perimeter)|N/A (no third party)|platform (no external cred)|32|`packages/ai-platform` backends|Tier 3|
 |18|Hospital ADT feed|Inbound|HL7 v2 over MLLP|Yes|Yes (with sending facility)|per-tenant / per-feed|29, 5|`packages/hl7-worker`|Tier 3|
 |19|Lab feeds|Inbound|HL7 v2 / LOINC over MLLP or SFTP|Yes|Yes (with lab)|per-tenant / per-feed|29, 9|`packages/hl7-worker`|Tier 3|
-|20|NPI Registry (NPPES)|Outbound query|REST (public)|No (provider directory)|No|platform|5, 23, 40|`packages/nppes-client`|Tier 4|
+|20|NPI Registry (NPPES)|Outbound query|REST (public)|No (provider directory)|No|platform|5, 23, 40|`packages/mdm`|Tier 4|
 |21|Telehealth video (Daily.co — ADR-003)|Bidirectional|REST + WebRTC + webhooks|Yes (video is PHI)|Yes|platform or per-tenant (TBD ADR-003)|31|`packages/telehealth-client`|Tier 3|
 |22|Map / routing (Mapbox vs OSRM — ADR-007)|Outbound|REST|No (addresses are PHI-adjacent — see §6.22)|Conditional (see §6.22)|platform|17|`packages/routing-client`|Tier 4|
-|23|Terminology source feeds (CMS ICD-10, NLM/UMLS SNOMED, Regenstrief LOINC, RxNorm)|Inbound (scheduled)|File download / API + license|No|No (reference data)|platform (license creds)|38|`packages/terminology-loader`|Tier 4|
+|23|Terminology source feeds (CMS ICD-10, NLM/UMLS SNOMED, Regenstrief LOINC, RxNorm)|Inbound (scheduled)|File download / API + license|No|No (reference data)|platform (license creds)|38|`packages/terminology`|Tier 4|
 |24|FHIR Gateway (outbound/inbound interop)|Bidirectional|FHIR R4 REST + bulk NDJSON|Yes|Per-recipient (varies)|per-tenant / per-recipient|28|`packages/fhir`|Tier 3|
-|25|Object storage egress (MinIO presigned URLs for external collaborators)|Outbound (scoped)|HTTPS presigned|Yes (scoped docs)|n/a (internal store)|per-tenant bucket prefix|22, §7.6 external collaborator|`packages/storage`|Tier 2|
-|26|EVV state aggregators (OR-PTC DCI launch / Sandata-class)|Outbound + poll|REST / SFTP per state|Yes|**Yes** (trading-partner agmt / BAA) — *ADR-0020*|per-provider-entity per-state|18|`packages/evv-aggregators`|Tier 3|
+|25|Object storage egress (MinIO presigned URLs for external collaborators)|Outbound (scoped)|HTTPS presigned|Yes (scoped docs)|n/a (internal store)|per-tenant bucket prefix|22, §7.6 external collaborator|`apps/backend/src/modules/22-documents/seams/s3-object-store.ts`|Tier 2|
+|26|EVV state aggregators (**Sandata** + open-model — what `packages/evv-aggregators` actually implements; OR-PTC DCI is NOT built)|Outbound + poll|REST / SFTP per state|Yes|**Yes** (trading-partner agmt / BAA) — *ADR-0020*|per-provider-entity per-state|18|`packages/evv-aggregators`|Tier 3|
 |27|DME vendors|Outbound + confirmation|portal/email/fax (Phase 1); EDI X12 (Phase 2)|Yes (name, address, items)|**Yes**|per-tenant per-vendor|21|`packages/vendor-edi` (deny-stub P1)|Tier 3|
 |28|Partner pharmacy (comfort-kit fulfillment)|Bidirectional|vendor API / portal|Yes|**Yes**|per-tenant|21|`packages/pharmacy-client`|Tier 3|
 |29|Print/mail vendor (statements, letters)|Outbound|REST / SFTP|Yes (name, address, doc content)|**Yes**|platform or per-tenant|22|`packages/print-mail-client`|Tier 4|
@@ -241,7 +279,7 @@ The compliance-facing summary. Surveyors and customer security reviewers receive
 |Routing (Mapbox/OSRM)|See §6.22|Conditional|Mapbox (if chosen)|Gated on ADR-007|OSRM self-hosted avoids the question|
 |Local AI (Ollama/vLLM)|Yes (in-perimeter)|None (no third party)|n/a — WardenX-operated|n/a|WardenX is model operator|
 |Terminology feeds|No (reference)|License agreements (UMLS, Regenstrief)|NLM, Regenstrief|License on file|UMLS free w/ license; LOINC free w/ license; ICD-10/RxNorm public|
-|EVV state aggregator (OR-PTC/Sandata)|Yes|Trading-partner agreement / BAA|State aggregator (OR-PTC DCI launch)|**Required — EXECUTED before any Medicaid EVV submission (INT-014)**|Phase-5 add (ADR-0020); Oregon launch per ADR-0008|
+|EVV state aggregator (**Sandata** / open-model)|Yes|Trading-partner agreement / BAA|State aggregator (built: `SandataAdapter` + `OpenModelAdapter`; OR-PTC DCI not built)|**Required — EXECUTED before any Medicaid EVV submission (INT-014)**|Phase-5 add (ADR-0020); Oregon launch per ADR-0008|
 |DME vendor|Yes (name/addr/items)|BAA|Tenant-selected DME vendor(s)|**Required — EXECUTED before prod (INT-014)**|Phase-5 add; per-tenant per-vendor|
 |Partner pharmacy|Yes|BAA|Tenant-selected pharmacy|**Required — EXECUTED before prod**|Phase-5 add; comfort-kit fulfillment|
 |Print/mail vendor|Yes (name/addr/doc)|BAA|Tenant/platform print-mail vendor|**Required — EXECUTED before prod**|Phase-5 add (M22)|
@@ -425,7 +463,7 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
 ### 6.16 Anthropic API — Cloud AI (Module 32; consumed by 8, 10, 22, 36)
 
 - **Purpose:** Cloud foundation-model backend for HearthNote Layer 2 (default), DocLens vision verification/extraction (default), Copilot clinical/administrative. Backend IDs per architecture §10.7.3: `anthropic-claude-opus-4-7` (high-stakes default), `anthropic-claude-haiku-4-5` (cost-optimized).
-- **Direction & protocol:** Outbound REST (Messages API) through `packages/anthropic-client`.
+- **Direction & protocol:** Outbound REST (Messages API) through `packages/ai-platform/src/backends/anthropic.ts`.
 - **Credential model:** **Platform** Anthropic API key. Per-tenant *usage* is metered (Module 35) and gated by per-tenant feature opt-in (`hearthnote_llm_enhancement_enabled` etc., default false — Module 2 TenantConfiguration).
 - **BAA / PHI:** PHI-bearing → **BAA + Zero Data Retention** are hard preconditions (AI Governance). Redaction-before-send applied per AI Governance policy. This catalog enforces: no cloud AI call leaves the perimeter for a tenant unless (opt-in flag true) AND (BAA+ZDR confirmed) AND (capability routing allows cloud).
 - **Sandbox vs prod:** Dev key against non-PHI synthetic prompts; evaluation datasets per capability (AI Governance) gate releases.
@@ -500,7 +538,7 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
 ### 6.23 Terminology Source Feeds (Module 38)
 
 - **Purpose:** Load and update clinical code systems — ICD-10-CM/PCS, SNOMED CT US Edition, LOINC, RxNorm, NDC, CPT/HCPCS, CVX, CARC/RARC.
-- **Direction & protocol:** Inbound scheduled downloads/APIs into `packages/terminology-loader`; diff-and-notify workflow per architecture Module 38.
+- **Direction & protocol:** Inbound scheduled downloads/APIs into `packages/terminology`; diff-and-notify workflow per architecture Module 38.
 - **Credential model:** Platform license credentials — **UMLS/NLM** account (SNOMED CT, free with license), **Regenstrief** account (LOINC, free with license). ICD-10-CM/PCS and RxNorm are public domain.
 - **BAA / PHI:** Reference data — no PHI, no BAA; license agreements on file (§5).
 - **Update cadence:** ICD-10-CM annual (effective Oct 1, cron fetch + diff + per-tenant affected-patient report); SNOMED US Edition twice yearly (Mar/Sep); RxNorm monthly; others per source.
@@ -572,7 +610,7 @@ The per-integration input to WARDENX_DR_BCP §2 vendor-outage response. "Degrade
 |Routing|4|Route optimization|Unoptimized schedule; visits still assignable|(no block; routes not optimized)|
 |Terminology feeds|4|Code-system updates|Use current loaded version (slow-changing)|(internal — update alert to ops)|
 |FHIR Gateway|3|Interop export/import|Retry; bulk jobs resume|(no care impact)|
-|EVV aggregator (OR-PTC/Sandata)|3|Medicaid EVV submission|EVV captured offline + queued; aggregator submit retries; never blocks the visit or a Medicare claim (ADR-0008)|(internal; submission-lag alert to ops)|
+|EVV aggregator (**Sandata** / open-model)|3|Medicaid EVV submission|EVV captured offline + queued; aggregator submit retries; never blocks the visit or a Medicare claim (ADR-0008)|(internal; submission-lag alert to ops)|
 |DME vendor|3|DME/supply dispatch|Dispatch queues; portal/email/fax fallback; manual confirmation|"Supply order queued — will dispatch on reconnect"|
 |Partner pharmacy|3|Comfort-kit fulfillment|Queue; fall back to local stock / manual order|"Pharmacy fulfillment queued"|
 |Print/mail vendor|4|Statement/letter mailing|Queue render+mail; retry within SLA|(internal; mailing-lag alert)|
