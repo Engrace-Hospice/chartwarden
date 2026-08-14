@@ -79,7 +79,8 @@ export type ConsentCaptureMethod =
   | "notarized";
 
 /** The named-recipient classes on consent_record_recipient (§2.3, D6). Mirrors
- *  `consent_recipient_kind`. The first three resolve through M40's MdmEntityProvider. */
+ *  `consent_recipient_kind`. The first three resolve through M40's MdmEntityProvider;
+ *  `workforce_member` is the one INTERNAL class and resolves to an M2 membership id. */
 export type ConsentRecipientKind =
   | "external_physician"
   | "facility"
@@ -89,6 +90,7 @@ export type ConsentRecipientKind =
   | "attorney"
   | "employer"
   | "researcher"
+  | "workforce_member"
   | "free_text";
 
 /** Who performed an explicit revocation (§2.2.3, D7). Mirrors `consent_revocation_actor_kind`. */

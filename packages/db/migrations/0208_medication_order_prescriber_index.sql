@@ -1,0 +1,26 @@
+-- The unrestricted prescriber index on `medication_order` — the supporting index for M12's §2.7
+-- refill-inbox narrowing.
+--
+-- `listRefills` answers "which refills are MINE?" over three disjuncts: the patient is on my
+-- caseload, I approved the refill, or I am the prescriber of the refill's SOURCE medication order.
+-- The third one is a semi-join into `medication_order` on
+-- `(organization_id, prescriber_membership_id)`, and until now that lookup had no index it could use.
+--
+-- `medication_order_prescriber_pending_idx` LOOKS like the index for it — same three leading columns
+-- in the same order — but it is PARTIAL:
+--     WHERE status IN ('pending_signature','verbal_pending','epcs_identity_pending')
+-- A refill request arrives against an order the prescriber already signed, so by definition the
+-- orders this join needs are `active`, and `active` is outside that partial predicate. The planner
+-- may only use a partial index when it can prove the query's own predicate implies the index's, so
+-- the pending index is not merely a poor fit here — it is unusable, and the join fell back to a
+-- sequential scan of every partition.
+--
+-- PARTITIONED PARENT. `medication_order` is PARTITION BY RANGE (created_at); creating the index on
+-- the parent creates it on every existing partition and on every partition created afterwards. This
+-- is a plain (non-UNIQUE) index, so the partition key does not have to appear in the key columns.
+--
+-- `IF NOT EXISTS` so an operator who pre-built this CONCURRENTLY out of band (CONCURRENTLY cannot run
+-- inside the per-file transaction `migrate.ts` wraps) leaves the migration a no-op rather than a
+-- conflict.
+CREATE INDEX IF NOT EXISTS "medication_order_prescriber_idx"
+  ON "medication_order" ("organization_id", "prescriber_membership_id");

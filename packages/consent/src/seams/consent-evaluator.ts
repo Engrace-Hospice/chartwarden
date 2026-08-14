@@ -30,14 +30,47 @@ export type ConsentSessionClass =
 /** A caller module token, e.g. `"m28"` (FHIR Gateway), `"m22"`, `"m5"`. */
 export type CallerModule = string;
 
-/** The resolved recipient class on a disclosure path (subset of consent_recipient_kind). */
+/** The resolved recipient class on a disclosure path (subset of consent_recipient_kind).
+ *  `workforce_member` is the one INTERNAL class — see {@link ConsentEvaluator.evaluateForInternalAccess}. */
 export type RecipientResolvedKind =
   | "external_physician"
   | "facility"
   | "pharmacy"
   | "irb"
   | "family_member"
-  | "researcher";
+  | "researcher"
+  | "workforce_member";
+
+/**
+ * Why an internal actor may (or may not) see a patient's Part 2 content — the reason half of
+ * {@link ConsentEvaluator.evaluateForInternalAccess}, so a caller can log/audit WHICH rule decided
+ * rather than just the boolean.
+ *
+ *  · `no_active_release`         — no governing `42_cfr_part_2_release` at all. Redact.
+ *  · `release_covers_program`    — a release is on file and names NO workforce member, so it
+ *                                  authorizes the treating program as a whole (42 CFR §2.12(c)(3):
+ *                                  communications within a program are not disclosures). Disclose.
+ *  · `release_names_actor`       — the release names workforce members and this actor is one. Disclose.
+ *  · `release_names_others`      — the release names workforce members and this actor is NOT one.
+ *                                  The patient restricted the disclosure; redact.
+ *  · `actor_unidentified`        — the release names workforce members but the caller could not say
+ *                                  who is asking (no membership id). Redact — an unnameable actor
+ *                                  cannot be one of the named.
+ */
+export type InternalAccessBasis =
+  | "no_active_release"
+  | "release_covers_program"
+  | "release_names_actor"
+  | "release_names_others"
+  | "actor_unidentified";
+
+/** The internal staff actor an access decision is made FOR. `membershipId` is an M2 membership id —
+ *  the id space `consent_record_recipient.recipient_entity_id` holds for `workforce_member` rows, and
+ *  the one every `*_membership_id` column in the platform uses. `null` means the caller could not
+ *  identify the actor, which is a fact the evaluator uses, not one it papers over. */
+export interface InternalAccessActor {
+  readonly membershipId: string | null;
+}
 
 /** The stable deny reasons (§4.3). */
 export type ConsentDenyReason =
@@ -98,6 +131,52 @@ export interface ConsentEvaluator {
     expiresAt?: string;
     recipientScopeDescriptor?: unknown;
     denyReason?: ConsentDenyReason;
+  }>;
+
+  /**
+   * The PER-ACTOR Part 2 answer for an INTERNAL chart read — "may this staff member see this
+   * patient's SUD content right now?".
+   *
+   * This is the method the M39 spec's `sud_disclosure_allowed` predicate is defined in terms of
+   * ("`evaluate(...)` returns allowed=true AND recipient matches the requesting party", §6.4, consumed
+   * by M7, M8, M9, M11, M12, M13, M14, M15, M22, M28) and that 42 CFR §2.13's "heightened access even
+   * within a treating provider" needs. It could not exist before `workforce_member` (mig 0209),
+   * because every recipient class was external: a consent record could name who outside the agency may
+   * receive the records and could not name who inside it may, so the only answer available to an
+   * internal caller was the patient-scope one — {@link evaluateForIngressRedaction}, "does a release
+   * exist at all". That is a real answer to a different question, and using it as this one is what
+   * every internal Part 2 gate in the platform was doing.
+   *
+   * NOT `evaluateForDisclosure`. That method's recipient is an EXTERNAL party (a resolved M40 entity
+   * or a FHIR `recipientClientId`) and its semantics are §2.31 disclosure-outside-the-program. An
+   * internal staff read is not that disclosure, and answering it through the external path would give
+   * the wrong default in both directions.
+   *
+   * THE RULE, and why it narrows but never widens. A release that names NO workforce member keeps
+   * meaning what it means today: it authorizes the treating program as a whole (42 CFR §2.12(c)(3)
+   * — communications within a program are not disclosures), so every actor gets the same answer
+   * `evaluateForIngressRedaction` gives. Naming workforce members RESTRICTS the release to them, and
+   * from then on an unnamed actor — of any role, however senior — is redacted. So no existing consent
+   * record changes meaning, no clinician loses a chart they can read today, and the restriction only
+   * ever appears because a patient (or their representative) asked for it.
+   *
+   * Fail-closed on every uncertainty: no release, an actor the caller could not name against a
+   * restricted release, a store error propagating to the caller.
+   */
+  evaluateForInternalAccess(args: {
+    organizationId: string;
+    patientId: string;
+    actor: InternalAccessActor;
+    asOf?: string;
+    callerModule: CallerModule;
+    callerRoute?: string;
+  }): Promise<{
+    /** `true` = withhold the SUD content from THIS actor. The flag is named like the ingress one so a
+     *  caller cannot silently swap the two and get an inverted gate. */
+    redactSubstanceUseDisorderFields: boolean;
+    basis: InternalAccessBasis;
+    consentRecordId?: string;
+    expiresAt?: string;
   }>;
 
   evaluateForIngressRedaction(args: {
@@ -319,6 +398,49 @@ export function createConsentEvaluator(store: ConsentStore): ConsentEvaluator {
         redactMentalHealthContent: true,
         redactGeneticContent: true,
         redactFamilyViolenceContent: true,
+      };
+    },
+
+    async evaluateForInternalAccess(args) {
+      const asOfMs = toMs(args.asOf);
+      const records = await store.consentsFor({
+        organizationId: args.organizationId,
+        patientId: args.patientId,
+        typeKey: "42_cfr_part_2_release",
+        asOfMs,
+      });
+      const governing = pickGoverning(records, asOfMs);
+      if ("denyReason" in governing)
+        return { redactSubstanceUseDisorderFields: true, basis: "no_active_release" };
+      const record = governing.record;
+      const meta = {
+        consentRecordId: record.id,
+        ...(record.expiresAtMs !== null
+          ? { expiresAt: new Date(record.expiresAtMs).toISOString() }
+          : {}),
+      };
+      // Only ACTIVE workforce recipients restrict: a removed or expired one is a restriction the
+      // patient (or time) already lifted, and treating it as live would leave a release permanently
+      // narrowed to someone who no longer works here.
+      const namedWorkforce = record.recipients.filter(
+        (r) =>
+          r.recipientResolvedKind === "workforce_member" &&
+          r.removedAtMs === null &&
+          (r.expiresAtMs === null || r.expiresAtMs > asOfMs),
+      );
+      if (namedWorkforce.length === 0)
+        return {
+          redactSubstanceUseDisorderFields: false,
+          basis: "release_covers_program",
+          ...meta,
+        };
+      if (args.actor.membershipId === null)
+        return { redactSubstanceUseDisorderFields: true, basis: "actor_unidentified", ...meta };
+      const named = namedWorkforce.some((r) => r.recipientResolvedId === args.actor.membershipId);
+      return {
+        redactSubstanceUseDisorderFields: !named,
+        basis: named ? "release_names_actor" : "release_names_others",
+        ...meta,
       };
     },
 

@@ -2,7 +2,11 @@
 // lifecycle core (M7-T03) and the published §7.8 CarePlanReader seam + its registration hook (M7-T04).
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
-import { defaultConsentActiveChecker, sudDisclosureAllowedForPatient } from "./abac-predicates";
+import {
+  defaultConsentActiveChecker,
+  defaultInternalSudAccessChecker,
+  sudDisclosureAllowedForPatient,
+} from "./abac-predicates";
 import {
   type CarePlanWriteOutboxPort,
   createDbCarePlanAbacResolver,
@@ -37,6 +41,7 @@ export function mountCarePlanRoutes(
 ): void {
   const resolver = createDbCarePlanAbacResolver(db);
   const isConsentActive = defaultConsentActiveChecker();
+  const sudInternalAccess = defaultInternalSudAccessChecker();
   _registerM7Routes(app, {
     service: createDbCarePlanRouteService(db, outbox),
     dpoaConsentActive: async ({ organizationId, planId }) => {
@@ -48,7 +53,7 @@ export function mountCarePlanRoutes(
         consentType: "dpoa_healthcare",
       });
     },
-    sudDisclosureAllowed: async ({ organizationId, patientId, planId, roles }) => {
+    sudDisclosureAllowed: async ({ organizationId, patientId, planId, roles, membershipId }) => {
       const resolvedPatientId =
         patientId || (await resolver.loadPlan(organizationId, planId))?.patientId;
       if (!resolvedPatientId) return false;
@@ -59,10 +64,14 @@ export function mountCarePlanRoutes(
           roles,
           providerEntityIds: [],
           locationIds: [],
-          attributes: {},
+          // The Part 2 decision is now PER-ACTOR, so the synthesized context has to carry the one
+          // attribute that names the actor. Passing `{}` here would have made every route-level
+          // redaction read as `actor_unidentified` against a workforce-restricted release — a
+          // fail-closed answer, but one that hides the chart from the very people it names.
+          attributes: { membershipId },
         },
         resolvedPatientId,
-        isConsentActive,
+        sudInternalAccess,
       );
     },
   });

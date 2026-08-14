@@ -32071,7 +32071,7 @@ export interface operations {
                             id: string;
                             organizationId: string;
                             consentRecordId: string;
-                            recipientKind: "external_physician" | "facility" | "pharmacy" | "irb" | "family_member" | "attorney" | "employer" | "researcher" | "free_text";
+                            recipientKind: "external_physician" | "facility" | "pharmacy" | "irb" | "family_member" | "attorney" | "employer" | "researcher" | "workforce_member" | "free_text";
                             recipientEntityId: string | null;
                             recipientDisplayName: string;
                             purposeCode: string | null;
@@ -32101,7 +32101,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    recipientKind: "external_physician" | "facility" | "pharmacy" | "irb" | "family_member" | "attorney" | "employer" | "researcher" | "free_text";
+                    recipientKind: "external_physician" | "facility" | "pharmacy" | "irb" | "family_member" | "attorney" | "employer" | "researcher" | "workforce_member" | "free_text";
                     recipientEntityId?: string | null;
                     recipientFreeText?: string | null;
                     recipientDisplayName: string;
@@ -32122,7 +32122,7 @@ export interface operations {
                             id: string;
                             organizationId: string;
                             consentRecordId: string;
-                            recipientKind: "external_physician" | "facility" | "pharmacy" | "irb" | "family_member" | "attorney" | "employer" | "researcher" | "free_text";
+                            recipientKind: "external_physician" | "facility" | "pharmacy" | "irb" | "family_member" | "attorney" | "employer" | "researcher" | "workforce_member" | "free_text";
                             recipientEntityId: string | null;
                             recipientDisplayName: string;
                             purposeCode: string | null;
@@ -32169,7 +32169,7 @@ export interface operations {
                             id: string;
                             organizationId: string;
                             consentRecordId: string;
-                            recipientKind: "external_physician" | "facility" | "pharmacy" | "irb" | "family_member" | "attorney" | "employer" | "researcher" | "free_text";
+                            recipientKind: "external_physician" | "facility" | "pharmacy" | "irb" | "family_member" | "attorney" | "employer" | "researcher" | "workforce_member" | "free_text";
                             recipientEntityId: string | null;
                             recipientDisplayName: string;
                             purposeCode: string | null;

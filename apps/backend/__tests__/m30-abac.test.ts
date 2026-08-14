@@ -130,7 +130,7 @@ function resolverWith(seed: {
     async isPatientPart2Protected() {
       return false;
     },
-    async hasActivePart2Release() {
+    async part2ReleaseCoversActor() {
       return false;
     },
   };
@@ -419,7 +419,7 @@ describe("M30 part2Redisclosure grant path (GAP-047)", () => {
     async isPatientPart2Protected() {
       return part2Protected;
     },
-    async hasActivePart2Release() {
+    async part2ReleaseCoversActor() {
       return activeRelease;
     },
   });
@@ -454,7 +454,7 @@ describe("M30 part2Redisclosure grant path (GAP-047)", () => {
 describe("M30 Drizzle resolver Part-2 reaches (GAP-047 seam glue)", () => {
   // biome-ignore lint/suspicious/noExplicitAny: the two methods under test never touch the handle.
   const resolver = () => buildDrizzleM30AbacResolver(null as any);
-  const CTX = { organizationId: "org-a", userId: "user-1" };
+  const CTX = { organizationId: "org-a", userId: "user-1", membershipId: "mem-1" };
 
   afterEach(() => __resetSeamsForTest());
 
@@ -491,29 +491,38 @@ describe("M30 Drizzle resolver Part-2 reaches (GAP-047 seam glue)", () => {
     await expect(resolver().isPatientPart2Protected(CTX, "pat-1")).resolves.toBe(false);
   });
 
-  it("reads the active release off M39's ingress-redaction evaluation, naming m30 as the caller", async () => {
-    let caller: string | undefined;
+  it("asks M39 PER ACTOR, forwarding the acting membership id and naming m30 as the caller", async () => {
+    let seen: { callerModule: string; actor: { membershipId: string | null } } | undefined;
     registerSeam("ConsentEvaluator", {
-      evaluateForIngressRedaction: async (args: { callerModule: string }) => {
-        caller = args.callerModule;
-        return { redactSubstanceUseDisorderFields: false };
+      evaluateForInternalAccess: async (args: {
+        callerModule: string;
+        actor: { membershipId: string | null };
+      }) => {
+        seen = args;
+        return { redactSubstanceUseDisorderFields: false, basis: "release_names_actor" };
       },
     });
-    await expect(resolver().hasActivePart2Release(CTX, "pat-1")).resolves.toBe(true);
-    expect(caller).toBe("m30");
+    await expect(resolver().part2ReleaseCoversActor(CTX, "pat-1")).resolves.toBe(true);
+    expect(seen?.callerModule).toBe("m30");
+    // The whole point of the round-trip: M39 is told WHO is asking. Before mig 0209 this argument had
+    // nowhere to go, so the answer was the org-wide one for every actor alike.
+    expect(seen?.actor).toEqual({ membershipId: "mem-1" });
   });
 
-  it("has no active release when M39 says SUD content must stay redacted", async () => {
+  it("does not cover an actor the patient's release names others instead of", async () => {
     registerSeam("ConsentEvaluator", {
-      evaluateForIngressRedaction: async () => ({ redactSubstanceUseDisorderFields: true }),
+      evaluateForInternalAccess: async () => ({
+        redactSubstanceUseDisorderFields: true,
+        basis: "release_names_others",
+      }),
     });
-    await expect(resolver().hasActivePart2Release(CTX, "pat-1")).resolves.toBe(false);
+    await expect(resolver().part2ReleaseCoversActor(CTX, "pat-1")).resolves.toBe(false);
   });
 
   it("both reaches fail CLOSED on a throwing or unregistered seam", async () => {
     // Unregistered.
     await expect(resolver().isPatientPart2Protected(CTX, "pat-1")).resolves.toBe(false);
-    await expect(resolver().hasActivePart2Release(CTX, "pat-1")).resolves.toBe(false);
+    await expect(resolver().part2ReleaseCoversActor(CTX, "pat-1")).resolves.toBe(false);
     // Registered but throwing.
     registerSeam("PatientPrivacyFlagReader", {
       roomingFactsFor: async () => {
@@ -521,11 +530,11 @@ describe("M30 Drizzle resolver Part-2 reaches (GAP-047 seam glue)", () => {
       },
     });
     registerSeam("ConsentEvaluator", {
-      evaluateForIngressRedaction: async () => {
+      evaluateForInternalAccess: async () => {
         throw new Error("consent store unavailable");
       },
     });
     await expect(resolver().isPatientPart2Protected(CTX, "pat-1")).resolves.toBe(false);
-    await expect(resolver().hasActivePart2Release(CTX, "pat-1")).resolves.toBe(false);
+    await expect(resolver().part2ReleaseCoversActor(CTX, "pat-1")).resolves.toBe(false);
   });
 });

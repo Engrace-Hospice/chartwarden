@@ -266,13 +266,18 @@ describe("M15-T06 §7.8/§7.9 disclosure gate", () => {
 
   const port = (opts: {
     part2?: boolean | "throw";
+    /** M39 says the patient's release names workforce members and this actor is not one of them. */
+    part2RestrictedToOthers?: boolean;
     fvRedacted?: boolean | "throw";
-    onPart2?: () => void;
+    onPart2?: (membershipId: string | null) => void;
   }): DisclosurePort => ({
-    async part2ReleaseActive() {
-      opts.onPart2?.();
+    async part2ReleaseActive(input) {
+      opts.onPart2?.(input.membershipId);
       if (opts.part2 === "throw") throw new Error("M39 unavailable");
-      return opts.part2 === true;
+      return {
+        allowed: opts.part2 === true,
+        restrictedToNamedWorkforce: opts.part2RestrictedToOthers === true,
+      };
     },
     async familyViolenceRedacted() {
       if (opts.fvRedacted === "throw") throw new Error("M39 unavailable");
@@ -291,23 +296,49 @@ describe("M15-T06 §7.8/§7.9 disclosure gate", () => {
     expect([...decision.redactedCategories]).toEqual(["sud", "family_violence"]);
   });
 
-  it("clears both for the RN Case Manager WITHOUT a Part 2 consent round-trip (§7.6)", async () => {
-    let consulted = false;
+  // §7.6 — the RN-Case-Manager treatment path still clears SUD with no release on file (an
+  // intra-program read is not a §2.31 disclosure). What CHANGED is that M39 is consulted first: since
+  // a release can now name workforce members, "is there a restriction naming someone else?" is a fact
+  // the role path has to know before it can apply. The round-trip it used to skip is the price.
+  it("clears both for the RN Case Manager when no release restricts the patient's SUD content (§7.6)", async () => {
+    let seenMembership: string | null | undefined;
     const decision = await resolveDisclosure(
       actor({ roles: ["rn_case_manager"] }),
       PATIENT,
       port({
         part2: false,
         fvRedacted: false,
-        onPart2: () => {
-          consulted = true;
+        onPart2: (m) => {
+          seenMembership = m;
         },
       }),
     );
     expect(decision.sudAllowed).toBe(true);
     expect(decision.familyViolenceAllowed).toBe(true);
     expect(decision.redactedCategories).toEqual([]);
-    expect(consulted).toBe(false);
+    // …and M39 was asked, about THIS actor.
+    expect(seenMembership).toBe(RN_MEMBERSHIP);
+  });
+
+  it("the RN Case Manager does NOT override a release restricted to other named workforce members", async () => {
+    const decision = await resolveDisclosure(
+      actor({ roles: ["rn_case_manager"] }),
+      PATIENT,
+      port({ part2: false, part2RestrictedToOthers: true, fvRedacted: false }),
+    );
+    // The patient named who may see this and did not name the case manager. A role key does not
+    // outrank the person who signed the release — this is the one case the §7.6 path yields to.
+    expect(decision.sudAllowed).toBe(false);
+    expect([...decision.redactedCategories]).toEqual(["sud"]);
+  });
+
+  it("clears SUD for a workforce member the release DOES name, whatever their role", async () => {
+    const decision = await resolveDisclosure(
+      actor({ roles: ["pt"] }),
+      PATIENT,
+      port({ part2: true, fvRedacted: false }),
+    );
+    expect(decision.sudAllowed).toBe(true);
   });
 
   it("clears SUD on a satisfied 42 CFR Part 2 release", async () => {

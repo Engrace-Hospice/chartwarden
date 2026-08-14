@@ -14,7 +14,11 @@ import { type DbClient, createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { M39_OUTBOX_EVENTS, createDbConsentRouteService } from "../src/modules/39-consent";
+import {
+  M39_OUTBOX_EVENTS,
+  createDbConsentEvaluator,
+  createDbConsentRouteService,
+} from "../src/modules/39-consent";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -22,6 +26,12 @@ const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audi
 const ORG = "11111111-1111-1111-1111-111111111111";
 const USER = "33333333-3333-3333-3333-333333333333";
 const PATIENT = "44444444-4444-4444-4444-444444444444";
+/** A patient of its own, so the workforce-recipient release is the ONLY governing Part 2 record for
+ *  it — two same-version active releases on one patient make `pickGoverning`'s tie arbitrary. */
+const PATIENT_WF = "44444444-4444-4444-4444-444444444401";
+/** Two staff memberships: one the release names, one it does not. */
+const NAMED_MEMBERSHIP = "55555555-5555-5555-5555-555555555551";
+const UNNAMED_MEMBERSHIP = "55555555-5555-5555-5555-555555555552";
 
 describe.skipIf(!DB_URL)("M39 consent lifecycle — LIVE Postgres (WX-PR-009)", () => {
   let admin: Client;
@@ -155,6 +165,86 @@ describe.skipIf(!DB_URL)("M39 consent lifecycle — LIVE Postgres (WX-PR-009)", 
     await expect(
       service.signConsent(ORG, draft.id, USER, now, { typedSignatureName: "Patient One" }),
     ).resolves.toMatchObject({ status: "active" });
+  });
+
+  // mig 0209 — `workforce_member`, the one INTERNAL recipient class, and the per-actor Part 2 verdict
+  // it makes answerable. Worth proving LIVE rather than only over the in-memory store: the value has
+  // to survive the enum, the `crr_freetext_or_entity` CHECK (which demands an entity id for every
+  // non-free_text kind), the route service's recipient write, and the Drizzle store's kind mapping —
+  // and if RESOLVED_KINDS drops it back to `undefined`, the release silently reverts to program-wide.
+  it("a Part 2 release naming workforce members restricts it to them (per-actor, end to end)", async () => {
+    const draft = await service.createDraft(ORG, {
+      patientId: PATIENT_WF,
+      typeKey: "42_cfr_part_2_release",
+      grantorKind: "patient_self",
+      captureMethod: "typed_signature_in_app",
+      scopeDescriptor: { categories: ["SUD"] },
+      createdById: USER,
+    });
+    const now = new Date().toISOString();
+    const evaluator = createDbConsentEvaluator(handle.db);
+    const ask = (membershipId: string | null) =>
+      evaluator.evaluateForInternalAccess({
+        organizationId: ORG,
+        patientId: PATIENT_WF,
+        actor: { membershipId },
+        callerModule: "m7",
+      });
+
+    // Before signing there is no governing release at all.
+    expect(await ask(NAMED_MEMBERSHIP)).toMatchObject({
+      redactSubstanceUseDisorderFields: true,
+      basis: "no_active_release",
+    });
+
+    await service.addRecipient(
+      ORG,
+      draft.id,
+      {
+        recipientKind: "workforce_member",
+        recipientEntityId: NAMED_MEMBERSHIP,
+        recipientFreeText: null,
+        recipientDisplayName: "Ana Ruiz, RN",
+        addedById: USER,
+      },
+      now,
+    );
+    await service.signConsent(ORG, draft.id, USER, now, { typedSignatureName: "Patient One" });
+
+    // The named member is cleared; nobody else is, whoever they are.
+    expect(await ask(NAMED_MEMBERSHIP)).toMatchObject({
+      redactSubstanceUseDisorderFields: false,
+      basis: "release_names_actor",
+      consentRecordId: draft.id,
+    });
+    expect(await ask(UNNAMED_MEMBERSHIP)).toMatchObject({
+      redactSubstanceUseDisorderFields: true,
+      basis: "release_names_others",
+    });
+    expect(await ask(null)).toMatchObject({
+      redactSubstanceUseDisorderFields: true,
+      basis: "actor_unidentified",
+    });
+
+    // The patient-scope primitive is UNCHANGED by the restriction — a release exists, so ingress
+    // persistence still un-redacts. The two questions stay separate.
+    expect(
+      await evaluator.evaluateForIngressRedaction({
+        organizationId: ORG,
+        patientId: PATIENT_WF,
+        callerModule: "m29",
+      }),
+    ).toMatchObject({ redactSubstanceUseDisorderFields: false });
+
+    // Removing the named recipient lifts the restriction rather than sealing the record forever.
+    await admin.query(
+      "UPDATE consent_record_recipient SET removed_at = now() WHERE consent_record_id = $1",
+      [draft.id],
+    );
+    expect(await ask(UNNAMED_MEMBERSHIP)).toMatchObject({
+      redactSubstanceUseDisorderFields: false,
+      basis: "release_covers_program",
+    });
   });
 
   it("allows exactly one concurrent renewal of a terminal consent", async () => {

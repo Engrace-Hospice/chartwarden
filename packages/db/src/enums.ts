@@ -664,7 +664,11 @@ export const consentCaptureMethod = pgEnum("consent_capture_method", [
   "notarized",
 ]);
 
-/** `consent_recipient_kind` — the named-recipient classes on consent_record_recipient (§3.2, D6). */
+/** `consent_recipient_kind` — the named-recipient classes on consent_record_recipient (§3.2, D6).
+ *  `workforce_member` (mig 0209) is the one INTERNAL class: `recipient_entity_id` holds an M2
+ *  membership id, so a §2.31 release can name the individual staff members it authorizes rather than
+ *  only external parties. See `evaluateForInternalAccess` in @wardenx/consent for what naming one
+ *  does (and for why a release that names none still authorizes the treating program). */
 export const consentRecipientKind = pgEnum("consent_recipient_kind", [
   "external_physician",
   "facility",
@@ -674,6 +678,7 @@ export const consentRecipientKind = pgEnum("consent_recipient_kind", [
   "attorney",
   "employer",
   "researcher",
+  "workforce_member",
   "free_text",
 ]);
 

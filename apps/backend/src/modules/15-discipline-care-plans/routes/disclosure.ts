@@ -5,8 +5,9 @@
 // UI hide"; §8.6 Information-disclosure row: "never post-fetch redaction"):
 //
 //   • SUD (42 CFR Part 2) — a goal with `sud_related = true` or an assessment with `sud_flag = true` is
-//     visible only to a caller with a satisfied `42_cfr_part_2_release` consent (M39), or the patient's
-//     assigned RN Case Manager (the §7.6 M7 precedent this reuses verbatim).
+//     visible only to a caller M39 clears PER ACTOR against the patient's `42_cfr_part_2_release`, or
+//     the patient's RN Case Manager (the §7.6 M7 precedent this reuses verbatim — including its
+//     ordering: the role path does not override a release restricted to named workforce members).
 //   • FAMILY VIOLENCE (§7.9 / D9) — an assessment with `family_violence_flag = true` is visible to the
 //     "MSW + RN Case Manager" caseload default only; a portal / caregiver / external-collaborator session
 //     never sees it, whatever its roles.
@@ -17,8 +18,9 @@
 //
 // FAIL-CLOSED (§8.7 / M15-F11): M39 is resolved lazily through the M1 seam registry at CALL time; while it
 // is a deny-stub — or if it throws — the gate REDACTS. A consent outage narrows what a clinician sees; it
-// never widens it. The one exception is the RN-Case-Manager fast path, which is a role fact from the M2
-// session and needs no consent round-trip.
+// never widens it, and that now includes the RN-Case-Manager path: it used to skip the consent
+// round-trip entirely (a pure role fact from the M2 session), but a release can now name individual
+// workforce members, and whether one does is a fact the role path has to have before it can apply.
 //
 // The seam is resolved through `getSeam` and cast to the minimal shape M15 calls (the M25 →
 // TerminologyProvider precedent): `ConsentEvaluator` is `unknown` in the leaf SeamContracts, and casting
@@ -28,19 +30,17 @@ import type { M15ReadActor } from "./actor";
 
 /** The M39 surface M15 calls — structurally typed so no `@wardenx/consent` import edge is taken. */
 interface ConsentEvaluatorShape {
-  evaluate(args: {
-    organizationId: string;
-    patientId: string;
-    consentType: string;
-    sessionContext: { sessionClass: string };
-    callerModule: string;
-    callerRoute?: string;
-  }): Promise<{ allowed: boolean }>;
   evaluateForIngressRedaction(args: {
     organizationId: string;
     patientId: string;
     callerModule: string;
   }): Promise<{ redactFamilyViolenceFields: boolean }>;
+  evaluateForInternalAccess(args: {
+    organizationId: string;
+    patientId: string;
+    actor: { membershipId: string | null };
+    callerModule: string;
+  }): Promise<{ redactSubstanceUseDisorderFields: boolean; basis: string }>;
 }
 
 /** The confidentiality categories an M15 read may withhold (§7.8 `redacted_categories`). */
@@ -74,31 +74,46 @@ const NON_DISCLOSURE_SESSION_CLASSES = [
 
 /** The port the gate resolves M39 through (injected in tests; the seam registry in prod). */
 export interface DisclosurePort {
-  /** Is a `42_cfr_part_2_release` consent satisfied for this patient/session right now? */
+  /**
+   * May THIS actor see the patient's Part 2 content right now? Per-actor since M39 gained
+   * `workforce_member` recipients — `restrictedToNamedWorkforce` says the patient's release names
+   * workforce members and this actor is not one, which is the one case the §7.6 RN-Case-Manager path
+   * below may NOT override.
+   */
   part2ReleaseActive(input: {
     organizationId: string;
     patientId: string;
     sessionClass: string;
-  }): Promise<boolean>;
+    membershipId: string | null;
+  }): Promise<{ allowed: boolean; restrictedToNamedWorkforce: boolean }>;
   /** Does M39 additionally require family-violence content to be redacted for this patient? */
   familyViolenceRedacted(input: { organizationId: string; patientId: string }): Promise<boolean>;
 }
 
 /** The production port — lazy `getSeam` per call (registration order is irrelevant), fail-CLOSED on throw. */
 export const seamDisclosurePort: DisclosurePort = {
-  async part2ReleaseActive({ organizationId, patientId, sessionClass }) {
+  async part2ReleaseActive({ organizationId, patientId, membershipId }) {
+    // `evaluate()` IGNORES its `sessionContext` entirely — it answers "does a release of this type
+    // exist for this patient", never "for this caller" — so passing the session class through it was
+    // always answering a patient-scope question with a per-actor shape. `evaluateForInternalAccess`
+    // is the per-actor one (mig 0209's `workforce_member` recipients made it answerable).
     try {
       const evaluator = getSeam("ConsentEvaluator") as ConsentEvaluatorShape;
-      const verdict = await evaluator.evaluate({
+      const verdict = await evaluator.evaluateForInternalAccess({
         organizationId,
         patientId,
-        consentType: "42_cfr_part_2_release",
-        sessionContext: { sessionClass },
+        actor: { membershipId },
         callerModule: "m15",
       });
-      return verdict.allowed === true;
+      return {
+        allowed: !verdict.redactSubstanceUseDisorderFields,
+        restrictedToNamedWorkforce:
+          verdict.basis === "release_names_others" || verdict.basis === "actor_unidentified",
+      };
     } catch {
-      return false; // §8.7 — an unbound/erroring M39 REDACTS, never discloses
+      // §8.7 — an unbound/erroring M39 REDACTS, never discloses. Fail-closed in BOTH fields: an
+      // outage must not read as "no restriction exists" and hand the role path a disclosure.
+      return { allowed: false, restrictedToNamedWorkforce: true };
     }
   },
   async familyViolenceRedacted({ organizationId, patientId }) {
@@ -132,7 +147,7 @@ export async function resolveDisclosure(
 
   // The fail-CLOSED posture is enforced HERE, not only inside the default port: an injected or future
   // port that throws must still REDACT, never 500 the read and never fall through to "allowed" (§8.7).
-  const probe = async (run: () => Promise<boolean>, onError: boolean): Promise<boolean> => {
+  const probe = async <T>(run: () => Promise<T>, onError: T): Promise<T> => {
     try {
       return await run();
     } catch {
@@ -140,18 +155,25 @@ export async function resolveDisclosure(
     }
   };
 
-  const sudAllowed = restrictedSession
-    ? false
-    : isRnCaseManager ||
-      (await probe(
+  // M39 is consulted BEFORE the RN-Case-Manager path, not after: the role path is a treatment
+  // carve-out (an intra-program read is not a §2.31 disclosure) and it still applies when no release
+  // is on file, but it may not override a release the patient restricted to NAMED workforce members.
+  // That restriction exists precisely to exclude other staff, and a role key cannot outrank it.
+  const part2 = restrictedSession
+    ? { allowed: false, restrictedToNamedWorkforce: true }
+    : await probe(
         () =>
           port.part2ReleaseActive({
             organizationId: actor.organizationId,
             patientId,
             sessionClass: actor.sessionClass,
+            membershipId: actor.membershipId,
           }),
-        false, // no consent verdict → not disclosable
-      ));
+        // no consent verdict → not disclosable, and not readable as "unrestricted" either
+        { allowed: false, restrictedToNamedWorkforce: true },
+      );
+  const sudAllowed =
+    !restrictedSession && (part2.allowed || (!part2.restrictedToNamedWorkforce && isRnCaseManager));
 
   const familyViolenceRoleDefault = FAMILY_VIOLENCE_DEFAULT_ROLES.some((r) =>
     actor.roles.includes(r),

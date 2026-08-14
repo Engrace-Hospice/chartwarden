@@ -21,7 +21,7 @@ import { UnauthorizedError } from "@wardenx/types";
 import type { InterventionDiscipline } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
-import { disciplineScopeOf } from "../abac-predicates";
+import { disciplineScopeOf, membershipIdOf } from "../abac-predicates";
 import {
   BootstrapCarePlanSchema,
   CreateGoalSchema,
@@ -69,6 +69,9 @@ export interface CarePlanRouteDeps {
     patientId: string;
     planId: string;
     roles: readonly string[];
+    /** The actor's ACTIVE membership id — M39's Part 2 verdict is PER-ACTOR (`workforce_member`
+     *  recipients), and an unnamed actor against a restricted release is redacted. */
+    membershipId: string | null;
   }) => Promise<boolean>;
 }
 
@@ -148,6 +151,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
         patientId,
         planId: "",
         roles: request.context.roles,
+        membershipId: membershipIdOf(request.context),
       });
       const row = await service.getCarePlanForPatient(organizationId, patientId, {
         sudDisclosureAllowed: allowSud,
@@ -431,6 +435,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
         patientId: "",
         planId,
         roles: request.context.roles,
+        membershipId: membershipIdOf(request.context),
       });
       return service.getSummary(organizationId, planId, { sudDisclosureAllowed: allowSud });
     },

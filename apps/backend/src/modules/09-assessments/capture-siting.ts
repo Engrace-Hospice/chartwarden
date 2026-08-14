@@ -85,12 +85,21 @@ export async function dpoaConsentActiveViaSeam(
  * nothing — the row stayed hidden from every caller forever. That is the safe direction to fail, but a
  * gate that cannot open is not a gate.
  *
- * PATIENT-SCOPED, NOT ACTOR-SCOPED — deliberately, and this is the whole of what M39 can answer for an
- * internal chart read. `evaluateForDisclosure` is the per-recipient variant, and its recipient is an
- * external client / resolved recipient id: M39 does not model an internal staff actor as a Part 2
- * recipient at all. So the question here is "is disclosure of this patient's SUD content authorized in
- * this org right now", and WHICH staff may read the chart remains the job of the route's RBAC +
- * `caseload_or_scope` ABAC, which already gate every one of these reads.
+ * PATIENT-SCOPED, NOT ACTOR-SCOPED — still deliberate, but no longer because it is the only thing M39
+ * can answer. When this was written it was: `evaluateForDisclosure` keys on an EXTERNAL recipient, and
+ * M39 modelled no internal staff actor as a Part 2 recipient, so "may THIS clinician see it" had no
+ * backing fact. `workforce_member` recipients (mig 0209) + `evaluateForInternalAccess` built that fact,
+ * and the per-actor decision now lives one layer up, in the `sud_disclosure_allowed` predicate M7
+ * registers and M9's routes compose (abac-predicates.ts) — the same seam call, resolved where the actor
+ * actually is.
+ *
+ * It stays patient-scoped HERE because the M9 read service's signatures carry no actor at all
+ * (`listAssessments(organizationId, patientId)`), and the honest choices are to thread one through the
+ * whole `AssessmentRouteService` interface or to let the route gate own the actor question. Threading a
+ * `null` membership instead would be the worst of both: against a workforce-restricted release it reads
+ * as `actor_unidentified` and redacts the chart from the very clinicians the patient named. So this
+ * layer answers "is disclosure of this patient's SUD content authorized in this org at all", and the
+ * route's RBAC + `sud_disclosure_allowed` + `caseload_or_scope` answer "by whom".
  *
  * Fail-CLOSED on any seam error (unregistered, deny-stub, evaluator throw): redact.
  */

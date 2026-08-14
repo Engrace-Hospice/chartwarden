@@ -154,6 +154,10 @@ const RECIPIENT_KIND = Type.Union(
       "attorney",
       "employer",
       "researcher",
+      // The one INTERNAL class (mig 0209): `recipientEntityId` carries an M2 MEMBERSHIP id, so a
+      // §2.31 release can name the individual staff members it authorizes. Naming none keeps the
+      // release program-wide; naming any restricts it to them.
+      "workforce_member",
       "free_text",
     ] as const
   ).map((k) => Type.Literal(k)),
