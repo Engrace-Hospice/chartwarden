@@ -110,7 +110,7 @@ portal-session class, and `survives_death` (whether the grant persists into bere
 ## Provenance & Sensitivity
 
 - **AI-prohibited.** No AI may add recipients, appoint agents, or evaluate/override consent
-  (`validateM39AIBlock`).
+  (`validateM39AIBlock` *(target — not yet implemented; the built sibling is `validateSupplyAIBlock`)*).
 - Recipient NPIs, external-physician NPIs, and consent record ids render in IBM Plex Mono.
 - Part 2 recipient rows are sealed/masked until the consent gate passes; the §2.32 notice marker
   is shown on every Part 2 grant.

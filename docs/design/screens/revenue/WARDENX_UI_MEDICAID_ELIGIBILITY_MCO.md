@@ -18,7 +18,7 @@ the state MMIS directly. The cache (`medicaid_eligibility_check`) records `outco
 date — but never the Recipient ID digits themselves (only a last-4 mask).
 
 This is the gate that must clear before a state Medicaid claim submits: the
-`medicaid_eligibility_freshness` and `medicaid_mco_assignment_routes` pre-submission rules read
+`medicaid_eligibility_freshness_30d` and `medicaid_mco_assignment_routes` pre-submission rules read
 this cache, and the routing decision here decides which trading-partner credential the claim
 will use.
 
@@ -77,7 +77,7 @@ resolution step with a Refresh affordance.
   day count. Stale rows are flagged by the daily stale-watchdog cron.
 - **MCO/CCO assignment** — when `outcome='mco_assignment'`, the resolved MCO/CCO (CareOregon,
   PacificSource Community Solutions, Trillium, Eastern Oregon CCO, Yamhill CCO, …) from the M40
-  `state_medicaid_mco` catalog; Open Card (FFS) when none.
+  `state_medicaid_mco` catalog *(target — no such table exists; M24 carries a logical `mco_id` uuid only)*; Open Card (FFS) when none.
 
 ---
 
@@ -98,7 +98,7 @@ resolution step with a Refresh affordance.
 
 - **Outcomes:** `active` · `inactive` · `unknown` · `mco_assignment`.
 - **Freshness:** 30-day rule (mirrors M23). Past 30 days → `Stale` → blocks submission via the
-  `medicaid_eligibility_freshness` rule until refreshed.
+  `medicaid_eligibility_freshness_30d` rule until refreshed.
 - The history view lists prior checks with their masked Recipient ID, outcome, MCO, and as-of
   date.
 

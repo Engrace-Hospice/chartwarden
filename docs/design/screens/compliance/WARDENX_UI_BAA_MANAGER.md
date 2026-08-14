@@ -72,7 +72,7 @@ make the BAA gate **deny**.
 
 ## Edit Rules & Sensitive Data
 
-- Requires `privacy.baa.manage`; activating/terminating a BAA is step-up + audited.
+- Requires `mdm.baa.manage` (the registered M40 key; there is no `privacy.baa.*` family); activating/terminating a BAA is step-up + audited.
 - The BAA status here is authoritative for the platform **BAA gate**: integrations and
   document signed-URL mints check it before releasing PHI to a vendor — a non-active status
   surfaces a Guard Chip ("No active BAA — PHI flow blocked →") at the consuming surface.

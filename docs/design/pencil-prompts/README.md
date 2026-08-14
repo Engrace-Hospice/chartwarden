@@ -39,21 +39,21 @@ Pencil is a desktop editor for `.pen` files; the MCP operates on the **currently
 
 1. **Open** a WardenX `.pen` file in the Pencil app. (The MCP errors with *"A file needs to be
    open"* until then — this is the one manual step.)
-2. **Learn the schema** — `mcp__pencil__get_editor_state({ include_schema: true })` and
+2. **Learn the schema** — `mcp__pencil__get_app_state({ include_schema: true })` and
    `mcp__pencil__get_guidelines()`. Always do this before any design call.
-3. **Install the design variables once** — `mcp__pencil__set_variables(...)` with the Lantern
+3. **Install the design variables once** — `mcp__pencil__execute(...)` with the Lantern
    tokens (colors §2, type §3, radius/spacing §4 from `DESIGN.md`) so every frame references
    variables, not hard-coded hex. This is the single most important step for on-system output.
-4. **Generate per screen** — `mcp__pencil__batch_design(...)` to lay out the screen's regions
+4. **Generate per screen** — `mcp__pencil__execute(...)` to lay out the screen's regions
    and its `Pencil Notes` variant frames, following the prompt for that screen.
-5. **Verify** — `mcp__pencil__get_screenshot(...)` / `snapshot_layout(...)`; check against the
+5. **Verify** — `mcp__pencil__get_screenshot(...)` / `get_screenshot(...)`; check against the
    hard rules (no 1px borders, provenance on AI, guard chips on blocked actions, masking on PHI).
 6. **Record** the returned node id back into [`../SCREENS.md`](../SCREENS.md) (`⬚` → `node:<id>`).
 7. **Export** when a batch is approved — `mcp__pencil__export_nodes(...)`.
 
 > Generate **frames as variants** within one node per screen (the spec's `Pencil Notes` lists
 > them — e.g. Patient Chart: active / just-admitted / discharged / deceased / merged /
-> SSN-masked-vs-revealed). Variant count (~250+ frames), not screen count (69), is the real size.
+> SSN-masked-vs-revealed). Variant count (~250+ frames), not screen count (113), is the real size.
 
 ---
 

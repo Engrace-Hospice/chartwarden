@@ -1,5 +1,8 @@
 # Frontend Reconciliation — Scope
 
+> **SUPERSEDED (2026-08-14).** This is the point-in-time reconciliation scope of 2026-06-24 and is kept as history. Its "Current state" table and ~53-screen zero-web backlog are long overtaken: every module it lists is built and registered (290 screens across web/portal/admin). The authoritative, gate-generated status is [`audit/ui-parity/UI_PARITY.md`](../../audit/ui-parity/UI_PARITY.md) (`bun run ui:parity`); frame-level fidelity is `audit/frame-fidelity/FRAME_FIDELITY.md`.
+
+
 Wiring the reviewed **Lantern** design corpus (113 screens · ~370 frames, all `●` on `main`) into
 `apps/web`. Grounded in a live audit of `@wardenx/ui`, the 19 implemented module screen-sets, and
 the design↔implementation coverage gap (2026-06-24).

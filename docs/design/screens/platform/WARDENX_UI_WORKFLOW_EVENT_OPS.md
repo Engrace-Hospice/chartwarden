@@ -58,9 +58,10 @@ duplicate effect).
 
 ## Domain-Event Outbox Monitor
 
-Outbox rows by event type (`mN.*` catalog convention): status `Pending`, `Published`,
-`Failed`, with publish attempt count, next-retry, and last error. Operators can retry a row,
-retry-all-failed, or move a poison event to a dead-letter holding area. Ordering and
+Outbox rows by event type (`mN.*` catalog convention): status `pending`, `dispatching`, `dispatched`,
+`failed`, with publish attempt count, next-retry, and last error. Operators can retry a row,
+retry-all-failed, or move a poison event to a dead-letter holding area *(target-state — the
+shipped ops surface is two read-only routes)*. Ordering and
 at-least-once delivery semantics are visible (sequence per aggregate).
 
 ---
@@ -84,7 +85,7 @@ fallbacks (cache-miss read paths) are explained, not mysterious.
 ## Statuses
 
 - Spine: `Healthy`, `Degraded`, `Backlogged`, `Stalled`
-- Outbox event: `Pending`, `Published`, `Failed`, `Dead-Lettered`
+- Outbox event: `pending`, `dispatching`, `dispatched`, `failed` (the shipped `outbox_status` enum — there is no published or dead-letter state)
 - Job: `Waiting`, `Active`, `Delayed`, `Completed`, `Failed`
 - Cache: `Operational`, `Degraded`, `Unavailable`
 
@@ -94,7 +95,7 @@ fallbacks (cache-miss read paths) are explained, not mysterious.
 
 - This is an infrastructure surface — payloads are referenced by id/type, not rendered; any
   PHI within an event body is never displayed here.
-- Retry / drain / purge / dead-letter are audited operator actions; purge requires confirmation
+- Retry / drain / purge / dead-letter are audited operator actions *(target — none of these endpoints exist yet)*; purge requires confirmation
   and is irreversible.
 - Idempotency keys are shown to prove replays are safe; manual replay respects them.
 - Access is restricted to platform-operator roles; no tenant context leaks across rows.
@@ -110,7 +111,7 @@ fallbacks (cache-miss read paths) are explained, not mysterious.
 
 ## Actions
 
-- Retry event · retry all failed · dead-letter event
+- Retry event · retry all failed · dead-letter event *(target — not yet built)*
 - Retry / remove / drain job · pause / resume queue
 - Inspect transition (invariants · idempotency key)
 - Flush / inspect cache key · refresh metrics

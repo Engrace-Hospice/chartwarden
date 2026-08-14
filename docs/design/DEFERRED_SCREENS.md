@@ -1,6 +1,6 @@
 # WardenX — Deferred Screens Ledger (Track A backlog + coordination point)
 
-The single status source for frontend screens, per `docs/plans/FRONTEND_INTEGRATION_PLAN.md` (F0-T05).
+The Track-A/Track-B coordination ledger, per `docs/plans/FRONTEND_INTEGRATION_PLAN.md` (F0-T05). *(Authority note, 2026-08-14: the gate-generated [`audit/ui-parity/UI_PARITY.md`](../../audit/ui-parity/UI_PARITY.md) is the authoritative per-screen status — see line ~464; this ledger is the human worklist layered on it.)*
 Every backend module task so far ended "screens defer (no UI codePath)". This ledger is the **Track A
 worklist** — the screens whose backend module is already merged to `main` and can now be built — and
 the **coordination point** with Track B (per-module screens going forward): mark a row `done` so the
@@ -12,7 +12,7 @@ owns `apps/web/src/modules/NN-*`, registered into the M1 shell), [ADR-0032](../a
 `WARDENX_UI_LAYOUT_PATTERNS.md`; module ownership is the `Module:` line in each spec.
 
 **Build rule (backend-first):** a screen is only built after its module's routes/seams are on `main`,
-and against the generated client (`packages/ui/src/api`). No new authz on the frontend — the server
+and against the generated client (`packages/ui/src/core/api` — moved by the ADR-0035 core/web split). No new authz on the frontend — the server
 stays authoritative.
 
 **Status legend:** `deferred` (not started) · `in-progress` · `done`. **Layout** notes whether the
@@ -22,7 +22,7 @@ F0-T04 `@wardenx/ui` layout component already exists (✓) or ships with the scr
 
 ## Merged backend modules (Track A is unblocked for these)
 
-M1 (Foundation/shell), M2 (Identity), M3 (Authorization), M4 (Audit), M5 (Patient), M36 (Messaging),
+*(2026-08-14: ALL 39 backend modules are merged — Track A is unblocked everywhere; the list below is the historical first tranche.)* M1 (Foundation/shell), M2 (Identity), M3 (Authorization), M4 (Audit), M5 (Patient), M36 (Messaging),
 M38 (Terminology), M39 (Consent), M40 (MDM). Build order below follows value + dependency
 (M2 auth gates everything; M5 is the clinical spine).
 

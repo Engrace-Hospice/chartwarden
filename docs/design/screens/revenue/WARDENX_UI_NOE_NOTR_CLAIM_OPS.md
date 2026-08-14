@@ -80,8 +80,8 @@ Work Table (work items)  |  Right Detail Panel (selected item + actions)
 
 ## Statuses
 
-NOE/NOTR: `Due`, `Submitted`, `Accepted`, `Rejected`, `Late`, `Forfeited`. Claim:
-`Scrubbing`, `Failed`, `Ready`, `Released`. EDI: `Pending`, `Acked`, `Rejected`.
+NOE/NOTR: `draft`, `ready`, `submitted`, `ack_pending`, `ack_accepted`, `ack_rejected`, `cancelled` (the shipped enum; due/late/forfeited are derived display bands, not states). Claim:
+the shipped `m23_claim_state` values (scrubbing/released are display phases, not states). EDI: `Pending`, `Acked`, `Rejected`.
 
 ---
 

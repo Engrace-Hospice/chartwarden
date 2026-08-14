@@ -57,7 +57,7 @@ Entity Table  |  Right: Golden Record / Overlay / Merge Actions
 
 - Canonical entity: `Active`, `Deactivated`, `Merged`, `Provisional`.
 - Merge request: `Pending`, `Approved`, `Executed`, `Rejected`.
-- BAA: `Executed`, `Pending`, `N/A`, `Missing`, `Expired`.
+- BAA: `executed`, `pending`, `n_a` (the shipped `mdm_baa_status` enum; expiry is the separate `expires_on` date, not a status).
 
 ---
 

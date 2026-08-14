@@ -63,7 +63,7 @@ Claim Queue  |  Right: Claim Detail / Validation Worklist
 ## Statuses
 
 - **Claim:** `Draft`, `Validating`, `Ready`, `Submitted`, `Ack Pending`, `Ack Accepted`,
-  `Paid`, `Ack Rejected`, `Ack Partial`, `Replaced`, `Voided` — Medicaid adds `Denied`,
+  `Paid`, `Ack Rejected`, `Ack Partial`, `Replaced`, `Voided`, `Denied`, `Partial Paid` (all in the shipped M23 `m23_claim_state` enum — `DENIED` is not Medicaid-only) — Medicaid adds
   `Awaiting Medicare Primary`, `Polling`, `Ack Timeout`, `Abandoned`.
 - **NOE / NOTR:** `Draft`, `Ready`, `Submitted`, `Ack Pending`, `Ack Accepted`,
   `Ack Rejected`.

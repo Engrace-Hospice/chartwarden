@@ -63,7 +63,7 @@ Sticky Footer Actions
 ## Cascades
 
 Closes the active election period (with cause), ends the LOC, sets admission → `discharged`;
-emits `revocation.signed` / `transfer.completed` / `discharge.executed` → M23 (NOTR + final
+emits `m6.revocation.created` / `m6.transfer.created` / `m6.discharge.created`+`m6.discharge.death` (the registered M6 names) → M23 (NOTR + final
 claim) and M22 (discharge summary).
 
 - **For cause:** admission stays `active` until the medical director cosigns; a rejected

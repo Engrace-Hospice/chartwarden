@@ -76,7 +76,7 @@ Incident: `Reported` → `Under review` → `Investigating (RCA)` → `Correctiv
 
 ## Edit Rules & Sensitive Data
 
-- Requires `qapi.incident.manage`; closing an investigation requires sign-off authority.
+- Requires `qapi.write` + the `incident.*` family (the registered M30 keys; `qapi.incident.manage` is not a key); closing an investigation requires sign-off authority.
 - Patient PHI masked; reveal step-up + audited. QAPI/PIP analytics are de-identified where
   possible.
 - Investigation findings may be protected quality-assurance material — access is

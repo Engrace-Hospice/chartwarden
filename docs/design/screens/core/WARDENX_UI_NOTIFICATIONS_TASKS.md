@@ -45,7 +45,7 @@ List  |  Right: Detail + Deep-link Actions
 
 ## Notifications
 
-Alert severities: `INFO`, `WARN`, `MEDIUM`, `HIGH`, `CRITICAL`. Delivery channels: in-app
+Alert severities: `info`, `warn`, `critical` (the shipped `alert_severity` enum — there are no MEDIUM/HIGH bands). Delivery channels: in-app
 (always), push, SMS, email, voice (SOS only).
 
 Representative sources (cross-module): verbal-order expiry (M11), NOE window breach (M23),

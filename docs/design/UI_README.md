@@ -1,4 +1,8 @@
-# WardenX UI Documentation Complete Package v5
+# WardenX UI Documentation Complete Package v6
+
+> **Corpus map note (2026-08-14):** the canonical folder index is [`README.md`](./README.md); the
+> corpus is **113 specs across 10 directories** (the four added post-v5 — `compliance`,
+> `integration`, `mobile`, `staffing` — are listed below).
 
 The WardenX UI screen-specification corpus: every screen across clinical, revenue, admin,
 core/app-shell, portal, and platform/ops, plus the shared layout-pattern glossary.
@@ -20,6 +24,10 @@ core/app-shell, portal, and platform/ops, plus the shared layout-pattern glossar
 - `/screens/admin`
 - `/screens/portal`
 - `/screens/platform`
+- `/screens/compliance`
+- `/screens/integration`
+- `/screens/mobile`
+- `/screens/staffing`
 
 ## History
 
@@ -36,6 +44,6 @@ core/app-shell, portal, and platform/ops, plus the shared layout-pattern glossar
   onboarding wizard, help & training, global search) and the P5 product-feature set (DocLens
   extraction review, clinical copilot & chart search, CTI/eligibility worksheet,
   death/pronouncement, discharge/revocation/transfer, agency command center, patient clinical
-  timeline, referral source CRM). 69 screen specs total.
+  timeline, referral source CRM). 113 screen specs total.
 
 These documents are written for Pencil wireframing and later frontend implementation.

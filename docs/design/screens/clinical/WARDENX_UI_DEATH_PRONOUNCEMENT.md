@@ -45,7 +45,7 @@ Sticky Footer Actions
 3. **Family notification** — record notification; surface after-hours/contact info.
 4. **Post-death cascade** (tracked checklist) — admission → `bereavement`;
    `bereavement.eligible` → M16 13-month enrollment (if active election ≥ 1 day and not
-   opted out); `discharge.executed` → final claim (M23) and NOTR window; DME pickup (M21);
+   opted out); `m6.discharge.death` (with `m6.discharge.created` for non-death discharges) → final claim (M23) and NOTR window; DME pickup (M21);
    comfort-kit return.
 5. **Documents** — death summary; body-release workflow if IPU.
 

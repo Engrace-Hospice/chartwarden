@@ -467,7 +467,11 @@ Modifiers attach to a base pattern with `+`. They contribute regions, not whole 
 
 ---
 
-## Coverage matrix (pattern → screens)
+## Coverage matrix
+
+> *Partial (v2-era): maps ~60 of the 113 current screens; the P12–P14 breadth screens and the
+> staffing / integration / mobile directories post-date it. `SCREENS.md` carries each newer
+> screen's pattern assignment; `docs:ui` gate-checks every declaration either way.* (pattern → screens)
 
 | Pattern | Screens |
 |---|---|

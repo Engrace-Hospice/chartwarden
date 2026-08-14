@@ -15,10 +15,13 @@ Scope: The token system, component patterns, and hard rules for every WardenX su
 >
 > **Implementation source of truth:** the tokens below are mirrored in
 > [`packages/ui/src/core/theme/colors.ts`](../../packages/ui/src/core/theme/colors.ts) and the
-> Tailwind v4 `@theme` block in [`apps/web/src/index.css`](../../apps/web/src/index.css). Those
-> files currently carry **bootstrap-grade placeholders** (`--color-brand: #1d4ed8`, generic
-> greys); adopting Lantern means replacing them with the values in §11. When code and this doc
-> disagree, this doc is the design intent and the code should be reconciled to it.
+> Tailwind v4 `@theme` block in [`apps/web/src/index.css`](../../apps/web/src/index.css).
+> **STATUS (2026-08-14): ADOPTED.** The R0/R1 Lantern reconciliation replaced the bootstrap
+> placeholders — both files now carry the Lantern palette (incl. the `.dark` twilight theme), and
+> `arch:design-tokens` keeps `colors.ts` ↔ the `@theme` block in sync. The shipped files also carry
+> post-adoption fixes this doc's §11 predates (the `:root` `--space-*` scale, `--color-on-emphasis`
+> / `--color-scrim`, and the WX-PR-018 WCAG fix moving `--color-muted` to `#726d64`) — so **never
+> paste §11 over `index.css`**; §11 is the adoption-era record. When code and this doc disagree, this doc is the design intent and the code should be reconciled to it.
 
 ---
 
@@ -126,7 +129,7 @@ in this ramp (see the No-Line rule, §10), never from default 1px lines.
 | :-- | :-- | :-- | :-- |
 | `on-surface` | `#1C1B1A` | `#ECEAE6` | Primary text (warm near-black) |
 | `on-surface-variant` | `#56524C` | `#B8B4AD` | Secondary text, labels, metadata |
-| `muted` | `#8C877F` | `#7E7A72` | Disabled, placeholder |
+| `muted` | `#726D64` *(shipped — WX-PR-018 WCAG fix; this doc originally said `#8C877F`, which fails AA)* | `#7E7A72` | Disabled, placeholder |
 | `outline` | `#6E6A62` | `#8A857C` | Active borders, focus rings |
 | `outline-variant` | `#D7D3CB` | `#45444E` | Ghost borders (apply at ≤15% opacity) |
 
@@ -337,8 +340,10 @@ zero-after-filter states.
 
 ### 6.9 Headless primitives
 
-Interactive components use accessible headless primitives (Radix-style contracts) + Lantern
-tokens via a `cn()` class-merge helper (the repo's `wx-*` system; see
+Interactive components are to use accessible headless primitives (Radix-style contracts) + Lantern
+tokens via a `cn()` class-merge helper *(TARGET — no `cn()` helper or Radix-style primitive set is
+built yet; the shipped interactive primitives are `modal.tsx` + `confirm-dialog.tsx` in
+`packages/ui/src/web/system/`)* (the repo's `wx-*` system; see
 [`apps/web/src/index.css`](../../apps/web/src/index.css)): dialog, alert-dialog (destructive +
 ceremonies), dropdown, tooltip, tabs, select, combobox, popover, command palette (`⌘K`),
 progress, switch. Never ship an unstyled primitive — always apply Lantern tokens.
@@ -474,8 +479,11 @@ lifted to `#AEB4F0`, gold to `#E7B35A` so the lantern actually glows. Enabled vi
 strategy (`.dark` on `<html>`).
 
 WardenX is **Tailwind v4 (CSS-first `@theme`)** — tokens are CSS custom properties, not a JS
-config. Replace the bootstrap block in [`apps/web/src/index.css`](../../apps/web/src/index.css)
-with the Lantern tokens (light shown; wrap dark values under `.dark`):
+config. **HISTORICAL — this adoption step is DONE** (see the header status note): the block below
+was the original hand-off spec, kept as the design-intent record. The live source of truth is
+[`apps/web/src/index.css`](../../apps/web/src/index.css) + `packages/ui/src/core/theme/colors.ts`,
+which extend it (spacing scale, on-emphasis/scrim, `--color-muted: #726d64` per WX-PR-018). Do not
+copy this block over the shipped files:
 
 ```css
 @import "tailwindcss";
@@ -508,7 +516,7 @@ with the Lantern tokens (light shown; wrap dark values under `.dark`):
   /* Text & line */
   --color-on-surface: #1c1b1a;
   --color-on-surface-variant: #56524c;
-  --color-muted: #8c877f;
+  --color-muted: #726d64; /* WX-PR-018 — original #8c877f failed the §10.11 AA bar */
   --color-outline: #6e6a62;
   --color-outline-variant: #d7d3cb;
 

@@ -51,7 +51,7 @@ Queue / Table  |  Right: Detail / Resubmit / Reprocess Actions
 ## QIES / ASAP Submission Status (M10)
 
 HOPE timepoint submissions to the QIES/iQIES ASAP pipeline. Each row: assessment id, patient
-(MRN masked), timepoint (`Admission` / `HUV` / `Discharge`), submission batch, and status.
+(MRN masked), timepoint (`01_admission` / `02_huv1` / `03_huv2` / `04_sfv` / `05_discharge` — the shipped `hope_rfa_kind` values), submission batch, and status.
 Confirmation shows the ASAP control id; rejection shows the validation finding set (fatal /
 warning), each tied to its item and message.
 
@@ -85,8 +85,8 @@ so ops can flag the dependency without leaving the screen.
 
 ## Statuses
 
-- Submission: `Queued`, `Submitted`, `Confirmed`, `Rejected`, `Resubmitting`, `Superseded`
-- Finding: `Fatal`, `Warning`, `Cleared`
+- Submission: `queued`, `in_flight`, `accepted`, `rejected`, `partially_accepted` (the shipped `hope_submission_status` enum)
+- Finding: `error`, `warning` (the shipped `hope_validation_severity` enum)
 - Ingestion: `Received`, `Extracting`, `Needs Review`, `Accepted`, `Failed`
 - Endpoint: `Operational`, `Degraded`, `Partial Outage`, `Major Outage`, `Maintenance`
 
