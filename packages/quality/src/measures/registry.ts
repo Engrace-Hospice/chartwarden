@@ -327,6 +327,18 @@ export const MEASURE_CATALOG: readonly MeasureCatalogEntry[] = [
     calculatorVersion: "0.1.0",
     description: "HOPE SFV on-time rate (HQRP)",
   },
+  {
+    // GAP-065 — the CoP 418.310 failure-to-file indicator the M27 forward seam was built to feed. It
+    // computes on a CALENDAR YEAR, not the rolling-12m-to-quarter window every other operational measure
+    // uses: cost-report filing is an annual obligation, and its source (`filingStatusForOrg`) is a
+    // point-in-time posture rather than a windowed event count.
+    code: "cost_report_filing_compliance",
+    family: "operational",
+    periodKind: "calendar_year",
+    activatesFy: 2025,
+    calculatorVersion: "0.1.0",
+    description: "Cost-report filing compliance (CoP 418.310)",
+  },
 ];
 
 /** All catalog entries ACTIVE at/under `fiscalYear` (i.e. `activatesFy <= fiscalYear`). Pure. */

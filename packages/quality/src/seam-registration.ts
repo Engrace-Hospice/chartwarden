@@ -14,6 +14,13 @@
 //  2. CONSUME — `bindQualityConsumedSeams` assembles the consumed-seam bundle: the PRESENT producers'
 //     bindings (built by the composition root as adapters over `getSeam`, P2C) merged with the package's
 //     forward-seam DENY-STUBS for every ABSENT producer (fail-closed, never fails open — D6 / D13).
+//     ACCURATE STATUS (GAP-065): no composition root calls this assembler. The backend's
+//     `m30.measure_recompute` worker resolves each measure's source individually — PRESENT producers read
+//     directly off their own published seams through `getSeam`, and only the FORWARD-seam slots (M23/M27)
+//     use the consumer views declared here, bound per measure (`consumed-seam-adapters.ts`). The
+//     interfaces below remain the contract those adapters and the deny-stubs implement; the whole-bundle
+//     `bindQualityConsumedSeams` itself is exercised only by tests. Do not read its existence as evidence
+//     that a measure consumes a given seam — check the worker's `resolveInput` dispatch for that.
 import { M30_PUBLISHED_SEAM_NAMES } from "./seams";
 import type {
   ComplianceStatusProvider,

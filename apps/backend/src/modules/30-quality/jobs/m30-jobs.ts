@@ -68,8 +68,10 @@ import {
   type OutbreakDetectionJob,
   type OutbreakDetectionPorts,
   type ProcessingLogPort,
+  type QualityCostReportConsumer,
   type QualityHopeConsumer,
   QualityMeasureValueRepository,
+  denyStubQualityCostReportConsumer,
   type RiskRegisterRefreshCronPorts,
   type RiskRegisterRefreshJob,
   type RiskRegisterRefreshPorts,
@@ -106,6 +108,7 @@ import type {
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { getSeam } from "../../../bootstrap/index";
 import { buildProcessingLogPort } from "../../../bootstrap/processing-log";
+import { buildM30CostReportConsumer } from "../consumed-seam-adapters";
 
 // ── the dep bag the composition root injects (the bindable infra + the still-missing seams) ────────────
 
@@ -248,6 +251,14 @@ export interface M30WorkerDeps {
    * Fail-closed thunk when absent.
    */
   readonly medicationOrders?: MedicationOrderProvider;
+  /**
+   * M30's FORWARD-seam consumer over M27's `CostReportFilingStatusReader` — the input to the CoP 418.310
+   * `cost_report_filing_compliance` measure (GAP-065). Unlike every other seam on this bundle its absence
+   * is NOT a wiring bug: M27 is a forward seam, so the default is the package's deny-stub, which resolves
+   * to `FORWARD_SEAM_UNAVAILABLE` and suppresses the measure (`insufficient_n`, null rate) instead of
+   * throwing. The composition root binds `buildM30CostReportConsumer()` (consumed-seam-adapters.ts).
+   */
+  readonly costReport?: QualityCostReportConsumer;
   /** Injected clock (deterministic in tests; the package processors stamp every instant through this). */
   now?: () => Date;
 }
@@ -490,6 +501,14 @@ const OPERATIONAL_MEASURE_THRESHOLDS: Readonly<Record<string, ThresholdRule>> = 
     direction: "lte",
     label: "opioid-on-admission rate (informational surveillance; no CMS floor; platform default)",
   },
+  // CoP 418.310 — unlike every other entry in this map this is NOT a platform default: 42 CFR 418.310
+  // makes failure to file a cost report grounds for TERMINATION, so the floor is 100% by regulation and
+  // there is deliberately no warn band. One past-deadline unfiled provider entity is red.
+  cost_report_filing_compliance: {
+    value: 1.0,
+    direction: "gte",
+    label: "cost-report filing compliance (CoP 418.310; regulatory floor — no partial compliance)",
+  },
 };
 
 /** The M17 on-time counts read, as this resolver uses it (the registry holds the seam opaquely). */
@@ -724,6 +743,58 @@ export async function resolveOperationalMeasureInput(
         `'${code}' is not one of the operational measures this resolver shapes`,
       );
   }
+}
+
+// ── the CoP 418.310 cost-report-filing resolver (GAP-065) ───────────────────────────────────────────────
+
+/**
+ * Shape M27's live filing posture into the `cost_report_filing_compliance` calculator input — the first
+ * production read of a FORWARD seam (M23/M27), and the reason `buildM30CostReportConsumer` exists.
+ *
+ * Two deliberate differences from the operational resolver above:
+ *
+ *   • It degrades instead of throwing. Every measure above reads a PRESENT producer, where an unbound seam
+ *     is a wiring bug worth failing the job over. This one reads a forward seam whose producer may
+ *     legitimately not be rolled out yet, so `buildM30CostReportConsumer` already collapses any failure to
+ *     `FORWARD_SEAM_UNAVAILABLE` and this resolver turns that into a 0/0 input — `ratioResult` then bands
+ *     it `insufficient_n` with a NULL rate. Never a zero, which would read as total non-compliance, and
+ *     never a 1.0, which would read as a clean CoP posture nobody actually verified (D6 / D13).
+ *   • It is ORG-level, while the recompute grain is per provider entity. `filingStatusForOrg` assesses
+ *     every PE in the org and the consumer reduces them to one pair, so each PE's row carries the same
+ *     org-wide posture. That matches the regulation (418.310 binds the provider's Medicare enrollment, and
+ *     one unfiled report is the org's exposure) but it does mean the value is repeated per PE row rather
+ *     than being that PE's own filing state.
+ */
+export async function resolveCostReportFilingInput(
+  request: {
+    readonly registration: MeasureRegistration;
+    readonly organizationId: string;
+    readonly providerEntityId: string;
+    readonly periodStart: string;
+    readonly periodEnd: string;
+  },
+  seams: { readonly costReport: QualityCostReportConsumer },
+): Promise<unknown> {
+  const { organizationId, providerEntityId, periodStart, periodEnd } = request;
+  const base = { organizationId, providerEntityId, periodStart, periodEnd } as const;
+  const threshold = OPERATIONAL_MEASURE_THRESHOLDS.cost_report_filing_compliance;
+  if (threshold === undefined) {
+    return unboundWorkerPort(
+      "measureRecompute.data.resolveInput.threshold",
+      "no threshold registered for 'cost_report_filing_compliance'",
+    );
+  }
+
+  const posture = await seams.costReport.filingStatusForOrg(organizationId);
+  if (posture.isForwardSeamDenyStub) {
+    return { ...base, providerEntitiesAssessed: 0, compliantProviderEntities: 0, threshold };
+  }
+  return {
+    ...base,
+    providerEntitiesAssessed: posture.providerEntitiesAssessed,
+    compliantProviderEntities: posture.providerEntitiesAssessed - posture.pastDeadlineUnfiled,
+    threshold,
+  };
 }
 
 // ── the HVLDL measure-input resolver (binds `measureRecompute.data.resolveInput` for the 'hvldl' measure) ─
@@ -1165,6 +1236,11 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
       listForAdmission: () =>
         unboundWorkerPort("measureRecompute.opioidOnAdmission.medicationOrders", UNBOUND_M12_REASON),
     } as unknown as MedicationOrderProvider);
+  // GAP-065 — the M27 forward-seam consumer. Its fallback is the package DENY-STUB, not an
+  // `unboundWorkerPort` thunk: a forward seam whose producer is not rolled out must SUPPRESS its measure,
+  // not fail the recompute job (D6 / D13). See the `costReport` doc on M30WorkerDeps.
+  const costReport: QualityCostReportConsumer =
+    deps.costReport ?? denyStubQualityCostReportConsumer;
 
   // ── m30.measure_recompute (withOrgContext) — §7.1 / V-8 ────────────────────────────────────────────────
   // BOUND: the `quality_measure_value` store + the debounce-queue drain + the LIVE M10 HOPE consumer + the
@@ -1208,6 +1284,9 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
           return resolveHciLiveDischargeTimingInput(request, { dischargeReader });
         if (request.registration.code === "opioid_on_admission_rate")
           return resolveOpioidOnAdmissionInput(request, { admissionOnsetReader, medicationOrders });
+        // GAP-065 — the CoP 418.310 indicator, the FIRST production consumer of a forward seam (M27).
+        if (request.registration.code === "cost_report_filing_compliance")
+          return resolveCostReportFilingInput(request, { costReport });
         // BOUND (operational): the measures whose producers tally ORG-LEVEL counts (M17/M18/M8/M11/M7/M13/
         // M14/M16) — each exposes the count PAIR beside (or instead of) a rate method, so the CMS small-N
         // floor can be applied honestly.
@@ -1261,16 +1340,32 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
               "measureRecompute.outbox.emitValueEmitted",
               "bind `deps.outboxPublisher` (bindCallerModule(txOutboxPublisher, 'm30')) — m30.measure.value_emitted → M28 FHIR / M33 dashboard",
             ),
-      // NOT bound (WX-PR-014 leaves this exactly as it was): the payload this port hands the publisher
-      // (`{orgId, measureId, periodEnd, rate, severityBand}`) does not satisfy the catalog's declared
-      // `m30.measure.threshold_breached` schema (`indicatorId` + `threshold` are required and are simply
-      // not available here) — a genuine, separate, pre-existing mismatch; binding it would either crash the
-      // dispatcher on the first real breach or require inventing values, so it stays fail-closed instead.
-      emitThresholdBreached: () =>
-        unboundWorkerPort(
-          "measureRecompute.outbox.emitThresholdBreached",
-          "payload/schema mismatch vs the m30.measure.threshold_breached catalog entry (missing indicatorId/threshold) — needs a package-level fix before this can bind, not just a wiring change",
-        ),
+      // BOUND (GAP-065) — this port used to be fail-closed on a REAL payload/schema mismatch: the worker
+      // sent `{orgId, measureId, periodEnd, rate, severityBand}` while the catalog's
+      // `m30.measure.threshold_breached` schema requires `indicatorId` + `threshold` too, and neither was
+      // available at this port. WX-PR-014 correctly refused to invent them and left a note that this
+      // needed a PACKAGE-level fix, not a wiring change. That fix is now made: `ratioResult` carries the
+      // evaluated cut through as `QualityMeasureValueResult.thresholdValue`, so the worker supplies a real
+      // `threshold`, and `indicatorId` names the measure code (a measure-sourced breach has no
+      // `qapi_indicator` row). The unbound port was not merely a missing alert — the emit is called
+      // unconditionally on a red-band transition, so EVERY breaching recompute threw on that line and
+      // rolled its whole transaction back: a measure could complete only while it was passing. GAP-065's
+      // CoP 418.310 indicator, which is red exactly when a cost report is unfiled, is the case that made
+      // this impossible to leave alone.
+      emitThresholdBreached: deps.outboxPublisher
+        ? (payload) =>
+            deps.outboxPublisher!.publish(db, {
+              eventName: "m30.measure.threshold_breached",
+              payload,
+              organizationId: payload.orgId,
+              aggregateKind: "quality_measure_value",
+              aggregateId: payload.measureId,
+            })
+        : () =>
+            unboundWorkerPort(
+              "measureRecompute.outbox.emitThresholdBreached",
+              "bind `deps.outboxPublisher` (bindCallerModule(txOutboxPublisher, 'm30')) — m30.measure.threshold_breached → M36 warn / M33 dashboard",
+            ),
     },
     hashSnapshot: (snapshot) => hashSnapshot(snapshot),
     newValueId: () => randomUUID(),
@@ -1876,6 +1971,8 @@ export function buildM30WorkerDeps(deps: {
    *  (resolved via `getSeam`). */
   admissionOnsetReader?: AdmissionOnsetReader;
   medicationOrders?: MedicationOrderProvider;
+  /** The M27 forward-seam consumer for the CoP 418.310 measure — defaults to the LIVE adapter (GAP-065). */
+  costReport?: QualityCostReportConsumer;
 }): M30WorkerDeps {
   return {
     connection: deps.connection,
@@ -1897,6 +1994,13 @@ export function buildM30WorkerDeps(deps: {
     dischargeReader: deps.dischargeReader,
     admissionOnsetReader: deps.admissionOnsetReader,
     medicationOrders: deps.medicationOrders,
+    // GAP-065 — default to the LIVE M27 forward-seam adapter rather than leaving it to the integrator.
+    // Defaulting is safe precisely because the adapter degrades per method: if M27's
+    // `CostReportFilingStatusReader` is not registered (or is still the M1 deny-stub), the read returns
+    // FORWARD_SEAM_UNAVAILABLE and the measure suppresses — the same outcome as no binding at all. Leaving
+    // it unbound-by-default is what produced GAP-065: the adapters were built, unit-tested, and then never
+    // reached from any composition root, so the indicator they exist for never computed in production.
+    costReport: deps.costReport ?? buildM30CostReportConsumer(),
     // Default to the FULL catalog→calculator registry (the integrator may still override). With this the
     // measure-recompute worker resolves a calculator by measure code instead of failing closed on an empty map.
     registrations: deps.registrations ?? buildMeasureRegistry(),

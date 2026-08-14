@@ -22,6 +22,7 @@ import {
   computeBereavementCoverageRate,
   computeCarePlan15DayAdherence,
   computeComfortKitDeploymentToAdminMinutes,
+  computeCostReportFilingCompliance,
   computeEvvComplianceRate,
   computeHopeSfvOnTimeRate,
   computeHopeSubmissionAcceptanceRate,
@@ -178,6 +179,11 @@ export const M30_MEASURE_REGISTRATIONS: readonly MeasureRegistration[] = [
     "hope_sfv_on_time_rate",
     computeHopeSfvOnTimeRate,
     ruleForCode("hope_sfv_on_time_rate"),
+  ),
+  registerMeasure(
+    "cost_report_filing_compliance",
+    computeCostReportFilingCompliance,
+    ruleForCode("cost_report_filing_compliance"),
   ),
 ];
 

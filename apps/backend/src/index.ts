@@ -814,8 +814,12 @@ export function wireModuleSeams(
     providerEntities: deps.db ? buildOrgProviderEntityLister(deps.db) : undefined,
   });
   // M27 — register the PUBLISHED CostReportFilingStatusReader (M27's FIRST M1 publish) so M30's CoP
-  // 418.310 failure-to-file indicator resolves the live filing posture. The other six declared M27 seams
-  // stay unregistered until they have a consumer (the M24 posture).
+  // 418.310 failure-to-file indicator resolves the live filing posture. GAP-065: that indicator now EXISTS
+  // (the `cost_report_filing_compliance` measure, registry.ts + jobs/m30-jobs.ts
+  // `resolveCostReportFilingInput`) and reads this seam through `buildM30CostReportConsumer`. Until then
+  // this registration fed nothing — the adapter was built and unit-tested but no calculator consumed it,
+  // and no CoP measure code existed at all, so the claim on this line was aspirational. The other six
+  // declared M27 seams stay unregistered until they have a consumer (the M24 posture).
   registerM27PublishedSeams(deps.db);
   // M11 — the two §2.8 D14 / §4.3 owned seams (OrderSignatureProvider — the polymorphic clinical-signature
   // WRITE primitive M12 routes medication-order signatures through, D4 — + OrderProvider — the read-side

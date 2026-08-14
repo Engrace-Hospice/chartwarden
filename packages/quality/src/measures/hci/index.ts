@@ -82,5 +82,14 @@ export function computeHciScore(input: HciCompositeInput): QualityMeasureValueRe
   const bandColor =
     metCount >= aboveAverageCut ? "green" : metCount >= HCI_MID_BAND_SCORE ? "yellow" : "red";
 
-  return { ...base, thresholdMet: metCount >= aboveAverageCut, bandColor };
+  // The composite bands on a COUNT (indicators met, out of ten) rather than on a rate, so `ratioResult`
+  // was given no `ThresholdRule` and left `thresholdValue` null. Restate the cut on the same scale as
+  // `rate` (`metCount / 10`) — without it a red composite would be a band with no stated threshold, which
+  // the breach path (correctly) refuses to emit an alert for.
+  return {
+    ...base,
+    thresholdMet: metCount >= aboveAverageCut,
+    thresholdValue: aboveAverageCut / HCI_INDICATOR_KEYS.length,
+    bandColor,
+  };
 }

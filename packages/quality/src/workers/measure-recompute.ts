@@ -96,11 +96,22 @@ export interface MeasureRecomputeOutboxPort {
     readonly bandColor: string;
     readonly snapshotContentHash: string;
   }): Promise<void>;
+  /**
+   * The §4.10 breach emit. Carries `indicatorId` + `threshold` as well as the measure/rate: the
+   * `m30.measure.threshold_breached` catalog schema declares both REQUIRED, and this payload's earlier
+   * shape (which omitted them) is why the port could not be bound at all — see `thresholdValue` on
+   * {@link QualityMeasureValueResult}.
+   */
   emitThresholdBreached(payload: {
     readonly orgId: string;
+    /** Which indicator breached. A measure-sourced breach names the MEASURE CODE — a recompute has no
+     *  `qapi_indicator` row in hand (a tenant's own D15 indicator target is a separate path). */
+    readonly indicatorId: string;
     readonly measureId: string;
     readonly periodEnd: string;
     readonly rate: number;
+    /** The cut the rate crossed, on the same scale as `rate`. */
+    readonly threshold: number;
     readonly severityBand: string;
   }): Promise<void>;
 }
@@ -164,6 +175,12 @@ export function decideThresholdBreach(
   next: QualityMeasureValueResult,
 ): boolean {
   if (next.bandColor !== "red") return false;
+  // A breach cannot be described without the cut that was crossed — `m30.measure.threshold_breached`
+  // declares `threshold` as required, and inventing one would be a fabricated value (D6/D13). Every
+  // red-band calculator states its `thresholdValue`, so this guard is structurally unreachable today; it
+  // exists so a future calculator that bands red without a threshold degrades to "no alert" rather than
+  // to a made-up number or a crashed recompute.
+  if (next.thresholdValue === null) return false;
   return priorBand !== "red";
 }
 
@@ -230,6 +247,23 @@ export async function handleMeasureRecompute(
 
   const now = ports.now();
   const valueId = ports.newValueId();
+
+  // Soft-supersede the prior current row FIRST, in the SAME tx (the backend wraps the processor) — §3.3.
+  //
+  // Order is load-bearing, not stylistic. `uq_quality_measure_value_current` is a partial UNIQUE INDEX on
+  // (measure_code, provider_entity_id, period_start, period_end) WHERE superseded_at IS NULL — an index,
+  // so it cannot be deferred to commit. Inserting the new row before stamping `superseded_at` on the old
+  // one therefore leaves two live rows for the triple at that instant and Postgres rejects the insert
+  // outright: every recompute whose value CHANGED failed, permanently, for every measure. It went
+  // unnoticed because the only end-to-end coverage recomputed a measure whose inputs had not moved — the
+  // `snapshotContentHash` equality above short-circuits to `unchanged` and never reaches this insert, and
+  // a DLQ replay is stopped even earlier by the `processing_log` guard. Found by GAP-065's live test,
+  // which recomputes the same triple twice with a genuinely different result.
+  //
+  // `superseded_by` names a row that does not exist yet; the column carries no FK (by design — the chain
+  // is a soft audit link, not referential), so the forward reference is legal.
+  if (current !== null) await ports.values.supersede(current.id, valueId, now);
+
   await ports.values.insertValue({
     id: valueId,
     measureCode: job.measureCode,
@@ -248,9 +282,6 @@ export async function handleMeasureRecompute(
     calculatorVersion: registration.calculatorVersion,
     computedAt: now,
   });
-
-  // Soft-supersede the prior current row in the SAME tx (the backend wraps the processor) — §3.3.
-  if (current !== null) await ports.values.supersede(current.id, valueId, now);
 
   // Drain the debounce work-list row, if one was pending for this triple.
   if (ports.recomputeQueue !== undefined) {
@@ -279,9 +310,12 @@ export async function handleMeasureRecompute(
   if (thresholdBreached) {
     await ports.outbox.emitThresholdBreached({
       orgId: job.organizationId,
+      // `decideThresholdBreach` returns false on a null `thresholdValue`, so this is a number here.
+      indicatorId: job.measureCode,
       measureId: job.measureCode,
       periodEnd: job.periodEnd,
       rate: result.rate ?? 0,
+      threshold: result.thresholdValue ?? 0,
       severityBand: result.bandColor,
     });
   }
