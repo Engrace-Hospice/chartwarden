@@ -107,9 +107,10 @@ export {
 } from "./jobs/index";
 
 // §4.3 — the FIVE published seams, registered into the M1 SeamRegistry at boot (the M23/M26 precedent).
-// M30's seam names are now members of the M1 `SeamContracts` / `REQUIRED_SEAMS`, so M22 / M28 / M33 / M34
-// reach the measure ledger, the incident register, QAPI, CoP status and the SRA posture through `getSeam`
-// instead of M30 being outbox-only across boundaries.
+// M30's seam names are now members of the M1 `SeamContracts` / `REQUIRED_SEAMS`, so the measure ledger,
+// the incident register, QAPI, CoP status and the SRA posture are reachable through `getSeam` instead of
+// M30 being outbox-only across boundaries. GAP-066: reachABLE, not yet reached — the M22 / M28 / M33 / M34
+// surfaces that would read them are unbuilt features. See published-seams.ts for the full note.
 export {
   type M30PublishedSeamOptions,
   buildM30PublishedSeams,

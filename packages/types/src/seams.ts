@@ -338,8 +338,9 @@ export type SeamName =
   | "ClaimSubmissionReader" // M23 — accepted-submission match candidates by payer/patient control number + claim->patient id, for M25 835-to-claim auto-match (D3) and PR-ledger patient resolution (WX-PR-012)
   | "CostReportFilingStatusReader" // M27 — cost-report filing posture per FY (M30 CoP 418.310 failure-to-file indicator)
   // M30 (HQRP & Quality) §4.3 — the five READ-ONLY seams M30 publishes. Before these, M30 was reachable
-  // cross-module ONLY through its §4.10 outbox events, so M22's quality report, M28's FHIR MeasureReport /
-  // AdverseEvent, M33's executive dashboards and M34's FY-rollover tenant gate had no read path at all.
+  // cross-module ONLY through its §4.10 outbox events, with no read path at all. GAP-066: registered and
+  // live, but with NO consumer yet — the per-seam consumer notes below name the surfaces each is FOR
+  // (M22 minutes, M33 dashboards, M34's tenant gate), none of which is built. Intent, not current wiring.
   | "QualityMeasureProvider" // M30 — HQRP measure values/series/snapshot + the FY measure catalog (aggregate-only)
   | "IncidentRegisterProvider" // M30 — incident register (PHI: patient-scoped rows require caller patient scope)
   | "QapiProjectProvider" // M30 — QAPI projects/PIPs by phase (M22 minutes, M33 dashboards)

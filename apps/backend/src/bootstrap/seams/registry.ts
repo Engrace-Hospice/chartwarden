@@ -415,9 +415,13 @@ export const REQUIRED_SEAMS = [
     denyStub: costReportFilingStatusReaderDenyStub,
   },
   // M30 (HQRP & Quality) §4.3 — the FIVE read seams M30 publishes. Until these entries existed, M30 was
-  // reachable cross-module ONLY through its §4.10 outbox events: M22's quality report, M28's FHIR
-  // MeasureReport/AdverseEvent, M33's executive dashboards and M34's FY-rollover tenant gate had no read
-  // path to the measure ledger, the incident register, QAPI, CoP status, or the SRA posture at all.
+  // reachable cross-module ONLY through its §4.10 outbox events, with no read path to the measure ledger,
+  // the incident register, QAPI, CoP status, or the SRA posture at all.
+  //
+  // GAP-066: the read path exists but NOBODY WALKS IT YET. The intended consumers (M22's quality report,
+  // M28's FHIR MeasureReport/AdverseEvent, M33's executive dashboards, M34's FY-rollover tenant gate) are
+  // unbuilt features, not unwired ones — do not read these five entries as evidence that a cross-module
+  // quality read is live. See the composition root's registerM30PublishedSeams call for the full note.
   //
   // Four are aggregate-only (the `quality_measure_value` ledger and the QAPI/CoP/SRA surfaces carry no
   // patient row). `IncidentRegisterProvider` is the exception: an incident may be patient-linked, so it

@@ -805,11 +805,19 @@ export function wireModuleSeams(
   // no db is present.
   registerM25PublishedSeams(deps.db);
   // M30 — register the FIVE §4.3 published seams (QualityMeasureProvider / IncidentRegisterProvider /
-  // QapiProjectProvider / ComplianceStatusProvider / SecurityRiskAssessmentReader) so M22's quality report,
-  // M28's FHIR MeasureReport/AdverseEvent, M33's dashboards and M34's FY-rollover tenant gate reach M30's
-  // read surfaces via getSeam. Before this M30 was outbox-only across boundaries. The per-PE aggregation
+  // QapiProjectProvider / ComplianceStatusProvider / SecurityRiskAssessmentReader). The per-PE aggregation
   // grain binds to the same M40 provider-entity resolver the M30 workers use; UNBOUND ⇒ empty, never a
   // fabricated cross-provider rollup. The M1 fail-closed deny-stubs stand when no db is present.
+  //
+  // CONSUMPTION (GAP-066 — this comment used to say these seams let "M22's quality report, M28's FHIR
+  // MeasureReport/AdverseEvent, M33's dashboards and M34's FY-rollover tenant gate" reach M30 via getSeam;
+  // an audit checked and found the only `getSeam("QualityMeasureProvider")` in the repo is M30's own seam
+  // test): NOTHING consumes these five today. That is not a wiring gap — all four named consumers are
+  // UNBUILT surfaces, not unwired ones. M28 has no MeasureReport/AdverseEvent resource at all, M34 has no
+  // FY-rollover tenant gate, M33 has no quality dataset, and M22 has no quality-report route; each would be
+  // a feature, not a binding. The registration stands because it is the read path those features will use
+  // and it costs nothing dormant (contrast M24, whose seams are built but deliberately left UNregistered
+  // until a consumer exists — the two postures differ, and this is the one M30 shipped with).
   registerM30PublishedSeams(deps.db, {
     providerEntities: deps.db ? buildOrgProviderEntityLister(deps.db) : undefined,
   });
