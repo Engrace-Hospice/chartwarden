@@ -26,6 +26,7 @@ export const AUTHZ_AUDIT_EVENTS = {
   breakGlassInvoked: "m3.breakglass.invoked",
   breakGlassAccess: "m3.breakglass.access",
   breakGlassCosigned: "m3.breakglass.cosigned",
+  breakGlassCosignRefused: "m3.breakglass.cosign_refused",
   breakGlassRevoked: "m3.breakglass.revoked",
   engagementCreated: "m3.engagement.created",
   engagementUpdated: "m3.engagement.updated",
@@ -229,6 +230,32 @@ export async function auditBreakGlassCosigned(
     outcome: "success",
     severity: "warn",
     retentionClass: "compliance",
+  });
+}
+
+/**
+ * Record a REFUSED co-signature (§7.4) — the two-person control firing, not an error.
+ *
+ * `critical`, matching invocation rather than the successful co-signature's `warn`: a
+ * `self_cosign` refusal means someone with `breakglass.cosign` tried to approve their own
+ * emergency PHI grant, and a `not_pending` refusal on a revoked event is an attempt to reopen
+ * access Compliance already ended. Both are the kind of thing a reviewer must be able to find
+ * by filtering the trail, so they get their own event type (the `escalationBlocked` precedent)
+ * rather than riding on the success row with a flipped outcome.
+ */
+export async function auditBreakGlassCosignRefused(
+  tx: AuditExecutor,
+  ctx: AuditContext,
+  input: { eventId: string; reason: "self_cosign" | "not_pending" },
+): Promise<void> {
+  await audit(tx, ctx, {
+    eventType: AUTHZ_AUDIT_EVENTS.breakGlassCosignRefused,
+    resourceKind: "break_glass_event",
+    resourceId: input.eventId,
+    outcome: "denied",
+    severity: "critical",
+    retentionClass: "compliance",
+    context: { reason: input.reason },
   });
 }
 

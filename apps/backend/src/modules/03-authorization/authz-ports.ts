@@ -145,6 +145,31 @@ export interface BreakGlassGrantRef {
   readonly eventId: string;
 }
 
+/**
+ * A refused co-signature (§7.4). Thrown by `BreakGlassStore.cosign`, mapped to 409 by the route.
+ *
+ * `self_cosign` — the invoker tried to co-sign their own emergency grant. When a tenant sets
+ * `breakglass_cosign_required`, two-person authorization IS the control, and `breakglass.cosign`
+ * is held by more than one person; without this check a single holder both opens and approves
+ * their own PHI access, which is the whole thing the setting exists to prevent. Every other
+ * two-person control in the repo enforces distinctness (M34 shred, M30 CAP/PIP, M28 FHIR,
+ * M35 refund, M21 comfort-kit) — see `assertM34ShredPreflight` for the same shape.
+ *
+ * `not_pending` — the event is not awaiting a co-signature. Cosign used to match on id alone and
+ * set `status:'active'` unconditionally, so co-signing a REVOKED event silently resurrected it;
+ * because cosign and revoke share the `breakglass.cosign` permission, whoever could end a grant
+ * early could also un-end it, and the audit trail recorded a co-signature rather than a revival.
+ */
+export class BreakGlassCosignError extends Error {
+  constructor(
+    readonly kind: "self_cosign" | "not_pending",
+    message: string,
+  ) {
+    super(message);
+    this.name = "BreakGlassCosignError";
+  }
+}
+
 /** Invoke / co-sign / revoke / read break-glass events + the active-grant lookup. */
 export interface BreakGlassStore {
   invoke(input: {
@@ -156,6 +181,11 @@ export interface BreakGlassStore {
     ttlSeconds: number;
   }): Promise<BreakGlassView> | BreakGlassView;
   get(eventId: string): Promise<BreakGlassView | null> | BreakGlassView | null;
+  /**
+   * Co-sign a `cosign_pending` grant, opening it. Throws {@link BreakGlassCosignError} when
+   * `byUserId` is the event's own invoker (`self_cosign`) or the event is in any other status
+   * (`not_pending`) — the two-person control and the anti-resurrection guard respectively.
+   */
   cosign(eventId: string, byUserId: string): Promise<BreakGlassView> | BreakGlassView;
   revoke(eventId: string): Promise<BreakGlassView> | BreakGlassView;
   listForOrg(organizationId: string): Promise<BreakGlassView[]> | BreakGlassView[];
@@ -464,9 +494,22 @@ export function createInMemoryBreakGlassStore(): {
       return event;
     },
     get: (eventId) => events.get(eventId) ?? null,
-    cosign(eventId, _byUserId) {
+    cosign(eventId, byUserId) {
       const event = events.get(eventId);
       if (!event) throw new Error(`unknown break-glass event ${eventId}`);
+      // Both guards mirror the Drizzle store exactly. They are duplicated rather than shared
+      // because a slice that stays permissive while production refuses is how an always-deny (or
+      // here, always-allow) divergence hides behind green in-memory suites.
+      if (event.status !== "cosign_pending")
+        throw new BreakGlassCosignError(
+          "not_pending",
+          `break-glass event ${eventId} is ${event.status}, not awaiting a co-signature`,
+        );
+      if (event.actorUserId === byUserId)
+        throw new BreakGlassCosignError(
+          "self_cosign",
+          "break-glass co-signature requires a user distinct from the invoker",
+        );
       const next = { ...event, status: "active" as BreakGlassStatus };
       events.set(eventId, next);
       return next;

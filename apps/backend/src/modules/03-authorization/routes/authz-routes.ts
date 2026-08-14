@@ -32,6 +32,7 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   auditAuditorEnrolled,
+  auditBreakGlassCosignRefused,
   auditBreakGlassCosigned,
   auditBreakGlassInvoked,
   auditBreakGlassRevoked,
@@ -44,7 +45,12 @@ import {
   auditRoleRevoked,
   auditRoleUpdated,
 } from "../audit/authz-audit";
-import { type AuthzRouteDeps, RoleLockedError } from "../authz-ports";
+import {
+  type AuthzRouteDeps,
+  BreakGlassCosignError,
+  type BreakGlassView,
+  RoleLockedError,
+} from "../authz-ports";
 import {
   AssignRoleBody,
   BreakGlassIdParams,
@@ -89,6 +95,15 @@ function actorOf(ctx: HttpRequestContext): { organizationId: string; userId: str
 /** Map a store-level RoleLockedError onto the spec's HTTP code (409). */
 function roleLockedToHttp(err: RoleLockedError): WardenXError {
   return new WardenXError("ROLE_LOCKED", err.message, 409);
+}
+
+/** Map a refused break-glass co-signature onto 409 (§7.4), preserving which guard fired. */
+function cosignRefusedToHttp(err: BreakGlassCosignError): WardenXError {
+  return new WardenXError(
+    err.kind === "self_cosign" ? "BREAKGLASS_SELF_COSIGN" : "BREAKGLASS_NOT_PENDING",
+    err.message,
+    409,
+  );
 }
 
 const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not found`, 404);
@@ -364,7 +379,23 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
       const { userId } = actorOf(request.context);
       const { id: eventId } = parse(BreakGlassIdParams, request.params);
       if (!(await deps.breakGlass.get(eventId))) throw notFound("break-glass event");
-      const event = await deps.breakGlass.cosign(eventId, userId);
+      let event: BreakGlassView;
+      try {
+        event = await deps.breakGlass.cosign(eventId, userId);
+      } catch (err) {
+        // A refused co-signature is a signal worth keeping, not just an error to return: a
+        // self-cosign attempt is someone trying to approve their own emergency PHI access, and
+        // it is exactly what a Compliance reviewer wants to find in the trail. Audited BEFORE
+        // the throw so the row survives the 409.
+        if (err instanceof BreakGlassCosignError) {
+          await auditBreakGlassCosignRefused(deps.audit, auditContextFor(request), {
+            eventId,
+            reason: err.kind,
+          });
+          throw cosignRefusedToHttp(err);
+        }
+        throw err;
+      }
       await auditBreakGlassCosigned(deps.audit, auditContextFor(request), { eventId });
       return reply.code(200).send({ breakGlassId: event.eventId, status: event.status });
     },

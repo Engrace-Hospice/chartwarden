@@ -1,0 +1,31 @@
+-- `bge_cosigner_distinct` — the at-rest half of M3 §7.4's two-person break-glass control.
+--
+-- WHAT WAS WRONG. `BreakGlassStore.cosign(eventId, byUserId)` wrote `status='active',
+-- cosigned_by=byUserId` matching on the event id ALONE. Neither the route nor the store compared
+-- the co-signer against the event's `actor_user_id`, and no constraint did either, so a user
+-- holding `breakglass.cosign` could approve their own emergency PHI grant. That permission is held
+-- by more than one person by construction — it IS the two-person control — and a tenant only turns
+-- `breakglass_cosign_required` on because they want the second person. Every other two-person
+-- control in the platform already enforces distinctness (M34 shred's `assertM34ShredPreflight`,
+-- M30 CAP/PIP, M28 FHIR, M35 refund, M21 comfort-kit); this table was the exception.
+--
+-- The same id-only match had a second consequence the store now also refuses: cosign set
+-- `status='active'` regardless of the CURRENT status, so co-signing a `revoked` event silently
+-- resurrected it. Because cosign and revoke share the `breakglass.cosign` permission, whoever could
+-- end a grant early could also un-end it — and the audit trail recorded a co-signature, not a
+-- revival. That guard is a status predicate in the UPDATE, not expressible as a CHECK (it is a
+-- statement about the transition, not about the row), so it lives in the store alone.
+--
+-- WHY A CONSTRAINT TOO. The store's `ne(actor_user_id, byUserId)` conjunct is what produces a clean
+-- 409; this CHECK is what makes the invariant survive a caller that never runs it — a backfill, an
+-- ops script, a future second store. Belt and braces on an emergency-access control is the right
+-- trade: the check costs one comparison per write to a table that sees a handful of rows a month.
+--
+-- BACKFILL SAFETY. `cosigned_by IS NULL OR cosigned_by <> actor_user_id` admits every row that has
+-- not been co-signed, so pre-existing events are unaffected. A pre-existing SELF-cosigned row would
+-- fail the ADD CONSTRAINT and abort this migration — deliberately: such a row is a grant that was
+-- approved by the person it belongs to, and it needs a human decision (revoke it, or clear
+-- `cosigned_by` and re-cosign properly), not a silent NOT VALID that leaves it in place.
+ALTER TABLE "break_glass_event"
+  ADD CONSTRAINT "bge_cosigner_distinct"
+  CHECK ("cosigned_by" IS NULL OR "cosigned_by" <> "actor_user_id");
