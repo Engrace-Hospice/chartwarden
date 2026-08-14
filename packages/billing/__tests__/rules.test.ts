@@ -217,7 +217,8 @@ const RULE_META: ReadonlyArray<readonly [Rule, ExpectedMeta]> = [
     {
       key: "evv_bracket_coherence",
       severity: "error",
-      regulatoryRequired: true,
+      // ADR-0008: Medicare EVV is operational — never a regulatory floor (2026-08-14 compliance fix).
+      regulatoryRequired: false,
       overrideRoleRequired: "compliance_officer",
     },
   ],
@@ -236,9 +237,9 @@ describe("rule metadata (§4.5)", () => {
     });
   }
 
-  it("exactly one default rule is NON-regulatory (eligibility_check_freshness_30d, a warn)", () => {
+  it("exactly two default rules are NON-regulatory (eligibility freshness warn + the ADR-0008 operational EVV rule)", () => {
     const nonReg = RULE_META.filter(([, m]) => !m.regulatoryRequired).map(([, m]) => m.key);
-    expect(nonReg).toEqual(["eligibility_check_freshness_30d"]);
+    expect(nonReg.sort()).toEqual(["eligibility_check_freshness_30d", "evv_bracket_coherence"]);
   });
 });
 
@@ -831,8 +832,8 @@ describe("ipu_cap_projection (D8 deny-stub degrade)", () => {
 
 describe("D5 regulatory floor — every CFR-mandated rule is regulatoryRequired with an elevated override", () => {
   const regulatory = RULE_META.filter(([, m]) => m.regulatoryRequired);
-  it("18 of the 19 default rules are regulatoryRequired", () => {
-    expect(regulatory).toHaveLength(18);
+  it("17 of the 19 default rules are regulatoryRequired (EVV is operational per ADR-0008)", () => {
+    expect(regulatory).toHaveLength(17);
   });
   for (const [rule, meta] of regulatory) {
     it(`${meta.key} requires an elevated override approver (cannot be skip-and-submit'd)`, () => {

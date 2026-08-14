@@ -1,8 +1,11 @@
-// @wardenx/billing — §4.5 rule `evv_bracket_coherence` (evv, error, regulatory, D9). Every claim line's
-// EVV-relevant backing encounters must have a bracket state in {compliant, not_required,
-// documented_missing}; an `unresolved_missing` bracket BLOCKS submission (the 21st-Century-Cures EVV
-// mandate; ADR-0008 — only `unresolved_missing` is ever a billing gate). Reads the resolved `evvBrackets`
-// snapshot keyed by encounter id. PURE: reads ctx only.
+// @wardenx/billing — §4.5 rule `evv_bracket_coherence` (evv, error, OPERATIONAL, D9). Every claim
+// line's EVV-relevant backing encounters must have a bracket state in {compliant, not_required,
+// documented_missing}; an `unresolved_missing` bracket blocks submission WHEN THE RULE IS ENABLED.
+// ADR-0008: Medicare-hospice EVV is operational/internal only and MUST NEVER be `regulatory_required`
+// — the 21st-Century-Cures EVV mandate is Medicaid-only (state rules live in
+// packages/medicaid-adapters). This rule is therefore tenant-configurable (not a regulatory floor);
+// only `unresolved_missing` — an unresolved DOCUMENTATION gap, not EVV non-compliance per se — is
+// ever a billing gate. Reads the resolved `evvBrackets` snapshot keyed by encounter id. PURE.
 import type { Rule } from "./types";
 import { fail, pass } from "./types";
 
@@ -14,10 +17,12 @@ export const evvBracketCoherence: Rule = {
   category: "evv",
   title: "EVV bracket coherence (D9)",
   description:
-    "Every claim line's EVV-relevant backing encounters must resolve to compliant / not_required / " +
-    "documented_missing; an unresolved_missing EVV bracket blocks submission (ADR-0008).",
+    "Operational (ADR-0008 — never regulatory_required for Medicare): EVV-relevant backing encounters " +
+    "must resolve to compliant / not_required / documented_missing; only an unresolved_missing bracket " +
+    "(an open documentation gap) blocks submission, and a tenant may disable or override the rule.",
   severity: "error",
-  regulatoryRequired: true,
+  // ADR-0008: never a regulatory floor for Medicare — operational, tenant-configurable, overridable.
+  regulatoryRequired: false,
   overrideRoleRequired: "compliance_officer",
   check: (ctx) => {
     // Index bracket state by encounter id for line-backing lookup.

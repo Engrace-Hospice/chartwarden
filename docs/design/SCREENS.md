@@ -231,7 +231,7 @@ Status: Screen ledger (design ↔ module ↔ Pencil)
 > Generate the variants Pencil-side as frames within the screen's node. Variant count, not screen
 > count, is the true size of the design surface (~600 frames; see the Depth track below).
 
-## Depth track (D1–D6) — the sub-view / variant surface
+## Depth track (D1–D7) — the sub-view / variant surface
 
 The 97 screens above are each built as **one frame**. A [coverage diagnosis](#coverage-diagnosis)
 found the specs declare ~6.35 frames each (~600 total), so ~500 sub-views/variants were unbuilt.
@@ -300,5 +300,5 @@ and deduped against the corpus + depth-track sub-views. Plan in
 1. Open a WardenX `.pen` file in the Pencil editor (the MCP needs an open file).
 2. Apply the Lantern design system once (see [`pencil-prompts/README.md`](./pencil-prompts/README.md)).
 3. Run the screen's prompt from its phase batch in [`pencil-prompts/`](./pencil-prompts/) via the
-   Pencil MCP (`mcp__pencil__batch_design`), generating the frames listed in its `Pencil Notes`.
+   Pencil MCP (`mcp__pencil__execute`), generating the frames listed in its `Pencil Notes`.
 4. Record the returned node id in this ledger (`⬚` → `node:<id>` / `◐` / `●`).

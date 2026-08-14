@@ -302,11 +302,10 @@ Turborepo + Bun workspaces.
 ```
 wardenx/
 ├── apps/
-│   ├── frontend/                  # TanStack Start — hospice tenant UI (web/desktop)
-│   ├── mobile/                    # Capacitor wrapping a mobile-optimized TanStack Start variant — iOS + Android native shells for clinical and field roles
+│   ├── web/                       # Vite + React + react-router (ADR-0030/0032/0035) — hospice tenant UI; mobile ships as a Capacitor wrap of THIS app (no separate apps/mobile — ADR-0035)
 │   ├── backend/                   # Fastify 5 — main backend
-│   ├── admin/                     # TanStack Start — WardenX ops console
-│   └── portal/                    # TanStack Start — patient/caregiver portal (PWA)
+│   ├── admin/                     # Vite + React — WardenX ops console
+│   └── portal/                    # Vite + React — patient/caregiver portal (PWA)
 ├── packages/
 │   ├── db/                        # Drizzle schema, migrations, seed
 │   ├── domain/                    # Pure domain types & invariants (no I/O)
@@ -367,9 +366,9 @@ wardenx/
 - Recharts for clinical and financial dashboards
 - Better Auth React client
 
-### Mobile (clinical and field roles — `apps/mobile/`)
+### Mobile (clinical and field roles — Capacitor wrap of `apps/web`; ADR-0035)
 
-- Capacitor 6.x wrapping TanStack Start frontend for native iOS and Android delivery
+- Capacitor wrapping the as-built Vite/React `apps/web` for native iOS and Android delivery (no separate `apps/mobile` workspace; native capabilities via the `packages/ui/src/core/capabilities` ports)
 - Native plugins: Geolocation (EVV reliability), Camera (wound photos, document capture for DocLens), BiometricAuth (Face ID / Touch ID / Android biometric), PushNotifications (APNs / FCM), Filesystem (offline note draft cache), Network (online/offline state), Device, Haptics
 - Offline-capable for encounter drafting (notes/vitals saved locally; sync on reconnect)
 - Background sync for completed notes upload

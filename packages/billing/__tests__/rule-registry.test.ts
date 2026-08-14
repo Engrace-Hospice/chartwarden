@@ -83,11 +83,12 @@ describe("createDefaultBillingRegistry — the platform-floor set", () => {
     expect(createDefaultBillingRegistry()).not.toBe(reg);
   });
 
-  it("exposes exactly 18 regulatory-required keys (the D5 floor a tenant cannot disable)", () => {
+  it("exposes exactly 17 regulatory-required keys (the D5 floor a tenant cannot disable)", () => {
     const reg = createDefaultBillingRegistry();
     const regKeys = reg.regulatoryRequiredKeys();
-    expect(regKeys).toHaveLength(18);
-    expect(regKeys).not.toContain("eligibility_check_freshness_30d"); // the lone non-regulatory default
+    expect(regKeys).toHaveLength(17);
+    expect(regKeys).not.toContain("eligibility_check_freshness_30d"); // non-regulatory (warn)
+    expect(regKeys).not.toContain("evv_bracket_coherence"); // ADR-0008: operational, never a Medicare regulatory floor
   });
 });
 

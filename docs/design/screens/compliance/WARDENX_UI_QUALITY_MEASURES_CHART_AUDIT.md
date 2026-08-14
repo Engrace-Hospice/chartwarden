@@ -75,7 +75,7 @@ Audit: `Defined` → `Sampling` → `In review` → `Findings recorded` → `Cor
 
 ## Edit Rules & Sensitive Data
 
-- Requires `quality.audit.manage`; measure config requires `quality.measures.configure`.
+- Requires `quality.measure.audit` (registered M30 key); measure config requires `quality.measure.read` / `quality.measure.recompute` (registered M30 keys).
 - Sampled charts carry full PHI — masked by default, reveal step-up + audited; SUD/Part 2
   content stays sealed unless consent permits, and audit findings never quote sealed content.
 - Measure rates are computed/derived — shown with a **system-derived provenance chip**

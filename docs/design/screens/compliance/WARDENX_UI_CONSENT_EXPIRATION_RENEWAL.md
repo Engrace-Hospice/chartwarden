@@ -98,7 +98,7 @@ One card per platform-floor reminder band — **90 / 30 / 14 / 7 / 1 day** — p
 ## Provenance & Sensitivity
 
 - **AI-prohibited.** No AI may renew, dismiss, or re-capture a consent
-  (`validateM39AIBlock`) — the dashboard surfaces facts and human actions only.
+  (`validateM39AIBlock` *(target — not yet implemented; the built sibling is `validateSupplyAIBlock`)*) — the dashboard surfaces facts and human actions only.
 - Consent record ids render in IBM Plex Mono; patient identity is masked on the banner. Part 2
   consents in the table show the sealed marker; type/scope detail is consent-gated.
 

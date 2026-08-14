@@ -50,7 +50,7 @@ Message Table / Queue  |  Right: Message Detail / Retry Actions
 
 ## HL7 Messages
 
-Message types: `ADT^A01/A03/A04/A08/A11`, `ORU^R01`, `MDM^T02`. Direction inbound/outbound.
+Message types: `ADT^A01/A03/A04/A08/A11`, `ORU^R01` (shipped feed kinds: `adt_inbound`, `lab_inbound`, `orm_outbound`; an MDM^T02 document feed is target-state, not built). Direction inbound/outbound.
 Each row: message control id (MSH-10, mono), trigger event, sending/receiving facility,
 timestamp, and match confidence for inbound demographics (`L1 MRN exact` … `L5 loose
 name+DOB` / `No match`). Detail shows the parsed segments and raw ER7.

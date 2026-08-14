@@ -48,7 +48,7 @@ Organization, plus CodeSystem / ValueSet. (Phase-2 resources advertised as stubs
 - Type: `smart_backend_services` / `api_key`; tier `tier-1` / `tier-2` / `tier-3`
   (rate floors 100 / 10 / 1 rps).
 - Allowed scopes (`system/Patient.read`, …), JWKS URI, IP allowlist, BAA contract reference.
-- Status: `Proposed`, `Pending Approval`, `Active`, `Suspended`, `Revoked`, `Rejected` —
+- Status: `pending_approval`, `active`, `suspended`, `revoked`, `rejected` (the shipped `fhir_client_status` enum — there is no `proposed`) —
   activation is dual-approved (Org Admin + Compliance Officer, rationale required).
 - Credentials: `Active` / `Retired` (rotation with 30-day overlap; fingerprint shown,
   secret never re-displayed).

@@ -43,7 +43,7 @@ screen in `apps/web/src/modules/<module>/` (its `screens.ts` registration names 
 ### 2. See the frame
 Use the Pencil MCP tools (never `Read`/`Grep` on `.pen` files — they're encrypted):
 - `mcp__pencil__get_screenshot` with the `filePath` + `nodeId` for the visual.
-- `mcp__pencil__batch_get` with `readDepth` + `resolveVariables: true` for the exact structure
+- `mcp__pencil__export_nodes` with `readDepth` + `resolveVariables: true` for the exact structure
   (regions, gaps, fills, type faces, the real token values).
 
 ### 3. Read the current implementation

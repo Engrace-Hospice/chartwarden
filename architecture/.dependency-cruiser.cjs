@@ -137,6 +137,18 @@ module.exports = {
       },
     },
     {
+      name: "spa-never-imports-backend",
+      comment:
+        "ADR-0032: the SPAs talk to the backend ONLY through the generated typed client " +
+        "(packages/ui/src/core/api) — never a compile-time import edge into apps/backend. The " +
+        "per-module boundary rules cannot catch this (a module owns both its web and backend " +
+        "sub-paths), so the ban is explicit. This closes the enforcement gap the 2026-08-14 " +
+        "ADR-compliance audit flagged.",
+      severity: "error",
+      from: { path: anyOf(["apps/web", "apps/admin", "apps/portal"]) },
+      to: { path: p("apps/backend") },
+    },
+    {
       name: "ui-core-renderer-free",
       comment:
         "packages/ui/src/core is the react-dom-free shared layer (ADR-0035): typed API client, " +

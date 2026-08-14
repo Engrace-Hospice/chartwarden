@@ -62,10 +62,10 @@ Persistent: Contact Agency Compliance (safety affordance)
 
 ## Statuses
 
-Survey session: `Scheduled`, `Active`, `Expired`, `Revoked`.  
+Survey session: `scheduled`, `active`, `closed`, `cancelled` (the shipped auditor-engagement lifecycle).  
 Record: `Released`, `Viewed`.
 
-Access is available only while the session is `Active`; `Expired` and `Revoked` close the portal.
+Access is available only while the session is `Active`; `closed` and `cancelled` end portal access.
 
 ---
 

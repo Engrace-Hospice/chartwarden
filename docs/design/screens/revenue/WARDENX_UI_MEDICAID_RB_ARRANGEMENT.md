@@ -104,7 +104,7 @@ exactly one row per `(patient_id, service_date)`:
 
 ## Validation & Guardrails
 
-- **`rb_arrangement_required_for_nf_resident`** — a NF/SNF-resident Medicaid claim without an
+- **`medicaid_rb_arrangement_required_for_nf_resident`** — a NF/SNF-resident Medicaid claim without an
   effective arrangement fails pre-submission validation; this screen is the remediation target.
 - `pass_through_pct + retention_pct = 100` is enforced; the editor blocks save on any other sum.
 - An arrangement cannot move to `Active` without a contract document reference and a resolvable
@@ -152,4 +152,4 @@ Create versions for:
 - R&B day ledger (Billable / Excluded-on-GIP / Voided, LOC-of-day column)
 - R&B day status-override modal (audited)
 - Empty / no-arrangement state
-- Validation rail — `rb_arrangement_required_for_nf_resident` remediation
+- Validation rail — `medicaid_rb_arrangement_required_for_nf_resident` remediation

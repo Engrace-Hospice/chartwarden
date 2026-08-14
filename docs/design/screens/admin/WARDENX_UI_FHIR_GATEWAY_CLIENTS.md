@@ -61,10 +61,10 @@ Each external consumer is one `fhir_client` row. The client list + detail shows:
 - JWKS URI (SMART) or credential fingerprint (API key)
 - Allowed scopes (`system/Patient.read`, `system/Encounter.read`, …)
 - Tier (`tier-1` partner / `tier-2` referral / `tier-3` research)
-- Rate limit (RPS) + bulk-export concurrency cap
+- Rate limit (RPS) *(bulk-export concurrency is a job-level lock on `fhir_bulk_export_job`, not a per-client column)*
 - IP allowlist
 - BAA contract reference (join key into the contract catalog)
-- Status (`active`, `suspended`, `revoked`)
+- Status (`pending_approval` — the column default and what the dual-approval flow below produces — `active`, `suspended`, `revoked`, `rejected`)
 - Approval record (Org Admin + Compliance Officer)
 
 The right Impact Notes panel explains the consequence of each setting — e.g. narrowing scopes

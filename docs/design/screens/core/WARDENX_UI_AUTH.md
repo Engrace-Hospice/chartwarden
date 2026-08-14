@@ -45,12 +45,12 @@ Centered Card
   accessibility fallback.
 - **Organization select** (`/login/organization`) — multi-org users pick an org; the choice
   binds the session (one-time).
-- **Password reset** (`/forgot`, `/reset`) — request → confirm; token TTL 15 minutes.
+- **Password reset** (`/forgot`, `/reset-password`) — request → confirm; token TTL 15 minutes.
 - **Accept invitation** (`/invite/:token`) — validate token → set password (live policy
   meter) → verify email → enroll mandatory MFA (TOTP or passkey per role) → land in org.
 - **Screen-lock overlay** — after 5 minutes idle; soft re-auth (password / biometric /
   passkey); session stays alive until absolute timeout.
-- **Step-up challenge** (modal) — triggered by privileged actions; WebAuthn or TOTP only
+- **Step-up challenge** (full-page chrome-less route `/step-up` — deliberately outside the app shell, not a modal) — triggered by privileged actions; WebAuthn or TOTP only
   (**never** SMS); a successful login seeds a 5-minute step-up window.
 
 ---

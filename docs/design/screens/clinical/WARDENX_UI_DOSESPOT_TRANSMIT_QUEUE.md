@@ -80,7 +80,7 @@ rx_business_key)`, status code, `DegradedError` shape — never request/response
 ## Operational Controls
 
 - **Degraded-mode banner** — surfaces the per-tenant flag; on recovery the
-  `dosespot.transmit_queued` worker drains the queue and the banner clears
+  `dosespot.transmit_newrx` worker drains the queue and the banner clears
 - **Retry** a `transmission_failed` order (creates a new `medication_order` with
   `replaces_medication_order_id` set — never an in-place retransmit)
 - **Drain now** — manual trigger of the queued-transmission worker (ops, audited)

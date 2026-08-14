@@ -8,7 +8,7 @@
 
 **Key correction from live inspection:** the round-1 claim of "systemic across all 22 files" was
 wrong. Inspecting each file showed **P0–P8 were already conformant** — authoritative tokens, Inter
-KPI values, `muted-foreground` for small labels, and `alert` (red) for controlled-substance (not
+KPI values, `on-surface-variant` *(the review draft said `muted-foreground`, which is not a Lantern token; the shipped fix was `--color-muted: #726d64`)* for small labels, and `alert` (red) for controlled-substance (not
 gold). The violations were isolated to the **P9–P14 + D1–D7** files, where this-session
 hand-typed `SetVariables` had drifted and the rebuilt KPI used Fraunces.
 
@@ -40,7 +40,7 @@ top-level screens + D1–D7 depth/variant frames.
 
 > **Verdict (revised after live inspection): the violations are NOT corpus-wide — they're
 > concentrated in the files generated in the depth/breadth session (P6–P14, D1–D7).** The original
-> **P0–P5** corpus was built with the authoritative tokens, Inter KPI values, and `muted-foreground`
+> **P0–P5** corpus was built with the authoritative tokens, Inter KPI values, and `on-surface-variant` *(the review draft said `muted-foreground`, which is not a Lantern token; the shipped fix was `--color-muted: #726d64`)*
 > for small text — **it conforms** (only the soft `--border` hairline dividers, F4, a defensible
 > tonal choice). The 3 systemic violations (F1 Fraunces-KPI, F2 gold-as-status, F3 token drift)
 > live in the later files where the components/tokens were re-typed by hand. Remediate those ~16
@@ -105,7 +105,7 @@ top-level screens + D1–D7 depth/variant frames.
 ### F5 — Accessibility: contrast & touch targets · **Medium**
 - **Rule:** §10.11 WCAG 2.2 AA (contrast ≥4.5:1, 44px targets); portal family → AAA.
 - **What:** `muted` (`#8C877F`) on white ≈ **3.5:1** — fails AA for the 10–13px labels it's used on (table headers, KPI eyebrows, field keys). Several chips/secondary buttons are < 44px tall.
-- **Fix:** Use `muted-foreground` (`#56534F`, ~7:1) for small text that must be readable; reserve `muted` for genuinely disabled/placeholder. Bump interactive chip/button min-height to 44px (esp. mobile suite P5/P9 and the portal family).
+- **Fix:** Use `on-surface-variant` *(the review draft said `muted-foreground`, which is not a Lantern token; the shipped fix was `--color-muted: #726d64`)* (`#56534F`, ~7:1) for small text that must be readable; reserve `muted` for genuinely disabled/placeholder. Bump interactive chip/button min-height to 44px (esp. mobile suite P5/P9 and the portal family).
 
 ---
 
@@ -120,7 +120,7 @@ top-level screens + D1–D7 depth/variant frames.
 1. **F3 tokens** — one `SetVariables` (authoritative hex) per affected file; propagates everywhere.
 2. **F1 KPI font** — `Update` the KPI value node → Inter, in P9–P14 (+ D5/D6/D7 bespoke numbers).
 3. **F2 gold→alert** — recolor controlled-substance/EPCS/NOTR markers in P10/P12/D5/D7.
-4. **F4/F5 polish** — soften chrome dividers; lift small `muted` text to `muted-foreground`.
+4. **F4/F5 polish** — soften chrome dividers; lift small `muted` text to `on-surface-variant` *(the review draft said `muted-foreground`, which is not a Lantern token; the shipped fix was `--color-muted: #726d64`)*.
 
 Each affected `.pen` file is opened in Pencil.app to edit (one at a time). **Not 22 cycles — ~16,
 and P0–P5 just need a look-and-promote.**

@@ -109,8 +109,45 @@ for (const f of screenFiles) {
   }
 }
 
+// ---- 4 & 5. corpus-wide citation integrity (2026-08-14, mirroring arch:architecture-docs /
+// arch:module-docs): every four-digit ADR-NNNN citation anywhere under docs/design/ must resolve
+// to a file in docs/adr/, and every relative markdown link must resolve on disk. Root docs
+// (DESIGN.md, DEFERRED_SCREENS.md, …) were previously entirely ungated. Deliberately NO
+// cited-path rule: screen specs are proposals and legitimately cite planned paths.
+import { dirname, resolve } from "node:path";
+const adrNumbers = new Set(
+  readdirSync(join(REPO_ROOT, "docs/adr"))
+    .filter((f) => /^ADR-\d{4}-/.test(f))
+    .map((f) => f.slice(4, 8)),
+);
+function listAllMd(dir: string, acc: string[] = []): string[] {
+  for (const e of readdirSync(join(REPO_ROOT, dir))) {
+    const rel = join(dir, e);
+    if (statSync(join(REPO_ROOT, rel)).isDirectory()) listAllMd(rel, acc);
+    else if (e.endsWith(".md")) acc.push(rel);
+  }
+  return acc;
+}
+let adrsChecked = 0;
+let linksChecked = 0;
+for (const rel of listAllMd(UI_DIR)) {
+  const lines = readFileSync(join(REPO_ROOT, rel), "utf8").split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    for (const m of lines[i]!.matchAll(/\bADR-(\d{4})\b/g)) {
+      adrsChecked++;
+      if (!adrNumbers.has(m[1]!))
+        fail("dead-adr-citation", `${rel}:${i + 1} cites ADR-${m[1]}, no such file in docs/adr/`);
+    }
+    for (const m of lines[i]!.matchAll(/\]\((\.\.?\/[^)#\s]+)(#[^)\s]*)?\)/g)) {
+      linksChecked++;
+      if (!existsSync(resolve(dirname(join(REPO_ROOT, rel)), m[1]!)))
+        fail("dead-link", `${rel}:${i + 1} relative link \`${m[1]}\` does not resolve`);
+    }
+  }
+}
+
 // ---- report ----
-const checked = `${screenFiles.length} screens · ${defined.size} patterns · ${indexEntries.length} index entries`;
+const checked = `${screenFiles.length} screens · ${defined.size} patterns · ${indexEntries.length} index entries · ${adrsChecked} ADR citations · ${linksChecked} links`;
 if (violations.length === 0) {
   console.log(`✓ ui-screens: corpus consistent (${checked})`);
   process.exit(0);

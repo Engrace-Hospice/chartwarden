@@ -57,7 +57,7 @@ Grouped configuration tree:
 - **Provider Entity** (CCN-anchored) →
 - **State** (registered adapter set; Oregon active in Phase 1, WA/ID/CA/NV deny-stubbed) →
 - **Channel** — `direct_mmis` · `cco_clearinghouse` · `sftp` · `portal`; the channel set is
-  constrained to the M40 `state_medicaid_program.channel_options[]` for that state.
+  constrained to the M40 the `m24_channel` enum *(the once-planned `state_medicaid_program.channel_options[]` table/column was never built)* for that state.
 
 Each leaf shows a status dot (`Active` / `Inactive`) and the next rotation-due indicator.
 
@@ -98,7 +98,7 @@ Per `state_medicaid_trading_partner_credential` row:
 - **Routes-here** — the claims/channel that depend on this credential (e.g., "all CCO claims for
   CareOregon members route through this `cco_clearinghouse` record").
 - **Channel match** — confirms the credential's channel matches the M40
-  `state_medicaid_mco.routing_channel` so the `medicaid_mco_assignment_routes` rule resolves.
+  the routing channel *(target — no `state_medicaid_mco` table exists; the channel vocabulary is the `m24_channel` enum)* so the `medicaid_mco_assignment_routes` rule resolves.
 - **Rotation guidance** — cadence, last rotation, who rotated.
 
 ---

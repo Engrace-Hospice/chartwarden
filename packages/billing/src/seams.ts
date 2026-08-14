@@ -69,7 +69,7 @@ export interface ClaimReader {
 //   M27 (cost-report statistical data, worksheet S-3). M23 PUBLISHES this to feed M26 (D8 non-circular).
 // -----------------------------------------------------------------------------
 export interface ClaimDayProjectionProvider {
-  /** M26 cap projection — per-patient day rollup by LOC within a cap year (Nov 1 – Oct 31). */
+  /** M26 cap projection — per-patient day rollup by LOC within a cap year (Oct 1 – Sep 30 (ADR-0002)). */
   daysForPatientInCapYear(
     orgId: OrgId,
     patientId: PatientId,

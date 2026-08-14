@@ -1,8 +1,11 @@
-// @wardenx/billing — §4.5 rule `hipps_coding_correct` (hipps, error, regulatory). The claim's HIPPS code
-// must derive correctly from the LOC-period segments and the wage-index factor, and the RHC days-1–7 vs.
-// days-8+ payment split must be correct (D7). This rule verifies the STRUCTURAL invariants of the HIPPS
-// snapshot the (separate) HIPPS calculator produced; the penny-exact rate-table conformance is gated on a
-// CMS fixture we do not yet hold. PURE: reads ctx only.
+// @wardenx/billing — §4.5 rule `hipps_coding_correct` (hipps, error, regulatory). Verifies the
+// STRUCTURAL invariants of the per-diem snapshot the calculator produced: segments present, the
+// ADR-0001 RHC day-60 tier buckets (days_1_60 / days_61_plus) assigned, wage factor a decimal string.
+// ADR-0001 NOTE (outstanding): the ADR strikes the HIPPS construct entirely (hospice claims carry no
+// HIPPS rate code) and replaces this rule with an `rhc_rate_tier_coherence` rule; the snapshot's
+// `hipps_code` is an internal placeholder never emitted on the 837 wire, and the full rename
+// (`hipps_calculation` → per-diem naming, rule-key migration) is tracked in the ADR-compliance
+// backlog. Penny-exact rate-table conformance is gated on a CMS fixture we do not yet hold. PURE.
 import type { Rule } from "./types";
 import { fail, pass, skip } from "./types";
 
@@ -17,8 +20,8 @@ export const hippsCodingCorrect: Rule = {
   category: "hipps",
   title: "HIPPS coding derives correctly",
   description:
-    "The HIPPS code must derive from the claim's LOC-period segments and the applied wage-index factor, " +
-    "with the RHC days-1–7 vs. days-8+ payment split correct (D7).",
+    "The per-diem snapshot must derive from the claim's LOC-period segments and the applied wage-index " +
+    "factor, with the ADR-0001 RHC day-60 tier split (days 1–60 / 61+) structurally coherent (D7).",
   severity: "error",
   regulatoryRequired: true,
   overrideRoleRequired: "billing_manager",
@@ -44,7 +47,7 @@ export const hippsCodingCorrect: Rule = {
     for (const seg of segments) {
       const isRhc = seg.levelOfCare === "routine_home_care";
       if (isRhc && seg.rhcDayBucket === "n/a") {
-        defects.push(`RHC segment ${seg.dateFrom}..${seg.dateTo} missing days-1–7/8+ bucket`);
+        defects.push(`RHC segment ${seg.dateFrom}..${seg.dateTo} missing its day-60 tier bucket`);
       }
       if (!isRhc && seg.rhcDayBucket !== "n/a") {
         defects.push(`non-RHC segment ${seg.dateFrom}..${seg.dateTo} carries an RHC day bucket`);

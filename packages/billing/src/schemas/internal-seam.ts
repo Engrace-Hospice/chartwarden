@@ -17,7 +17,7 @@ export const ClaimDayProjectionQuery = Type.Object({
   ]),
   patientId: Type.Optional(Uuid),
   providerEntityId: Type.Optional(Uuid),
-  /** Cap year = starting calendar year (Nov 1 – Oct 31); required for the cap-year modes. */
+  /** Cap year = starting calendar year (Oct 1 – Sep 30 (ADR-0002)); required for the cap-year modes. */
   capYear: Type.Optional(Type.Integer()),
   /** FY-end calendar date; required for the fiscal-year modes. */
   fyEnd: Type.Optional(IsoDateSchema),

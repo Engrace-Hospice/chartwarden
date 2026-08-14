@@ -41,7 +41,7 @@ Sticky Footer Actions (Back · Save Draft · Next · Sign & Publish)
 
 ## Steps
 
-1. **Consent type** — pick from the ten platform types (`portal_access`, `dpoa_healthcare`,
+1. **Consent type** — pick from the eleven platform types (+ `custom`; the enum includes `bereavement_outreach_consent`, which drives the M16 outreach gate) (`portal_access`, `dpoa_healthcare`,
    `dpoa_financial`, `family_caregiver_access`, `42_cfr_part_2_release`, `media_release`,
    `research_participation`, `telehealth_consent`, `advance_directive_acknowledgment`,
    `hipaa_release`) plus any tenant custom type. Type selection drives the scope schema and the
@@ -91,7 +91,7 @@ Sticky Footer Actions (Back · Save Draft · Next · Sign & Publish)
 ## Provenance & Sensitivity
 
 - **AI-prohibited.** No AI may create, modify, evaluate, or revoke a consent record
-  (`validateM39AIBlock`, AI Governance §2.1.4) — the stepper accepts only human input.
+  (`validateM39AIBlock` *(target — not yet implemented; the built sibling is `validateSupplyAIBlock`)*, AI Governance §2.1.4) — the stepper accepts only human input.
 - `42_cfr_part_2_release` captures carry the §2.32 prohibition-on-re-disclosure notice into the
   rendered PDF; SUD-context scope is sealed/masked elsewhere until an evaluation passes.
 - Consent record id and recipient NPIs render in IBM Plex Mono.
