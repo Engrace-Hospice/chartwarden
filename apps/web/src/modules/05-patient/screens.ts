@@ -26,7 +26,9 @@ export const patientScreens: ScreenRegistryModule<ComponentType> = {
     },
     {
       // Cross-cutting Global Search (FB-T11, partial — live M5 patient + M2 staff facets). Reached
-      // from the shell top-nav search; also linkable at /search?q=. Server enforces every scope.
+      // from the shell top-nav search, which hands the needle over IN MEMORY — `/search` is
+      // deliberately NOT linkable with a term (GAP-080: a patient name or MRN in the URL persists
+      // in history/omnibox/session-restore). Server enforces every scope.
       id: "search.global",
       path: "/search",
       title: "Search",

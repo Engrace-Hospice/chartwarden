@@ -14,6 +14,28 @@ if (typeof Element !== "undefined" && typeof Element.prototype.scrollTo !== "fun
   Element.prototype.scrollTo = () => {};
 }
 
+// Under jsdom, `AbortController`/`AbortSignal` come from jsdom while `Request`/`fetch` come from
+// Node (undici) — two different implementations of the same interface. undici's Request constructor
+// brand-checks `init.signal` and throws
+//     TypeError: RequestInit: Expected signal ("AbortSignal {}") to be an instance of AbortSignal
+// for a perfectly valid jsdom signal. Nothing in the app hits this, but react-router's data router
+// builds a `new Request(url, { signal })` on EVERY client-side navigation
+// (`createClientSideRequest`), so any dom test that navigates rather than just mounting a route
+// crashes — which is why the pre-existing smoke tests only ever pushState + render.
+//
+// The narrowest possible reconciliation: keep undici's real Request (every method, every behavior)
+// and drop only the cross-realm signal. Test navigations are not aborted, so nothing observable is
+// lost; a component that genuinely depends on request abortion should assert on its own
+// AbortController, not on this.
+const UndiciRequest = globalThis.Request;
+if (typeof UndiciRequest === "function") {
+  globalThis.Request = class extends UndiciRequest {
+    constructor(input: RequestInfo | URL, init?: RequestInit) {
+      super(input, init ? { ...init, signal: undefined } : init);
+    }
+  } as typeof Request;
+}
+
 afterEach(() => {
   cleanup();
 });

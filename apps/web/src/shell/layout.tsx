@@ -1,5 +1,13 @@
 import { createWardenxAuthClient } from "@wardenx/auth/client";
-import { DegradedBanner, EmptyState, Glyph, NavGroup, NavLink, groupByNavGroup } from "@wardenx/ui";
+import {
+  DegradedBanner,
+  EmptyState,
+  Glyph,
+  NavGroup,
+  NavLink,
+  groupByNavGroup,
+  setSearchTerm,
+} from "@wardenx/ui";
 // apps/web/src/shell — app-shell chrome (M1, ADR-0030). Renders the primary nav (built from the
 // registered screens), the degraded-mode banner, a header with the session identity, and the routed
 // <Outlet/>. Imports only @wardenx/ui + @wardenx/auth/client (leaves) + react-router — never a
@@ -114,14 +122,22 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   );
 }
 
-/** Shell top-nav search box. Submits to the registered /search route (Global Search, M5). */
+/**
+ * Shell top-nav search box. Submits to the registered /search route (Global Search, M5).
+ *
+ * The needle is handed over IN MEMORY (`setSearchTerm`) and the navigation carries no query string
+ * (GAP-080). It used to go as `/search?q=<name|MRN>`, which put a patient name or MRN into the
+ * address bar, the history entry, the omnibox autocomplete corpus, and the profile's on-disk
+ * session-restore state — PHI outliving the session on a shared device. See
+ * packages/ui/src/core/hooks/use-search-term.ts.
+ */
 function TopNavSearch(): JSX.Element {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   function submit(e: FormEvent): void {
     e.preventDefault();
-    const term = q.trim();
-    navigate(term ? `/search?q=${encodeURIComponent(term)}` : "/search");
+    setSearchTerm(q);
+    navigate("/search");
   }
   return (
     // biome-ignore lint/a11y/useSemanticElements: role="search" on the form is the intended, widely-supported pattern.
