@@ -65,6 +65,7 @@ export {
 // read-side queue producer, and the Drizzle-backed route-service builders the composition root assembles.
 export {
   type M33InfraPortUnbound,
+  LIVE_CRON,
   M33_PLATFORM_JOB_ID,
   buildDrizzleM33ExportDrilldownService,
   buildDrizzleM33ReadService,

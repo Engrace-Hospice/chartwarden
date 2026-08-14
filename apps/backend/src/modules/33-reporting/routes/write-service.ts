@@ -188,6 +188,21 @@ export class CronTooFrequentError extends WardenXError {
     this.name = "CronTooFrequentError";
   }
 }
+/**
+ * §2.3 — the schedule's `cron_expression` / `tenant_timezone` pair cannot be evaluated (GAP-050).
+ *
+ * A bad cadence is the caller's input error, so it is a 422, not the 5xx the unbound {@link CronPort}
+ * raised for every caller before the adapter was bound. Covers three distinct refusals the adapter makes:
+ * an expression `cron-parser` rejects outright; an expression it accepts but that has NO future
+ * occurrence (`0 9 30 2 *` — February 30th); and a `tenantTimezone` `Intl` does not recognize, which
+ * `cron-parser` reports only as an opaque `CronDate: unhandled timestamp` deep inside its own evaluator.
+ */
+export class CronExpressionInvalidError extends WardenXError {
+  constructor(reason: string) {
+    super("CRON_EXPRESSION_INVALID", `the schedule's cron cannot be evaluated: ${reason}`, 422);
+    this.name = "CronExpressionInvalidError";
+  }
+}
 /** §2.3 — a `pdf` schedule may not render a view whose definition `row_limit > 5000`. */
 export class PdfRowLimitExceededError extends WardenXError {
   constructor(rowLimit: number) {

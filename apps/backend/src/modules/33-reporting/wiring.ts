@@ -13,15 +13,17 @@
 // WHAT IS LIVE vs TYPED-TODO (the honest seam map):
 //   • LIVE now: the read-replica session (bound over the primary db — M1 transparently fails the replica
 //     over to the primary anyway, §8.1.2 — so single-pool dev reads run under the same RLS GUC the writes
-//     do), the org-scoped WRITE service (withOrgContext on the primary, fully live), and the §4.8 queue
-//     PRODUCER (BullMQ `Queue.add`, when a Valkey connection is configured).
-//   • TYPED-TODO (genuinely-missing infra — each FAILS CLOSED, never a silent no-op): the cron-parser
-//     adapter (schedule create/update 503s until bound), the M22 render outbox (PDF/XLSX export 503s),
-//     the per-tenant DEK encrypt (drilldown audit denies), the M39 consent evaluator (drilldown maximal-
-//     narrows), and the tile/export SQL executor (tiles serve the forward-seam empty result). The
-//     replica-lag gate reports a healthy single-pool primary (no replica ⇒ no lag).
+//     do), the org-scoped WRITE service (withOrgContext on the primary, fully live), the §4.8 queue
+//     PRODUCER (BullMQ `Queue.add`, when a Valkey connection is configured), and the `cron-parser`-over-
+//     IANA-TZ adapter (GAP-050 — schedule create/update/resume compute a real `next_run_at`).
+//   • TYPED-TODO (genuinely-missing infra — each FAILS CLOSED, never a silent no-op): the M22 render
+//     outbox (PDF/XLSX export 503s), the per-tenant DEK encrypt (drilldown audit denies), the M39 consent
+//     evaluator (drilldown maximal-narrows), and the tile/export SQL executor (tiles serve the
+//     forward-seam empty result). The replica-lag gate reports a healthy single-pool primary (no replica
+//     ⇒ no lag).
 import type { ConnectionOptions } from "bullmq";
 import { Queue } from "bullmq";
+import { parseExpression } from "cron-parser";
 import { sql } from "drizzle-orm";
 
 import type { DbClient } from "@wardenx/db";
@@ -34,10 +36,12 @@ import {
   type ReportingConsentConsumer,
   type ReportingDb,
 } from "@wardenx/reporting";
+import { isValidTimeZone } from "@wardenx/shared/dates";
 import { registerPlatformJob } from "@wardenx/tenancy";
 
 import { getSeam, registerSeam } from "../../bootstrap/index";
 import {
+  CronExpressionInvalidError,
   type CronPort,
   type ExportSqlExecutor,
   type M33ExportDrilldownRouteService,
@@ -180,17 +184,54 @@ const HEALTHY_SINGLE_POOL_LAG_GATE: ReplicaLagGatePort = {
 };
 
 /**
- * The fail-closed cron port (typed-TODO). The schedule create/update/resume routes compute `next_run_at`
- * through this; until the `cron-parser`-over-IANA-TZ adapter is wired they DENY (a 5xx), never persist a
- * schedule with a fabricated fire time. The rest of the WRITE surface (definitions / views / non-cron
- * schedule ops) is fully live.
+ * The LIVE `cron-parser`-over-IANA-TZ adapter (GAP-050). The schedule create/update/resume routes compute
+ * `next_run_at` through this; it was a fail-closed stub, so all three permanently 5xx'd and no tenant could
+ * ever create a scheduled report — the §4.8 scheduled-run cron had nothing to fire.
+ *
+ * `cron-parser` evaluates the expression IN the tenant's own IANA zone (`tz`), which is the whole point of
+ * storing `report_schedule.tenant_timezone`: "every weekday at 09:00" must mean 09:00 where the hospice
+ * operates, and must keep meaning that across a DST transition (the UTC instant moves by an hour; the wall
+ * clock does not). `currentDate: after` makes each call return the first fire STRICTLY after `after`, which
+ * is what `cronFires` relies on to derive the second fire for the §2.3 cadence floor.
+ *
+ * TWO refusals `cron-parser` will NOT make for us, both of which must be caught here rather than persisted:
+ *
+ *  1. **A BLANK expression parses as `* * * * *`.** `parseExpression("")` and `parseExpression("   ")` both
+ *     return a valid every-minute schedule rather than throwing. On create/update the §2.3 cadence floor
+ *     happens to reject that (a 1-minute gap < 5 minutes → CRON_TOO_FREQUENT), but `resumeSchedule` only
+ *     computes the FIRST fire and never asserts cadence — so a blank expression would resume as a
+ *     once-a-minute report. Rejected explicitly, at the one place both paths funnel through.
+ *  2. **An unrecognized timezone fails deep inside the evaluator**, as `CronDate: unhandled timestamp:
+ *     null` — a message that tells a tenant admin nothing. `isValidTimeZone` (@wardenx/shared/dates, the
+ *     PARAM-004 helper) is checked first so the 422 names the actual problem.
+ *
+ * Everything else (out-of-range fields, malformed syntax, an expression with no future occurrence such as
+ * `0 9 30 2 *`) throws inside `parseExpression`/`next()` and is wrapped with its own message intact.
  */
-const FAIL_CLOSED_CRON: CronPort = {
-  nextRunAfter() {
-    throw new M33InfraPortUnbound(
-      "cron.nextRunAfter",
-      "bind the cron-parser-over-IANA-TZ adapter (no cron seam wired yet) — schedule create/update denies until bound",
-    );
+export const LIVE_CRON: CronPort = {
+  nextRunAfter(cronExpression, tenantTimezone, after) {
+    if (cronExpression.trim().length === 0) {
+      throw new CronExpressionInvalidError(
+        "the expression is blank (a blank cron parses as '* * * * *' — every minute — rather than failing)",
+      );
+    }
+    if (!isValidTimeZone(tenantTimezone)) {
+      throw new CronExpressionInvalidError(
+        `'${tenantTimezone}' is not an IANA timezone Intl recognizes`,
+      );
+    }
+    try {
+      return parseExpression(cronExpression, {
+        currentDate: after,
+        tz: tenantTimezone,
+      })
+        .next()
+        .toDate();
+    } catch (cause) {
+      throw new CronExpressionInvalidError(
+        `'${cronExpression}' in '${tenantTimezone}': ${cause instanceof Error ? cause.message : String(cause)}`,
+      );
+    }
   },
 };
 
@@ -264,7 +305,7 @@ export function buildDrizzleM33ReadService(deps: {
 /**
  * Build the production WRITE route service (§4.1 #8–#31: definitions / views / shares / schedules) over the
  * org-pooled primary Drizzle client. EVERY method runs inside the tenant's own `withOrgContext` (RLS scopes
- * each statement to `app.org_id`) — fully live, EXCEPT the cron math (fail-closed typed-TODO). The §4.10
+ * each statement to `app.org_id`) — fully live, cron math included (GAP-050, {@link LIVE_CRON}). The §4.10
  * `m33.*` outbox emit is bound when the composition root passes `outbox` (the catalog-validating tx
  * publisher); omitted in slice/tests, where it stays a best-effort no-op (zero regression).
  */
@@ -276,7 +317,7 @@ export function buildDrizzleM33WriteService(deps: {
 } {
   return createDrizzleM33WriteBackend({
     db: deps.db,
-    cron: FAIL_CLOSED_CRON,
+    cron: LIVE_CRON,
     outbox: deps.outbox,
     now: () => new Date(),
   });
