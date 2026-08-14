@@ -111,6 +111,7 @@ export {
   type ViewView,
   type WriteOutboxPort,
   BaseNotActiveError,
+  CronExpressionInvalidError,
   CronTooFrequentError,
   PdfRowLimitExceededError,
   RecipientNotInOrgError,
