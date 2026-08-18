@@ -24,8 +24,7 @@ The audits surfaced real defects while cross-checking claims. Each was re-verifi
 ### 1.1 Break-glass cosign has no cosigner-distinctness check — VERIFIED
 
 `apps/backend/src/modules/03-authorization/routes/authz-routes.ts:361-371` and
-`break-glass-store.ts:92-101`: `cosign(eventId, byUserId)` sets `status:"active", cosignedBy:
-byUserId` with no comparison against the invoker, and the route performs no check either. Cosign
+`break-glass-store.ts:92-101`: `cosign(eventId, byUserId)` sets `status:"active", cosignedBy: byUserId` with no comparison against the invoker, and the route performs no check either. Cosign
 and revoke share one permission (`breakglass.cosign`).
 
 When tenant policy sets `breakglass_cosign_required = true`, the two-person property is the entire
@@ -268,8 +267,8 @@ the backend inventory matches. Problems:
 ## 4. What the docs get right
 
 Worth stating, because the corpus is not worthless — the *spine* is accurate:
-Bun · Fastify 5 · TypeBox · Drizzle + `pg` · PostgreSQL 18 · pgvector (real, one `vector(384)` column
-+ HNSW) · Valkey/ioredis · BullMQ · Better Auth as a surface · prom-client (fully wired) ·
+Bun · Fastify 5 · TypeBox · Drizzle + `pg` · PostgreSQL 18 · pgvector (real, one `vector(384)`
+column + HNSW) · Valkey/ioredis · BullMQ · Better Auth as a surface · prom-client (fully wired) ·
 Vite/React/Tailwind v4 · Vitest · Playwright · Biome · GitHub Actions · the transactional outbox ·
 RLS + `withOrgContext` · monthly-partitioned `audit_event` · typed error classes · the M23 claim-
 validation and M27 cost-report frameworks · Argon2id + HIBP password policy · the 41-suite live-RLS
@@ -285,17 +284,20 @@ enforcement paths all resolve. `backup:restore-drill` is described accurately.
 Three tracks, in priority order.
 
 ### Track 1 — Fix the code findings (§1). Not doc work.
+
 1.1 break-glass distinctness and 1.3 the un-FORCEd M24 tables are security-relevant and small.
 1.2 should be resolved by *deciding*: either write the trigger or delete the comment and wire the
 tenant resolver into `step_up_recent`. 1.4 and 1.5 are honest-signal fixes.
 
 ### Track 2 — Correct the corpus, and separate *target* from *as-built*
+
 Most of the severity-B drift is not rot — it is **unrecorded divergence**. The build deliberately
 chose react-router over TanStack, no Socket.IO, TypeScript X12 over Python sidecars, app-layer AES
 over pgcrypto, hand-rolled state machines over XState, and no `@fastify/*` plugins. Those were
 decisions; none of them produced an ADR.
 
 So the highest-leverage edit is not a rewrite — it is:
+
 - **Write the missing ADRs** for those six divergences. That converts "the doc is wrong" into "the
   doc records what we chose," which is what an architecture corpus is for.
 - **Mark aspirational sections explicitly** (`STATUS: TARGET — NOT BUILT`), the way
@@ -311,6 +313,7 @@ So the highest-leverage edit is not a rewrite — it is:
   `docs/APP_OVERVIEW.md` currently documents them better than the authoritative corpus does.
 
 ### Track 3 — Add a freshness gate (the structural fix)
+
 The corpus drifted because nothing checks it (§2). A cheap `scripts/check-architecture-docs.ts`
 wired into `arch:fitness` — matching how this repo already treats every other body of documentation —
 would mechanically catch a large share of these findings:

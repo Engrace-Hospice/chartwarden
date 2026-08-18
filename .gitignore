@@ -58,3 +58,13 @@ storybook-static/
 e2e/playwright-report/
 e2e/test-results/
 e2e/blob-report/
+
+# Executed and in-progress legal instruments (NDAs, BAAs, contractor agreements). These carry
+# counterparty PII — home addresses, signatures, entity details — and git history is permanent,
+# so a single committed draft is effectively undeletable. Keep them out of the repo entirely and
+# store them in the org's document system of record instead.
+legal/
+
+# Stray run artifacts from audit/gate scripts
+audit_stderr.log
+scratchpad/
