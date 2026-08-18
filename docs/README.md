@@ -37,6 +37,8 @@ wins until the spec is re-locked.
 | Document | Purpose |
 |---|---|
 | [`DEVELOPMENT.md`](./DEVELOPMENT.md) | Development runbook + "how to add a module". **Start here to build/extend.** |
+| [`APP_OVERVIEW.md`](./APP_OVERVIEW.md) | Guided map of what the codebase is and how it fits together — for an engineer joining the project. |
+| [`BUSINESS_LOGIC.md`](./BUSINESS_LOGIC.md) | Business logic, workflows & functionality **as built** across the 40 modules — state machines, validation, calculations, cross-module flows. |
 | [`PHASE_0_SCAFFOLD_PLAN.md`](./PHASE_0_SCAFFOLD_PLAN.md) | Phase 0 scaffold plan — the manifest→tree generation model (ADR-0027). |
 | [`ARCHON_SETUP.md`](./ARCHON_SETUP.md) | WardenX × Archon deterministic-coding setup. |
 | [`wardenx-hospice-ehr.prd.md`](./wardenx-hospice-ehr.prd.md) | Product Requirements Document (retrospective intent) — problem, thesis, hypothesis, pilot MVP, success metrics. |
