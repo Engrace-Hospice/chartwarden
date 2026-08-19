@@ -326,6 +326,8 @@ describe.skipIf(!DB_URL)("GAP-098 — M34 oversized-hold discovery, LIVE Postgre
             connection: {},
             db: tx as unknown as typeof appHandle.db,
             platformDb: platformHandle.db,
+            // Mirror the registrar's per-job, immutable org binding.
+            orgScope: org,
           }).tenantExport,
         ),
       );
@@ -337,7 +339,7 @@ describe.skipIf(!DB_URL)("GAP-098 — M34 oversized-hold discovery, LIVE Postgre
       const jobId = await seedJob(ORG_A, { hold: false });
 
       await inOrg(ORG_A, async (p) => {
-        await p.markGenerating(jobId); // captures the org — must run first (the port's own contract)
+        await p.markGenerating(jobId);
         await p.holdForOversizedApproval({
           jobId,
           bundleMinioObjectKey: `tenants/${ORG_A}/exports/tenant/${jobId}.tar.gz`,

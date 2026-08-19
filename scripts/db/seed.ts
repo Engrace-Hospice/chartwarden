@@ -99,17 +99,30 @@ function genPassword(): string {
 }
 
 async function signUp(email: string, password: string, name: string): Promise<string> {
-  const res = await fetch(`${AUTH_URL}/api/auth/sign-up/email`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password, name }),
-  });
-  if (!res.ok) {
+  // Better Auth deliberately caps sign-up/sign-in paths at 3 requests per 10 seconds per IP. A
+  // demo seed creates four accounts in succession, so honour its retry hint rather than making a
+  // production-mode seed intrinsically fail on the fourth account.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const res = await fetch(`${AUTH_URL}/api/auth/sign-up/email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, name }),
+    });
+    if (res.ok) {
+      const body = (await res.json()) as { user?: { id?: string } };
+      if (!body.user?.id) throw new Error(`sign-up for ${email} returned no user id`);
+      return body.user.id;
+    }
+    if (res.status === 429 && attempt < 2) {
+      const retryAfter = Number(res.headers.get("x-retry-after"));
+      const delaySeconds = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter + 1 : 11;
+      console.log(`sign-up rate-limited for ${email}; retrying in ${delaySeconds}s`);
+      await new Promise<void>((resolve) => setTimeout(resolve, delaySeconds * 1_000));
+      continue;
+    }
     throw new Error(`sign-up failed for ${email}: HTTP ${res.status} ${await res.text()}`);
   }
-  const body = (await res.json()) as { user?: { id?: string } };
-  if (!body.user?.id) throw new Error(`sign-up for ${email} returned no user id`);
-  return body.user.id;
+  throw new Error(`sign-up failed for ${email}: exhausted retries`);
 }
 
 async function main(): Promise<void> {

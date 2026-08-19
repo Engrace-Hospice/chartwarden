@@ -1,72 +1,40 @@
-name: Deploy
+name: Release and deploy
 
-# TASK-040F (production-readiness audit 2026-08-03, OPS-013) — deploy-pipeline SKELETON, not a
-# validated deploy. `WARDENX_OPS_RUNBOOK_v0.1.md`'s blue-green + signed-image + SBOM description is
-# the aspirational spec; this is scaffolding toward it. `build` runs on every push/PR (never pushes
-# anywhere — proves the image builds, nothing more). `push` only runs on a manual
-# `workflow_dispatch` with its `push` input explicitly set true — there is no real deploy target
-# configured in this repo, so nothing here rolls out to any host; it only tags+pushes an image to
-# GHCR (chosen because it needs zero new secrets/accounts beyond the built-in GITHUB_TOKEN). The
-# `production` GitHub Environment referenced below has NO reviewer/branch protection rules
-# configured yet — add those before this job is treated as a real release gate, not just an
-# unprotected manual trigger.
+# A successful CI run on main is the only automatic release source. The release SHA is baked into
+# both immutable GHCR tags, then the `deploy` job updates the VPS through SSH. Configure protection
+# rules on the `production` GitHub Environment before enabling this workflow in a shared project.
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-  pull_request:
   workflow_dispatch:
-    inputs:
-      push:
-        description: "Also tag + push the built image to GHCR (manual release gate)"
-        type: boolean
-        default: false
 
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: production-deploy
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build image (no push)
+  release:
+    name: Build and publish immutable images
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Build (api + worker share this one image — see Dockerfile header)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: false
-          tags: wardenx:ci-build
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Build staff web image (no push)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.web
-          push: false
-          tags: wardenx-web:ci-build
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  push:
-    name: Tag + push to GHCR (manual release gate)
-    if: github.event_name == 'workflow_dispatch' && inputs.push == true
-    needs: build
-    runs-on: ubuntu-latest
-    # No reviewer/branch protection configured on this Environment yet (see file header) — today
-    # this is only a `workflow_dispatch`-gated manual trigger, not a reviewed release gate.
-    environment: production
     permissions:
       contents: read
       packages: write
+    outputs:
+      backend_image: ${{ steps.images.outputs.backend_image }}
+      web_image: ${{ steps.images.outputs.web_image }}
+    env:
+      RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR
@@ -75,29 +43,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Derive image tags (sha + latest-on-default-branch)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/wardenx
-          tags: |
-            type=sha,format=long
-            type=raw,value=latest,enable={{is_default_branch}}
-      - name: Derive staff web image tags (sha + latest-on-default-branch)
-        id: web-meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/wardenx-web
-          tags: |
-            type=sha,format=long
-            type=raw,value=latest,enable={{is_default_branch}}
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ghcr.io/${{ github.repository_owner }}/wardenx:sha-${{ env.RELEASE_SHA }}
           # AD-05 — bake the identity the /version probe reports, so the runbook's post-deploy
           # "is the new build actually live?" check can pass. Without these, /version answers
           # {"version":"dev","gitSha":"unknown"} on every deploy.
@@ -113,7 +64,43 @@ jobs:
           context: .
           file: Dockerfile.web
           push: true
-          tags: ${{ steps.web-meta.outputs.tags }}
-          labels: ${{ steps.web-meta.outputs.labels }}
+          tags: ghcr.io/${{ github.repository_owner }}/wardenx-web:sha-${{ env.RELEASE_SHA }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Publish image references
+        id: images
+        run: |
+          echo "backend_image=ghcr.io/${{ github.repository_owner }}/wardenx:sha-${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "web_image=ghcr.io/${{ github.repository_owner }}/wardenx-web:sha-${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Deploy to production VPS
+    needs: release
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure SSH host verification
+        env:
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Upload and run deploy script
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          BACKEND_IMAGE: ${{ needs.release.outputs.backend_image }}
+          WEB_IMAGE: ${{ needs.release.outputs.web_image }}
+        run: |
+          test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER"
+          port="${DEPLOY_PORT:-22}"
+          scp -P "$port" deploy/production/deploy.sh "$DEPLOY_USER@$DEPLOY_HOST:/opt/wardenx/deploy.sh"
+          ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "chmod 700 /opt/wardenx/deploy.sh && /opt/wardenx/deploy.sh '$BACKEND_IMAGE' '$WEB_IMAGE'"
