@@ -55,6 +55,7 @@
   --color-muted: #726d64;
   --color-outline: #6e6a62;
   --color-outline-variant: #d7d3cb;
+  --color-focus-ring: #3b45a8;
 
   /* On-emphasis — text/icons on a SATURATED brand/status fill (primary button, break-glass banner,
      status-flood CTA). White in light; twilight ink in dark (the dark status colors are light
@@ -137,6 +138,7 @@
   --color-muted: #96918a;
   --color-outline: #8a857c;
   --color-outline-variant: #45444e;
+  --color-focus-ring: #aeb4f0;
   /* Dark on-emphasis = twilight ink (dark text on the light-pastel dark-mode fills). */
   --color-on-emphasis: #15151b;
   /* Scrim slightly stronger over the darker canvas. */
@@ -180,9 +182,42 @@
   input:focus,
   select:focus,
   textarea:focus {
-    outline: 2px solid var(--color-primary);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 1px;
     background: var(--color-surface-lowest);
+  }
+  .wx-button:focus-visible,
+  .wx-field input:focus-visible,
+  .wx-field select:focus-visible,
+  .wx-field textarea:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+  .wx-button:not(:disabled):hover {
+    filter: brightness(0.96);
+  }
+  .dark .wx-button:not(:disabled):hover {
+    filter: brightness(1.12);
+  }
+  .wx-button-tertiary:not(:disabled):hover {
+    background: var(--color-primary-tint);
+  }
+  .wx-data-row-interactive {
+    cursor: pointer;
+  }
+  .wx-data-row-interactive:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: -2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
   }
   /* Identifiers/codes read in the mono face (MRN, MBI, claim/control numbers). */
   code,
@@ -355,17 +390,68 @@
     border-radius: var(--radius-md);
     color: var(--color-on-surface-variant);
     font-size: 0.925rem;
+    position: relative;
+    transition: all 0.15s ease;
   }
   .wx-nav a:hover {
     background: var(--color-surface-container);
     text-decoration: none;
+    padding-left: 0.75rem;
   }
   /* Active nav item — indigo text on primary-tint fill (DESIGN.md §6.1). */
   .wx-nav a[aria-current="page"],
   .wx-nav a.active {
     background: var(--color-primary-tint);
     color: var(--color-primary);
-    font-weight: 500;
+    font-weight: 600;
+    padding-left: 0.85rem;
+  }
+  .wx-nav a[aria-current="page"]::before,
+  .wx-nav a.active::before {
+    content: "";
+    position: absolute;
+    left: 0.25rem;
+    top: 0.5rem;
+    bottom: 0.5rem;
+    width: 3px;
+    background: var(--color-primary);
+    border-radius: var(--radius-sm);
+  }
+
+  /* Collapsible group content grid-based transition */
+  .wx-nav-group-content {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+  }
+  .wx-nav-group-content.open {
+    grid-template-rows: 1fr;
+  }
+  .wx-nav-group-content > div {
+    min-height: 0;
+    opacity: 0;
+    transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .wx-nav-group-content.open > div {
+    opacity: 1;
+  }
+
+  /* Hide scrollbars visually */
+  .wx-no-scrollbar,
+  .wx-main,
+  .wx-nav,
+  .wx-work-table,
+  table {
+    scrollbar-width: none !important; /* Firefox */
+    -ms-overflow-style: none !important;  /* IE and Edge */
+  }
+  .wx-no-scrollbar::-webkit-scrollbar,
+  .wx-main::-webkit-scrollbar,
+  .wx-nav::-webkit-scrollbar,
+  .wx-work-table::-webkit-scrollbar,
+  table::-webkit-scrollbar {
+    display: none !important; /* Chrome, Safari and Opera */
   }
   .wx-main {
     flex: 1;
@@ -373,6 +459,12 @@
     display: flex;
     flex-direction: column;
     overflow: auto;
+  }
+
+  /* KPI strips are summary chrome, never a flex region that a long queue may compress. Their
+     cards retain their intrinsic width and overflow horizontally on small viewports instead. */
+  .wx-kpi-strip > * {
+    flex: 0 0 auto;
   }
 
   /* Every <table> scrolls horizontally instead of blowing out the layout at narrow widths
@@ -436,6 +528,53 @@
         transition: none;
       }
     }
+    .wx-data-col-tertiary {
+      display: none;
+    }
+    /* A work-queue detail panel becomes an application drawer at tablet/mobile widths. The
+       desktop `contextRailBounds` inline width is deliberately overridden here because a side
+       rail would leave too little room for the table on a 390px screen. */
+    .wx-work-split .wx-context-rail:has(> .wx-right-panel) {
+      position: fixed;
+      inset: 0;
+      z-index: 70;
+      width: 100% !important;
+      max-width: none !important;
+      padding: 0 !important;
+      background: var(--color-scrim);
+    }
+    .wx-work-split .wx-right-panel {
+      width: min(100%, 32rem) !important;
+      height: 100%;
+      margin-left: auto;
+      box-shadow: var(--shadow-float);
+    }
+    .wx-stepper-split {
+      flex-direction: column;
+      overflow: auto !important;
+    }
+    .wx-stepper-split .wx-left-rail {
+      width: 100% !important;
+      max-height: none;
+      border-right: none !important;
+      border-bottom: 1px solid color-mix(in srgb, var(--color-outline-variant) 50%, transparent);
+    }
+    .wx-stepper-context {
+      width: 100% !important;
+      padding: 0 var(--space-5) var(--space-5) !important;
+    }
+    .wx-workflow-stepper {
+      flex-direction: row !important;
+      overflow-x: auto;
+    }
+    .wx-workflow-stepper > li {
+      min-width: 12rem;
+    }
+  }
+  @media (max-width: 480px) {
+    .wx-data-col-secondary {
+      display: none;
+    }
   }
 
   /* The right-hand context rail (patterns.tsx: WorkQueue `detail`, DetailPage `aside`,
@@ -449,6 +588,18 @@
      `:has()` distinguishes them, so the gutter is applied only where it is missing. */
   .wx-context-rail:not(:has(> .wx-right-panel)) {
     padding: var(--space-4) var(--space-5) var(--space-4) 0;
+  }
+
+  .wx-data-table-scroll {
+    width: 100%;
+    overflow-x: auto;
+  }
+  .wx-data-table th,
+  .wx-data-table td {
+    white-space: nowrap;
+  }
+  .wx-data-row-interactive:hover {
+    background: var(--color-surface-low);
   }
 
   /* WorkQueueLayout's `kpis` / `filters` slots. The usual occupants pad themselves — `KpiStrip`

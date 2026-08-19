@@ -168,6 +168,8 @@ export interface WorkQueueLayoutProps {
   filters?: ReactNode;
   table: ReactNode;
   detail?: ReactNode;
+  /** Let the application shell scroll the complete queue instead of only its table area. */
+  fullPageScroll?: boolean;
 }
 export function WorkQueueLayout({
   header,
@@ -175,6 +177,7 @@ export function WorkQueueLayout({
   filters,
   table,
   detail,
+  fullPageScroll = false,
 }: WorkQueueLayoutProps): JSX.Element {
   return (
     <div className="wx-work-queue" style={fillColumn}>
@@ -183,8 +186,18 @@ export function WorkQueueLayout({
       {filters}
       {/* `wx-work-split` marks the region that must NOT be padded by the bare-slot rule in index.css:
           the table and the context rail each own their inset. */}
-      <div className="wx-work-split" style={splitRow}>
-        <div className="wx-work-table" style={{ flex: 1, overflow: "auto" }}>
+      <div
+        className="wx-work-split"
+        style={fullPageScroll ? { display: "flex", minHeight: 0, flexShrink: 0 } : splitRow}
+      >
+        <div
+          className="wx-work-table"
+          style={
+            fullPageScroll
+              ? { flex: 1, minWidth: 0, overflowX: "auto" }
+              : { flex: 1, overflow: "auto" }
+          }
+        >
           {table}
         </div>
         {detail ? (
@@ -216,7 +229,7 @@ export function DashboardLayout({
     <div className="wx-dashboard" style={fillColumn}>
       {header}
       {kpis}
-      <div style={splitRow}>
+      <div className="wx-stepper-split" style={splitRow}>
         <div
           style={{
             flex: 1,

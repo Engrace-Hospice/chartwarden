@@ -42,6 +42,7 @@ export const t = {
   muted: "var(--color-muted)",
   outline: "var(--color-outline)",
   outlineVariant: "var(--color-outline-variant)",
+  focusRing: "var(--color-focus-ring)",
 
   // On-emphasis — text/icons on a saturated brand/status fill (white in light, twilight ink in
   // dark). Scrim — modal/overlay backdrop. Both theme-reactive (§10.3 / §6.6).

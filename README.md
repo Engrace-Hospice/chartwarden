@@ -15,6 +15,7 @@ the AI platform, and the SaaS/subscription platform.
 |---|---|
 | **Understand the repo & its authority rules** | [`CLAUDE.md`](./CLAUDE.md) — the repository guide (mirrored as [`AGENTS.md`](./AGENTS.md)). |
 | **Find any document** | [`docs/README.md`](./docs/README.md) — the master index of everything under `docs/`. |
+| **Run the project locally** | [`docs/START_PROJECT.md`](./docs/START_PROJECT.md) — step-by-step local startup guide. |
 | **Build or extend a module** | [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md) — runbook + "how to add a module". |
 | **Read the authoritative architecture** | [`docs/architecture/`](./docs/architecture/) (architecture wins over specs). |
 | **Read a module spec** | [`docs/modules/README.md`](./docs/modules/README.md) (40 specs). |
@@ -33,7 +34,7 @@ bun run test
 The `apps/` + `packages/` tree is **generated from the manifest** (`architecture/module-manifest.ts`)
 via `bun run scaffold`; the `arch:parity` gate keeps tree ↔ manifest 1:1
 (see [ADR-0027](./docs/adr/ADR-0027-phase-0-toolchain-and-scaffold.md)). To run the app locally,
-follow [`docs/DEVELOPMENT.md`](./docs/DEVELOPMENT.md).
+follow [`docs/START_PROJECT.md`](./docs/START_PROJECT.md).
 
 ## Authority rule
 

@@ -7,7 +7,9 @@
 // No-Line (§10) — region edges are tonal surface shifts or a ghost border at ≤15% opacity, never
 // an opaque 1px rule; type voices (§3) — Fraunces for human moments (titles, names, KPI labels),
 // Inter for the work (data, numerals with tabular-nums), IBM Plex Mono for identifiers/codes.
+import { useEffect, useRef } from "react";
 import type { JSX, ReactNode } from "react";
+import { Button } from "../components/button";
 import { ghostBorder, t } from "../theme/tokens";
 
 /** Page Header — screen title, breadcrumb, page-level actions. */
@@ -74,6 +76,7 @@ export function KpiStrip({ children }: { children: ReactNode }): JSX.Element {
       className="wx-kpi-strip"
       style={{
         display: "flex",
+        flexShrink: 0,
         gap: t.space4,
         padding: `${t.space4} ${t.space5}`,
         overflowX: "auto",
@@ -87,10 +90,32 @@ export function KpiStrip({ children }: { children: ReactNode }): JSX.Element {
 export interface KpiCardProps {
   label: ReactNode;
   value: ReactNode;
+  detail?: ReactNode;
+  trend?: ReactNode;
+  tone?: "neutral" | "info" | "success" | "warning" | "danger";
+  selected?: boolean;
   /** Optional click → e.g. apply a saved filter into the queue below. */
   onSelect?: () => void;
 }
-export function KpiCard({ label, value, onSelect }: KpiCardProps): JSX.Element {
+export function KpiCard({
+  label,
+  value,
+  detail,
+  trend,
+  tone = "neutral",
+  selected = false,
+  onSelect,
+}: KpiCardProps): JSX.Element {
+  const semantic =
+    tone === "info"
+      ? t.primary
+      : tone === "success"
+        ? t.success
+        : tone === "warning"
+          ? t.warning
+          : tone === "danger"
+            ? t.error
+            : t.onSurface;
   const body = (
     <>
       {/* label-sm — Fraunces eyebrow, all-caps (§3.3 Big/Small editorial rule). */}
@@ -113,11 +138,19 @@ export function KpiCard({ label, value, onSelect }: KpiCardProps): JSX.Element {
           fontSize: "1.5rem",
           fontWeight: 600,
           fontVariantNumeric: "tabular-nums",
-          color: t.onSurface,
+          color: semantic,
         }}
       >
         {value}
       </div>
+      {detail || trend ? (
+        <div
+          style={{ display: "flex", gap: t.space2, color: t.onSurfaceVariant, fontSize: "0.75rem" }}
+        >
+          {detail}
+          {trend ? <span style={{ color: semantic, fontWeight: 600 }}>{trend}</span> : null}
+        </div>
+      ) : null}
     </>
   );
   // No-Line card: surface-lowest fill + soft shadow + xl radius, no border (§2.5/§4.3).
@@ -128,13 +161,15 @@ export function KpiCard({ label, value, onSelect }: KpiCardProps): JSX.Element {
     borderRadius: t.radiusXl,
     boxShadow: t.shadowSoft,
     textAlign: "left" as const,
+    border: selected ? `2px solid ${t.primary}` : "2px solid transparent",
   };
   return onSelect ? (
     <button
       type="button"
       className="wx-kpi-card"
       onClick={onSelect}
-      style={{ ...style, cursor: "pointer", border: "none" }}
+      aria-pressed={selected}
+      style={{ ...style, cursor: "pointer" }}
     >
       {body}
     </button>
@@ -146,10 +181,19 @@ export function KpiCard({ label, value, onSelect }: KpiCardProps): JSX.Element {
 }
 
 /** Filter Bar — inline filter/search controls above a table. */
+export interface FilterBarProps {
+  children: ReactNode;
+  actions?: ReactNode;
+  /** Visible count keeps applied filtering understandable without encoding it in a color. */
+  activeFilterCount?: number;
+  onClear?: () => void;
+}
 export function FilterBar({
   children,
   actions,
-}: { children: ReactNode; actions?: ReactNode }): JSX.Element {
+  activeFilterCount = 0,
+  onClear,
+}: FilterBarProps): JSX.Element {
   return (
     <div
       className="wx-filter-bar"
@@ -163,7 +207,21 @@ export function FilterBar({
       }}
     >
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>{children}</div>
-      {actions ? <div style={{ display: "flex", gap: "0.5rem" }}>{actions}</div> : null}
+      {actions || activeFilterCount > 0 ? (
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          {activeFilterCount > 0 ? (
+            <span style={{ color: t.onSurfaceVariant, fontSize: "0.75rem" }}>
+              {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"} applied
+            </span>
+          ) : null}
+          {onClear ? (
+            <Button tone="tertiary" size="sm" onClick={onClear}>
+              Clear filters
+            </Button>
+          ) : null}
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -198,17 +256,34 @@ export interface RightDetailPanelProps {
   title?: ReactNode;
   onClose?: () => void;
   children: ReactNode;
+  /** Keeps a scrollable panel usable while visually hiding its scrollbar. */
+  hideScrollbar?: boolean;
 }
 export function RightDetailPanel({
   open = true,
   title,
   onClose,
   children,
+  hideScrollbar = false,
 }: RightDetailPanelProps): JSX.Element | null {
+  const openerRef = useRef<Element | null>(null);
+  useEffect(() => {
+    if (!open || !onClose) return;
+    openerRef.current = document.activeElement;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      (openerRef.current as HTMLElement | null)?.focus?.();
+    };
+  }, [open, onClose]);
   if (!open) return null;
   return (
     <aside
-      className="wx-right-panel"
+      className={`wx-right-panel${hideScrollbar ? " wx-no-scrollbar" : ""}`}
+      aria-label={typeof title === "string" ? title : "Detail panel"}
       style={{
         width: "24rem",
         flexShrink: 0,

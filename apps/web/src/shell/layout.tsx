@@ -7,6 +7,7 @@ import {
   NavLink,
   groupByNavGroup,
   setSearchTerm,
+  type GlyphName
 } from "@wardenx/ui";
 // apps/web/src/shell — app-shell chrome (M1, ADR-0030). Renders the primary nav (built from the
 // registered screens), the degraded-mode banner, a header with the session identity, and the routed
@@ -25,6 +26,38 @@ import { useSession } from "./session";
 import { useTheme } from "./theme";
 
 const authClient = createWardenxAuthClient();
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/[\s,._@-]+/).filter(Boolean);
+  if (parts.length === 0) return "U";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return `${parts[0]![0]}${parts[1]![0]}`.toUpperCase();
+}
+
+function getScreenIcon(title: string, group?: string): GlyphName {
+  const t = title.toLowerCase();
+  const g = group?.toLowerCase() ?? "";
+
+  if (g.includes("clinical")) return "heart";
+  if (g.includes("billing")) return "dollar";
+  if (g.includes("compliance")) return "clipboard-check";
+  if (g.includes("supplies")) return "truck";
+  if (g.includes("scheduling")) return "calendar";
+  if (g.includes("admin")) return "settings";
+  
+  if (t.includes("patient")) return "heart";
+  if (t.includes("member") || t.includes("staff") || t.includes("user")) return "users";
+  if (t.includes("billing") || t.includes("invoice") || t.includes("payment")) return "dollar";
+  if (t.includes("schedule") || t.includes("calendar")) return "calendar";
+  if (t.includes("supply") || t.includes("inventory")) return "truck";
+  if (t.includes("document") || t.includes("file") || t.includes("record")) return "file-text";
+  if (t.includes("chat") || t.includes("message") || t.includes("portal") || t.includes("communication")) return "message-square";
+  if (t.includes("ai") || t.includes("copilot") || t.includes("intelligence")) return "cpu";
+  if (t.includes("security") || t.includes("credential") || t.includes("auth")) return "shield";
+  if (t.includes("activity") || t.includes("log") || t.includes("audit")) return "activity";
+
+  return "dot";
+}
 
 export interface AppLayoutProps {
   screens: WebScreenDescriptor[];
@@ -74,12 +107,31 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
         >
           <Glyph name={navOpen ? "close" : "menu"} size={18} />
         </button>
-        <span className="wx-brand">WardenX</span>
+        <div className="wx-brand-container" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <div className="wx-brand-logo" style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "1.75rem",
+            height: "1.75rem",
+            borderRadius: "var(--radius-md)",
+            background: "linear-gradient(135deg, var(--color-primary), var(--color-primary-strong))",
+            color: "white",
+            boxShadow: "var(--shadow-soft)",
+          }}>
+            <Glyph name="shield" size={14} />
+          </div>
+          <span className="wx-brand" style={{ fontWeight: 700, fontSize: "1.15rem", letterSpacing: "-0.02em" }}>WardenX</span>
+        </div>
         {/* Top-nav global search (FB-T11). Module-free: it only navigates to the registered
             /search route — the Global Search screen (M5) owns the query + facets. */}
         <TopNavSearch />
-        <ActorMenu session={session} />
-        <ThemeToggle />
+        
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginLeft: "auto" }}>
+          <ThemeToggle />
+          <div style={{ width: "1px", height: "1.25rem", background: "color-mix(in srgb, var(--color-outline-variant) 50%, transparent)" }} />
+          <ActorMenu session={session} />
+        </div>
       </header>
       <div className="wx-body">
         {navOpen ? (
@@ -90,12 +142,15 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
             a NavLink descendant, which is already keyboard-navigable — the nav itself isn't a control. */}
         <nav
           id="wx-primary-nav"
-          className={navOpen ? "wx-nav wx-nav-open" : "wx-nav"}
+          className={navOpen ? "wx-nav wx-nav-open wx-no-scrollbar" : "wx-nav wx-no-scrollbar"}
           aria-label="Primary"
           onClick={closeNavOnLinkClick}
         >
           <NavLink to="/" end>
-            Home
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <Glyph name="home" size={16} style={{ opacity: 0.8 }} />
+              <span>Home</span>
+            </div>
           </NavLink>
           {/* Detail screens (param paths like /patients/:id) are reached programmatically, not via nav.
               Gated screens show only when the actor holds the key (FB-T15 — server still enforces).
@@ -107,13 +162,16 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
             <NavGroup key={group} label={group}>
               {items.map((s) => (
                 <NavLink key={s.id} to={s.path}>
-                  {s.title}
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <Glyph name={getScreenIcon(s.title, s.navGroup)} size={14} style={{ opacity: 0.8 }} />
+                    <span>{s.title}</span>
+                  </div>
                 </NavLink>
               ))}
             </NavGroup>
           ))}
         </nav>
-        <main className="wx-main" ref={mainRef}>
+        <main className="wx-main wx-no-scrollbar" ref={mainRef}>
           <Outlet />
         </main>
       </div>
@@ -141,13 +199,24 @@ function TopNavSearch(): JSX.Element {
   }
   return (
     // biome-ignore lint/a11y/useSemanticElements: role="search" on the form is the intended, widely-supported pattern.
-    <form className="wx-topnav-search" onSubmit={submit} role="search">
+    <form className="wx-topnav-search" onSubmit={submit} role="search" style={{ position: "relative" }}>
+      <div style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "var(--color-on-surface-variant)", opacity: 0.6, pointerEvents: "none" }}>
+        <Glyph name="search" size={16} />
+      </div>
       <input
         type="search"
         aria-label="Global search"
         placeholder="Search patients, staff…"
         value={q}
         onChange={(e) => setQ(e.target.value)}
+        style={{
+          width: "100%",
+          paddingLeft: "2.25rem",
+          background: "var(--color-surface-low)",
+          border: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+          borderRadius: "var(--radius-md)",
+          transition: "all 0.15s ease",
+        }}
       />
     </form>
   );
@@ -181,6 +250,9 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
   if (!session) {
     return <span className="wx-actor">Not signed in</span>;
   }
+  
+  const displayName = session.displayName ?? session.userId;
+  
   return (
     <div className="wx-actor" ref={ref}>
       <button
@@ -189,8 +261,24 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
+        style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
       >
-        {session.displayName ?? session.userId}
+        <div style={{
+          width: "1.75rem",
+          height: "1.75rem",
+          borderRadius: "9999px",
+          background: "var(--color-primary-tint)",
+          color: "var(--color-primary)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontWeight: 600,
+          fontSize: "0.75rem",
+        }}>
+          {getInitials(displayName)}
+        </div>
+        <span className="wx-actor-name">{displayName}</span>
+        <span aria-hidden style={{ fontSize: "0.65rem", opacity: 0.7 }}>▾</span>
       </button>
       {open ? (
         <div className="wx-actor-menu" role="menu">

@@ -5,6 +5,20 @@
 // Components
 export { CorrelationIdBadge } from "./components/correlation-id-badge";
 export type { CorrelationIdBadgeProps } from "./components/correlation-id-badge";
+export { Button, IconButton, softDangerBackground } from "./components/button";
+export type { ButtonProps, ButtonSize, ButtonTone, IconButtonProps } from "./components/button";
+export { Card } from "./components/card";
+export type { CardProps } from "./components/card";
+export { CursorPagination } from "./components/cursor-pagination";
+export type { CursorPaginationProps } from "./components/cursor-pagination";
+export { OffsetPagination } from "./components/offset-pagination";
+export type { OffsetPaginationProps } from "./components/offset-pagination";
+export { DataTable } from "./components/data-table";
+export type {
+  DataTableColumn,
+  DataTableColumnPriority,
+  DataTableProps,
+} from "./components/data-table";
 export { DegradedBanner } from "./components/degraded-banner";
 export { EmptyState } from "./components/empty-state";
 export type { EmptyStateProps } from "./components/empty-state";
@@ -14,10 +28,27 @@ export { ErrorState } from "./components/error-state";
 export type { ErrorStateProps } from "./components/error-state";
 export { LoadingSpinner } from "./components/loading-spinner";
 export type { LoadingSpinnerProps } from "./components/loading-spinner";
+export { MetricCard } from "./components/metric-card";
+export type { MetricCardProps, MetricTone } from "./components/metric-card";
+export { FormSection } from "./components/form-section";
+export type { FormSectionProps } from "./components/form-section";
+export { SelectField, TextAreaField, TextField } from "./components/fields";
+export type {
+  SelectFieldProps,
+  SelectOption,
+  TextAreaFieldProps,
+  TextFieldProps,
+} from "./components/fields";
 export { NavGroup, NavLink, groupByNavGroup } from "./components/nav-link";
 export type { NavGroupProps, NavLinkProps } from "./components/nav-link";
 export { StatusPill } from "./components/status-pill";
 export type { StatusPillProps, StatusTone } from "./components/status-pill";
+export { WorkflowStepper } from "./components/workflow-stepper";
+export type {
+  WorkflowStep,
+  WorkflowStepperProps,
+  WorkflowStepState,
+} from "./components/workflow-stepper";
 
 // Layout kit — Tier-1 regions + foundational pattern layouts (ADR-0030, WARDENX_UI_LAYOUT_PATTERNS.md)
 export * from "./layouts";

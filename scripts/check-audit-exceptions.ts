@@ -31,10 +31,15 @@ const ACCEPTED_ADVISORIES: ReadonlyArray<{
   readonly reason: string;
   readonly until: string;
 }> = [
-  // GHSA-qwww-vcr4-c8h2 (react-router RSC Mode CSRF Bypass) was removed 2026-08-08: `bun audit`
-  // no longer reports it against react-router-dom@7.18.2 (advisory range narrowed upstream), so
-  // this gate's own stale-entry check flagged the exception as obsolete. Re-add only if `bun
-  // audit` starts reporting it again.
+  {
+    ghsaId: "GHSA-2v37-7h3g-55p8",
+    reason:
+      "nanoid <3.3.18 'custom generators can loop indefinitely when size is zero' (CVSS 7.5, CWE-835) is " +
+      "a transitive devDependency of Vite in @wardenx/admin. It is used strictly at build/bundled time " +
+      "by the Vite dev server and build toolchain, not at runtime or in production PHI handling.",
+    until:
+      "vite or transitive nanoid updates to >=3.3.18 in a future lockfile bump.",
+  },
 ];
 
 const result = spawnSync("bun", ["audit", "--json"], { encoding: "utf8" });

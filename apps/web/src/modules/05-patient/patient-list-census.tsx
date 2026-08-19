@@ -1,15 +1,20 @@
 import {
+  Button,
   ConsentBadge,
+  CursorPagination,
+  DataTable,
   EmptyState,
   FilterBar,
+  KpiStrip,
   LoadingSpinner,
+  MetricCard,
   PageHeader,
   RightDetailPanel,
   StatusPill,
   WorkQueueLayout,
-  cardSurface,
   useApiClient,
 } from "@wardenx/ui";
+import type { DataTableColumn } from "@wardenx/ui";
 // apps/web/src/modules/05-patient — Patient List / Census (M5, Track A).
 // Spec: docs/design/screens/clinical/WARDENX_UI_PATIENT_LIST_CENSUS.md — "Use Work Queue."
 // Filterable, cursor-paginated census over GET /api/v1/patients via the generated typed client.
@@ -18,7 +23,7 @@ import {
 // row-select, with Open Chart deep-linking to /patients/:id. No hardcoded colors — the global
 // table styles (index.css) carry the Lantern tokens.
 import { useCallback, useEffect, useState } from "react";
-import type { JSX, ReactNode } from "react";
+import type { JSX } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { STATUS_TONE, ageFromDob, statusLabel } from "./patient-status";
 
@@ -51,77 +56,32 @@ const ADMIT_BTN = {
 
 // §4.2 census KPI strip (frame: wardenx-P0-foundation.pen `DNqXm`). Census is the real active count;
 // the cross-module KPIs show "—" with the owning module noted — honest, never fabricated numbers.
-function CensusKpis({ metrics }: { metrics: CensusMetrics | null }): JSX.Element {
+function CensusKpis({
+  metrics,
+  status,
+  onStatusSelect,
+}: {
+  metrics: CensusMetrics | null;
+  status: string;
+  onStatusSelect: (status: string) => void;
+}): JSX.Element {
   const active = metrics?.byStatus?.active ?? 0;
   const total = metrics?.total ?? 0;
   return (
-    <div
-      style={{ display: "flex", gap: "1rem", flexWrap: "wrap", padding: "0 1.5rem 0.5rem" }}
-      aria-label="Census metrics"
-    >
-      <KpiCard
-        label="Census"
+    <KpiStrip>
+      <MetricCard
+        label="Active census"
         value={metrics ? active : "…"}
-        sub={metrics ? `${total} total in org` : undefined}
+        detail={metrics ? `${total} total in organization` : "Loading metrics"}
+        tone="success"
+        selected={status === "active"}
+        onSelect={() => onStatusSelect(status === "active" ? "" : "active")}
       />
-      <KpiCard label="Admissions" value="—" sub="today · M6 Admission" muted />
-      <KpiCard label="Discharges" value="—" sub="today · M6 Admission" muted />
-      <KpiCard label="GIP" value="—" sub="billing" muted />
-      <KpiCard label="Recerts due" value="—" sub="M6 Certification" muted />
-    </div>
-  );
-}
-
-function KpiCard({
-  label,
-  value,
-  sub,
-  muted,
-}: {
-  label: string;
-  value: ReactNode;
-  sub?: string;
-  muted?: boolean;
-}): JSX.Element {
-  return (
-    <div
-      style={{
-        ...cardSurface,
-        flex: "1 1 8rem",
-        minWidth: 0,
-        padding: "0.875rem 1.125rem",
-        display: "flex",
-        flexDirection: "column",
-        gap: "0.3rem",
-      }}
-    >
-      <span
-        style={{
-          fontSize: "0.6875rem",
-          fontWeight: 600,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
-          color: "var(--color-on-surface-variant)",
-        }}
-      >
-        {label}
-      </span>
-      {/* KPI numerals are Inter tabular-nums, not Fraunces (DESIGN.md §3 / review remediation F1). */}
-      <span
-        className="tabular-nums"
-        style={{
-          fontSize: "1.75rem",
-          fontWeight: 600,
-          lineHeight: 1,
-          color: muted ? "var(--color-muted)" : "var(--color-on-surface)",
-        }}
-      >
-        {value}
-      </span>
-      {sub ? (
-        <span style={{ fontSize: "0.72rem", color: "var(--color-on-surface-variant)" }}>{sub}</span>
-      ) : null}
-    </div>
+      <MetricCard label="Admissions" value="—" detail="Today · M6 Admission" />
+      <MetricCard label="Discharges" value="—" detail="Today · M6 Admission" />
+      <MetricCard label="GIP" value="—" detail="Billing source pending" />
+      <MetricCard label="Recerts due" value="—" detail="M6 Certification" />
+    </KpiStrip>
   );
 }
 
@@ -189,20 +149,14 @@ export function PatientListCensus(): JSX.Element {
           }
         />
       }
-      kpis={<CensusKpis metrics={metrics} />}
+      kpis={<CensusKpis metrics={metrics} status={status} onStatusSelect={setStatus} />}
       filters={
         <FilterBar
-          actions={
-            <button
-              type="button"
-              onClick={() => {
-                setQ("");
-                setStatus("");
-              }}
-            >
-              Clear
-            </button>
-          }
+          activeFilterCount={Number(Boolean(q.trim())) + Number(Boolean(status))}
+          onClear={() => {
+            setQ("");
+            setStatus("");
+          }}
         >
           <input
             aria-label="Search name or MRN"
@@ -264,67 +218,67 @@ function CensusTable({
     return <EmptyState title="No patients" description="No patients match the current filters." />;
   return (
     <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>MRN</th>
-            <th>DOB / Age</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((p) => {
-            const age = ageFromDob(p.dob);
-            const isSelected = p.id === selectedId;
-            return (
-              <tr
-                key={p.id}
-                // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                role="button"
-                tabIndex={0}
-                aria-pressed={isSelected}
-                onClick={() => onSelect(p)}
-                onKeyDown={(ev) => {
-                  if (ev.key === "Enter" || ev.key === " ") {
-                    ev.preventDefault();
-                    onSelect(p);
-                  }
-                }}
-                style={{
-                  cursor: "pointer",
-                  background: isSelected ? "var(--color-primary-tint)" : undefined,
-                }}
-              >
-                <td style={{ fontWeight: 500, color: "var(--color-on-surface)" }}>
-                  {p.lastName}, {p.firstName}
-                </td>
-                <td className="wx-data-md">{p.mrn}</td>
-                <td className="tabular-nums">
-                  {p.dob}
-                  {age !== null ? ` · ${age}y` : ""}
-                </td>
-                <td>
-                  <StatusPill
-                    label={statusLabel(p.status)}
-                    tone={STATUS_TONE[p.status] ?? "neutral"}
-                  />
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {onLoadMore ? (
-        <div style={{ marginTop: "1rem", textAlign: "center" }}>
-          <button type="button" onClick={onLoadMore} disabled={loading}>
-            {loading ? "Loading…" : "Load more"}
-          </button>
-        </div>
-      ) : null}
+      <DataTable
+        ariaLabel="Patient census"
+        caption="Patients visible in the current census filters"
+        rows={items}
+        columns={CENSUS_COLUMNS}
+        getRowId={(patient) => patient.id}
+        selectedRowId={selectedId}
+        onRowSelect={onSelect}
+      />
+      <CursorPagination
+        loadedCount={items.length}
+        hasNextPage={Boolean(onLoadMore)}
+        loading={loading}
+        onNextPage={onLoadMore}
+        noun="patients"
+      />
     </div>
   );
 }
+
+const CENSUS_COLUMNS: readonly DataTableColumn<PatientSummary>[] = [
+  {
+    id: "name",
+    header: "Name",
+    cell: (patient) => (
+      <span style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
+        {patient.lastName}, {patient.firstName}
+      </span>
+    ),
+  },
+  {
+    id: "mrn",
+    header: "MRN",
+    priority: "secondary",
+    cell: (patient) => <span className="wx-data-md">{patient.mrn}</span>,
+  },
+  {
+    id: "dob",
+    header: "DOB / Age",
+    priority: "tertiary",
+    cell: (patient) => {
+      const age = ageFromDob(patient.dob);
+      return (
+        <span className="tabular-nums">
+          {patient.dob}
+          {age !== null ? ` · ${age}y` : ""}
+        </span>
+      );
+    },
+  },
+  {
+    id: "status",
+    header: "Status",
+    cell: (patient) => (
+      <StatusPill
+        label={statusLabel(patient.status)}
+        tone={STATUS_TONE[patient.status] ?? "neutral"}
+      />
+    ),
+  },
+];
 
 // Right: Patient Quick Summary (spec §"Right Panel"). Lazily fetches the per-patient identifiers
 // (MBI last-4 only — SSN is never listed, §8) + consent-gated privacy flags for the selected row.
@@ -405,22 +359,9 @@ function PatientQuickSummary({
           </Field>
         ) : null}
 
-        <button
-          type="button"
-          onClick={onOpenChart}
-          style={{
-            marginTop: "0.5rem",
-            padding: "0.5rem 1rem",
-            border: "none",
-            borderRadius: "9999px",
-            background: "var(--color-primary)",
-            color: "var(--color-on-primary)",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
+        <Button type="button" onClick={onOpenChart} style={{ marginTop: "0.5rem" }}>
           Open chart
-        </button>
+        </Button>
       </div>
     </RightDetailPanel>
   );

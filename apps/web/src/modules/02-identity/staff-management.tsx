@@ -1,28 +1,26 @@
 import {
+  Button,
   ConfirmDialog,
   EmptyState,
   Glyph,
+  IconButton,
   KpiCard,
   KpiStrip,
   LoadingSpinner,
+  Modal,
+  OffsetPagination,
   PageHeader,
+  RightDetailPanel,
   StatusPill,
   type StatusTone,
   WorkQueueLayout,
+  useApiClient,
   useToast,
 } from "@wardenx/ui";
-import { useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — Staff Management (M2, Track A).
-// Spec: docs/design/screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md (Work Queue). Manages the org's member
-// roster: invite by email, change a member's status (active/suspended), and revoke a membership — over
-// the M2 member routes via the generated client. The active org for the path comes from the session
-// (authClient.getSession). Server stays authoritative (every route is behind member.manage/member.invite/
-// role.assign + the last-admin lockout guard + M3's anti-escalation check). FB-T12 enriches the roster
-// with Name/email, Last login, and the Pending-invite / Locked-account KPIs. TASK-030 adds the pending
-// invitation roster (resend/rescind — the invite form used to be a one-way "recorded but not emailed"
-// dead end) and a per-member role editor (grant/revoke over the M3 role routes). Discipline / credentials
-// stay deferred to M34 (noted, not faked); see docs/design/DEFERRED_SCREENS.md.
-import { useCallback, useEffect, useState } from "react";
+// Modernized UI/UX refactor for WardenX Healthcare / Compliance Administration Portal.
+// Preserves all existing business logic, auth checks, server-authoritative API calls, and permission rules.
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { authClient } from "./auth-client";
 import { MemberRoleEditor } from "./member-role-editor";
@@ -54,13 +52,14 @@ const INVITE_STATUS_TONE: Record<Invitation["status"], StatusTone> = {
   revoked: "neutral",
 };
 
-// §6.6 — membership status → tone.
 const STATUS_TONE: Record<Member["status"], StatusTone> = {
   active: "success",
   suspended: "warning",
   pending: "progress",
   revoked: "neutral",
 };
+
+const STAFF_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
 export function StaffManagement(): JSX.Element {
   const client = useApiClient();
@@ -70,17 +69,32 @@ export function StaffManagement(): JSX.Element {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [pendingInvites, setPendingInvites] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  // Distinct from `error` (which is reused for invite/resend/rescind/status-change failures too):
-  // this only tracks whether the roster itself failed to load, so the KPI strip can tell "0 staff"
-  // (a legitimately empty org) apart from "unknown" (the fetch 403'd/failed) instead of rendering
-  // the same literal 0 for both (live-browser audit #8 — a Clinician hitting the 403 on
-  // /admin/staff saw "0 Active staff" etc., indistinguishable from a real empty roster short of
-  // reading the small inline error string).
   const [loadFailed, setLoadFailed] = useState(false);
+
+  // Form & Invite States
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [expandedRolesFor, setExpandedRolesFor] = useState<string | null>(null);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+
+  // Table Filters & Search
+  const [searchQuery, setSearchQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "member">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "suspended" | "pending">("all");
+  const [activeTab, setActiveTab] = useState<"roster" | "invitations">("roster");
+  const [memberPage, setMemberPage] = useState(1);
+  const [memberPageSize, setMemberPageSize] = useState(10);
+  const [invitationPage, setInvitationPage] = useState(1);
+  const [invitationPageSize, setInvitationPageSize] = useState(10);
+
+  // Selection & Side Drawer
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+
+  // Destructive Confirmation Dialogs
+  const [confirmRescind, setConfirmRescind] = useState<Invitation | null>(null);
+  const [rescindBusy, setRescindBusy] = useState(false);
+  const [confirmRevoke, setConfirmRevoke] = useState<Member | null>(null);
+  const [revokeBusy, setRevokeBusy] = useState(false);
 
   const load = useCallback(
     async (org: string) => {
@@ -91,15 +105,12 @@ export function StaffManagement(): JSX.Element {
       if (membersRes.error) {
         setError("Could not load staff. You may not have permission to manage members.");
         setLoadFailed(true);
-        // `members === null` is the "still loading" state (drives the spinner below) — leaving it
-        // null on a load error kept the spinner spinning forever alongside the error message.
         setMembers([]);
         return;
       }
       setLoadFailed(false);
       setMembers((membersRes.data?.members ?? []) as Member[]);
       setPendingInvites(membersRes.data?.pendingInvitations ?? 0);
-      // Non-fatal: the invitation roster is an enhancement on top of the roster load above.
       if (!invitationsRes.error) {
         setInvitations((invitationsRes.data?.invitations ?? []) as Invitation[]);
       }
@@ -107,7 +118,6 @@ export function StaffManagement(): JSX.Element {
     [client],
   );
 
-  // Resolve the active org from the session, then load its roster.
   useEffect(() => {
     void authClient.getSession().then(({ data }) => {
       const org = data?.session?.activeOrganizationId ?? null;
@@ -116,7 +126,7 @@ export function StaffManagement(): JSX.Element {
       else {
         setError("No active organization is bound to your session.");
         setLoadFailed(true);
-        setMembers([]); // same "don't spin forever on a resolved-but-unusable state" fix as load()
+        setMembers([]);
       }
     });
   }, [load]);
@@ -138,9 +148,6 @@ export function StaffManagement(): JSX.Element {
       );
       return;
     }
-    // TASK-030: no vendor email sender is wired yet (M36's transport no-ops in production), so the
-    // server ALSO echoes the accept link here — an honest "copy this to share it yourself" fallback,
-    // replacing the old dead-end "recorded but not emailed" message.
     if (data?.inviteUrl) {
       setInviteLink(data.inviteUrl);
       toast.show(`Invitation recorded for ${inviteEmail.trim()}. Share the link below with them.`, {
@@ -153,6 +160,7 @@ export function StaffManagement(): JSX.Element {
       );
     }
     setInviteEmail("");
+    setInviteModalOpen(false);
     void load(orgId);
   }
 
@@ -177,11 +185,6 @@ export function StaffManagement(): JSX.Element {
     }
     void load(orgId);
   }
-
-  // UI-010: rescinding a pending invite is destructive — confirm via the shared ConfirmDialog
-  // instead of the old arm-then-confirm two-click pattern (TASK-032).
-  const [confirmRescind, setConfirmRescind] = useState<Invitation | null>(null);
-  const [rescindBusy, setRescindBusy] = useState(false);
 
   async function performRescind(): Promise<void> {
     if (!orgId || !confirmRescind) return;
@@ -212,13 +215,9 @@ export function StaffManagement(): JSX.Element {
       setError("Could not update that member (the last active admin can't be suspended).");
       return;
     }
+    toast.show(`Member status updated to ${status}.`, { tone: "success" });
     void load(orgId);
   }
-
-  // UI-010: removing a member is destructive — confirm via the shared ConfirmDialog instead of the
-  // old arm-then-confirm two-click pattern (TASK-032).
-  const [confirmRevoke, setConfirmRevoke] = useState<Member | null>(null);
-  const [revokeBusy, setRevokeBusy] = useState(false);
 
   async function performRevoke(): Promise<void> {
     if (!orgId || !confirmRevoke) return;
@@ -237,214 +236,581 @@ export function StaffManagement(): JSX.Element {
       `Removed ${confirmRevoke.displayName ?? confirmRevoke.email ?? "member"} from the organization.`,
       { tone: "success" },
     );
+    if (selectedMemberId === confirmRevoke.membershipId) {
+      setSelectedMemberId(null);
+    }
     setConfirmRevoke(null);
     void load(orgId);
   }
 
-  // `null` (not 0) when the roster failed to load — the Kpi component renders that as "—" rather
-  // than a literal 0, so a 403 doesn't read as "this org has no staff" (live-browser audit #8).
-  const active = loadFailed ? null : (members?.filter((m) => m.status === "active").length ?? 0);
-  const suspended = loadFailed
+  // Calculated Metrics for KPIs
+  const activeCount = loadFailed ? null : (members?.filter((m) => m.status === "active").length ?? 0);
+  const suspendedCount = loadFailed ? null : (members?.filter((m) => m.status === "suspended").length ?? 0);
+  const adminCount = loadFailed ? null : (members?.filter((m) => m.isAdmin && m.status === "active").length ?? 0);
+  const lockedCount = loadFailed
     ? null
-    : (members?.filter((m) => m.status === "suspended").length ?? 0);
-  const admins = loadFailed
-    ? null
-    : (members?.filter((m) => m.isAdmin && m.status === "active").length ?? 0);
-  // "Locked accounts": the underlying user account is suspended/deactivated (can't sign in), distinct
-  // from a suspended *membership*. Surfaced from the joined M1 user.status (FB-T12).
-  const locked = loadFailed
-    ? null
-    : (members?.filter((m) => m.accountStatus === "suspended" || m.accountStatus === "deactivated")
-        .length ?? 0);
+    : (members?.filter((m) => m.accountStatus === "suspended" || m.accountStatus === "deactivated").length ?? 0);
+
+  // Filtered members list
+  const filteredMembers = (members ?? []).filter((m) => {
+    const nameStr = (m.displayName ?? "").toLowerCase();
+    const emailStr = (m.email ?? "").toLowerCase();
+    const q = searchQuery.trim().toLowerCase();
+    const matchesSearch = !q || nameStr.includes(q) || emailStr.includes(q);
+
+    const matchesRole =
+      roleFilter === "all" ||
+      (roleFilter === "admin" && m.isAdmin) ||
+      (roleFilter === "member" && !m.isAdmin);
+
+    const matchesStatus = statusFilter === "all" || m.status === statusFilter;
+
+    return matchesSearch && matchesRole && matchesStatus;
+  });
+
+  const selectedMember = (members ?? []).find((m) => m.membershipId === selectedMemberId) ?? null;
+  const pendingInvitationsList = invitations.filter(
+    (i) => i.status === "pending" || i.status === "expired",
+  );
+
+  const hasActiveFilters = searchQuery !== "" || roleFilter !== "all" || statusFilter !== "all";
+  const memberPageCount = Math.max(1, Math.ceil(filteredMembers.length / memberPageSize));
+  const activeMemberPage = Math.min(memberPage, memberPageCount);
+  const pagedMembers = filteredMembers.slice(
+    (activeMemberPage - 1) * memberPageSize,
+    activeMemberPage * memberPageSize,
+  );
+  const invitationPageCount = Math.max(1, Math.ceil(pendingInvitationsList.length / invitationPageSize));
+  const activeInvitationPage = Math.min(invitationPage, invitationPageCount);
+  const pagedInvitations = pendingInvitationsList.slice(
+    (activeInvitationPage - 1) * invitationPageSize,
+    activeInvitationPage * invitationPageSize,
+  );
 
   return (
     <>
       <WorkQueueLayout
-        header={<PageHeader title="Staff Management" />}
+        header={
+          <PageHeader
+            title="Staff Management"
+            breadcrumb="Admin / Organization"
+            actions={
+              <Button
+                tone="primary"
+                onClick={() => setInviteModalOpen(true)}
+                disabled={!orgId}
+              >
+                + Invite staff
+              </Button>
+            }
+          >
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Manage organization members, security access, roles, and pending invitations.
+            </div>
+          </PageHeader>
+        }
         kpis={
           <KpiStrip>
-            <KpiCard label="Active staff" value={active ?? "—"} />
-            <KpiCard label="Suspended" value={suspended ?? "—"} />
-            <KpiCard label="Admins" value={admins ?? "—"} />
-            <KpiCard label="Pending invites" value={loadFailed ? "—" : pendingInvites} />
-            <KpiCard label="Locked accounts" value={locked ?? "—"} />
+            <div style={kpiWrapperStyle("var(--color-success)")}>
+              <KpiCard
+                label="Active Staff"
+                value={activeCount ?? "—"}
+                detail="Active accounts"
+                tone="success"
+              />
+            </div>
+            <div style={kpiWrapperStyle("var(--color-primary)")}>
+              <KpiCard
+                label="Admins"
+                value={adminCount ?? "—"}
+                detail="Full org access"
+                tone="info"
+              />
+            </div>
+            <div
+              style={kpiWrapperStyle(
+                pendingInvites > 0 ? "var(--color-warning)" : "var(--color-outline-variant)",
+              )}
+            >
+              <KpiCard
+                label="Pending Invites"
+                value={loadFailed ? "—" : pendingInvites}
+                detail="Awaiting acceptance"
+                tone={pendingInvites > 0 ? "warning" : "neutral"}
+                onSelect={() => setActiveTab("invitations")}
+                selected={activeTab === "invitations"}
+              />
+            </div>
+            <div
+              style={kpiWrapperStyle(
+                (suspendedCount ?? 0) > 0
+                  ? "var(--color-warning)"
+                  : "var(--color-outline-variant)",
+              )}
+            >
+              <KpiCard
+                label="Suspended"
+                value={suspendedCount ?? "—"}
+                detail="Access paused"
+                tone={(suspendedCount ?? 0) > 0 ? "warning" : "neutral"}
+              />
+            </div>
+            <div
+              style={kpiWrapperStyle(
+                (lockedCount ?? 0) > 0 ? "var(--color-error)" : "var(--color-outline-variant)",
+              )}
+            >
+              <KpiCard
+                label="Locked Accounts"
+                value={lockedCount ?? "—"}
+                detail="Security locked"
+                tone={(lockedCount ?? 0) > 0 ? "danger" : "neutral"}
+              />
+            </div>
           </KpiStrip>
         }
         filters={
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <form onSubmit={invite} style={inviteBar}>
-              <input
-                type="email"
-                required
-                placeholder="Invite by email…"
-                aria-label="Invite by email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                style={field}
-              />
-              <button
-                type="submit"
-                disabled={busy || !inviteEmail.trim() || !orgId}
-                style={primaryBtn}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", padding: "0 1.5rem 0.75rem" }}>
+            {/* Error Banner */}
+            {error ? (
+              <div
+                role="alert"
+                style={{
+                  padding: "0.625rem 1rem",
+                  borderRadius: "var(--radius-md)",
+                  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
+                  color: "var(--color-error)",
+                  fontSize: "0.85rem",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
               >
-                {busy ? "Sending…" : "Invite"}
-              </button>
-              {error ? (
-                <span role="alert" style={{ color: "var(--color-error)", fontSize: "0.85rem" }}>
-                  {error}
-                </span>
-              ) : null}
-            </form>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <Glyph name="alert" size={16} />
+                  <span>{error}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setError(null)}
+                  style={{
+                    border: "none",
+                    background: "none",
+                    color: "inherit",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            ) : null}
+
+            {/* Generated Invite URL Banner */}
             {inviteLink ? (
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "0.5rem",
-                  padding: "0 0.1rem",
+                  justifyContent: "space-between",
+                  gap: "0.75rem",
+                  padding: "0.625rem 1rem",
+                  borderRadius: "var(--radius-md)",
+                  background: "var(--color-primary-tint)",
+                  border: "1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)",
                 }}
               >
-                <code className="wx-data-md" style={inviteLinkField}>
-                  {inviteLink}
-                </code>
-                <button
-                  type="button"
-                  style={linkBtn}
-                  onClick={() => void navigator.clipboard.writeText(inviteLink)}
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1, minWidth: 0 }}>
+                  <Glyph name="sparkle" size={16} />
+                  <span style={{ fontSize: "0.85rem", color: "var(--color-on-surface)" }}>
+                    Invitation link:
+                  </span>
+                  <code className="wx-data-md" style={inviteLinkStyle}>
+                    {inviteLink}
+                  </code>
+                </div>
+                <Button
+                  size="sm"
+                  tone="secondary"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(inviteLink);
+                    toast.show("Invite link copied to clipboard", { tone: "success" });
+                  }}
                 >
-                  Copy link
-                </button>
+                  Copy Link
+                </Button>
               </div>
             ) : null}
+
+            {/* Navigation Tabs & Search Toolbar */}
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "1rem",
+              }}
+            >
+              {/* Tab Navigation */}
+              <div style={{ display: "flex", gap: "0.25rem", background: "var(--color-surface-container)", padding: "0.2rem", borderRadius: "var(--radius-md)" }}>
+                <button
+                  type="button"
+                    onClick={() => setActiveTab("roster")}
+                  style={tabButtonStyle(activeTab === "roster")}
+                >
+                  Roster ({members?.length ?? 0})
+                </button>
+                <button
+                  type="button"
+                    onClick={() => setActiveTab("invitations")}
+                  style={tabButtonStyle(activeTab === "invitations")}
+                >
+                  Pending Invites ({pendingInvitationsList.length})
+                </button>
+              </div>
+
+              {/* Quick Search & Filters */}
+              {activeTab === "roster" ? (
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <div style={{ position: "relative", minWidth: "15rem" }}>
+                    <input
+                      type="search"
+                      placeholder="Search staff by name or email..."
+                      value={searchQuery}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        setMemberPage(1);
+                      }}
+                      aria-label="Search staff"
+                      style={{
+                        width: "100%",
+                        paddingLeft: "2rem",
+                        height: "2.25rem",
+                        fontSize: "0.85rem",
+                      }}
+                    />
+                    <div style={{ position: "absolute", left: "0.625rem", top: "50%", transform: "translateY(-50%)", color: "var(--color-on-surface-variant)", pointerEvents: "none" }}>
+                      <Glyph name="eye" size={14} />
+                    </div>
+                  </div>
+
+                  <select
+                    value={roleFilter}
+                    onChange={(e) => {
+                      setRoleFilter(e.target.value as typeof roleFilter);
+                      setMemberPage(1);
+                    }}
+                    aria-label="Filter by role"
+                    style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
+                  >
+                    <option value="all">Role: All</option>
+                    <option value="admin">Org Admin</option>
+                    <option value="member">Member</option>
+                  </select>
+
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => {
+                      setStatusFilter(e.target.value as typeof statusFilter);
+                      setMemberPage(1);
+                    }}
+                    aria-label="Filter by status"
+                    style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
+                  >
+                    <option value="all">Status: All</option>
+                    <option value="active">Active</option>
+                    <option value="suspended">Suspended</option>
+                    <option value="pending">Pending</option>
+                  </select>
+
+                  {hasActiveFilters ? (
+                    <Button
+                      size="sm"
+                      tone="tertiary"
+                      onClick={() => {
+                        setSearchQuery("");
+                        setRoleFilter("all");
+                        setStatusFilter("all");
+                        setMemberPage(1);
+                      }}
+                    >
+                      Clear
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           </div>
         }
         table={
           members === null ? (
-            <LoadingSpinner />
-          ) : members.length === 0 ? (
-            <EmptyState
-              title="No staff yet"
-              description="Invite a team member above to get started."
-            />
-          ) : (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : activeTab === "invitations" ? (
             <>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
+              <PendingInvitationsTable
+                invitations={pagedInvitations}
+                onResend={resendInvite}
+                onRescind={setConfirmRescind}
+              />
+              <OffsetPagination
+                page={activeInvitationPage}
+                pageSize={invitationPageSize}
+                totalItems={pendingInvitationsList.length}
+                onPageChange={setInvitationPage}
+                onPageSizeChange={(pageSize) => {
+                  setInvitationPageSize(pageSize);
+                  setInvitationPage(1);
+                }}
+                pageSizeOptions={STAFF_PAGE_SIZES}
+                noun="invitations"
+              />
+            </>
+          ) : filteredMembers.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title={hasActiveFilters ? "No matching staff found" : "No staff members yet"}
+                description={
+                  hasActiveFilters
+                    ? "Try adjusting your search criteria or clearing active filters."
+                    : "Invite team members to your organization to get started."
+                }
+                action={
+                  hasActiveFilters ? (
+                    <Button
+                      tone="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setSearchQuery("");
+                        setRoleFilter("all");
+                        setStatusFilter("all");
+                        setMemberPage(1);
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  ) : (
+                    <Button tone="primary" size="sm" onClick={() => setInviteModalOpen(true)}>
+                      + Invite staff member
+                    </Button>
+                  )
+                }
+              />
+            </div>
+          ) : (
+            <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem 1.5rem" }}>
+              <table style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
                 <thead>
                   <tr
                     style={{
                       textAlign: "left",
                       color: "var(--color-on-surface-variant)",
-                      borderBottom: "1px solid var(--color-outline-variant)",
+                      borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+                      background: "var(--color-surface-low)",
                     }}
                   >
-                    <th style={th}>Member</th>
-                    <th style={th}>Email</th>
-                    <th style={th}>Role</th>
-                    <th style={th}>Last login</th>
-                    <th style={th}>Locations</th>
-                    <th style={th}>Status</th>
-                    <th style={th}>Actions</th>
+                    <th style={{ ...thStyle, width: "35%" }}>Member</th>
+                    <th style={{ ...thStyle, width: "15%" }}>Role</th>
+                    <th style={{ ...thStyle, width: "15%" }}>Last login</th>
+                    <th style={{ ...thStyle, width: "15%" }}>Locations</th>
+                    <th style={{ ...thStyle, width: "10%" }}>Status</th>
+                    <th style={{ ...thStyle, width: "10%", textAlign: "right" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {members.map((m) => (
-                    <tr
-                      key={m.membershipId}
-                      style={{ borderBottom: "1px solid var(--color-outline-variant)" }}
-                    >
-                      <td style={td}>
-                        <MemberName member={m} />
-                      </td>
-                      <td style={td}>{m.email ?? "—"}</td>
-                      <td style={td}>{m.isAdmin ? "Org admin" : "Member"}</td>
-                      <td style={{ ...td, ...tabular }}>{formatDate(m.lastLoginAt)}</td>
-                      <td style={{ ...td, ...tabular }}>{m.defaultLocationIds.length}</td>
-                      <td style={td}>
-                        <StatusPill label={cap(m.status)} tone={STATUS_TONE[m.status]} />
-                      </td>
-                      <td style={td}>
-                        {m.status === "active" ? (
-                          <button
-                            type="button"
-                            onClick={() => setStatus(m, "suspended")}
-                            style={linkBtn}
+                  {pagedMembers.map((m) => {
+                    const isSelected = selectedMemberId === m.membershipId;
+                    return (
+                      <tr
+                        key={m.membershipId}
+                        onClick={() => setSelectedMemberId(m.membershipId)}
+                        style={{
+                          borderBottom:
+                            "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+                          background: isSelected
+                            ? "var(--color-primary-tint)"
+                            : "transparent",
+                          cursor: "pointer",
+                          transition: "background 0.15s ease",
+                        }}
+                        className="wx-data-row-interactive"
+                      >
+                        <td style={tdStyle}>
+                          <MemberAvatarCell member={m} />
+                        </td>
+                        <td style={tdStyle}>
+                          <span
+                            style={{
+                              display: "inline-block",
+                              padding: "0.2rem 0.5rem",
+                              borderRadius: "var(--radius-sm)",
+                              fontSize: "0.75rem",
+                              fontWeight: 500,
+                              background: m.isAdmin
+                                ? "var(--color-primary-tint)"
+                                : "var(--color-surface-container)",
+                              color: m.isAdmin
+                                ? "var(--color-primary)"
+                                : "var(--color-on-surface-variant)",
+                            }}
                           >
-                            Suspend
-                          </button>
-                        ) : m.status === "suspended" ? (
-                          <button
-                            type="button"
-                            onClick={() => setStatus(m, "active")}
-                            style={linkBtn}
+                            {m.isAdmin ? "Org Admin" : "Member"}
+                          </span>
+                        </td>
+                        <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                          {formatDate(m.lastLoginAt)}
+                        </td>
+                        <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                          <span
+                            style={{
+                              padding: "0.15rem 0.4rem",
+                              borderRadius: "9999px",
+                              fontSize: "0.75rem",
+                              background: "var(--color-surface-container)",
+                              color: "var(--color-on-surface-variant)",
+                            }}
                           >
-                            Reactivate
-                          </button>
-                        ) : null}
-                        {m.status !== "revoked" ? (
-                          <button
-                            type="button"
-                            onClick={() => setConfirmRevoke(m)}
-                            style={{ ...linkBtn, color: "var(--color-error)" }}
-                          >
-                            Remove
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedRolesFor((cur) =>
-                              cur === m.membershipId ? null : m.membershipId,
-                            )
-                          }
-                          style={linkBtn}
-                        >
-                          {expandedRolesFor === m.membershipId ? "Hide roles" : "Roles"}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {members.map((m) =>
-                    expandedRolesFor === m.membershipId ? (
-                      <tr key={`${m.membershipId}-roles`}>
+                            {m.defaultLocationIds.length}{" "}
+                            {m.defaultLocationIds.length === 1 ? "location" : "locations"}
+                          </span>
+                        </td>
+                        <td style={tdStyle}>
+                          <StatusPill label={cap(m.status)} tone={STATUS_TONE[m.status]} />
+                        </td>
                         <td
-                          colSpan={7}
-                          style={{ padding: "0 1.5rem 1rem", background: "var(--color-surface)" }}
+                          style={{ ...tdStyle, textAlign: "right" }}
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          <MemberRoleEditor
-                            membershipId={m.membershipId}
-                            memberLabel={m.displayName ?? m.email ?? m.membershipId}
+                          <StaffActionDropdown
+                            member={m}
+                            onViewDetails={() => setSelectedMemberId(m.membershipId)}
+                            onToggleStatus={(status) => setStatus(m, status)}
+                            onRemove={() => setConfirmRevoke(m)}
                           />
                         </td>
                       </tr>
-                    ) : null,
-                  )}
+                    );
+                  })}
                 </tbody>
               </table>
-              <PendingInvitations
-                invitations={invitations}
-                onResend={resendInvite}
-                onRescind={setConfirmRescind}
+              <OffsetPagination
+                page={activeMemberPage}
+                pageSize={memberPageSize}
+                totalItems={filteredMembers.length}
+                onPageChange={setMemberPage}
+                onPageSizeChange={(pageSize) => {
+                  setMemberPageSize(pageSize);
+                  setMemberPage(1);
+                }}
+                pageSizeOptions={STAFF_PAGE_SIZES}
+                noun="staff members"
               />
-            </>
+            </div>
           )
         }
+        detail={
+          selectedMember ? (
+            <RightDetailPanel
+              open={selectedMember !== null}
+              title="Staff Profile"
+              onClose={() => setSelectedMemberId(null)}
+              hideScrollbar
+            >
+              <StaffDrawerContent
+                member={selectedMember}
+                onStatusChange={(status) => setStatus(selectedMember, status)}
+                onRemove={() => setConfirmRevoke(selectedMember)}
+              />
+            </RightDetailPanel>
+          ) : null
+        }
+        fullPageScroll
       />
+
+      {/* Invite Staff Modal */}
+      <Modal
+        open={inviteModalOpen}
+        onClose={() => setInviteModalOpen(false)}
+        ariaLabel="Invite Staff Member"
+      >
+        <form onSubmit={invite} style={{ display: "flex", flexDirection: "column", gap: "1.25rem", padding: "1.5rem" }}>
+          <h3 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 600, color: "var(--color-on-surface)" }}>
+            Invite Staff Member
+          </h3>
+          <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--color-on-surface-variant)" }}>
+            Send an invitation email to add a new team member to your organization roster.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+            <label
+              htmlFor="invite-email-input"
+              style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--color-on-surface)" }}
+            >
+              Email Address
+            </label>
+            <input
+              id="invite-email-input"
+              type="email"
+              required
+              placeholder="e.g. clinician@wardenx.local"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              style={{ width: "100%", padding: "0.5rem 0.75rem" }}
+            />
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: "0.5rem",
+              paddingTop: "0.5rem",
+              borderTop: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+            }}
+          >
+            <Button
+              type="button"
+              tone="tertiary"
+              onClick={() => setInviteModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              tone="primary"
+              disabled={busy || !inviteEmail.trim() || !orgId}
+            >
+              {busy ? "Sending..." : "Send Invitation"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Confirm Revoke Dialog */}
       <ConfirmDialog
         open={confirmRevoke !== null}
-        title="Remove member?"
-        description={`This removes ${confirmRevoke?.displayName ?? confirmRevoke?.email ?? "this member"} from the organization. They lose access immediately.`}
+        title="Remove Member?"
+        description={`This will immediately revoke access for ${
+          confirmRevoke?.displayName ?? confirmRevoke?.email ?? "this member"
+        }. They will no longer be able to log in or access organization data.`}
         tone="danger"
-        confirmLabel="Remove"
+        confirmLabel="Remove Member"
         pending={revokeBusy}
         onConfirm={() => void performRevoke()}
         onCancel={() => setConfirmRevoke(null)}
       />
+
+      {/* Confirm Rescind Invitation Dialog */}
       <ConfirmDialog
         open={confirmRescind !== null}
-        title="Rescind invitation?"
-        description={`The invite link sent to ${confirmRescind?.email ?? "this address"} stops working immediately.`}
+        title="Rescind Invitation?"
+        description={`The invite link sent to ${
+          confirmRescind?.email ?? "this address"
+        } will be invalidated immediately.`}
         tone="danger"
-        confirmLabel="Rescind"
+        confirmLabel="Rescind Invite"
         pending={rescindBusy}
         onConfirm={() => void performRescind()}
         onCancel={() => setConfirmRescind(null)}
@@ -453,7 +819,345 @@ export function StaffManagement(): JSX.Element {
   );
 }
 
-function PendingInvitations({
+// ---------------------------------------------------------------------------
+// Sub-components: Action Dropdown, Avatars, Drawer & Pending Table
+// ---------------------------------------------------------------------------
+
+function StaffActionDropdown({
+  member,
+  onViewDetails,
+  onToggleStatus,
+  onRemove,
+}: {
+  member: Member;
+  onViewDetails: () => void;
+  onToggleStatus: (status: "active" | "suspended") => void;
+  onRemove: () => void;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e: MouseEvent): void {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent): void {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} style={{ position: "relative", display: "inline-block" }}>
+      <IconButton
+        aria-label="Actions menu"
+        onClick={() => setOpen((prev) => !prev)}
+        style={{
+          borderRadius: "var(--radius-md)",
+          padding: "0.25rem",
+        }}
+      >
+        <span style={{ fontWeight: "bold", fontSize: "1.1rem", lineHeight: 1 }}>•••</span>
+      </IconButton>
+
+      {open ? (
+        <div
+          style={{
+            position: "absolute",
+            right: 0,
+            top: "calc(100% + 0.25rem)",
+            width: "11rem",
+            background: "var(--color-surface-lowest)",
+            border: "1px solid color-mix(in srgb, var(--color-outline-variant) 50%, transparent)",
+            borderRadius: "var(--radius-md)",
+            boxShadow: "var(--shadow-float)",
+            zIndex: 30,
+            padding: "0.375rem",
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.125rem",
+          }}
+        >
+          <button
+            type="button"
+            style={dropdownItemStyle(false)}
+            onClick={() => {
+              setOpen(false);
+              onViewDetails();
+            }}
+          >
+            <Glyph name="eye" size={14} />
+            <span>View details</span>
+          </button>
+
+          {member.status === "active" ? (
+            <button
+              type="button"
+              style={dropdownItemStyle(false)}
+              onClick={() => {
+                setOpen(false);
+                onToggleStatus("suspended");
+              }}
+            >
+              <Glyph name="block" size={14} />
+              <span>Suspend</span>
+            </button>
+          ) : member.status === "suspended" ? (
+            <button
+              type="button"
+              style={dropdownItemStyle(false)}
+              onClick={() => {
+                setOpen(false);
+                onToggleStatus("active");
+              }}
+            >
+              <Glyph name="check" size={14} />
+              <span>Reactivate</span>
+            </button>
+          ) : null}
+
+          {member.status !== "revoked" ? (
+            <button
+              type="button"
+              style={dropdownItemStyle(true)}
+              onClick={() => {
+                setOpen(false);
+                onRemove();
+              }}
+            >
+              <Glyph name="close" size={14} />
+              <span>Remove member</span>
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MemberAvatarCell({ member }: { member: Member }): JSX.Element {
+  const name = member.displayName ?? member.email ?? member.membershipId.slice(0, 8);
+  const initials = getInitials(name);
+  const isLocked = member.accountStatus === "suspended" || member.accountStatus === "deactivated";
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+      <div
+        aria-hidden
+        style={{
+          width: "2.25rem",
+          height: "2.25rem",
+          borderRadius: "9999px",
+          background: "var(--color-primary-tint)",
+          color: "var(--color-primary)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontWeight: 600,
+          fontSize: "0.85rem",
+          flexShrink: 0,
+        }}
+      >
+        {initials}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+          <span style={{ fontWeight: 600, color: "var(--color-on-surface)" }}>{name}</span>
+          {isLocked ? <StatusPill label="Locked" tone="error" glyph="lock" /> : null}
+        </div>
+        {member.email ? (
+          <span style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
+            {member.email}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function StaffDrawerContent({
+  member,
+  onStatusChange,
+  onRemove,
+}: {
+  member: Member;
+  onStatusChange: (status: "active" | "suspended") => void;
+  onRemove: () => void;
+}): JSX.Element {
+  const isLocked = member.accountStatus === "suspended" || member.accountStatus === "deactivated";
+  const name = member.displayName ?? member.email ?? member.membershipId.slice(0, 8);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem", paddingTop: "0.5rem" }}>
+      {/* Header Profile Summary */}
+      <div style={{ display: "flex", alignItems: "center", gap: "0.875rem", paddingBottom: "1rem", borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)" }}>
+        <div
+          style={{
+            width: "3rem",
+            height: "3rem",
+            borderRadius: "9999px",
+            background: "var(--color-primary-tint)",
+            color: "var(--color-primary)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: 600,
+            fontSize: "1.1rem",
+            flexShrink: 0,
+          }}
+        >
+          {getInitials(name)}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+          <div style={{ fontWeight: 600, fontSize: "1.1rem", color: "var(--color-on-surface)" }}>
+            {name}
+          </div>
+          <div style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
+            {member.email ?? "No email provided"}
+          </div>
+          <div style={{ display: "flex", gap: "0.375rem", marginTop: "0.25rem" }}>
+            <StatusPill label={cap(member.status)} tone={STATUS_TONE[member.status]} />
+            {member.isAdmin ? <StatusPill label="Org Admin" tone="progress" /> : null}
+          </div>
+        </div>
+      </div>
+
+      {/* Account Details Section */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <h4 style={{ margin: 0, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-on-surface-variant)" }}>
+          Account Details
+        </h4>
+        <div style={detailGridStyle}>
+          <DetailRow label="Membership ID" value={member.membershipId} isCode />
+          <DetailRow label="User ID" value={member.userId} isCode />
+          <DetailRow label="Last Login" value={formatDate(member.lastLoginAt)} />
+          <DetailRow label="Account Status" value={member.accountStatus ?? "Active"} />
+          <DetailRow
+            label="Assigned Locations"
+            value={`${member.defaultLocationIds.length} location(s)`}
+          />
+        </div>
+      </div>
+
+      {/* Security Status */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <h4 style={{ margin: 0, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-on-surface-variant)" }}>
+          Security & Access State
+        </h4>
+        <div
+          style={{
+            padding: "0.75rem",
+            borderRadius: "var(--radius-md)",
+            background: isLocked ? "color-mix(in srgb, var(--color-error) 10%, transparent)" : "var(--color-surface-low)",
+            border: `1px solid color-mix(in srgb, ${isLocked ? "var(--color-error)" : "var(--color-outline-variant)"} 40%, transparent)`,
+            fontSize: "0.85rem",
+            color: "var(--color-on-surface)",
+          }}
+        >
+          {isLocked ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--color-error)" }}>
+              <Glyph name="lock" size={16} />
+              <span>User account is locked or deactivated.</span>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--color-success)" }}>
+              <Glyph name="check-circle" size={16} />
+              <span>Account is in good security standing.</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Embedded Role Editor */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", paddingTop: "0.5rem", borderTop: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)" }}>
+        <h4 style={{ margin: 0, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-on-surface-variant)" }}>
+          Assigned Roles
+        </h4>
+        <MemberRoleEditor
+          membershipId={member.membershipId}
+          memberLabel={name}
+        />
+      </div>
+
+      {/* Lifecycle Actions */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.5rem",
+          paddingTop: "1rem",
+          borderTop: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+        }}
+      >
+        <h4 style={{ margin: 0, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-on-surface-variant)" }}>
+          Lifecycle Actions
+        </h4>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          {member.status === "active" ? (
+            <Button
+              tone="secondary"
+              size="sm"
+              onClick={() => onStatusChange("suspended")}
+            >
+              Suspend Member
+            </Button>
+          ) : member.status === "suspended" ? (
+            <Button
+              tone="primary"
+              size="sm"
+              onClick={() => onStatusChange("active")}
+            >
+              Reactivate Member
+            </Button>
+          ) : null}
+
+          {member.status !== "revoked" ? (
+            <Button
+              tone="danger"
+              size="sm"
+              onClick={onRemove}
+            >
+              Remove Member
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailRow({
+  label,
+  value,
+  isCode = false,
+}: {
+  label: string;
+  value: string;
+  isCode?: boolean;
+}): JSX.Element {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.85rem" }}>
+      <span style={{ color: "var(--color-on-surface-variant)" }}>{label}</span>
+      {isCode ? (
+        <code className="wx-data-md" style={{ fontSize: "0.75rem", background: "var(--color-surface-container)", padding: "0.1rem 0.3rem", borderRadius: "var(--radius-sm)" }}>
+          {value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value}
+        </code>
+      ) : (
+        <span style={{ fontWeight: 500, color: "var(--color-on-surface)" }}>{value}</span>
+      )}
+    </div>
+  );
+}
+
+function PendingInvitationsTable({
   invitations,
   onResend,
   onRescind,
@@ -461,49 +1165,62 @@ function PendingInvitations({
   invitations: Invitation[];
   onResend: (inv: Invitation) => void;
   onRescind: (inv: Invitation) => void;
-}): JSX.Element | null {
-  const relevant = invitations.filter((i) => i.status === "pending" || i.status === "expired");
-  if (relevant.length === 0) return null;
+}): JSX.Element {
+  if (invitations.length === 0) {
+    return (
+      <div style={{ padding: "2rem 1.5rem" }}>
+        <EmptyState
+          title="No pending invitations"
+          description="All invitations have been accepted or processed."
+        />
+      </div>
+    );
+  }
+
   return (
-    <div style={{ padding: "1rem 1.5rem" }}>
-      <h2 style={{ fontSize: "0.9rem", margin: "0 0 0.5rem" }}>Pending invitations</h2>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+    <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem 1.5rem" }}>
+      <table style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
         <thead>
           <tr
             style={{
               textAlign: "left",
               color: "var(--color-on-surface-variant)",
-              borderBottom: "1px solid var(--color-outline-variant)",
+              borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+              background: "var(--color-surface-low)",
             }}
           >
-            <th style={th}>Email</th>
-            <th style={th}>Status</th>
-            <th style={th}>Expires</th>
-            <th style={th}>Actions</th>
+            <th style={{ ...thStyle, width: "45%" }}>Email</th>
+            <th style={{ ...thStyle, width: "20%" }}>Status</th>
+            <th style={{ ...thStyle, width: "20%" }}>Expires</th>
+            <th style={{ ...thStyle, width: "15%", textAlign: "right" }}>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {relevant.map((inv) => (
+          {invitations.map((inv) => (
             <tr
               key={inv.invitationId}
-              style={{ borderBottom: "1px solid var(--color-outline-variant)" }}
+              style={{
+                borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+              }}
             >
-              <td style={td}>{inv.email}</td>
-              <td style={td}>
+              <td style={tdStyle}>
+                <span style={{ fontWeight: 500, color: "var(--color-on-surface)" }}>{inv.email}</span>
+              </td>
+              <td style={tdStyle}>
                 <StatusPill label={cap(inv.status)} tone={INVITE_STATUS_TONE[inv.status]} />
               </td>
-              <td style={{ ...td, ...tabular }}>{formatDate(inv.expiresAt)}</td>
-              <td style={td}>
-                <button type="button" onClick={() => onResend(inv)} style={linkBtn}>
-                  Resend
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onRescind(inv)}
-                  style={{ ...linkBtn, color: "var(--color-error)" }}
-                >
-                  Rescind
-                </button>
+              <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                {formatDate(inv.expiresAt)}
+              </td>
+              <td style={{ ...tdStyle, textAlign: "right" }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.375rem" }}>
+                  <Button size="sm" tone="secondary" onClick={() => onResend(inv)}>
+                    Resend
+                  </Button>
+                  <Button size="sm" tone="danger" onClick={() => onRescind(inv)}>
+                    Rescind
+                  </Button>
+                </div>
               </td>
             </tr>
           ))}
@@ -513,69 +1230,90 @@ function PendingInvitations({
   );
 }
 
-// Display name falls back to email, then a short membership id — never a blank cell. A locked account
-// (user.status suspended/deactivated) is badged inline so it's visible even when the membership is active.
-function MemberName({ member }: { member: Member }): JSX.Element {
-  const primary = member.displayName ?? member.email ?? member.membershipId.slice(0, 8);
-  const isLocked = member.accountStatus === "suspended" || member.accountStatus === "deactivated";
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
-      {member.displayName ? primary : <span className="wx-data-md">{primary}</span>}
-      {isLocked ? <StatusPill label="Locked" tone="error" glyph="lock" /> : null}
-    </span>
-  );
-}
+// ---------------------------------------------------------------------------
+// Helpers & Utility Styles
+// ---------------------------------------------------------------------------
 
-/** Render an ISO timestamp as a local date, or an em dash for null (e.g. never signed in). */
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString();
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/[\s,._@-]+/).filter(Boolean);
+  if (parts.length === 0) return "U";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return `${parts[0]![0]}${parts[1]![0]}`.toUpperCase();
 }
 
 const cap = (s: string): string => s.replace(/\b\w/g, (c) => c.toUpperCase());
 
-const tabular = { fontVariantNumeric: "tabular-nums" } as const;
-const inviteLinkField = {
-  padding: "0.25rem 0.5rem",
-  border: "1px solid var(--color-outline-variant)",
-  borderRadius: "0.4rem",
+const kpiWrapperStyle = (accentColor: string) => ({
+  borderLeft: `4px solid ${accentColor}`,
+  borderRadius: "var(--radius-xl)",
+  overflow: "hidden",
+});
+
+const thStyle = {
+  padding: "0.625rem 1rem",
+  fontWeight: 600,
+  fontSize: "0.75rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};
+
+const tdStyle = {
+  padding: "0.75rem 1rem",
+  verticalAlign: "middle" as const,
+};
+
+const inviteLinkStyle = {
+  padding: "0.2rem 0.5rem",
+  background: "var(--color-surface-lowest)",
+  border: "1px solid color-mix(in srgb, var(--color-primary) 30%, transparent)",
+  borderRadius: "var(--radius-sm)",
   fontSize: "0.8rem",
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap" as const,
-  maxWidth: "28rem",
-} as const;
-const inviteBar = {
+  maxWidth: "20rem",
+};
+
+const tabButtonStyle = (active: boolean) => ({
+  border: "none",
+  background: active ? "var(--color-surface-lowest)" : "transparent",
+  color: active ? "var(--color-primary)" : "var(--color-on-surface-variant)",
+  boxShadow: active ? "var(--shadow-soft)" : "none",
+  fontWeight: active ? 600 : 500,
+  fontSize: "0.85rem",
+  padding: "0.35rem 0.75rem",
+  borderRadius: "var(--radius-md)",
+  cursor: "pointer",
+  transition: "all 0.15s ease",
+});
+
+const dropdownItemStyle = (isDanger: boolean) => ({
   display: "flex",
-  gap: "0.5rem",
   alignItems: "center",
-  padding: "0 1.5rem 0.75rem",
-  flexWrap: "wrap" as const,
-} as const;
-const field = {
-  padding: "0.4rem 0.6rem",
-  border: "1px solid var(--color-outline-variant)",
-  borderRadius: "0.5rem",
-  minWidth: "16rem",
-} as const;
-const th = { padding: "0.5rem 1.5rem", fontWeight: 600 } as const;
-const td = { padding: "0.5rem 1.5rem" } as const;
-const primaryBtn = {
-  padding: "0.4rem 0.9rem",
+  gap: "0.5rem",
+  width: "100%",
+  padding: "0.4rem 0.5rem",
   border: "none",
-  borderRadius: "0.5rem",
-  background: "var(--color-primary)",
-  color: "var(--color-surface-lowest)",
+  background: "transparent",
+  color: isDanger ? "var(--color-error)" : "var(--color-on-surface)",
+  fontSize: "0.825rem",
+  borderRadius: "var(--radius-sm)",
   cursor: "pointer",
-  fontWeight: 600,
-} as const;
-const linkBtn = {
-  border: "none",
-  background: "none",
-  color: "var(--color-primary)",
-  cursor: "pointer",
-  fontWeight: 600,
-  marginRight: "0.75rem",
-  padding: 0,
-} as const;
+  textAlign: "left" as const,
+});
+
+const detailGridStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.5rem",
+  padding: "0.75rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-low)",
+};

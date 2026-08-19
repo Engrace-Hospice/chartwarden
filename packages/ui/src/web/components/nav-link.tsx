@@ -1,14 +1,9 @@
-// @wardenx/ui — NavLink + navGroup sections (UI-001). The primary shell sidebar mapped plain
-// react-router `Link`s over a flat screen list: no active-state signal (the `[aria-current="page"]`
-// CSS in apps/web/src/index.css was dead code — nothing ever set it) and no use of the `navGroup`
-// label 35 module screen-sets already declare. `NavLink` wraps react-router's own `NavLink` (every
-// @wardenx/ui web consumer — apps/web, apps/portal, apps/admin — already depends on
-// react-router-dom@^6), which sets `aria-current="page"` on the active route for free. `NavGroup` +
-// `groupByNavGroup` give the sidebar the same collapsible-by-group structure `RoleHome` already uses.
-import { useId, useState } from "react";
+// @wardenx/ui — NavLink + navGroup sections (UI-001).
+import React, { useId, useState, useEffect } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
-import { NavLink as RouterNavLink } from "react-router-dom";
+import { NavLink as RouterNavLink, useLocation } from "react-router-dom";
 import { t } from "../theme/tokens";
+import { Glyph, type GlyphName } from "../system/glyphs";
 
 export interface NavLinkProps {
   to: string;
@@ -41,12 +36,43 @@ export interface NavGroupProps {
   defaultOpen?: boolean;
 }
 
+function getGroupIcon(label: string): GlyphName {
+  const l = label.toLowerCase();
+  if (l.includes("clinical")) return "heart";
+  if (l.includes("billing")) return "dollar";
+  if (l.includes("compliance")) return "clipboard-check";
+  if (l.includes("supplies")) return "truck";
+  if (l.includes("scheduling")) return "calendar";
+  if (l.includes("admin")) return "settings";
+  return "folder";
+}
+
 /** A collapsible labeled section of `NavLink`s (mirrors the grouping `RoleHome` already applies). */
 export function NavGroup({ label, children, defaultOpen = true }: NavGroupProps): JSX.Element {
-  const [open, setOpen] = useState(defaultOpen);
+  const location = useLocation();
   const contentId = useId();
+
+  // Check if any of the children are active
+  const isChildActive = React.Children.toArray(children).some((child) => {
+    if (React.isValidElement(child) && child.props && typeof child.props.to === "string") {
+      const to = child.props.to;
+      return (
+        location.pathname === to ||
+        (to !== "/" && location.pathname.startsWith(to))
+      );
+    }
+    return false;
+  });
+
+  const [open, setOpen] = useState(isChildActive || defaultOpen);
+
+  // Automatically open the active group, and close it when we switch to another active group
+  useEffect(() => {
+    setOpen(isChildActive);
+  }, [location.pathname, isChildActive]);
+
   return (
-    <div className="wx-nav-group">
+    <div className={`wx-nav-group ${isChildActive ? "active" : ""}`} style={{ transition: "all 0.2s ease" }}>
       <button
         type="button"
         aria-expanded={open}
@@ -57,24 +83,41 @@ export function NavGroup({ label, children, defaultOpen = true }: NavGroupProps)
           alignItems: "center",
           justifyContent: "space-between",
           width: "100%",
-          padding: "0.4rem 0.75rem",
+          padding: "0.5rem 0.75rem",
           border: "none",
           background: "transparent",
           cursor: "pointer",
-          fontSize: "0.7rem",
-          fontWeight: 600,
+          fontSize: "0.75rem",
+          fontWeight: isChildActive ? 700 : 600,
           letterSpacing: "0.06em",
           textTransform: "uppercase",
-          color: t.muted,
+          color: isChildActive ? "var(--color-primary)" : "var(--color-muted)",
+          transition: "all 0.2s ease",
         }}
       >
-        {label}
-        <span aria-hidden style={{ fontSize: "0.65rem" }}>
-          {open ? "▾" : "▸"}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <Glyph
+            name={getGroupIcon(label)}
+            size={14}
+            style={{
+              color: isChildActive ? "var(--color-primary)" : "var(--color-muted)",
+              opacity: isChildActive ? 1 : 0.7,
+              transition: "all 0.2s ease",
+            }}
+          />
+          <span>{label}</span>
+        </div>
+        <span aria-hidden style={{ fontSize: "0.65rem", transition: "transform 0.2s ease", transform: open ? "rotate(0deg)" : "rotate(-90deg)" }}>
+          ▾
         </span>
       </button>
-      <div id={contentId} hidden={!open} style={{ display: "flex", flexDirection: "column" }}>
-        {children}
+      <div
+        id={contentId}
+        className={`wx-nav-group-content ${open ? "open" : ""}`}
+      >
+        <div style={{ display: "flex", flexDirection: "column", paddingLeft: "0.5rem" }}>
+          {children}
+        </div>
       </div>
     </div>
   );
