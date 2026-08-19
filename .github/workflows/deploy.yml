@@ -44,6 +44,15 @@ jobs:
           tags: wardenx:ci-build
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Build staff web image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.web
+          push: false
+          tags: wardenx-web:ci-build
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   push:
     name: Tag + push to GHCR (manual release gate)
@@ -74,6 +83,14 @@ jobs:
           tags: |
             type=sha,format=long
             type=raw,value=latest,enable={{is_default_branch}}
+      - name: Derive staff web image tags (sha + latest-on-default-branch)
+        id: web-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/wardenx-web
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -88,5 +105,15 @@ jobs:
             APP_VERSION=${{ github.ref_name }}
             GIT_SHA=${{ github.sha }}
             BUILD_TIME=${{ github.event.repository.updated_at }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build and push staff web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.web
+          push: true
+          tags: ${{ steps.web-meta.outputs.tags }}
+          labels: ${{ steps.web-meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

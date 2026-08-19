@@ -1,0 +1,150 @@
+# Production topology for a single VPS.  It intentionally binds every application service to
+# loopback only: host Nginx is the sole public ingress and owns TLS.
+#
+# First deploy: `docker compose --env-file .env.production run --rm migrate`, then `provision`,
+# then `docker compose --env-file .env.production up -d`.
+# Subsequent deploys use the strict schema-only migration command (see deploy.sh, to be added with
+# the CI/CD wiring) before recreating api/worker/web.
+name: wardenx
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env.production}
+      POSTGRES_DB: wardenx
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d wardenx"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    # The migration chain has many partitioned tables and needs more than PostgreSQL's default
+    # max_locks_per_transaction (the same setting is proven in CI).
+    command: ["postgres", "-c", "max_locks_per_transaction=4096"]
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: ["valkey-server", "--appendonly", "yes"]
+    volumes:
+      - valkey-data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set in .env.production}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set in .env.production}
+    volumes:
+      - minio-data:/data
+    # Port 9000 is reachable only by host Nginx. Do not publish 9001: the admin console is not
+    # part of the public application surface.
+    ports:
+      - "127.0.0.1:9000:9000"
+
+  migrate:
+    image: ${WARDENX_IMAGE:?set immutable GHCR image in .env.production}
+    pull_policy: always
+    env_file: .env.production
+    command: ["bun", "run", "scripts/db/migrate.ts", "--strict"]
+    environment:
+      NODE_ENV: production
+      DATABASE_ADMIN_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/wardenx
+      WARDENX_APP_PASSWORD: ${WARDENX_APP_PASSWORD:?set in .env.production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  provision:
+    image: ${WARDENX_IMAGE:?set immutable GHCR image in .env.production}
+    pull_policy: always
+    env_file: .env.production
+    command: ["bun", "run", "scripts/db/provision-runtime-roles.ts"]
+    environment:
+      PROVISION_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/wardenx
+      WARDENX_PLATFORM_PASSWORD: ${WARDENX_PLATFORM_PASSWORD:?set in .env.production}
+      WARDENX_DESTRUCTION_PASSWORD: ${WARDENX_DESTRUCTION_PASSWORD:?set in .env.production}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  api:
+    image: ${WARDENX_IMAGE:?set immutable GHCR image in .env.production}
+    pull_policy: always
+    restart: unless-stopped
+    env_file: .env.production
+    command: ["bun", "run", "apps/backend/src/index.ts"]
+    environment:
+      PROCESS_ROLE: api
+      PORT: "3000"
+      DATABASE_URL: postgresql://wardenx_app:${WARDENX_APP_PASSWORD}@postgres:5432/wardenx
+      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
+      DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${WARDENX_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
+      REDIS_URL: redis://valkey:6379
+      MINIO_ENDPOINT: https://storage.wardenx.chartwarden.cloud
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_REGION: us-east-1
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      provision:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "bun", "-e", "process.exit((await fetch('http://localhost:3000/ready')).ok ? 0 : 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+
+  worker:
+    image: ${WARDENX_IMAGE:?set immutable GHCR image in .env.production}
+    pull_policy: always
+    restart: unless-stopped
+    env_file: .env.production
+    command: ["bun", "run", "apps/backend/src/worker.ts"]
+    environment:
+      WORKER_PORT: "3001"
+      DATABASE_URL: postgresql://wardenx_app:${WARDENX_APP_PASSWORD}@postgres:5432/wardenx
+      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
+      DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${WARDENX_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
+      REDIS_URL: redis://valkey:6379
+      MINIO_ENDPOINT: https://storage.wardenx.chartwarden.cloud
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_REGION: us-east-1
+    depends_on:
+      provision:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  web:
+    image: ${WARDENX_WEB_IMAGE:?set immutable GHCR image in .env.production}
+    pull_policy: always
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  postgres-data:
+  valkey-data:
+  minio-data:
