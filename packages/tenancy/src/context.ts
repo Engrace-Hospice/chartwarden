@@ -42,6 +42,11 @@ export interface OrgContext {
   readonly userId: string;
 }
 
+/** A pre-org session identity. It may read only rows whose RLS policy explicitly keys on app.user_id. */
+export interface UserContext {
+  readonly userId: string;
+}
+
 /**
  * Runs `fn` inside a transaction with `app.org_id` and `app.user_id` set transaction-locally,
  * so RLS enforces tenant isolation for every statement `fn` issues on `tx`. Both variables
@@ -55,6 +60,22 @@ export async function withOrgContext<Tx extends SqlExecutor, T>(
 ): Promise<T> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('app.org_id', ${ctx.organizationId}, true)`);
+    await tx.execute(sql`SELECT set_config('app.user_id', ${ctx.userId}, true)`);
+    return fn(tx);
+  });
+}
+
+/**
+ * Runs a pre-organization operation with only `app.user_id` set. This is deliberately narrower
+ * than `withOrgContext`: it grants no tenant scope, and is valid only for policies such as the
+ * identity membership picker that explicitly allow a user to see their own rows across orgs.
+ */
+export async function withUserContext<Tx extends SqlExecutor, T>(
+  db: TransactionalDb<Tx>,
+  ctx: UserContext,
+  fn: (tx: Tx) => Promise<T>,
+): Promise<T> {
+  return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('app.user_id', ${ctx.userId}, true)`);
     return fn(tx);
   });
