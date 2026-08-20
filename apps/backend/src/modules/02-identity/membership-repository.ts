@@ -10,7 +10,7 @@
 // the injected `AdminMembershipReader` (the M3-owned `createDbAdminMembershipReader`).
 import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
-import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
+import { withOrgContext, withOrgContextFromRequest, withUserContext } from "@wardenx/tenancy";
 import type { AdminMembershipReader } from "@wardenx/types";
 import { and, eq, sql } from "drizzle-orm";
 import type {
@@ -140,18 +140,22 @@ export function createDbMembershipRepository(
 
     listForUser: async (userId) => {
       // Pre-org-bind (/auth/memberships): the user's memberships ACROSS orgs — there is no single org
-      // to scope to. The org-only membership RLS policy can't express "my own memberships", so under
-      // the real wardenx_app role this needs a `user_id = app.user_id` read policy (a follow-up); the
-      // bare query below is correct only under a BYPASSRLS/platform connection.
-      const rows = (await db
-        .select(MEMBERSHIP_COLUMNS)
-        .from(schema.memberships)
-        .innerJoin(
-          schema.organizations,
-          eq(schema.organizations.id, schema.memberships.organizationId),
-        )
-        .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
-        .where(eq(schema.memberships.userId, userId))) as MembershipDbRow[];
+      // to scope to. `withUserContext` sets no org GUC: the M1 pre-org RLS policies explicitly
+      // permit only rows whose user_id matches app.user_id, which is enough for the picker and no more.
+      const rows = await withUserContext(
+        db,
+        { userId },
+        async (tx) =>
+          (await tx
+            .select(MEMBERSHIP_COLUMNS)
+            .from(schema.memberships)
+            .innerJoin(
+              schema.organizations,
+              eq(schema.organizations.id, schema.memberships.organizationId),
+            )
+            .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
+            .where(eq(schema.memberships.userId, userId))) as MembershipDbRow[],
+      );
       // Admin status is per-org; resolve each org's admin set once.
       const orgIds = [...new Set(rows.map((r) => r.organizationId))];
       const adminByOrg = new Map<string, ReadonlySet<string>>();

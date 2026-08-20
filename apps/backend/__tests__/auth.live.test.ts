@@ -794,6 +794,18 @@ describe.skipIf(!DB_URL)(
       expect(preOrg.statusCode).toBe(200);
       expect(preOrg.json().userId).toBe(userId);
       expect(preOrg.json().organizationId).toBeNull();
+      // The pre-org picker is a deliberately narrow RLS path: it may reveal this user's own
+      // membership + organization name, but no arbitrary tenant data. This is the exact query a
+      // newly signed-in browser (and the demo seed) needs before it can bind an organization.
+      const memberships = await app.inject({
+        method: "GET",
+        url: "/api/v1/auth/memberships",
+        headers: { cookie: cookieHeader },
+      });
+      expect(memberships.statusCode).toBe(200);
+      expect(memberships.json().memberships).toEqual(
+        expect.arrayContaining([expect.objectContaining({ organizationId: org })]),
+      );
       // Browser-cookie mutations use the double-submit CSRF guard. The CSRF onRequest hook minted
       // the readable token on the HTTP sign-in response; the context GET is a fallback in case a
       // future auth adapter does not retain that response cookie.
