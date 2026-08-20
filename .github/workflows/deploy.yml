@@ -5,11 +5,9 @@ name: Release and deploy
 # rules on the `production` GitHub Environment before enabling this workflow in a shared project.
 
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
-  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 concurrency:
   group: production-deploy
@@ -18,10 +16,6 @@ concurrency:
 jobs:
   release:
     name: Build and publish immutable images
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -30,7 +24,7 @@ jobs:
       backend_image: ${{ steps.images.outputs.backend_image }}
       web_image: ${{ steps.images.outputs.web_image }}
     env:
-      RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      RELEASE_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:

@@ -2,9 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches:
+      - develop
 
+  pull_request:
+    branches:
+      - develop
+      - main
 # Phase 0 gate (PHASE_0_SCAFFOLD_PLAN.md PR-0.6): every PR must install from the committed
 # lockfile, build the project-reference graph, pass all six fitness gates + scaffold parity,
 # and pass the Vitest fitness-gate self-test (which proves each gate goes red on a violation).
