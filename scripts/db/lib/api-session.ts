@@ -100,6 +100,11 @@ export async function signIn(email: string): Promise<WxSession> {
     headers: { cookie: cookieHeader(jar) },
   });
   absorbSetCookie(jar, memRes);
+  if (!memRes.ok) {
+    throw new Error(
+      `list memberships failed for ${email}: HTTP ${memRes.status} ${await memRes.text()}`,
+    );
+  }
   const memBody = (await memRes.json()) as {
     memberships: Array<{ organizationId: string; organizationName: string }>;
   };
