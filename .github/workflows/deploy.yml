@@ -6,8 +6,8 @@ name: Release and deploy
 
 on:
   workflow_run:
-    workflows: [CI]
-    types: [completed]
+    # workflows: [CI]
+    # types: [completed]
     branches: [main]
   workflow_dispatch:
 
