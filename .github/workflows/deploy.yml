@@ -42,7 +42,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/wardenx:sha-${{ env.RELEASE_SHA }}
+          tags: ghcr.io/engrace-hospice/wardenx:sha-${{ env.RELEASE_SHA }}
           # AD-05 — bake the identity the /version probe reports, so the runbook's post-deploy
           # "is the new build actually live?" check can pass. Without these, /version answers
           # {"version":"dev","gitSha":"unknown"} on every deploy.
@@ -58,14 +58,14 @@ jobs:
           context: .
           file: Dockerfile.web
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/wardenx-web:sha-${{ env.RELEASE_SHA }}
+          tags: ghcr.io/engrace-hospice/wardenx-web:sha-${{ env.RELEASE_SHA }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Publish image references
         id: images
         run: |
-          echo "backend_image=ghcr.io/${{ github.repository_owner }}/wardenx:sha-${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
-          echo "web_image=ghcr.io/${{ github.repository_owner }}/wardenx-web:sha-${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "backend_image=ghcr.io/engrace-hospice/wardenx:sha-${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "web_image=ghcr.io/engrace-hospice/wardenx-web:sha-${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
 
   deploy:
     name: Deploy to production VPS
