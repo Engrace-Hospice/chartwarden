@@ -18,6 +18,7 @@ import { createHash, randomUUID } from "node:crypto";
 // route is the only caller, and uses it exactly once, to build the accept link for the email transport
 // and (since no vendor sender is wired yet) to echo an admin-visible copyable link back to the inviter.
 import { type DbClient, schema } from "@wardenx/db";
+import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
 import { and, count, desc, eq } from "drizzle-orm";
 import {
   type InvitationDetail,
@@ -43,72 +44,85 @@ const hashToken = (token: string) => createHash("sha256").update(token).digest("
  */
 export function createDbInvitationStore(db: DbClient): InvitationStore {
   const I = schema.organizationInvitations;
+  // Invitation rows are org-scoped. The store is invoked by authenticated org routes, but it
+  // previously issued bare queries and therefore never set app.org_id for the RLS policy.
+  const inOrganization = <T>(organizationId: string, fn: (tx: DbClient) => Promise<T>) =>
+    withOrgContext<DbClient, T>(db, { organizationId, userId: "" }, fn);
+
   return {
     async pendingExists(organizationId, email) {
-      const rows = await db
-        .select({ id: I.id })
-        .from(I)
-        .where(
-          and(eq(I.organizationId, organizationId), eq(I.email, email), eq(I.status, "pending")),
-        )
-        .limit(1);
-      return rows.length > 0;
+      return inOrganization(organizationId, async (tx) => {
+        const rows = await tx
+          .select({ id: I.id })
+          .from(I)
+          .where(
+            and(eq(I.organizationId, organizationId), eq(I.email, email), eq(I.status, "pending")),
+          )
+          .limit(1);
+        return rows.length > 0;
+      });
     },
 
     async pendingCount(organizationId) {
-      const rows = await db
-        .select({ n: count() })
-        .from(I)
-        .where(and(eq(I.organizationId, organizationId), eq(I.status, "pending")));
-      return Number(rows[0]?.n ?? 0);
+      return inOrganization(organizationId, async (tx) => {
+        const rows = await tx
+          .select({ n: count() })
+          .from(I)
+          .where(and(eq(I.organizationId, organizationId), eq(I.status, "pending")));
+        return Number(rows[0]?.n ?? 0);
+      });
     },
 
     async list(organizationId) {
-      const rows = await db
-        .select({
-          id: I.id,
-          email: I.email,
-          status: I.status,
-          expiresAt: I.expiresAt,
-          createdAt: I.createdAt,
-        })
-        .from(I)
-        .where(eq(I.organizationId, organizationId))
-        .orderBy(desc(I.createdAt));
-      return rows.map(
-        (r): InvitationListItem => ({
-          invitationId: r.id,
-          email: r.email,
-          // `accepted`/`revoked`/`pending` are the only statuses the roster ever surfaces (the
-          // invitationStatus enum has no other member, per packages/db/src/enums.ts).
-          status: r.status as InvitationListItem["status"],
-          expiresAt: r.expiresAt.toISOString(),
-          createdAt: r.createdAt.toISOString(),
-        }),
-      );
+      return inOrganization(organizationId, async (tx) => {
+        const rows = await tx
+          .select({
+            id: I.id,
+            email: I.email,
+            status: I.status,
+            expiresAt: I.expiresAt,
+            createdAt: I.createdAt,
+          })
+          .from(I)
+          .where(eq(I.organizationId, organizationId))
+          .orderBy(desc(I.createdAt));
+        return rows.map(
+          (r): InvitationListItem => ({
+            invitationId: r.id,
+            email: r.email,
+            // `accepted`/`revoked`/`pending` are the only statuses the roster ever surfaces (the
+            // invitationStatus enum has no other member, per packages/db/src/enums.ts).
+            status: r.status as InvitationListItem["status"],
+            expiresAt: r.expiresAt.toISOString(),
+            createdAt: r.createdAt.toISOString(),
+          }),
+        );
+      });
     },
 
     async create(input) {
       const token = randomUUID();
       const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
-      const rows = await db
-        .insert(I)
-        .values({
-          organizationId: input.organizationId,
-          email: input.email,
-          status: "pending",
-          tokenHash: hashToken(token),
-          proposedRoleKeys: input.proposedRoleKeys,
-          proposedDefaultLocationIds: input.defaultLocationIds,
-          ...(input.proposedProviderEntityId
-            ? { proposedDefaultProviderEntityId: input.proposedProviderEntityId }
-            : {}),
-          expiresAt,
-        })
-        .returning({ id: I.id, expiresAt: I.expiresAt });
-      const row = rows[0];
-      if (!row) throw new Error("invitation insert returned no row");
-      return { invitationId: row.id, token, expiresAt: row.expiresAt.toISOString() };
+      return inOrganization(input.organizationId, async (tx) => {
+        const rows = await tx
+          .insert(I)
+          .values({
+            organizationId: input.organizationId,
+            email: input.email,
+            status: "pending",
+            tokenHash: hashToken(token),
+            proposedRoleKeys: input.proposedRoleKeys,
+            proposedDefaultLocationIds: input.defaultLocationIds,
+            ...(input.proposedProviderEntityId
+              ? { proposedDefaultProviderEntityId: input.proposedProviderEntityId }
+              : {}),
+            expiresAt,
+          })
+          .returning({ id: I.id, expiresAt: I.expiresAt });
+        const row = rows[0];
+        if (!row) throw new Error("invitation insert returned no row");
+        return { invitationId: row.id, token, expiresAt: row.expiresAt.toISOString() };
+      });
     },
 
     async resend(invitationId): Promise<MintedInvitation | null> {
@@ -116,14 +130,16 @@ export function createDbInvitationStore(db: DbClient): InvitationStore {
       const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
       // The status predicate is part of the UPDATE (same atomic-guard pattern as `consume`/`rescind`):
       // re-minting a no-longer-pending invite (already accepted/revoked) is refused, not resurrected.
-      const rows = await db
-        .update(I)
-        .set({ tokenHash: hashToken(token), expiresAt })
-        .where(and(eq(I.id, invitationId), eq(I.status, "pending")))
-        .returning({ id: I.id, expiresAt: I.expiresAt });
-      const row = rows[0];
-      if (!row) return null;
-      return { invitationId: row.id, token, expiresAt: row.expiresAt.toISOString() };
+      return withOrgContextFromRequest<DbClient, MintedInvitation | null>(db, async (tx) => {
+        const rows = await tx
+          .update(I)
+          .set({ tokenHash: hashToken(token), expiresAt })
+          .where(and(eq(I.id, invitationId), eq(I.status, "pending")))
+          .returning({ id: I.id, expiresAt: I.expiresAt });
+        const row = rows[0];
+        if (!row) return null;
+        return { invitationId: row.id, token, expiresAt: row.expiresAt.toISOString() };
+      });
     },
 
     async peek(token) {
@@ -207,12 +223,14 @@ export function createDbInvitationStore(db: DbClient): InvitationStore {
       // `revoked`, not a DELETE: the invitation is a compliance record of who was offered access, and
       // the M4 write-audit trigger on this table records the transition. The in-memory slice deleted
       // the row, which is why nothing could later answer "who invited this person, and who withdrew it".
-      const rows = await db
-        .update(I)
-        .set({ status: "revoked" })
-        .where(and(eq(I.id, invitationId), eq(I.status, "pending")))
-        .returning({ id: I.id });
-      return rows.length > 0;
+      return withOrgContextFromRequest(db, async (tx) => {
+        const rows = await tx
+          .update(I)
+          .set({ status: "revoked" })
+          .where(and(eq(I.id, invitationId), eq(I.status, "pending")))
+          .returning({ id: I.id });
+        return rows.length > 0;
+      });
     },
   };
 }
