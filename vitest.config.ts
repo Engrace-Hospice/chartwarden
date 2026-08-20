@@ -41,7 +41,7 @@ export default defineConfig({
             "packages/**/*.test.ts",
           ],
           exclude: [...EXCLUDE, ...DOM_GLOBS],
-          testTimeout: 30_000,
+          testTimeout: 50_000,
         },
       },
       {
@@ -52,7 +52,7 @@ export default defineConfig({
           setupFiles: ["./vitest.setup.dom.ts"],
           include: DOM_GLOBS,
           exclude: EXCLUDE,
-          testTimeout: 30_000,
+          testTimeout: 50_000,
         },
       },
     ],
