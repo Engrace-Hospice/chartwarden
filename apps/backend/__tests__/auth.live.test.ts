@@ -794,6 +794,12 @@ describe.skipIf(!DB_URL)(
       expect(preOrg.statusCode).toBe(200);
       expect(preOrg.json().userId).toBe(userId);
       expect(preOrg.json().organizationId).toBeNull();
+      // Browser-cookie mutations use the double-submit CSRF guard. The preceding same-origin GET
+      // mints its readable token; a browser sends both it and the session cookie on the next request.
+      const csrfToken = preOrg.cookies.find((cookie) => cookie.name === "wardenx_csrf")?.value;
+      expect(csrfToken).toBeTruthy();
+      if (!csrfToken) throw new Error("the pre-org session check did not mint a CSRF cookie");
+      const authenticatedCookieHeader = `${cookieHeader}; wardenx_csrf=${csrfToken}`;
       const preOrgCensus = await app.inject({
         method: "GET",
         url: "/api/v1/patients",
@@ -807,7 +813,7 @@ describe.skipIf(!DB_URL)(
       const select = await app.inject({
         method: "POST",
         url: "/api/v1/auth/select-organization",
-        headers: { cookie: cookieHeader },
+        headers: { cookie: authenticatedCookieHeader, "x-csrf-token": csrfToken },
         payload: { organizationId: org },
       });
       expect(select.statusCode).toBe(200);
