@@ -32,9 +32,10 @@
  */
 import { randomBytes } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { allPermissionMirrorRows } from "@wardenx/auth";
 import { Client } from "pg";
+import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
+import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const AUTH_URL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
@@ -76,7 +77,7 @@ function genPassword(): string {
 }
 
 function adminPassword(): string {
-  const md = readFileSync(join(process.cwd(), "CREDENTIALS.local.md"), "utf8");
+  const md = readFileSync(SEED_CREDENTIALS_PATH, "utf8");
   const line = md.split("\n").find((l) => l.includes("admin@wardenx.local"));
   const m = line?.match(/`([^`]+)`\s*\|\s*`([^`]+)`/);
   if (!m) throw new Error("could not read admin password from CREDENTIALS.local.md (run db:seed first)");
@@ -84,11 +85,15 @@ function adminPassword(): string {
 }
 
 async function signUp(email: string, password: string, name: string): Promise<string> {
-  const res = await fetch(`${AUTH_URL}/api/auth/sign-up/email`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password, name }),
-  });
+  const res = await fetchAuthWithRateLimitRetry(
+    `${AUTH_URL}/api/auth/sign-up/email`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, name }),
+    },
+    `sign-up for ${email}`,
+  );
   if (!res.ok) throw new Error(`sign-up failed for ${email}: HTTP ${res.status} ${await res.text()}`);
   const body = (await res.json()) as { user?: { id?: string } };
   if (!body.user?.id) throw new Error(`sign-up for ${email} returned no user id`);
@@ -215,7 +220,7 @@ async function main(): Promise<void> {
   await db.end();
 
   // --- Append to CREDENTIALS.local.md (don't clobber the original 4 accounts' block). ---
-  const credsPath = join(process.cwd(), "CREDENTIALS.local.md");
+  const credsPath = SEED_CREDENTIALS_PATH;
   const existing = readFileSync(credsPath, "utf8");
   const marker = "\n## Discipline personas (bun run db:seed:staff)\n";
   const withoutOldPersonas = existing.split(marker)[0].replace(/\n+$/, "\n");

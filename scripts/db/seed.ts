@@ -16,9 +16,10 @@
  */
 import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { allPermissionMirrorRows } from "@wardenx/auth";
 import { Client } from "pg";
+import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
+import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const AUTH_URL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
@@ -99,30 +100,21 @@ function genPassword(): string {
 }
 
 async function signUp(email: string, password: string, name: string): Promise<string> {
-  // Better Auth deliberately caps sign-up/sign-in paths at 3 requests per 10 seconds per IP. A
-  // demo seed creates four accounts in succession, so honour its retry hint rather than making a
-  // production-mode seed intrinsically fail on the fourth account.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const res = await fetch(`${AUTH_URL}/api/auth/sign-up/email`, {
+  const res = await fetchAuthWithRateLimitRetry(
+    `${AUTH_URL}/api/auth/sign-up/email`,
+    {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password, name }),
-    });
-    if (res.ok) {
-      const body = (await res.json()) as { user?: { id?: string } };
-      if (!body.user?.id) throw new Error(`sign-up for ${email} returned no user id`);
-      return body.user.id;
-    }
-    if (res.status === 429 && attempt < 2) {
-      const retryAfter = Number(res.headers.get("x-retry-after"));
-      const delaySeconds = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter + 1 : 11;
-      console.log(`sign-up rate-limited for ${email}; retrying in ${delaySeconds}s`);
-      await new Promise<void>((resolve) => setTimeout(resolve, delaySeconds * 1_000));
-      continue;
-    }
+    },
+    `sign-up for ${email}`,
+  );
+  if (!res.ok) {
     throw new Error(`sign-up failed for ${email}: HTTP ${res.status} ${await res.text()}`);
   }
-  throw new Error(`sign-up failed for ${email}: exhausted retries`);
+  const body = (await res.json()) as { user?: { id?: string } };
+  if (!body.user?.id) throw new Error(`sign-up for ${email} returned no user id`);
+  return body.user.id;
 }
 
 async function main(): Promise<void> {
@@ -283,7 +275,7 @@ async function main(): Promise<void> {
     "- Reset everything: `bun run db:reset` (drops the container volume, re-migrates, re-seeds).",
     "",
   ];
-  const out = join(process.cwd(), "CREDENTIALS.local.md");
+  const out = SEED_CREDENTIALS_PATH;
   writeFileSync(out, lines.join("\n"));
   console.log(`\n✓ seed complete — credentials written to ${out}`);
 }
