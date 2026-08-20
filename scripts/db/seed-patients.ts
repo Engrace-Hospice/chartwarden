@@ -9,7 +9,7 @@
  * Run:     bun run db:seed:patients
  */
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
 
 const API = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
 const ORG_SLUG = "wardenx-demo";
@@ -65,7 +65,7 @@ const PATIENTS = [
 ];
 
 function adminPassword(): string {
-  const md = readFileSync(join(process.cwd(), "CREDENTIALS.local.md"), "utf8");
+  const md = readFileSync(SEED_CREDENTIALS_PATH, "utf8");
   const line = md.split("\n").find((l) => l.includes(ADMIN_EMAIL));
   const m = line?.match(/`([^`]+)`\s*\|\s*`([^`]+)`/);
   if (!m)

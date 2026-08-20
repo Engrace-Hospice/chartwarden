@@ -16,8 +16,9 @@
  * header itself in this environment, so there's nothing to conflict with).
  */
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { createApiClient, type ApiClient } from "@wardenx/ui";
+import { type ApiClient, createApiClient } from "@wardenx/ui";
+import { fetchAuthWithRateLimitRetry } from "./auth-rate-limit";
+import { SEED_CREDENTIALS_PATH } from "./credentials";
 
 export const API = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
 export const ORG_SLUG = "wardenx-demo";
@@ -48,7 +49,7 @@ export interface WxSession {
  *      shape (skipping any that don't) is robust to prose lines landing after the real row.
  */
 function readPassword(email: string): string {
-  const md = readFileSync(join(process.cwd(), "CREDENTIALS.local.md"), "utf8");
+  const md = readFileSync(SEED_CREDENTIALS_PATH, "utf8");
   const needle = `\`${email}\``;
   const lines = md.split("\n").filter((l) => l.includes(needle));
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -78,11 +79,15 @@ export async function signIn(email: string): Promise<WxSession> {
   const jar = new Map<string, string>();
   const password = readPassword(email);
 
-  const signInRes = await fetch(`${API}/api/auth/sign-in/email`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
+  const signInRes = await fetchAuthWithRateLimitRetry(
+    `${API}/api/auth/sign-in/email`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    },
+    `sign-in for ${email}`,
+  );
   if (!signInRes.ok) {
     throw new Error(`sign-in failed for ${email}: HTTP ${signInRes.status} ${await signInRes.text()}`);
   }
