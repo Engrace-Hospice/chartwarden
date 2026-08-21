@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   FilterBar,
   LoadingSpinner,
@@ -209,16 +210,25 @@ export function OverrideAudit(): JSX.Element {
           title="Override Audit"
           breadcrumb="Billing — Medicare"
           actions={
-            <button
-              type="button"
-              onClick={exportCsv}
-              disabled={filtered.length === 0}
-              style={filtered.length === 0 ? disabledButtonStyle : ghostButtonStyle}
-            >
-              Export CSV
-            </button>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
+                Refresh
+              </Button>
+              <Button
+                type="button"
+                tone="secondary"
+                onClick={exportCsv}
+                disabled={filtered.length === 0}
+              >
+                Export CSV
+              </Button>
+            </div>
           }
-        />
+        >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Review validation overrides composed from claim validation runs in your current scope.
+          </div>
+        </PageHeader>
       }
       filters={
         <FilterBar>
@@ -255,18 +265,45 @@ export function OverrideAudit(): JSX.Element {
       }
       table={
         loading ? (
-          <LoadingSpinner />
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
         ) : error ? (
-          <EmptyState title="Unavailable" description={error} />
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState title="Unavailable" description={error} />
+          </div>
         ) : filtered.length === 0 ? (
-          <EmptyState
-            title="No overrides"
-            description="No validation overrides match the current filters in your scope."
-          />
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState
+              title="No overrides"
+              description="No validation overrides match the current filters in your scope."
+            />
+          </div>
         ) : (
-          <OverrideTable rows={filtered} />
+          <div style={tableWrapStyle}>
+            <OverrideTable rows={filtered} />
+          </div>
         )
       }
+      detail={
+        <div style={detailStyle}>
+          <section style={railSectionStyle}>
+            <h3 style={railTitleStyle}>Audit Source</h3>
+            <p style={railTextStyle}>
+              There is no org-wide override endpoint yet. This page reads the first claims page,
+              then expands overridden validation runs from the server.
+            </p>
+          </section>
+          <section style={railSectionStyle}>
+            <h3 style={railTitleStyle}>Export</h3>
+            <p style={railTextStyle}>
+              CSV export contains only the visible filtered rows: claim control number, rule, actor
+              membership, reason, and timestamp.
+            </p>
+          </section>
+        </div>
+      }
+      fullPageScroll
     />
   );
 }
@@ -338,6 +375,35 @@ function OverrideTable({ rows }: { rows: OverrideRow[] }): JSX.Element {
   );
 }
 
+const tableWrapStyle = {
+  minWidth: 0,
+};
+
+const detailStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+} as const;
+
+const railSectionStyle = {
+  padding: "1rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-lowest)",
+} as const;
+
+const railTitleStyle = {
+  margin: "0 0 0.5rem",
+  fontSize: "0.875rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+} as const;
+
+const railTextStyle = {
+  margin: 0,
+  fontSize: "0.8rem",
+  color: "var(--color-on-surface-variant)",
+} as const;
+
 const thStyle = {
   padding: "0.5rem 0.75rem",
   fontSize: "0.7rem",
@@ -355,14 +421,3 @@ const selectStyle = {
   fontSize: "0.85rem",
 };
 const inputStyle = { ...selectStyle, minWidth: "12rem" };
-const ghostButtonStyle = {
-  padding: "0.4rem 0.85rem",
-  borderRadius: "var(--radius-md)",
-  border: "none",
-  cursor: "pointer",
-  background: "var(--color-surface-container)",
-  color: "var(--color-on-surface)",
-  fontSize: "0.8rem",
-  fontWeight: 600,
-};
-const disabledButtonStyle = { ...ghostButtonStyle, cursor: "not-allowed", opacity: 0.5 };

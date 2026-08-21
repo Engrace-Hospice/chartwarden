@@ -349,33 +349,54 @@ export interface AdminSplitLayoutProps {
   list: ReactNode;
   children: ReactNode;
   detail?: ReactNode;
+  /** Optional screen hook for responsive/sticky variations of this shared composition. */
+  className?: string;
+  /** Let the application shell scroll the entire administration workspace, rather than trapping
+   * vertical scrolling inside its three columns. */
+  fullPageScroll?: boolean;
 }
 export function AdminSplitLayout({
   header,
   list,
   children,
   detail,
+  className,
+  fullPageScroll = false,
 }: AdminSplitLayoutProps): JSX.Element {
   return (
-    <div className="wx-admin-split" style={fillColumn}>
+    <div
+      className={`wx-admin-split${className ? ` ${className}` : ""}`}
+      style={fullPageScroll ? { display: "flex", flexDirection: "column" } : fillColumn}
+    >
       {header}
-      <div style={splitRow}>
+      <div
+        className="wx-admin-split-workspace"
+        style={fullPageScroll ? { display: "flex", minHeight: 0, flexShrink: 0 } : splitRow}
+      >
         <div
-          className="wx-admin-list"
+          className="wx-admin-list wx-no-scrollbar"
           style={{
             width: "18rem",
             flexShrink: 0,
             borderRight: ghostBorder,
-            overflow: "auto",
+            overflow: fullPageScroll ? "visible" : "auto",
           }}
         >
           {list}
         </div>
-        <div className="wx-admin-matrix" style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}>
+        <div
+          className="wx-admin-matrix wx-no-scrollbar"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: fullPageScroll ? "visible" : "auto",
+            padding: "1.5rem",
+          }}
+        >
           {children}
         </div>
         {detail ? (
-          <div className="wx-context-rail" style={contextRailBounds}>
+          <div className="wx-context-rail wx-no-scrollbar" style={contextRailBounds}>
             {detail}
           </div>
         ) : null}

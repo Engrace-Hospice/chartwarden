@@ -1,11 +1,10 @@
 import {
-  DashboardLayout,
+  Button,
   EmptyState,
-  KpiCard,
-  KpiStrip,
   LoadingSpinner,
   PageHeader,
   StatusPill,
+  WorkQueueLayout,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -101,36 +100,24 @@ export function VolunteerHourRatio(): JSX.Element {
 
   return (
     <>
-      <DashboardLayout
+      <WorkQueueLayout
         header={
           <PageHeader
             title="Volunteer 5% ratio"
             breadcrumb="Admin — 42 CFR §418.78(e) volunteer time-cost ratio"
             actions={
-              <button type="button" style={ghostButtonStyle} onClick={() => setAdjusting(true)}>
+              <Button type="button" onClick={() => setAdjusting(true)}>
                 Log hour adjustment
-              </button>
+              </Button>
             }
-          />
+          >
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Review the server-computed volunteer-hour numerator and patient-care-hour denominator
+              for one provider entity and fiscal year.
+            </div>
+          </PageHeader>
         }
-        kpis={
-          <KpiStrip>
-            <KpiCard
-              label="Ratio"
-              value={ratio ? (unavailable ? "unavailable" : pct(ratio.ratio)) : "—"}
-            />
-            <KpiCard
-              label="Volunteer hours"
-              value={ratio ? hours(ratio.volunteerHourMinutes) : "—"}
-            />
-            <KpiCard
-              label="Patient-care hours"
-              value={ratio ? hours(ratio.staffPatientCareMinutes) : "—"}
-            />
-            <KpiCard label="Fiscal year" value={ratio ? String(ratio.fiscalYear) : fiscalYear} />
-          </KpiStrip>
-        }
-        charts={
+        filters={
           <FilterRow>
             <TextField
               label="Provider entity id"
@@ -147,53 +134,62 @@ export function VolunteerHourRatio(): JSX.Element {
         }
         table={
           loading ? (
-            <LoadingSpinner />
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
           ) : error ? (
-            <EmptyState title="Unavailable" description={error} />
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState title="Unavailable" description={error} />
+            </div>
           ) : !ratio ? (
-            <EmptyState
-              title="Choose a provider entity"
-              description="The 418.78(e) ratio is computed per provider entity per fiscal year."
-            />
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title="Choose a provider entity"
+                description="The 418.78(e) ratio is computed per provider entity per fiscal year."
+              />
+            </div>
           ) : (
-            <Card
-              title="418.78(e) ratio"
-              actions={
-                <StatusPill
-                  label={humanize(ratio.status)}
-                  tone={toneOf(RATIO_STATUS_TONE, ratio.status)}
-                />
-              }
-            >
-              {unavailable ? (
-                <Notice tone="warning">
-                  Cost basis unavailable —{" "}
-                  {ratio.reason ??
-                    "the total patient-care hours this ratio divides by are not available yet."}{" "}
-                  The volunteer hours below are real; the ratio is not computed, and this is not a
-                  compliance breach.
-                </Notice>
-              ) : null}
-              <SummaryGrid>
-                <Field
-                  label="Volunteer hours (numerator)"
-                  value={hours(ratio.volunteerHourMinutes)}
-                />
-                <Field
-                  label="Patient-care hours (denominator)"
-                  value={
-                    ratio.staffPatientCareMinutes === null
-                      ? "not available"
-                      : hours(ratio.staffPatientCareMinutes)
-                  }
-                />
-                <Field label="Ratio" value={unavailable ? "not computed" : pct(ratio.ratio)} />
-                <Field label="Provider entity" value={ratio.providerEntityId} mono />
-              </SummaryGrid>
-            </Card>
+            <div style={contentStyle}>
+              <Card
+                title="418.78(e) ratio"
+                actions={
+                  <StatusPill
+                    label={humanize(ratio.status)}
+                    tone={toneOf(RATIO_STATUS_TONE, ratio.status)}
+                  />
+                }
+              >
+                {unavailable ? (
+                  <Notice tone="warning">
+                    Cost basis unavailable —{" "}
+                    {ratio.reason ??
+                      "the total patient-care hours this ratio divides by are not available yet."}{" "}
+                    The volunteer hours below are real; the ratio is not computed, and this is not a
+                    compliance breach.
+                  </Notice>
+                ) : null}
+                <SummaryGrid>
+                  <Field
+                    label="Volunteer hours (numerator)"
+                    value={hours(ratio.volunteerHourMinutes)}
+                  />
+                  <Field
+                    label="Patient-care hours (denominator)"
+                    value={
+                      ratio.staffPatientCareMinutes === null
+                        ? "not available"
+                        : hours(ratio.staffPatientCareMinutes)
+                    }
+                  />
+                  <Field label="Ratio" value={unavailable ? "not computed" : pct(ratio.ratio)} />
+                  <Field label="Fiscal year" value={String(ratio.fiscalYear)} />
+                  <Field label="Provider entity" value={ratio.providerEntityId} mono />
+                </SummaryGrid>
+              </Card>
+            </div>
           )
         }
-        aside={
+        detail={
           <div style={{ display: "flex", flexDirection: "column", gap: t.space3 }}>
             <Card title="Bands">
               {BANDS.map((b) => (
@@ -224,6 +220,7 @@ export function VolunteerHourRatio(): JSX.Element {
             </Card>
           </div>
         }
+        fullPageScroll
       />
 
       {adjusting ? (
@@ -337,3 +334,8 @@ function HourAdjustmentModal({
     </Modal>
   );
 }
+
+const contentStyle = {
+  padding: "0 1.5rem 1.5rem",
+  maxWidth: "54rem",
+};

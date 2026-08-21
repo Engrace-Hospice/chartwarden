@@ -1,9 +1,11 @@
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   Modal,
   PageHeader,
   StatusPill,
+  WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
@@ -60,20 +62,6 @@ const fieldStyle: CSSProperties = {
   width: "100%",
 };
 
-function buttonStyle(primary: boolean, disabled = false): CSSProperties {
-  return {
-    padding: "0.55rem 1.1rem",
-    borderRadius: "var(--radius-md, 0.5rem)",
-    border: primary ? "none" : "1px solid var(--color-outline)",
-    background: primary ? "var(--color-primary)" : "transparent",
-    color: primary ? "var(--color-on-primary)" : "var(--color-primary)",
-    fontSize: "0.875rem",
-    fontWeight: 600,
-    cursor: disabled ? "default" : "pointer",
-    opacity: disabled ? 0.55 : 1,
-  };
-}
-
 export function AiRoutingOverrides(): JSX.Element {
   const client = useApiClient();
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
@@ -127,87 +115,142 @@ export function AiRoutingOverrides(): JSX.Element {
   }
 
   return (
-    <div
-      style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}
-    >
-      <PageHeader
-        title="AI routing overrides"
-        breadcrumb="Organization"
-        actions={
-          <button
-            type="button"
-            onClick={() => setSetting(true)}
-            style={buttonStyle(true, capabilities.length === 0)}
-            disabled={capabilities.length === 0}
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader
+            title="AI routing overrides"
+            breadcrumb="Organization / AI"
+            actions={
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <Button
+                  type="button"
+                  tone="secondary"
+                  onClick={() => void load()}
+                  loading={loading}
+                >
+                  Refresh
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => setSetting(true)}
+                  disabled={capabilities.length === 0}
+                >
+                  Set override
+                </Button>
+              </div>
+            }
           >
-            Set override
-          </button>
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Pin tenant AI capabilities to approved backend preferences with governed reasons and
+              optional expiry.
+            </div>
+          </PageHeader>
         }
+        filters={
+          outcome ? (
+            <div style={{ padding: "0.75rem 1.5rem 0" }}>
+              <output aria-live="polite">
+                <StatusPill label={outcome.message} tone={outcome.ok ? "success" : "error"} />
+              </output>
+            </div>
+          ) : null
+        }
+        table={
+          loading && capabilities.length === 0 ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : error ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState title={error} description="Retry shortly." />
+            </div>
+          ) : capabilities.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title="No capabilities"
+                description="No AI capabilities are available for routing override in this scope."
+              />
+            </div>
+          ) : (
+            <div style={tableWrapStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
+                    <th style={headerCellStyle}>Capability</th>
+                    <th style={headerCellStyle}>Platform default</th>
+                    <th style={headerCellStyle}>Override</th>
+                    <th style={headerCellStyle}>Reason</th>
+                    <th style={headerCellStyle}>Effective</th>
+                    <th style={headerCellStyle}>Expires</th>
+                    <th style={headerCellStyle} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {capabilities.map((c) => {
+                    const o = byCapability.get(c.id);
+                    return (
+                      <tr key={c.id} style={rowStyle}>
+                        <td style={cellStyle}>
+                          <code>{c.capabilityKey}</code>
+                        </td>
+                        <td style={cellStyle}>
+                          <code>{c.defaultBackendKey}</code>
+                        </td>
+                        <td style={cellStyle}>
+                          {o ? (
+                            <StatusPill label={o.backendKeyPreference} tone="warning" />
+                          ) : (
+                            <span style={{ color: "var(--color-on-surface-variant)" }}>None</span>
+                          )}
+                        </td>
+                        <td style={cellStyle}>{o ? cap(o.overrideReason) : "—"}</td>
+                        <td style={cellStyle} className="tabular-nums">
+                          {o ? formatDate(o.effectiveAt) : "—"}
+                        </td>
+                        <td style={cellStyle} className="tabular-nums">
+                          {o ? formatDate(o.expiresAt) : "—"}
+                        </td>
+                        <td style={cellStyle}>
+                          {o ? (
+                            <Button
+                              type="button"
+                              tone="secondary"
+                              size="sm"
+                              onClick={() => void clearOverride(c.id)}
+                            >
+                              Clear
+                            </Button>
+                          ) : null}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        }
+        detail={
+          <div style={detailStyle}>
+            <section style={railSectionStyle}>
+              <h3 style={railTitleStyle}>Reason Set</h3>
+              <p style={railTextStyle}>
+                Override reasons are closed vocabulary values so governance reviews can understand
+                why this tenant left the platform default.
+              </p>
+            </section>
+            <section style={railSectionStyle}>
+              <h3 style={railTitleStyle}>Expiry</h3>
+              <p style={railTextStyle}>
+                Expiry is optional. Sovereignty overrides may be indefinite; outage fallback
+                overrides usually should expire.
+              </p>
+            </section>
+          </div>
+        }
+        fullPageScroll
       />
-      {outcome ? (
-        <output aria-live="polite">
-          <StatusPill label={outcome.message} tone={outcome.ok ? "success" : "error"} />
-        </output>
-      ) : null}
-      {loading && capabilities.length === 0 ? (
-        <LoadingSpinner />
-      ) : error ? (
-        <EmptyState title={error} description="Retry shortly." />
-      ) : (
-        <table style={tableStyle}>
-          <thead>
-            <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
-              <th style={cellStyle}>Capability</th>
-              <th style={cellStyle}>Platform default</th>
-              <th style={cellStyle}>Override</th>
-              <th style={cellStyle}>Reason</th>
-              <th style={cellStyle}>Effective</th>
-              <th style={cellStyle}>Expires</th>
-              <th style={cellStyle} />
-            </tr>
-          </thead>
-          <tbody>
-            {capabilities.map((c) => {
-              const o = byCapability.get(c.id);
-              return (
-                <tr key={c.id} style={{ borderTop: "1px solid var(--color-outline-variant)" }}>
-                  <td style={cellStyle}>
-                    <code>{c.capabilityKey}</code>
-                  </td>
-                  <td style={cellStyle}>
-                    <code>{c.defaultBackendKey}</code>
-                  </td>
-                  <td style={cellStyle}>
-                    {o ? (
-                      <StatusPill label={o.backendKeyPreference} tone="warning" />
-                    ) : (
-                      <span style={{ color: "var(--color-on-surface-variant)" }}>None</span>
-                    )}
-                  </td>
-                  <td style={cellStyle}>{o ? cap(o.overrideReason) : "—"}</td>
-                  <td style={cellStyle} className="tabular-nums">
-                    {o ? formatDate(o.effectiveAt) : "—"}
-                  </td>
-                  <td style={cellStyle} className="tabular-nums">
-                    {o ? formatDate(o.expiresAt) : "—"}
-                  </td>
-                  <td style={cellStyle}>
-                    {o ? (
-                      <button
-                        type="button"
-                        onClick={() => void clearOverride(c.id)}
-                        style={buttonStyle(false)}
-                      >
-                        Clear
-                      </button>
-                    ) : null}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
       {setting ? (
         <SetOverrideDialog
           capabilities={capabilities}
@@ -219,7 +262,7 @@ export function AiRoutingOverrides(): JSX.Element {
           }}
         />
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -324,19 +367,60 @@ function SetOverrideDialog({
           />
         </label>
         <div style={{ display: "flex", gap: "0.75rem" }}>
-          <button
+          <Button
             type="button"
             onClick={() => void submit()}
             disabled={busy || backendKey === ""}
-            style={buttonStyle(true, busy || backendKey === "")}
+            loading={busy}
           >
-            {busy ? "Saving…" : "Set override"}
-          </button>
-          <button type="button" onClick={onClose} style={buttonStyle(false)}>
+            Set override
+          </Button>
+          <Button type="button" tone="secondary" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>
   );
 }
+
+const tableWrapStyle: CSSProperties = {
+  minWidth: 0,
+};
+
+const headerCellStyle: CSSProperties = {
+  ...cellStyle,
+  fontSize: "0.7rem",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+};
+
+const rowStyle: CSSProperties = {
+  borderTop: "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
+};
+
+const detailStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+} as const;
+
+const railSectionStyle = {
+  padding: "1rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-lowest)",
+} as const;
+
+const railTitleStyle = {
+  margin: "0 0 0.5rem",
+  fontSize: "0.875rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+} as const;
+
+const railTextStyle = {
+  margin: 0,
+  fontSize: "0.8rem",
+  color: "var(--color-on-surface-variant)",
+} as const;

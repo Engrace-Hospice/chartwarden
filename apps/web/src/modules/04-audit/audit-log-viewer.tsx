@@ -1,6 +1,8 @@
 import {
+  Button,
+  CursorPagination,
   EmptyState,
-  FilterBar,
+  Glyph,
   LoadingSpinner,
   PageHeader,
   RightDetailPanel,
@@ -42,6 +44,7 @@ interface Filters {
   severity: string;
 }
 const EMPTY_FILTERS: Filters = { eventType: "", resourceKind: "", outcome: "", severity: "" };
+const AUDIT_PAGE_SIZES = [25, 50, 100] as const;
 
 // §6.6 status taxonomy: audit outcome + severity → tone. `denied` is a deliberate guard block (warning,
 // not a crash); `failure` is an operational error; audit `critical` severity maps to the error tone (the
@@ -63,6 +66,7 @@ export function AuditLogViewer(): JSX.Element {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [items, setItems] = useState<AuditEvent[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [pageSize, setPageSize] = useState(50);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<AuditEvent | null>(null);
@@ -71,7 +75,7 @@ export function AuditLogViewer(): JSX.Element {
     async (cursor?: string) => {
       setLoading(true);
       setError(null);
-      const query: Record<string, string | number> = { limit: 50 };
+      const query: Record<string, string | number> = { limit: pageSize };
       if (filters.eventType) query.eventType = filters.eventType;
       if (filters.resourceKind) query.resourceKind = filters.resourceKind;
       if (filters.outcome) query.outcome = filters.outcome;
@@ -89,71 +93,159 @@ export function AuditLogViewer(): JSX.Element {
       setNextCursor(data?.nextCursor ?? null);
       setLoading(false);
     },
-    [client, filters],
+    [client, filters, pageSize],
   );
 
   useEffect(() => {
+    setSelected(null);
     void load();
   }, [load]);
 
+  const hasActiveFilters =
+    filters.eventType !== "" ||
+    filters.resourceKind !== "" ||
+    filters.outcome !== "" ||
+    filters.severity !== "";
+
+  const clearFilters = () => {
+    setFilters(EMPTY_FILTERS);
+  };
+
   return (
     <WorkQueueLayout
-      header={<PageHeader title="Audit Log" />}
+      header={
+        <PageHeader title="Audit Log" breadcrumb="Admin / Compliance">
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Review append-only access, authorization, data-change, and platform-operation events.
+          </div>
+        </PageHeader>
+      }
       filters={
-        <FilterBar
-          actions={
-            <button type="button" onClick={() => setFilters(EMPTY_FILTERS)}>
-              Clear
-            </button>
-          }
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.75rem",
+            padding: "0 1.5rem 0.75rem",
+          }}
         >
-          <input
-            aria-label="Action / event type"
-            placeholder="Action"
-            value={filters.eventType}
-            onChange={(e) => setFilters((f) => ({ ...f, eventType: e.target.value }))}
-          />
-          <input
-            aria-label="Entity type"
-            placeholder="Entity"
-            value={filters.resourceKind}
-            onChange={(e) => setFilters((f) => ({ ...f, resourceKind: e.target.value }))}
-          />
-          <select
-            aria-label="Outcome"
-            value={filters.outcome}
-            onChange={(e) => setFilters((f) => ({ ...f, outcome: e.target.value }))}
+          {error ? (
+            <div role="alert" style={errorBannerStyle}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Glyph name="alert" size={16} />
+                <span>{error}</span>
+              </div>
+              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
+                x
+              </button>
+            </div>
+          ) : null}
+
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "1rem",
+            }}
           >
-            <option value="">Any outcome</option>
-            <option value="success">Success</option>
-            <option value="failure">Failure</option>
-            <option value="denied">Denied</option>
-          </select>
-          <select
-            aria-label="Severity"
-            value={filters.severity}
-            onChange={(e) => setFilters((f) => ({ ...f, severity: e.target.value }))}
-          >
-            <option value="">Any severity</option>
-            <option value="info">Info</option>
-            <option value="warn">Warn</option>
-            <option value="critical">Critical</option>
-          </select>
-        </FilterBar>
+            <div
+              style={{
+                display: "flex",
+                gap: "0.25rem",
+                background: "var(--color-surface-container)",
+                padding: "0.2rem",
+                borderRadius: "var(--radius-md)",
+              }}
+            >
+              <button type="button" style={tabButtonStyle(true)}>
+                Event ledger ({items.length})
+              </button>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+              <div style={{ position: "relative", minWidth: "15rem" }}>
+                <input
+                  type="search"
+                  aria-label="Action / event type"
+                  placeholder="Search action..."
+                  value={filters.eventType}
+                  onChange={(e) => setFilters((f) => ({ ...f, eventType: e.target.value }))}
+                  style={{
+                    width: "100%",
+                    paddingLeft: "2rem",
+                    height: "2.25rem",
+                    fontSize: "0.85rem",
+                  }}
+                />
+                <div style={searchIconStyle}>
+                  <Glyph name="eye" size={14} />
+                </div>
+              </div>
+
+              <input
+                aria-label="Entity type"
+                placeholder="Entity"
+                value={filters.resourceKind}
+                onChange={(e) => setFilters((f) => ({ ...f, resourceKind: e.target.value }))}
+                style={{ minWidth: "9rem", height: "2.25rem", fontSize: "0.85rem" }}
+              />
+              <select
+                aria-label="Outcome"
+                value={filters.outcome}
+                onChange={(e) => setFilters((f) => ({ ...f, outcome: e.target.value }))}
+                style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
+              >
+                <option value="">Outcome: All</option>
+                <option value="success">Success</option>
+                <option value="failure">Failure</option>
+                <option value="denied">Denied</option>
+              </select>
+              <select
+                aria-label="Severity"
+                value={filters.severity}
+                onChange={(e) => setFilters((f) => ({ ...f, severity: e.target.value }))}
+                style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
+              >
+                <option value="">Severity: All</option>
+                <option value="info">Info</option>
+                <option value="warn">Warn</option>
+                <option value="critical">Critical</option>
+              </select>
+              <select
+                aria-label="Events per page"
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
+              >
+                {AUDIT_PAGE_SIZES.map((size) => (
+                  <option key={size} value={size}>
+                    {size} per page
+                  </option>
+                ))}
+              </select>
+              {hasActiveFilters ? (
+                <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                  Clear
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </div>
       }
       table={
         <AuditTable
           items={items}
           loading={loading}
-          error={error}
           selectedId={selected?.id ?? null}
           onSelect={setSelected}
           onLoadMore={nextCursor ? () => load(nextCursor) : undefined}
+          hasActiveFilters={hasActiveFilters}
         />
       }
-      detail={
-        selected ? <EventDetail event={selected} onClose={() => setSelected(null)} /> : undefined
-      }
+      detail={selected ? <EventDetail event={selected} onClose={() => setSelected(null)} /> : null}
+      fullPageScroll
     />
   );
 }
@@ -161,35 +253,63 @@ export function AuditLogViewer(): JSX.Element {
 function AuditTable({
   items,
   loading,
-  error,
   selectedId,
   onSelect,
   onLoadMore,
+  hasActiveFilters,
 }: {
   items: AuditEvent[];
   loading: boolean;
-  error: string | null;
   selectedId: string | null;
   onSelect: (e: AuditEvent) => void;
   onLoadMore?: () => void;
+  hasActiveFilters: boolean;
 }): JSX.Element {
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (loading && items.length === 0) return <LoadingSpinner />;
+  if (loading && items.length === 0)
+    return (
+      <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+        <LoadingSpinner />
+      </div>
+    );
   if (items.length === 0)
     return (
-      <EmptyState title="No audit events" description="No events match the current filters." />
+      <div style={{ padding: "2rem 1.5rem" }}>
+        <EmptyState
+          title={hasActiveFilters ? "No matching audit events" : "No audit events"}
+          description={
+            hasActiveFilters
+              ? "Try adjusting the action, entity, outcome, or severity filters."
+              : "Audit events will appear here once the organization has recorded activity."
+          }
+        />
+      </div>
     );
   return (
-    <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table>
+    <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem 1.5rem" }}>
+      <table
+        style={{
+          display: "table",
+          width: "100%",
+          borderCollapse: "collapse",
+          fontSize: "0.875rem",
+        }}
+      >
         <thead>
-          <tr>
-            <th>Timestamp</th>
-            <th>Actor</th>
-            <th>Action</th>
-            <th>Entity</th>
-            <th>Outcome</th>
-            <th>Severity</th>
+          <tr
+            style={{
+              textAlign: "left",
+              color: "var(--color-on-surface-variant)",
+              borderBottom:
+                "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+              background: "var(--color-surface-low)",
+            }}
+          >
+            <th style={{ ...thStyle, width: "18%" }}>Timestamp</th>
+            <th style={{ ...thStyle, width: "18%" }}>Actor</th>
+            <th style={{ ...thStyle, width: "25%" }}>Action</th>
+            <th style={{ ...thStyle, width: "17%" }}>Entity</th>
+            <th style={{ ...thStyle, width: "11%" }}>Outcome</th>
+            <th style={{ ...thStyle, width: "11%" }}>Severity</th>
           </tr>
         </thead>
         <tbody>
@@ -208,20 +328,35 @@ function AuditTable({
                 }
               }}
               style={{
+                borderBottom:
+                  "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
                 cursor: "pointer",
                 background: e.id === selectedId ? "var(--color-primary-tint)" : undefined,
+                transition: "background 0.15s ease",
               }}
+              className="wx-data-row-interactive"
             >
-              <td className="tabular-nums">{new Date(e.createdAt).toLocaleString()}</td>
-              <td className={e.actorUserId ? "wx-data-md" : undefined}>
-                {e.actorUserId ?? label(e.actorKind)}
+              <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                {formatDateTime(e.createdAt)}
               </td>
-              <td>{e.eventType}</td>
-              <td>{e.resourceKind}</td>
-              <td>
+              <td style={tdStyle}>
+                <ActorCell event={e} />
+              </td>
+              <td style={tdStyle}>
+                <div style={{ fontWeight: 600, color: "var(--color-on-surface)" }}>
+                  {e.eventType}
+                </div>
+                <div className="wx-data-md" style={mutedCodeStyle}>
+                  {e.id}
+                </div>
+              </td>
+              <td style={tdStyle}>
+                <EntityCell event={e} />
+              </td>
+              <td style={tdStyle}>
                 <StatusPill label={label(e.outcome)} tone={OUTCOME_TONE[e.outcome] ?? "neutral"} />
               </td>
-              <td>
+              <td style={tdStyle}>
                 <StatusPill
                   label={label(e.severity)}
                   tone={SEVERITY_TONE[e.severity] ?? "neutral"}
@@ -231,13 +366,49 @@ function AuditTable({
           ))}
         </tbody>
       </table>
-      {onLoadMore ? (
-        <div style={{ marginTop: "1rem", textAlign: "center" }}>
-          <button type="button" onClick={onLoadMore} disabled={loading}>
-            {loading ? "Loading…" : "Load more"}
-          </button>
-        </div>
-      ) : null}
+      <CursorPagination
+        loadedCount={items.length}
+        hasNextPage={Boolean(onLoadMore)}
+        onNextPage={onLoadMore}
+        loading={loading}
+        noun="audit events"
+      />
+    </div>
+  );
+}
+
+function ActorCell({ event }: { event: AuditEvent }): JSX.Element {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+      <span style={{ fontWeight: 600, color: "var(--color-on-surface)" }}>
+        {event.actorUserId ? (
+          <span className="wx-data-md">{event.actorUserId}</span>
+        ) : (
+          label(event.actorKind)
+        )}
+      </span>
+      <span style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
+        {event.actorRole ? label(event.actorRole) : label(event.actorKind)}
+      </span>
+    </div>
+  );
+}
+
+function EntityCell({ event }: { event: AuditEvent }): JSX.Element {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+      <span style={{ fontWeight: 500, color: "var(--color-on-surface)" }}>
+        {event.resourceKind}
+      </span>
+      {event.resourceId ? (
+        <span className="wx-data-md" style={mutedCodeStyle}>
+          {event.resourceId}
+        </span>
+      ) : (
+        <span style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
+          No resource id
+        </span>
+      )}
     </div>
   );
 }
@@ -325,3 +496,81 @@ function EventDetail({ event, onClose }: { event: AuditEvent; onClose: () => voi
     </RightDetailPanel>
   );
 }
+
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+const thStyle = {
+  padding: "0.625rem 1rem",
+  fontWeight: 600,
+  fontSize: "0.75rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};
+
+const tdStyle = {
+  padding: "0.75rem 1rem",
+  verticalAlign: "middle" as const,
+};
+
+const tabButtonStyle = (active: boolean) => ({
+  border: "none",
+  background: active ? "var(--color-surface-lowest)" : "transparent",
+  color: active ? "var(--color-primary)" : "var(--color-on-surface-variant)",
+  boxShadow: active ? "var(--shadow-soft)" : "none",
+  fontWeight: active ? 600 : 500,
+  fontSize: "0.85rem",
+  padding: "0.35rem 0.75rem",
+  borderRadius: "var(--radius-md)",
+  cursor: "default",
+  transition: "all 0.15s ease",
+});
+
+const errorBannerStyle = {
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
+  color: "var(--color-error)",
+  fontSize: "0.85rem",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+};
+
+const dismissButtonStyle = {
+  border: "none",
+  background: "none",
+  color: "inherit",
+  cursor: "pointer",
+  fontWeight: 600,
+};
+
+const searchIconStyle = {
+  position: "absolute" as const,
+  left: "0.625rem",
+  top: "50%",
+  transform: "translateY(-50%)",
+  color: "var(--color-on-surface-variant)",
+  pointerEvents: "none" as const,
+};
+
+const mutedCodeStyle = {
+  display: "block",
+  marginTop: "0.2rem",
+  maxWidth: "18rem",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap" as const,
+  fontSize: "0.75rem",
+  color: "var(--color-on-surface-variant)",
+};

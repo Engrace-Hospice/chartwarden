@@ -339,7 +339,13 @@ export async function getVersion(
 /** Route 19 — the compliance-gate worklist (status re-derived over the validity window, §2.2.6). */
 export async function listGates(
   client: ApiClient,
-  query: { volunteerMembershipId?: string; gateKind?: string; expiringWithinDays?: number },
+  query: {
+    volunteerMembershipId?: string;
+    gateKind?: string;
+    expiringWithinDays?: number;
+    cursor?: string;
+    limit?: number;
+  },
 ): Promise<{ page: CursorPage<GateView> | null; error: unknown }> {
   const res = await client.GET("/api/v1/volunteer-compliance-gates", {
     params: { query },

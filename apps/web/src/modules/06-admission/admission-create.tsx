@@ -2,6 +2,7 @@ import {
   Button,
   Card,
   FormSection,
+  Glyph,
   LeftNavRail,
   PageHeader,
   SelectField,
@@ -46,6 +47,7 @@ export function AdmissionCreate(): JSX.Element {
   const clinicalReady = hospiceMedicalDirectorId.trim().length > 0;
   const ready = intakeReady && clinicalReady;
   const currentIndex = STEP_IDS.indexOf(step);
+  const completedCount = Number(intakeReady) + Number(clinicalReady);
   const steps = useMemo<readonly WorkflowStep[]>(
     () => [
       {
@@ -132,10 +134,11 @@ export function AdmissionCreate(): JSX.Element {
       header={
         <PageHeader
           title="New admission"
-          breadcrumb="Admissions · Direct intake"
+          breadcrumb="Admissions / Direct intake"
           actions={
             <Link to="/admissions" style={backLinkStyle}>
-              Back to census
+              <Glyph name="arrow-right" size={14} style={{ transform: "rotate(180deg)" }} />
+              <span>Back to census</span>
             </Link>
           }
         >
@@ -173,6 +176,27 @@ export function AdmissionCreate(): JSX.Element {
       }
     >
       <div style={{ display: "flex", flexDirection: "column", gap: t.space5, maxWidth: "48rem" }}>
+        <Card as="div" padding={t.space4} style={summaryCardStyle}>
+          <div style={summaryIconStyle}>
+            <Glyph name={ready ? "check-circle" : "clipboard-check"} size={18} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: "0.875rem", fontWeight: 650, color: t.onSurface }}>
+              {completedCount} of 2 required sections complete
+            </div>
+            <div style={{ color: t.onSurfaceVariant, fontSize: "0.8125rem" }}>
+              {ready
+                ? "Ready to create the admission."
+                : "Patient ID and medical director ID are required before submission."}
+            </div>
+          </div>
+        </Card>
+        {error ? (
+          <div role="alert" style={alertStyle}>
+            <Glyph name="alert" size={16} />
+            <span>{error}</span>
+          </div>
+        ) : null}
         {step === "intake" ? (
           <FormSection
             title="Intake context"
@@ -252,11 +276,6 @@ export function AdmissionCreate(): JSX.Element {
               />
               <ReviewRow label="Medical director" value={hospiceMedicalDirectorId} />
             </dl>
-            {error ? (
-              <p role="alert" style={{ color: t.error, margin: `${t.space5} 0 0` }}>
-                {error}
-              </p>
-            ) : null}
           </FormSection>
         ) : null}
       </div>
@@ -273,8 +292,11 @@ function AdmissionContext({
       className="wx-stepper-context"
       style={{ width: "18rem", flexShrink: 0, padding: `0 ${t.space5} ${t.space5} 0` }}
     >
-      <Card>
-        <h2 style={{ margin: 0, fontSize: "1rem" }}>Intake context</h2>
+      <Card style={contextCardStyle("var(--color-primary)")}>
+        <div style={contextHeadingStyle}>
+          <Glyph name="file-text" size={16} />
+          <h2 style={{ margin: 0, fontSize: "1rem" }}>Intake context</h2>
+        </div>
         <p style={{ margin: 0, color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
           Direct intake is for walk-in, phone or transfer-in patients. A triaged referral creates
           its own admission.
@@ -285,8 +307,11 @@ function AdmissionContext({
           value={INTAKE_METHODS.find((item) => item.value === intakeMethod)?.label ?? "—"}
         />
       </Card>
-      <Card style={{ marginTop: t.space4 }}>
-        <h2 style={{ margin: 0, fontSize: "1rem" }}>Draft handling</h2>
+      <Card style={{ ...contextCardStyle("var(--color-outline-variant)"), marginTop: t.space4 }}>
+        <div style={contextHeadingStyle}>
+          <Glyph name="lock" size={16} />
+          <h2 style={{ margin: 0, fontSize: "1rem" }}>Draft handling</h2>
+        </div>
         <p style={{ margin: 0, color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
           This screen does not persist a browser draft. Leave it only after submitting or recording
           the intake in an authorized referral workflow.
@@ -318,9 +343,58 @@ const formGrid = {
   gridTemplateColumns: "repeat(auto-fit, minmax(15rem, 1fr))",
   gap: t.space4,
 };
+
+const summaryCardStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: t.space3,
+  borderLeft: "4px solid var(--color-primary)",
+} as const;
+
+const summaryIconStyle = {
+  width: "2.25rem",
+  height: "2.25rem",
+  borderRadius: t.radiusLg,
+  background: t.primaryTint,
+  color: t.primary,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+} as const;
+
+const alertStyle = {
+  padding: "0.625rem 1rem",
+  borderRadius: t.radiusMd,
+  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
+  color: t.error,
+  fontSize: "0.85rem",
+  display: "flex",
+  alignItems: "center",
+  gap: t.space2,
+} as const;
+
+const contextHeadingStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: t.space2,
+  color: t.onSurface,
+} as const;
+
+function contextCardStyle(accentColor: string) {
+  return {
+    borderLeft: `4px solid ${accentColor}`,
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: t.space3,
+  };
+}
+
 const backLinkStyle = {
   display: "inline-flex",
   alignItems: "center",
+  gap: "0.4rem",
   minHeight: "2.5rem",
   padding: "0.5rem 1rem",
   borderRadius: "9999px",

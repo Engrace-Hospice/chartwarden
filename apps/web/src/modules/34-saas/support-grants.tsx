@@ -10,8 +10,10 @@
 // row, mono identifiers, CountdownChip for the ≤72h expiry, CSS-var tokens only. Mirrors the M40
 // mdm-console / M36 messaging exemplars (useApiClient + WorkQueueLayout).
 import {
+  Button,
   CeremonyModal,
   CountdownChip,
+  CursorPagination,
   EmptyState,
   FilterBar,
   Glyph,
@@ -61,21 +63,34 @@ const scopeLabel = (s: SupportConsentGrantView["scope"]): string =>
 export function SupportGrants(): JSX.Element {
   const client = useApiClient();
   const [grants, setGrants] = useState<SupportConsentGrantView[] | null>(null);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [previousCursors, setPreviousCursors] = useState<(string | null)[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lane, setLane] = useState<Lane>("active");
   const [selected, setSelected] = useState<SupportConsentGrantView | null>(null);
   const [ceremonyOpen, setCeremonyOpen] = useState(false);
 
   const load = useCallback(async () => {
+    setLoading(true);
     setError(null);
-    const { data, error: err } = await client.GET("/api/v1/tenant/support-consent-grants");
+    const { data, error: err } = await client.GET("/api/v1/tenant/support-consent-grants", {
+      params: { query: { ...(cursor ? { cursor } : {}), limit: 25 } },
+    } as never);
     if (err) {
       setError("Could not load support consent grants.");
       setGrants([]);
+      setLoading(false);
       return;
     }
-    setGrants(((data as GrantPage | undefined)?.items ?? []) as SupportConsentGrantView[]);
-  }, [client]);
+    const page = data as unknown as GrantPage | undefined;
+    setGrants((page?.items ?? []) as SupportConsentGrantView[]);
+    setNextCursor(page?.nextCursor ?? null);
+    setHasMore(Boolean(page?.hasMore));
+    setLoading(false);
+  }, [client, cursor]);
 
   useEffect(() => {
     void load();
@@ -87,6 +102,21 @@ export function SupportGrants(): JSX.Element {
       lane === "active" ? grantState(g) === "active" : grantState(g) !== "active",
     );
   }, [grants, lane]);
+
+  function nextPage(): void {
+    if (!nextCursor) return;
+    setPreviousCursors((stack) => [...stack, cursor]);
+    setCursor(nextCursor);
+  }
+
+  function previousPage(): void {
+    setPreviousCursors((stack) => {
+      const nextStack = [...stack];
+      const previous = nextStack.pop() ?? null;
+      setCursor(previous);
+      return nextStack;
+    });
+  }
 
   const issue = useCallback(
     async (_stepUpValue?: string) => {
@@ -111,10 +141,11 @@ export function SupportGrants(): JSX.Element {
         header={
           <PageHeader
             title="Support Consent Grants"
+            breadcrumb="Admin / Organization"
             actions={
-              <button type="button" onClick={() => setCeremonyOpen(true)}>
+              <Button type="button" onClick={() => setCeremonyOpen(true)}>
                 Issue grant
-              </button>
+              </Button>
             }
           >
             <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
@@ -129,6 +160,7 @@ export function SupportGrants(): JSX.Element {
               aria-label="Grant lane"
               value={lane}
               onChange={(e) => setLane(e.target.value as Lane)}
+              style={selectStyle}
             >
               <option value="active">Active</option>
               <option value="historical">Historical</option>
@@ -138,14 +170,20 @@ export function SupportGrants(): JSX.Element {
         table={
           <GrantTable
             items={visible}
+            loading={loading}
             error={error}
             selectedId={selected?.id ?? null}
             onSelect={setSelected}
+            hasMore={hasMore}
+            hasPrevious={previousCursors.length > 0}
+            onNext={nextPage}
+            onPrevious={previousPage}
           />
         }
         detail={
           selected ? <GrantDetail grant={selected} onClose={() => setSelected(null)} /> : undefined
         }
+        fullPageScroll
       />
       <CeremonyModal
         open={ceremonyOpen}
@@ -176,28 +214,52 @@ export function SupportGrants(): JSX.Element {
 
 function GrantTable({
   items,
+  loading,
   error,
   selectedId,
   onSelect,
+  hasMore,
+  hasPrevious,
+  onNext,
+  onPrevious,
 }: {
   items: SupportConsentGrantView[] | null;
+  loading: boolean;
   error: string | null;
   selectedId: string | null;
   onSelect: (g: SupportConsentGrantView) => void;
+  hasMore: boolean;
+  hasPrevious: boolean;
+  onNext: () => void;
+  onPrevious: () => void;
 }): JSX.Element {
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (items === null) return <LoadingSpinner />;
+  if (error)
+    return (
+      <div style={{ padding: "2rem 1.5rem" }}>
+        <EmptyState title="Unavailable" description={error} />
+      </div>
+    );
+  if (items === null || loading)
+    return (
+      <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+        <LoadingSpinner />
+      </div>
+    );
   if (items.length === 0)
-    return <EmptyState title="No grants" description="No support consent grants in this lane." />;
+    return (
+      <div style={{ padding: "2rem 1.5rem" }}>
+        <EmptyState title="No grants" description="No support consent grants in this lane." />
+      </div>
+    );
   return (
-    <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table>
+    <div style={tableWrapStyle}>
+      <table style={tableStyle}>
         <thead>
           <tr>
-            <th>Scope</th>
-            <th>Reason</th>
-            <th>Expires</th>
-            <th>State</th>
+            <th style={thStyle}>Scope</th>
+            <th style={thStyle}>Reason</th>
+            <th style={thStyle}>Expires</th>
+            <th style={thStyle}>State</th>
           </tr>
         </thead>
         <tbody>
@@ -220,11 +282,13 @@ function GrantTable({
                 style={{
                   cursor: "pointer",
                   background: g.id === selectedId ? "var(--color-primary-tint)" : undefined,
+                  borderTop:
+                    "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
                 }}
               >
-                <td>{scopeLabel(g.scope)}</td>
-                <td>{g.grantReason}</td>
-                <td>
+                <td style={tdStyle}>{scopeLabel(g.scope)}</td>
+                <td style={tdStyle}>{g.grantReason}</td>
+                <td style={tdStyle}>
                   {state === "active" ? (
                     <CountdownChip dueAt={g.expiresAt} label="Expires" />
                   ) : (
@@ -233,7 +297,7 @@ function GrantTable({
                     </span>
                   )}
                 </td>
-                <td>
+                <td style={tdStyle}>
                   <StatusPill label={cap(state)} tone={SUPPORT_SESSION_TONE[state] ?? "neutral"} />
                 </td>
               </tr>
@@ -241,6 +305,15 @@ function GrantTable({
           })}
         </tbody>
       </table>
+      <CursorPagination
+        loadedCount={items.length}
+        hasNextPage={hasMore}
+        hasPreviousPage={hasPrevious}
+        onNextPage={onNext}
+        onPreviousPage={onPrevious}
+        loading={loading}
+        noun="support grants"
+      />
     </div>
   );
 }
@@ -292,3 +365,41 @@ function fmt(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
+
+const selectStyle = {
+  padding: "0.35rem 0.5rem",
+  borderRadius: "var(--radius-md)",
+  border: "none",
+  background: "var(--color-surface-low)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+} as const;
+
+const tableWrapStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  minWidth: 0,
+} as const;
+
+const tableStyle = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: "0.85rem",
+} as const;
+
+const thStyle = {
+  padding: "0.75rem 1rem",
+  textAlign: "left",
+  fontSize: "0.7rem",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color: "var(--color-on-surface-variant)",
+} as const;
+
+const tdStyle = {
+  padding: "0.75rem 1rem",
+  color: "var(--color-on-surface)",
+  verticalAlign: "middle",
+} as const;

@@ -311,62 +311,51 @@ export function StaffManagement(): JSX.Element {
         }
         kpis={
           <KpiStrip>
-            <div style={kpiWrapperStyle("var(--color-success)")}>
-              <KpiCard
-                label="Active Staff"
-                value={activeCount ?? "—"}
-                detail="Active accounts"
-                tone="success"
-              />
-            </div>
-            <div style={kpiWrapperStyle("var(--color-primary)")}>
-              <KpiCard
-                label="Admins"
-                value={adminCount ?? "—"}
-                detail="Full org access"
-                tone="info"
-              />
-            </div>
-            <div
-              style={kpiWrapperStyle(
-                pendingInvites > 0 ? "var(--color-warning)" : "var(--color-outline-variant)",
-              )}
-            >
-              <KpiCard
-                label="Pending Invites"
-                value={loadFailed ? "—" : pendingInvites}
-                detail="Awaiting acceptance"
-                tone={pendingInvites > 0 ? "warning" : "neutral"}
-                onSelect={() => setActiveTab("invitations")}
-                selected={activeTab === "invitations"}
-              />
-            </div>
-            <div
-              style={kpiWrapperStyle(
+            <KpiCard
+              label="Active Staff"
+              value={activeCount ?? "—"}
+              detail="Active accounts"
+              tone="success"
+              accentColor="var(--color-success)"
+            />
+            <KpiCard
+              label="Admins"
+              value={adminCount ?? "—"}
+              detail="Full org access"
+              tone="info"
+              accentColor="var(--color-primary)"
+            />
+            <KpiCard
+              label="Pending Invites"
+              value={loadFailed ? "—" : pendingInvites}
+              detail="Awaiting acceptance"
+              tone={pendingInvites > 0 ? "warning" : "neutral"}
+              accentColor={
+                pendingInvites > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
+              }
+              onSelect={() => setActiveTab("invitations")}
+              selected={activeTab === "invitations"}
+            />
+            <KpiCard
+              label="Suspended"
+              value={suspendedCount ?? "—"}
+              detail="Access paused"
+              tone={(suspendedCount ?? 0) > 0 ? "warning" : "neutral"}
+              accentColor={
                 (suspendedCount ?? 0) > 0
                   ? "var(--color-warning)"
-                  : "var(--color-outline-variant)",
-              )}
-            >
-              <KpiCard
-                label="Suspended"
-                value={suspendedCount ?? "—"}
-                detail="Access paused"
-                tone={(suspendedCount ?? 0) > 0 ? "warning" : "neutral"}
-              />
-            </div>
-            <div
-              style={kpiWrapperStyle(
-                (lockedCount ?? 0) > 0 ? "var(--color-error)" : "var(--color-outline-variant)",
-              )}
-            >
-              <KpiCard
-                label="Locked Accounts"
-                value={lockedCount ?? "—"}
-                detail="Security locked"
-                tone={(lockedCount ?? 0) > 0 ? "danger" : "neutral"}
-              />
-            </div>
+                  : "var(--color-outline-variant)"
+              }
+            />
+            <KpiCard
+              label="Locked Accounts"
+              value={lockedCount ?? "—"}
+              detail="Security locked"
+              tone={(lockedCount ?? 0) > 0 ? "danger" : "neutral"}
+              accentColor={
+                (lockedCount ?? 0) > 0 ? "var(--color-error)" : "var(--color-outline-variant)"
+              }
+            />
           </KpiStrip>
         }
         filters={
@@ -1249,12 +1238,6 @@ function getInitials(name: string): string {
 }
 
 const cap = (s: string): string => s.replace(/\b\w/g, (c) => c.toUpperCase());
-
-const kpiWrapperStyle = (accentColor: string) => ({
-  borderLeft: `4px solid ${accentColor}`,
-  borderRadius: "var(--radius-xl)",
-  overflow: "hidden",
-});
 
 const thStyle = {
   padding: "0.625rem 1rem",
