@@ -94,6 +94,8 @@ export interface KpiCardProps {
   trend?: ReactNode;
   tone?: "neutral" | "info" | "success" | "warning" | "danger";
   selected?: boolean;
+  /** Optional left accent rail for dashboard/work-queue KPI cards. */
+  accentColor?: string;
   /** Optional click → e.g. apply a saved filter into the queue below. */
   onSelect?: () => void;
 }
@@ -104,6 +106,7 @@ export function KpiCard({
   trend,
   tone = "neutral",
   selected = false,
+  accentColor,
   onSelect,
 }: KpiCardProps): JSX.Element {
   const semantic =
@@ -162,6 +165,7 @@ export function KpiCard({
     boxShadow: t.shadowSoft,
     textAlign: "left" as const,
     border: selected ? `2px solid ${t.primary}` : "2px solid transparent",
+    borderLeft: accentColor ? `4px solid ${accentColor}` : undefined,
   };
   return onSelect ? (
     <button

@@ -10,14 +10,14 @@
 // Lantern: GateStepper renders the eleven steps as an actionable checklist (blockers surfaced first),
 // with a KPI-style readiness summary; ONBOARDING_TASK_TONE drives the per-task pill. No hardcoded hex.
 import {
-  DetailPageLayout,
+  Button,
   EmptyState,
   type GateStatus,
   GateStepper,
-  Glyph,
   LoadingSpinner,
   PageHeader,
   StatusPill,
+  WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -56,17 +56,21 @@ const stepLabel = (key: string): string => statusLabel(key);
 export function Onboarding(): JSX.Element {
   const client = useApiClient();
   const [tasks, setTasks] = useState<OnboardingTaskView[] | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
     setError(null);
     const { data, error: err } = await client.GET("/api/v1/tenant/onboarding");
     if (err) {
       setError("Could not load onboarding tasks.");
       setTasks([]);
+      setLoading(false);
       return;
     }
     setTasks(((data as OnboardingPage | undefined)?.items ?? []) as OnboardingTaskView[]);
+    setLoading(false);
   }, [client]);
 
   useEffect(() => {
@@ -135,110 +139,109 @@ export function Onboarding(): JSX.Element {
   );
 
   return (
-    <DetailPageLayout
+    <WorkQueueLayout
       header={
-        <PageHeader title="Onboarding">
+        <PageHeader
+          title="Onboarding"
+          breadcrumb="Admin / Organization"
+          actions={
+            <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
+              Refresh
+            </Button>
+          }
+        >
           <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
             Complete each step to finish provisioning your organization. Blocked steps are surfaced
             first; resolve them with your WardenX implementation contact.
           </p>
         </PageHeader>
       }
-    >
-      {error ? (
-        <EmptyState title="Unavailable" description={error} />
-      ) : tasks === null ? (
-        <LoadingSpinner />
-      ) : tasks.length === 0 ? (
-        <EmptyState
-          title="No onboarding tasks"
-          description="This organization has no onboarding checklist."
-        />
-      ) : (
-        <div
-          style={{ display: "flex", flexDirection: "column", gap: "1.25rem", maxWidth: "52rem" }}
-        >
-          <ReadinessStrip
-            total={summary.total}
-            done={summary.done}
-            blocked={summary.blocked}
-            overdue={summary.overdue}
-          />
-          <GateStepper items={gateItems} ariaLabel="Onboarding steps" />
+      table={
+        error ? (
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState title="Unavailable" description={error} />
+          </div>
+        ) : tasks === null ? (
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
+        ) : tasks.length === 0 ? (
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState
+              title="No onboarding tasks"
+              description="This organization has no onboarding checklist."
+            />
+          </div>
+        ) : (
+          <div style={contentStyle}>
+            <GateStepper items={gateItems} ariaLabel="Onboarding steps" />
+          </div>
+        )
+      }
+      detail={
+        <div style={detailStyle}>
+          <section style={railSectionStyle}>
+            <h3 style={railTitleStyle}>Loaded Checklist</h3>
+            <dl style={summaryListStyle}>
+              <dt>Total</dt>
+              <dd className="tabular-nums">{summary.total}</dd>
+              <dt>Complete or skipped</dt>
+              <dd className="tabular-nums">{summary.done}</dd>
+              <dt>Blocked</dt>
+              <dd className="tabular-nums">{summary.blocked}</dd>
+              <dt>Overdue</dt>
+              <dd className="tabular-nums">{summary.overdue}</dd>
+            </dl>
+          </section>
+          <section style={railSectionStyle}>
+            <h3 style={railTitleStyle}>Actions</h3>
+            <p style={railTextStyle}>
+              Start and complete calls are sent per task. If preconditions are unmet, the server
+              refuses completion.
+            </p>
+          </section>
         </div>
-      )}
-    </DetailPageLayout>
+      }
+      fullPageScroll
+    />
   );
 }
 
-function ReadinessStrip({
-  total,
-  done,
-  blocked,
-  overdue,
-}: { total: number; done: number; blocked: number; overdue: number }): JSX.Element {
-  return (
-    <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-      <Kpi
-        label="Steps complete"
-        value={`${done} / ${total}`}
-        glyph="check-circle"
-        tone="success"
-      />
-      <Kpi label="Blocked" value={blocked} glyph="alert" tone={blocked > 0 ? "error" : "neutral"} />
-      <Kpi
-        label="Overdue"
-        value={overdue}
-        glyph="clock"
-        tone={overdue > 0 ? "warning" : "neutral"}
-      />
-    </div>
-  );
-}
+const contentStyle = {
+  padding: "0 1.5rem 1.5rem",
+  maxWidth: "52rem",
+} as const;
 
-function Kpi({
-  label,
-  value,
-  glyph,
-  tone,
-}: {
-  label: string;
-  value: number | string;
-  glyph: "check-circle" | "alert" | "clock";
-  tone: "success" | "error" | "warning" | "neutral";
-}): JSX.Element {
-  const fg =
-    tone === "success"
-      ? "var(--color-success)"
-      : tone === "error"
-        ? "var(--color-error)"
-        : tone === "warning"
-          ? "var(--color-warning)"
-          : "var(--color-on-surface-variant)";
-  return (
-    <div
-      style={{
-        flex: "1 1 10rem",
-        background: "var(--color-surface-low)",
-        borderRadius: "var(--radius-lg)",
-        padding: "0.75rem 1rem",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", color: fg }}>
-        <Glyph name={glyph} size={16} />
-        <span className="tabular-nums" style={{ fontSize: "1.25rem", fontWeight: 600 }}>
-          {value}
-        </span>
-      </div>
-      <div
-        style={{
-          fontSize: "0.72rem",
-          color: "var(--color-on-surface-variant)",
-          marginTop: "0.2rem",
-        }}
-      >
-        {label}
-      </div>
-    </div>
-  );
-}
+const detailStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+} as const;
+
+const railSectionStyle = {
+  padding: "1rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-lowest)",
+} as const;
+
+const railTitleStyle = {
+  margin: "0 0 0.5rem",
+  fontSize: "0.875rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+} as const;
+
+const railTextStyle = {
+  margin: 0,
+  fontSize: "0.8rem",
+  color: "var(--color-on-surface-variant)",
+} as const;
+
+const summaryListStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr auto",
+  gap: "0.45rem 0.75rem",
+  margin: 0,
+  fontSize: "0.8rem",
+  color: "var(--color-on-surface-variant)",
+} as const;

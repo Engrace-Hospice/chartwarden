@@ -1,9 +1,11 @@
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   Modal,
   PageHeader,
   StatusPill,
+  WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
@@ -104,99 +106,130 @@ export function AiOptInBoard(): JSX.Element {
   }
 
   return (
-    <div
-      style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}
-    >
-      <PageHeader title="AI capabilities" breadcrumb="Organization" />
-      {outcome ? (
-        <output aria-live="polite">
-          <StatusPill label={outcome.message} tone={outcome.ok ? "success" : "error"} />
-        </output>
-      ) : null}
-      {loading && capabilities.length === 0 ? (
-        <LoadingSpinner />
-      ) : error ? (
-        <EmptyState title={error} description="Retry shortly." />
-      ) : capabilities.length === 0 ? (
-        // Not "no capabilities exist" — the platform has 14; none has reached APPROVED for tenants yet.
-        <EmptyState
-          title="No capabilities available yet"
-          description="No AI capability has reached the approved state where a tenant may opt in."
-        />
-      ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(22rem, 1fr))",
-            gap: "1rem",
-          }}
-        >
-          {capabilities.map((c) => {
-            const optIn = optInByCapability.get(c.id);
-            const enrolled = optIn?.status === "active";
-            return (
-              <section
-                key={c.id}
-                style={{
-                  border: "1px solid var(--color-outline-variant)",
-                  borderRadius: "var(--radius-lg, 0.75rem)",
-                  background: "var(--color-surface)",
-                  padding: "1rem 1.1rem",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.6rem",
-                }}
-              >
-                <header style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
-                  <h2 style={{ fontSize: "0.95rem", fontWeight: 600 }}>{c.displayName}</h2>
-                  <StatusPill
-                    label={`${cap(c.riskTier)} risk`}
-                    tone={
-                      c.riskTier === "high"
-                        ? "critical"
-                        : c.riskTier === "medium"
-                          ? "warning"
-                          : "neutral"
-                    }
-                  />
-                </header>
-                <p style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
-                  Backend <code>{c.defaultBackendKey}</code>
-                  {c.allowedBackendKeys.length > 1
-                    ? ` (+${c.allowedBackendKeys.length - 1} fallback)`
-                    : null}
-                </p>
-                {optIn ? (
-                  <StatusPill
-                    label={cap(optIn.status)}
-                    tone={OPT_IN_TONE[optIn.status] ?? "neutral"}
-                  />
-                ) : (
-                  <StatusPill label="Not enrolled" tone="neutral" />
-                )}
-                {/* Stated per card because it is the thing a tenant admin most needs to know before
-                    enrolling: their clinicians can still individually decline. */}
-                <p style={{ fontSize: "0.78rem", color: "var(--color-on-surface-variant)" }}>
-                  {c.clinicianOptOutSupported
-                    ? "Individual clinicians may opt out of this capability."
-                    : "Clinicians cannot individually opt out of this capability."}
-                </p>
-                <div style={{ display: "flex", gap: "0.6rem" }}>
-                  {enrolled ? (
-                    <button type="button" onClick={() => setRevoking(c)} style={buttonStyle(false)}>
-                      Revoke
-                    </button>
-                  ) : (
-                    <button type="button" onClick={() => setEnrolling(c)} style={buttonStyle(true)}>
-                      Opt in
-                    </button>
-                  )}
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      )}
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader
+            title="AI capabilities"
+            breadcrumb="Organization / AI"
+            actions={
+              <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
+                Refresh
+              </Button>
+            }
+          >
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Opt this organization into approved AI capabilities after the required compliance
+              acknowledgments.
+            </div>
+          </PageHeader>
+        }
+        filters={
+          outcome ? (
+            <div style={{ padding: "0.75rem 1.5rem 0" }}>
+              <output aria-live="polite">
+                <StatusPill label={outcome.message} tone={outcome.ok ? "success" : "error"} />
+              </output>
+            </div>
+          ) : null
+        }
+        table={
+          loading && capabilities.length === 0 ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : error ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState title={error} description="Retry shortly." />
+            </div>
+          ) : capabilities.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              {/* Not "no capabilities exist" — the platform has 14; none has reached APPROVED for tenants yet. */}
+              <EmptyState
+                title="No capabilities available yet"
+                description="No AI capability has reached the approved state where a tenant may opt in."
+              />
+            </div>
+          ) : (
+            <div style={contentStyle}>
+              <div style={capabilityGridStyle}>
+                {capabilities.map((c) => {
+                  const optIn = optInByCapability.get(c.id);
+                  const enrolled = optIn?.status === "active";
+                  return (
+                    <section key={c.id} style={capabilityCardStyle}>
+                      <header style={capabilityHeaderStyle}>
+                        <h2 style={capabilityTitleStyle}>{c.displayName}</h2>
+                        <StatusPill
+                          label={`${cap(c.riskTier)} risk`}
+                          tone={
+                            c.riskTier === "high"
+                              ? "critical"
+                              : c.riskTier === "medium"
+                                ? "warning"
+                                : "neutral"
+                          }
+                        />
+                      </header>
+                      <p style={mutedTextStyle}>
+                        Backend <code>{c.defaultBackendKey}</code>
+                        {c.allowedBackendKeys.length > 1
+                          ? ` (+${c.allowedBackendKeys.length - 1} fallback)`
+                          : null}
+                      </p>
+                      {optIn ? (
+                        <StatusPill
+                          label={cap(optIn.status)}
+                          tone={OPT_IN_TONE[optIn.status] ?? "neutral"}
+                        />
+                      ) : (
+                        <StatusPill label="Not enrolled" tone="neutral" />
+                      )}
+                      {/* Stated per card because it is the thing a tenant admin most needs to know before
+                          enrolling: their clinicians can still individually decline. */}
+                      <p style={mutedTextStyle}>
+                        {c.clinicianOptOutSupported
+                          ? "Individual clinicians may opt out of this capability."
+                          : "Clinicians cannot individually opt out of this capability."}
+                      </p>
+                      <div style={{ display: "flex", gap: "0.6rem" }}>
+                        {enrolled ? (
+                          <Button type="button" tone="danger" onClick={() => setRevoking(c)}>
+                            Revoke
+                          </Button>
+                        ) : (
+                          <Button type="button" onClick={() => setEnrolling(c)}>
+                            Opt in
+                          </Button>
+                        )}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            </div>
+          )
+        }
+        detail={
+          <div style={detailStyle}>
+            <section style={railSectionStyle}>
+              <h3 style={railTitleStyle}>Eligibility</h3>
+              <p style={railTextStyle}>
+                Only APPROVED and MONITORING capabilities are offered. Lower lifecycle states are
+                withheld because there is no published calibration to attest to.
+              </p>
+            </section>
+            <section style={railSectionStyle}>
+              <h3 style={railTitleStyle}>Acknowledgments</h3>
+              <p style={railTextStyle}>
+                Opt-in requires BAA, ZDR, clinical reviewer, calibration trade-off, and high-risk
+                disclosure-accounting acknowledgments when applicable.
+              </p>
+            </section>
+          </div>
+        }
+        fullPageScroll
+      />
 
       {enrolling ? (
         <OptInDialog
@@ -226,32 +259,18 @@ export function AiOptInBoard(): JSX.Element {
               clinician in this organization. This action is logged.
             </p>
             <div style={{ display: "flex", gap: "0.75rem" }}>
-              <button type="button" onClick={() => void revoke(revoking)} style={buttonStyle(true)}>
+              <Button type="button" tone="danger" onClick={() => void revoke(revoking)}>
                 Revoke
-              </button>
-              <button type="button" onClick={() => setRevoking(null)} style={buttonStyle(false)}>
+              </Button>
+              <Button type="button" tone="secondary" onClick={() => setRevoking(null)}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </div>
         </Modal>
       ) : null}
-    </div>
+    </>
   );
-}
-
-function buttonStyle(primary: boolean, disabled = false): React.CSSProperties {
-  return {
-    padding: "0.55rem 1.1rem",
-    borderRadius: "var(--radius-md, 0.5rem)",
-    border: primary ? "none" : "1px solid var(--color-outline)",
-    background: primary ? "var(--color-primary)" : "transparent",
-    color: primary ? "var(--color-on-primary)" : "var(--color-primary)",
-    fontSize: "0.875rem",
-    fontWeight: 600,
-    cursor: disabled ? "default" : "pointer",
-    opacity: disabled ? 0.55 : 1,
-  };
 }
 
 const fieldStyle: React.CSSProperties = {
@@ -425,19 +444,84 @@ function OptInDialog({
           <span>Enrol as a pilot tenant</span>
         </label>
         <div style={{ display: "flex", gap: "0.75rem" }}>
-          <button
+          <Button
             type="button"
             onClick={() => void submit()}
             disabled={busy || !complete}
-            style={buttonStyle(true, busy || !complete)}
+            loading={busy}
           >
-            {busy ? "Submitting…" : "Opt in"}
-          </button>
-          <button type="button" onClick={onClose} style={buttonStyle(false)}>
+            Opt in
+          </Button>
+          <Button type="button" tone="secondary" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>
   );
 }
+
+const contentStyle = {
+  padding: "0 1.5rem 1.5rem",
+};
+
+const capabilityGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fill, minmax(22rem, 1fr))",
+  gap: "1rem",
+};
+
+const capabilityCardStyle = {
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-lowest)",
+  padding: "1rem",
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.6rem",
+} as const;
+
+const capabilityHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "0.5rem",
+};
+
+const capabilityTitleStyle = {
+  margin: 0,
+  fontSize: "0.95rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+};
+
+const mutedTextStyle = {
+  margin: 0,
+  fontSize: "0.78rem",
+  color: "var(--color-on-surface-variant)",
+};
+
+const detailStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+} as const;
+
+const railSectionStyle = {
+  padding: "1rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-lowest)",
+} as const;
+
+const railTitleStyle = {
+  margin: "0 0 0.5rem",
+  fontSize: "0.875rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+} as const;
+
+const railTextStyle = {
+  margin: 0,
+  fontSize: "0.8rem",
+  color: "var(--color-on-surface-variant)",
+} as const;

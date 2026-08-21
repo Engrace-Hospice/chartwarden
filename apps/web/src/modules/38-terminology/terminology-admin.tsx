@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   FilterBar,
   LoadingSpinner,
@@ -77,19 +78,34 @@ export function TerminologyAdmin(): JSX.Element {
 
   return (
     <WorkQueueLayout
-      header={<PageHeader title="Terminology" />}
-      filters={
-        <FilterBar
+      header={
+        <PageHeader
+          title="Terminology"
+          breadcrumb="Admin"
           actions={
-            <button type="button" onClick={() => void search()}>
+            <Button
+              type="button"
+              tone="secondary"
+              onClick={() => void search()}
+              loading={loading}
+              disabled={!q.trim()}
+            >
               Search
-            </button>
+            </Button>
           }
         >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Search clinical and billing code systems, then inspect the selected concept detail.
+          </div>
+        </PageHeader>
+      }
+      filters={
+        <FilterBar>
           <select
             aria-label="Code system"
             value={system}
             onChange={(e) => setSystem(e.target.value as System)}
+            style={selectStyle}
           >
             {SYSTEMS.map((s) => (
               <option key={s} value={s}>
@@ -102,6 +118,7 @@ export function TerminologyAdmin(): JSX.Element {
             placeholder="Code or term"
             value={q}
             onChange={(e) => setQ(e.target.value)}
+            style={inputStyle}
             onKeyDown={(e) => {
               if (e.key === "Enter") void search();
             }}
@@ -120,8 +137,19 @@ export function TerminologyAdmin(): JSX.Element {
       detail={
         selected ? (
           <ConceptDetail concept={selected} onClose={() => setSelected(null)} />
-        ) : undefined
+        ) : (
+          <div style={detailStyle}>
+            <section style={railSectionStyle}>
+              <h3 style={railTitleStyle}>Systems</h3>
+              <p style={railTextStyle}>
+                CPT is deliberately absent from the phase-1 terminology surface. Search is scoped to
+                the selected system and limited by the backend.
+              </p>
+            </section>
+          </div>
+        )
       }
+      fullPageScroll
     />
   );
 }
@@ -139,26 +167,42 @@ function ConceptTable({
   selectedCode: string | null;
   onSelect: (c: Concept) => void;
 }): JSX.Element {
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (loading) return <LoadingSpinner />;
+  if (error)
+    return (
+      <div style={{ padding: "2rem 1.5rem" }}>
+        <EmptyState title="Unavailable" description={error} />
+      </div>
+    );
+  if (loading)
+    return (
+      <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+        <LoadingSpinner />
+      </div>
+    );
   if (results === null)
     return (
-      <EmptyState
-        title="Search a code system"
-        description="Pick a system and enter a code or term."
-      />
+      <div style={{ padding: "2rem 1.5rem" }}>
+        <EmptyState
+          title="Search a code system"
+          description="Pick a system and enter a code or term."
+        />
+      </div>
     );
   if (results.length === 0)
-    return <EmptyState title="No concepts" description="No concepts match this search." />;
+    return (
+      <div style={{ padding: "2rem 1.5rem" }}>
+        <EmptyState title="No concepts" description="No concepts match this search." />
+      </div>
+    );
   return (
-    <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table>
+    <div style={tableWrapStyle}>
+      <table style={tableStyle}>
         <thead>
           <tr>
-            <th>Code</th>
-            <th>Display</th>
-            <th>Status</th>
-            <th>Effective</th>
+            <th style={thStyle}>Code</th>
+            <th style={thStyle}>Display</th>
+            <th style={thStyle}>Status</th>
+            <th style={thStyle}>Effective</th>
           </tr>
         </thead>
         <tbody>
@@ -179,14 +223,20 @@ function ConceptTable({
               style={{
                 cursor: "pointer",
                 background: c.code === selectedCode ? "var(--color-primary-tint)" : undefined,
+                borderTop:
+                  "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
               }}
             >
-              <td className="wx-data-md">{c.code}</td>
-              <td>{c.display}</td>
-              <td>
+              <td className="wx-data-md" style={tdStyle}>
+                {c.code}
+              </td>
+              <td style={tdStyle}>{c.display}</td>
+              <td style={tdStyle}>
                 <StatusPill label={cap(c.status)} tone={STATUS_TONE[c.status] ?? "neutral"} />
               </td>
-              <td className="tabular-nums">{c.effectiveDate}</td>
+              <td className="tabular-nums" style={tdStyle}>
+                {c.effectiveDate}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -194,6 +244,68 @@ function ConceptTable({
     </div>
   );
 }
+
+const selectStyle = {
+  padding: "0.35rem 0.5rem",
+  borderRadius: "var(--radius-md)",
+  border: "none",
+  background: "var(--color-surface-low)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+} as const;
+
+const inputStyle = { ...selectStyle, minWidth: "16rem" } as const;
+
+const tableWrapStyle = {
+  minWidth: 0,
+} as const;
+
+const tableStyle = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: "0.85rem",
+} as const;
+
+const thStyle = {
+  padding: "0.75rem 1rem",
+  textAlign: "left",
+  fontSize: "0.7rem",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color: "var(--color-on-surface-variant)",
+} as const;
+
+const tdStyle = {
+  padding: "0.75rem 1rem",
+  color: "var(--color-on-surface)",
+  verticalAlign: "middle",
+} as const;
+
+const detailStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+} as const;
+
+const railSectionStyle = {
+  padding: "1rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-lowest)",
+} as const;
+
+const railTitleStyle = {
+  margin: "0 0 0.5rem",
+  fontSize: "0.875rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+} as const;
+
+const railTextStyle = {
+  margin: 0,
+  fontSize: "0.8rem",
+  color: "var(--color-on-surface-variant)",
+} as const;
 
 function ConceptDetail({
   concept,

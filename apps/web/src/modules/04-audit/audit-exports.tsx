@@ -1,5 +1,7 @@
 import {
+  Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   Modal,
   PageHeader,
@@ -100,56 +102,130 @@ export function AuditExports(): JSX.Element {
         header={
           <PageHeader
             title="Compliance Exports"
+            breadcrumb="Compliance / Audit"
             actions={
-              <button type="button" onClick={() => setShowCreate(true)}>
+              <Button tone="primary" onClick={() => setShowCreate(true)}>
                 New Export
-              </button>
+              </Button>
             }
-          />
+          >
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Request evidence exports and track the jobs created from this browser session.
+            </div>
+          </PageHeader>
+        }
+        filters={
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.75rem",
+              padding: "0 1.5rem 0.75rem",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "1rem",
+              }}
+            >
+              <div style={tabShellStyle}>
+                <button type="button" style={tabButtonStyle(true)}>
+                  Tracked exports ({ids.length})
+                </button>
+              </div>
+              <Button
+                type="button"
+                tone="secondary"
+                size="sm"
+                onClick={() => refresh(ids)}
+                disabled={loading || ids.length === 0}
+              >
+                {loading ? "Refreshing..." : "Refresh status"}
+              </Button>
+            </div>
+          </div>
         }
         table={
           loading && items.length === 0 ? (
-            <LoadingSpinner />
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
           ) : items.length === 0 ? (
-            <EmptyState
-              title="No exports yet"
-              description="Requested exports appear here once created."
-            />
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title="No exports yet"
+                description="Requested exports appear here once created."
+                action={
+                  <Button tone="primary" size="sm" onClick={() => setShowCreate(true)}>
+                    New Export
+                  </Button>
+                }
+              />
+            </div>
           ) : (
-            <div style={{ padding: "0 1.5rem 1.5rem" }}>
-              <table>
+            <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem 1.5rem" }}>
+              <table
+                style={{
+                  display: "table",
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: "0.875rem",
+                }}
+              >
                 <thead>
-                  <tr>
-                    <th>Format</th>
-                    <th>Status</th>
-                    <th>Records</th>
-                    <th>Expires</th>
+                  <tr style={tableHeaderRowStyle}>
+                    <th style={{ ...thStyle, width: "34%" }}>Export</th>
+                    <th style={{ ...thStyle, width: "14%" }}>Format</th>
+                    <th style={{ ...thStyle, width: "16%" }}>Status</th>
+                    <th style={{ ...thStyle, width: "16%" }}>Records</th>
+                    <th style={{ ...thStyle, width: "20%" }}>Expires</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((e) => (
-                    <tr key={e.id}>
-                      <td>{e.format.toUpperCase()}</td>
-                      <td>
+                    <tr key={e.id} style={tableRowStyle}>
+                      <td style={tdStyle}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                          <div style={exportIconStyle}>
+                            <Glyph name="file-text" size={16} />
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, color: "var(--color-on-surface)" }}>
+                              Compliance export
+                            </div>
+                            <div className="wx-data-md" style={mutedCodeStyle}>
+                              {e.id}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td style={tdStyle}>
+                        <span style={formatChipStyle}>{e.format.toUpperCase()}</span>
+                      </td>
+                      <td style={tdStyle}>
                         <StatusPill
                           label={e.status.charAt(0).toUpperCase() + e.status.slice(1)}
                           tone={STATUS_TONE[e.status] ?? "neutral"}
                         />
                       </td>
-                      <td className="tabular-nums">{e.recordCount ?? "—"}</td>
-                      <td className="tabular-nums">{new Date(e.expiresAt).toLocaleDateString()}</td>
+                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                        {e.recordCount ?? "—"}
+                      </td>
+                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                        {formatDate(e.expiresAt)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <div style={{ marginTop: "1rem", textAlign: "center" }}>
-                <button type="button" onClick={() => refresh(ids)} disabled={loading}>
-                  {loading ? "Refreshing…" : "Refresh status"}
-                </button>
-              </div>
             </div>
           )
         }
+        fullPageScroll
       />
       {showCreate ? (
         <CreateExportModal
@@ -157,7 +233,9 @@ export function AuditExports(): JSX.Element {
           onCreated={(id) => {
             setShowCreate(false);
             addId(id);
-            toast.show("Export requested — status will update as it processes.", { tone: "success" });
+            toast.show("Export requested — status will update as it processes.", {
+              tone: "success",
+            });
           }}
         />
       ) : null}
@@ -217,49 +295,217 @@ function CreateExportModal({
 
   return (
     <Modal open onClose={onClose} ariaLabel="Request a compliance export">
-      <h2 style={{ marginTop: 0 }}>Request a compliance export</h2>
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        <label>
-          Justification (min. 10 characters, SEC-052)
-          <textarea
-            value={justification}
-            onChange={(e) => setJustification(e.target.value)}
-            rows={2}
-            style={{ width: "100%" }}
-          />
-        </label>
-        <div style={{ display: "flex", gap: "0.75rem" }}>
-          <label style={{ flex: 1 }}>
-            From
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ width: "100%" }} />
+      <div style={modalContentStyle}>
+        <div>
+          <h2 style={modalTitleStyle}>Request a compliance export</h2>
+          <p style={modalDescriptionStyle}>
+            Generate an evidence bundle for the selected audit window and optional resource kinds.
+          </p>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
+          <label style={fieldLabelStyle}>
+            Justification
+            <textarea
+              value={justification}
+              onChange={(e) => setJustification(e.target.value)}
+              rows={3}
+              style={{ ...fieldInputStyle, resize: "vertical" }}
+            />
           </label>
-          <label style={{ flex: 1 }}>
-            To
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ width: "100%" }} />
+          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+            <label style={{ ...fieldLabelStyle, flex: "1 1 10rem" }}>
+              From
+              <input
+                type="date"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                style={fieldInputStyle}
+              />
+            </label>
+            <label style={{ ...fieldLabelStyle, flex: "1 1 10rem" }}>
+              To
+              <input
+                type="date"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                style={fieldInputStyle}
+              />
+            </label>
+          </div>
+          <label style={fieldLabelStyle}>
+            Resource kinds
+            <input
+              value={resourceKinds}
+              onChange={(e) => setResourceKinds(e.target.value)}
+              placeholder="patient, document, audit_event"
+              style={fieldInputStyle}
+            />
+          </label>
+          <label style={fieldLabelStyle}>
+            Format
+            <select
+              value={format}
+              onChange={(e) => setFormat(e.target.value as typeof format)}
+              style={fieldInputStyle}
+            >
+              <option value="csv">CSV</option>
+              <option value="ndjson">NDJSON</option>
+              <option value="pdf">PDF</option>
+            </select>
           </label>
         </div>
-        <label>
-          Resource kinds (comma-separated, optional)
-          <input value={resourceKinds} onChange={(e) => setResourceKinds(e.target.value)} style={{ width: "100%" }} />
-        </label>
-        <label>
-          Format
-          <select value={format} onChange={(e) => setFormat(e.target.value as typeof format)} style={{ width: "100%" }}>
-            <option value="csv">CSV</option>
-            <option value="ndjson">NDJSON</option>
-            <option value="pdf">PDF</option>
-          </select>
-        </label>
-        {error ? <p style={{ color: "var(--color-error)", fontSize: "0.8rem" }}>{error}</p> : null}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
-          <button type="button" onClick={onClose} disabled={busy}>
+
+        {error ? (
+          <div role="alert" style={modalErrorStyle}>
+            {error}
+          </div>
+        ) : null}
+
+        <div style={modalActionsStyle}>
+          <Button type="button" tone="tertiary" onClick={onClose} disabled={busy}>
             Cancel
-          </button>
-          <button type="button" onClick={submit} disabled={busy}>
-            {busy ? "Requesting…" : "Request export"}
-          </button>
+          </Button>
+          <Button type="button" tone="primary" onClick={submit} disabled={busy}>
+            {busy ? "Requesting..." : "Request export"}
+          </Button>
         </div>
       </div>
     </Modal>
   );
 }
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+const thStyle = {
+  padding: "0.625rem 1rem",
+  fontWeight: 600,
+  fontSize: "0.75rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};
+
+const tdStyle = {
+  padding: "0.75rem 1rem",
+  verticalAlign: "middle" as const,
+};
+
+const tableHeaderRowStyle = {
+  textAlign: "left" as const,
+  color: "var(--color-on-surface-variant)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  background: "var(--color-surface-low)",
+};
+
+const tableRowStyle = {
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+};
+
+const tabShellStyle = {
+  display: "flex",
+  gap: "0.25rem",
+  background: "var(--color-surface-container)",
+  padding: "0.2rem",
+  borderRadius: "var(--radius-md)",
+};
+
+const tabButtonStyle = (active: boolean) => ({
+  border: "none",
+  background: active ? "var(--color-surface-lowest)" : "transparent",
+  color: active ? "var(--color-primary)" : "var(--color-on-surface-variant)",
+  boxShadow: active ? "var(--shadow-soft)" : "none",
+  fontWeight: active ? 600 : 500,
+  fontSize: "0.85rem",
+  padding: "0.35rem 0.75rem",
+  borderRadius: "var(--radius-md)",
+  cursor: "default",
+  transition: "all 0.15s ease",
+});
+
+const exportIconStyle = {
+  width: "2.25rem",
+  height: "2.25rem",
+  borderRadius: "9999px",
+  background: "var(--color-primary-tint)",
+  color: "var(--color-primary)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+};
+
+const mutedCodeStyle = {
+  display: "block",
+  marginTop: "0.2rem",
+  maxWidth: "18rem",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap" as const,
+  fontSize: "0.75rem",
+  color: "var(--color-on-surface-variant)",
+};
+
+const formatChipStyle = {
+  display: "inline-block",
+  padding: "0.2rem 0.5rem",
+  borderRadius: "var(--radius-sm)",
+  fontSize: "0.75rem",
+  fontWeight: 600,
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface-variant)",
+};
+
+const fieldLabelStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.375rem",
+  fontSize: "0.85rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+};
+
+const fieldInputStyle = {
+  width: "100%",
+  padding: "0.5rem 0.75rem",
+};
+
+const modalContentStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "1.25rem",
+  padding: "1.5rem",
+};
+
+const modalTitleStyle = {
+  margin: 0,
+  fontSize: "1.125rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+};
+
+const modalDescriptionStyle = {
+  margin: "0.35rem 0 0",
+  fontSize: "0.875rem",
+  color: "var(--color-on-surface-variant)",
+};
+
+const modalErrorStyle = {
+  padding: "0.625rem 0.75rem",
+  borderRadius: "var(--radius-md)",
+  background: "color-mix(in srgb, var(--color-error) 10%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-error) 28%, transparent)",
+  color: "var(--color-error)",
+  fontSize: "0.85rem",
+};
+
+const modalActionsStyle = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "0.5rem",
+  paddingTop: "0.5rem",
+  borderTop: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+};

@@ -1,9 +1,10 @@
 import {
-  DashboardLayout,
+  Button,
   EmptyState,
-  KpiCard,
   LoadingSpinner,
   PageHeader,
+  StatusPill,
+  WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/17-scheduling — Scheduling Metrics (M17 §5.1 `/app/admin/scheduling-metrics`, Track B / ADR-0030).
@@ -55,21 +56,163 @@ export function SchedulingMetrics(): JSX.Element {
   }, [load]);
 
   return (
-    <DashboardLayout
-      header={<PageHeader title="Scheduling Metrics" />}
-      kpis={
+    <WorkQueueLayout
+      header={
+        <PageHeader
+          title="Scheduling Metrics"
+          breadcrumb="Admin / Scheduling"
+          actions={
+            <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
+              Refresh
+            </Button>
+          }
+        >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Review server-computed visit performance over the trailing 30-day window.
+          </div>
+        </PageHeader>
+      }
+      table={
         error ? (
-          <EmptyState title="Unavailable" description={error} />
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState title="Unavailable" description={error} />
+          </div>
         ) : loading || !metrics ? (
-          <LoadingSpinner />
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
         ) : (
-          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", padding: "1rem 1.5rem" }}>
-            <KpiCard label="On-time rate (30d)" value={pct(metrics.onTimeRate)} />
-            <KpiCard label="No-show rate (30d)" value={pct(metrics.noShowRate)} />
-            <KpiCard label="Reschedule rate (30d)" value={pct(metrics.rescheduleRate)} />
+          <div style={contentStyle}>
+            <section style={sectionStyle}>
+              <div style={sectionHeaderStyle}>
+                <div>
+                  <h2 style={sectionTitleStyle}>Visit Metrics</h2>
+                  <div style={sectionSubtitleStyle}>
+                    {formatDate(window.from)} to {formatDate(window.to)}
+                  </div>
+                </div>
+                <StatusPill label="Server computed" tone="success" />
+              </div>
+              <div style={factsGridStyle}>
+                <MetricFact label="On-time rate" value={pct(metrics.onTimeRate)} />
+                <MetricFact label="No-show rate" value={pct(metrics.noShowRate)} />
+                <MetricFact label="Reschedule rate" value={pct(metrics.rescheduleRate)} />
+              </div>
+            </section>
           </div>
         )
       }
+      detail={
+        <div style={detailStyle}>
+          <section style={railSectionStyle}>
+            <h3 style={railTitleStyle}>Window</h3>
+            <p style={railTextStyle}>
+              The endpoint receives the exact trailing-30-day `from` and `to` timestamps. The UI
+              does not recompute visit rates locally.
+            </p>
+          </section>
+        </div>
+      }
+      fullPageScroll
     />
   );
 }
+
+function MetricFact({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <div style={factStyle}>
+      <div style={factLabelStyle}>{label}</div>
+      <div className="tabular-nums" style={factValueStyle}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(
+    new Date(value),
+  );
+}
+
+const contentStyle = {
+  padding: "0 1.5rem 1.5rem",
+  maxWidth: "64rem",
+};
+
+const sectionStyle = {
+  padding: "1rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-lowest)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+};
+
+const sectionHeaderStyle = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: "1rem",
+  marginBottom: "1rem",
+};
+
+const sectionTitleStyle = {
+  margin: 0,
+  fontSize: "1rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+};
+
+const sectionSubtitleStyle = {
+  marginTop: "0.2rem",
+  fontSize: "0.8rem",
+  color: "var(--color-on-surface-variant)",
+};
+
+const factsGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(11rem, 1fr))",
+  gap: "0.75rem",
+};
+
+const factStyle = {
+  padding: "0.75rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-low)",
+};
+
+const factLabelStyle = {
+  fontSize: "0.75rem",
+  color: "var(--color-on-surface-variant)",
+};
+
+const factValueStyle = {
+  marginTop: "0.35rem",
+  fontSize: "1.35rem",
+  fontWeight: 700,
+  color: "var(--color-on-surface)",
+};
+
+const detailStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+} as const;
+
+const railSectionStyle = {
+  padding: "1rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-lowest)",
+};
+
+const railTitleStyle = {
+  margin: "0 0 0.5rem",
+  fontSize: "0.875rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+};
+
+const railTextStyle = {
+  margin: 0,
+  fontSize: "0.8rem",
+  color: "var(--color-on-surface-variant)",
+};

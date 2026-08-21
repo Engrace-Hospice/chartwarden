@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   FilterBar,
   LoadingSpinner,
@@ -84,19 +85,28 @@ export function MdmConsole(): JSX.Element {
 
   return (
     <WorkQueueLayout
-      header={<PageHeader title="Master Data Management" />}
-      filters={
-        <FilterBar
+      header={
+        <PageHeader
+          title="Master Data Management"
+          breadcrumb="Admin"
           actions={
-            <button type="button" onClick={() => void search()}>
+            <Button type="button" tone="secondary" onClick={() => void search()} loading={loading}>
               Search
-            </button>
+            </Button>
           }
         >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Search canonical master-data records by kind, name, or identifier.
+          </div>
+        </PageHeader>
+      }
+      filters={
+        <FilterBar>
           <select
             aria-label="Entity kind"
             value={kind}
             onChange={(e) => setKind(e.target.value as Kind)}
+            style={selectStyle}
           >
             {KINDS.map((k) => (
               <option key={k} value={k}>
@@ -109,6 +119,7 @@ export function MdmConsole(): JSX.Element {
             placeholder="Name or identifier"
             value={q}
             onChange={(e) => setQ(e.target.value)}
+            style={inputStyle}
             onKeyDown={(e) => {
               if (e.key === "Enter") void search();
             }}
@@ -127,8 +138,19 @@ export function MdmConsole(): JSX.Element {
       detail={
         selected ? (
           <EntityDetail entity={selected} kind={kind} onClose={() => setSelected(null)} />
-        ) : undefined
+        ) : (
+          <div style={detailStyle}>
+            <section style={railSectionStyle}>
+              <h3 style={railTitleStyle}>Canonical Sets</h3>
+              <p style={railTextStyle}>
+                Search is scoped to one master-data kind at a time. Provisional records are shown
+                explicitly when an identifier has not been assigned.
+              </p>
+            </section>
+          </div>
+        )
       }
+      fullPageScroll
     />
   );
 }
@@ -146,18 +168,32 @@ function ResultsTable({
   selectedId: string | null;
   onSelect: (e: MdmResolvedSummary) => void;
 }): JSX.Element {
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (loading) return <LoadingSpinner />;
+  if (error)
+    return (
+      <div style={{ padding: "2rem 1.5rem" }}>
+        <EmptyState title="Unavailable" description={error} />
+      </div>
+    );
+  if (loading)
+    return (
+      <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+        <LoadingSpinner />
+      </div>
+    );
   if (items.length === 0)
-    return <EmptyState title="No matches" description="No canonical records match this search." />;
+    return (
+      <div style={{ padding: "2rem 1.5rem" }}>
+        <EmptyState title="No matches" description="No canonical records match this search." />
+      </div>
+    );
   return (
-    <div style={{ padding: "0 1.5rem 1.5rem" }}>
-      <table>
+    <div style={tableWrapStyle}>
+      <table style={tableStyle}>
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Identifier</th>
-            <th>Status</th>
+            <th style={thStyle}>Name</th>
+            <th style={thStyle}>Identifier</th>
+            <th style={thStyle}>Status</th>
           </tr>
         </thead>
         <tbody>
@@ -180,15 +216,17 @@ function ResultsTable({
                 style={{
                   cursor: "pointer",
                   background: r.id === selectedId ? "var(--color-primary-tint)" : undefined,
+                  borderTop:
+                    "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
                 }}
               >
-                <td>{r.canonical.displayName}</td>
-                <td className="wx-data-md">
+                <td style={tdStyle}>{r.canonical.displayName}</td>
+                <td className="wx-data-md" style={tdStyle}>
                   {id ?? (
                     <span style={{ color: "var(--color-on-surface-variant)" }}>provisional</span>
                   )}
                 </td>
-                <td>
+                <td style={tdStyle}>
                   <StatusPill label={cap(r.status)} tone={STATUS_TONE[r.status] ?? "neutral"} />
                 </td>
               </tr>
@@ -199,6 +237,68 @@ function ResultsTable({
     </div>
   );
 }
+
+const selectStyle = {
+  padding: "0.35rem 0.5rem",
+  borderRadius: "var(--radius-md)",
+  border: "none",
+  background: "var(--color-surface-low)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+} as const;
+
+const inputStyle = { ...selectStyle, minWidth: "16rem" } as const;
+
+const tableWrapStyle = {
+  minWidth: 0,
+} as const;
+
+const tableStyle = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: "0.85rem",
+} as const;
+
+const thStyle = {
+  padding: "0.75rem 1rem",
+  textAlign: "left",
+  fontSize: "0.7rem",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color: "var(--color-on-surface-variant)",
+} as const;
+
+const tdStyle = {
+  padding: "0.75rem 1rem",
+  color: "var(--color-on-surface)",
+  verticalAlign: "middle",
+} as const;
+
+const detailStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+} as const;
+
+const railSectionStyle = {
+  padding: "1rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-lowest)",
+} as const;
+
+const railTitleStyle = {
+  margin: "0 0 0.5rem",
+  fontSize: "0.875rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+} as const;
+
+const railTextStyle = {
+  margin: 0,
+  fontSize: "0.8rem",
+  color: "var(--color-on-surface-variant)",
+} as const;
 
 function EntityDetail({
   entity,

@@ -1,8 +1,11 @@
 import {
+  Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   PageHeader,
   StatusPill,
+  type StatusTone,
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
@@ -61,64 +64,216 @@ export function PrescribingPolicy(): JSX.Element {
 
   return (
     <WorkQueueLayout
-      header={<PageHeader title="Prescribing Policy" />}
+      header={
+        <PageHeader
+          title="Prescribing Policy"
+          breadcrumb="Admin / Medications"
+          actions={
+            <Button type="button" tone="secondary" onClick={() => void load()} disabled={loading}>
+              {loading ? "Refreshing..." : "Refresh"}
+            </Button>
+          }
+        >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Review refill queue escalation windows and controlled-substance prescribing limits for
+            this tenant.
+          </div>
+        </PageHeader>
+      }
       table={
         error ? (
-          <EmptyState title="Unavailable" description={error} />
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState title="Unavailable" description={error} />
+          </div>
         ) : loading || !refill || !controlled ? (
-          <LoadingSpinner />
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
         ) : (
-          <div style={{ display: "grid", gap: "1.5rem", maxWidth: "40rem" }}>
-            <section>
-              <h3 style={h3}>Refill inbox SLA (§2.7 D9)</h3>
-              <dl style={dl}>
-                <dt style={dt}>Warn after</dt>
-                <dd style={dd}>
-                  <span className="tabular-nums">{refill.slaWarnHours}h</span>{" "}
-                  <span style={floor}>(floor {refill.platformFloorWarnHours}h)</span>
-                </dd>
-                <dt style={dt}>Critical after</dt>
-                <dd style={dd}>
-                  <span className="tabular-nums">{refill.slaCriticalHours}h</span>{" "}
-                  <span style={floor}>(floor {refill.platformFloorCriticalHours}h)</span>
-                </dd>
-              </dl>
-            </section>
-            <section>
-              <h3 style={h3}>Controlled-substance policy (21 CFR 1306.22 / D18)</h3>
-              <dl style={dl}>
-                <dt style={dt}>Schedule II max refills</dt>
-                <dd style={dd} className="tabular-nums">
-                  {controlled.scheduleIiMaxRefills}
-                </dd>
-                <dt style={dt}>Schedule III–V max refills</dt>
-                <dd style={dd} className="tabular-nums">
-                  {controlled.scheduleIiiToVMaxRefills}
-                </dd>
-                <dt style={dt}>EPCS certification</dt>
-                <dd style={dd}>
-                  <StatusPill
-                    label={stateLabel(controlled.epcsCertificationStatus)}
-                    tone={EPCS_TONE[controlled.epcsCertificationStatus] ?? "neutral"}
-                  />
-                </dd>
-              </dl>
-            </section>
+          <div style={pageContentStyle}>
+            <PolicySection
+              icon="clock"
+              title="Refill Inbox SLA"
+              subtitle="Escalation windows for refill requests"
+              statusLabel="Tighten-only"
+              statusTone="progress"
+            >
+              <div style={factsGridStyle}>
+                <Fact
+                  label="Warn after"
+                  value={`${refill.slaWarnHours}h`}
+                  detail={`Platform floor ${refill.platformFloorWarnHours}h`}
+                />
+                <Fact
+                  label="Critical after"
+                  value={`${refill.slaCriticalHours}h`}
+                  detail={`Platform floor ${refill.platformFloorCriticalHours}h`}
+                />
+              </div>
+            </PolicySection>
+
+            <PolicySection
+              icon="shield"
+              title="Controlled-Substance Policy"
+              subtitle="Refill caps and EPCS certification gate"
+              statusLabel={stateLabel(controlled.epcsCertificationStatus)}
+              statusTone={EPCS_TONE[controlled.epcsCertificationStatus] ?? "neutral"}
+            >
+              <div style={factsGridStyle}>
+                <Fact
+                  label="Schedule II max refills"
+                  value={String(controlled.scheduleIiMaxRefills)}
+                  detail="Hard regulatory cap"
+                />
+                <Fact
+                  label="Schedule III-V max refills"
+                  value={String(controlled.scheduleIiiToVMaxRefills)}
+                  detail="21 CFR 1306.22"
+                />
+                <div style={factStyle}>
+                  <div style={factLabelStyle}>EPCS certification</div>
+                  <div style={{ marginTop: "0.35rem" }}>
+                    <StatusPill
+                      label={stateLabel(controlled.epcsCertificationStatus)}
+                      tone={EPCS_TONE[controlled.epcsCertificationStatus] ?? "neutral"}
+                    />
+                  </div>
+                </div>
+              </div>
+            </PolicySection>
           </div>
         )
       }
+      fullPageScroll
     />
   );
 }
 
-const h3 = { fontSize: "0.9rem", fontWeight: 600, margin: "0 0 0.5rem" } as const;
-const dl = {
+function PolicySection({
+  icon,
+  title,
+  subtitle,
+  statusLabel,
+  statusTone,
+  children,
+}: {
+  icon: "clock" | "shield";
+  title: string;
+  subtitle: string;
+  statusLabel: string;
+  statusTone: StatusTone;
+  children: JSX.Element;
+}): JSX.Element {
+  return (
+    <section style={sectionStyle}>
+      <div style={sectionHeaderStyle}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.875rem", minWidth: 0 }}>
+          <div style={sectionIconStyle}>
+            <Glyph name={icon} size={18} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <h2 style={sectionTitleStyle}>{title}</h2>
+            <div style={sectionSubtitleStyle}>{subtitle}</div>
+          </div>
+        </div>
+        <StatusPill label={statusLabel} tone={statusTone} />
+      </div>
+      <div style={{ marginTop: "1rem" }}>{children}</div>
+    </section>
+  );
+}
+
+function Fact({
+  label,
+  value,
+  detail,
+}: { label: string; value: string; detail: string }): JSX.Element {
+  return (
+    <div style={factStyle}>
+      <div style={factLabelStyle}>{label}</div>
+      <div className="tabular-nums" style={factValueStyle}>
+        {value}
+      </div>
+      <div style={factDetailStyle}>{detail}</div>
+    </div>
+  );
+}
+
+const pageContentStyle = {
   display: "grid",
-  gridTemplateColumns: "14rem 1fr",
-  gap: "0.4rem 1rem",
-  fontSize: "0.85rem",
+  gridTemplateColumns: "repeat(auto-fit, minmax(20rem, 1fr))",
+  gap: "1rem",
+  padding: "0 1.5rem 1.5rem",
+  maxWidth: "70rem",
+};
+
+const sectionStyle = {
+  padding: "1rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-lowest)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+};
+
+const sectionHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "1rem",
+};
+
+const sectionIconStyle = {
+  width: "2.75rem",
+  height: "2.75rem",
+  borderRadius: "9999px",
+  background: "var(--color-primary-tint)",
+  color: "var(--color-primary)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+};
+
+const sectionTitleStyle = {
   margin: 0,
-} as const;
-const dt = { fontWeight: 600, color: "var(--color-on-surface)" } as const;
-const dd = { margin: 0 } as const;
-const floor = { color: "var(--color-muted)", fontSize: "0.75rem" } as const;
+  fontSize: "1rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+};
+
+const sectionSubtitleStyle = {
+  marginTop: "0.2rem",
+  fontSize: "0.8rem",
+  color: "var(--color-on-surface-variant)",
+};
+
+const factsGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))",
+  gap: "0.75rem",
+};
+
+const factStyle = {
+  padding: "0.75rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-low)",
+};
+
+const factLabelStyle = {
+  fontSize: "0.72rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+  color: "var(--color-on-surface-variant)",
+};
+
+const factValueStyle = {
+  marginTop: "0.25rem",
+  fontSize: "1.15rem",
+  fontWeight: 700,
+  color: "var(--color-on-surface)",
+};
+
+const factDetailStyle = {
+  marginTop: "0.2rem",
+  fontSize: "0.78rem",
+  color: "var(--color-on-surface-variant)",
+};

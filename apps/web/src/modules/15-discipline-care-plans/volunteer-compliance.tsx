@@ -1,7 +1,7 @@
 import {
+  Button,
+  CursorPagination,
   EmptyState,
-  KpiCard,
-  KpiStrip,
   LoadingSpinner,
   PageHeader,
   StatusPill,
@@ -76,6 +76,7 @@ const EXPIRY_OPTIONS = [
   { value: "14", label: "Expiring within 14 days" },
   { value: "30", label: "Expiring within 30 days" },
 ];
+const PAGE_SIZE = 25;
 
 export function VolunteerComplianceGates(): JSX.Element {
   const client = useApiClient();
@@ -83,6 +84,10 @@ export function VolunteerComplianceGates(): JSX.Element {
   const [volunteerFilter, setVolunteerFilter] = useState("");
   const [kindFilter, setKindFilter] = useState("");
   const [expiryFilter, setExpiryFilter] = useState("");
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [previousCursors, setPreviousCursors] = useState<(string | null)[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -97,6 +102,8 @@ export function VolunteerComplianceGates(): JSX.Element {
       ...(volunteerFilter.trim() ? { volunteerMembershipId: volunteerFilter.trim() } : {}),
       ...(kindFilter ? { gateKind: kindFilter } : {}),
       ...(expiryFilter ? { expiringWithinDays: Number(expiryFilter) } : {}),
+      ...(cursor ? { cursor } : {}),
+      limit: PAGE_SIZE,
     });
     if (err) {
       setError(
@@ -106,15 +113,49 @@ export function VolunteerComplianceGates(): JSX.Element {
       return;
     }
     setRows(page?.data ?? []);
+    setNextCursor(page?.next_cursor ?? null);
+    setHasMore(Boolean(page?.has_more));
     setLoading(false);
-  }, [client, volunteerFilter, kindFilter, expiryFilter]);
+  }, [client, volunteerFilter, kindFilter, expiryFilter, cursor]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
+  function resetPage(): void {
+    setCursor(null);
+    setPreviousCursors([]);
+  }
+
+  function updateVolunteerFilter(value: string): void {
+    setVolunteerFilter(value);
+    resetPage();
+  }
+
+  function updateKindFilter(value: string): void {
+    setKindFilter(value);
+    resetPage();
+  }
+
+  function updateExpiryFilter(value: string): void {
+    setExpiryFilter(value);
+    resetPage();
+  }
+
+  function nextPage(): void {
+    if (!nextCursor) return;
+    setPreviousCursors((stack) => [...stack, cursor]);
+    setCursor(nextCursor);
+  }
+
+  function previousPage(): void {
+    setPreviousCursors((stack) => {
+      const nextStack = [...stack];
+      const previous = nextStack.pop() ?? null;
+      setCursor(previous);
+      return nextStack;
+    });
+  }
 
   const failing = rows.filter((g) => FAILING_GATE_STATUSES.includes(g.effectiveStatus));
   const expiring = rows.filter((g) => g.effectiveStatus === "expiring_soon");
@@ -129,49 +170,65 @@ export function VolunteerComplianceGates(): JSX.Element {
             title="Volunteer compliance"
             breadcrumb="Admin — 42 CFR §418.78(b) / (d) gates"
             actions={
-              <button type="button" style={ghostButtonStyle} onClick={() => setCreating(true)}>
-                Record gate
-              </button>
+              <div style={{ display: "flex", gap: t.space2 }}>
+                <Button
+                  type="button"
+                  tone="secondary"
+                  onClick={() => void load()}
+                  loading={loading}
+                >
+                  Refresh
+                </Button>
+                <Button type="button" onClick={() => setCreating(true)}>
+                  Record gate
+                </Button>
+              </div>
             }
-          />
-        }
-        kpis={
-          <KpiStrip>
-            <KpiCard label="Gates tracked" value={rows.length} />
-            <KpiCard label="Expiring soon" value={expiring.length} />
-            <KpiCard label="Unmet gates" value={failing.length} />
-            <KpiCard label="Volunteers blocked" value={blockedVolunteers.size} />
-          </KpiStrip>
+          >
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Manage the live workforce gates that determine whether a volunteer can be scheduled.
+            </div>
+          </PageHeader>
         }
         filters={
           <FilterRow>
             <TextField
               label="Volunteer membership id"
               value={volunteerFilter}
-              onChange={setVolunteerFilter}
+              onChange={updateVolunteerFilter}
             />
             <SelectField
               label="Gate kind"
               value={kindFilter}
               options={KIND_FILTER_OPTIONS}
-              onChange={setKindFilter}
+              onChange={updateKindFilter}
             />
             <SelectField
               label="Expiry window"
               value={expiryFilter}
               options={EXPIRY_OPTIONS}
-              onChange={setExpiryFilter}
+              onChange={updateExpiryFilter}
             />
           </FilterRow>
         }
         table={
-          rows.length === 0 ? (
-            <EmptyState
-              title="No gates"
-              description="No compliance gate matches this filter. A volunteer with no recorded gate is not schedulable."
-            />
+          error ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState title="Unavailable" description={error} />
+            </div>
+          ) : loading ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : rows.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title="No gates"
+                description="No compliance gate matches this filter. A volunteer with no recorded gate is not schedulable."
+              />
+            </div>
           ) : (
-            <>
+            <div style={tableWrapStyle}>
               {actionError ? <p style={alertStyle}>{actionError}</p> : null}
               <table style={tableStyle}>
                 <thead>
@@ -240,16 +297,31 @@ export function VolunteerComplianceGates(): JSX.Element {
                   ))}
                 </tbody>
               </table>
-            </>
+              <CursorPagination
+                loadedCount={rows.length}
+                hasNextPage={hasMore}
+                hasPreviousPage={previousCursors.length > 0}
+                onNextPage={nextPage}
+                onPreviousPage={previousPage}
+                loading={loading}
+                noun="compliance gates"
+              />
+            </div>
           )
         }
         detail={
           <div style={{ display: "flex", flexDirection: "column", gap: t.space3 }}>
             <Notice tone={failing.length > 0 ? "error" : "success"}>
               {failing.length === 0
-                ? "Every tracked gate is satisfied or approaching expiry — no volunteer is blocked by this list."
-                : `${blockedVolunteers.size} volunteer${blockedVolunteers.size === 1 ? "" : "s"} cannot be scheduled: an expired, revoked or not-yet-satisfied gate fails 418.78 and the scheduler refuses the assignment.`}
+                ? "Every gate on this page is satisfied or approaching expiry — no volunteer is blocked by the currently loaded rows."
+                : `${blockedVolunteers.size} volunteer${blockedVolunteers.size === 1 ? "" : "s"} on this page cannot be scheduled: an expired, revoked or not-yet-satisfied gate fails 418.78 and the scheduler refuses the assignment.`}
             </Notice>
+            {expiring.length > 0 ? (
+              <Notice tone="warning">
+                {expiring.length} loaded gate{expiring.length === 1 ? "" : "s"} expire soon.
+                Expiring soon warns; it does not block.
+              </Notice>
+            ) : null}
             {drifted.length > 0 ? (
               <Notice tone="warning">
                 {drifted.length} row{drifted.length === 1 ? "" : "s"} show a status the nightly
@@ -263,6 +335,7 @@ export function VolunteerComplianceGates(): JSX.Element {
             </span>
           </div>
         }
+        fullPageScroll
       />
 
       {creating ? (
@@ -469,3 +542,10 @@ function RevokeGateModal({
 function shortDateInput(value: string | null | undefined): string {
   return value ? value.slice(0, 10) : "";
 }
+
+const tableWrapStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: t.space3,
+  minWidth: 0,
+} as const;

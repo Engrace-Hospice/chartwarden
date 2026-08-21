@@ -444,7 +444,7 @@
   .wx-work-table,
   table {
     scrollbar-width: none !important; /* Firefox */
-    -ms-overflow-style: none !important;  /* IE and Edge */
+    -ms-overflow-style: none !important; /* IE and Edge */
   }
   .wx-no-scrollbar::-webkit-scrollbar,
   .wx-main::-webkit-scrollbar,
@@ -600,6 +600,106 @@
   }
   .wx-data-row-interactive:hover {
     background: var(--color-surface-low);
+  }
+
+  /* Roles & Permissions: header + KPI scroll away in `.wx-main`; the workspace sticks below the
+     app header and fills the remaining viewport height so each column can scroll independently. */
+  .wx-roles-workspace {
+    flex: 0 0 auto;
+    padding-bottom: var(--space-5);
+  }
+  .wx-roles-workspace > .wx-admin-split-workspace {
+    position: sticky;
+    top: 0;
+    height: calc(100dvh - var(--wx-app-header-height, 0px));
+    max-height: calc(100dvh - var(--wx-app-header-height, 0px));
+    min-height: 0;
+    flex: none;
+    overflow: hidden;
+    background: var(--color-background);
+  }
+  .wx-roles-workspace .wx-admin-list,
+  .wx-roles-workspace .wx-admin-matrix,
+  .wx-roles-workspace .wx-context-rail {
+    min-height: 0;
+    min-width: 0;
+  }
+  .wx-roles-workspace .wx-admin-list {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+  }
+  .wx-roles-workspace .wx-admin-list > section {
+    flex: 1;
+    min-height: 0;
+  }
+  .wx-roles-role-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  /* The entire center column scrolls as one region — header, coverage, filters, and groups. */
+  .wx-roles-workspace .wx-admin-matrix {
+    height: 100%;
+    overflow-y: auto !important;
+  }
+  .wx-roles-permission-matrix {
+    width: 100%;
+    padding-bottom: var(--space-5);
+  }
+  .wx-roles-workspace .wx-context-rail {
+    height: 100%;
+    overflow-y: auto;
+  }
+  .wx-roles-workspace .wx-right-panel {
+    height: 100%;
+  }
+
+  /* An administration workspace needs room for all three subjects on desktop. At tablet/mobile
+     widths it becomes a deliberate single-column reading flow instead of squeezing three unusable
+     columns side-by-side. */
+  @media (max-width: 900px) {
+    .wx-roles-workspace {
+      height: auto;
+      flex-basis: auto;
+    }
+    .wx-roles-workspace > .wx-admin-split-workspace {
+      position: static;
+      height: auto;
+      min-height: 0;
+      flex-basis: auto;
+      flex-direction: column;
+    }
+    .wx-roles-workspace .wx-admin-list,
+    .wx-roles-workspace .wx-admin-matrix,
+    .wx-roles-workspace .wx-context-rail {
+      width: 100% !important;
+      max-width: none !important;
+      overflow: visible !important;
+      border: 0 !important;
+    }
+    .wx-roles-workspace .wx-admin-list {
+      border-bottom: 1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent) !important;
+    }
+    .wx-roles-workspace .wx-context-rail {
+      padding: 0 var(--space-5) var(--space-5) !important;
+    }
+    .wx-roles-workspace .wx-right-panel {
+      width: 100% !important;
+      border-left: 0 !important;
+      border-top: 1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent);
+    }
+    .wx-roles-role-list {
+      max-height: 22rem;
+      overflow-y: auto !important;
+    }
+    .wx-roles-workspace .wx-admin-matrix {
+      height: auto;
+      overflow-y: visible;
+    }
+    .wx-roles-permission-matrix {
+      display: block;
+    }
   }
 
   /* WorkQueueLayout's `kpis` / `filters` slots. The usual occupants pad themselves — `KpiStrip`
