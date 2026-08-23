@@ -1,6 +1,11 @@
 import {
+  Button,
   EmptyState,
+  Glyph,
+  KpiCard,
+  KpiStrip,
   LoadingSpinner,
+  OffsetPagination,
   PageHeader,
   StatusPill,
   WorkQueueLayout,
@@ -11,7 +16,7 @@ import {
 // retention split, and the arrangement state. Backed by GET /api/v1/rb-arrangements (+ GET /api/v1/rb-days
 // for the day counts, read once for the whole page and bucketed client-side so the list stays one round
 // trip per resource). Lantern: WorkQueueLayout + No-Line table (§6.7) + §6.6 StatusPill; CSS-var tokens only.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import {
   RB_ARRANGEMENT_STATE_TONE,
@@ -66,6 +71,8 @@ const STATE_OPTIONS = [
   { value: "SUPERSEDED", label: "Superseded" },
 ];
 
+const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
+
 export function MedicaidRbArrangements(): JSX.Element {
   const client = useApiClient();
   const [rows, setRows] = useState<Arrangement[]>([]);
@@ -73,6 +80,9 @@ export function MedicaidRbArrangements(): JSX.Element {
     new Map(),
   );
   const [state, setState] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [daysDegraded, setDaysDegraded] = useState(false);
@@ -113,8 +123,23 @@ export function MedicaidRbArrangements(): JSX.Element {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
+  const filteredRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) =>
+      [r.id, r.patientId, r.nfFacilityMdmId, r.nfFacilityNameSnapshot, r.state].some((value) =>
+        value.toLowerCase().includes(q),
+      ),
+    );
+  }, [rows, searchQuery]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const activePage = Math.min(page, pageCount);
+  const pagedRows = filteredRows.slice((activePage - 1) * pageSize, activePage * pageSize);
+  const hasActiveFilters = searchQuery !== "" || state !== "";
+  const activeCount = rows.filter((r) => r.state === "ACTIVE").length;
+  const draftCount = rows.filter((r) => r.state === "DRAFT").length;
+  const pendingDayCount = Array.from(dayCounts.values()).reduce((sum, c) => sum + c.pending, 0);
 
   return (
     <WorkQueueLayout
@@ -122,88 +147,236 @@ export function MedicaidRbArrangements(): JSX.Element {
         <PageHeader
           title="R&B Arrangements"
           breadcrumb="Billing — Medicaid · nursing-facility pass-through"
-        />
+        >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Track facility agreements, effective windows, per-diem rates, and day-level readiness.
+          </div>
+        </PageHeader>
+      }
+      kpis={
+        <KpiStrip>
+          <KpiCard
+            label="Arrangements"
+            value={loading || error ? "—" : rows.length}
+            detail="Total loaded"
+            tone="info"
+            accentColor="var(--color-primary)"
+          />
+          <KpiCard
+            label="Active"
+            value={loading || error ? "—" : activeCount}
+            detail="Currently billable"
+            tone="success"
+            accentColor="var(--color-success)"
+            selected={state === "ACTIVE"}
+            onSelect={() => {
+              setState("ACTIVE");
+              setPage(1);
+            }}
+          />
+          <KpiCard
+            label="Draft"
+            value={loading || error ? "—" : draftCount}
+            detail="Awaiting activation"
+            tone={draftCount > 0 ? "warning" : "neutral"}
+            accentColor={draftCount > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"}
+            selected={state === "DRAFT"}
+            onSelect={() => {
+              setState("DRAFT");
+              setPage(1);
+            }}
+          />
+          <KpiCard
+            label="Pending Days"
+            value={loading || error || daysDegraded ? "—" : pendingDayCount}
+            detail={daysDegraded ? "Unavailable" : "Need review"}
+            tone={pendingDayCount > 0 ? "warning" : "neutral"}
+            accentColor={
+              pendingDayCount > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
+            }
+          />
+        </KpiStrip>
       }
       filters={
-        <FilterRow>
-          <SelectFilter
-            label="Arrangement state"
-            value={state}
-            options={STATE_OPTIONS}
-            onChange={setState}
-          />
-          {daysDegraded ? (
-            <span style={mutedStyle}>Day counts are unavailable in this session.</span>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.75rem",
+            padding: "0 1.5rem 0.75rem",
+          }}
+        >
+          {error ? (
+            <div role="alert" style={bannerStyle("error")}>
+              <Glyph name="alert" size={16} />
+              <span>{error}</span>
+            </div>
+          ) : daysDegraded ? (
+            <output style={bannerStyle("warning")}>
+              <Glyph name="alert" size={16} />
+              <span>Day counts are unavailable in this session.</span>
+            </output>
           ) : null}
-        </FilterRow>
+          <FilterRow>
+            <div style={{ position: "relative", minWidth: "16rem" }}>
+              <input
+                type="search"
+                placeholder="Search facility, patient, or arrangement..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setPage(1);
+                }}
+                aria-label="Search arrangements"
+                style={{
+                  width: "100%",
+                  paddingLeft: "2rem",
+                  height: "2.25rem",
+                  fontSize: "0.85rem",
+                }}
+              />
+              <div style={searchIconStyle}>
+                <Glyph name="eye" size={14} />
+              </div>
+            </div>
+            <SelectFilter
+              label="Arrangement state"
+              value={state}
+              options={STATE_OPTIONS}
+              onChange={(next) => {
+                setState(next);
+                setPage(1);
+              }}
+            />
+            {hasActiveFilters ? (
+              <Button
+                size="sm"
+                tone="tertiary"
+                onClick={() => {
+                  setSearchQuery("");
+                  setState("");
+                  setPage(1);
+                }}
+              >
+                Clear
+              </Button>
+            ) : null}
+            <span style={mutedStyle}>
+              {filteredRows.length} of {rows.length} arrangements
+            </span>
+          </FilterRow>
+        </div>
       }
       table={
-        rows.length === 0 ? (
-          <EmptyState
-            title="No arrangements"
-            description="No NF Room & Board arrangement matches this filter."
-          />
+        loading ? (
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
+        ) : error ? (
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState title="Unavailable" description={error} />
+          </div>
+        ) : filteredRows.length === 0 ? (
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState
+              title="No arrangements"
+              description={
+                hasActiveFilters
+                  ? "No NF Room & Board arrangement matches these filters."
+                  : "No NF Room & Board arrangements have been created."
+              }
+              action={
+                hasActiveFilters ? (
+                  <Button
+                    tone="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setSearchQuery("");
+                      setState("");
+                      setPage(1);
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                ) : undefined
+              }
+            />
+          </div>
         ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Facility</th>
-                <th style={th}>Patient</th>
-                <th style={th}>Effective</th>
-                <th style={thNum}>Routine</th>
-                <th style={thNum}>Respite</th>
-                <th style={thNum}>GIP</th>
-                <th style={thNum}>Pass-through</th>
-                <th style={thNum}>Days</th>
-                <th style={th}>State</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const counts = dayCounts.get(r.id);
-                return (
-                  <tr key={r.id} style={rowLine}>
-                    <td style={td}>
-                      <a href={`/medicaid/billing/rb-arrangements/${r.id}`} style={linkMonoStyle}>
-                        {r.nfFacilityNameSnapshot || shortId(r.nfFacilityMdmId)}
-                      </a>
-                    </td>
-                    <td style={tdMono}>{shortId(r.patientId)}</td>
-                    <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>
-                      {shortDate(r.effectiveFrom)} →{" "}
-                      {r.effectiveTo ? shortDate(r.effectiveTo) : "open"}
-                    </td>
-                    <td style={tdNum}>{money(r.nfPerDiemRoutineCents)}</td>
-                    <td style={tdNum}>{money(r.nfPerDiemRespCents)}</td>
-                    <td style={tdNum}>{money(r.nfPerDiemGipCents)}</td>
-                    <td style={tdNum}>{pct(r.passThroughPct, false)}</td>
-                    <td style={tdNum}>
-                      {daysDegraded ? (
-                        "—"
-                      ) : counts ? (
-                        <>
-                          {counts.total}
-                          {counts.pending > 0 ? (
-                            <span style={{ ...mutedStyle, marginLeft: "0.3rem" }}>
-                              ({counts.pending} pending)
-                            </span>
-                          ) : null}
-                        </>
-                      ) : (
-                        0
-                      )}
-                    </td>
-                    <td style={td}>
-                      <StatusPill
-                        label={humanize(r.state)}
-                        tone={toneOf(RB_ARRANGEMENT_STATE_TONE, r.state)}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem" }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr style={headerRowStyle}>
+                  <th style={{ ...th, width: "24%" }}>Facility</th>
+                  <th style={th}>Patient</th>
+                  <th style={th}>Effective</th>
+                  <th style={thNum}>Routine</th>
+                  <th style={thNum}>Respite</th>
+                  <th style={thNum}>GIP</th>
+                  <th style={thNum}>Pass-through</th>
+                  <th style={thNum}>Days</th>
+                  <th style={th}>State</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagedRows.map((r) => {
+                  const counts = dayCounts.get(r.id);
+                  return (
+                    <tr key={r.id} style={rowLine} className="wx-data-row-interactive">
+                      <td style={td}>
+                        <a href={`/medicaid/billing/rb-arrangements/${r.id}`} style={linkMonoStyle}>
+                          {r.nfFacilityNameSnapshot || shortId(r.nfFacilityMdmId)}
+                        </a>
+                      </td>
+                      <td style={tdMono}>{shortId(r.patientId)}</td>
+                      <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>
+                        {shortDate(r.effectiveFrom)} →{" "}
+                        {r.effectiveTo ? shortDate(r.effectiveTo) : "open"}
+                      </td>
+                      <td style={tdNum}>{money(r.nfPerDiemRoutineCents)}</td>
+                      <td style={tdNum}>{money(r.nfPerDiemRespCents)}</td>
+                      <td style={tdNum}>{money(r.nfPerDiemGipCents)}</td>
+                      <td style={tdNum}>{pct(r.passThroughPct, false)}</td>
+                      <td style={tdNum}>
+                        {daysDegraded ? (
+                          "—"
+                        ) : counts ? (
+                          <>
+                            {counts.total}
+                            {counts.pending > 0 ? (
+                              <span style={{ ...mutedStyle, marginLeft: "0.3rem" }}>
+                                ({counts.pending} pending)
+                              </span>
+                            ) : null}
+                          </>
+                        ) : (
+                          0
+                        )}
+                      </td>
+                      <td style={td}>
+                        <StatusPill
+                          label={humanize(r.state)}
+                          tone={toneOf(RB_ARRANGEMENT_STATE_TONE, r.state)}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <OffsetPagination
+              page={activePage}
+              pageSize={pageSize}
+              totalItems={filteredRows.length}
+              onPageChange={setPage}
+              onPageSizeChange={(next) => {
+                setPageSize(next);
+                setPage(1);
+              }}
+              pageSizeOptions={PAGE_SIZES}
+              noun="arrangements"
+            />
+          </div>
         )
       }
       detail={
@@ -214,4 +387,35 @@ export function MedicaidRbArrangements(): JSX.Element {
       }
     />
   );
+}
+
+const headerRowStyle = {
+  textAlign: "left" as const,
+  color: "var(--color-on-surface-variant)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  background: "var(--color-surface-low)",
+};
+
+const searchIconStyle = {
+  position: "absolute" as const,
+  left: "0.625rem",
+  top: "50%",
+  transform: "translateY(-50%)",
+  color: "var(--color-on-surface-variant)",
+  pointerEvents: "none" as const,
+};
+
+function bannerStyle(tone: "error" | "warning") {
+  const color = tone === "error" ? "var(--color-error)" : "var(--color-warning)";
+  return {
+    padding: "0.625rem 1rem",
+    borderRadius: "var(--radius-md)",
+    background: `color-mix(in srgb, ${color} 12%, transparent)`,
+    border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`,
+    color,
+    fontSize: "0.85rem",
+    display: "flex",
+    alignItems: "center",
+    gap: "0.5rem",
+  };
 }

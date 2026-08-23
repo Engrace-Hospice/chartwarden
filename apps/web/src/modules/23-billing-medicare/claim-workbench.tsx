@@ -1,6 +1,9 @@
 import {
+  Button,
+  CursorPagination,
   EmptyState,
   FilterBar,
+  Glyph,
   LoadingSpinner,
   PageHeader,
   RightDetailPanel,
@@ -22,8 +25,8 @@ import {
 // route's query schema is not emitted into openapi.json), so the cursor/filter query is passed through a
 // narrow cast — the server stays the authoritative parser of the query envelope.
 import { useCallback, useEffect, useState } from "react";
-import type { JSX, ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import type { CSSProperties, JSX, ReactNode } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { claimStateTone, dollars, statusLabel, tobLabel } from "./billing-status";
 import { authFailureRedirect } from "./write-workflow";
 
@@ -145,75 +148,129 @@ export function ClaimWorkbench(): JSX.Element {
 
   return (
     <WorkQueueLayout
-      header={<PageHeader title="Claim Workbench" breadcrumb="Billing — Medicare" />}
+      header={
+        <PageHeader
+          title="Claim Workbench"
+          breadcrumb="Billing / Medicare"
+          actions={
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <Link to="/billing/claims/new" style={ghostButtonStyle}>
+                Assemble claim
+              </Link>
+              <Link to="/billing" style={ghostButtonStyle}>
+                AR dashboard
+              </Link>
+            </div>
+          }
+        >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Review Medicare claims, submit ready claims, and open replace or void ceremonies from the editor.
+          </div>
+        </PageHeader>
+      }
       filters={
-        <FilterBar>
+        <FilterBar
+          activeFilterCount={[
+            filters.state,
+            filters.providerEntityId,
+            filters.patientId,
+          ].filter(Boolean).length}
+          onClear={() => setFilters({ state: "", providerEntityId: "", patientId: "" })}
+          actions={
+            <span style={{ color: "var(--color-on-surface-variant)", fontSize: "0.8125rem" }}>
+              {claims.length} claims loaded
+            </span>
+          }
+        >
           <select
             aria-label="Claim state"
             value={filters.state}
             onChange={(e) => setFilters((f) => ({ ...f, state: e.target.value }))}
             style={selectStyle}
           >
-            <option value="">All states</option>
+            <option value="">State: All</option>
             {CLAIM_STATES.map((s) => (
               <option key={s} value={s}>
                 {statusLabel(s)}
               </option>
             ))}
           </select>
-          <input
-            aria-label="Provider entity id"
-            placeholder="Provider entity…"
-            value={filters.providerEntityId}
-            onChange={(e) => setFilters((f) => ({ ...f, providerEntityId: e.target.value }))}
-            style={inputStyle}
-          />
-          <input
-            aria-label="Patient id"
-            placeholder="Patient…"
-            value={filters.patientId}
-            onChange={(e) => setFilters((f) => ({ ...f, patientId: e.target.value }))}
-            style={inputStyle}
-          />
+          <div style={{ position: "relative", minWidth: "15rem" }}>
+            <input
+              aria-label="Provider entity id"
+              placeholder="Provider entity..."
+              value={filters.providerEntityId}
+              onChange={(e) => setFilters((f) => ({ ...f, providerEntityId: e.target.value }))}
+              style={{ ...inputStyle, width: "100%", paddingLeft: "2rem" }}
+            />
+            <div style={inputIconStyle}>
+              <Glyph name="shield" size={14} />
+            </div>
+          </div>
+          <div style={{ position: "relative", minWidth: "15rem" }}>
+            <input
+              aria-label="Patient id"
+              placeholder="Patient..."
+              value={filters.patientId}
+              onChange={(e) => setFilters((f) => ({ ...f, patientId: e.target.value }))}
+              style={{ ...inputStyle, width: "100%", paddingLeft: "2rem" }}
+            />
+            <div style={inputIconStyle}>
+              <Glyph name="user" size={14} />
+            </div>
+          </div>
         </FilterBar>
       }
       table={
         loading ? (
-          <LoadingSpinner />
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
         ) : error ? (
-          <EmptyState title="Unavailable" description={error} />
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState title="Unavailable" description={error} />
+          </div>
         ) : claims.length === 0 ? (
-          <EmptyState
-            title="No claims"
-            description="No claims match the current filters in your scope."
-          />
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState
+              title="No claims"
+              description="No claims match the current filters in your scope."
+              action={
+                <Button
+                  tone="secondary"
+                  size="sm"
+                  onClick={() => setFilters({ state: "", providerEntityId: "", patientId: "" })}
+                >
+                  Clear filters
+                </Button>
+              }
+            />
+          </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem" }}>
             <ClaimTable
               claims={claims}
               selectedId={selected?.claimId ?? null}
               onSelect={setSelected}
             />
-            {hasMore ? (
-              <button
-                type="button"
-                onClick={loadMore}
-                disabled={loadingMore}
-                style={loadingMore ? disabledButtonStyle : ghostButtonStyle}
-              >
-                {loadingMore ? "Loading…" : "Load more"}
-              </button>
-            ) : null}
+            <CursorPagination
+              loadedCount={claims.length}
+              hasNextPage={hasMore}
+              onNextPage={loadMore}
+              loading={loadingMore}
+              noun="claims"
+            />
           </div>
         )
       }
       detail={
         selected ? (
-          <RightDetailPanel title="Claim preview" onClose={() => setSelected(null)}>
+          <RightDetailPanel title="Claim Preview" onClose={() => setSelected(null)} hideScrollbar>
             <ClaimPreview claim={selected} onChanged={() => void load(null, false)} />
           </RightDetailPanel>
-        ) : undefined
+        ) : null
       }
+      fullPageScroll
     />
   );
 }
@@ -229,19 +286,27 @@ function ClaimTable({
   onSelect: (c: ClaimSummary) => void;
 }): JSX.Element {
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+    <table style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
       <thead>
-        <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
-          <th style={thStyle}>Control #</th>
-          <th style={thStyle}>State</th>
-          <th style={thStyle}>TOB</th>
-          <th style={thStyle}>Service dates</th>
-          <th style={thStyle}>MAC</th>
-          <th style={{ ...thStyle, textAlign: "right" }}>Expected</th>
+        <tr
+          style={{
+            textAlign: "left",
+            color: "var(--color-on-surface-variant)",
+            borderBottom:
+              "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+            background: "var(--color-surface-low)",
+          }}
+        >
+          <th style={{ ...thStyle, width: "22%" }}>Control #</th>
+          <th style={{ ...thStyle, width: "14%" }}>State</th>
+          <th style={{ ...thStyle, width: "18%" }}>TOB</th>
+          <th style={{ ...thStyle, width: "18%" }}>Service dates</th>
+          <th style={{ ...thStyle, width: "10%" }}>MAC</th>
+          <th style={{ ...thStyle, width: "18%", textAlign: "right" }}>Expected</th>
         </tr>
       </thead>
       <tbody>
-        {claims.map((c, i) => (
+        {claims.map((c) => (
           <tr
             key={c.claimId}
             // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
@@ -255,17 +320,36 @@ function ClaimTable({
                 onSelect(c);
               }
             }}
+            className="wx-data-row-interactive"
             style={{
+              borderBottom:
+                "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
               cursor: "pointer",
-              background:
-                c.claimId === selectedId
-                  ? "var(--color-primary-tint)"
-                  : i % 2 === 1
-                    ? "var(--color-surface-low)"
-                    : "transparent",
+              background: c.claimId === selectedId ? "var(--color-primary-tint)" : "transparent",
+              transition: "background 0.15s ease",
             }}
           >
-            <td style={{ ...tdStyle, fontFamily: "var(--font-mono)" }}>{c.claimControlNumber}</td>
+            <td style={tdStyle}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                <Link
+                  to={`/billing/claims/${c.claimId}`}
+                  style={{
+                    color: "var(--color-primary)",
+                    textDecoration: "none",
+                    fontWeight: 600,
+                    fontFamily: "var(--font-mono)",
+                  }}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  {c.claimControlNumber}
+                </Link>
+                {c.payerClaimControlNumber ? (
+                  <span style={{ color: "var(--color-on-surface-variant)", fontSize: "0.75rem" }}>
+                    Payer {c.payerClaimControlNumber}
+                  </span>
+                ) : null}
+              </div>
+            </td>
             <td style={tdStyle}>
               <StatusPill label={statusLabel(c.state)} tone={claimStateTone(c.state)} />
             </td>
@@ -356,9 +440,9 @@ function ClaimPreview({
       ) : null}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.5rem" }}>
-        <a href="/billing/claims/new" style={ghostButtonStyle}>
+        <Link to="/billing/claims/new" style={ghostButtonStyle}>
           Assemble new
-        </a>
+        </Link>
         <button
           type="button"
           disabled={!canSubmit || busy}
@@ -367,8 +451,8 @@ function ClaimPreview({
         >
           {busy ? "Submitting…" : "Submit"}
         </button>
-        <a
-          href={`/billing/claims/${claim.claimId}?ceremony=replace`}
+        <Link
+          to={`/billing/claims/${claim.claimId}?ceremony=replace`}
           aria-disabled={!canReplaceVoid}
           style={canReplaceVoid ? ghostButtonStyle : disabledButtonStyle}
           onClick={(e) => {
@@ -376,9 +460,9 @@ function ClaimPreview({
           }}
         >
           Replace…
-        </a>
-        <a
-          href={`/billing/claims/${claim.claimId}?ceremony=void`}
+        </Link>
+        <Link
+          to={`/billing/claims/${claim.claimId}?ceremony=void`}
           aria-disabled={!canReplaceVoid}
           style={canReplaceVoid ? ghostButtonStyle : disabledButtonStyle}
           onClick={(e) => {
@@ -386,7 +470,7 @@ function ClaimPreview({
           }}
         >
           Void…
-        </a>
+        </Link>
       </div>
 
       {actionError ? (
@@ -394,12 +478,12 @@ function ClaimPreview({
           {actionError}
         </p>
       ) : null}
-      <a
-        href={`/billing/claims/${claim.claimId}`}
+      <Link
+        to={`/billing/claims/${claim.claimId}`}
         style={{ fontSize: "0.8rem", color: "var(--color-primary)" }}
       >
         Open full editor →
-      </a>
+      </Link>
     </div>
   );
 }
@@ -425,14 +509,18 @@ function Field({
   );
 }
 
-const thStyle = {
-  padding: "0.5rem 0.75rem",
+const thStyle: CSSProperties = {
+  padding: "0.625rem 0.75rem",
   fontSize: "0.7rem",
   fontWeight: 600,
-  textTransform: "uppercase" as const,
+  textTransform: "uppercase",
   letterSpacing: "0.04em",
 };
-const tdStyle = { padding: "0.5rem 0.75rem", color: "var(--color-on-surface)" };
+const tdStyle: CSSProperties = {
+  padding: "0.65rem 0.75rem",
+  color: "var(--color-on-surface)",
+  verticalAlign: "middle",
+};
 const selectStyle = {
   padding: "0.35rem 0.5rem",
   borderRadius: "var(--radius-md)",
@@ -441,7 +529,15 @@ const selectStyle = {
   color: "var(--color-on-surface)",
   fontSize: "0.85rem",
 };
-const inputStyle = { ...selectStyle, minWidth: "10rem" };
+const inputStyle = { ...selectStyle, minWidth: "10rem", height: "2.25rem" };
+const inputIconStyle: CSSProperties = {
+  position: "absolute",
+  left: "0.625rem",
+  top: "50%",
+  transform: "translateY(-50%)",
+  color: "var(--color-on-surface-variant)",
+  pointerEvents: "none",
+};
 const primaryButtonStyle = {
   padding: "0.4rem 0.85rem",
   borderRadius: "var(--radius-md)",

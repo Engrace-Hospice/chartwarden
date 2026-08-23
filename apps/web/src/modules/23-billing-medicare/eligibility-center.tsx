@@ -1,6 +1,9 @@
 import {
+  Button,
   DetailPageLayout,
   EmptyState,
+  FilterBar,
+  Glyph,
   LoadingSpinner,
   PageHeader,
   StatusPill,
@@ -17,7 +20,7 @@ import {
 // surface; a 422 / 503 on a refresh surfaces inline, never a toast. Lantern: DetailPageLayout (history |
 // refresh aside), No-Line table (§6.7), §6.6 StatusPills via billing-status.ts, CSS-var tokens only. openapi
 // emits no billing schemas, so reads are cast and the query/mutation inits go through `as never`.
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { JSX } from "react";
 import {
   eligibilityOutcomeTone,
@@ -50,8 +53,19 @@ export function EligibilityCenter(): JSX.Element {
   const [patientId, setPatientId] = useState("");
   const [loadedPatient, setLoadedPatient] = useState<string | null>(null);
   const [checks, setChecks] = useState<EligibilityCheckView[]>([]);
+  const [outcomeFilter, setOutcomeFilter] = useState("all");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const filteredChecks = useMemo(() => {
+    if (outcomeFilter === "all") return checks;
+    return checks.filter((check) => check.outcome === outcomeFilter);
+  }, [checks, outcomeFilter]);
+  const outcomeOptions = useMemo(
+    () => Array.from(new Set(checks.map((check) => check.outcome))),
+    [checks],
+  );
+  const hasActiveFilters = outcomeFilter !== "all";
 
   const load = useCallback(
     async (pid: string) => {
@@ -84,7 +98,19 @@ export function EligibilityCenter(): JSX.Element {
   return (
     <DetailPageLayout
       header={
-        <PageHeader title="Eligibility Center" breadcrumb="Billing — Medicare · HETS 270/271" />
+        <PageHeader
+          title="Eligibility Center"
+          breadcrumb="Billing / Medicare / HETS 270/271"
+          actions={
+            <a href="/billing" style={linkButtonStyle}>
+              AR dashboard
+            </a>
+          }
+        >
+          <div style={{ color: t.onSurfaceVariant, fontSize: "0.875rem" }}>
+            Load a patient's HETS history, review coverage outcome, and watch eligibility freshness.
+          </div>
+        </PageHeader>
       }
       aside={
         <aside
@@ -103,33 +129,67 @@ export function EligibilityCenter(): JSX.Element {
         </aside>
       }
     >
-      <section style={{ display: "flex", flexDirection: "column", gap: "1rem", maxWidth: "48rem" }}>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void load(patientId);
-          }}
-          style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}
+      <section style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <FilterBar
+          activeFilterCount={hasActiveFilters ? 1 : 0}
+          onClear={
+            hasActiveFilters
+              ? () => {
+                  setOutcomeFilter("all");
+                }
+              : undefined
+          }
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", flex: 1 }}>
-            <label htmlFor="el-patient" style={labelStyle}>
-              Patient id
-            </label>
-            <input
-              id="el-patient"
-              value={patientId}
-              onChange={(e) => setPatientId(e.target.value)}
-              placeholder="Patient UUID…"
-              style={{ ...inputStyle, fontFamily: t.fontMono }}
-            />
-          </div>
-          <button type="submit" style={primaryButtonStyle}>
-            Load history
-          </button>
-        </form>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void load(patientId);
+            }}
+            style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}
+          >
+            <div style={{ position: "relative", minWidth: "18rem" }}>
+              <input
+                id="el-patient"
+                aria-label="Patient id"
+                value={patientId}
+                onChange={(e) => setPatientId(e.target.value)}
+                placeholder="Patient UUID..."
+                style={{
+                  ...inputStyle,
+                  width: "100%",
+                  paddingLeft: "2rem",
+                  fontFamily: t.fontMono,
+                }}
+              />
+              <span style={inputIconStyle}>
+                <Glyph name="user" size={14} />
+              </span>
+            </div>
+            <Button type="submit" size="sm">
+              Load history
+            </Button>
+          </form>
+          {checks.length > 0 ? (
+            <select
+              value={outcomeFilter}
+              onChange={(e) => setOutcomeFilter(e.target.value)}
+              aria-label="Filter by outcome"
+              style={selectStyle}
+            >
+              <option value="all">Outcome: All</option>
+              {outcomeOptions.map((outcome) => (
+                <option key={outcome} value={outcome}>
+                  Outcome: {statusLabel(outcome)}
+                </option>
+              ))}
+            </select>
+          ) : null}
+        </FilterBar>
 
         {loading ? (
-          <LoadingSpinner />
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
         ) : error ? (
           <EmptyState title="Unavailable" description={error} />
         ) : loadedPatient === null ? (
@@ -142,8 +202,18 @@ export function EligibilityCenter(): JSX.Element {
             title="No checks on file"
             description="No eligibility checks exist for this patient in your scope — run one from the panel."
           />
+        ) : filteredChecks.length === 0 ? (
+          <EmptyState
+            title="No matching checks"
+            description="Clear the outcome filter to see this patient's full eligibility history."
+            action={
+              <Button size="sm" tone="secondary" onClick={() => setOutcomeFilter("all")}>
+                Clear filters
+              </Button>
+            }
+          />
         ) : (
-          <EligibilityTable checks={checks} />
+          <EligibilityTable checks={filteredChecks} />
         )}
       </section>
     </DetailPageLayout>
@@ -153,37 +223,62 @@ export function EligibilityCenter(): JSX.Element {
 // ── eligibility-check history table (No-Line §6.7; outcome + staleness pills) ──────────────────────────
 function EligibilityTable({ checks }: { checks: EligibilityCheckView[] }): JSX.Element {
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-      <thead>
-        <tr style={{ textAlign: "left", color: t.onSurfaceVariant }}>
-          <th style={thStyle}>As-of service date</th>
-          <th style={thStyle}>Outcome</th>
-          <th style={thStyle}>Freshness</th>
-          <th style={thStyle}>Checked</th>
-        </tr>
-      </thead>
-      <tbody>
-        {checks.map((c, i) => (
-          <tr key={c.checkId} style={{ background: i % 2 === 1 ? t.surfaceLow : "transparent" }}>
-            <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>{c.asOfServiceDate}</td>
-            <td style={tdStyle}>
-              <StatusPill label={statusLabel(c.outcome)} tone={eligibilityOutcomeTone(c.outcome)} />
-            </td>
-            <td style={tdStyle}>
-              <StatusPill
-                label={eligibilityStalenessLabel(c.checkedAt)}
-                tone={eligibilityStalenessTone(c.checkedAt)}
-              />
-            </td>
-            <td
-              style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", color: t.onSurfaceVariant }}
-            >
-              {new Date(c.checkedAt).toLocaleString()}
-            </td>
+    <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+        <thead>
+          <tr
+            style={{
+              textAlign: "left",
+              color: t.onSurfaceVariant,
+              borderBottom:
+                "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+              background: t.surfaceLow,
+            }}
+          >
+            <th style={thStyle}>As-of service date</th>
+            <th style={thStyle}>Outcome</th>
+            <th style={thStyle}>Freshness</th>
+            <th style={thStyle}>Checked</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {checks.map((c) => (
+            <tr
+              key={c.checkId}
+              style={{
+                borderBottom:
+                  "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+              }}
+            >
+              <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                {c.asOfServiceDate}
+              </td>
+              <td style={tdStyle}>
+                <StatusPill
+                  label={statusLabel(c.outcome)}
+                  tone={eligibilityOutcomeTone(c.outcome)}
+                />
+              </td>
+              <td style={tdStyle}>
+                <StatusPill
+                  label={eligibilityStalenessLabel(c.checkedAt)}
+                  tone={eligibilityStalenessTone(c.checkedAt)}
+                />
+              </td>
+              <td
+                style={{
+                  ...tdStyle,
+                  fontVariantNumeric: "tabular-nums",
+                  color: t.onSurfaceVariant,
+                }}
+              >
+                {new Date(c.checkedAt).toLocaleString()}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -268,14 +363,9 @@ function RefreshPanel({
               style={inputStyle}
             />
           </div>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void run()}
-            style={busy ? disabledButtonStyle : primaryButtonStyle}
-          >
+          <Button disabled={busy} loading={busy} onClick={() => void run()}>
             {busy ? "Running…" : "Run check"}
-          </button>
+          </Button>
           {msg ? (
             <p
               role={msg.tone === "err" ? "alert" : "status"}
@@ -303,17 +393,27 @@ const inputStyle = {
   color: t.onSurface,
   fontSize: "0.85rem",
 };
-const primaryButtonStyle = {
-  padding: "0.5rem 0.95rem",
-  borderRadius: t.radiusMd,
-  border: "none",
-  cursor: "pointer",
-  background: t.primary,
-  color: t.onPrimary,
-  fontSize: "0.8rem",
-  fontWeight: 600,
+const selectStyle = { ...inputStyle, height: "2.25rem", cursor: "pointer" };
+const inputIconStyle = {
+  position: "absolute" as const,
+  left: "0.625rem",
+  top: "50%",
+  transform: "translateY(-50%)",
+  color: t.onSurfaceVariant,
+  pointerEvents: "none" as const,
 };
-const disabledButtonStyle = { ...primaryButtonStyle, cursor: "not-allowed", opacity: 0.5 };
+const linkButtonStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: "2rem",
+  padding: "0.35rem 0.7rem",
+  borderRadius: "9999px",
+  background: t.surfaceContainer,
+  color: t.onSurface,
+  fontSize: "0.75rem",
+  fontWeight: 650,
+  textDecoration: "none",
+};
 const thStyle = {
   padding: "0.5rem 0.75rem",
   fontSize: "0.7rem",

@@ -1,7 +1,11 @@
 import {
   AdminSplitLayout,
+  Button,
   CeremonyModal,
+  CursorPagination,
   EmptyState,
+  FilterBar,
+  Glyph,
   LoadingSpinner,
   MaskedIdentifier,
   Modal,
@@ -104,33 +108,81 @@ export function MacCredentials(): JSX.Element {
   const [creds, setCreds] = useState<MacCredentialView[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<UpsertDraft | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [jurisdictionFilter, setJurisdictionFilter] = useState("all");
+  const [secretFilter, setSecretFilter] = useState("all");
+  const [expiryFilter, setExpiryFilter] = useState("all");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    const { data, error: err } = await client.GET("/api/v1/billing/mac-credentials", {
-      params: { query: { limit: 200 } },
-    } as never);
-    if (err) {
-      setError(
-        "MAC credentials unavailable — the billing read seam is not bound, or you lack scope.",
-      );
+  const load = useCallback(
+    async (cursor?: string | null, append = false) => {
+      if (append) setLoadingMore(true);
+      else setLoading(true);
+      setError(null);
+      const { data, error: err } = await client.GET("/api/v1/billing/mac-credentials", {
+        params: { query: { limit: 50, ...(cursor ? { cursor } : {}) } },
+      } as never);
+      if (err) {
+        setError(
+          "MAC credentials unavailable — the billing read seam is not bound, or you lack scope.",
+        );
+        setLoading(false);
+        setLoadingMore(false);
+        return;
+      }
+      const page = (data as unknown as MacCredentialPage) ?? {
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+      };
+      const items = (page.items ?? []) as MacCredentialView[];
+      setCreds((current) => (append ? [...current, ...items] : items));
+      setSelectedId((cur) => cur ?? items[0]?.credentialId ?? null);
+      setNextCursor(page.nextCursor ?? null);
+      setHasMore(Boolean(page.hasMore));
       setLoading(false);
-      return;
-    }
-    const items = ((data as unknown as MacCredentialPage)?.items ?? []) as MacCredentialView[];
-    setCreds(items);
-    setSelectedId((cur) => cur ?? items[0]?.credentialId ?? null);
-    setLoading(false);
-  }, [client]);
+      setLoadingMore(false);
+    },
+    [client],
+  );
 
   useEffect(() => {
-    void load();
+    void load(null, false);
   }, [load]);
 
   const selected = creds.find((c) => c.credentialId === selectedId) ?? null;
+  const filteredCreds = creds.filter((credential) => {
+    const q = searchQuery.trim().toLowerCase();
+    const expired = isExpired(credential);
+    const matchesSearch =
+      q.length === 0 ||
+      credential.providerEntityId.toLowerCase().includes(q) ||
+      credential.submitterId.toLowerCase().includes(q) ||
+      credential.tradingPartnerId.toLowerCase().includes(q) ||
+      credential.clientId.toLowerCase().includes(q) ||
+      macLabel(credential.macJurisdiction).toLowerCase().includes(q);
+    const matchesJurisdiction =
+      jurisdictionFilter === "all" || credential.macJurisdiction === jurisdictionFilter;
+    const matchesSecret =
+      secretFilter === "all" ||
+      (secretFilter === "present" && credential.hasSecret) ||
+      (secretFilter === "missing" && !credential.hasSecret);
+    const matchesExpiry =
+      expiryFilter === "all" ||
+      (expiryFilter === "expired" && expired) ||
+      (expiryFilter === "active" && !expired && credential.credentialExpiresAt !== null) ||
+      (expiryFilter === "none" && credential.credentialExpiresAt === null);
+    return matchesSearch && matchesJurisdiction && matchesSecret && matchesExpiry;
+  });
+  const activeFilterCount =
+    (searchQuery.trim() ? 1 : 0) +
+    (jurisdictionFilter !== "all" ? 1 : 0) +
+    (secretFilter !== "all" ? 1 : 0) +
+    (expiryFilter !== "all" ? 1 : 0);
 
   const editSelected = useCallback((c: MacCredentialView) => {
     setDraft({
@@ -155,19 +207,98 @@ export function MacCredentials(): JSX.Element {
         header={
           <PageHeader
             title="MAC Credentials"
-            breadcrumb="Billing — Medicare · Submitter credentials"
+            breadcrumb="Billing / Medicare / Submitter credentials"
             actions={
-              <button
-                type="button"
-                onClick={() => setDraft(emptyDraft())}
-                style={primaryButtonStyle}
+              <>
+                <a href="/billing" style={linkButtonStyle}>
+                  AR dashboard
+                </a>
+                <Button size="sm" onClick={() => setDraft(emptyDraft())}>
+                  Add credential
+                </Button>
+              </>
+            }
+          >
+            <div style={{ color: t.onSurfaceVariant, fontSize: "0.875rem" }}>
+              Manage provider MAC submitter credentials without exposing write-only secrets.
+            </div>
+          </PageHeader>
+        }
+        list={
+          <CredentialRail
+            creds={filteredCreds}
+            selectedId={selectedId}
+            totalLoaded={creds.length}
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+            onLoadMore={() => void load(nextCursor, true)}
+            onSelect={setSelectedId}
+            filters={
+              <FilterBar
+                activeFilterCount={activeFilterCount}
+                onClear={
+                  activeFilterCount > 0
+                    ? () => {
+                        setSearchQuery("");
+                        setJurisdictionFilter("all");
+                        setSecretFilter("all");
+                        setExpiryFilter("all");
+                      }
+                    : undefined
+                }
               >
-                Add credential
-              </button>
+                <div style={{ position: "relative", width: "100%" }}>
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search credentials..."
+                    aria-label="Search credentials"
+                    style={{ ...inputStyle, width: "100%", paddingLeft: "2rem" }}
+                  />
+                  <span style={inputIconStyle}>
+                    <Glyph name="search" size={14} />
+                  </span>
+                </div>
+                <select
+                  value={jurisdictionFilter}
+                  onChange={(e) => setJurisdictionFilter(e.target.value)}
+                  aria-label="Filter by MAC jurisdiction"
+                  style={selectStyle}
+                >
+                  <option value="all">MAC: All</option>
+                  {MAC_JURISDICTIONS.map((m) => (
+                    <option key={m} value={m}>
+                      {macLabel(m)}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={secretFilter}
+                  onChange={(e) => setSecretFilter(e.target.value)}
+                  aria-label="Filter by secret status"
+                  style={selectStyle}
+                >
+                  <option value="all">Secret: All</option>
+                  <option value="present">Secret on file</option>
+                  <option value="missing">No secret</option>
+                </select>
+                <select
+                  value={expiryFilter}
+                  onChange={(e) => setExpiryFilter(e.target.value)}
+                  aria-label="Filter by expiry"
+                  style={selectStyle}
+                >
+                  <option value="all">Expiry: All</option>
+                  <option value="active">Dated active</option>
+                  <option value="expired">Expired</option>
+                  <option value="none">No expiry</option>
+                </select>
+              </FilterBar>
             }
           />
         }
-        list={<CredentialRail creds={creds} selectedId={selectedId} onSelect={setSelectedId} />}
+        fullPageScroll
       >
         {selected ? (
           <CredentialDetail credential={selected} onEdit={() => editSelected(selected)} />
@@ -185,7 +316,7 @@ export function MacCredentials(): JSX.Element {
           onCancel={() => setDraft(null)}
           onSaved={() => {
             setDraft(null);
-            void load();
+            void load(null, false);
           }}
         />
       ) : null}
@@ -197,65 +328,95 @@ export function MacCredentials(): JSX.Element {
 function CredentialRail({
   creds,
   selectedId,
+  totalLoaded,
+  hasMore,
+  loadingMore,
+  onLoadMore,
   onSelect,
+  filters,
 }: {
   creds: MacCredentialView[];
   selectedId: string | null;
+  totalLoaded: number;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => void;
   onSelect: (id: string) => void;
+  filters: JSX.Element;
 }): JSX.Element {
-  if (creds.length === 0)
-    return <EmptyState title="No credentials" description="No MAC credentials in your scope." />;
   return (
-    <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-      {creds.map((c) => {
-        const active = c.credentialId === selectedId;
-        const expired = c.credentialExpiresAt
-          ? new Date(c.credentialExpiresAt).getTime() < Date.now()
-          : false;
-        return (
-          <li key={c.credentialId}>
-            <button
-              type="button"
-              aria-current={active ? "true" : undefined}
-              onClick={() => onSelect(c.credentialId)}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.3rem",
-                width: "100%",
-                textAlign: "left",
-                cursor: "pointer",
-                border: "none",
-                background: active ? t.primaryTint : "transparent",
-                padding: "0.6rem 0.85rem",
-                borderBottom: ghostBorder,
-              }}
-            >
-              <span style={{ fontSize: "0.85rem", fontWeight: 600, color: t.onSurface }}>
-                {macLabel(c.macJurisdiction)}
-              </span>
-              <span
-                style={{
-                  fontFamily: t.fontMono,
-                  fontSize: "0.72rem",
-                  color: t.onSurfaceVariant,
-                  overflowWrap: "anywhere",
-                }}
-              >
-                {c.providerEntityId}
-              </span>
-              <span style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem" }}>
-                <StatusPill
-                  label={c.hasSecret ? "Secret on file" : "No secret"}
-                  tone={c.hasSecret ? "success" : "warning"}
-                />
-                {expired ? <StatusPill label="Expired" tone="error" /> : null}
-              </span>
-            </button>
-          </li>
-        );
-      })}
-    </ul>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+      {filters}
+      {creds.length === 0 ? (
+        <div style={{ padding: "2rem 1rem" }}>
+          <EmptyState
+            title={totalLoaded === 0 ? "No credentials" : "No matching credentials"}
+            description={
+              totalLoaded === 0
+                ? "No MAC credentials in your scope."
+                : "Adjust or clear filters to return to the loaded credential list."
+            }
+          />
+        </div>
+      ) : (
+        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          {creds.map((c) => {
+            const active = c.credentialId === selectedId;
+            const expired = isExpired(c);
+            return (
+              <li key={c.credentialId}>
+                <button
+                  type="button"
+                  aria-current={active ? "true" : undefined}
+                  onClick={() => onSelect(c.credentialId)}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.3rem",
+                    width: "100%",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    border: "none",
+                    background: active ? t.primaryTint : "transparent",
+                    padding: "0.75rem 0.85rem",
+                    borderBottom: ghostBorder,
+                  }}
+                  className="wx-data-row-interactive"
+                >
+                  <span style={{ fontSize: "0.85rem", fontWeight: 600, color: t.onSurface }}>
+                    {macLabel(c.macJurisdiction)}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: t.fontMono,
+                      fontSize: "0.72rem",
+                      color: t.onSurfaceVariant,
+                      overflowWrap: "anywhere",
+                    }}
+                  >
+                    {c.providerEntityId}
+                  </span>
+                  <span style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem" }}>
+                    <StatusPill
+                      label={c.hasSecret ? "Secret on file" : "No secret"}
+                      tone={c.hasSecret ? "success" : "warning"}
+                    />
+                    {expired ? <StatusPill label="Expired" tone="error" /> : null}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <CursorPagination
+        loadedCount={totalLoaded}
+        hasNextPage={hasMore}
+        onNextPage={onLoadMore}
+        loading={loadingMore}
+        noun="credentials"
+      />
+    </div>
   );
 }
 
@@ -344,17 +505,14 @@ function CredentialDetail({
       </dl>
 
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-        <button type="button" onClick={onEdit} style={primaryButtonStyle}>
-          Edit credential
-        </button>
-        <button
-          type="button"
+        <Button onClick={onEdit}>Edit credential</Button>
+        <Button
           disabled
           title="No sandbox-test route is exposed by the billing API."
-          style={disabledButtonStyle}
+          tone="secondary"
         >
           Test sandbox
-        </button>
+        </Button>
       </div>
     </section>
   );
@@ -521,17 +679,12 @@ function UpsertCeremony({
         </Labeled>
 
         <div style={{ display: "flex", gap: "0.5rem" }}>
-          <button
-            type="button"
-            disabled={!fieldsReady}
-            onClick={() => setCeremonyOpen(true)}
-            style={fieldsReady ? primaryButtonStyle : disabledButtonStyle}
-          >
+          <Button disabled={!fieldsReady} onClick={() => setCeremonyOpen(true)}>
             Save with step-up
-          </button>
-          <button type="button" onClick={onCancel} style={ghostButtonStyle}>
+          </Button>
+          <Button tone="secondary" onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         </div>
         {actionError ? (
           <p role="alert" style={{ margin: 0, fontSize: "0.8rem", color: t.error }}>
@@ -609,24 +762,29 @@ const inputStyle = {
   fontSize: "0.85rem",
 };
 const selectStyle = { ...inputStyle, maxWidth: "16rem" };
-const primaryButtonStyle = {
-  padding: "0.5rem 0.95rem",
-  borderRadius: t.radiusMd,
-  border: "none",
-  cursor: "pointer",
-  background: t.primary,
-  color: t.onPrimary,
-  fontSize: "0.8rem",
-  fontWeight: 600,
+const inputIconStyle = {
+  position: "absolute" as const,
+  left: "0.625rem",
+  top: "50%",
+  transform: "translateY(-50%)",
+  color: t.onSurfaceVariant,
+  pointerEvents: "none" as const,
 };
-const ghostButtonStyle = {
-  padding: "0.5rem 0.95rem",
-  borderRadius: t.radiusMd,
-  border: "none",
-  cursor: "pointer",
+const linkButtonStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: "2rem",
+  padding: "0.35rem 0.7rem",
+  borderRadius: "9999px",
   background: t.surfaceContainer,
   color: t.onSurface,
-  fontSize: "0.8rem",
-  fontWeight: 600,
+  fontSize: "0.75rem",
+  fontWeight: 650,
+  textDecoration: "none",
 };
-const disabledButtonStyle = { ...ghostButtonStyle, cursor: "not-allowed", opacity: 0.5 };
+
+function isExpired(credential: MacCredentialView): boolean {
+  return credential.credentialExpiresAt
+    ? new Date(credential.credentialExpiresAt).getTime() < Date.now()
+    : false;
+}

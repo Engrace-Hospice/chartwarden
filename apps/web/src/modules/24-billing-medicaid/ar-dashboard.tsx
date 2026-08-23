@@ -1,10 +1,11 @@
 import {
-  DashboardLayout,
+  Button,
   EmptyState,
   KpiCard,
   KpiStrip,
   LoadingSpinner,
   PageHeader,
+  WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the MEDICAID AR DASHBOARD (R2, §5.1 #1). The billing
@@ -90,34 +91,66 @@ export function MedicaidArDashboard(): JSX.Element {
   if (error || !ar) return <EmptyState title="Unavailable" description={error ?? "No AR data."} />;
 
   const totalCharges = sumCents(ar.buckets);
-  const oldest = [...ar.buckets].reverse().find((b) => b.count > 0);
-
   return (
-    <DashboardLayout
+    <WorkQueueLayout
       header={
         <PageHeader
           title="Medicaid AR"
-          breadcrumb="Billing — Medicaid · open accounts receivable"
+          breadcrumb="Billing / Medicaid / Open accounts receivable"
           actions={
-            <a href="/medicaid/billing/claims" style={linkStyle}>
-              Open claim workbench →
-            </a>
+            <>
+              <a href="/billing" style={linkButtonStyle}>
+                Medicare AR
+              </a>
+              <a href="/medicaid/billing/claims" style={primaryLinkButtonStyle}>
+                Claim workbench
+              </a>
+            </>
           }
-        />
+        >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Review Medicaid open AR by aging bucket, service state, and MCO attribution.
+          </div>
+        </PageHeader>
       }
       kpis={
         <KpiStrip>
-          <KpiCard label="Open claims" value={ar.totalOpen.toLocaleString()} />
-          <KpiCard label="Open AR" value={money(totalCharges)} />
-          <KpiCard label="Oldest bucket" value={oldest ? oldest.bucket : "—"} />
+          <KpiCard
+            label="Open claims"
+            value={ar.totalOpen.toLocaleString()}
+            detail="Backend AR dashboard"
+            tone="info"
+            accentColor="var(--color-primary)"
+          />
+          <KpiCard
+            label="Metrics open"
+            value={metrics ? metrics.openCount.toLocaleString() : metricsDegraded ? "—" : "…"}
+            detail="Backend metrics read"
+            tone="neutral"
+            accentColor="var(--color-outline-variant)"
+          />
           <KpiCard
             label="Denial rate (rolling)"
             value={metrics ? pct(metrics.denialRate) : metricsDegraded ? "—" : "…"}
+            detail="Backend metrics read"
+            tone={metrics && metrics.denialRate > 0 ? "warning" : "neutral"}
+            accentColor={
+              metrics && metrics.denialRate > 0
+                ? "var(--color-warning)"
+                : "var(--color-outline-variant)"
+            }
           />
         </KpiStrip>
       }
       table={
-        <section style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+        <section
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "1.25rem",
+            padding: "1rem 1.5rem 1.5rem",
+          }}
+        >
           <div>
             <h2 style={sectionTitleStyle}>Aging</h2>
             {ar.buckets.length === 0 ? (
@@ -126,28 +159,30 @@ export function MedicaidArDashboard(): JSX.Element {
                 description="Every Medicaid claim has reached a terminal state."
               />
             ) : (
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={th}>Bucket</th>
-                    <th style={thNum}>Claims</th>
-                    <th style={thNum}>Charges</th>
-                    <th style={thNum}>Share</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ar.buckets.map((b) => (
-                    <tr key={b.bucket} style={rowLine}>
-                      <td style={td}>{b.bucket}</td>
-                      <td style={tdNum}>{b.count.toLocaleString()}</td>
-                      <td style={tdNum}>{money(b.chargesCents)}</td>
-                      <td style={tdNum}>
-                        {totalCharges > 0 ? pct(b.chargesCents / totalCharges) : "—"}
-                      </td>
+              <div style={tableWrapStyle}>
+                <table style={enhancedTableStyle}>
+                  <thead>
+                    <tr style={headRowStyle}>
+                      <th style={th}>Bucket</th>
+                      <th style={thNum}>Claims</th>
+                      <th style={thNum}>Charges</th>
+                      <th style={thNum}>Share</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {ar.buckets.map((b) => (
+                      <tr key={b.bucket} style={enhancedRowLine}>
+                        <td style={td}>{b.bucket}</td>
+                        <td style={tdNum}>{b.count.toLocaleString()}</td>
+                        <td style={tdNum}>{money(b.chargesCents)}</td>
+                        <td style={tdNum}>
+                          {totalCharges > 0 ? pct(b.chargesCents / totalCharges) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
 
@@ -159,29 +194,31 @@ export function MedicaidArDashboard(): JSX.Element {
                 description="No open claims to attribute to a state."
               />
             ) : (
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={th}>State</th>
-                    <th style={thNum}>Claims</th>
-                    <th style={thNum}>Charges</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ar.byState.map((s) => (
-                    <tr key={s.state} style={rowLine}>
-                      <td style={td}>{s.state}</td>
-                      <td style={tdNum}>{s.count.toLocaleString()}</td>
-                      <td style={tdNum}>{money(s.chargesCents)}</td>
+              <div style={tableWrapStyle}>
+                <table style={enhancedTableStyle}>
+                  <thead>
+                    <tr style={headRowStyle}>
+                      <th style={th}>State</th>
+                      <th style={thNum}>Claims</th>
+                      <th style={thNum}>Charges</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {ar.byState.map((s) => (
+                      <tr key={s.state} style={enhancedRowLine}>
+                        <td style={td}>{s.state}</td>
+                        <td style={tdNum}>{s.count.toLocaleString()}</td>
+                        <td style={tdNum}>{money(s.chargesCents)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </section>
       }
-      aside={
+      detail={
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           <Card title="MCO mix">
             {metricsDegraded ? (
@@ -191,16 +228,16 @@ export function MedicaidArDashboard(): JSX.Element {
             ) : !metrics || metrics.byMco.length === 0 ? (
               <span style={mutedStyle}>No MCO-attributed open claims.</span>
             ) : (
-              <table style={tableStyle}>
+              <table style={enhancedTableStyle}>
                 <thead>
-                  <tr>
+                  <tr style={headRowStyle}>
                     <th style={th}>MCO</th>
                     <th style={thNum}>Claims</th>
                   </tr>
                 </thead>
                 <tbody>
                   {metrics.byMco.map((m) => (
-                    <tr key={m.mcoId ?? "fee-for-service"} style={rowLine}>
+                    <tr key={m.mcoId ?? "fee-for-service"} style={enhancedRowLine}>
                       <td style={{ ...td, fontFamily: m.mcoId ? "var(--font-mono)" : undefined }}>
                         {m.mcoId ? shortId(m.mcoId) : "Fee-for-service"}
                       </td>
@@ -227,6 +264,36 @@ export function MedicaidArDashboard(): JSX.Element {
           </nav>
         </div>
       }
+      fullPageScroll
     />
   );
 }
+
+const tableWrapStyle = { width: "100%", overflowX: "auto" } as const;
+const enhancedTableStyle = { ...tableStyle, fontSize: "0.875rem" };
+const headRowStyle = {
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  background: "var(--color-surface-low)",
+};
+const enhancedRowLine = {
+  ...rowLine,
+  borderTop: "none",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+};
+const linkButtonStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: "2rem",
+  padding: "0.35rem 0.7rem",
+  borderRadius: "9999px",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.75rem",
+  fontWeight: 650,
+  textDecoration: "none",
+};
+const primaryLinkButtonStyle = {
+  ...linkButtonStyle,
+  background: "var(--color-primary)",
+  color: "var(--color-on-primary)",
+};

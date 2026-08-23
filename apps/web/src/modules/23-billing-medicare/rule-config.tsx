@@ -1,6 +1,9 @@
 import {
   AdminSplitLayout,
+  Button,
   EmptyState,
+  FilterBar,
+  Glyph,
   GuardChip,
   LoadingSpinner,
   PageHeader,
@@ -69,6 +72,9 @@ export function RuleConfigEditor(): JSX.Element {
   const client = useApiClient();
   const [rules, setRules] = useState<RuleConfigView[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [severityFilter, setSeverityFilter] = useState<"" | Severity>("");
+  const [stateFilter, setStateFilter] = useState<"" | "enabled" | "disabled" | "locked" | "custom">("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -97,6 +103,23 @@ export function RuleConfigEditor(): JSX.Element {
   }, [load]);
 
   const selected = rules.find((r) => r.ruleConfigId === selectedId) ?? null;
+  const filteredRules = rules.filter((rule) => {
+    const q = searchQuery.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      rule.ruleKey.toLowerCase().includes(q) ||
+      rule.ruleConfigId.toLowerCase().includes(q) ||
+      (rule.setReason ?? "").toLowerCase().includes(q);
+    const matchesSeverity = !severityFilter || rule.severity === severityFilter;
+    const matchesState =
+      !stateFilter ||
+      (stateFilter === "enabled" && rule.enabled) ||
+      (stateFilter === "disabled" && !rule.enabled) ||
+      (stateFilter === "locked" && rule.regulatoryRequiredSnapshot) ||
+      (stateFilter === "custom" && rule.isCustom);
+    return matchesSearch && matchesSeverity && matchesState;
+  });
+  const activeFilterCount = [searchQuery, severityFilter, stateFilter].filter(Boolean).length;
 
   if (loading) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
@@ -106,15 +129,82 @@ export function RuleConfigEditor(): JSX.Element {
       header={
         <PageHeader
           title="Validation Rule Config"
-          breadcrumb="Billing — Medicare · Overlay library"
+          breadcrumb="Billing / Medicare / Overlay library"
           actions={
-            <button type="button" onClick={() => setAdding(true)} style={primaryButtonStyle}>
-              Add custom rule
-            </button>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <a href="/billing" style={ghostButtonStyle}>
+                AR dashboard
+              </a>
+              <button type="button" onClick={() => setAdding(true)} style={primaryButtonStyle}>
+                Add custom rule
+              </button>
+            </div>
           }
-        />
+        >
+          <div style={{ color: t.onSurfaceVariant, fontSize: "0.875rem" }}>
+            Manage tenant validation overlays while regulatory-required rules stay locked server-side.
+          </div>
+        </PageHeader>
       }
-      list={<RuleRail rules={rules} selectedId={selectedId} onSelect={setSelectedId} />}
+      list={
+        <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <FilterBar
+            activeFilterCount={activeFilterCount}
+            onClear={() => {
+              setSearchQuery("");
+              setSeverityFilter("");
+              setStateFilter("");
+            }}
+            actions={
+              <span style={{ color: t.onSurfaceVariant, fontSize: "0.8125rem" }}>
+                {filteredRules.length} of {rules.length}
+              </span>
+            }
+          >
+            <div style={{ position: "relative", minWidth: "13rem" }}>
+              <input
+                type="search"
+                aria-label="Search validation rules"
+                placeholder="Search rules..."
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                style={{ ...inputStyle, width: "100%", height: "2.25rem", paddingLeft: "2rem" }}
+              />
+              <div style={inputIconStyle}>
+                <Glyph name="search" size={14} />
+              </div>
+            </div>
+            <select
+              aria-label="Filter by severity"
+              value={severityFilter}
+              onChange={(event) => setSeverityFilter(event.target.value as "" | Severity)}
+              style={{ ...selectStyle, height: "2.25rem" }}
+            >
+              <option value="">Severity: All</option>
+              {SEVERITIES.map((severity) => (
+                <option key={severity} value={severity}>
+                  {statusLabel(severity)}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Filter by rule status"
+              value={stateFilter}
+              onChange={(event) =>
+                setStateFilter(event.target.value as "" | "enabled" | "disabled" | "locked" | "custom")
+              }
+              style={{ ...selectStyle, height: "2.25rem" }}
+            >
+              <option value="">Status: All</option>
+              <option value="enabled">Enabled</option>
+              <option value="disabled">Disabled</option>
+              <option value="locked">Locked</option>
+              <option value="custom">Custom</option>
+            </select>
+          </FilterBar>
+          <RuleRail rules={filteredRules} selectedId={selectedId} onSelect={setSelectedId} />
+        </div>
+      }
     >
       {adding ? (
         <AddCustomRule
@@ -147,9 +237,13 @@ function RuleRail({
   onSelect: (id: string) => void;
 }): JSX.Element {
   if (rules.length === 0)
-    return <EmptyState title="No rules" description="No validation rules in your scope." />;
+    return (
+      <div style={{ padding: "1rem" }}>
+        <EmptyState title="No rules" description="No validation rules match the current filters." />
+      </div>
+    );
   return (
-    <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+    <ul style={{ listStyle: "none", margin: 0, padding: 0, overflow: "auto" }}>
       {rules.map((r) => {
         const active = r.ruleConfigId === selectedId;
         return (
@@ -167,9 +261,11 @@ function RuleRail({
                 cursor: "pointer",
                 border: "none",
                 background: active ? t.primaryTint : "transparent",
-                padding: "0.6rem 0.85rem",
+                padding: "0.7rem 0.9rem",
                 borderBottom: ghostBorder,
+                transition: "background 0.15s ease",
               }}
+              className="wx-data-row-interactive"
             >
               <span
                 style={{
@@ -194,7 +290,7 @@ function RuleRail({
                 />
                 {r.isCustom ? <StatusPill label="Custom" tone="progress" /> : null}
                 {r.regulatoryRequiredSnapshot ? (
-                  <span style={{ fontSize: "0.7rem", color: t.warning }}>Locked</span>
+                  <StatusPill label="Locked" tone="warning" glyph="lock" />
                 ) : null}
               </span>
             </button>
@@ -366,22 +462,22 @@ function RuleDetail({
       </div>
 
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-        <button
+        <Button
           type="button"
+          tone="primary"
           disabled={busy || locked}
           onClick={() => void save()}
-          style={busy || locked ? disabledButtonStyle : primaryButtonStyle}
         >
           Save overlay
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          tone="secondary"
           disabled={busy || locked}
           onClick={() => void revert()}
-          style={busy || locked ? disabledButtonStyle : ghostButtonStyle}
         >
           Revert to platform default
-        </button>
+        </Button>
       </div>
 
       {actionError ? (
@@ -534,6 +630,14 @@ const inputStyle = {
   background: t.surfaceLow,
   color: t.onSurface,
   fontSize: "0.85rem",
+};
+const inputIconStyle = {
+  position: "absolute" as const,
+  left: "0.625rem",
+  top: "50%",
+  transform: "translateY(-50%)",
+  color: t.onSurfaceVariant,
+  pointerEvents: "none" as const,
 };
 const primaryButtonStyle = {
   padding: "0.45rem 0.95rem",

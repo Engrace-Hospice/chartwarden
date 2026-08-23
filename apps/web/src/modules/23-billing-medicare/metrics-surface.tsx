@@ -1,6 +1,9 @@
 import {
+  Button,
   DashboardLayout,
   EmptyState,
+  FilterBar,
+  Glyph,
   KpiCard,
   KpiStrip,
   LoadingSpinner,
@@ -76,68 +79,122 @@ export function MetricsSurface(): JSX.Element {
 
   return (
     <DashboardLayout
-      header={<PageHeader title="Billing Metrics" breadcrumb="Billing — Medicare" />}
+      header={
+        <PageHeader
+          title="Billing Metrics"
+          breadcrumb="Billing / Medicare / Claim-state aggregates"
+          actions={
+            <a href="/billing" style={linkButtonStyle}>
+              AR dashboard
+            </a>
+          }
+        >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Review backend claim-state rollups and drill into the matching workbench state.
+          </div>
+        </PageHeader>
+      }
       kpis={
         <KpiStrip>
-          <KpiCard label="Claims (all states)" value={totals.totalCount} />
-          <KpiCard label="Total billed" value={dollars(totals.totalCents)} />
+          <KpiCard
+            label="Claims"
+            value={totals.totalCount}
+            detail="Backend aggregate"
+            tone="info"
+            accentColor="var(--color-primary)"
+          />
+          <KpiCard
+            label="Total billed"
+            value={dollars(totals.totalCents)}
+            detail="Across returned states"
+            tone="neutral"
+            accentColor="var(--color-outline-variant)"
+          />
           <KpiCard
             label="Denial rate"
             value={totals.denialRate === null ? "—" : `${totals.denialRate}%`}
+            detail="Denied / total claims"
+            tone={(totals.denialRate ?? 0) > 0 ? "warning" : "neutral"}
+            accentColor={
+              (totals.denialRate ?? 0) > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
+            }
           />
-          <KpiCard label="Denied claims" value={totals.denied} />
-          <KpiCard label="Paid amount" value={dollars(totals.paidCents)} />
+          <KpiCard
+            label="Denied claims"
+            value={totals.denied}
+            detail="Backend aggregate"
+            tone={totals.denied > 0 ? "danger" : "neutral"}
+            accentColor={totals.denied > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
+          />
+          <KpiCard
+            label="Paid amount"
+            value={dollars(totals.paidCents)}
+            detail="Paid + partial paid"
+            tone="success"
+            accentColor="var(--color-success)"
+          />
         </KpiStrip>
       }
       charts={
-        <section
-          style={{ display: "flex", alignItems: "flex-end", gap: "0.5rem", flexWrap: "wrap" }}
+        <FilterBar
+          activeFilterCount={applied ? 1 : 0}
+          onClear={
+            applied
+              ? () => {
+                  setProviderEntityId("");
+                  setApplied("");
+                }
+              : undefined
+          }
         >
-          <label style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-            <span style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>
-              Provider entity window
-            </span>
+          <div style={{ position: "relative", minWidth: "18rem" }}>
             <input
               aria-label="Provider entity id"
-              placeholder="All provider entities…"
+              placeholder="Provider entity UUID..."
               value={providerEntityId}
               onChange={(e) => setProviderEntityId(e.target.value)}
-              style={inputStyle}
+              style={{ ...inputStyle, width: "100%", paddingLeft: "2rem" }}
             />
-          </label>
-          <button
-            type="button"
-            onClick={() => setApplied(providerEntityId)}
-            style={primaryButtonStyle}
-          >
+            <span style={inputIconStyle}>
+              <Glyph name="shield" size={14} />
+            </span>
+          </div>
+          <Button size="sm" onClick={() => setApplied(providerEntityId.trim())}>
             Apply
-          </button>
+          </Button>
           {applied ? (
-            <button
-              type="button"
-              onClick={() => {
-                setProviderEntityId("");
-                setApplied("");
+            <output
+              style={{
+                alignSelf: "center",
+                fontSize: "0.8rem",
+                color: "var(--color-on-surface-variant)",
               }}
-              style={ghostButtonStyle}
             >
-              Clear window
-            </button>
+              Window: <code style={{ fontFamily: "var(--font-mono)" }}>{applied}</code>
+            </output>
           ) : null}
-        </section>
+        </FilterBar>
       }
       table={
         loading ? (
-          <LoadingSpinner />
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
         ) : error ? (
-          <EmptyState title="Unavailable" description={error} />
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState title="Unavailable" description={error} />
+          </div>
         ) : buckets.length === 0 ? (
-          <EmptyState
-            title="No metrics"
-            description="No claim metrics are available for this window in your scope."
-          />
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState
+              title="No metrics"
+              description="No claim metrics are available for this window in your scope."
+            />
+          </div>
         ) : (
-          <StateMixTable buckets={buckets} totalCount={totals.totalCount} window={applied} />
+          <div style={tableWrapStyle}>
+            <StateMixTable buckets={buckets} totalCount={totals.totalCount} window={applied} />
+          </div>
         )
       }
     />
@@ -161,7 +218,7 @@ function StateMixTable({
     return `/billing/claims?${q.toString()}`;
   };
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
       <caption
         style={{
           position: "absolute",
@@ -174,7 +231,15 @@ function StateMixTable({
         Claim state mix
       </caption>
       <thead>
-        <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
+        <tr
+          style={{
+            textAlign: "left",
+            color: "var(--color-on-surface-variant)",
+            borderBottom:
+              "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+            background: "var(--color-surface-low)",
+          }}
+        >
           <th style={thStyle} scope="col">
             State
           </th>
@@ -193,12 +258,15 @@ function StateMixTable({
         </tr>
       </thead>
       <tbody>
-        {sorted.map((b, i) => {
+        {sorted.map((b) => {
           const share = totalCount > 0 ? Math.round((b.count / totalCount) * 100) : 0;
           return (
             <tr
               key={b.key}
-              style={{ background: i % 2 === 1 ? "var(--color-surface-low)" : "transparent" }}
+              style={{
+                borderBottom:
+                  "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+              }}
             >
               <td style={tdStyle}>
                 <StatusPill label={statusLabel(b.key)} tone={claimStateTone(b.key)} />
@@ -236,6 +304,11 @@ const thStyle = {
   letterSpacing: "0.04em",
 };
 const tdStyle = { padding: "0.5rem 0.75rem", color: "var(--color-on-surface)" };
+const tableWrapStyle = {
+  width: "100%",
+  overflowX: "auto",
+  padding: "0 1.5rem 1.5rem",
+} as const;
 const inputStyle = {
   padding: "0.35rem 0.5rem",
   borderRadius: "var(--radius-md)",
@@ -245,23 +318,23 @@ const inputStyle = {
   fontSize: "0.85rem",
   minWidth: "14rem",
 };
-const primaryButtonStyle = {
-  padding: "0.4rem 0.85rem",
-  borderRadius: "var(--radius-md)",
-  border: "none",
-  cursor: "pointer",
-  background: "var(--color-primary)",
-  color: "var(--color-on-primary)",
-  fontSize: "0.8rem",
-  fontWeight: 600,
+const inputIconStyle = {
+  position: "absolute" as const,
+  left: "0.625rem",
+  top: "50%",
+  transform: "translateY(-50%)",
+  color: "var(--color-on-surface-variant)",
+  pointerEvents: "none" as const,
 };
-const ghostButtonStyle = {
-  padding: "0.4rem 0.85rem",
-  borderRadius: "var(--radius-md)",
-  border: "none",
-  cursor: "pointer",
+const linkButtonStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: "2rem",
+  padding: "0.35rem 0.7rem",
+  borderRadius: "9999px",
   background: "var(--color-surface-container)",
   color: "var(--color-on-surface)",
-  fontSize: "0.8rem",
-  fontWeight: 600,
+  fontSize: "0.75rem",
+  fontWeight: 650,
+  textDecoration: "none",
 };

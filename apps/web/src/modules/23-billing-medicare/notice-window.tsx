@@ -1,10 +1,11 @@
 import {
+  Button,
   CountdownChip,
+  CursorPagination,
   DetailPageLayout,
   EmptyState,
   FilterBar,
-  KpiCard,
-  KpiStrip,
+  Glyph,
   LoadingSpinner,
   PageHeader,
   RightDetailPanel,
@@ -29,7 +30,8 @@ import {
 // §5.4 accessibility: the countdown timers carry NON-VISUAL equivalents — a visually-hidden aria-live region
 // updates `polite` as the window approaches its threshold and `assertive` once a record breaches.
 import { useCallback, useEffect, useState } from "react";
-import type { JSX, ReactNode } from "react";
+import type { CSSProperties, JSX, ReactNode } from "react";
+import { Link } from "react-router-dom";
 import {
   dollars,
   noeNotrStateTone,
@@ -151,38 +153,69 @@ function summarize(records: NoticeRecord[]): WindowPosture {
 export function NoticeWindowQueue({ config }: { config: NoticeWindowConfig }): JSX.Element {
   const client = useApiClient();
   const [records, setRecords] = useState<NoticeRecord[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [stateFilter, setStateFilter] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [selected, setSelected] = useState<NoticeRecord | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const load = useCallback(async (cursor: string | null, append: boolean) => {
+    if (append) setLoadingMore(true);
+    else {
+      setLoading(true);
+      setError(null);
+    }
     // The list path is config-chosen at runtime, so the typed GET collapses to `never`; cast the read. The
     // server (re)parses the request and remains the authoritative org-scoped (RLS) + authz boundary.
-    const { data, error: err } = (await client.GET(config.listPath as never)) as {
+    const init = { params: { query: { limit: 50, ...(cursor ? { cursor } : {}) } } };
+    const { data, error: err } = (await client.GET(config.listPath as never, init as never)) as {
       data?: unknown;
       error?: unknown;
     };
     if (err) {
-      setError(
-        `${config.acronym} queue unavailable — the billing read seam is not bound, or you lack scope.`,
-      );
-      setLoading(false);
+      if (append) setLoadingMore(false);
+      else {
+        setError(
+          `${config.acronym} queue unavailable — the billing read seam is not bound, or you lack scope.`,
+        );
+        setLoading(false);
+      }
       return;
     }
-    setRecords(((data as ListPage<NoticeRecord>)?.items ?? []) as NoticeRecord[]);
-    setLoading(false);
+    const page = (data as ListPage<NoticeRecord>) ?? { items: [], nextCursor: null, hasMore: false };
+    setRecords((prev) => (append ? [...prev, ...page.items] : page.items));
+    setNextCursor(page.nextCursor);
+    setHasMore(page.hasMore);
+    if (append) setLoadingMore(false);
+    else setLoading(false);
   }, [client, config]);
 
   useEffect(() => {
-    void load();
+    void load(null, false);
   }, [load]);
 
-  const visible = stateFilter ? records.filter((r) => r.state === stateFilter) : records;
+  const loadMore = useCallback(() => {
+    if (nextCursor) void load(nextCursor, true);
+  }, [load, nextCursor]);
+
+  const visible = records.filter((r) => {
+    const q = searchQuery.trim().toLowerCase();
+    const id = recordId(r).toLowerCase();
+    const matchesState = !stateFilter || r.state === stateFilter;
+    const matchesSearch =
+      !q ||
+      id.includes(q) ||
+      (r.patientId ?? "").toLowerCase().includes(q) ||
+      (r.providerEntityId ?? "").toLowerCase().includes(q) ||
+      (r.payerControlNumber ?? "").toLowerCase().includes(q);
+    return matchesState && matchesSearch;
+  });
   const posture = summarize(records);
   const states = Array.from(new Set(records.map((r) => r.state))).sort();
+  const activeFilterCount = [stateFilter, searchQuery].filter(Boolean).length;
 
   // §5.4 non-visual countdown equivalent: assertive once anything has breached, polite while only at-risk.
   const liveTone: "assertive" | "polite" = posture.breached > 0 ? "assertive" : "polite";
@@ -196,25 +229,58 @@ export function NoticeWindowQueue({ config }: { config: NoticeWindowConfig }): J
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title={`${config.acronym} Queue`} breadcrumb={`Billing — ${config.longName}`} />
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard label="In window" value={posture.inWindow} />
-          <KpiCard label="At risk" value={posture.atRisk} />
-          <KpiCard label="Breached" value={posture.breached} />
-          <KpiCard label={`Total ${config.acronym}`} value={posture.total} />
-        </KpiStrip>
+        <PageHeader
+          title={`${config.acronym} Queue`}
+          breadcrumb={`Billing / ${config.longName}`}
+          actions={
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <Link to="/billing" style={ghostButtonStyle}>
+                AR dashboard
+              </Link>
+              <Link to="/billing/claims" style={ghostButtonStyle}>
+                Claims
+              </Link>
+            </div>
+          }
+        >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Track filing-window status, submit ready records, and cancel active notices with a reason.
+          </div>
+        </PageHeader>
       }
       filters={
-        <FilterBar>
+        <FilterBar
+          activeFilterCount={activeFilterCount}
+          onClear={() => {
+            setStateFilter("");
+            setSearchQuery("");
+          }}
+          actions={
+            <span style={{ color: "var(--color-on-surface-variant)", fontSize: "0.8125rem" }}>
+              {visible.length} of {records.length} loaded
+            </span>
+          }
+        >
+          <div style={{ position: "relative", minWidth: "15rem" }}>
+            <input
+              type="search"
+              aria-label={`Search ${config.acronym} records`}
+              placeholder={`Search ${config.acronym} records...`}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ ...selectStyle, width: "100%", height: "2.25rem", paddingLeft: "2rem" }}
+            />
+            <div style={inputIconStyle}>
+              <Glyph name="search" size={14} />
+            </div>
+          </div>
           <select
             aria-label={`${config.acronym} state`}
             value={stateFilter}
             onChange={(e) => setStateFilter(e.target.value)}
-            style={selectStyle}
+            style={{ ...selectStyle, height: "2.25rem" }}
           >
-            <option value="">All states</option>
+            <option value="">State: All</option>
             {states.map((s) => (
               <option key={s} value={s}>
                 {statusLabel(s)}
@@ -226,30 +292,64 @@ export function NoticeWindowQueue({ config }: { config: NoticeWindowConfig }): J
       }
       table={
         loading ? (
-          <LoadingSpinner />
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
         ) : error ? (
-          <EmptyState title="Unavailable" description={error} />
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState title="Unavailable" description={error} />
+          </div>
         ) : visible.length === 0 ? (
-          <EmptyState
-            title={`No ${config.acronym} records`}
-            description={`No ${config.longName} records match the current filter in your scope.`}
-          />
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState
+              title={`No ${config.acronym} records`}
+              description={`No ${config.longName} records match the current filter in your scope.`}
+              action={
+                activeFilterCount > 0 ? (
+                  <Button
+                    tone="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setStateFilter("");
+                      setSearchQuery("");
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                ) : undefined
+              }
+            />
+          </div>
         ) : (
-          <NoticeTable
-            records={visible}
-            config={config}
-            selectedId={selected ? recordId(selected) : null}
-            onSelect={setSelected}
-          />
+          <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem" }}>
+            <NoticeTable
+              records={visible}
+              config={config}
+              selectedId={selected ? recordId(selected) : null}
+              onSelect={setSelected}
+            />
+            <CursorPagination
+              loadedCount={records.length}
+              hasNextPage={hasMore}
+              onNextPage={loadMore}
+              loading={loadingMore}
+              noun={`${config.acronym} records`}
+            />
+          </div>
         )
       }
       detail={
         selected ? (
-          <RightDetailPanel title={`${config.acronym} preview`} onClose={() => setSelected(null)}>
-            <NoticePreview record={selected} config={config} onChanged={() => void load()} />
+          <RightDetailPanel
+            title={`${config.acronym} Preview`}
+            onClose={() => setSelected(null)}
+            hideScrollbar
+          >
+            <NoticePreview record={selected} config={config} onChanged={() => void load(null, false)} />
           </RightDetailPanel>
-        ) : undefined
+        ) : null
       }
+      fullPageScroll
     />
   );
 }
@@ -277,14 +377,22 @@ function NoticeTable({
   const orderedStates = Array.from(groups.keys()).sort();
 
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+    <table style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
       <thead>
-        <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
-          <th style={thStyle}>Record</th>
-          <th style={thStyle}>State</th>
-          <th style={thStyle}>Window</th>
-          <th style={thStyle}>Countdown</th>
-          <th style={thStyle}>Target</th>
+        <tr
+          style={{
+            textAlign: "left",
+            color: "var(--color-on-surface-variant)",
+            borderBottom:
+              "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+            background: "var(--color-surface-low)",
+          }}
+        >
+          <th style={{ ...thStyle, width: "24%" }}>Record</th>
+          <th style={{ ...thStyle, width: "14%" }}>State</th>
+          <th style={{ ...thStyle, width: "22%" }}>Window</th>
+          <th style={{ ...thStyle, width: "18%" }}>Countdown</th>
+          <th style={{ ...thStyle, width: "22%" }}>Target</th>
         </tr>
       </thead>
       {orderedStates.map((state) => (
@@ -323,17 +431,29 @@ function NoticeTable({
                     onSelect(r);
                   }
                 }}
+                className="wx-data-row-interactive"
                 style={{
+                  borderBottom:
+                    "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
                   cursor: "pointer",
-                  background:
-                    id === selectedId
-                      ? "var(--color-primary-tint)"
-                      : i % 2 === 1
-                        ? "var(--color-surface-low)"
-                        : "transparent",
+                  background: id === selectedId ? "var(--color-primary-tint)" : "transparent",
+                  transition: "background 0.15s ease",
                 }}
               >
-                <td style={{ ...tdStyle, fontFamily: "var(--font-mono)" }}>{id || "—"}</td>
+                <td style={tdStyle}>
+                  <Link
+                    to={`${config.routeBase}/${id}`}
+                    style={{
+                      color: "var(--color-primary)",
+                      textDecoration: "none",
+                      fontWeight: 600,
+                      fontFamily: "var(--font-mono)",
+                    }}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    {id || "—"}
+                  </Link>
+                </td>
                 <td style={tdStyle}>
                   <StatusPill label={statusLabel(r.state)} tone={noeNotrStateTone(r.state)} />
                 </td>
@@ -411,12 +531,12 @@ function NoticePreview({
       ) : null}
       {record.effectiveDate ? <Field label="Effective date" value={record.effectiveDate} /> : null}
       <NoticeActions record={record} config={config} onChanged={onChanged} compact />
-      <a
-        href={`${config.routeBase}/${id}`}
+      <Link
+        to={`${config.routeBase}/${id}`}
         style={{ fontSize: "0.8rem", color: "var(--color-primary)" }}
       >
         Open detail →
-      </a>
+      </Link>
     </div>
   );
 }
@@ -709,14 +829,18 @@ function VisuallyHiddenLive({
   );
 }
 
-const thStyle = {
-  padding: "0.5rem 0.75rem",
+const thStyle: CSSProperties = {
+  padding: "0.625rem 0.75rem",
   fontSize: "0.7rem",
   fontWeight: 600,
-  textTransform: "uppercase" as const,
+  textTransform: "uppercase",
   letterSpacing: "0.04em",
 };
-const tdStyle = { padding: "0.5rem 0.75rem", color: "var(--color-on-surface)" };
+const tdStyle: CSSProperties = {
+  padding: "0.65rem 0.75rem",
+  color: "var(--color-on-surface)",
+  verticalAlign: "middle",
+};
 const selectStyle = {
   padding: "0.35rem 0.5rem",
   borderRadius: "var(--radius-md)",
@@ -724,6 +848,14 @@ const selectStyle = {
   background: "var(--color-surface-low)",
   color: "var(--color-on-surface)",
   fontSize: "0.85rem",
+};
+const inputIconStyle: CSSProperties = {
+  position: "absolute",
+  left: "0.625rem",
+  top: "50%",
+  transform: "translateY(-50%)",
+  color: "var(--color-on-surface-variant)",
+  pointerEvents: "none",
 };
 const textareaStyle = {
   ...selectStyle,
