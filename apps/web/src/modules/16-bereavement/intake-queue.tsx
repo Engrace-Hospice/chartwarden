@@ -14,9 +14,21 @@
 // no route that reads M15's 418.78 gate status for one volunteer, so the honest surface is to attempt the
 // assignment and render the server's refusal verbatim. A green badge this screen could only have guessed
 // at would be worse than the server's actual answer.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import {
+  Button,
+  EmptyState,
+  Glyph,
+  LoadingSpinner,
+  OffsetPagination,
+  PageHeader,
+  RightDetailPanel,
+  StatusPill,
+  WorkQueueLayout,
+  t,
+  useApiClient,
+} from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
 import {
   type BereavementPlanStatus,
@@ -28,24 +40,16 @@ import {
 } from "./bereavement-api";
 import { PLAN_STATUS_TONE, humanize, shortDate, shortId, toneOf } from "./bereavement-status";
 import {
-  Card,
-  FilterRow,
+  Field,
   Modal,
   Notice,
   RiskTierPill,
-  SelectField,
   TextField,
   alertStyle,
-  columnStyle,
   ghostButtonStyle,
   linkStyle,
   mutedStyle,
-  pageTitleStyle,
   primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
 } from "./bereavement-ui";
 
 const STATUSES = [
@@ -56,6 +60,35 @@ const STATUSES = [
 ];
 
 type Ceremony = { plan: PlanListItem; kind: "counselor" | "volunteer" } | null;
+type RiskFilter = "all" | "low" | "moderate" | "high" | "complicated" | "unscored" | "withheld";
+
+const INTAKE_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
+
+const thStyle: CSSProperties = {
+  padding: "0.625rem 0.75rem",
+  fontSize: "0.7rem",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+};
+
+const tdStyle: CSSProperties = {
+  padding: "0.65rem 0.75rem",
+  color: "var(--color-on-surface)",
+  verticalAlign: "middle",
+};
+
+const drawerGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: "0.75rem",
+};
+
+const drawerActionStyle: CSSProperties = {
+  ...ghostButtonStyle,
+  display: "flex",
+  justifyContent: "center",
+};
 
 export function BereavementIntakeQueue(): JSX.Element {
   const client = useApiClient();
@@ -64,6 +97,11 @@ export function BereavementIntakeQueue(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [ceremony, setCeremony] = useState<Ceremony>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [riskFilter, setRiskFilter] = useState<RiskFilter>("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -91,98 +129,212 @@ export function BereavementIntakeQueue(): JSX.Element {
 
   const pendingCosign = rows.filter((r) => r.externalSourceCosignPending);
 
+  const hasActiveFilters = searchQuery !== "" || riskFilter !== "all";
+  const filteredRows = rows.filter((r) => {
+    const q = searchQuery.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      shortId(r.planId).toLowerCase().includes(q) ||
+      r.planId.toLowerCase().includes(q) ||
+      shortDate(r.deathDate).toLowerCase().includes(q);
+    const matchesRisk =
+      riskFilter === "all" ||
+      (riskFilter === "unscored" && r.currentRiskTier === null) ||
+      (riskFilter === "withheld" && r.currentRiskTier === undefined) ||
+      r.currentRiskTier === riskFilter;
+    return matchesSearch && matchesRisk;
+  });
+  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const activePage = Math.min(page, pageCount);
+  const pagedRows = filteredRows.slice((activePage - 1) * pageSize, activePage * pageSize);
+  const selectedPlan = rows.find((r) => r.planId === selectedPlanId) ?? null;
+
+  const clearFilters = (): void => {
+    setSearchQuery("");
+    setRiskFilter("all");
+    setPage(1);
+  };
+
   return (
-    <div style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Bereavement intake</span>}
-        breadcrumb="Bereavement — plans awaiting assignment"
-        actions={
-          <Link to="/bereavement/supervisor" style={ghostButtonStyle}>
-            Program rollups
-          </Link>
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader
+            title="Bereavement intake"
+            breadcrumb="Bereavement / Eligible"
+            actions={
+              <Link to="/bereavement/supervisor" style={ghostButtonStyle}>
+                Program rollups
+              </Link>
+            }
+          >
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Assign counselors and volunteers while preserving server-side version and compliance gates.
+            </div>
+          </PageHeader>
         }
+        filters={
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", padding: "0 1.5rem 0.75rem" }}>
+            {pendingCosign.length > 0 ? (
+              <Notice tone="warning">
+                PENDING MEDICAL DIRECTOR COSIGN —{" "}
+                {pendingCosign.length === 1
+                  ? "one plan in this queue"
+                  : `${pendingCosign.length} plans in this queue`}{" "}
+                came from an external (HL7 ADT) death notice. You may assign staff now; counselor
+                first contact stays refused by the server until the cosign is received.
+              </Notice>
+            ) : null}
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "1rem",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                <div style={{ position: "relative", minWidth: "15rem" }}>
+                  <input
+                    type="search"
+                    placeholder="Search plans by ID or death date..."
+                    value={searchQuery}
+                    onChange={(event) => {
+                      setSearchQuery(event.target.value);
+                      setPage(1);
+                    }}
+                    aria-label="Search bereavement intake plans"
+                    style={{
+                      width: "100%",
+                      paddingLeft: "2rem",
+                      height: "2.25rem",
+                      fontSize: "0.85rem",
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: "0.625rem",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      color: "var(--color-on-surface-variant)",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    <Glyph name="search" size={14} />
+                  </div>
+                </div>
+
+                <select
+                  value={status}
+                  onChange={(event) => {
+                    setStatus(event.target.value);
+                    setPage(1);
+                    setSelectedPlanId(null);
+                  }}
+                  aria-label="Filter by intake status"
+                  style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
+                >
+                  {STATUSES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      Status: {option.label}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={riskFilter}
+                  onChange={(event) => {
+                    setRiskFilter(event.target.value as RiskFilter);
+                    setPage(1);
+                  }}
+                  aria-label="Filter by risk tier"
+                  style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
+                >
+                  <option value="all">Risk: All</option>
+                  <option value="low">Low</option>
+                  <option value="moderate">Moderate</option>
+                  <option value="high">High</option>
+                  <option value="complicated">Complicated</option>
+                  <option value="unscored">Not yet scored</option>
+                  <option value="withheld">Not disclosed</option>
+                </select>
+
+                {hasActiveFilters ? (
+                  <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                    Clear
+                  </Button>
+                ) : null}
+              </div>
+
+              <span style={{ color: "var(--color-on-surface-variant)", fontSize: "0.8125rem" }}>
+                {filteredRows.length} of {rows.length} plans
+              </span>
+            </div>
+          </div>
+        }
+        table={
+          rows.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title="No plans in this state"
+                description="Choose another status or return to program rollups."
+              />
+            </div>
+          ) : filteredRows.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title="No matching plans"
+                description="Try adjusting your search criteria or clearing active filters."
+                action={
+                  <Button tone="secondary" size="sm" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                }
+              />
+            </div>
+          ) : (
+            <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem" }}>
+              <IntakeTable
+                rows={pagedRows}
+                selectedPlanId={selectedPlanId}
+                onSelectPlan={setSelectedPlanId}
+                onAssign={(plan, kind) => setCeremony({ plan, kind })}
+              />
+              <OffsetPagination
+                page={activePage}
+                pageSize={pageSize}
+                totalItems={filteredRows.length}
+                onPageChange={setPage}
+                onPageSizeChange={(nextPageSize) => {
+                  setPageSize(nextPageSize);
+                  setPage(1);
+                }}
+                pageSizeOptions={INTAKE_PAGE_SIZES}
+                noun="plans"
+              />
+            </div>
+          )
+        }
+        detail={
+          selectedPlan ? (
+            <RightDetailPanel
+              open={selectedPlan !== null}
+              title="Intake Plan"
+              onClose={() => setSelectedPlanId(null)}
+              hideScrollbar
+            >
+              <IntakeDrawerContent
+                plan={selectedPlan}
+                onAssign={(kind) => setCeremony({ plan: selectedPlan, kind })}
+              />
+            </RightDetailPanel>
+          ) : null
+        }
+        fullPageScroll
       />
-
-      {pendingCosign.length > 0 ? (
-        <Notice tone="warning">
-          PENDING MEDICAL DIRECTOR COSIGN —{" "}
-          {pendingCosign.length === 1
-            ? "one plan in this queue"
-            : `${pendingCosign.length} plans in this queue`}{" "}
-          came from an external (HL7 ADT) death notice. You may assign a counselor and a volunteer
-          now; counselor first contact stays refused by the server until the cosign is received.
-        </Notice>
-      ) : null}
-
-      <FilterRow>
-        <SelectField label="Status" value={status} options={STATUSES} onChange={setStatus} />
-      </FilterRow>
-
-      <Card title={`Plans — ${humanize(status)}`}>
-        {rows.length === 0 ? (
-          <span style={mutedStyle}>No bereavement plans are in this state.</span>
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Plan</th>
-                <th style={th}>Status</th>
-                <th style={th}>Death date</th>
-                <th style={th}>Window ends</th>
-                <th style={th}>Counselor</th>
-                <th style={th}>Volunteer</th>
-                <th style={th}>Risk</th>
-                <th style={th}>Assign</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((p) => (
-                <tr key={p.planId} style={rowLine}>
-                  <td style={td}>
-                    <Link to={`/bereavement/plans/${p.planId}`} style={linkStyle}>
-                      {shortId(p.planId)}
-                    </Link>
-                    {p.externalSourceCosignPending ? (
-                      <div style={mutedStyle}>Pending medical-director cosign</div>
-                    ) : null}
-                  </td>
-                  <td style={td}>
-                    <StatusPill
-                      label={humanize(p.status)}
-                      tone={toneOf(PLAN_STATUS_TONE, p.status)}
-                    />
-                  </td>
-                  <td style={td}>{shortDate(p.deathDate)}</td>
-                  <td style={td}>{shortDate(p.windowEndsAt)}</td>
-                  <td style={td}>{shortId(p.assignedCounselorUserId)}</td>
-                  <td style={td}>{shortId(p.assignedVolunteerUserId)}</td>
-                  <td style={td}>
-                    <RiskTierPill tier={p.currentRiskTier} />
-                  </td>
-                  <td style={td}>
-                    <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-                      <button
-                        type="button"
-                        style={ghostButtonStyle}
-                        onClick={() => setCeremony({ plan: p, kind: "counselor" })}
-                      >
-                        Counselor
-                      </button>
-                      <button
-                        type="button"
-                        style={ghostButtonStyle}
-                        onClick={() => setCeremony({ plan: p, kind: "volunteer" })}
-                      >
-                        Volunteer
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
 
       {ceremony ? (
         <AssignModal
@@ -196,6 +348,147 @@ export function BereavementIntakeQueue(): JSX.Element {
           }}
         />
       ) : null}
+    </>
+  );
+}
+
+function IntakeTable({
+  rows,
+  selectedPlanId,
+  onSelectPlan,
+  onAssign,
+}: {
+  rows: PlanListItem[];
+  selectedPlanId: string | null;
+  onSelectPlan: (planId: string) => void;
+  onAssign: (plan: PlanListItem, kind: "counselor" | "volunteer") => void;
+}): JSX.Element {
+  return (
+    <table style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+      <thead>
+        <tr
+          style={{
+            textAlign: "left",
+            color: "var(--color-on-surface-variant)",
+            borderBottom:
+              "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+            background: "var(--color-surface-low)",
+          }}
+        >
+          <th style={{ ...thStyle, width: "21%" }}>Plan</th>
+          <th style={{ ...thStyle, width: "13%" }}>Status</th>
+          <th style={{ ...thStyle, width: "13%" }}>Risk</th>
+          <th style={{ ...thStyle, width: "13%" }}>Death date</th>
+          <th style={{ ...thStyle, width: "13%" }}>Counselor</th>
+          <th style={{ ...thStyle, width: "13%" }}>Volunteer</th>
+          <th style={{ ...thStyle, width: "14%", textAlign: "right" }}>Assign</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((p) => {
+          const isSelected = selectedPlanId === p.planId;
+          return (
+            <tr
+              key={p.planId}
+              onClick={() => onSelectPlan(p.planId)}
+              className="wx-data-row-interactive"
+              style={{
+                borderBottom:
+                  "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+                background: isSelected ? "var(--color-primary-tint)" : "transparent",
+                cursor: "pointer",
+                transition: "background 0.15s ease",
+              }}
+            >
+              <td style={tdStyle}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                  <Link
+                    to={`/bereavement/plans/${p.planId}`}
+                    style={{ ...linkStyle, fontWeight: 600 }}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    {shortId(p.planId)}
+                  </Link>
+                  {p.externalSourceCosignPending ? (
+                    <span style={mutedStyle}>Pending medical-director cosign</span>
+                  ) : null}
+                </div>
+              </td>
+              <td style={tdStyle}>
+                <StatusPill label={humanize(p.status)} tone={toneOf(PLAN_STATUS_TONE, p.status)} />
+              </td>
+              <td style={tdStyle}>
+                <RiskTierPill tier={p.currentRiskTier} />
+              </td>
+              <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                {shortDate(p.deathDate)}
+              </td>
+              <td style={{ ...tdStyle, fontFamily: t.fontMono }}>
+                {shortId(p.assignedCounselorUserId)}
+              </td>
+              <td style={{ ...tdStyle, fontFamily: t.fontMono }}>
+                {shortId(p.assignedVolunteerUserId)}
+              </td>
+              <td
+                style={{ ...tdStyle, textAlign: "right" }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.4rem", flexWrap: "wrap" }}>
+                  <Button size="sm" tone="secondary" onClick={() => onAssign(p, "counselor")}>
+                    Counselor
+                  </Button>
+                  <Button size="sm" tone="secondary" onClick={() => onAssign(p, "volunteer")}>
+                    Volunteer
+                  </Button>
+                </div>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function IntakeDrawerContent({
+  plan,
+  onAssign,
+}: {
+  plan: PlanListItem;
+  onAssign: (kind: "counselor" | "volunteer") => void;
+}): JSX.Element {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+        <StatusPill label={humanize(plan.status)} tone={toneOf(PLAN_STATUS_TONE, plan.status)} />
+        <RiskTierPill tier={plan.currentRiskTier} />
+      </div>
+      <code style={{ fontFamily: t.fontMono, fontSize: "0.75rem", color: t.onSurfaceVariant }}>
+        {plan.planId}
+      </code>
+
+      <div style={drawerGridStyle}>
+        <Field label="Death date" value={shortDate(plan.deathDate)} />
+        <Field label="Window ends" value={shortDate(plan.windowEndsAt)} />
+        <Field label="Counselor" value={shortId(plan.assignedCounselorUserId)} mono />
+        <Field label="Volunteer" value={shortId(plan.assignedVolunteerUserId)} mono />
+      </div>
+
+      {plan.externalSourceCosignPending ? (
+        <Notice tone="warning">First contact stays locked until the medical-director cosign lands.</Notice>
+      ) : null}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <button type="button" style={drawerActionStyle} onClick={() => onAssign("counselor")}>
+          Assign counselor
+        </button>
+        <button type="button" style={drawerActionStyle} onClick={() => onAssign("volunteer")}>
+          Assign volunteer
+        </button>
+        <Link to={`/bereavement/plans/${plan.planId}`} style={drawerActionStyle}>
+          Open plan
+        </Link>
+      </div>
     </div>
   );
 }

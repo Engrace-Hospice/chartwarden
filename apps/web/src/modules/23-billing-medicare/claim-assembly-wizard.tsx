@@ -22,7 +22,7 @@ import type { GateItem, GateStatus } from "@wardenx/ui";
 // only; status tones flow through billing-status.ts (§6.6).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { dollars, statusLabel, tobLabel } from "./billing-status";
 import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-workflow";
 
@@ -158,7 +158,26 @@ export function ClaimAssemblyWizard(): JSX.Element {
 
   return (
     <StepperWorkflowLayout
-      header={<PageHeader title="Assemble Claim" breadcrumb="Billing — Medicare · New claim" />}
+      header={
+        <PageHeader
+          title="Assemble Claim"
+          breadcrumb="Billing / Medicare / New claim"
+          actions={
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <Link to="/billing/claims" style={{ ...ghostButtonStyle, textDecoration: "none" }}>
+                Claim workbench
+              </Link>
+              <Link to="/billing" style={{ ...ghostButtonStyle, textDecoration: "none" }}>
+                AR dashboard
+              </Link>
+            </div>
+          }
+        >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Build a Medicare claim from server-derived coverage, rates, lines, and initial validation.
+          </div>
+        </PageHeader>
+      }
       steps={
         <GateStepper items={steps} ariaLabel="Claim assembly steps" surfaceBlockersFirst={false} />
       }
@@ -216,7 +235,7 @@ export function ClaimAssemblyWizard(): JSX.Element {
         </StickyFooterActions>
       }
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: "1rem", maxWidth: "44rem" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "1rem", maxWidth: "52rem" }}>
         {result ? (
           <AssembledResult result={result} />
         ) : (
@@ -274,7 +293,13 @@ function IdentifyStep({
         mono
         onChange={(v) => setForm((f) => ({ ...f, patientId: v }))}
       />
-      <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))",
+          gap: "0.75rem",
+        }}
+      >
         <LabeledInput
           label="Service from"
           ariaLabel="Service date from"
@@ -333,7 +358,7 @@ function TobStep({
         >
           Type of bill
         </legend>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(16rem, 1fr))", gap: "0.5rem" }}>
           {ASSEMBLABLE_TOBS.map((code) => (
             <label
               key={code}
@@ -346,6 +371,7 @@ function TobStep({
                 cursor: "pointer",
                 background:
                   form.tob === code ? "var(--color-primary-tint)" : "var(--color-surface-low)",
+                minHeight: "3rem",
               }}
             >
               <input
@@ -575,7 +601,7 @@ const sectionStyle = {
   flexDirection: "column" as const,
   gap: "0.75rem",
   background: "var(--color-surface-lowest)",
-  borderRadius: "var(--radius-xl, 1rem)",
+  borderRadius: "var(--radius-lg, 0.75rem)",
   boxShadow: "var(--shadow-soft)",
   padding: "1.25rem 1.5rem",
 };
@@ -593,13 +619,14 @@ const hintStyle = {
   color: "var(--color-on-surface-variant)",
 };
 const inputStyle = {
+  height: "2.35rem",
   padding: "0.45rem 0.6rem",
   borderRadius: "var(--radius-md)",
   border: "none",
   background: "var(--color-surface-low)",
   color: "var(--color-on-surface)",
   fontSize: "0.9rem",
-  minWidth: "16rem",
+  minWidth: "14rem",
 };
 const primaryButtonStyle = {
   padding: "0.5rem 1rem",

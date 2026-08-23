@@ -1,10 +1,13 @@
 import {
+  Button,
   EmptyState,
+  FilterBar,
   Glyph,
   GuardChip,
   LoadingSpinner,
   Modal,
   PageHeader,
+  RightDetailPanel,
   StatusPill,
   WorkQueueLayout,
   useApiClient,
@@ -21,14 +24,13 @@ import type { JSX } from "react";
 import { useParams } from "react-router-dom";
 import { VALIDATION_OUTCOME_TONE, humanize, shortId, toneOf } from "./medicaid-status";
 import {
+  Field,
+  SummaryGrid,
   alertStyle,
-  disabledButtonStyle,
-  ghostButtonStyle,
   iconButtonStyle,
   linkStyle,
   modalTitleStyle,
   mutedStyle,
-  primaryButtonStyle,
   rowLine,
   selectStyle,
   tableStyle,
@@ -121,6 +123,8 @@ export function MedicaidValidationWorklist(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [overrideTarget, setOverrideTarget] = useState<ValidationResult | null>(null);
+  const [ruleFilter, setRuleFilter] = useState("");
+  const [outcomeFilter, setOutcomeFilter] = useState("");
 
   const loadRuns = useCallback(async () => {
     if (!claimId) return;
@@ -178,10 +182,15 @@ export function MedicaidValidationWorklist(): JSX.Element {
       pass: 3,
       skip_not_applicable: 4,
     };
-    return [...(detail?.results ?? [])].sort(
-      (a, b) => (order[a.outcome] ?? 9) - (order[b.outcome] ?? 9),
-    );
-  }, [detail]);
+    const q = ruleFilter.trim().toLowerCase();
+    return [...(detail?.results ?? [])]
+      .filter((result) => {
+        const matchesOutcome = outcomeFilter === "" || result.outcome === outcomeFilter;
+        const matchesRule = q.length === 0 || result.ruleKey.toLowerCase().includes(q);
+        return matchesOutcome && matchesRule;
+      })
+      .sort((a, b) => (order[a.outcome] ?? 9) - (order[b.outcome] ?? 9));
+  }, [detail, ruleFilter, outcomeFilter]);
 
   if (!claimId) return <EmptyState title="No claim" description="No claim was specified." />;
   if (loading) return <LoadingSpinner />;
@@ -195,6 +204,7 @@ export function MedicaidValidationWorklist(): JSX.Element {
     );
 
   const active = runs.find((r) => r.id === activeRunId) ?? null;
+  const activeFilterCount = (ruleFilter.trim() ? 1 : 0) + (outcomeFilter ? 1 : 0);
 
   return (
     <>
@@ -202,17 +212,35 @@ export function MedicaidValidationWorklist(): JSX.Element {
         header={
           <PageHeader
             title="Validation Worklist"
-            breadcrumb="Billing — Medicaid · claim validation"
+            breadcrumb="Billing / Medicaid / Claim validation"
             actions={
-              <a href={`/medicaid/billing/claims/${claimId}`} style={linkStyle}>
-                ← Back to claim
-              </a>
+              <>
+                <a href="/medicaid/billing/claims" style={linkButtonStyle}>
+                  Claim workbench
+                </a>
+                <a href={`/medicaid/billing/claims/${claimId}`} style={primaryLinkButtonStyle}>
+                  Open claim
+                </a>
+              </>
             }
-          />
+          >
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Review per-rule validation results and apply audited overrides when permitted.
+            </div>
+          </PageHeader>
         }
         filters={
-          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <span style={mutedStyle}>Validation run</span>
+          <FilterBar
+            activeFilterCount={activeFilterCount}
+            onClear={
+              activeFilterCount > 0
+                ? () => {
+                    setRuleFilter("");
+                    setOutcomeFilter("");
+                  }
+                : undefined
+            }
+          >
             <select
               aria-label="Validation run"
               value={activeRunId ?? ""}
@@ -225,6 +253,31 @@ export function MedicaidValidationWorklist(): JSX.Element {
                   {r.ruleRegistryVersion} · {r.at.slice(0, 16).replace("T", " ")}
                 </option>
               ))}
+            </select>
+            <div style={{ position: "relative", minWidth: "14rem" }}>
+              <input
+                aria-label="Filter by rule key"
+                value={ruleFilter}
+                onChange={(event) => setRuleFilter(event.target.value)}
+                placeholder="Search rule key..."
+                style={{ ...inputStyle, width: "100%", paddingLeft: "2rem" }}
+              />
+              <span style={inputIconStyle}>
+                <Glyph name="search" size={14} />
+              </span>
+            </div>
+            <select
+              aria-label="Filter by outcome"
+              value={outcomeFilter}
+              onChange={(event) => setOutcomeFilter(event.target.value)}
+              style={selectStyle}
+            >
+              <option value="">Outcome: All</option>
+              <option value="fail">Fail</option>
+              <option value="warn">Warn</option>
+              <option value="info">Info</option>
+              <option value="pass">Pass</option>
+              <option value="skip_not_applicable">Skip not applicable</option>
             </select>
             {active ? (
               <StatusPill
@@ -244,82 +297,119 @@ export function MedicaidValidationWorklist(): JSX.Element {
                 }
               />
             ) : null}
-          </label>
+          </FilterBar>
         }
         table={
           !detail ? (
-            <LoadingSpinner />
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
           ) : sorted.length === 0 ? (
-            <EmptyState title="No results" description="This run produced no per-rule results." />
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title="No results"
+                description={
+                  activeFilterCount > 0
+                    ? "No validation results match the current filters."
+                    : "This run produced no per-rule results."
+                }
+                action={
+                  activeFilterCount > 0 ? (
+                    <Button
+                      size="sm"
+                      tone="secondary"
+                      onClick={() => {
+                        setRuleFilter("");
+                        setOutcomeFilter("");
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
           ) : (
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={th}>Rule</th>
-                  <th style={th}>Outcome</th>
-                  <th style={th}>Remediation</th>
-                  <th style={{ ...th, textAlign: "right" }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((r) => {
-                  const failed = r.outcome === "fail";
-                  const regReq = regulatory.get(r.ruleKey) === true;
-                  const href = fixActionHref(r.remediationFixAction);
-                  return (
-                    <tr key={r.id} style={rowLine}>
-                      <td style={tdMono}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                          {r.ruleKey}
-                          <span style={mutedStyle}>v{r.ruleVersion}</span>
-                          {regReq ? (
-                            <span title="Regulatory-required rule">
-                              <Glyph name="shield" size={13} label="regulatory-required" />
-                            </span>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td style={td}>
-                        <StatusPill
-                          label={humanize(r.outcome)}
-                          tone={toneOf(VALIDATION_OUTCOME_TONE, r.outcome)}
-                        />
-                      </td>
-                      <td style={{ ...td, maxWidth: "26rem" }}>
-                        {r.remediationSummary ? (
-                          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                            <span>{r.remediationSummary}</span>
-                            {href ? (
-                              <a href={href} style={linkStyle}>
-                                {fixActionLabel(r.remediationFixAction)} →
-                              </a>
+            <div style={tableWrapStyle}>
+              <table style={{ ...tableStyle, fontSize: "0.875rem" }}>
+                <thead>
+                  <tr style={headRowStyle}>
+                    <th style={th}>Rule</th>
+                    <th style={th}>Outcome</th>
+                    <th style={th}>Remediation</th>
+                    <th style={{ ...th, textAlign: "right" }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((r) => {
+                    const failed = r.outcome === "fail";
+                    const regReq = regulatory.get(r.ruleKey) === true;
+                    const href = fixActionHref(r.remediationFixAction);
+                    return (
+                      <tr key={r.id} style={enhancedRowLine}>
+                        <td style={tdMono}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                            {r.ruleKey}
+                            <span style={mutedStyle}>v{r.ruleVersion}</span>
+                            {regReq ? (
+                              <span title="Regulatory-required rule">
+                                <Glyph name="shield" size={13} label="regulatory-required" />
+                              </span>
                             ) : null}
                           </div>
-                        ) : (
-                          <span style={mutedStyle}>—</span>
-                        )}
-                      </td>
-                      <td style={{ ...td, textAlign: "right" }}>
-                        {failed ? (
-                          <button
-                            type="button"
-                            onClick={() => setOverrideTarget(r)}
-                            aria-label={`Override rule ${r.ruleKey}`}
-                            style={ghostButtonStyle}
-                          >
-                            Override
-                          </button>
-                        ) : (
-                          <span style={mutedStyle}>—</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        </td>
+                        <td style={td}>
+                          <StatusPill
+                            label={humanize(r.outcome)}
+                            tone={toneOf(VALIDATION_OUTCOME_TONE, r.outcome)}
+                          />
+                        </td>
+                        <td style={{ ...td, maxWidth: "26rem" }}>
+                          {r.remediationSummary ? (
+                            <div
+                              style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}
+                            >
+                              <span>{r.remediationSummary}</span>
+                              {href ? (
+                                <a href={href} style={linkStyle}>
+                                  {fixActionLabel(r.remediationFixAction)} →
+                                </a>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span style={mutedStyle}>—</span>
+                          )}
+                        </td>
+                        <td style={{ ...td, textAlign: "right" }}>
+                          {failed ? (
+                            <Button
+                              size="sm"
+                              tone="secondary"
+                              onClick={() => setOverrideTarget(r)}
+                              aria-label={`Override rule ${r.ruleKey}`}
+                            >
+                              Override
+                            </Button>
+                          ) : (
+                            <span style={mutedStyle}>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )
         }
+        detail={
+          active ? (
+            <RightDetailPanel title="Run Summary" hideScrollbar>
+              <RunSummary run={active} resultCount={detail?.results?.length ?? 0} />
+            </RightDetailPanel>
+          ) : null
+        }
+        fullPageScroll
       />
       {overrideTarget ? (
         <OverrideModal
@@ -451,23 +541,96 @@ function OverrideModal({
         ) : null}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
-          <button type="button" onClick={onClose} style={ghostButtonStyle}>
+          <Button tone="secondary" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => void apply()}
-            disabled={tooShort || busy}
-            aria-disabled={tooShort || busy}
-            style={tooShort || busy ? disabledButtonStyle : primaryButtonStyle}
-          >
+          </Button>
+          <Button onClick={() => void apply()} disabled={tooShort || busy} loading={busy}>
             {busy ? "Applying…" : "Apply override"}
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>
   );
 }
+
+function RunSummary({
+  run,
+  resultCount,
+}: { run: ValidationRun; resultCount: number }): JSX.Element {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <StatusPill
+        label={run.failedResults > 0 ? "Failing" : run.warnedResults > 0 ? "Warnings" : "Clean"}
+        tone={run.failedResults > 0 ? "error" : run.warnedResults > 0 ? "warning" : "success"}
+      />
+      <SummaryGrid>
+        <Field label="Registry" value={run.ruleRegistryVersion} mono />
+        <Field label="Triggered by" value={humanize(run.triggeredBy)} />
+        <Field label="Claim state" value={humanize(run.claimStateAtTrigger)} />
+        <Field label="Results loaded" value={resultCount.toLocaleString()} />
+        <Field label="Failed" value={run.failedResults.toLocaleString()} />
+        <Field label="Warnings" value={run.warnedResults.toLocaleString()} />
+        <Field label="Started" value={run.at.slice(0, 16).replace("T", " ")} />
+        <Field
+          label="Completed"
+          value={run.completedAt ? run.completedAt.slice(0, 16).replace("T", " ") : "Pending"}
+        />
+      </SummaryGrid>
+      <p style={{ ...mutedStyle, margin: 0 }}>
+        Regulatory-required rules show a shield and may require higher authority or be
+        non-overridable.
+      </p>
+    </div>
+  );
+}
+
+const inputStyle = {
+  padding: "0.35rem 0.5rem",
+  borderRadius: "var(--radius-md)",
+  border: "none",
+  background: "var(--color-surface-low)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+};
+const tableWrapStyle = {
+  width: "100%",
+  overflowX: "auto",
+  padding: "0 1.5rem 1.5rem",
+} as const;
+const headRowStyle = {
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  background: "var(--color-surface-low)",
+};
+const enhancedRowLine = {
+  ...rowLine,
+  borderTop: "none",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+};
+const inputIconStyle = {
+  position: "absolute" as const,
+  left: "0.625rem",
+  top: "50%",
+  transform: "translateY(-50%)",
+  color: "var(--color-on-surface-variant)",
+  pointerEvents: "none" as const,
+};
+const linkButtonStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: "2rem",
+  padding: "0.35rem 0.7rem",
+  borderRadius: "9999px",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.75rem",
+  fontWeight: 650,
+  textDecoration: "none",
+};
+const primaryLinkButtonStyle = {
+  ...linkButtonStyle,
+  background: "var(--color-primary)",
+  color: "var(--color-on-primary)",
+};
 
 /** Map the override error envelope (§4.7 / §D12) to a precise, PHI-free inline message. */
 function overrideErrorMessage(code: string | undefined, status: number | undefined): string {

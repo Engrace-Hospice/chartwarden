@@ -2,6 +2,7 @@ import {
   Button,
   EmptyState,
   FilterBar,
+  Glyph,
   LoadingSpinner,
   PageHeader,
   StatusPill,
@@ -116,6 +117,7 @@ export function OverrideAudit(): JSX.Element {
   const [degraded, setDegraded] = useState(false);
   const [ruleFilter, setRuleFilter] = useState("");
   const [severityFilter, setSeverityFilter] = useState("");
+  const activeFilterCount = (ruleFilter.trim() ? 1 : 0) + (severityFilter ? 1 : 0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -208,9 +210,12 @@ export function OverrideAudit(): JSX.Element {
       header={
         <PageHeader
           title="Override Audit"
-          breadcrumb="Billing — Medicare"
+          breadcrumb="Billing / Medicare / Validation overrides"
           actions={
             <div style={{ display: "flex", gap: "0.5rem" }}>
+              <a href="/billing" style={linkButtonStyle}>
+                AR dashboard
+              </a>
               <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
                 Refresh
               </Button>
@@ -231,14 +236,29 @@ export function OverrideAudit(): JSX.Element {
         </PageHeader>
       }
       filters={
-        <FilterBar>
-          <input
-            aria-label="Filter by rule key"
-            placeholder="Rule key…"
-            value={ruleFilter}
-            onChange={(e) => setRuleFilter(e.target.value)}
-            style={inputStyle}
-          />
+        <FilterBar
+          activeFilterCount={activeFilterCount}
+          onClear={
+            activeFilterCount > 0
+              ? () => {
+                  setRuleFilter("");
+                  setSeverityFilter("");
+                }
+              : undefined
+          }
+        >
+          <div style={{ position: "relative", minWidth: "14rem" }}>
+            <input
+              aria-label="Filter by rule key"
+              placeholder="Search rule key..."
+              value={ruleFilter}
+              onChange={(e) => setRuleFilter(e.target.value)}
+              style={{ ...inputStyle, width: "100%", paddingLeft: "2rem" }}
+            />
+            <span style={inputIconStyle}>
+              <Glyph name="search" size={14} />
+            </span>
+          </div>
           <select
             aria-label="Filter by severity"
             value={severityFilter}
@@ -308,10 +328,10 @@ export function OverrideAudit(): JSX.Element {
   );
 }
 
-// ── No-Line override table (§6.7) — tonal zebra, mono identifiers, tabular timestamps ─────────────────
+// ── No-Line override table (§6.7) — mono identifiers, tabular timestamps ─────────────────────────────
 function OverrideTable({ rows }: { rows: OverrideRow[] }): JSX.Element {
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
       <caption
         style={{
           position: "absolute",
@@ -324,7 +344,15 @@ function OverrideTable({ rows }: { rows: OverrideRow[] }): JSX.Element {
         Org-wide validation overrides
       </caption>
       <thead>
-        <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
+        <tr
+          style={{
+            textAlign: "left",
+            color: "var(--color-on-surface-variant)",
+            borderBottom:
+              "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+            background: "var(--color-surface-low)",
+          }}
+        >
           <th style={thStyle} scope="col">
             Claim control #
           </th>
@@ -349,10 +377,13 @@ function OverrideTable({ rows }: { rows: OverrideRow[] }): JSX.Element {
         </tr>
       </thead>
       <tbody>
-        {rows.map((r, i) => (
+        {rows.map((r) => (
           <tr
             key={`${r.claimId}-${r.ruleKey}-${r.appliedAt}`}
-            style={{ background: i % 2 === 1 ? "var(--color-surface-low)" : "transparent" }}
+            style={{
+              borderBottom:
+                "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+            }}
           >
             <td style={{ ...tdStyle, fontFamily: "var(--font-mono)" }}>{r.claimControlNumber}</td>
             <td style={{ ...tdStyle, fontFamily: "var(--font-mono)" }}>{r.ruleKey}</td>
@@ -377,7 +408,10 @@ function OverrideTable({ rows }: { rows: OverrideRow[] }): JSX.Element {
 
 const tableWrapStyle = {
   minWidth: 0,
-};
+  width: "100%",
+  overflowX: "auto",
+  padding: "0 1.5rem 1.5rem",
+} as const;
 
 const detailStyle = {
   display: "flex",
@@ -421,3 +455,23 @@ const selectStyle = {
   fontSize: "0.85rem",
 };
 const inputStyle = { ...selectStyle, minWidth: "12rem" };
+const inputIconStyle = {
+  position: "absolute" as const,
+  left: "0.625rem",
+  top: "50%",
+  transform: "translateY(-50%)",
+  color: "var(--color-on-surface-variant)",
+  pointerEvents: "none" as const,
+};
+const linkButtonStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: "2rem",
+  padding: "0.35rem 0.7rem",
+  borderRadius: "9999px",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.75rem",
+  fontWeight: 650,
+  textDecoration: "none",
+};

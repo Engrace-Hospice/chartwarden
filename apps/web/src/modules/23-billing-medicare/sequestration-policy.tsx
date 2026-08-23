@@ -1,6 +1,9 @@
 import {
+  Button,
   DetailPageLayout,
   EmptyState,
+  FilterBar,
+  Glyph,
   LoadingSpinner,
   PageHeader,
   StatusPill,
@@ -17,7 +20,7 @@ import {
 // the anchor read degrades the surface; a 422 / 503 on a forward-date surfaces inline, never a toast. Lantern:
 // DetailPageLayout (timeline | forward-date aside), No-Line table (§6.7), §6.6 StatusPills via
 // billing-status.ts, CSS-var tokens only. openapi emits no billing schemas → reads cast, inits `as never`.
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { JSX } from "react";
 
 interface SequestrationPolicyView {
@@ -50,8 +53,25 @@ export function SequestrationPolicy(): JSX.Element {
   const [loadedPe, setLoadedPe] = useState<string | null>(null);
   const [policies, setPolicies] = useState<SequestrationPolicyView[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const filteredPolicies = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return policies.filter((policy) => {
+      const status = policyStatus(policy, activeId);
+      const matchesStatus = statusFilter === "all" || status === statusFilter;
+      const matchesSearch =
+        q.length === 0 ||
+        policy.policyId.toLowerCase().includes(q) ||
+        policy.percentage.toLowerCase().includes(q) ||
+        (policy.setReason ?? "").toLowerCase().includes(q);
+      return matchesStatus && matchesSearch;
+    });
+  }, [policies, activeId, statusFilter, searchQuery]);
+  const hasActiveFilters = statusFilter !== "all" || searchQuery.trim().length > 0;
 
   const load = useCallback(
     async (pe: string) => {
@@ -96,8 +116,17 @@ export function SequestrationPolicy(): JSX.Element {
       header={
         <PageHeader
           title="Sequestration Policy"
-          breadcrumb="Billing — Medicare · Payment-reduction timeline"
-        />
+          breadcrumb="Billing / Medicare / Payment-reduction timeline"
+          actions={
+            <a href="/billing" style={linkButtonStyle}>
+              AR dashboard
+            </a>
+          }
+        >
+          <div style={{ color: t.onSurfaceVariant, fontSize: "0.875rem" }}>
+            Review effective-dated payment reductions and forward-date the next provider policy.
+          </div>
+        </PageHeader>
       }
       aside={
         <aside
@@ -116,33 +145,81 @@ export function SequestrationPolicy(): JSX.Element {
         </aside>
       }
     >
-      <section style={{ display: "flex", flexDirection: "column", gap: "1rem", maxWidth: "48rem" }}>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void load(providerEntityId);
-          }}
-          style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}
+      <section style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <FilterBar
+          activeFilterCount={(statusFilter !== "all" ? 1 : 0) + (searchQuery.trim() ? 1 : 0)}
+          onClear={
+            hasActiveFilters
+              ? () => {
+                  setStatusFilter("all");
+                  setSearchQuery("");
+                }
+              : undefined
+          }
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", flex: 1 }}>
-            <label htmlFor="sq-pe" style={labelStyle}>
-              Provider entity id
-            </label>
-            <input
-              id="sq-pe"
-              value={providerEntityId}
-              onChange={(e) => setProviderEntityId(e.target.value)}
-              placeholder="Provider entity UUID…"
-              style={{ ...inputStyle, fontFamily: t.fontMono }}
-            />
-          </div>
-          <button type="submit" style={primaryButtonStyle}>
-            Load timeline
-          </button>
-        </form>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void load(providerEntityId);
+            }}
+            style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}
+          >
+            <div style={{ position: "relative", minWidth: "18rem" }}>
+              <input
+                id="sq-pe"
+                aria-label="Provider entity id"
+                value={providerEntityId}
+                onChange={(e) => setProviderEntityId(e.target.value)}
+                placeholder="Provider entity UUID..."
+                style={{
+                  ...inputStyle,
+                  width: "100%",
+                  paddingLeft: "2rem",
+                  fontFamily: t.fontMono,
+                }}
+              />
+              <span style={inputIconStyle}>
+                <Glyph name="shield" size={14} />
+              </span>
+            </div>
+            <Button type="submit" size="sm">
+              Load timeline
+            </Button>
+          </form>
+          {policies.length > 0 ? (
+            <>
+              <div style={{ position: "relative", minWidth: "14rem" }}>
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search reason or policy..."
+                  aria-label="Search policies"
+                  style={{ ...inputStyle, width: "100%", paddingLeft: "2rem" }}
+                />
+                <span style={inputIconStyle}>
+                  <Glyph name="search" size={14} />
+                </span>
+              </div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                aria-label="Filter by status"
+                style={selectStyle}
+              >
+                <option value="all">Status: All</option>
+                <option value="active">Active</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="past">Past</option>
+              </select>
+            </>
+          ) : null}
+        </FilterBar>
 
         {loading ? (
-          <LoadingSpinner />
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
         ) : error ? (
           <EmptyState title="Unavailable" description={error} />
         ) : loadedPe === null ? (
@@ -155,8 +232,25 @@ export function SequestrationPolicy(): JSX.Element {
             title="No policy rows"
             description="No sequestration policy is on file for this provider entity — forward-date one."
           />
+        ) : filteredPolicies.length === 0 ? (
+          <EmptyState
+            title="No matching policies"
+            description="Clear the filters to see the full sequestration timeline."
+            action={
+              <Button
+                size="sm"
+                tone="secondary"
+                onClick={() => {
+                  setStatusFilter("all");
+                  setSearchQuery("");
+                }}
+              >
+                Clear filters
+              </Button>
+            }
+          />
         ) : (
-          <PolicyTimeline policies={policies} activeId={activeId} />
+          <PolicyTimeline policies={filteredPolicies} activeId={activeId} />
         )}
       </section>
     </DetailPageLayout>
@@ -169,46 +263,61 @@ function PolicyTimeline({
   activeId,
 }: { policies: SequestrationPolicyView[]; activeId: string | null }): JSX.Element {
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-      <thead>
-        <tr style={{ textAlign: "left", color: t.onSurfaceVariant }}>
-          <th style={thStyle}>Percentage</th>
-          <th style={thStyle}>Effective from</th>
-          <th style={thStyle}>Effective to</th>
-          <th style={thStyle}>Status</th>
-          <th style={thStyle}>Reason</th>
-        </tr>
-      </thead>
-      <tbody>
-        {policies.map((p, i) => {
-          const active = p.policyId === activeId;
-          const future = new Date(p.effectiveFrom).getTime() > Date.now();
-          return (
-            <tr
-              key={p.policyId}
-              style={{
-                background: active ? t.primaryTint : i % 2 === 1 ? t.surfaceLow : "transparent",
-              }}
-            >
-              <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
-                {pctLabel(p.percentage)}
-              </td>
-              <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>{p.effectiveFrom}</td>
-              <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-                {p.effectiveTo ?? "Open"}
-              </td>
-              <td style={tdStyle}>
-                <StatusPill
-                  label={active ? "Active" : future ? "Scheduled" : "Past"}
-                  tone={active ? "success" : future ? "progress" : "neutral"}
-                />
-              </td>
-              <td style={{ ...tdStyle, color: t.onSurfaceVariant }}>{p.setReason ?? "—"}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+        <thead>
+          <tr
+            style={{
+              textAlign: "left",
+              color: t.onSurfaceVariant,
+              borderBottom:
+                "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+              background: t.surfaceLow,
+            }}
+          >
+            <th style={thStyle}>Percentage</th>
+            <th style={thStyle}>Effective from</th>
+            <th style={thStyle}>Effective to</th>
+            <th style={thStyle}>Status</th>
+            <th style={thStyle}>Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          {policies.map((p) => {
+            const status = policyStatus(p, activeId);
+            const active = status === "active";
+            const future = status === "scheduled";
+            return (
+              <tr
+                key={p.policyId}
+                style={{
+                  borderBottom:
+                    "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+                  background: active ? t.primaryTint : "transparent",
+                }}
+              >
+                <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
+                  {pctLabel(p.percentage)}
+                </td>
+                <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                  {p.effectiveFrom}
+                </td>
+                <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                  {p.effectiveTo ?? "Open"}
+                </td>
+                <td style={tdStyle}>
+                  <StatusPill
+                    label={active ? "Active" : future ? "Scheduled" : "Past"}
+                    tone={active ? "success" : future ? "progress" : "neutral"}
+                  />
+                </td>
+                <td style={{ ...tdStyle, color: t.onSurfaceVariant }}>{p.setReason ?? "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -312,14 +421,9 @@ function ForwardDatePanel({
               style={inputStyle}
             />
           </div>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void submit()}
-            style={busy ? disabledButtonStyle : primaryButtonStyle}
-          >
+          <Button disabled={busy} loading={busy} onClick={() => void submit()}>
             {busy ? "Saving…" : "Forward-date policy"}
-          </button>
+          </Button>
           {msg ? (
             <p
               role={msg.tone === "err" ? "alert" : "status"}
@@ -347,17 +451,27 @@ const inputStyle = {
   color: t.onSurface,
   fontSize: "0.85rem",
 };
-const primaryButtonStyle = {
-  padding: "0.5rem 0.95rem",
-  borderRadius: t.radiusMd,
-  border: "none",
-  cursor: "pointer",
-  background: t.primary,
-  color: t.onPrimary,
-  fontSize: "0.8rem",
-  fontWeight: 600,
+const selectStyle = { ...inputStyle, height: "2.25rem", cursor: "pointer" };
+const inputIconStyle = {
+  position: "absolute" as const,
+  left: "0.625rem",
+  top: "50%",
+  transform: "translateY(-50%)",
+  color: t.onSurfaceVariant,
+  pointerEvents: "none" as const,
 };
-const disabledButtonStyle = { ...primaryButtonStyle, cursor: "not-allowed", opacity: 0.5 };
+const linkButtonStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: "2rem",
+  padding: "0.35rem 0.7rem",
+  borderRadius: "9999px",
+  background: t.surfaceContainer,
+  color: t.onSurface,
+  fontSize: "0.75rem",
+  fontWeight: 650,
+  textDecoration: "none",
+};
 const thStyle = {
   padding: "0.5rem 0.75rem",
   fontSize: "0.7rem",
@@ -366,3 +480,11 @@ const thStyle = {
   letterSpacing: "0.04em",
 };
 const tdStyle = { padding: "0.5rem 0.75rem", color: t.onSurface };
+
+function policyStatus(
+  policy: SequestrationPolicyView,
+  activeId: string | null,
+): "active" | "scheduled" | "past" {
+  if (policy.policyId === activeId) return "active";
+  return new Date(policy.effectiveFrom).getTime() > Date.now() ? "scheduled" : "past";
+}

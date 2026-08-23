@@ -62,8 +62,8 @@ export const t = {
   space9: "var(--space-9)", // 48 — page vertical rhythm
 
   // Type — Lantern trio (§3)
-  fontDisplay: "var(--font-display)", // Fraunces — names, titles, KPI labels, empty states
-  fontSans: "var(--font-sans)", // Inter — all functional text + numerals (tabular-nums)
+  fontDisplay: "var(--font-display)", // Manrope — titles, names, KPI labels, empty states
+  fontSans: "var(--font-sans)", // Inter — body text, UI + numerals (tabular-nums)
   fontMono: "var(--font-mono)", // IBM Plex Mono — identifiers/codes
 
   // Radius (§4.2)
