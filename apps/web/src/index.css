@@ -9,10 +9,10 @@
  * docs/design/DESIGN.md §11. When apps/admin + apps/portal need styling, lift the @theme +
  * @layer blocks into a shared @wardenx/ui stylesheet and @import it here.
  *
- * FONTS: the Lantern type trio (Fraunces display · Inter UI · IBM Plex Mono identifiers) is
+ * FONTS: the WardenX type trio (Manrope display · Inter text/UI · IBM Plex Mono identifiers) is
  * SELF-HOSTED via @fontsource* packages imported in main.tsx (no third-party CDN — external font
  * requests leak client IPs on a PHI app). The --font-* vars below name the registered families
- * first ("Fraunces Variable" / "Inter Variable" / "IBM Plex Mono") with system fallbacks. See
+ * first ("Manrope Variable" / "Inter Variable" / "IBM Plex Mono") with system fallbacks. See
  * DESIGN.md §3.
  */
 @import "tailwindcss";
@@ -68,9 +68,10 @@
   --color-brand: var(--color-primary);
   --color-line: var(--color-outline-variant);
 
-  /* Type — Lantern trio. Variable faces register "<Name> Variable" (see main.tsx); name those
+  /* Type — WardenX trio. Variable faces register "<Name> Variable" (see main.tsx); name those
      first, then the static family, then system fallbacks. */
-  --font-display: "Fraunces Variable", "Fraunces", Georgia, "Times New Roman", serif;
+  --font-display: "Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
   --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
     Roboto, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -151,12 +152,15 @@
     color: var(--color-on-surface);
     background: var(--color-background);
   }
-  /* Editorial/human voice — headings use the Fraunces display face (DESIGN.md §3). */
+  /* Headings use the Manrope display face. */
   h1,
   h2,
-  h3 {
+  h3,
+  h4,
+  h5,
+  h6 {
     font-family: var(--font-display);
-    font-weight: 500;
+    font-weight: 650;
   }
   /* Screens author bare elements (<a>/<input>/<select>/<button>) and lean on these defaults. */
   a {
@@ -742,8 +746,8 @@
 
 /* ---- Type-scale utilities (DESIGN.md §3.2) ----
  * One class per scale token so screens compose the Lantern voices by name instead of guessing
- * sizes. Fraunces (display) = the human; Inter (sans) = the work + numerals; IBM Plex Mono = codes.
- * Fraunces is NEVER used for numeric data — its variable numerals aren't tabular (§3.1).
+ * sizes. Manrope (display) = titles; Inter (sans) = text, UI + numerals; IBM Plex Mono = codes.
+ * Display text is never used for numeric data — Inter keeps tabular alignment (§3.1).
  */
 @layer utilities {
   .wx-display-lg {

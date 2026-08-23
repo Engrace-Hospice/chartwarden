@@ -1,4 +1,6 @@
 import { createApiClient } from "@wardenx/ui";
+import "@fontsource-variable/manrope";
+import "@fontsource-variable/inter";
 import "./index.css"; // Tailwind v4 Preflight + the admin app's Lantern token layer (global styles)
 // @wardenx/admin — the Platform-Ops console composition ROOT (the WardenX-staff analogue of
 // apps/web/src/main.tsx). The one place that instantiates the typed API client, creates the admin screen

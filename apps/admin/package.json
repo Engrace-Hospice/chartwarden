@@ -14,6 +14,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.2.8",
+    "@fontsource-variable/manrope": "^5.2.8",
     "@wardenx/admin-ui-shell": "workspace:*",
     "@wardenx/types": "workspace:*",
     "@wardenx/ui": "workspace:*",
