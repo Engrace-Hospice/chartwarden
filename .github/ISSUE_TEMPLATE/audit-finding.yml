@@ -1,0 +1,79 @@
+name: Audit finding
+description: A reproduced production-readiness finding (see docs/reviews/PROMPT_5_WARDENX_PRODUCTION_READINESS_AUDIT.md)
+title: "F-NNN · <area> — <one-line defect>"
+labels: ["audit"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A finding needs a **reproduction**: a failing command, a failing test you wrote, a query
+        result, or a cited `file:line` whose behavior you traced end to end. A plausible reading of
+        the code is a suspicion, not a finding — suspicions belong in the audit file, not here.
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: "P0 security/PHI/tenant-isolation/data-loss · P1 broken workflow · P2 correctness · P3 reliability · P4 accessibility · P5 operability · P6 performance · P7 maintainability"
+      options: ["P0", "P1", "P2", "P3", "P4", "P5", "P6", "P7"]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options: [frontend, ui, ux, backend, db, api, integration, infra, security, test]
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: file:line, command output, query result, or runtime trace. Paste it verbatim.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: The exact copy-pasteable command or test that shows the bad behavior.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: root-cause
+    attributes:
+      label: Root cause
+      description: One paragraph. If unknown, say so — do not guess in the voice of a fact.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior + acceptance criteria
+      description: What should happen, and a checkable list that closes this issue.
+    validations:
+      required: true
+
+  - type: textarea
+    id: blast-radius
+    attributes:
+      label: Blast radius
+      description: Is this live in production? Which tenants/roles/data does it touch? What is the worst realistic outcome?
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Source
+      description: 'Discovered (commit / CI run id) or ported (e.g. "Ported from fabwebdev/wardenx#141")'
+    validations:
+      required: true
