@@ -117,7 +117,6 @@ export function PaymentMethods(): JSX.Element {
 function MethodRow({ method }: { method: PaymentMethod }): JSX.Element {
   return (
     <tr
-      className="wx-data-row-interactive"
       style={{
         opacity: method.isActive ? 1 : 0.6,
         borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",

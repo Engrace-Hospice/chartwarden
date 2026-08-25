@@ -203,6 +203,7 @@ describe("every gate stays GREEN on the repo-root baseline", () => {
   baselineGate("abac-predicates", () => expectGreen(gate("check-abac-predicates.ts", ROOT)));
   baselineGate("org-index coverage", () => expectGreen(gate("check-org-index-coverage.ts", ROOT)));
   baselineGate("design-tokens", () => expectGreen(gate("check-design-tokens.ts", ROOT)));
+  baselineGate("interactive-rows", () => expectGreen(gate("check-interactive-rows.ts", ROOT)));
   baselineGate("ui-parity", () =>
     expectGreen(run("bun", ["run", join(SCRIPTS, "report-ui-parity.ts"), "--check"], ROOT)));
   baselineGate("client:check", () =>
