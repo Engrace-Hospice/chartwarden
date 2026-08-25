@@ -2,9 +2,21 @@
 // their bed count + RN-coverage horizon. Composed client-side from GET /api/v1/inpatient-units (RLS-scoped
 // server-side; the server is the authoritative enforcer, this only presents). Lantern: UI components +
 // CSS-var tokens only.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
-import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import {
+  Button,
+  EmptyState,
+  Glyph,
+  KpiCard,
+  KpiStrip,
+  LoadingSpinner,
+  OffsetPagination,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CSSProperties, JSX } from "react";
 
 interface Unit {
   id: string;
@@ -15,17 +27,35 @@ interface Unit {
   turnoverSlaMinutes: number;
 }
 
+type StatusFilter = "all" | "active" | "inactive";
+type CoverageFilter = "all" | "covered" | "short";
+
+const IPU_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
+const RN_HORIZON_TARGET_HOURS = 24;
+
+const formatInt = (value: number): string => new Intl.NumberFormat().format(value);
+
+const avg = (values: number[]): number =>
+  values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length;
+
 export function IpuUnits(): JSX.Element {
   const client = useApiClient();
   const [units, setUnits] = useState<Unit[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [coverageFilter, setCoverageFilter] = useState<CoverageFilter>("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const load = useCallback(async () => {
     const res = await client.GET("/api/v1/inpatient-units");
     if (res.error) {
       setError("Units unavailable.");
+      setUnits([]);
       return;
     }
+    setError(null);
     setUnits((res.data as unknown as { items: Unit[] }).items ?? []);
   }, [client]);
 
@@ -33,48 +63,363 @@ export function IpuUnits(): JSX.Element {
     void load();
   }, [load]);
 
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (units === null) return <LoadingSpinner />;
+  const filteredUnits = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return (units ?? []).filter((unit) => {
+      const matchesSearch =
+        q.length === 0 ||
+        unit.displayName.toLowerCase().includes(q) ||
+        unit.id.toLowerCase().includes(q);
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "active" && unit.isActive) ||
+        (statusFilter === "inactive" && !unit.isActive);
+      const matchesCoverage =
+        coverageFilter === "all" ||
+        (coverageFilter === "covered" && unit.rnCoverageHorizonHours >= RN_HORIZON_TARGET_HOURS) ||
+        (coverageFilter === "short" && unit.rnCoverageHorizonHours < RN_HORIZON_TARGET_HOURS);
+
+      return matchesSearch && matchesStatus && matchesCoverage;
+    });
+  }, [coverageFilter, searchQuery, statusFilter, units]);
+
+  const total = units?.length ?? 0;
+  const active = (units ?? []).filter((unit) => unit.isActive).length;
+  const bedTotal = (units ?? []).reduce((sum, unit) => sum + unit.bedCount, 0);
+  const shortCoverage = (units ?? []).filter(
+    (unit) => unit.rnCoverageHorizonHours < RN_HORIZON_TARGET_HOURS,
+  ).length;
+  const averageHorizon = Math.round(avg((units ?? []).map((unit) => unit.rnCoverageHorizonHours)));
+
+  const hasActiveFilters =
+    searchQuery.trim() !== "" || statusFilter !== "all" || coverageFilter !== "all";
+  const pageCount = Math.max(1, Math.ceil(filteredUnits.length / pageSize));
+  const activePage = Math.min(page, pageCount);
+  const pagedUnits = filteredUnits.slice((activePage - 1) * pageSize, activePage * pageSize);
+
+  const clearFilters = (): void => {
+    setSearchQuery("");
+    setStatusFilter("all");
+    setCoverageFilter("all");
+    setPage(1);
+  };
 
   return (
-    <div>
-      <PageHeader title="Inpatient units" breadcrumb="General Inpatient / Respite bed capacity" />
-      {units.length === 0 ? (
-        <EmptyState
-          title="No units"
-          description="No inpatient units are configured for this organization yet."
-        />
-      ) : (
-        <table
-          style={{ width: "100%", borderCollapse: "collapse", fontVariantNumeric: "tabular-nums" }}
-        >
-          <thead>
-            <tr style={{ textAlign: "left", color: "var(--color-text-muted)" }}>
-              <th style={{ padding: "var(--space-2)" }}>Unit</th>
-              <th style={{ padding: "var(--space-2)" }}>Beds</th>
-              <th style={{ padding: "var(--space-2)" }}>RN horizon</th>
-              <th style={{ padding: "var(--space-2)" }}>Turnover SLA</th>
-              <th style={{ padding: "var(--space-2)" }}>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {units.map((u) => (
-              <tr key={u.id} style={{ borderTop: "1px solid var(--color-border)" }}>
-                <td style={{ padding: "var(--space-2)" }}>{u.displayName}</td>
-                <td style={{ padding: "var(--space-2)" }}>{u.bedCount}</td>
-                <td style={{ padding: "var(--space-2)" }}>{u.rnCoverageHorizonHours}h</td>
-                <td style={{ padding: "var(--space-2)" }}>{u.turnoverSlaMinutes}m</td>
-                <td style={{ padding: "var(--space-2)" }}>
-                  <StatusPill
-                    tone={u.isActive ? "success" : "neutral"}
-                    label={u.isActive ? "Active" : "Inactive"}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
+    <WorkQueueLayout
+      header={
+        <PageHeader title="Inpatient units" breadcrumb="IPU / Bed capacity">
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Monitor unit readiness, bed capacity, RN coverage horizon, and turnover expectations.
+          </div>
+        </PageHeader>
+      }
+      kpis={
+        <KpiStrip>
+          <KpiCard
+            label="Units"
+            value={units === null ? "—" : formatInt(total)}
+            detail="Configured locations"
+            tone={total > 0 ? "info" : "neutral"}
+            accentColor={total > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"}
+            selected={statusFilter === "all" && coverageFilter === "all"}
+            onSelect={clearFilters}
+          />
+          <KpiCard
+            label="Active"
+            value={units === null ? "—" : formatInt(active)}
+            detail="Accepting IPU stays"
+            tone={active > 0 ? "success" : "neutral"}
+            accentColor={active > 0 ? "var(--color-success)" : "var(--color-outline-variant)"}
+            selected={statusFilter === "active"}
+            onSelect={() => {
+              setStatusFilter("active");
+              setPage(1);
+            }}
+          />
+          <KpiCard
+            label="Beds"
+            value={units === null ? "—" : formatInt(bedTotal)}
+            detail="Total staffed capacity"
+            tone="info"
+            accentColor="var(--color-primary)"
+          />
+          <KpiCard
+            label="RN horizon"
+            value={units === null ? "—" : `${averageHorizon}h`}
+            detail="Average coverage"
+            tone={shortCoverage > 0 ? "warning" : "success"}
+            accentColor={shortCoverage > 0 ? "var(--color-warning)" : "var(--color-success)"}
+            selected={coverageFilter === "short"}
+            onSelect={() => {
+              setCoverageFilter("short");
+              setPage(1);
+            }}
+          />
+        </KpiStrip>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          {error ? (
+            <div role="alert" style={errorBannerStyle}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Glyph name="alert" size={16} />
+                <span>{error}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                style={dismissButtonStyle}
+                aria-label="Dismiss error"
+              >
+                x
+              </button>
+            </div>
+          ) : null}
+          <div style={toolbarStyle}>
+            <div style={searchBoxStyle}>
+              <Glyph name="eye" size={14} />
+              <input
+                type="search"
+                placeholder="Search unit name or ID..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setPage(1);
+                }}
+                aria-label="Search inpatient units"
+                style={searchInputStyle}
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as StatusFilter);
+                setPage(1);
+              }}
+              aria-label="Filter units by status"
+              style={selectStyle}
+            >
+              <option value="all">Status: All</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+            <select
+              value={coverageFilter}
+              onChange={(e) => {
+                setCoverageFilter(e.target.value as CoverageFilter);
+                setPage(1);
+              }}
+              aria-label="Filter units by RN coverage"
+              style={selectStyle}
+            >
+              <option value="all">RN coverage: All</option>
+              <option value="covered">24h+ covered</option>
+              <option value="short">Under 24h</option>
+            </select>
+            {hasActiveFilters ? (
+              <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                Clear
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      }
+      table={
+        units === null ? (
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
+        ) : filteredUnits.length === 0 ? (
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState
+              title={hasActiveFilters ? "No matching units" : "No units"}
+              description={
+                hasActiveFilters
+                  ? "Adjust the search or clear filters to see the full IPU capacity board."
+                  : "No inpatient units are configured for this organization yet."
+              }
+              action={
+                hasActiveFilters ? (
+                  <Button tone="secondary" size="sm" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                ) : undefined
+              }
+            />
+          </div>
+        ) : (
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr style={headerRowStyle}>
+                  <th style={{ ...thStyle, width: "34%" }}>Unit</th>
+                  <th style={{ ...thStyle, width: "14%" }}>Beds</th>
+                  <th style={{ ...thStyle, width: "20%" }}>RN horizon</th>
+                  <th style={{ ...thStyle, width: "18%" }}>Turnover SLA</th>
+                  <th style={{ ...thStyle, width: "14%" }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagedUnits.map((unit) => (
+                  <tr key={unit.id} style={rowStyle}>
+                    <td style={tdStyle}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                        <span style={{ color: "var(--color-on-surface)", fontWeight: 650 }}>
+                          {unit.displayName}
+                        </span>
+                        <code className="wx-data-md" style={codeStyle}>
+                          {unit.id}
+                        </code>
+                      </div>
+                    </td>
+                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", fontWeight: 650 }}>
+                      {formatInt(unit.bedCount)}
+                    </td>
+                    <td style={tdStyle}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <StatusPill
+                          tone={
+                            unit.rnCoverageHorizonHours >= RN_HORIZON_TARGET_HOURS
+                              ? "success"
+                              : "warning"
+                          }
+                          label={`${unit.rnCoverageHorizonHours}h`}
+                        />
+                        <span style={{ color: "var(--color-on-surface-variant)" }}>
+                          {unit.rnCoverageHorizonHours >= RN_HORIZON_TARGET_HOURS
+                            ? "Covered"
+                            : "Review"}
+                        </span>
+                      </div>
+                    </td>
+                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                      {unit.turnoverSlaMinutes}m
+                    </td>
+                    <td style={tdStyle}>
+                      <StatusPill
+                        tone={unit.isActive ? "success" : "neutral"}
+                        label={unit.isActive ? "Active" : "Inactive"}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <OffsetPagination
+              page={activePage}
+              pageSize={pageSize}
+              totalItems={filteredUnits.length}
+              onPageChange={setPage}
+              onPageSizeChange={(nextPageSize) => {
+                setPageSize(nextPageSize);
+                setPage(1);
+              }}
+              pageSizeOptions={IPU_PAGE_SIZES}
+              noun="units"
+            />
+          </div>
+        )
+      }
+      fullPageScroll
+    />
   );
 }
+
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+
+const toolbarStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: "0.5rem",
+};
+
+const searchBoxStyle: CSSProperties = {
+  position: "relative",
+  display: "flex",
+  alignItems: "center",
+  minWidth: "min(100%, 17rem)",
+  color: "var(--color-on-surface-variant)",
+};
+
+const searchInputStyle: CSSProperties = {
+  width: "100%",
+  height: "2.25rem",
+  paddingLeft: "2rem",
+  fontSize: "0.85rem",
+};
+
+const selectStyle: CSSProperties = {
+  height: "2.25rem",
+  fontSize: "0.85rem",
+  cursor: "pointer",
+};
+
+const tableWrapStyle: CSSProperties = {
+  width: "100%",
+  overflowX: "auto",
+  padding: "0 1.5rem 1.5rem",
+};
+
+const tableStyle: CSSProperties = {
+  display: "table",
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: "0.875rem",
+  fontVariantNumeric: "tabular-nums",
+};
+
+const headerRowStyle: CSSProperties = {
+  textAlign: "left",
+  color: "var(--color-on-surface-variant)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  background: "var(--color-surface-low)",
+};
+
+const thStyle: CSSProperties = {
+  padding: "0.75rem 1rem",
+  fontWeight: 600,
+  fontSize: "0.75rem",
+  textTransform: "uppercase",
+};
+
+const tdStyle: CSSProperties = {
+  padding: "0.875rem 1rem",
+  verticalAlign: "middle",
+  color: "var(--color-on-surface-variant)",
+};
+
+const rowStyle: CSSProperties = {
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+};
+
+const codeStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+};
+
+const errorBannerStyle: CSSProperties = {
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
+  color: "var(--color-error)",
+  fontSize: "0.85rem",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+};
+
+const dismissButtonStyle: CSSProperties = {
+  border: "none",
+  background: "none",
+  color: "inherit",
+  cursor: "pointer",
+  fontWeight: 600,
+};

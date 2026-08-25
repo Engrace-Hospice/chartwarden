@@ -1,15 +1,19 @@
 import {
+  Button,
   EmptyState,
   Glyph,
+  KpiCard,
+  KpiStrip,
   LoadingSpinner,
+  OffsetPagination,
+  PageHeader,
   StatusPill,
-  cardSurface,
-  ghostBorder,
+  WorkQueueLayout,
   setSearchTerm,
-  t,
   useApiClient,
   useSearchTerm,
 } from "@wardenx/ui";
+import type { StatusTone } from "@wardenx/ui";
 // apps/web/src/modules/05-patient — Global Search Results (cross-cutting; M5 owns it, M5→M2 edge).
 // Spec: docs/design/screens/core/WARDENX_UI_GLOBAL_SEARCH_RESULTS.md — "Use Work Queue."
 // Matched to the P0 Pencil frame (wardenx-P0-foundation.pen `Cp053`): a centered results column of
@@ -20,8 +24,8 @@ import {
 // visible, never fabricated. The server stays the only enforcement point: patient hits are
 // RLS/caseload-scoped, the staff facet is behind member.manage (a 403 degrades to a clear note). The
 // patient list carries no SSN/MBI, so the spec's "SSN never shown / MBI masked" holds by construction.
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { FormEvent, JSX, ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, FormEvent, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "../02-identity/auth-client";
 import { STATUS_TONE, statusLabel } from "./patient-status";
@@ -43,6 +47,16 @@ interface StaffHit {
   isAdmin: boolean;
 }
 
+interface SearchRow {
+  kind: "patient" | "staff";
+  id: string;
+  title: string;
+  meta: JSX.Element | string;
+  initials: string;
+  status: string;
+  tone: StatusTone;
+}
+
 // Scopes the merged data layer can't serve yet — shown so the search's reach is honest, not fabricated.
 const FUTURE_FACETS = [
   { label: "Documents", blocked: "M22 Documents" },
@@ -50,6 +64,7 @@ const FUTURE_FACETS = [
   { label: "Visits / encounters", blocked: "M19 Encounters" },
   { label: "Navigation & commands", blocked: "the command palette" },
 ] as const;
+const SEARCH_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
 // Recent search terms carry PHI (patient names / MRNs), so they MUST NOT be persisted — no
 // localStorage/sessionStorage, which would survive in browser storage long after the session and
@@ -73,14 +88,13 @@ function pushRecent(term: string): string[] {
   return next;
 }
 
-// Initials for a result avatar (No-Line tinted circle, §3.3). Falls back to the first 2 chars.
 function initialsOf(...parts: string[]): string {
   const words = parts.flatMap((p) => p.split(/[\s,]+/)).filter(Boolean);
   return (
     words
       .slice(0, 2)
       .map((w) => w[0]?.toUpperCase() ?? "")
-      .join("") || "·"
+      .join("") || "S"
   ).slice(0, 2);
 }
 
@@ -110,6 +124,8 @@ export function GlobalSearchResults(): JSX.Element {
   const [patientError, setPatientError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [recent, setRecent] = useState<string[]>(() => readRecent());
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Resolve the active org once (for the staff facet path); null when no org is bound.
   const orgRef = useRef<string | null | undefined>(undefined);
@@ -122,6 +138,7 @@ export function GlobalSearchResults(): JSX.Element {
   const runSearch = useCallback(
     async (q: string) => {
       const needle = q.trim();
+      setPage(1);
       if (!needle) {
         setPatients(null);
         setStaff(null);
@@ -131,7 +148,6 @@ export function GlobalSearchResults(): JSX.Element {
       setPatientError(null);
       setStaffError(null);
 
-      // Patient facet — RLS/caseload-scoped server-side.
       const patientReq = client
         .GET("/api/v1/patients", { params: { query: { q: needle, limit: 25 } } })
         .then(({ data, error }) => {
@@ -143,7 +159,6 @@ export function GlobalSearchResults(): JSX.Element {
           setPatients((data?.items ?? []) as PatientHit[]);
         });
 
-      // Staff facet — needs an org-bound session + member.manage; degrade clearly otherwise.
       const org = orgRef.current;
       const staffReq =
         org == null
@@ -173,8 +188,6 @@ export function GlobalSearchResults(): JSX.Element {
     [client],
   );
 
-  // Run whenever the staged needle changes — either the shell top-nav search handed one over
-  // (including while this screen is already mounted) or this screen's own form staged one.
   useEffect(() => {
     setTerm(activeQuery);
     void runSearch(activeQuery);
@@ -185,93 +198,242 @@ export function GlobalSearchResults(): JSX.Element {
     setSearchTerm(term);
   }
 
-  const showPatients = facet === "all" || facet === "patient";
-  const showStaff = facet === "all" || facet === "staff";
+  const patientRows = useMemo(
+    () =>
+      (patients ?? []).map<SearchRow>((patient) => ({
+        kind: "patient",
+        id: patient.id,
+        title: `${patient.lastName}, ${patient.firstName}`,
+        meta: (
+          <>
+            MRN <span className="wx-data-md">{patient.mrn}</span> · DOB{" "}
+            <span className="tabular-nums">{patient.dob}</span>
+          </>
+        ),
+        initials: initialsOf(patient.firstName, patient.lastName),
+        status: statusLabel(patient.status),
+        tone: STATUS_TONE[patient.status] ?? "neutral",
+      })),
+    [patients],
+  );
+  const staffRows = useMemo(
+    () =>
+      (staff ?? []).map<SearchRow>((member) => ({
+        kind: "staff",
+        id: member.membershipId,
+        title: member.userId.slice(0, 8),
+        meta: member.isAdmin ? "Org admin" : "Member",
+        initials: initialsOf(member.userId),
+        status: statusLabel(member.status),
+        tone: member.status === "active" ? "success" : "neutral",
+      })),
+    [staff],
+  );
+  const visibleRows = useMemo(() => {
+    if (facet === "patient") return patientRows;
+    if (facet === "staff") return staffRows;
+    return [...patientRows, ...staffRows];
+  }, [facet, patientRows, staffRows]);
+
   const hasQuery = activeQuery.length > 0;
-  const total =
-    (showPatients ? (patients?.length ?? 0) : 0) + (showStaff ? (staff?.length ?? 0) : 0);
+  const total = visibleRows.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const activePage = Math.min(page, pageCount);
+  const pagedRows = visibleRows.slice((activePage - 1) * pageSize, activePage * pageSize);
+  const patientCount = patients?.length ?? 0;
+  const staffCount = staff?.length ?? 0;
+
+  const chooseFacet = (next: Facet): void => {
+    setFacet(next);
+    setPage(1);
+  };
 
   return (
-    // Centered results column on warm paper (frame `Cp053`): a narrow reading width, not full-bleed.
-    <div style={{ height: "100%", overflow: "auto", background: t.background }}>
-      <div style={{ maxWidth: "52rem", margin: "0 auto", padding: "1.75rem 1.5rem 3rem" }}>
-        <form onSubmit={submit} style={searchForm}>
-          <input
-            aria-label="Search patients and staff"
-            placeholder="Search patients (name / MRN) and staff…"
-            value={term}
-            onChange={(e) => setTerm(e.target.value)}
-            style={searchInput}
+    <WorkQueueLayout
+      header={
+        <PageHeader title="Search" breadcrumb="Workspace">
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Search patients by name or MRN, and staff in your organization.
+          </div>
+        </PageHeader>
+      }
+      kpis={
+        <KpiStrip>
+          <KpiCard
+            label="Visible Results"
+            value={loading ? "—" : total}
+            detail={hasQuery ? "Current facet" : "Enter a search"}
+            tone={total > 0 ? "success" : "neutral"}
+            accentColor={total > 0 ? "var(--color-success)" : "var(--color-outline-variant)"}
           />
-          <button type="submit" style={primaryBtn}>
-            Search
-          </button>
-        </form>
+          <KpiCard
+            label="Patients"
+            value={hasQuery && !loading ? patientCount : "—"}
+            detail="Caseload scoped"
+            tone={patientCount > 0 ? "info" : "neutral"}
+            selected={facet === "patient"}
+            onSelect={() => chooseFacet("patient")}
+            accentColor={patientCount > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"}
+          />
+          <KpiCard
+            label="Staff"
+            value={hasQuery && !loading ? staffCount : "—"}
+            detail="Permission scoped"
+            tone={staffCount > 0 ? "info" : "neutral"}
+            selected={facet === "staff"}
+            onSelect={() => chooseFacet("staff")}
+            accentColor={staffCount > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"}
+          />
+          <KpiCard
+            label="Pending Scopes"
+            value={FUTURE_FACETS.length}
+            detail="Shown honestly below"
+            tone="neutral"
+            accentColor="var(--color-outline-variant)"
+          />
+        </KpiStrip>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          {patientError || staffError ? (
+            <output style={noticeStyle}>
+              <Glyph name="alert" size={16} />
+              <span>{[patientError, staffError].filter(Boolean).join(" ")}</span>
+            </output>
+          ) : null}
+          <div style={toolbarStyle}>
+            <form onSubmit={submit} style={searchFormStyle}>
+              <Glyph name="eye" size={14} />
+              <input
+                aria-label="Search patients and staff"
+                placeholder="Search patients, MRNs, staff..."
+                value={term}
+                onChange={(e) => setTerm(e.target.value)}
+                style={searchInputStyle}
+              />
+              <Button type="submit" tone="primary">
+                Search
+              </Button>
+            </form>
 
-        <div role="tablist" aria-label="Result scope" style={facetRow}>
-          {(["all", "patient", "staff"] as Facet[]).map((f) => (
-            <button
-              key={f}
-              type="button"
-              role="tab"
-              aria-selected={facet === f}
-              onClick={() => setFacet(f)}
-              style={facet === f ? facetOn : facetOff}
-            >
-              {f === "all" ? "All" : f === "patient" ? "Patients" : "Staff"}
-            </button>
-          ))}
+            <div style={tabWrapStyle} role="tablist" aria-label="Result scope">
+              {(["all", "patient", "staff"] as Facet[]).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  role="tab"
+                  aria-selected={facet === f}
+                  onClick={() => chooseFacet(f)}
+                  style={tabButtonStyle(facet === f)}
+                >
+                  {f === "all"
+                    ? `All (${patientCount + staffCount})`
+                    : f === "patient"
+                      ? `Patients (${patientCount})`
+                      : `Staff (${staffCount})`}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-
-        {!hasQuery ? (
+      }
+      table={
+        !hasQuery ? (
           <EmptyQuery recent={recent} onPick={setSearchTerm} />
         ) : loading ? (
-          <LoadingSpinner />
-        ) : total === 0 ? (
-          <EmptyState
-            title={`No results for “${activeQuery}”.`}
-            description="Searching your caseload and organization. Try a different name or MRN."
-          />
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
+        ) : visibleRows.length === 0 ? (
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState
+              title={`No results for "${activeQuery}".`}
+              description="Search is scoped to the records this session is permitted to read."
+            />
+          </div>
         ) : (
-          <>
-            <p style={summaryLine}>
-              {total} result{total === 1 ? "" : "s"} for “{activeQuery}” · across patients, staff,
-              documents, orders
-            </p>
-            {showPatients ? (
-              <PatientGroup
-                hits={patients}
-                error={patientError}
-                onOpen={(id) => navigate(`/patients/${id}`)}
-              />
-            ) : null}
-            {showStaff ? (
-              <StaffGroup hits={staff} error={staffError} onOpen={() => navigate("/admin/staff")} />
-            ) : null}
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr style={headRowStyle}>
+                  <th style={{ ...thStyle, width: "18%" }}>Scope</th>
+                  <th style={{ ...thStyle, width: "42%" }}>Result</th>
+                  <th style={{ ...thStyle, width: "20%" }}>Status</th>
+                  <th style={{ ...thStyle, width: "20%", textAlign: "right" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagedRows.map((row) => (
+                  <tr key={`${row.kind}-${row.id}`} style={rowStyle}>
+                    <td style={tdStyle}>
+                      <StatusPill
+                        label={row.kind === "patient" ? "Patient" : "Staff"}
+                        tone="neutral"
+                      />
+                    </td>
+                    <td style={tdStyle}>
+                      <ResultCell row={row} />
+                    </td>
+                    <td style={tdStyle}>
+                      <StatusPill label={row.status} tone={row.tone} />
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: "right" }}>
+                      <Button
+                        size="sm"
+                        tone="secondary"
+                        onClick={() =>
+                          row.kind === "patient"
+                            ? navigate(`/patients/${row.id}`)
+                            : navigate("/admin/staff")
+                        }
+                      >
+                        Open
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <OffsetPagination
+              page={activePage}
+              pageSize={pageSize}
+              totalItems={visibleRows.length}
+              onPageChange={setPage}
+              onPageSizeChange={(nextPageSize) => {
+                setPageSize(nextPageSize);
+                setPage(1);
+              }}
+              pageSizeOptions={SEARCH_PAGE_SIZES}
+              noun="results"
+            />
             <FutureFacets />
-          </>
-        )}
-      </div>
-    </div>
+          </div>
+        )
+      }
+      fullPageScroll
+    />
   );
 }
 
 function EmptyQuery({
   recent,
   onPick,
-}: { recent: string[]; onPick: (t: string) => void }): JSX.Element {
+}: {
+  recent: string[];
+  onPick: (term: string) => void;
+}): JSX.Element {
   return (
-    <div style={{ paddingTop: "0.5rem" }}>
-      <p style={{ color: t.onSurfaceVariant, marginTop: 0 }}>
-        Search patients by name or MRN, and staff in your organization. Results are scoped to what
-        you are permitted to see.
-      </p>
+    <div style={emptyQueryStyle}>
+      <EmptyState
+        title="Search across your workspace"
+        description="Use a patient name, MRN, or staff identifier. Recent searches stay in memory only."
+      />
       {recent.length > 0 ? (
-        <section style={{ marginTop: "1rem" }}>
-          <h2 style={groupHead}>Recent searches</h2>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+        <section style={recentStyle}>
+          <h2 style={sectionHeadStyle}>Recent searches</h2>
+          <div style={chipRowStyle}>
             {recent.map((term) => (
-              <button key={term} type="button" onClick={() => onPick(term)} style={chip}>
+              <button key={term} type="button" onClick={() => onPick(term)} style={chipStyle}>
                 {term}
               </button>
             ))}
@@ -282,272 +444,214 @@ function EmptyQuery({
   );
 }
 
-// A §6.2 Lantern card grouping one search scope's rows (No-Line; rows divided by ghost hairlines).
-function GroupCard({
-  label,
-  count,
-  children,
-}: { label: string; count?: number; children: ReactNode }): JSX.Element {
+function ResultCell({ row }: { row: SearchRow }): JSX.Element {
   return (
-    <section style={{ marginBottom: "1.5rem" }}>
-      <h2 style={groupHead}>
-        {label}
-        {count != null ? ` · ${count}` : ""}
-      </h2>
-      <div style={{ ...cardSurface, padding: "0 1rem" }}>{children}</div>
+    <div style={resultCellStyle}>
+      <div style={avatarStyle} aria-hidden>
+        {row.initials}
+      </div>
+      <div style={cellTextStyle}>
+        <span className={row.kind === "staff" ? "wx-data-md" : undefined} style={primaryTextStyle}>
+          {row.title}
+        </span>
+        <span style={secondaryTextStyle}>{row.meta}</span>
+      </div>
+    </div>
+  );
+}
+
+function FutureFacets(): JSX.Element {
+  return (
+    <section style={futurePanelStyle}>
+      <h2 style={sectionHeadStyle}>Other scopes</h2>
+      <div style={futureGridStyle}>
+        {FUTURE_FACETS.map((facet) => (
+          <div key={facet.label} style={futureItemStyle}>
+            <span style={futureLabelStyle}>{facet.label}</span>
+            <span style={futureDetailStyle}>available when {facet.blocked} ships</span>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
 
-// One result row: tinted-initials avatar + name/meta column + optional status pill + a go chevron.
-function ResultRow({
-  first,
-  initials,
-  title,
-  titleMono,
-  meta,
-  pill,
-  onClick,
-}: {
-  first: boolean;
-  initials: string;
-  title: ReactNode;
-  titleMono?: boolean;
-  meta: ReactNode;
-  pill?: ReactNode;
-  onClick: () => void;
-}): JSX.Element {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{ ...rowBtn, borderTop: first ? "none" : ghostBorder }}
-    >
-      <span style={avatar} aria-hidden>
-        {initials}
-      </span>
-      <span style={rowText}>
-        <span style={rowTitle} className={titleMono ? "wx-data-md" : undefined}>
-          {title}
-        </span>
-        <span style={rowMeta}>{meta}</span>
-      </span>
-      {pill}
-      <span style={{ color: t.muted, display: "inline-flex" }}>
-        <Glyph name="arrow-right" size={18} />
-      </span>
-    </button>
-  );
-}
-
-function PatientGroup({
-  hits,
-  error,
-  onOpen,
-}: {
-  hits: PatientHit[] | null;
-  error: string | null;
-  onOpen: (id: string) => void;
-}): JSX.Element {
-  return (
-    <GroupCard label="Patients" count={error ? undefined : (hits?.length ?? 0)}>
-      {error ? (
-        <p style={mutedRow}>{error}</p>
-      ) : hits && hits.length > 0 ? (
-        hits.map((p, i) => (
-          <ResultRow
-            key={p.id}
-            first={i === 0}
-            initials={initialsOf(p.firstName, p.lastName)}
-            title={`${p.lastName}, ${p.firstName}`}
-            meta={
-              <>
-                MRN <span className="wx-data-md">{p.mrn}</span> · DOB{" "}
-                <span className="tabular-nums">{p.dob}</span>
-              </>
-            }
-            pill={
-              <StatusPill label={statusLabel(p.status)} tone={STATUS_TONE[p.status] ?? "neutral"} />
-            }
-            onClick={() => onOpen(p.id)}
-          />
-        ))
-      ) : (
-        <p style={mutedRow}>No patient matches.</p>
-      )}
-    </GroupCard>
-  );
-}
-
-function StaffGroup({
-  hits,
-  error,
-  onOpen,
-}: {
-  hits: StaffHit[] | null;
-  error: string | null;
-  onOpen: () => void;
-}): JSX.Element {
-  return (
-    <GroupCard label="Staff" count={error ? undefined : (hits?.length ?? 0)}>
-      {error ? (
-        <p style={mutedRow}>{error}</p>
-      ) : hits && hits.length > 0 ? (
-        hits.map((m, i) => (
-          <ResultRow
-            key={m.membershipId}
-            first={i === 0}
-            initials={initialsOf(m.userId)}
-            title={m.userId.slice(0, 8)}
-            titleMono
-            meta={m.isAdmin ? "Org admin" : "Member"}
-            pill={
-              <StatusPill
-                label={statusLabel(m.status)}
-                tone={m.status === "active" ? "success" : "neutral"}
-              />
-            }
-            onClick={onOpen}
-          />
-        ))
-      ) : (
-        <p style={mutedRow}>
-          No staff matches. Name &amp; email search arrives with the staff-roster enrichment
-          (FB-T12).
-        </p>
-      )}
-    </GroupCard>
-  );
-}
-
-// The not-yet-searchable scopes, listed honestly (the frame shows Documents / Orders & Claims groups;
-// ours name the owning module instead of inventing rows).
-function FutureFacets(): JSX.Element {
-  return (
-    <GroupCard label="Other scopes">
-      {FUTURE_FACETS.map((f, i) => (
-        <div key={f.label} style={{ ...futureRow, borderTop: i === 0 ? "none" : ghostBorder }}>
-          <span style={{ color: t.onSurfaceVariant }}>{f.label}</span>
-          <span style={{ color: t.muted, fontSize: "0.8rem" }}>
-            available when {f.blocked} ships
-          </span>
-        </div>
-      ))}
-    </GroupCard>
-  );
-}
-
-const searchForm = {
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+const toolbarStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+};
+const searchFormStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: "0.5rem",
-  padding: "0.5rem 0.75rem",
-  background: t.surfaceLow,
-  borderRadius: t.radiusLg,
-  marginBottom: "0.75rem",
-} as const;
-const searchInput = {
+  flex: "1 1 28rem",
+  minWidth: "18rem",
+  minHeight: "2.5rem",
+  padding: "0 0 0 0.65rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface-variant)",
+};
+const searchInputStyle: CSSProperties = {
   flex: 1,
   minWidth: 0,
   border: "none",
   background: "transparent",
   outline: "none",
-  fontSize: "0.95rem",
-  color: t.onSurface,
-} as const;
-const primaryBtn = {
-  padding: "0.5rem 1rem",
+  color: "var(--color-on-surface)",
+  fontSize: "0.9rem",
+};
+const tabWrapStyle: CSSProperties = {
+  display: "flex",
+  gap: "0.25rem",
+  background: "var(--color-surface-container)",
+  padding: "0.2rem",
+  borderRadius: "var(--radius-md)",
+};
+const tabButtonStyle = (active: boolean): CSSProperties => ({
   border: "none",
-  borderRadius: "9999px",
-  background: t.primary,
-  color: t.onPrimary,
-  cursor: "pointer",
-  fontWeight: 600,
-} as const;
-const facetRow = { display: "flex", gap: "0.25rem", marginBottom: "1.25rem" } as const;
-const facetOn = {
-  padding: "0.3rem 0.8rem",
-  border: "none",
-  borderRadius: "9999px",
-  background: t.primary,
-  color: t.onPrimary,
-  cursor: "pointer",
+  background: active ? "var(--color-surface-lowest)" : "transparent",
+  color: active ? "var(--color-primary)" : "var(--color-on-surface-variant)",
+  boxShadow: active ? "var(--shadow-soft)" : "none",
+  fontWeight: active ? 600 : 500,
   fontSize: "0.85rem",
-  fontWeight: 600,
-} as const;
-const facetOff = {
-  padding: "0.3rem 0.8rem",
-  border: "none",
-  borderRadius: "9999px",
-  background: t.surfaceContainer,
-  color: t.onSurfaceVariant,
+  padding: "0.35rem 0.75rem",
+  borderRadius: "var(--radius-md)",
   cursor: "pointer",
+});
+const noticeStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  background: "color-mix(in srgb, var(--color-warning) 12%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-warning) 30%, transparent)",
+  color: "var(--color-on-surface)",
   fontSize: "0.85rem",
-} as const;
-const summaryLine = {
-  color: t.onSurfaceVariant,
-  fontSize: "0.85rem",
-  margin: "0 0 1rem",
-} as const;
-const groupHead = {
-  fontSize: "0.6875rem",
+};
+const tableWrapStyle: CSSProperties = {
+  width: "100%",
+  overflowX: "auto",
+  padding: "0 1.5rem 1.5rem",
+};
+const tableStyle: CSSProperties = {
+  display: "table",
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: "0.875rem",
+};
+const headRowStyle: CSSProperties = {
+  textAlign: "left",
+  color: "var(--color-on-surface-variant)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  background: "var(--color-surface-low)",
+};
+const rowStyle: CSSProperties = {
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+};
+const thStyle: CSSProperties = {
+  padding: "0.625rem 1rem",
   fontWeight: 600,
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.06em",
-  color: t.muted,
-  margin: "0 0 0.5rem 0.25rem",
-} as const;
-const rowBtn = {
+  fontSize: "0.75rem",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+};
+const tdStyle: CSSProperties = {
+  padding: "0.75rem 1rem",
+  verticalAlign: "middle",
+};
+const resultCellStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: "0.75rem",
-  width: "100%",
-  textAlign: "left" as const,
-  padding: "0.75rem 0.25rem",
-  border: "none",
-  background: "transparent",
-  cursor: "pointer",
-} as const;
-const avatar = {
-  width: "2rem",
-  height: "2rem",
-  flexShrink: 0,
+};
+const avatarStyle: CSSProperties = {
+  width: "2.25rem",
+  height: "2.25rem",
   borderRadius: "9999px",
-  background: t.primaryTint,
-  color: t.primary,
+  background: "var(--color-primary-tint)",
+  color: "var(--color-primary)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  fontFamily: t.fontDisplay,
   fontWeight: 600,
-  fontSize: "0.8rem",
-} as const;
-const rowText = {
-  display: "flex",
-  flexDirection: "column" as const,
-  gap: "0.1rem",
-  flex: 1,
-  minWidth: 0,
-} as const;
-const rowTitle = { fontWeight: 600, color: t.onSurface } as const;
-const rowMeta = { color: t.onSurfaceVariant, fontSize: "0.8rem" } as const;
-const futureRow = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  padding: "0.6rem 0.25rem",
-} as const;
-const mutedRow = {
-  color: t.muted,
-  margin: 0,
-  padding: "0.75rem 0.25rem",
   fontSize: "0.85rem",
-} as const;
-const chip = {
-  padding: "0.3rem 0.7rem",
-  border: ghostBorder,
+  flexShrink: 0,
+};
+const cellTextStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.15rem",
+};
+const primaryTextStyle: CSSProperties = {
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+};
+const secondaryTextStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.8rem",
+};
+const emptyQueryStyle: CSSProperties = {
+  padding: "2rem 1.5rem",
+  maxWidth: "52rem",
+};
+const recentStyle: CSSProperties = {
+  marginTop: "1rem",
+};
+const sectionHeadStyle: CSSProperties = {
+  margin: "0 0 0.5rem",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+};
+const chipRowStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "0.5rem",
+};
+const chipStyle: CSSProperties = {
+  padding: "0.35rem 0.75rem",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 50%, transparent)",
   borderRadius: "9999px",
-  background: t.surfaceLow,
+  background: "var(--color-surface-low)",
+  color: "var(--color-on-surface)",
   cursor: "pointer",
   fontSize: "0.85rem",
-} as const;
+};
+const futurePanelStyle: CSSProperties = {
+  marginTop: "1rem",
+  padding: "1rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-low)",
+};
+const futureGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(13rem, 1fr))",
+  gap: "0.75rem",
+};
+const futureItemStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.15rem",
+};
+const futureLabelStyle: CSSProperties = {
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+  fontWeight: 600,
+};
+const futureDetailStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.8rem",
+};

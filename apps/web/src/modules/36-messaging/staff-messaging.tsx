@@ -1,4 +1,17 @@
-import { ConversationView, EmptyState, Glyph, LoadingSpinner, t, useApiClient } from "@wardenx/ui";
+import {
+  Button,
+  ConversationView,
+  EmptyState,
+  Glyph,
+  KpiCard,
+  KpiStrip,
+  LoadingSpinner,
+  OffsetPagination,
+  PageHeader,
+  StatusPill,
+  t,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/36-messaging — Internal Staff Secure Messaging (M36, Track A).
 // Spec: docs/design/screens/core/WARDENX_UI_STAFF_MESSAGING.md — "Use Conversation View."
 // Matched to the P0 Pencil frame (wardenx-P0-foundation.pen `A016Y`): a "Messages" conversation list
@@ -7,8 +20,8 @@ import { ConversationView, EmptyState, Glyph, LoadingSpinner, t, useApiClient } 
 // composer. Backed by GET /messaging/channels, GET/POST /messaging/channels/:id/messages. The list's
 // last-message preview/time isn't exposed by the channels read yet, so the secondary line shows the
 // channel's real scope (patient-scoped / kind) rather than a fabricated preview.
-import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CSSProperties, JSX } from "react";
 import { authClient } from "../02-identity/auth-client";
 
 interface ChannelSummary {
@@ -29,6 +42,8 @@ interface Message {
   parentMessageId: string | null;
 }
 
+const CHANNEL_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
+
 const channelLabel = (c: ChannelSummary): string => c.title ?? c.kind.replace(/_/g, " ");
 const channelScope = (c: ChannelSummary): string =>
   c.subjectId
@@ -40,7 +55,7 @@ function initialsOf(s: string): string {
     w
       .slice(0, 2)
       .map((x) => x[0]?.toUpperCase() ?? "")
-      .join("") || "·"
+      .join("") || "M"
   ).slice(0, 2);
 }
 function relTime(iso: string): string {
@@ -60,6 +75,11 @@ export function StaffMessaging(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [meId, setMeId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [scopeFilter, setScopeFilter] = useState<"all" | "patient" | "general">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "unread" | "archived">("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
     void authClient.getSession().then(({ data }) => setMeId(data?.user?.id ?? null));
@@ -70,7 +90,11 @@ export function StaffMessaging(): JSX.Element {
     (async () => {
       const { data, error: err } = await client.GET("/api/v1/messaging/channels");
       if (!active) return;
-      if (err) return setError("Could not load channels.");
+      if (err) {
+        setError("Could not load channels.");
+        setChannels([]);
+        return;
+      }
       const list = (data?.channels ?? []) as ChannelSummary[];
       setChannels(list);
       setActiveId((prev) => prev ?? list[0]?.channelId ?? null);
@@ -80,83 +104,282 @@ export function StaffMessaging(): JSX.Element {
     };
   }, [client]);
 
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (channels === null) return <LoadingSpinner />;
+  const filteredChannels = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return (channels ?? []).filter((channel) => {
+      const matchesSearch =
+        q.length === 0 ||
+        channelLabel(channel).toLowerCase().includes(q) ||
+        channel.kind.toLowerCase().includes(q) ||
+        (channel.subjectId?.toLowerCase().includes(q) ?? false) ||
+        channel.channelId.toLowerCase().includes(q);
+      const matchesScope =
+        scopeFilter === "all" ||
+        (scopeFilter === "patient" && channel.subjectId !== null) ||
+        (scopeFilter === "general" && channel.subjectId === null);
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "unread" && channel.unreadCount > 0) ||
+        (statusFilter === "archived" && channel.archivedAt !== null);
+      return matchesSearch && matchesScope && matchesStatus;
+    });
+  }, [channels, scopeFilter, searchQuery, statusFilter]);
 
-  const activeChannel = channels.find((c) => c.channelId === activeId) ?? null;
+  const hasActiveFilters =
+    searchQuery.trim() !== "" || scopeFilter !== "all" || statusFilter !== "all";
+  const pageCount = Math.max(1, Math.ceil(filteredChannels.length / pageSize));
+  const activePage = Math.min(page, pageCount);
+  const pagedChannels = filteredChannels.slice((activePage - 1) * pageSize, activePage * pageSize);
+  const activeChannel = channels?.find((c) => c.channelId === activeId) ?? null;
+  const unreadCount = channels?.reduce((sum, channel) => sum + channel.unreadCount, 0) ?? 0;
+  const patientScopedCount = channels?.filter((channel) => channel.subjectId !== null).length ?? 0;
+  const archivedCount = channels?.filter((channel) => channel.archivedAt !== null).length ?? 0;
+
+  const clearFilters = (): void => {
+    setSearchQuery("");
+    setScopeFilter("all");
+    setStatusFilter("all");
+    setPage(1);
+  };
 
   return (
-    <ConversationView
-      list={<ChannelList channels={channels} activeId={activeId} onSelect={setActiveId} />}
-    >
-      {activeChannel ? (
-        <Thread channel={activeChannel} meId={meId} />
-      ) : (
-        <EmptyState
-          title="No channel selected"
-          description="Pick a channel to view its messages."
+    <div style={pageShellStyle}>
+      <PageHeader title="Messaging" breadcrumb="General / Messaging">
+        <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+          Secure staff conversations and patient-scoped channels.
+        </div>
+      </PageHeader>
+      <KpiStrip>
+        <KpiCard
+          label="Channels"
+          value={channels === null ? "—" : channels.length}
+          detail="Visible to this user"
+          tone={(channels?.length ?? 0) > 0 ? "success" : "neutral"}
+          accentColor={
+            (channels?.length ?? 0) > 0 ? "var(--color-success)" : "var(--color-outline-variant)"
+          }
         />
+        <KpiCard
+          label="Unread"
+          value={channels === null ? "—" : unreadCount}
+          detail="Messages awaiting review"
+          tone={unreadCount > 0 ? "warning" : "neutral"}
+          accentColor={unreadCount > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"}
+          selected={statusFilter === "unread"}
+          onSelect={() => {
+            setStatusFilter("unread");
+            setPage(1);
+          }}
+        />
+        <KpiCard
+          label="Patient Scoped"
+          value={channels === null ? "—" : patientScopedCount}
+          detail="Bound to a patient context"
+          tone={patientScopedCount > 0 ? "info" : "neutral"}
+          accentColor={
+            patientScopedCount > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"
+          }
+          selected={scopeFilter === "patient"}
+          onSelect={() => {
+            setScopeFilter("patient");
+            setPage(1);
+          }}
+        />
+        <KpiCard
+          label="Archived"
+          value={channels === null ? "—" : archivedCount}
+          detail="Retained conversations"
+          tone="neutral"
+          accentColor="var(--color-outline-variant)"
+        />
+      </KpiStrip>
+
+      <div style={filterShellStyle}>
+        {error ? (
+          <div role="alert" style={errorBannerStyle}>
+            <Glyph name="alert" size={16} />
+            <span>{error}</span>
+          </div>
+        ) : null}
+        <div style={toolbarStyle}>
+          <div style={searchBoxStyle}>
+            <Glyph name="eye" size={14} />
+            <input
+              type="search"
+              placeholder="Search channel, scope, patient..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setPage(1);
+              }}
+              aria-label="Search message channels"
+              style={searchInputStyle}
+            />
+          </div>
+          <div style={controlGroupStyle}>
+            <select
+              value={scopeFilter}
+              onChange={(e) => {
+                setScopeFilter(e.target.value as typeof scopeFilter);
+                setPage(1);
+              }}
+              aria-label="Filter channels by scope"
+              style={selectStyle}
+            >
+              <option value="all">Scope: All</option>
+              <option value="patient">Patient-scoped</option>
+              <option value="general">General</option>
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as typeof statusFilter);
+                setPage(1);
+              }}
+              aria-label="Filter channels by status"
+              style={selectStyle}
+            >
+              <option value="all">Status: All</option>
+              <option value="unread">Unread</option>
+              <option value="archived">Archived</option>
+            </select>
+            {hasActiveFilters ? (
+              <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                Clear
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      {channels === null ? (
+        <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+          <LoadingSpinner />
+        </div>
+      ) : (
+        <div style={conversationWrapStyle}>
+          <ConversationView
+            list={
+              <ChannelList
+                channels={pagedChannels}
+                total={filteredChannels.length}
+                page={activePage}
+                pageSize={pageSize}
+                activeId={activeId}
+                hasActiveFilters={hasActiveFilters}
+                onSelect={setActiveId}
+                onClearFilters={clearFilters}
+                onPageChange={setPage}
+                onPageSizeChange={(nextPageSize) => {
+                  setPageSize(nextPageSize);
+                  setPage(1);
+                }}
+              />
+            }
+          >
+            {activeChannel ? (
+              <Thread channel={activeChannel} meId={meId} />
+            ) : (
+              <EmptyState
+                title="No channel selected"
+                description="Pick a channel to view its messages."
+              />
+            )}
+          </ConversationView>
+        </div>
       )}
-    </ConversationView>
+    </div>
   );
 }
 
 function ChannelList({
   channels,
+  total,
+  page,
+  pageSize,
   activeId,
+  hasActiveFilters,
   onSelect,
+  onClearFilters,
+  onPageChange,
+  onPageSizeChange,
 }: {
   channels: ChannelSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
   activeId: string | null;
+  hasActiveFilters: boolean;
   onSelect: (id: string) => void;
+  onClearFilters: () => void;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: number) => void;
 }): JSX.Element {
   return (
-    <div>
-      {/* List header — "Messages" (Fraunces) + a compose affordance, per the frame. */}
-      <div style={listHeader}>
-        <span style={{ fontFamily: t.fontDisplay, fontWeight: 500, fontSize: "1.05rem" }}>
-          Messages
-        </span>
-        <span style={{ color: t.primary, display: "inline-flex" }} title="New message">
-          <Glyph name="sparkle" size={18} />
-        </span>
+    <div style={listShellStyle}>
+      <div style={listHeaderStyle}>
+        <span style={listTitleStyle}>Channels</span>
+        <span style={listCountStyle}>{total}</span>
       </div>
-      {channels.length === 0 ? (
-        <EmptyState title="No channels" description="You’re not a member of any channel yet." />
+      {total === 0 ? (
+        <div style={{ padding: "1.5rem 1rem" }}>
+          <EmptyState
+            title={hasActiveFilters ? "No matching channels" : "No channels"}
+            description={
+              hasActiveFilters
+                ? "Try adjusting the channel filters."
+                : "You are not a member of any channel yet."
+            }
+            action={
+              hasActiveFilters ? (
+                <Button size="sm" tone="secondary" onClick={onClearFilters}>
+                  Clear filters
+                </Button>
+              ) : undefined
+            }
+          />
+        </div>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-          {channels.map((c) => {
-            const active = c.channelId === activeId;
-            return (
-              <li key={c.channelId}>
-                <button
-                  type="button"
-                  onClick={() => onSelect(c.channelId)}
-                  style={{ ...convRow, background: active ? t.primaryTint : "transparent" }}
-                >
-                  <span style={listAvatar} aria-hidden>
-                    {initialsOf(channelLabel(c))}
-                  </span>
-                  <span
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "0.1rem",
-                    }}
+        <>
+          <ul style={channelListStyle}>
+            {channels.map((channel) => {
+              const active = channel.channelId === activeId;
+              return (
+                <li key={channel.channelId}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(channel.channelId)}
+                    style={{ ...convRowStyle, background: active ? t.primaryTint : "transparent" }}
                   >
-                    <span style={convTitle}>{channelLabel(c)}</span>
-                    <span style={convPreview}>{channelScope(c)}</span>
-                  </span>
-                  {c.unreadCount > 0 ? (
-                    <span style={unreadDot} aria-label={`${c.unreadCount} unread`} />
-                  ) : null}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+                    <span style={listAvatarStyle} aria-hidden>
+                      {initialsOf(channelLabel(channel))}
+                    </span>
+                    <span style={channelTextStyle}>
+                      <span style={convTitleStyle}>{channelLabel(channel)}</span>
+                      <span style={convPreviewStyle}>{channelScope(channel)}</span>
+                    </span>
+                    <span style={channelMetaStyle}>
+                      {channel.unreadCount > 0 ? (
+                        <StatusPill label={`${channel.unreadCount}`} tone="warning" />
+                      ) : channel.archivedAt ? (
+                        <StatusPill label="Archived" tone="neutral" />
+                      ) : null}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <OffsetPagination
+            page={page}
+            pageSize={pageSize}
+            totalItems={total}
+            onPageChange={onPageChange}
+            onPageSizeChange={onPageSizeChange}
+            pageSizeOptions={CHANNEL_PAGE_SIZES}
+            noun="channels"
+          />
+        </>
       )}
     </div>
   );
@@ -198,43 +421,42 @@ function Thread({ channel, meId }: { channel: ChannelSummary; meId: string | nul
 
   return (
     <>
-      {/* Thread header — title + the patient-scoped chip (indigo) when the channel is patient-bound. */}
-      <div style={threadHeader}>
+      <div style={threadHeaderStyle}>
         <span style={{ fontWeight: 600, color: t.onSurface }}>{channelLabel(channel)}</span>
         {channel.subjectId ? (
-          <span style={scopeChip}>
+          <span style={scopeChipStyle}>
             <Glyph name="shield" size={13} />
             Patient-scoped
           </span>
         ) : null}
       </div>
 
-      <div style={messagesArea}>
+      <div style={messagesAreaStyle}>
         {messages === null ? (
           <LoadingSpinner />
         ) : messages.length === 0 ? (
           <EmptyState title="No messages" description="Start the conversation below." />
         ) : (
-          messages.map((m) => {
-            const mine = m.authorUserId != null && m.authorUserId === meId;
-            const system = m.authorUserId == null;
+          messages.map((message) => {
+            const mine = message.authorUserId != null && message.authorUserId === meId;
+            const system = message.authorUserId == null;
             if (system) {
               return (
-                <div key={m.messageId} style={{ textAlign: "center" }}>
-                  <span style={systemNote}>{m.body}</span>
+                <div key={message.messageId} style={{ textAlign: "center" }}>
+                  <span style={systemNoteStyle}>{message.body}</span>
                 </div>
               );
             }
             return (
               <div
-                key={m.messageId}
+                key={message.messageId}
                 style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start" }}
               >
-                <div style={mine ? bubbleMine : bubbleTheirs}>
-                  <span style={{ whiteSpace: "pre-wrap" }}>{m.body}</span>
+                <div style={mine ? bubbleMineStyle : bubbleTheirsStyle}>
+                  <span style={{ whiteSpace: "pre-wrap" }}>{message.body}</span>
                   <span
                     style={{
-                      ...bubbleMeta,
+                      ...bubbleMetaStyle,
                       color: mine
                         ? `color-mix(in srgb, ${t.onEmphasis} 75%, transparent)`
                         : t.muted,
@@ -243,9 +465,9 @@ function Thread({ channel, meId }: { channel: ChannelSummary; meId: string | nul
                     {mine ? (
                       "You"
                     ) : (
-                      <span className="wx-data-md">{m.authorUserId?.slice(0, 8)}</span>
+                      <span className="wx-data-md">{message.authorUserId?.slice(0, 8)}</span>
                     )}{" "}
-                    · {relTime(m.createdAt)}
+                    · {relTime(message.createdAt)}
                   </span>
                 </div>
               </div>
@@ -254,47 +476,134 @@ function Thread({ channel, meId }: { channel: ChannelSummary; meId: string | nul
         )}
       </div>
 
-      <div style={composer}>
+      <div style={composerStyle}>
         <input
           aria-label="Message"
-          placeholder={`Message ${channelLabel(channel)}…`}
+          placeholder={`Message ${channelLabel(channel)}...`}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") void send();
           }}
-          style={composerInput}
+          style={composerInputStyle}
         />
-        <button
-          type="button"
-          onClick={() => void send()}
-          disabled={sending || !draft.trim()}
-          style={sendBtn}
-        >
-          {sending ? "Sending…" : "Send"}
-        </button>
+        <Button type="button" onClick={() => void send()} disabled={sending || !draft.trim()}>
+          {sending ? "Sending..." : "Send"}
+        </Button>
       </div>
     </>
   );
 }
 
-const listHeader = {
+const pageShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  minHeight: 0,
+  flex: 1,
+};
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+const toolbarStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+};
+const searchBoxStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.45rem",
+  flex: "1 1 22rem",
+  minWidth: "16rem",
+  height: "2.25rem",
+  padding: "0 0.65rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface-variant)",
+};
+const searchInputStyle: CSSProperties = {
+  width: "100%",
+  minWidth: 0,
+  border: "none",
+  background: "transparent",
+  outline: "none",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+};
+const controlGroupStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  flexWrap: "wrap",
+};
+const selectStyle: CSSProperties = {
+  height: "2.25rem",
+  fontSize: "0.85rem",
+  cursor: "pointer",
+};
+const errorBannerStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
+  color: "var(--color-error)",
+  fontSize: "0.85rem",
+};
+const conversationWrapStyle: CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+  display: "flex",
+};
+const listShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  minHeight: 0,
+};
+const listHeaderStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  padding: "1rem",
-} as const;
-const convRow = {
+  padding: "0.875rem 1rem",
+  borderBottom: `1px solid color-mix(in srgb, ${t.outlineVariant} 35%, transparent)`,
+};
+const listTitleStyle: CSSProperties = {
+  fontFamily: t.fontDisplay,
+  fontWeight: 500,
+  fontSize: "1.05rem",
+  color: t.onSurface,
+};
+const listCountStyle: CSSProperties = {
+  color: t.onSurfaceVariant,
+  fontSize: "0.8rem",
+  fontVariantNumeric: "tabular-nums",
+};
+const channelListStyle: CSSProperties = {
+  listStyle: "none",
+  margin: 0,
+  padding: 0,
+  flex: 1,
+  minHeight: 0,
+  overflow: "auto",
+};
+const convRowStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: "0.625rem",
   width: "100%",
-  textAlign: "left" as const,
+  textAlign: "left",
   border: "none",
   cursor: "pointer",
   padding: "0.75rem 1rem",
-} as const;
-const listAvatar = {
+};
+const listAvatarStyle: CSSProperties = {
   width: "2.375rem",
   height: "2.375rem",
   flexShrink: 0,
@@ -307,38 +616,41 @@ const listAvatar = {
   fontFamily: t.fontDisplay,
   fontWeight: 600,
   fontSize: "0.8rem",
-} as const;
-const convTitle = {
+};
+const channelTextStyle: CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.1rem",
+};
+const convTitleStyle: CSSProperties = {
   fontWeight: 600,
   fontSize: "0.8125rem",
   color: t.onSurface,
   overflow: "hidden",
   textOverflow: "ellipsis",
-  whiteSpace: "nowrap" as const,
-} as const;
-const convPreview = {
+  whiteSpace: "nowrap",
+};
+const convPreviewStyle: CSSProperties = {
   fontSize: "0.75rem",
   color: t.muted,
   overflow: "hidden",
   textOverflow: "ellipsis",
-  whiteSpace: "nowrap" as const,
-} as const;
-const unreadDot = {
-  width: "0.5rem",
-  height: "0.5rem",
+  whiteSpace: "nowrap",
+};
+const channelMetaStyle: CSSProperties = {
   flexShrink: 0,
-  borderRadius: "9999px",
-  background: t.primary,
-} as const;
-const threadHeader = {
+};
+const threadHeaderStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: "0.75rem",
   padding: "0.875rem 1.5rem",
   borderBottom: `1px solid color-mix(in srgb, ${t.outlineVariant} 35%, transparent)`,
   background: t.surfaceLowest,
-} as const;
-const scopeChip = {
+};
+const scopeChipStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   gap: "0.3rem",
@@ -348,47 +660,47 @@ const scopeChip = {
   background: t.primaryTint,
   borderRadius: "9999px",
   padding: "0.15rem 0.55rem",
-} as const;
-const messagesArea = {
+};
+const messagesAreaStyle: CSSProperties = {
   flex: 1,
   overflow: "auto",
   padding: "1.5rem",
   display: "flex",
-  flexDirection: "column" as const,
+  flexDirection: "column",
   gap: "0.875rem",
   background: t.background,
-} as const;
-const bubbleBase = {
+};
+const bubbleBaseStyle: CSSProperties = {
   maxWidth: "70%",
   padding: "0.625rem 0.875rem",
   fontSize: "0.875rem",
   display: "flex",
-  flexDirection: "column" as const,
+  flexDirection: "column",
   gap: "0.25rem",
-} as const;
-const bubbleTheirs = {
-  ...bubbleBase,
+};
+const bubbleTheirsStyle: CSSProperties = {
+  ...bubbleBaseStyle,
   background: t.surfaceLow,
   color: t.onSurface,
   borderRadius: "16px 16px 16px 4px",
-} as const;
-const bubbleMine = {
-  ...bubbleBase,
+};
+const bubbleMineStyle: CSSProperties = {
+  ...bubbleBaseStyle,
   background: t.primary,
   color: t.onPrimary,
   borderRadius: "16px 16px 4px 16px",
-} as const;
-const bubbleMeta = { fontSize: "0.6875rem" } as const;
-const systemNote = { fontSize: "0.75rem", color: t.muted } as const;
-const composer = {
+};
+const bubbleMetaStyle: CSSProperties = { fontSize: "0.6875rem" };
+const systemNoteStyle: CSSProperties = { fontSize: "0.75rem", color: t.muted };
+const composerStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: "0.625rem",
   padding: "1rem 1.5rem",
   borderTop: `1px solid color-mix(in srgb, ${t.outlineVariant} 35%, transparent)`,
   background: t.surfaceLowest,
-} as const;
-const composerInput = {
+};
+const composerInputStyle: CSSProperties = {
   flex: 1,
   minWidth: 0,
   padding: "0.65rem 1rem",
@@ -398,13 +710,4 @@ const composerInput = {
   outline: "none",
   fontSize: "0.9rem",
   color: t.onSurface,
-} as const;
-const sendBtn = {
-  padding: "0.55rem 1.25rem",
-  border: "none",
-  borderRadius: "9999px",
-  background: t.primary,
-  color: t.onPrimary,
-  fontWeight: 600,
-  cursor: "pointer",
-} as const;
+};

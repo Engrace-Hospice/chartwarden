@@ -14,6 +14,17 @@ if (typeof Element !== "undefined" && typeof Element.prototype.scrollTo !== "fun
   Element.prototype.scrollTo = () => {};
 }
 
+// jsdom does not implement ResizeObserver. The app shell observes its own header to publish a CSS
+// variable; in tests there is no real layout to observe, so a no-op observer preserves the browser
+// contract shape without inventing measurements.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  };
+}
+
 // Under jsdom, `AbortController`/`AbortSignal` come from jsdom while `Request`/`fetch` come from
 // Node (undici) — two different implementations of the same interface. undici's Request constructor
 // brand-checks `init.signal` and throws

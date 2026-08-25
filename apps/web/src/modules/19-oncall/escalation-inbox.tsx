@@ -1,30 +1,20 @@
 // apps/web/src/modules/19-oncall — S19.4 ESCALATION INBOX (`/triage/escalations`, §5.1, Track B /
-// ADR-0030).
-//
-// THE INBOX IS SORTED BY MANDATORY, THEN TIER, THEN AGE. §5.1 says "severity-sorted"; the sort below spells
-// out what severity means here — a platform-floor mandatory row outranks everything (no tenant policy can
-// suppress it and only an explicit write by the escalated party clears it), then the ladder rung, then
-// minutes open. Sorting by age alone would put a 40-minute medical-director page below a 90-minute
-// RN-supervisor one.
-//
-// `minutesOpen` IS THE SERVER'S, NOT A CLOCK THIS SCREEN RUNS. §4.1 returns it computed, which matters
-// because the SLA the §4.8 worker enforces and the number a supervisor reads must be the same number; a
-// browser with a skewed clock would otherwise disagree with the alert that already fired.
-//
-// §5.1 asks for "SLA timers per `triage_escalation.acknowledged_within_seconds` SLA target". That COLUMN
-// does not exist — the per-severity callback SLA lives in `tenant_oncall_policy.callback_sla_per_severity`
-// as tenant-shaped JSON, and there is no route that resolves it to a per-row target. So the age is shown
-// as an honest elapsed time rather than as a percentage of a target this screen would have to invent. The
-// policy screen renders the tenant's configured SLA object beside it.
-//
-// TWO WRITES LIVE HERE AND NOWHERE ELSE. Acknowledge is the write §7.2 waits on: until it lands the call
-// takes no disposition but the hand-off. Resolve is the ONLY place a MANDATORY row can reach `resolved`
-// (§2.2.4) — a call close may auto-resolve an acknowledged non-mandatory row, but the four D7 protocols'
-// rows need this explicit write, because the whole point is that the agency can prove a named human
-// answered.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
-import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+// ADR-0030). Mandatory rows sort first, then ladder rung, then server-computed minutes open.
+import {
+  Button,
+  EmptyState,
+  Glyph,
+  KpiCard,
+  KpiStrip,
+  LoadingSpinner,
+  Modal,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
 import {
   type EscalationInboxItem,
@@ -44,96 +34,110 @@ import {
   tierLabel,
   toneOf,
 } from "./oncall-status";
-import {
-  CallStatePill,
-  Card,
-  CountGrid,
-  FilterRow,
-  Modal,
-  Notice,
-  SelectField,
-  TextAreaField,
-  TierPill,
-  alertStyle,
-  columnStyle,
-  disabledButtonStyle,
-  ghostButtonStyle,
-  linkStyle,
-  mutedStyle,
-  pageTitleStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  tdNum,
-  th,
-  thNum,
-} from "./oncall-ui";
+import { CallStatePill, TierPill } from "./oncall-ui";
 
 const INBOX_PAGE = 100;
-/** §4.1 row 18 — the resolution text floor. Mirrored so the button explains itself before the round trip. */
 const RESOLUTION_MIN_CHARS = 30;
 
-const TIER_FILTERS = [{ value: "", label: "every tier" }].concat(
-  ESCALATION_TIERS.map((x) => ({ value: x, label: tierLabel(x) })),
+const TIER_FILTERS = [{ value: "", label: "Tier: All" }].concat(
+  ESCALATION_TIERS.map((tier) => ({ value: tier, label: tierLabel(tier) })),
 );
 const OPEN_FILTERS = [
-  { value: "open", label: "outstanding (default)" },
-  { value: "all", label: "including resolved" },
+  { value: "open", label: "Show: Outstanding" },
+  { value: "all", label: "Show: Including resolved" },
 ];
+type AttentionFilter = "all" | "mandatory" | "open" | "over_hour" | "external";
 
-/** Mandatory first, then ladder rung (descending), then age. */
 function inboxRank(a: EscalationInboxItem, b: EscalationInboxItem): number {
   if (a.mandatory !== b.mandatory) return a.mandatory ? -1 : 1;
-  const rank = (x: EscalationInboxItem) => ESCALATION_TIERS.indexOf(x.tier);
+  const rank = (row: EscalationInboxItem) => ESCALATION_TIERS.indexOf(row.tier);
   if (rank(a) !== rank(b)) return rank(b) - rank(a);
   return b.minutesOpen - a.minutesOpen;
+}
+
+function matchesAttention(row: EscalationInboxItem, filter: AttentionFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "mandatory") return row.mandatory && row.state !== "resolved";
+  if (filter === "open") return row.state === "open";
+  if (filter === "over_hour") return row.state === "open" && row.minutesOpen >= 60;
+  return row.tier === "tier_5_external" || row.escalatedToExternalActorId !== null;
 }
 
 export function EscalationInboxScreen(): JSX.Element {
   const client = useApiClient();
   const [tier, setTier] = useState("");
   const [scope, setScope] = useState("open");
+  const [attention, setAttention] = useState<AttentionFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [rows, setRows] = useState<EscalationInboxItem[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resolving, setResolving] = useState<EscalationInboxItem | null>(null);
   const [resolution, setResolution] = useState("");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    const res = await listEscalations(client, {
-      limit: INBOX_PAGE,
-      // `tier` is always "" (every tier) or one of ESCALATION_TIERS — the SelectField below offers no
-      // other value.
-      ...(tier ? { tier: tier as EscalationTier } : {}),
-      ...(scope === "all" ? { openOnly: false } : {}),
-    });
-    if (res.error) {
-      setError(errorMessage(res.error, "The escalation inbox could not be loaded."));
+  const load = useCallback(
+    async (cursor?: string) => {
+      if (cursor) setLoadingMore(true);
+      else setLoading(true);
+      setError(null);
+      const res = await listEscalations(client, {
+        limit: INBOX_PAGE,
+        ...(cursor ? { cursor } : {}),
+        ...(tier ? { tier: tier as EscalationTier } : {}),
+        ...(scope === "all" ? { openOnly: false } : {}),
+      });
+      if (res.error) {
+        setError(errorMessage(res.error, "The escalation inbox could not be loaded."));
+        setLoading(false);
+        setLoadingMore(false);
+        return;
+      }
+      setRows((current) =>
+        cursor ? current.concat(res.page?.data ?? []) : (res.page?.data ?? []),
+      );
+      setNextCursor(res.page?.next_cursor ?? null);
+      setTruncated(res.page?.has_more ?? false);
       setLoading(false);
-      return;
-    }
-    setRows(res.page?.data ?? []);
-    setTruncated(res.page?.has_more ?? false);
-    setLoading(false);
-  }, [client, tier, scope]);
+      setLoadingMore(false);
+    },
+    [client, scope, tier],
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
+  const visibleRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return [...rows]
+      .filter((row) => {
+        const matchesSearch =
+          q.length === 0 ||
+          row.id.toLowerCase().includes(q) ||
+          row.triageCallId.toLowerCase().includes(q) ||
+          row.providerEntityId.toLowerCase().includes(q) ||
+          (row.patientId ?? "").toLowerCase().includes(q) ||
+          tierLabel(row.tier).toLowerCase().includes(q) ||
+          humanize(row.triggerKind).toLowerCase().includes(q) ||
+          humanize(row.state).toLowerCase().includes(q);
+        return matchesSearch && matchesAttention(row, attention);
+      })
+      .sort(inboxRank);
+  }, [attention, rows, searchQuery]);
 
-  const sorted = [...rows].sort(inboxRank);
-  const unacknowledged = rows.filter((r) => r.state === "open").length;
-  const mandatoryOpen = rows.filter((r) => r.mandatory && r.state !== "resolved").length;
-  const overAnHour = rows.filter((r) => r.state === "open" && r.minutesOpen >= 60).length;
+  const unacknowledged = rows.filter((row) => row.state === "open").length;
+  const mandatoryOpen = rows.filter((row) => row.mandatory && row.state !== "resolved").length;
+  const overAnHour = rows.filter((row) => row.state === "open" && row.minutesOpen >= 60).length;
+  const external = rows.filter(
+    (row) => row.tier === "tier_5_external" || row.escalatedToExternalActorId !== null,
+  ).length;
+  const hasActiveFilters =
+    searchQuery.trim() !== "" || tier !== "" || scope !== "open" || attention !== "all";
 
   async function ack(row: EscalationInboxItem): Promise<void> {
     setBusy(true);
@@ -162,197 +166,582 @@ export function EscalationInboxScreen(): JSX.Element {
     await load();
   }
 
+  const clearFilters = (): void => {
+    setTier("");
+    setScope("open");
+    setAttention("all");
+    setSearchQuery("");
+  };
+
   return (
-    <div style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Escalation inbox</span>}
-        breadcrumb="On-call triage"
-        actions={
-          <Link to="/triage" style={ghostButtonStyle}>
-            Triage queue
-          </Link>
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader
+            title="Escalation inbox"
+            breadcrumb="On-call / Escalations"
+            actions={
+              <Link to="/triage" style={linkButtonStyle}>
+                Triage queue
+              </Link>
+            }
+          >
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Acknowledge pages quickly, then resolve the ones that require a named response.
+            </div>
+          </PageHeader>
         }
-      />
-
-      {mandatoryOpen > 0 ? (
-        <Notice tone="error" assertive>
-          {mandatoryOpen} platform-floor mandatory escalation
-          {mandatoryOpen === 1 ? " is" : "s are"} outstanding. Each holds its call's disposition and
-          can be cleared only by an explicit resolution written by the escalated party — closing the
-          call will not clear it.
-        </Notice>
-      ) : null}
-
-      {truncated ? (
-        <Notice tone="info">
-          More than {INBOX_PAGE} escalations match. The counts below count the page fetched, not the
-          whole tenant — §4.1.1 publishes no total on a PHI list.
-        </Notice>
-      ) : null}
-
-      <Card title="Outstanding">
-        <CountGrid
-          entries={[
-            { label: "On this page", value: rows.length },
-            {
-              label: "Unacknowledged",
-              value: unacknowledged,
-              tone: unacknowledged > 0 ? "error" : undefined,
-            },
-            {
-              label: "Mandatory, open",
-              value: mandatoryOpen,
-              tone: mandatoryOpen > 0 ? "error" : undefined,
-            },
-            {
-              label: "Open over an hour",
-              value: overAnHour,
-              tone: overAnHour > 0 ? "error" : undefined,
-            },
-          ]}
-        />
-        <span style={mutedStyle}>
-          Age is elapsed minutes as the SERVER computed them, not a browser clock and not a
-          percentage of an SLA target: the per-severity callback SLA lives on the tenant policy as
-          tenant-shaped JSON and no route resolves it to a per-row target, so a "% of SLA" here
-          would be invented.
-        </span>
-      </Card>
-
-      <FilterRow>
-        <SelectField label="Tier" value={tier} options={TIER_FILTERS} onChange={setTier} />
-        <SelectField label="Show" value={scope} options={OPEN_FILTERS} onChange={setScope} />
-      </FilterRow>
-
-      <Card title="Pages">
-        {sorted.length === 0 ? (
-          <span style={mutedStyle}>
-            Nothing is outstanding in your tier band. An empty inbox is the ordinary night — and it
-            is not the same as "you are on no tier": the server narrows this list to the tiers you
-            sit on, and a page addressed to a colleague is simply absent.
-          </span>
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Tier</th>
-                <th style={th}>Trigger</th>
-                <th style={th}>State</th>
-                <th style={th}>Call</th>
-                <th style={th}>Call state</th>
-                <th style={th}>Patient</th>
-                <th style={thNum}>Open</th>
-                <th style={th}>Raised</th>
-                <th style={th}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((r) => (
-                <tr key={r.id} style={rowLine}>
-                  <td style={td}>
-                    <TierPill tier={r.tier} />
-                    {r.mandatory ? (
-                      <>
-                        <br />
-                        <StatusPill label="Platform floor" tone="critical" />
-                      </>
-                    ) : null}
-                  </td>
-                  <td style={td}>{humanize(r.triggerKind)}</td>
-                  <td style={td}>
-                    <StatusPill
-                      label={humanize(r.state)}
-                      tone={toneOf(ESCALATION_STATE_TONE, r.state)}
-                    />
-                  </td>
-                  <td style={td}>
-                    <Link to={`/triage/calls/${r.triageCallId}`} style={linkStyle}>
-                      {shortId(r.triageCallId)}
-                    </Link>
-                  </td>
-                  <td style={td}>
-                    <CallStatePill state={r.callState} />
-                  </td>
-                  <td style={td}>{r.patientId ? shortId(r.patientId) : "not identified"}</td>
-                  <td style={tdNum}>{durationLabel(r.minutesOpen)}</td>
-                  <td style={td}>{dateTime(r.escalatedAt)}</td>
-                  <td style={td}>
-                    <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-                      {r.state === "open" ? (
-                        <button
-                          type="button"
-                          style={busy ? disabledButtonStyle : primaryButtonStyle}
-                          disabled={busy}
-                          onClick={() => void ack(r)}
-                        >
-                          Acknowledge
-                        </button>
-                      ) : null}
-                      {r.state === "acknowledged" ? (
-                        <button
-                          type="button"
-                          style={busy ? disabledButtonStyle : ghostButtonStyle}
-                          disabled={busy}
-                          onClick={() => {
-                            setResolving(r);
-                            setResolution("");
-                          }}
-                        >
-                          Resolve
-                        </button>
-                      ) : null}
-                      {r.state === "resolved" ? <span style={mutedStyle}>closed</span> : null}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <span style={mutedStyle}>
-          A refusal on either action reads "not yours" rather than 404, deliberately: an escalation
-          id discloses nothing to somebody who already holds the inbox permission, and a 404 would
-          send a supervisor hunting for a page that is sitting in a colleague's queue.
-        </span>
-      </Card>
-
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
-
-      {resolving ? (
-        <Modal
-          title={`Resolve — ${tierLabel(resolving.tier)}`}
-          onClose={() => setResolving(null)}
-          footer={
-            <button
-              type="button"
-              disabled={busy || resolution.trim().length < RESOLUTION_MIN_CHARS}
-              style={
-                busy || resolution.trim().length < RESOLUTION_MIN_CHARS
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
+        kpis={
+          <KpiStrip>
+            <KpiCard
+              label="Loaded"
+              value={loading ? "—" : rows.length}
+              detail={truncated ? `At least ${rows.length}` : "Fetched page"}
+              tone={rows.length > 0 ? "info" : "neutral"}
+              accentColor={
+                rows.length > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"
               }
-              onClick={() => void commitResolve()}
-            >
-              Record the resolution
-            </button>
-          }
-        >
-          {resolving.mandatory ? (
-            <Notice tone="warning">
-              This is a platform-floor mandatory escalation. This write is the ONLY way it reaches
-              `resolved`, and it is what the agency shows a surveyor to prove a named human
-              answered.
-            </Notice>
-          ) : null}
-          <TextAreaField
-            label={`What was decided (≥ ${RESOLUTION_MIN_CHARS} chars)`}
-            value={resolution}
-            onChange={setResolution}
-            rows={5}
-            hint="Your own account, in your words. The text is audit-denylisted, so it is read off the row under access control and never out of a log."
-          />
-        </Modal>
+              selected={attention === "all"}
+              onSelect={() => setAttention("all")}
+            />
+            <KpiCard
+              label="Unacknowledged"
+              value={loading ? "—" : unacknowledged}
+              detail="Needs response"
+              tone={unacknowledged > 0 ? "danger" : "neutral"}
+              accentColor={
+                unacknowledged > 0 ? "var(--color-error)" : "var(--color-outline-variant)"
+              }
+              selected={attention === "open"}
+              onSelect={() => setAttention("open")}
+            />
+            <KpiCard
+              label="Mandatory"
+              value={loading ? "—" : mandatoryOpen}
+              detail="Platform floor"
+              tone={mandatoryOpen > 0 ? "danger" : "neutral"}
+              accentColor={
+                mandatoryOpen > 0 ? "var(--color-error)" : "var(--color-outline-variant)"
+              }
+              selected={attention === "mandatory"}
+              onSelect={() => setAttention("mandatory")}
+            />
+            <KpiCard
+              label="Over 1h"
+              value={loading ? "—" : overAnHour}
+              detail="Still open"
+              tone={overAnHour > 0 ? "warning" : "neutral"}
+              accentColor={overAnHour > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"}
+              selected={attention === "over_hour"}
+              onSelect={() => setAttention("over_hour")}
+            />
+            <KpiCard
+              label="External"
+              value={loading ? "—" : external}
+              detail="Vendor tier"
+              tone={external > 0 ? "warning" : "neutral"}
+              accentColor={external > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"}
+              selected={attention === "external"}
+              onSelect={() => setAttention("external")}
+            />
+          </KpiStrip>
+        }
+        filters={
+          <div style={filterShellStyle}>
+            {mandatoryOpen > 0 ? (
+              <div role="alert" style={errorBannerStyle}>
+                <Glyph name="alert" size={16} />
+                <span>
+                  {mandatoryOpen} mandatory escalation{mandatoryOpen === 1 ? "" : "s"} still need
+                  explicit resolution.
+                </span>
+              </div>
+            ) : null}
+            {truncated ? (
+              <output style={infoBannerStyle}>
+                <Glyph name="info" size={16} />
+                <span>More escalations match this filter. Counts are page-derived.</span>
+              </output>
+            ) : null}
+            {actionError ? (
+              <div role="alert" style={errorBannerStyle}>
+                <Glyph name="alert" size={16} />
+                <span>{actionError}</span>
+              </div>
+            ) : null}
+            {error ? (
+              <div role="alert" style={errorBannerStyle}>
+                <Glyph name="alert" size={16} />
+                <span>{error}</span>
+              </div>
+            ) : null}
+            <div style={toolbarStyle}>
+              <div style={searchBoxStyle}>
+                <Glyph name="eye" size={14} />
+                <input
+                  type="search"
+                  placeholder="Search page, call, patient, tier..."
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  aria-label="Search escalations"
+                  style={searchInputStyle}
+                />
+              </div>
+              <select
+                value={tier}
+                onChange={(event) => {
+                  setTier(event.target.value);
+                  setAttention("all");
+                }}
+                aria-label="Filter escalations by tier"
+                style={selectStyle}
+              >
+                {TIER_FILTERS.map((option) => (
+                  <option key={option.value || "all"} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={scope}
+                onChange={(event) => setScope(event.target.value)}
+                aria-label="Filter escalations by scope"
+                style={selectStyle}
+              >
+                {OPEN_FILTERS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={attention}
+                onChange={(event) => setAttention(event.target.value as AttentionFilter)}
+                aria-label="Filter escalations by attention"
+                style={selectStyle}
+              >
+                <option value="all">Attention: All</option>
+                <option value="mandatory">Mandatory</option>
+                <option value="open">Unacknowledged</option>
+                <option value="over_hour">Over 1h</option>
+                <option value="external">External</option>
+              </select>
+              {hasActiveFilters ? (
+                <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                  Clear
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        }
+        table={
+          loading ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : visibleRows.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title={hasActiveFilters ? "No matching escalations" : "Nothing outstanding"}
+                description={
+                  hasActiveFilters
+                    ? "Adjust the search or clear filters to return to the loaded inbox."
+                    : "Your tier band has no open pages right now."
+                }
+                action={
+                  hasActiveFilters ? (
+                    <Button tone="secondary" size="sm" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : (
+            <div style={tableWrapStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={headerRowStyle}>
+                    <th style={{ ...thStyle, width: "18%" }}>Tier</th>
+                    <th style={{ ...thStyle, width: "15%" }}>Trigger</th>
+                    <th style={{ ...thStyle, width: "14%" }}>State</th>
+                    <th style={{ ...thStyle, width: "13%" }}>Call</th>
+                    <th style={{ ...thStyle, width: "14%" }}>Patient</th>
+                    <th style={{ ...thStyle, width: "12%" }}>Open</th>
+                    <th style={{ ...thStyle, width: "14%" }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleRows.map((row) => (
+                    <tr key={row.id} style={rowStyle}>
+                      <td style={tdStyle}>
+                        <div style={pillStackStyle}>
+                          <TierPill tier={row.tier} />
+                          {row.mandatory ? (
+                            <StatusPill label="Platform floor" tone="critical" />
+                          ) : null}
+                        </div>
+                      </td>
+                      <td style={tdStyle}>{humanize(row.triggerKind)}</td>
+                      <td style={tdStyle}>
+                        <div style={pillStackStyle}>
+                          <StatusPill
+                            label={humanize(row.state)}
+                            tone={toneOf(ESCALATION_STATE_TONE, row.state)}
+                          />
+                          <CallStatePill state={row.callState} />
+                        </div>
+                      </td>
+                      <td style={tdStyle}>
+                        <Link to={`/triage/calls/${row.triageCallId}`} style={callLinkStyle}>
+                          {shortId(row.triageCallId)}
+                        </Link>
+                        <div style={subtleTextStyle}>{dateTime(row.escalatedAt)}</div>
+                      </td>
+                      <td style={tdStyle}>
+                        {row.patientId ? (
+                          <code className="wx-data-md" style={codeStyle}>
+                            {shortId(row.patientId)}
+                          </code>
+                        ) : (
+                          <span style={subtleTextStyle}>Not identified</span>
+                        )}
+                      </td>
+                      <td
+                        style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", fontWeight: 650 }}
+                      >
+                        {durationLabel(row.minutesOpen)}
+                      </td>
+                      <td style={tdStyle}>
+                        <div style={actionStackStyle}>
+                          {row.state === "open" ? (
+                            <Button
+                              size="sm"
+                              tone="primary"
+                              disabled={busy}
+                              onClick={() => void ack(row)}
+                            >
+                              Acknowledge
+                            </Button>
+                          ) : null}
+                          {row.state === "acknowledged" ? (
+                            <Button
+                              size="sm"
+                              tone="secondary"
+                              disabled={busy}
+                              onClick={() => {
+                                setResolving(row);
+                                setResolution("");
+                              }}
+                            >
+                              Resolve
+                            </Button>
+                          ) : null}
+                          {row.state === "resolved" ? (
+                            <span style={subtleTextStyle}>Closed</span>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={footerStyle}>
+                <span style={subtleTextStyle}>
+                  Showing {visibleRows.length} of {rows.length} loaded escalations
+                  {truncated ? " · more available" : ""}.
+                </span>
+                {nextCursor ? (
+                  <Button
+                    size="sm"
+                    tone="secondary"
+                    onClick={() => void load(nextCursor)}
+                    disabled={loadingMore}
+                  >
+                    {loadingMore ? "Loading..." : "Load more"}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          )
+        }
+        fullPageScroll
+      />
+      {resolving ? (
+        <ResolveModal
+          row={resolving}
+          resolution={resolution}
+          busy={busy}
+          onChange={setResolution}
+          onClose={() => setResolving(null)}
+          onSubmit={() => void commitResolve()}
+        />
       ) : null}
-    </div>
+    </>
   );
 }
+
+function ResolveModal({
+  row,
+  resolution,
+  busy,
+  onChange,
+  onClose,
+  onSubmit,
+}: {
+  row: EscalationInboxItem;
+  resolution: string;
+  busy: boolean;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}): JSX.Element {
+  const canSubmit = !busy && resolution.trim().length >= RESOLUTION_MIN_CHARS;
+  return (
+    <Modal open onClose={onClose} ariaLabel="Resolve escalation" width="36rem">
+      <div style={modalBodyStyle}>
+        <div style={sectionHeaderStyle}>
+          <h2 style={modalTitleStyle}>Resolve escalation</h2>
+          <TierPill tier={row.tier} />
+        </div>
+        {row.mandatory ? (
+          <div role="alert" style={warningBannerStyle}>
+            <Glyph name="alert" size={16} />
+            <span>This mandatory escalation needs an explicit resolution record.</span>
+          </div>
+        ) : null}
+        <label style={fieldStyle}>
+          <span style={labelStyle}>Resolution</span>
+          <textarea
+            value={resolution}
+            rows={5}
+            onChange={(event) => onChange(event.target.value)}
+            style={textareaStyle}
+          />
+          <span style={hintStyle}>
+            Minimum {RESOLUTION_MIN_CHARS} characters. This is the named response record.
+          </span>
+        </label>
+        <div style={modalFooterStyle}>
+          <Button type="button" tone="tertiary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" tone="primary" disabled={!canSubmit} onClick={onSubmit}>
+            {busy ? "Recording..." : "Record resolution"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+
+const toolbarStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: "0.5rem",
+};
+
+const searchBoxStyle: CSSProperties = {
+  position: "relative",
+  display: "flex",
+  alignItems: "center",
+  minWidth: "min(100%, 19rem)",
+  color: "var(--color-on-surface-variant)",
+};
+
+const searchInputStyle: CSSProperties = {
+  width: "100%",
+  height: "2.25rem",
+  paddingLeft: "2rem",
+  fontSize: "0.85rem",
+};
+
+const selectStyle: CSSProperties = {
+  height: "2.25rem",
+  fontSize: "0.85rem",
+  cursor: "pointer",
+};
+
+const tableWrapStyle: CSSProperties = {
+  width: "100%",
+  overflowX: "auto",
+  padding: "0 1.5rem 1.5rem",
+};
+
+const tableStyle: CSSProperties = {
+  display: "table",
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: "0.875rem",
+  fontVariantNumeric: "tabular-nums",
+};
+
+const headerRowStyle: CSSProperties = {
+  textAlign: "left",
+  color: "var(--color-on-surface-variant)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  background: "var(--color-surface-low)",
+};
+
+const thStyle: CSSProperties = {
+  padding: "0.75rem 1rem",
+  fontWeight: 600,
+  fontSize: "0.75rem",
+  textTransform: "uppercase",
+};
+
+const tdStyle: CSSProperties = {
+  padding: "0.875rem 1rem",
+  verticalAlign: "middle",
+  color: "var(--color-on-surface-variant)",
+};
+
+const rowStyle: CSSProperties = {
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+};
+
+const pillStackStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "0.35rem",
+};
+
+const actionStackStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "0.4rem",
+};
+
+const footerStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+  paddingTop: "0.875rem",
+};
+
+const subtleTextStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+};
+
+const codeStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+};
+
+const callLinkStyle: CSSProperties = {
+  color: "var(--color-primary)",
+  textDecoration: "none",
+  fontWeight: 700,
+};
+
+const linkButtonStyle: CSSProperties = {
+  minHeight: "2.25rem",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0.45rem 0.8rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+  fontWeight: 650,
+  textDecoration: "none",
+};
+
+const bannerBaseStyle: CSSProperties = {
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  fontSize: "0.85rem",
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+};
+
+const infoBannerStyle: CSSProperties = {
+  ...bannerBaseStyle,
+  background: "var(--color-primary-tint)",
+  border: "1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)",
+  color: "var(--color-on-surface)",
+};
+
+const errorBannerStyle: CSSProperties = {
+  ...bannerBaseStyle,
+  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
+  color: "var(--color-error)",
+};
+
+const warningBannerStyle: CSSProperties = {
+  ...bannerBaseStyle,
+  background: "color-mix(in srgb, var(--color-warning) 12%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-warning) 30%, transparent)",
+  color: "var(--color-on-surface)",
+};
+
+const modalBodyStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "1rem",
+  padding: "1.25rem",
+};
+
+const sectionHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+};
+
+const modalTitleStyle: CSSProperties = {
+  margin: 0,
+  color: "var(--color-on-surface)",
+  fontSize: "1rem",
+  fontWeight: 650,
+};
+
+const fieldStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.35rem",
+};
+
+const labelStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+  fontWeight: 650,
+  textTransform: "uppercase",
+};
+
+const textareaStyle: CSSProperties = {
+  width: "100%",
+  minHeight: "7rem",
+  padding: "0.55rem 0.65rem",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+  background: "var(--color-surface-low)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.875rem",
+  fontFamily: "inherit",
+  resize: "vertical",
+};
+
+const hintStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+};
+
+const modalFooterStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "0.5rem",
+};

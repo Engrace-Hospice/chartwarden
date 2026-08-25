@@ -1,32 +1,21 @@
 // apps/web/src/modules/19-oncall — S19.1 INBOUND CALL INTAKE (`/triage/intake`, §5.1, Track B /
 // ADR-0030). Spec: docs/design/screens/clinical/WARDENX_UI_ON_CALL_TRIAGE.md — the "Create call" action.
 //
-// THE FORM IS DELIBERATELY SHORT, because §4.2 makes almost everything about a triage call server-derived:
-//   • `source` is pinned to `manual` (`OpenableSource`) — a caller who could name `no_show` could mint a
-//     row that LOOKS like M17 detected a missed visit, and one who could name `paper_origin` would bypass
-//     `triage.paper_reentry` and its step-up entirely (§8.3.2's back-dating threat).
-//   • `onCallShiftId` is resolved by the server even though the column is NOT NULL: letting a caller name
-//     the shift lets them attribute their call to somebody else's coverage window, and that window IS the
-//     CoP 418.100(c)(2) record.
-//   • `sourceOutboxEventId` is not offered at all — it is the §2.6 redelivery key the D10 consumers set.
-// So the three inbound-channel values and the `system_inbound` caller kind that only a machine writes are
-// absent from these pickers (`HUMAN_INBOUND_CHANNELS` / `HUMAN_CALLER_KINDS`), and the screen says why.
-//
-// PATIENT IDENTIFICATION IS NOT REQUIRED TO OPEN. §3.3 leaves `patient_id` and `admission_id` nullable
-// until route 4 resolves the caller to a served person, and that is the clinically correct order: the
-// clock starts when the phone rings, not when the chart is found. §5.1's "patient-search (M5 reader)" is
-// therefore an id field here rather than an autocomplete — M19 publishes no patient search, and M5's own
-// search is another module's screen with another module's permission; putting a second copy of it inside
-// a triage screen would be a second, unaudited PHI read path. Identification can also be done later, from
-// the panel, which is where §7.1 actually needs it.
-//
-// THE AI SUGGESTION IS NOT SHOWN HERE. D12's suggestion arrives on the OPEN RESPONSE, after the row
-// exists — there is nothing to suggest against until a chief complaint has been recorded. This screen
-// hands the response straight to the panel, which is where the suggestion is displayed and where the
-// explicit clinician click that applies it lives.
-import { EmptyState, PageHeader, t, useApiClient } from "@wardenx/ui";
-import { useState } from "react";
-import type { JSX } from "react";
+// The form stays deliberately short. Source, covering shift, red-flag evaluation and AI suggestion are
+// server-derived; the client captures only what a human intake operator can truthfully know at call open.
+import {
+  Button,
+  EmptyState,
+  Glyph,
+  KpiCard,
+  KpiStrip,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
+import { useMemo, useState } from "react";
+import type { CSSProperties, FormEvent, JSX } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   type TriageCallerKind,
@@ -41,25 +30,9 @@ import {
   HUMAN_INBOUND_CHANNELS,
   humanize,
 } from "./oncall-status";
-import {
-  Card,
-  Notice,
-  SelectField,
-  TextAreaField,
-  TextField,
-  alertStyle,
-  columnStyle,
-  disabledButtonStyle,
-  enumOptions,
-  ghostButtonStyle,
-  mutedStyle,
-  pageTitleStyle,
-  primaryButtonStyle,
-} from "./oncall-ui";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** §4.2's `callerPhoneE164` pattern, mirrored so the clinician learns before the round trip. The SERVER
- *  remains the validator; this only saves a wasted 422 at 2 a.m. */
+/** §4.2's `callerPhoneE164` pattern, mirrored so the clinician learns before the round trip. */
 const E164_RE = /^\+[1-9]\d{1,14}$/;
 
 export function TriageIntakeScreen(): JSX.Element {
@@ -81,20 +54,32 @@ export function TriageIntakeScreen(): JSX.Element {
 
   const peValid = UUID_RE.test(providerEntityId);
   const phoneValid = callerPhone === "" || E164_RE.test(callerPhone);
-  // Patient and admission travel TOGETHER or not at all: `identifyPatient` requires both, and a call opened
-  // with a patient but no admission cannot reach M8's `EncounterCreator`, which needs both NOT NULL.
   const anchorValid =
     (patientId === "" && admissionId === "") ||
     (UUID_RE.test(patientId) && UUID_RE.test(admissionId));
   const canOpen = peValid && phoneValid && anchorValid && !busy;
+  const hasCaller = callerDisplayName.trim() !== "" || callerPhone.trim() !== "";
+  const hasNarrative = chiefComplaint.trim() !== "" || callerQuote.trim() !== "";
+  const chartLinked = patientId.trim() !== "" && admissionId.trim() !== "";
+
+  const validationSummary = useMemo(
+    () => [
+      { label: "Provider", valid: peValid, detail: peValid ? "Ready" : "Required UUID" },
+      { label: "Callback", valid: phoneValid, detail: phoneValid ? "Valid" : "Use E.164" },
+      {
+        label: "Chart link",
+        valid: anchorValid,
+        detail: chartLinked ? "Attached" : anchorValid ? "Optional" : "Needs both IDs",
+      },
+    ],
+    [anchorValid, chartLinked, peValid, phoneValid],
+  );
 
   async function open(): Promise<void> {
     setBusy(true);
     setError(null);
     const res = await openTriageCall(client, {
       providerEntityId,
-      // Always one of HUMAN_INBOUND_CHANNELS / HUMAN_CALLER_KINDS — the SelectFields below offer no
-      // other value.
       inboundChannel: inboundChannel as TriageInboundChannel,
       callerKind: callerKind as TriageCallerKind,
       ...(callerDisplayName ? { callerDisplayName } : {}),
@@ -109,167 +94,551 @@ export function TriageIntakeScreen(): JSX.Element {
       setError(errorMessage(res.error, "The call could not be opened."));
       return;
     }
-    // Straight into the panel: the D11/D12 advisories on the open response are displayed THERE, and the
-    // clock the §4.8 SLA detector is already watching started the moment this row was written.
     navigate(`/triage/calls/${res.result.triageCallId}`);
+  }
+
+  async function submit(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    if (canOpen) await open();
   }
 
   if (!client) return <EmptyState title="Unavailable" description="No API client is configured." />;
 
   return (
-    <div style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Take a call</span>}
-        breadcrumb="On-call triage · intake"
-        actions={
-          <Link to="/triage" style={ghostButtonStyle}>
-            Back to the queue
-          </Link>
-        }
-      />
-
-      <Notice tone="info">
-        Opening the call starts the record. The covering shift, the call source and the red-flag
-        evaluation are all the server's — none of them is a field on this form, because each is a
-        fact about coverage or clinical judgement that a caller must not be able to assert about
-        themselves.
-      </Notice>
-
-      <Card title="Where the call landed">
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(14rem, 1fr))",
-            gap: t.space3,
-          }}
-        >
-          <TextField
-            label="Provider entity id"
-            value={providerEntityId}
-            onChange={setProviderEntityId}
-            mono
-            hint="Which CCN this call belongs to. Coverage is proved per ProviderEntity, never across."
-          />
-          <SelectField
-            label="Inbound channel"
-            value={inboundChannel}
-            options={enumOptions(HUMAN_INBOUND_CHANNELS)}
-            onChange={setInboundChannel}
-          />
-          <SelectField
-            label="Caller kind"
-            value={callerKind}
-            options={enumOptions(HUMAN_CALLER_KINDS)}
-            onChange={setCallerKind}
-          />
-        </div>
-        {!peValid && providerEntityId !== "" ? (
-          <p style={alertStyle}>That is not a well-formed provider-entity id.</p>
-        ) : null}
-        <span style={mutedStyle}>
-          The three machine-only channels ({humanize("inbound_visit_failure")},{" "}
-          {humanize("inbound_evv_anomaly")}, {humanize("inbound_alert_failure")}) and the{" "}
-          {humanize("system_inbound")} caller kind are not offered: those rows are written by the
-          D10 consumers when M17 detects a no-show, M18 detects a late check-out or an M36 delivery
-          fails. Selecting one here would record a machine detection that never happened.
-        </span>
-      </Card>
-
-      <Card title="Who is on the line">
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(14rem, 1fr))",
-            gap: t.space3,
-          }}
-        >
-          <TextField
-            label="Caller name"
-            value={callerDisplayName}
-            onChange={setCallerDisplayName}
-          />
-          <TextField
-            label="Callback number (E.164)"
-            value={callerPhone}
-            onChange={setCallerPhone}
-            type="tel"
-            placeholder="+15125550123"
-            mono
-            hint="The number the callback-SLA detector will chase. Stored, audit-denylisted, never logged."
-          />
-          <TextField
-            label="Relationship to patient"
-            value={callerRelationship}
-            onChange={setCallerRelationship}
-            placeholder="daughter, facility nurse, …"
-          />
-        </div>
-        {!phoneValid ? (
-          <p style={alertStyle}>
-            A callback number must be E.164 (a leading + and 2–15 digits). An unreachable number on
-            a record whose whole purpose is reachability is worse than none.
-          </p>
-        ) : null}
-      </Card>
-
-      <Card title="Which patient (optional now, required before an encounter)">
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(14rem, 1fr))",
-            gap: t.space3,
-          }}
-        >
-          <TextField label="Patient id" value={patientId} onChange={setPatientId} mono />
-          <TextField label="Admission id" value={admissionId} onChange={setAdmissionId} mono />
-        </div>
-        {!anchorValid ? (
-          <p style={alertStyle}>
-            Patient and admission travel together or not at all — M8's encounter creator requires
-            both, so a call carrying one of the two can never be documented.
-          </p>
-        ) : null}
-        <span style={mutedStyle}>
-          Leave both blank if you have not found the chart yet. The clock starts when the phone
-          rings, and §3.3 leaves both columns nullable until the caller is resolved to a served
-          person. You can identify the patient from the call panel at any point before documenting.
-        </span>
-      </Card>
-
-      <Card title="Why they rang">
-        <TextAreaField
-          label="Chief complaint"
-          value={chiefComplaint}
-          onChange={setChiefComplaint}
-          rows={3}
-          hint="Free text, audit-denylisted. This is what the D12 protocol suggestion is computed from — the suggestion arrives with the open response and is shown on the panel."
-        />
-        <TextAreaField
-          label="Caller's own words (optional)"
-          value={callerQuote}
-          onChange={setCallerQuote}
-          rows={3}
-          hint="Encrypted at rest under the tenant DEK (D14). Reading it back later needs a separate permission, an M2 step-up and leaves an audit row that names you."
-        />
-      </Card>
-
-      {error ? <p style={alertStyle}>{error}</p> : null}
-
-      <div style={{ display: "flex", gap: t.space2 }}>
-        <button
-          type="button"
-          onClick={() => void open()}
-          disabled={!canOpen}
-          style={canOpen ? primaryButtonStyle : disabledButtonStyle}
-          title={
-            canOpen
-              ? undefined
-              : "A well-formed provider-entity id is required; a callback number must be E.164; patient and admission travel together."
+    <WorkQueueLayout
+      header={
+        <PageHeader
+          title="Take a call"
+          breadcrumb="On-call / Intake"
+          actions={
+            <Link to="/triage" style={linkButtonStyle}>
+              Back to queue
+            </Link>
           }
         >
-          {busy ? "Opening…" : "Open the call"}
-        </button>
-      </div>
-    </div>
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Open the triage record quickly; shift assignment, source, and risk evaluation stay
+            server-authored.
+          </div>
+        </PageHeader>
+      }
+      kpis={
+        <KpiStrip>
+          <KpiCard
+            label="Provider"
+            value={peValid ? "Ready" : "Required"}
+            detail="Coverage scope"
+            tone={peValid ? "success" : "warning"}
+            accentColor={peValid ? "var(--color-success)" : "var(--color-warning)"}
+          />
+          <KpiCard
+            label="Caller"
+            value={hasCaller ? "Captured" : "Optional"}
+            detail="Name or callback"
+            tone={hasCaller ? "info" : "neutral"}
+            accentColor={hasCaller ? "var(--color-primary)" : "var(--color-outline-variant)"}
+          />
+          <KpiCard
+            label="Chart"
+            value={chartLinked ? "Linked" : "Later"}
+            detail="Patient + admission"
+            tone={anchorValid ? (chartLinked ? "success" : "neutral") : "danger"}
+            accentColor={
+              anchorValid
+                ? chartLinked
+                  ? "var(--color-success)"
+                  : "var(--color-outline-variant)"
+                : "var(--color-error)"
+            }
+          />
+          <KpiCard
+            label="Narrative"
+            value={hasNarrative ? "Started" : "Blank"}
+            detail="Complaint or quote"
+            tone={hasNarrative ? "info" : "neutral"}
+            accentColor={hasNarrative ? "var(--color-primary)" : "var(--color-outline-variant)"}
+          />
+        </KpiStrip>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          {error ? (
+            <div role="alert" style={errorBannerStyle}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Glyph name="alert" size={16} />
+                <span>{error}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                style={dismissButtonStyle}
+                aria-label="Dismiss error"
+              >
+                x
+              </button>
+            </div>
+          ) : null}
+          <output style={infoBannerStyle}>
+            <Glyph name="info" size={16} />
+            <span>
+              Opening the call starts the record. Patient identification can happen later from the
+              call panel.
+            </span>
+          </output>
+        </div>
+      }
+      table={
+        <form onSubmit={(event) => void submit(event)} style={formShellStyle}>
+          <section style={sectionStyle}>
+            <div style={sectionHeaderStyle}>
+              <h2 style={sectionTitleStyle}>Where the call landed</h2>
+              <StatusPill
+                tone={peValid ? "success" : "warning"}
+                label={peValid ? "Ready" : "Required"}
+              />
+            </div>
+            <div style={fieldGridStyle}>
+              <TextField
+                label="Provider entity id"
+                value={providerEntityId}
+                onChange={setProviderEntityId}
+                mono
+                required
+                invalid={providerEntityId !== "" && !peValid}
+                hint="Coverage is resolved per ProviderEntity."
+              />
+              <SelectField
+                label="Inbound channel"
+                value={inboundChannel}
+                options={HUMAN_INBOUND_CHANNELS.map((value) => ({
+                  value,
+                  label: humanize(value),
+                }))}
+                onChange={setInboundChannel}
+              />
+              <SelectField
+                label="Caller kind"
+                value={callerKind}
+                options={HUMAN_CALLER_KINDS.map((value) => ({ value, label: humanize(value) }))}
+                onChange={setCallerKind}
+              />
+            </div>
+            {providerEntityId !== "" && !peValid ? (
+              <p style={fieldErrorStyle}>That is not a well-formed provider-entity id.</p>
+            ) : null}
+          </section>
+
+          <section style={sectionStyle}>
+            <div style={sectionHeaderStyle}>
+              <h2 style={sectionTitleStyle}>Who is on the line</h2>
+              <StatusPill
+                tone={hasCaller ? "progress" : "neutral"}
+                label={hasCaller ? "Captured" : "Optional"}
+              />
+            </div>
+            <div style={fieldGridStyle}>
+              <TextField
+                label="Caller name"
+                value={callerDisplayName}
+                onChange={setCallerDisplayName}
+              />
+              <TextField
+                label="Callback number"
+                value={callerPhone}
+                onChange={setCallerPhone}
+                type="tel"
+                placeholder="+15125550123"
+                mono
+                invalid={!phoneValid}
+                hint="Use E.164 when provided."
+              />
+              <TextField
+                label="Relationship"
+                value={callerRelationship}
+                onChange={setCallerRelationship}
+                placeholder="daughter, facility nurse"
+              />
+            </div>
+            {!phoneValid ? (
+              <p style={fieldErrorStyle}>
+                A callback number must be E.164: a leading + and 2-15 digits.
+              </p>
+            ) : null}
+          </section>
+
+          <section style={sectionStyle}>
+            <div style={sectionHeaderStyle}>
+              <h2 style={sectionTitleStyle}>Patient anchor</h2>
+              <StatusPill
+                tone={anchorValid ? (chartLinked ? "success" : "neutral") : "error"}
+                label={chartLinked ? "Linked" : anchorValid ? "Optional now" : "Incomplete"}
+              />
+            </div>
+            <div style={fieldGridStyle}>
+              <TextField
+                label="Patient id"
+                value={patientId}
+                onChange={setPatientId}
+                mono
+                invalid={patientId !== "" && !UUID_RE.test(patientId)}
+              />
+              <TextField
+                label="Admission id"
+                value={admissionId}
+                onChange={setAdmissionId}
+                mono
+                invalid={admissionId !== "" && !UUID_RE.test(admissionId)}
+              />
+            </div>
+            {!anchorValid ? (
+              <p style={fieldErrorStyle}>
+                Patient and admission travel together or not at all; both must be UUIDs when one is
+                supplied.
+              </p>
+            ) : (
+              <p style={hintStyle}>
+                Leave both blank if the chart is not found yet. The panel can identify the patient
+                before documentation.
+              </p>
+            )}
+          </section>
+
+          <section style={sectionStyle}>
+            <div style={sectionHeaderStyle}>
+              <h2 style={sectionTitleStyle}>Why they rang</h2>
+              <StatusPill
+                tone={hasNarrative ? "progress" : "neutral"}
+                label={hasNarrative ? "Started" : "Optional"}
+              />
+            </div>
+            <TextAreaField
+              label="Chief complaint"
+              value={chiefComplaint}
+              onChange={setChiefComplaint}
+              rows={3}
+              hint="Used by the server response to suggest protocol context on the panel."
+            />
+            <TextAreaField
+              label="Caller's own words"
+              value={callerQuote}
+              onChange={setCallerQuote}
+              rows={3}
+              hint="Optional encrypted narrative."
+            />
+          </section>
+
+          <div style={footerStyle}>
+            <div style={validationStackStyle}>
+              {validationSummary.map((item) => (
+                <span key={item.label} style={validationItemStyle(item.valid)}>
+                  {item.label}: {item.detail}
+                </span>
+              ))}
+            </div>
+            <Button
+              type="submit"
+              tone="primary"
+              disabled={!canOpen}
+              title={
+                canOpen
+                  ? undefined
+                  : "A well-formed provider-entity id is required; callback must be E.164; patient and admission travel together."
+              }
+            >
+              {busy ? "Opening..." : "Open the call"}
+            </Button>
+          </div>
+        </form>
+      }
+      fullPageScroll
+    />
   );
 }
+
+function TextField({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+  hint,
+  mono,
+  required,
+  invalid,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: "text" | "tel";
+  placeholder?: string;
+  hint?: string;
+  mono?: boolean;
+  required?: boolean;
+  invalid?: boolean;
+}): JSX.Element {
+  const id = `triage-${label.replace(/\W+/g, "-").toLowerCase()}`;
+  const hintId = hint ? `${id}-hint` : undefined;
+  return (
+    <label htmlFor={id} style={fieldStyle}>
+      <span style={labelStyle}>
+        {label}
+        {required ? <span style={{ color: "var(--color-error)" }}> *</span> : null}
+      </span>
+      <input
+        id={id}
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        required={required}
+        aria-invalid={invalid || undefined}
+        aria-describedby={hintId}
+        onChange={(event) => onChange(event.target.value)}
+        style={{
+          ...inputStyle,
+          ...(mono ? { fontFamily: "var(--font-mono)" } : {}),
+          ...(invalid ? invalidInputStyle : {}),
+        }}
+      />
+      {hint ? (
+        <span id={hintId} style={hintStyle}>
+          {hint}
+        </span>
+      ) : null}
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: readonly { value: string; label: string }[];
+  onChange: (value: string) => void;
+}): JSX.Element {
+  const id = `triage-${label.replace(/\W+/g, "-").toLowerCase()}`;
+  return (
+    <label htmlFor={id} style={fieldStyle}>
+      <span style={labelStyle}>{label}</span>
+      <select
+        id={id}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        style={inputStyle}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function TextAreaField({
+  label,
+  value,
+  onChange,
+  rows,
+  hint,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  rows: number;
+  hint: string;
+}): JSX.Element {
+  const id = `triage-${label.replace(/\W+/g, "-").toLowerCase()}`;
+  const hintId = `${id}-hint`;
+  return (
+    <label htmlFor={id} style={fieldStyle}>
+      <span style={labelStyle}>{label}</span>
+      <textarea
+        id={id}
+        value={value}
+        rows={rows}
+        aria-describedby={hintId}
+        onChange={(event) => onChange(event.target.value)}
+        style={textareaStyle}
+      />
+      <span id={hintId} style={hintStyle}>
+        {hint}
+      </span>
+    </label>
+  );
+}
+
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+
+const formShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "1rem",
+  padding: "0 1.5rem 1.5rem",
+};
+
+const sectionStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.85rem",
+  padding: "1rem",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-lowest)",
+};
+
+const sectionHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+};
+
+const sectionTitleStyle: CSSProperties = {
+  margin: 0,
+  color: "var(--color-on-surface)",
+  fontSize: "0.95rem",
+  fontWeight: 650,
+};
+
+const fieldGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))",
+  gap: "0.875rem",
+};
+
+const fieldStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.3rem",
+  minWidth: 0,
+};
+
+const labelStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+  fontWeight: 650,
+  textTransform: "uppercase",
+};
+
+const inputStyle: CSSProperties = {
+  width: "100%",
+  minHeight: "2.35rem",
+  padding: "0.5rem 0.65rem",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+  background: "var(--color-surface-low)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.875rem",
+};
+
+const invalidInputStyle: CSSProperties = {
+  borderColor: "var(--color-error)",
+  background: "color-mix(in srgb, var(--color-error) 8%, var(--color-surface-low))",
+};
+
+const textareaStyle: CSSProperties = {
+  ...inputStyle,
+  minHeight: "6rem",
+  resize: "vertical",
+  fontFamily: "inherit",
+};
+
+const hintStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+};
+
+const fieldErrorStyle: CSSProperties = {
+  margin: 0,
+  color: "var(--color-error)",
+  fontSize: "0.8rem",
+};
+
+const footerStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+  position: "sticky",
+  bottom: 0,
+  padding: "0.875rem 0",
+  background: "var(--color-surface)",
+  borderTop: "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
+};
+
+const validationStackStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "0.4rem",
+};
+
+const validationItemStyle = (valid: boolean): CSSProperties => ({
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: "1.65rem",
+  padding: "0.2rem 0.5rem",
+  borderRadius: "var(--radius-sm)",
+  background: valid
+    ? "color-mix(in srgb, var(--color-success) 10%, transparent)"
+    : "color-mix(in srgb, var(--color-warning) 12%, transparent)",
+  color: valid ? "var(--color-success)" : "var(--color-warning)",
+  fontSize: "0.75rem",
+  fontWeight: 650,
+});
+
+const linkButtonStyle: CSSProperties = {
+  minHeight: "2.25rem",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0.45rem 0.8rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+  fontWeight: 650,
+  textDecoration: "none",
+};
+
+const infoBannerStyle: CSSProperties = {
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-primary-tint)",
+  border: "1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+};
+
+const errorBannerStyle: CSSProperties = {
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
+  color: "var(--color-error)",
+  fontSize: "0.85rem",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+};
+
+const dismissButtonStyle: CSSProperties = {
+  border: "none",
+  background: "none",
+  color: "inherit",
+  cursor: "pointer",
+  fontWeight: 600,
+};

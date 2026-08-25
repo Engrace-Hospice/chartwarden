@@ -1,16 +1,21 @@
-// apps/web/src/modules/37-ipu — M37 IPU daily census (§5/§2.13). Reads today's census snapshot rows and
+// apps/web/src/modules/37-ipu — M37 IPU daily census (§5/§2.13). Reads census snapshot rows and
 // surfaces the GIP/IRC head-counts + bed-days + incident counts. GET /api/v1/ipu-census/:date. Lantern:
-// KpiStrip + CSS-var tokens only.
+// WorkQueueLayout + KpiStrip + CSS-var tokens only.
 import {
+  Button,
   EmptyState,
+  Glyph,
   KpiCard,
   KpiStrip,
   LoadingSpinner,
+  OffsetPagination,
   PageHeader,
+  StatusPill,
+  WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
-import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CSSProperties, JSX } from "react";
 
 interface CensusRow {
   unitId: string | null;
@@ -22,20 +27,37 @@ interface CensusRow {
   restraintIncidentCount: number;
 }
 
+type ActivityFilter = "all" | "occupied" | "incidents";
+
+const CENSUS_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
+
 const today = (): string => new Date().toISOString().slice(0, 10);
+
+const formatInt = (value: number): string => new Intl.NumberFormat().format(value);
+
+const rowCensusTotal = (row: CensusRow): number => row.censusCountGip + row.censusCountIrc;
+const rowBedDayTotal = (row: CensusRow): number => row.bedDaysGip + row.bedDaysIrc;
+const rowIncidentTotal = (row: CensusRow): number =>
+  row.roomTurnoverCount + row.restraintIncidentCount;
 
 export function IpuCensus(): JSX.Element {
   const client = useApiClient();
   const [rows, setRows] = useState<CensusRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const date = today();
+  const [date, setDate] = useState(today);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activityFilter, setActivityFilter] = useState<ActivityFilter>("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const load = useCallback(async () => {
     const res = await client.GET("/api/v1/ipu-census/{date}", { params: { path: { date } } });
     if (res.error) {
       setError("Census unavailable.");
+      setRows([]);
       return;
     }
+    setError(null);
     setRows((res.data as unknown as { items: CensusRow[] }).items ?? []);
   }, [client, date]);
 
@@ -43,32 +65,366 @@ export function IpuCensus(): JSX.Element {
     void load();
   }, [load]);
 
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (rows === null) return <LoadingSpinner />;
+  const filteredRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return (rows ?? []).filter((row) => {
+      const location = row.unitId ?? "arranged / external";
+      const matchesSearch = q.length === 0 || location.toLowerCase().includes(q);
+      const matchesActivity =
+        activityFilter === "all" ||
+        (activityFilter === "occupied" && rowCensusTotal(row) > 0) ||
+        (activityFilter === "incidents" && rowIncidentTotal(row) > 0);
 
-  const sum = (f: (r: CensusRow) => number) => rows.reduce((n, r) => n + f(r), 0);
+      return matchesSearch && matchesActivity;
+    });
+  }, [activityFilter, rows, searchQuery]);
+
+  const sum = (field: (row: CensusRow) => number): number =>
+    (rows ?? []).reduce((total, row) => total + field(row), 0);
+  const gipCensus = sum((row) => row.censusCountGip);
+  const ircCensus = sum((row) => row.censusCountIrc);
+  const gipBedDays = sum((row) => row.bedDaysGip);
+  const ircBedDays = sum((row) => row.bedDaysIrc);
+  const turnovers = sum((row) => row.roomTurnoverCount);
+  const restraints = sum((row) => row.restraintIncidentCount);
+  const occupiedRows = (rows ?? []).filter((row) => rowCensusTotal(row) > 0).length;
+  const incidentRows = (rows ?? []).filter((row) => rowIncidentTotal(row) > 0).length;
+
+  const hasActiveFilters = searchQuery.trim() !== "" || activityFilter !== "all";
+  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const activePage = Math.min(page, pageCount);
+  const pagedRows = filteredRows.slice((activePage - 1) * pageSize, activePage * pageSize);
+
+  const clearFilters = (): void => {
+    setSearchQuery("");
+    setActivityFilter("all");
+    setPage(1);
+  };
 
   return (
-    <div>
-      <PageHeader title="IPU census" breadcrumb={`Daily snapshot — ${date}`} />
-      {rows.length === 0 ? (
-        <EmptyState
-          title="No snapshot"
-          description="No census snapshot has been materialized for today yet."
-        />
-      ) : (
+    <WorkQueueLayout
+      header={
+        <PageHeader title="IPU census" breadcrumb="IPU / Daily snapshot">
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Review the daily GIP/IRC census, bed-day totals, room turnover, and restraint activity.
+          </div>
+        </PageHeader>
+      }
+      kpis={
         <KpiStrip>
-          <KpiCard label="GIP census" value={String(sum((r) => r.censusCountGip))} />
-          <KpiCard label="IRC census" value={String(sum((r) => r.censusCountIrc))} />
-          <KpiCard label="GIP bed-days" value={String(sum((r) => r.bedDaysGip))} />
-          <KpiCard label="IRC bed-days" value={String(sum((r) => r.bedDaysIrc))} />
-          <KpiCard label="Turnovers" value={String(sum((r) => r.roomTurnoverCount))} />
           <KpiCard
-            label="Restraint incidents"
-            value={String(sum((r) => r.restraintIncidentCount))}
+            label="GIP census"
+            value={rows === null ? "—" : formatInt(gipCensus)}
+            detail="Head count"
+            tone={gipCensus > 0 ? "info" : "neutral"}
+            accentColor={gipCensus > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"}
+          />
+          <KpiCard
+            label="IRC census"
+            value={rows === null ? "—" : formatInt(ircCensus)}
+            detail="Head count"
+            tone={ircCensus > 0 ? "info" : "neutral"}
+            accentColor={ircCensus > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"}
+          />
+          <KpiCard
+            label="Bed-days"
+            value={rows === null ? "—" : formatInt(gipBedDays + ircBedDays)}
+            detail={`${formatInt(gipBedDays)} GIP / ${formatInt(ircBedDays)} IRC`}
+            tone={gipBedDays + ircBedDays > 0 ? "success" : "neutral"}
+            accentColor={
+              gipBedDays + ircBedDays > 0 ? "var(--color-success)" : "var(--color-outline-variant)"
+            }
+          />
+          <KpiCard
+            label="Turnovers"
+            value={rows === null ? "—" : formatInt(turnovers)}
+            detail="Rooms reset"
+            tone={turnovers > 0 ? "warning" : "neutral"}
+            accentColor={turnovers > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"}
+            selected={activityFilter === "incidents"}
+            onSelect={() => {
+              setActivityFilter("incidents");
+              setPage(1);
+            }}
+          />
+          <KpiCard
+            label="Restraints"
+            value={rows === null ? "—" : formatInt(restraints)}
+            detail="Incident count"
+            tone={restraints > 0 ? "danger" : "neutral"}
+            accentColor={restraints > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
+            selected={activityFilter === "incidents"}
+            onSelect={() => {
+              setActivityFilter("incidents");
+              setPage(1);
+            }}
           />
         </KpiStrip>
-      )}
-    </div>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          {error ? (
+            <div role="alert" style={errorBannerStyle}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Glyph name="alert" size={16} />
+                <span>{error}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                style={dismissButtonStyle}
+                aria-label="Dismiss error"
+              >
+                x
+              </button>
+            </div>
+          ) : null}
+          <div style={toolbarStyle}>
+            <label style={dateLabelStyle}>
+              <span>Date</span>
+              <input
+                type="date"
+                value={date}
+                onChange={(event) => {
+                  setDate(event.target.value || today());
+                  setPage(1);
+                }}
+                style={dateInputStyle}
+              />
+            </label>
+            <div style={searchBoxStyle}>
+              <Glyph name="eye" size={14} />
+              <input
+                type="search"
+                placeholder="Search unit or arranged rows..."
+                value={searchQuery}
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
+                  setPage(1);
+                }}
+                aria-label="Search IPU census rows"
+                style={searchInputStyle}
+              />
+            </div>
+            <select
+              value={activityFilter}
+              onChange={(event) => {
+                setActivityFilter(event.target.value as ActivityFilter);
+                setPage(1);
+              }}
+              aria-label="Filter census rows by activity"
+              style={selectStyle}
+            >
+              <option value="all">Activity: All</option>
+              <option value="occupied">Occupied only ({occupiedRows})</option>
+              <option value="incidents">Turnover/restraint ({incidentRows})</option>
+            </select>
+            {hasActiveFilters ? (
+              <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                Clear
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      }
+      table={
+        rows === null ? (
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
+        ) : filteredRows.length === 0 ? (
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState
+              title={hasActiveFilters ? "No matching census rows" : "No snapshot"}
+              description={
+                hasActiveFilters
+                  ? "Adjust the search or clear filters to return to the full daily census."
+                  : "No census snapshot has been materialized for this date yet."
+              }
+              action={
+                hasActiveFilters ? (
+                  <Button tone="secondary" size="sm" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                ) : undefined
+              }
+            />
+          </div>
+        ) : (
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr style={headerRowStyle}>
+                  <th style={{ ...thStyle, width: "28%" }}>Unit</th>
+                  <th style={{ ...thStyle, width: "14%" }}>GIP</th>
+                  <th style={{ ...thStyle, width: "14%" }}>IRC</th>
+                  <th style={{ ...thStyle, width: "16%" }}>Bed-days</th>
+                  <th style={{ ...thStyle, width: "14%" }}>Turnovers</th>
+                  <th style={{ ...thStyle, width: "14%" }}>Restraints</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagedRows.map((row, index) => (
+                  <tr key={`${row.unitId ?? "arranged"}-${index}`} style={rowStyle}>
+                    <td style={tdStyle}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                        <span style={{ color: "var(--color-on-surface)", fontWeight: 650 }}>
+                          {row.unitId ? "Own unit" : "Arranged / external"}
+                        </span>
+                        <code className="wx-data-md" style={codeStyle}>
+                          {row.unitId ?? "no-unit-id"}
+                        </code>
+                      </div>
+                    </td>
+                    <td style={{ ...tdStyle, fontWeight: 650 }}>{formatInt(row.censusCountGip)}</td>
+                    <td style={{ ...tdStyle, fontWeight: 650 }}>{formatInt(row.censusCountIrc)}</td>
+                    <td style={tdStyle}>
+                      <StatusPill
+                        tone={rowBedDayTotal(row) > 0 ? "success" : "neutral"}
+                        label={formatInt(rowBedDayTotal(row))}
+                      />
+                    </td>
+                    <td style={tdStyle}>{formatInt(row.roomTurnoverCount)}</td>
+                    <td style={tdStyle}>
+                      <StatusPill
+                        tone={row.restraintIncidentCount > 0 ? "error" : "success"}
+                        label={formatInt(row.restraintIncidentCount)}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <OffsetPagination
+              page={activePage}
+              pageSize={pageSize}
+              totalItems={filteredRows.length}
+              onPageChange={setPage}
+              onPageSizeChange={(nextPageSize) => {
+                setPageSize(nextPageSize);
+                setPage(1);
+              }}
+              pageSizeOptions={CENSUS_PAGE_SIZES}
+              noun="census rows"
+            />
+          </div>
+        )
+      }
+      fullPageScroll
+    />
   );
 }
+
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+
+const toolbarStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: "0.5rem",
+};
+
+const dateLabelStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.85rem",
+  fontWeight: 600,
+};
+
+const dateInputStyle: CSSProperties = {
+  height: "2.25rem",
+  fontSize: "0.85rem",
+};
+
+const searchBoxStyle: CSSProperties = {
+  position: "relative",
+  display: "flex",
+  alignItems: "center",
+  minWidth: "min(100%, 18rem)",
+  color: "var(--color-on-surface-variant)",
+};
+
+const searchInputStyle: CSSProperties = {
+  width: "100%",
+  height: "2.25rem",
+  paddingLeft: "2rem",
+  fontSize: "0.85rem",
+};
+
+const selectStyle: CSSProperties = {
+  height: "2.25rem",
+  fontSize: "0.85rem",
+  cursor: "pointer",
+};
+
+const tableWrapStyle: CSSProperties = {
+  width: "100%",
+  overflowX: "auto",
+  padding: "0 1.5rem 1.5rem",
+};
+
+const tableStyle: CSSProperties = {
+  display: "table",
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: "0.875rem",
+  fontVariantNumeric: "tabular-nums",
+};
+
+const headerRowStyle: CSSProperties = {
+  textAlign: "left",
+  color: "var(--color-on-surface-variant)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  background: "var(--color-surface-low)",
+};
+
+const thStyle: CSSProperties = {
+  padding: "0.75rem 1rem",
+  fontWeight: 600,
+  fontSize: "0.75rem",
+  textTransform: "uppercase",
+};
+
+const tdStyle: CSSProperties = {
+  padding: "0.875rem 1rem",
+  verticalAlign: "middle",
+  color: "var(--color-on-surface-variant)",
+  fontVariantNumeric: "tabular-nums",
+};
+
+const rowStyle: CSSProperties = {
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+};
+
+const codeStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+};
+
+const errorBannerStyle: CSSProperties = {
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
+  color: "var(--color-error)",
+  fontSize: "0.85rem",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+};
+
+const dismissButtonStyle: CSSProperties = {
+  border: "none",
+  background: "none",
+  color: "inherit",
+  cursor: "pointer",
+  fontWeight: 600,
+};
