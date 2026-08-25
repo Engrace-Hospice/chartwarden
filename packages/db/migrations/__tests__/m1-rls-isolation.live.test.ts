@@ -91,6 +91,51 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
     }
   }
 
+  /**
+   * F-001: the envelope an ORDINARY authenticated request actually runs in.
+   *
+   * `withOrg` above sets only `app.org_id`, which is why every isolation case in this file passes
+   * while the leak below is real. The runtime does not do that — `withOrgContext` sets BOTH
+   * `app.org_id` and `app.user_id`, the latter for M4 audit attribution (see
+   * apps/backend/src/modules/36-messaging/messaging-route-service-db.ts:20). Any policy keyed on
+   * `app.user_id` is therefore live on every request, not only on the pre-org path it was written for.
+   */
+  async function withOrgAndUser<T>(org: string, user: string, fn: () => Promise<T>): Promise<T> {
+    await db.query("SET ROLE wardenx_app");
+    await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
+    await db.query("SELECT set_config('app.user_id', $1, false)", [user]);
+    try {
+      return await fn();
+    } finally {
+      await db.query("RESET ROLE");
+      await db.query("SELECT set_config('app.user_id', '', false)");
+    }
+  }
+
+  /**
+   * The PRE-ORG envelope: signed in, no org chosen yet — `app.user_id` is set and `app.org_id` was
+   * NEVER established.
+   *
+   * This takes a FRESH connection rather than reusing `db`, and that is not incidental. The org
+   * policy casts unconditionally — `(current_setting('app.org_id', true))::uuid` — so a session that
+   * has ever set `app.org_id` cannot get back to "no org context" by blanking it: `''::uuid` raises
+   * `invalid input syntax for type uuid`, and the whole query errors instead of returning no rows.
+   * Only a never-set GUC reads as NULL and lets the org policy contribute nothing. A pooled
+   * connection handed to the pre-org picker after serving an org-scoped request has the same
+   * problem, which is worth knowing while fixing this.
+   */
+  async function withUserOnly<T>(user: string, fn: (c: Client) => Promise<T>): Promise<T> {
+    const fresh = new Client({ connectionString: DB_URL });
+    await fresh.connect();
+    try {
+      await fresh.query("SET ROLE wardenx_app");
+      await fresh.query("SELECT set_config('app.user_id', $1, false)", [user]);
+      return await fn(fresh);
+    } finally {
+      await fresh.end();
+    }
+  }
+
   async function resetSchema() {
     await db.query("DROP SCHEMA IF EXISTS public CASCADE");
     await db.query("CREATE SCHEMA public");
@@ -364,6 +409,100 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
       expect(persisted.rows[0].actor_kind).toBe("system");
       expect(persisted.rows[0].event_type).toBe("platform.bypass_invoked");
       expect(persisted.rows[0].severity).toBe("warn");
+    });
+  });
+
+  // ── F-001 (#15): the pre-org membership picker policies widen every org-scoped session ──────────
+  //
+  // Migrations 0213/0214 added two PERMISSIVE policies for `wardenx_app` keyed on `app.user_id`:
+  // `membership_self_pre_org_read` on membership, and `organization_member_pre_org_read` on
+  // organization. They exist so that immediately after sign-in — when no org is active — a user can
+  // read their own memberships to populate the org picker. 0213's header asserts the request "never
+  // gains a cross-tenant or arbitrary-org context".
+  //
+  // That is true of the code path and false of the policy. A policy is scoped to a ROLE and a
+  // COMMAND, not to a call site, and PostgreSQL takes the UNION of every permissive policy for that
+  // role — so adding a narrow policy WIDENS access. Because `withOrgContext` sets `app.user_id` on
+  // ordinary requests too, the pre-org policy is reachable on all of them, and on each one it admits
+  // the caller's membership rows in EVERY organization regardless of `app.org_id`.
+  //
+  // The existing `it.each(COVERED)` case above covers `membership` and passes, because `withOrg`
+  // never sets `app.user_id`. These cases use the real envelope instead.
+  //
+  // RED at the time of writing (develop@612bd641). This is the reproduction for #15, not the fix.
+  describe("F-001 (#15) — pre-org picker policies must not widen an org-scoped session", () => {
+    it("membership: a session scoped to org B cannot read the caller's own row in org A", async () => {
+      // The caller is a member of BOTH orgs (seeded above), operating inside org B. Their org-A
+      // membership belongs to a different tenant and must be invisible here.
+      const seen = await withOrgAndUser(ORG_B, USER, () =>
+        db.query("SELECT count(*)::int AS n FROM membership WHERE id=$1", [a.membership]),
+      );
+      expect(seen.rows[0].n).toBe(0);
+    });
+
+    it("organization: a session scoped to org B cannot read org A's row", async () => {
+      // `organization_member_pre_org_read` has the identical shape and the identical defect. Fixing
+      // only `membership` leaves org names, slugs, and existence leaking across tenants.
+      const seen = await withOrgAndUser(ORG_B, USER, () =>
+        db.query("SELECT count(*)::int AS n FROM organization WHERE id=$1", [ORG_A]),
+      );
+      expect(seen.rows[0].n).toBe(0);
+    });
+
+    it("app.user_id alone is what widens it — the org policy on its own is correct", async () => {
+      // Isolates the cause: same session, same org context, only `app.user_id` differs. If this case
+      // fails, the leak is NOT the pre-org policy and the rest of #15's analysis is wrong.
+      const withUser = await withOrgAndUser(ORG_B, USER, () =>
+        db.query("SELECT count(*)::int AS n FROM membership WHERE id=$1", [a.membership]),
+      );
+      const withoutUser = await withOrg(ORG_B, () =>
+        db.query("SELECT count(*)::int AS n FROM membership WHERE id=$1", [a.membership]),
+      );
+      expect(withoutUser.rows[0].n).toBe(0);
+      expect(withUser.rows[0].n).toBe(withoutUser.rows[0].n);
+    });
+
+    // THIS ONE MUST STAY GREEN. It is the constraint the fix has to preserve: deleting the pre-org
+    // policies closes the leak and locks every user out at the org picker, because
+    // GET /api/v1/auth/memberships would return nothing. A fix that turns the three cases above green
+    // and this one red has not fixed anything.
+    it("the pre-org picker still works: with NO org context, the user reads their own memberships", async () => {
+      const rows = await withUserOnly(USER, (c) =>
+        c.query("SELECT organization_id FROM membership WHERE user_id=$1", [USER]),
+      );
+      const orgs = rows.rows.map((r: { organization_id: string }) => r.organization_id).sort();
+      expect(orgs).toEqual([ORG_A, ORG_B].sort());
+
+      const orgRows = await withUserOnly(USER, (c) =>
+        c.query("SELECT count(*)::int AS n FROM organization WHERE id = ANY($1::uuid[])", [
+          [ORG_A, ORG_B],
+        ]),
+      );
+      expect(orgRows.rows[0].n).toBe(2);
+    });
+
+    it("no PERMISSIVE policy for wardenx_app on a tenant table omits app.org_id", async () => {
+      // Asserted against pg_policies, not against migration TEXT. The file-scanning assertion above
+      // reads only RLS_FILES, which does not include 0213/0214 — so the policies that cause this
+      // finding are invisible to it. That gap is why a static check reported green while the
+      // database was leaking; any equivalent check added by the fix should read the catalog too.
+      const { rows } = await db.query<{ tablename: string; policyname: string; qual: string }>(
+        `SELECT tablename, policyname, qual
+           FROM pg_policies
+          WHERE schemaname = 'public'
+            AND permissive = 'PERMISSIVE'
+            AND cmd IN ('ALL', 'SELECT')
+            AND roles::text LIKE '%wardenx_app%'
+            AND tablename IN ('membership', 'organization')
+          ORDER BY tablename, policyname`,
+      );
+      expect(rows.length).toBeGreaterThan(0);
+      const widening = rows.filter((r) => !/app\.org_id/.test(r.qual ?? ""));
+      expect(
+        widening.map((r) => `${r.tablename}.${r.policyname}: ${r.qual}`),
+        "every permissive read policy on a tenant table must be constrained by app.org_id, " +
+          "or it unions with — and defeats — the org policy beside it",
+      ).toEqual([]);
     });
   });
 });
