@@ -5,8 +5,6 @@ import {
   Button,
   EmptyState,
   Glyph,
-  KpiCard,
-  KpiStrip,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -149,20 +147,6 @@ export function IpuEquipment(): JSX.Element {
     });
   }, [inspectionFilter, now, rows, searchQuery, statusFilter, typeFilter]);
 
-  const total = rows?.length ?? 0;
-  const overdue = (rows ?? []).filter((equipment) =>
-    isOverdue(equipment.nextInspectionDueDate, now),
-  ).length;
-  const dueSoon = (rows ?? []).filter((equipment) =>
-    isDueSoon(equipment.nextInspectionDueDate, now),
-  ).length;
-  const unscheduled = (rows ?? []).filter(
-    (equipment) => equipment.nextInspectionDueDate === null,
-  ).length;
-  const available = (rows ?? []).filter(
-    (equipment) => statusTone(equipment.currentStatus) === "success",
-  ).length;
-
   const hasActiveFilters =
     searchQuery.trim() !== "" ||
     typeFilter !== "all" ||
@@ -188,62 +172,6 @@ export function IpuEquipment(): JSX.Element {
             Review durable and biomed equipment readiness before bedside assignment.
           </div>
         </PageHeader>
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard
-            label="Equipment"
-            value={rows === null ? "—" : total}
-            detail="Registered assets"
-            tone={total > 0 ? "info" : "neutral"}
-            accentColor={total > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"}
-            selected={!hasActiveFilters}
-            onSelect={clearFilters}
-          />
-          <KpiCard
-            label="Available"
-            value={rows === null ? "—" : available}
-            detail="Ready status"
-            tone={available > 0 ? "success" : "neutral"}
-            accentColor={available > 0 ? "var(--color-success)" : "var(--color-outline-variant)"}
-          />
-          <KpiCard
-            label="Overdue"
-            value={rows === null ? "—" : overdue}
-            detail="Inspection past due"
-            tone={overdue > 0 ? "danger" : "neutral"}
-            accentColor={overdue > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
-            selected={inspectionFilter === "overdue"}
-            onSelect={() => {
-              setInspectionFilter("overdue");
-              setPage(1);
-            }}
-          />
-          <KpiCard
-            label="Due soon"
-            value={rows === null ? "—" : dueSoon}
-            detail={`${DUE_SOON_DAYS} day window`}
-            tone={dueSoon > 0 ? "warning" : "neutral"}
-            accentColor={dueSoon > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"}
-            selected={inspectionFilter === "due_soon"}
-            onSelect={() => {
-              setInspectionFilter("due_soon");
-              setPage(1);
-            }}
-          />
-          <KpiCard
-            label="Unscheduled"
-            value={rows === null ? "—" : unscheduled}
-            detail="No due date"
-            tone={unscheduled > 0 ? "warning" : "neutral"}
-            accentColor={unscheduled > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"}
-            selected={inspectionFilter === "unscheduled"}
-            onSelect={() => {
-              setInspectionFilter("unscheduled");
-              setPage(1);
-            }}
-          />
-        </KpiStrip>
       }
       filters={
         <div style={filterShellStyle}>

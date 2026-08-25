@@ -19,9 +19,16 @@
 //
 // EVERY WRITE ON THIS SCREEN NEEDS A STEP-UP, because lowering a mandatory-escalation tier is the named
 // tampering threat this route's gate exists for.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
 import {
   type OncallModel,
@@ -41,11 +48,9 @@ import {
   TextAreaField,
   TextField,
   alertStyle,
-  columnStyle,
   disabledButtonStyle,
   ghostButtonStyle,
   mutedStyle,
-  pageTitleStyle,
   primaryButtonStyle,
 } from "./oncall-ui";
 
@@ -166,172 +171,242 @@ export function OnCallPolicyScreen(): JSX.Element {
   }
 
   return (
-    <div style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>On-call policy</span>}
-        breadcrumb="On-call triage · configuration"
-        actions={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <Link to="/triage/protocols" style={ghostButtonStyle}>
-              Protocol catalog
-            </Link>
-            <Link to="/triage/vendors" style={ghostButtonStyle}>
-              External vendors
-            </Link>
+    <WorkQueueLayout
+      header={
+        <PageHeader
+          title="On-call policy"
+          breadcrumb="On-call triage / Configuration"
+          actions={
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <Link to="/triage/protocols" style={linkButtonStyle}>
+                Protocol catalog
+              </Link>
+              <Link to="/triage/vendors" style={linkButtonStyle}>
+                External vendors
+              </Link>
+            </div>
+          }
+        >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Configure the provider-specific escalation ladder, fallback contact, and advisory AI
+            toggles.
           </div>
-        }
-      />
-
-      <Card title="Which provider entity">
-        <TextField
-          label="Provider entity id"
-          value={providerEntityId}
-          onChange={setProviderEntityId}
-          mono
-          hint="The policy row is per (organization, provider entity). Coverage obligations are per CCN, so the ladder is too."
-        />
-      </Card>
-
-      {loading ? <LoadingSpinner /> : null}
-
-      {!loading && error ? <EmptyState title="No policy" description={error} /> : null}
-
-      {policy ? (
-        <>
-          <Notice tone="warning">
-            Saving this policy needs a recent step-up. The four platform-floor mandatory escalations
-            — suicidal ideation, code-blue equivalent, suspected abuse and the emergency drug
-            request — are NOT configured here and cannot be disabled from anywhere: they live on
-            system-locked protocol questions the database itself refuses to let a tenant write. You
-            may raise a tier; you cannot lower one below the floor.
-          </Notice>
-
-          <Card title="Current">
-            <SummaryGrid>
-              <Field label="Provider entity" value={policy.providerEntityId} mono />
-              <Field
-                label="Deployment model"
-                value={
-                  <StatusPill
-                    label={humanize(policy.model)}
-                    tone={policy.model === "direct" ? "success" : "progress"}
-                  />
-                }
-              />
-              <Field
-                label="Bound vendor"
-                value={policy.externalTriageVendorId ?? "none"}
-                mono={Boolean(policy.externalTriageVendorId)}
-              />
-              <Field label="Version (If-Match)" value={String(policy.version)} mono />
-            </SummaryGrid>
-          </Card>
-
-          <Card title="Deployment model">
-            <SelectField
-              label="Model"
-              value={model}
-              options={ONCALL_MODELS.map((m) => ({ value: m, label: humanize(m) }))}
-              onChange={setModel}
-            />
-            <span style={mutedStyle}>
-              Only the direct model ships live. Selecting hybrid or centralized on a deployment
-              where the feature flag is off is REFUSED rather than accepted-and-ignored — you must
-              never be able to believe a vendor is answering your nights when none is. The vendor
-              binding itself is configured on its own screen and requires a BAA on file.
-            </span>
-          </Card>
-
-          <Card title="Escalation ladder">
-            <TextAreaField
-              label="Escalation tiers (JSON object)"
-              value={tiersText}
-              onChange={setTiersText}
-              rows={8}
-              hint="Edited as JSON because no per-key schema is published for this column — a structured form here would be this screen's guess at a shape the server does not validate, and the first ladder with an unfamiliar key would lose it on save."
-            />
-            {tiers === undefined ? (
-              <p style={alertStyle}>
-                That is not a JSON object. Fix it before saving — the server expects an object, and
-                an array or a bare value would be refused.
-              </p>
-            ) : null}
-            <TextAreaField
-              label="Callback SLA per severity (JSON object)"
-              value={slaText}
-              onChange={setSlaText}
-              rows={6}
-              hint="What the callback-SLA detector chases when a call is parked without an explicit target. The escalation inbox shows elapsed minutes rather than a % of target, because no route resolves this object to a per-row target."
-            />
-            {sla === undefined ? <p style={alertStyle}>That is not a JSON object.</p> : null}
-            <TextAreaField
-              label="State overrides (JSON object)"
-              value={overridesText}
-              onChange={setOverridesText}
-              rows={6}
-              hint="State-specific routing (mandatory-reporter rules and the like)."
-            />
-            {overrides === undefined ? <p style={alertStyle}>That is not a JSON object.</p> : null}
-          </Card>
-
-          <Card title="Degraded-mode contact">
+        </PageHeader>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          <Card title="Provider entity">
             <TextField
-              label="Agency after-hours number (E.164)"
-              value={emergencyContact}
-              onChange={setEmergencyContact}
-              type="tel"
+              label="Provider entity id"
+              value={providerEntityId}
+              onChange={setProviderEntityId}
               mono
-              placeholder="+15125550123"
-              hint="Your OWN published number. When alert delivery is degraded, this is what the status surface shows a caller — so a failed page never leaves an agency with nothing to say."
+              hint="The policy row is per (organization, provider entity). Coverage obligations are per CCN, so the ladder is too."
             />
-            {!contactValid ? (
-              <p style={alertStyle}>
-                A contact number must be E.164 (a leading + and 2–15 digits).
-              </p>
-            ) : null}
           </Card>
-
-          <Card title="AI capabilities (advisory only)">
-            <CheckboxField
-              label="Show the AI protocol suggestion on intake"
-              checked={aiSuggestion}
-              onChange={setAiSuggestion}
-            />
-            <CheckboxField
-              label="Show the hospitalization-risk advisory on the panel"
-              checked={aiRisk}
-              onChange={setAiRisk}
-            />
-            <span style={mutedStyle}>
-              Both are advisory: the clinician always selects the protocol, the suggestion is never
-              auto-applied at any confidence, and the risk band alters no disposition option and
-              never reaches the family portal. Turning them on does not make them appear if the
-              capability is deny-stubbed — in that case the panel renders the block visibly
-              disabled, which is a different fact from "the tenant opted out" and is recorded as
-              one.
-            </span>
-          </Card>
-
-          {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+          {policy ? (
+            <Notice tone="warning">
+              Saving this policy needs a recent step-up. The platform-floor mandatory escalations
+              live on system-locked protocol questions; you may raise a tier, but you cannot lower
+              one below the floor.
+            </Notice>
+          ) : null}
+          {actionError ? (
+            <div role="alert" style={errorBannerStyle}>
+              {actionError}
+            </div>
+          ) : null}
           {saved ? (
             <Notice tone="success" live>
               Policy saved. The new ladder is pinned onto shifts that activate from now on — shifts
               already active keep the snapshot they opened with.
             </Notice>
           ) : null}
+        </div>
+      }
+      table={
+        <div style={contentShellStyle}>
+          {loading ? (
+            <div style={loadingShellStyle}>
+              <LoadingSpinner />
+            </div>
+          ) : null}
 
-          <div>
-            <button
-              type="button"
-              disabled={!canSave}
-              style={canSave ? primaryButtonStyle : disabledButtonStyle}
-              onClick={() => void save()}
-            >
-              {busy ? "Saving…" : "Save the policy"}
-            </button>
-          </div>
-        </>
-      ) : null}
-    </div>
+          {!loading && error ? (
+            <div style={emptyShellStyle}>
+              <EmptyState title="No policy" description={error} />
+            </div>
+          ) : null}
+
+          {policy ? (
+            <>
+              <Card title="Current policy">
+                <SummaryGrid>
+                  <Field label="Provider entity" value={policy.providerEntityId} mono />
+                  <Field
+                    label="Deployment model"
+                    value={
+                      <StatusPill
+                        label={humanize(policy.model)}
+                        tone={policy.model === "direct" ? "success" : "progress"}
+                      />
+                    }
+                  />
+                  <Field
+                    label="Bound vendor"
+                    value={policy.externalTriageVendorId ?? "none"}
+                    mono={Boolean(policy.externalTriageVendorId)}
+                  />
+                  <Field label="Version (If-Match)" value={String(policy.version)} mono />
+                </SummaryGrid>
+              </Card>
+
+              <Card title="Deployment model">
+                <SelectField
+                  label="Model"
+                  value={model}
+                  options={ONCALL_MODELS.map((m) => ({ value: m, label: humanize(m) }))}
+                  onChange={setModel}
+                />
+                <span style={mutedStyle}>
+                  Only the direct model ships live. Selecting hybrid or centralized on a deployment
+                  where the feature flag is off is refused rather than accepted-and-ignored.
+                </span>
+              </Card>
+
+              <Card title="Escalation ladder">
+                <TextAreaField
+                  label="Escalation tiers (JSON object)"
+                  value={tiersText}
+                  onChange={setTiersText}
+                  rows={8}
+                  hint="Edited as JSON because no per-key schema is published for this column."
+                />
+                {tiers === undefined ? (
+                  <p style={alertStyle}>
+                    That is not a JSON object. Fix it before saving — the server expects an object,
+                    and an array or a bare value would be refused.
+                  </p>
+                ) : null}
+                <TextAreaField
+                  label="Callback SLA per severity (JSON object)"
+                  value={slaText}
+                  onChange={setSlaText}
+                  rows={6}
+                  hint="What the callback-SLA detector chases when a call is parked without an explicit target."
+                />
+                {sla === undefined ? <p style={alertStyle}>That is not a JSON object.</p> : null}
+                <TextAreaField
+                  label="State overrides (JSON object)"
+                  value={overridesText}
+                  onChange={setOverridesText}
+                  rows={6}
+                  hint="State-specific routing (mandatory-reporter rules and the like)."
+                />
+                {overrides === undefined ? (
+                  <p style={alertStyle}>That is not a JSON object.</p>
+                ) : null}
+              </Card>
+
+              <Card title="Degraded-mode contact">
+                <TextField
+                  label="Agency after-hours number (E.164)"
+                  value={emergencyContact}
+                  onChange={setEmergencyContact}
+                  type="tel"
+                  mono
+                  placeholder="+15125550123"
+                  hint="Your OWN published number. When alert delivery is degraded, this is what the status surface shows a caller."
+                />
+                {!contactValid ? (
+                  <p style={alertStyle}>
+                    A contact number must be E.164 (a leading + and 2–15 digits).
+                  </p>
+                ) : null}
+              </Card>
+
+              <Card title="AI capabilities (advisory only)">
+                <CheckboxField
+                  label="Show the AI protocol suggestion on intake"
+                  checked={aiSuggestion}
+                  onChange={setAiSuggestion}
+                />
+                <CheckboxField
+                  label="Show the hospitalization-risk advisory on the panel"
+                  checked={aiRisk}
+                  onChange={setAiRisk}
+                />
+                <span style={mutedStyle}>
+                  Both are advisory: the clinician always selects the protocol, and the risk band
+                  alters no disposition option.
+                </span>
+              </Card>
+
+              <div>
+                <button
+                  type="button"
+                  disabled={!canSave}
+                  style={canSave ? primaryButtonCompactStyle : disabledButtonCompactStyle}
+                  onClick={() => void save()}
+                >
+                  {busy ? "Saving…" : "Save the policy"}
+                </button>
+              </div>
+            </>
+          ) : null}
+        </div>
+      }
+      fullPageScroll
+    />
   );
 }
+
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+
+const contentShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "1rem",
+  padding: "0 1.5rem 1.5rem",
+};
+
+const loadingShellStyle: CSSProperties = {
+  padding: "2.5rem 1.5rem",
+  textAlign: "center",
+};
+
+const emptyShellStyle: CSSProperties = {
+  padding: "1rem 0",
+};
+
+const errorBannerStyle: CSSProperties = {
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
+  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+  color: "var(--color-error)",
+  fontSize: "0.85rem",
+};
+
+const linkButtonStyle: CSSProperties = {
+  ...ghostButtonStyle,
+  minHeight: "2.25rem",
+  padding: "0.5rem 0.85rem",
+};
+
+const primaryButtonCompactStyle: CSSProperties = {
+  ...primaryButtonStyle,
+  minHeight: "2.25rem",
+  padding: "0.5rem 0.85rem",
+};
+
+const disabledButtonCompactStyle: CSSProperties = {
+  ...disabledButtonStyle,
+  minHeight: "2.25rem",
+  padding: "0.5rem 0.85rem",
+};

@@ -25,6 +25,7 @@ import {
 // route 19 carries a documented read-audit waiver rather than a patient-less PHI read event.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
+import { MembershipLookupField } from "../../shared/entity-lookups";
 import { type GateView, errorMessage, listGates, writeHeaders } from "./discipline-api";
 import {
   FAILING_GATE_STATUSES,
@@ -192,8 +193,8 @@ export function VolunteerComplianceGates(): JSX.Element {
         }
         filters={
           <FilterRow>
-            <TextField
-              label="Volunteer membership id"
+            <MembershipLookupField
+              label="Volunteer"
               value={volunteerFilter}
               onChange={updateVolunteerFilter}
             />
@@ -456,10 +457,11 @@ function GateFormModal({
           kind identify the row and cannot be re-pointed — record a new gate instead.
         </span>
       ) : null}
-      <TextField
-        label="Volunteer membership id"
+      <MembershipLookupField
+        label="Volunteer"
         value={volunteerMembershipId}
         onChange={editingExisting ? () => undefined : setVolunteer}
+        disabled={editingExisting}
       />
       <SelectField
         label="Gate kind"

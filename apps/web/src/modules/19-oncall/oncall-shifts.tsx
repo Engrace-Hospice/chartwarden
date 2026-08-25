@@ -4,8 +4,6 @@ import {
   Button,
   EmptyState,
   Glyph,
-  KpiCard,
-  KpiStrip,
   LoadingSpinner,
   Modal,
   PageHeader,
@@ -159,11 +157,6 @@ export function OnCallShiftsScreen(): JSX.Element {
   }, [coverage, searchQuery, shifts, status]);
 
   const gapEntities = current?.perProviderEntity.filter((entity) => entity.rnCoverageGap) ?? [];
-  const activeShifts = shifts.filter((shift) => shift.status === "active").length;
-  const scheduled = shifts.filter((shift) => shift.status === "scheduled").length;
-  const cancelled = shifts.filter((shift) => shift.status === "cancelled").length;
-  const externalCovered = shifts.filter((shift) => shift.externalActorId !== null).length;
-  const synced = shifts.filter((shift) => shift.m17VisitAssignmentRef !== null).length;
 
   const isExternal = newDiscipline === "external";
   const canCreate =
@@ -233,62 +226,6 @@ export function OnCallShiftsScreen(): JSX.Element {
               Prove per-provider coverage and manage the scheduled on-call windows.
             </div>
           </PageHeader>
-        }
-        kpis={
-          <KpiStrip>
-            <KpiCard
-              label="Loaded"
-              value={loading ? "—" : shifts.length}
-              detail={truncated ? `At least ${shifts.length}` : "Fetched page"}
-              tone={shifts.length > 0 ? "info" : "neutral"}
-              accentColor={
-                shifts.length > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"
-              }
-              selected={status === "all" && coverage === "all"}
-              onSelect={() => {
-                setStatus("all");
-                setCoverage("all");
-              }}
-            />
-            <KpiCard
-              label="Active"
-              value={loading ? "—" : activeShifts}
-              detail="Covering now"
-              tone={activeShifts > 0 ? "success" : "neutral"}
-              accentColor={
-                activeShifts > 0 ? "var(--color-success)" : "var(--color-outline-variant)"
-              }
-              selected={status === "active"}
-              onSelect={() => setStatus("active")}
-            />
-            <KpiCard
-              label="Scheduled"
-              value={loading ? "—" : scheduled}
-              detail="Upcoming"
-              tone={scheduled > 0 ? "info" : "neutral"}
-              accentColor={scheduled > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"}
-              selected={status === "scheduled"}
-              onSelect={() => setStatus("scheduled")}
-            />
-            <KpiCard
-              label="Gaps"
-              value={loading ? "—" : gapEntities.length}
-              detail="Provider entities"
-              tone={gapEntities.length > 0 ? "danger" : "success"}
-              accentColor={gapEntities.length > 0 ? "var(--color-error)" : "var(--color-success)"}
-            />
-            <KpiCard
-              label="External"
-              value={loading ? "—" : externalCovered}
-              detail={`${synced} synced`}
-              tone={externalCovered > 0 ? "warning" : "neutral"}
-              accentColor={
-                externalCovered > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
-              }
-              selected={coverage === "external"}
-              onSelect={() => setCoverage("external")}
-            />
-          </KpiStrip>
         }
         filters={
           <div style={filterShellStyle}>

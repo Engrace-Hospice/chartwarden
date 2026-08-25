@@ -3,8 +3,6 @@ import {
   EmptyState,
   Glyph,
   type GlyphName,
-  KpiCard,
-  KpiStrip,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -117,11 +115,6 @@ export function NotificationsInbox(): JSX.Element {
   }, [alerts, deliveryFilter, searchQuery, severityFilter]);
 
   const total = alerts?.length ?? 0;
-  const urgent = (alerts ?? []).filter(
-    (alert) => alert.severity === "critical" || alert.severity === "high",
-  ).length;
-  const failed = (alerts ?? []).filter((alert) => alert.deliveryStatus === "failed").length;
-  const pending = (alerts ?? []).filter((alert) => alert.deliveryStatus === "pending").length;
   const hasActiveFilters =
     searchQuery.trim() !== "" || severityFilter !== "all" || deliveryFilter !== "all";
   const pageCount = Math.max(1, Math.ceil(filteredAlerts.length / pageSize));
@@ -148,40 +141,6 @@ export function NotificationsInbox(): JSX.Element {
             Review alert delivery, operational notifications, and upcoming worklist scopes.
           </div>
         </PageHeader>
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard
-            label="Notifications"
-            value={alerts === null ? "—" : total}
-            detail="Alert inbox rows"
-            tone={total > 0 ? "info" : "neutral"}
-            selected={tab === "notifications"}
-            onSelect={() => selectTab("notifications")}
-            accentColor={total > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"}
-          />
-          <KpiCard
-            label="Urgent"
-            value={alerts === null ? "—" : urgent}
-            detail="Critical or high"
-            tone={urgent > 0 ? "danger" : "neutral"}
-            accentColor={urgent > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
-          />
-          <KpiCard
-            label="Failed"
-            value={alerts === null ? "—" : failed}
-            detail="Delivery failures"
-            tone={failed > 0 ? "warning" : "neutral"}
-            accentColor={failed > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"}
-          />
-          <KpiCard
-            label="Pending"
-            value={alerts === null ? "—" : pending}
-            detail="Awaiting delivery"
-            tone={pending > 0 ? "warning" : "neutral"}
-            accentColor={pending > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"}
-          />
-        </KpiStrip>
       }
       filters={
         <div style={filterShellStyle}>

@@ -18,6 +18,11 @@ import type { GateItem } from "@wardenx/ui";
 // GateStepper (§6.5), CSS-var tokens only.
 import { useCallback, useMemo, useState } from "react";
 import type { JSX } from "react";
+import {
+  AdmissionLookupField,
+  PatientLookupField,
+  ProviderEntityLookupField,
+} from "../../shared/entity-lookups";
 import { ELIGIBILITY_OUTCOME_TONE, humanize, kindLabel, shortId, toneOf } from "./medicaid-status";
 import { Card, Field, alertStyle, inputStyle, mutedStyle, selectStyle } from "./medicaid-ui";
 
@@ -232,13 +237,24 @@ export function MedicaidAssemblyWizard(): JSX.Element {
         {step === 0 ? (
           <Card title="Patient and service range">
             <div style={fieldGridStyle}>
-              <TextField label="Patient id" value={patientId} onChange={setPatientId} mono />
-              <TextField label="Admission id" value={admissionId} onChange={setAdmissionId} mono />
-              <TextField
-                label="Provider entity id"
+              <PatientLookupField
+                label="Patient"
+                value={patientId}
+                onChange={setPatientId}
+                required
+              />
+              <AdmissionLookupField
+                label="Admission"
+                value={admissionId}
+                onChange={setAdmissionId}
+                patientId={patientId}
+                required
+              />
+              <ProviderEntityLookupField
+                label="Provider entity"
                 value={providerEntityId}
                 onChange={setProviderEntityId}
-                mono
+                required
               />
               <TextField
                 label="Service from"

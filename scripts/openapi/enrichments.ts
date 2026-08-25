@@ -3746,6 +3746,32 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
       lastStepUpFactor: StepUpFactorSchema,
     }),
   },
+  // M1 Foundation — shared non-PHI selector lookup for provider entities used by billing/admin UX.
+  "GET /api/v1/provider-entities": {
+    summary: "Search provider entities for selector controls (cursor-paginated, non-PHI)",
+    query: Type.Object({
+      q: Type.Optional(
+        Type.String({ description: "Case-insensitive search over names, CCN, and NPI" }),
+      ),
+      cursor: Type.Optional(
+        Type.String({ description: "Offset cursor returned by the previous page" }),
+      ),
+      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+    }),
+    response: Type.Object({
+      items: Type.Array(
+        Type.Object({
+          id: Type.String(),
+          legalName: Type.String(),
+          doingBusinessAs: Type.Union([Type.String(), Type.Null()]),
+          ccn: Type.Union([Type.String(), Type.Null()]),
+          npi: Type.Union([Type.String(), Type.Null()]),
+          status: Type.String(),
+        }),
+      ),
+      nextCursor: Type.Union([Type.String(), Type.Null()]),
+    }),
+  },
   // M5 Patient
   "GET /api/v1/patients": {
     summary: "Patient census / list (cursor-paginated, §4.2)",

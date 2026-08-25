@@ -22,6 +22,7 @@ import {
 // billing-status.ts, CSS-var tokens only. openapi emits no billing schemas → reads cast, inits `as never`.
 import { useCallback, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { ProviderEntityLookupField } from "../../shared/entity-lookups";
 
 interface SequestrationPolicyView {
   policyId: string;
@@ -164,23 +165,12 @@ export function SequestrationPolicy(): JSX.Element {
             }}
             style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}
           >
-            <div style={{ position: "relative", minWidth: "18rem" }}>
-              <input
-                id="sq-pe"
-                aria-label="Provider entity id"
+            <div style={{ minWidth: "18rem" }}>
+              <ProviderEntityLookupField
+                label="Provider entity"
                 value={providerEntityId}
-                onChange={(e) => setProviderEntityId(e.target.value)}
-                placeholder="Provider entity UUID..."
-                style={{
-                  ...inputStyle,
-                  width: "100%",
-                  paddingLeft: "2rem",
-                  fontFamily: t.fontMono,
-                }}
+                onChange={setProviderEntityId}
               />
-              <span style={inputIconStyle}>
-                <Glyph name="shield" size={14} />
-              </span>
             </div>
             <Button type="submit" size="sm">
               Load timeline

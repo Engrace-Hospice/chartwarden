@@ -3,8 +3,6 @@ import {
   ConversationView,
   EmptyState,
   Glyph,
-  KpiCard,
-  KpiStrip,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -131,9 +129,6 @@ export function StaffMessaging(): JSX.Element {
   const activePage = Math.min(page, pageCount);
   const pagedChannels = filteredChannels.slice((activePage - 1) * pageSize, activePage * pageSize);
   const activeChannel = channels?.find((c) => c.channelId === activeId) ?? null;
-  const unreadCount = channels?.reduce((sum, channel) => sum + channel.unreadCount, 0) ?? 0;
-  const patientScopedCount = channels?.filter((channel) => channel.subjectId !== null).length ?? 0;
-  const archivedCount = channels?.filter((channel) => channel.archivedAt !== null).length ?? 0;
 
   const clearFilters = (): void => {
     setSearchQuery("");
@@ -149,50 +144,6 @@ export function StaffMessaging(): JSX.Element {
           Secure staff conversations and patient-scoped channels.
         </div>
       </PageHeader>
-      <KpiStrip>
-        <KpiCard
-          label="Channels"
-          value={channels === null ? "—" : channels.length}
-          detail="Visible to this user"
-          tone={(channels?.length ?? 0) > 0 ? "success" : "neutral"}
-          accentColor={
-            (channels?.length ?? 0) > 0 ? "var(--color-success)" : "var(--color-outline-variant)"
-          }
-        />
-        <KpiCard
-          label="Unread"
-          value={channels === null ? "—" : unreadCount}
-          detail="Messages awaiting review"
-          tone={unreadCount > 0 ? "warning" : "neutral"}
-          accentColor={unreadCount > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"}
-          selected={statusFilter === "unread"}
-          onSelect={() => {
-            setStatusFilter("unread");
-            setPage(1);
-          }}
-        />
-        <KpiCard
-          label="Patient Scoped"
-          value={channels === null ? "—" : patientScopedCount}
-          detail="Bound to a patient context"
-          tone={patientScopedCount > 0 ? "info" : "neutral"}
-          accentColor={
-            patientScopedCount > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"
-          }
-          selected={scopeFilter === "patient"}
-          onSelect={() => {
-            setScopeFilter("patient");
-            setPage(1);
-          }}
-        />
-        <KpiCard
-          label="Archived"
-          value={channels === null ? "—" : archivedCount}
-          detail="Retained conversations"
-          tone="neutral"
-          accentColor="var(--color-outline-variant)"
-        />
-      </KpiStrip>
 
       <div style={filterShellStyle}>
         {error ? (

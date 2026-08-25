@@ -8,8 +8,6 @@ import {
   Button,
   EmptyState,
   Glyph,
-  KpiCard,
-  KpiStrip,
   LoadingSpinner,
   PageHeader,
   StatusPill,
@@ -139,13 +137,7 @@ export function TriageQueueScreen(): JSX.Element {
       .sort(boardRank);
   }, [attention, calls, searchQuery, source]);
 
-  const escalated = calls.filter((call) => call.openEscalationCount > 0).length;
-  const awaitingCallback = calls.filter((call) => call.state === "awaiting_callback").length;
-  const pendingEncounter = calls.filter(
-    (call) => call.state === "documented_pending_encounter",
-  ).length;
   const unresolved = calls.filter((call) => call.state === "escalated_unresolved").length;
-  const redFlagged = calls.filter((call) => call.redFlagAnswerCount > 0).length;
   const hasActiveFilters =
     searchQuery.trim() !== "" || state !== "" || source !== "" || attention !== "all";
 
@@ -184,59 +176,6 @@ export function TriageQueueScreen(): JSX.Element {
             Prioritize unanswered escalation, red flags, callbacks, and unsigned documentation.
           </div>
         </PageHeader>
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard
-            label="Loaded"
-            value={loading ? "—" : calls.length}
-            detail={truncated ? `At least ${calls.length}` : "Fetched page"}
-            tone={calls.length > 0 ? "info" : "neutral"}
-            accentColor={calls.length > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"}
-            selected={attention === "all" && source === ""}
-            onSelect={clearLocalFilters}
-          />
-          <KpiCard
-            label="Escalated"
-            value={loading ? "—" : escalated}
-            detail="Open escalations"
-            tone={escalated > 0 ? "danger" : "neutral"}
-            accentColor={escalated > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
-            selected={attention === "escalated"}
-            onSelect={() => setAttention("escalated")}
-          />
-          <KpiCard
-            label="Red flags"
-            value={loading ? "—" : redFlagged}
-            detail="Positive answers"
-            tone={redFlagged > 0 ? "danger" : "neutral"}
-            accentColor={redFlagged > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
-            selected={attention === "red_flag"}
-            onSelect={() => setAttention("red_flag")}
-          />
-          <KpiCard
-            label="Callbacks"
-            value={loading ? "—" : awaitingCallback}
-            detail="Awaiting return call"
-            tone={awaitingCallback > 0 ? "warning" : "neutral"}
-            accentColor={
-              awaitingCallback > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
-            }
-            selected={attention === "callback"}
-            onSelect={() => setAttention("callback")}
-          />
-          <KpiCard
-            label="Pending note"
-            value={loading ? "—" : pendingEncounter}
-            detail="Encounter unsigned"
-            tone={pendingEncounter > 0 ? "warning" : "neutral"}
-            accentColor={
-              pendingEncounter > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
-            }
-            selected={attention === "pending_note"}
-            onSelect={() => setAttention("pending_note")}
-          />
-        </KpiStrip>
       }
       filters={
         <div style={filterShellStyle}>

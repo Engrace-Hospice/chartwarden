@@ -1,12 +1,10 @@
 // apps/web/src/modules/37-ipu — M37 IPU daily census (§5/§2.13). Reads census snapshot rows and
 // surfaces the GIP/IRC head-counts + bed-days + incident counts. GET /api/v1/ipu-census/:date. Lantern:
-// WorkQueueLayout + KpiStrip + CSS-var tokens only.
+// WorkQueueLayout + CSS-var tokens only.
 import {
   Button,
   EmptyState,
   Glyph,
-  KpiCard,
-  KpiStrip,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -79,14 +77,6 @@ export function IpuCensus(): JSX.Element {
     });
   }, [activityFilter, rows, searchQuery]);
 
-  const sum = (field: (row: CensusRow) => number): number =>
-    (rows ?? []).reduce((total, row) => total + field(row), 0);
-  const gipCensus = sum((row) => row.censusCountGip);
-  const ircCensus = sum((row) => row.censusCountIrc);
-  const gipBedDays = sum((row) => row.bedDaysGip);
-  const ircBedDays = sum((row) => row.bedDaysIrc);
-  const turnovers = sum((row) => row.roomTurnoverCount);
-  const restraints = sum((row) => row.restraintIncidentCount);
   const occupiedRows = (rows ?? []).filter((row) => rowCensusTotal(row) > 0).length;
   const incidentRows = (rows ?? []).filter((row) => rowIncidentTotal(row) > 0).length;
 
@@ -109,57 +99,6 @@ export function IpuCensus(): JSX.Element {
             Review the daily GIP/IRC census, bed-day totals, room turnover, and restraint activity.
           </div>
         </PageHeader>
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard
-            label="GIP census"
-            value={rows === null ? "—" : formatInt(gipCensus)}
-            detail="Head count"
-            tone={gipCensus > 0 ? "info" : "neutral"}
-            accentColor={gipCensus > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"}
-          />
-          <KpiCard
-            label="IRC census"
-            value={rows === null ? "—" : formatInt(ircCensus)}
-            detail="Head count"
-            tone={ircCensus > 0 ? "info" : "neutral"}
-            accentColor={ircCensus > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"}
-          />
-          <KpiCard
-            label="Bed-days"
-            value={rows === null ? "—" : formatInt(gipBedDays + ircBedDays)}
-            detail={`${formatInt(gipBedDays)} GIP / ${formatInt(ircBedDays)} IRC`}
-            tone={gipBedDays + ircBedDays > 0 ? "success" : "neutral"}
-            accentColor={
-              gipBedDays + ircBedDays > 0 ? "var(--color-success)" : "var(--color-outline-variant)"
-            }
-          />
-          <KpiCard
-            label="Turnovers"
-            value={rows === null ? "—" : formatInt(turnovers)}
-            detail="Rooms reset"
-            tone={turnovers > 0 ? "warning" : "neutral"}
-            accentColor={turnovers > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"}
-            selected={activityFilter === "incidents"}
-            onSelect={() => {
-              setActivityFilter("incidents");
-              setPage(1);
-            }}
-          />
-          <KpiCard
-            label="Restraints"
-            value={rows === null ? "—" : formatInt(restraints)}
-            detail="Incident count"
-            tone={restraints > 0 ? "danger" : "neutral"}
-            accentColor={restraints > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
-            selected={activityFilter === "incidents"}
-            onSelect={() => {
-              setActivityFilter("incidents");
-              setPage(1);
-            }}
-          />
-        </KpiStrip>
       }
       filters={
         <div style={filterShellStyle}>

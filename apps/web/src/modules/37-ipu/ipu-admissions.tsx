@@ -5,8 +5,6 @@ import {
   Button,
   EmptyState,
   Glyph,
-  KpiCard,
-  KpiStrip,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -121,14 +119,6 @@ export function IpuAdmissions(): JSX.Element {
     });
   }, [kindFilter, locationFilter, rows, searchQuery, stateFilter]);
 
-  const total = rows?.length ?? 0;
-  const active = (rows ?? []).filter((admission) => admission.state === "active").length;
-  const ownUnit = (rows ?? []).filter((admission) => admission.unitId).length;
-  const arranged = (rows ?? []).filter((admission) => admission.remoteFacilityId).length;
-  const unplaced = (rows ?? []).filter(
-    (admission) => !admission.unitId && !admission.remoteFacilityId,
-  ).length;
-
   const hasActiveFilters =
     searchQuery.trim() !== "" ||
     kindFilter !== "all" ||
@@ -154,67 +144,6 @@ export function IpuAdmissions(): JSX.Element {
             Track General Inpatient and Inpatient Respite stays by lifecycle state and placement.
           </div>
         </PageHeader>
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard
-            label="Admissions"
-            value={rows === null ? "—" : total}
-            detail="Rows in view"
-            tone={total > 0 ? "info" : "neutral"}
-            accentColor={total > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"}
-            selected={!hasActiveFilters}
-            onSelect={clearFilters}
-          />
-          <KpiCard
-            label="Active"
-            value={rows === null ? "—" : active}
-            detail="Currently open"
-            tone={active > 0 ? "success" : "neutral"}
-            accentColor={active > 0 ? "var(--color-success)" : "var(--color-outline-variant)"}
-            selected={stateFilter === "active"}
-            onSelect={() => {
-              setStateFilter("active");
-              setPage(1);
-            }}
-          />
-          <KpiCard
-            label="Own unit"
-            value={rows === null ? "—" : ownUnit}
-            detail="Internal placement"
-            tone={ownUnit > 0 ? "info" : "neutral"}
-            accentColor={ownUnit > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"}
-            selected={locationFilter === "own"}
-            onSelect={() => {
-              setLocationFilter("own");
-              setPage(1);
-            }}
-          />
-          <KpiCard
-            label="Arranged"
-            value={rows === null ? "—" : arranged}
-            detail="Contracted facility"
-            tone={arranged > 0 ? "warning" : "neutral"}
-            accentColor={arranged > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"}
-            selected={locationFilter === "arranged"}
-            onSelect={() => {
-              setLocationFilter("arranged");
-              setPage(1);
-            }}
-          />
-          <KpiCard
-            label="Unplaced"
-            value={rows === null ? "—" : unplaced}
-            detail="Needs location"
-            tone={unplaced > 0 ? "danger" : "neutral"}
-            accentColor={unplaced > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
-            selected={locationFilter === "unplaced"}
-            onSelect={() => {
-              setLocationFilter("unplaced");
-              setPage(1);
-            }}
-          />
-        </KpiStrip>
       }
       filters={
         <div style={filterShellStyle}>

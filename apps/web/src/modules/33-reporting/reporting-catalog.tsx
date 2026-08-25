@@ -15,7 +15,7 @@ import {
 // Lantern: No-Line cards, primary-tint hover, mono identifiers (wx-data-md), tabular-nums, CSS-var
 // tokens only. Status/freshness pills resolve through the shared §6.6 tone map (reporting-status.ts).
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { cap, lagLabel, lagTone, statusLabel } from "./reporting-status";
 
 interface DashboardSummary {
@@ -79,23 +79,28 @@ export function ReportingCatalog(): JSX.Element {
 
   return (
     <WorkQueueLayout
-      header={<PageHeader title="Reports" breadcrumb="Reporting & Analytics" />}
-      filters={<SystemHealthStrip lag={lag} dashboardCount={dashboards.length} />}
+      header={
+        <PageHeader title="Reports" breadcrumb="Reporting & Analytics">
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Browse available dashboards, organization defaults, and reporting freshness posture.
+          </div>
+        </PageHeader>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          <SystemHealthStrip lag={lag} dashboardCount={dashboards.length} />
+        </div>
+      }
       table={
         dashboards.length === 0 ? (
-          <EmptyState
-            title="No dashboards"
-            description="No reporting dashboards are available in your scope yet."
-          />
+          <div style={emptyShellStyle}>
+            <EmptyState
+              title="No dashboards"
+              description="No reporting dashboards are available in your scope yet."
+            />
+          </div>
         ) : (
-          <div
-            style={{
-              padding: "0 1.5rem 1.5rem",
-              display: "flex",
-              flexDirection: "column",
-              gap: "1.5rem",
-            }}
-          >
+          <div style={catalogShellStyle}>
             {featured.length > 0 ? <CatalogSection title="Featured" dashboards={featured} /> : null}
             <CatalogSection
               title="All dashboards"
@@ -104,6 +109,7 @@ export function ReportingCatalog(): JSX.Element {
           </div>
         )
       }
+      fullPageScroll
     />
   );
 }
@@ -114,18 +120,7 @@ function SystemHealthStrip({
   dashboardCount,
 }: { lag: ReplicaLag | null; dashboardCount: number }): JSX.Element {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "1.5rem",
-        padding: "0.75rem 1.5rem",
-        background: "var(--color-surface-lowest)",
-        borderRadius: "var(--radius-lg, 0.75rem)",
-        boxShadow: "var(--shadow-soft)",
-        margin: "0 1.5rem 1rem",
-      }}
-    >
+    <div style={healthStripStyle}>
       <Metric label="Dashboards" value={dashboardCount} />
       {lag ? (
         <>
@@ -249,3 +244,32 @@ function CatalogCard({ dashboard }: { dashboard: DashboardSummary }): JSX.Elemen
     </a>
   );
 }
+
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+
+const catalogShellStyle: CSSProperties = {
+  padding: "0 1.5rem 1.5rem",
+  display: "flex",
+  flexDirection: "column",
+  gap: "1.5rem",
+};
+
+const emptyShellStyle: CSSProperties = {
+  padding: "2rem 1.5rem",
+};
+
+const healthStripStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "1.5rem",
+  padding: "0.75rem 1rem",
+  background: "var(--color-surface-lowest)",
+  borderRadius: "var(--radius-lg)",
+  boxShadow: "var(--shadow-soft)",
+  flexWrap: "wrap",
+};

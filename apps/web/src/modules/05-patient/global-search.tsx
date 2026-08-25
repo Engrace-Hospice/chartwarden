@@ -2,8 +2,6 @@ import {
   Button,
   EmptyState,
   Glyph,
-  KpiCard,
-  KpiStrip,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -256,42 +254,6 @@ export function GlobalSearchResults(): JSX.Element {
             Search patients by name or MRN, and staff in your organization.
           </div>
         </PageHeader>
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard
-            label="Visible Results"
-            value={loading ? "—" : total}
-            detail={hasQuery ? "Current facet" : "Enter a search"}
-            tone={total > 0 ? "success" : "neutral"}
-            accentColor={total > 0 ? "var(--color-success)" : "var(--color-outline-variant)"}
-          />
-          <KpiCard
-            label="Patients"
-            value={hasQuery && !loading ? patientCount : "—"}
-            detail="Caseload scoped"
-            tone={patientCount > 0 ? "info" : "neutral"}
-            selected={facet === "patient"}
-            onSelect={() => chooseFacet("patient")}
-            accentColor={patientCount > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"}
-          />
-          <KpiCard
-            label="Staff"
-            value={hasQuery && !loading ? staffCount : "—"}
-            detail="Permission scoped"
-            tone={staffCount > 0 ? "info" : "neutral"}
-            selected={facet === "staff"}
-            onSelect={() => chooseFacet("staff")}
-            accentColor={staffCount > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"}
-          />
-          <KpiCard
-            label="Pending Scopes"
-            value={FUTURE_FACETS.length}
-            detail="Shown honestly below"
-            tone="neutral"
-            accentColor="var(--color-outline-variant)"
-          />
-        </KpiStrip>
       }
       filters={
         <div style={filterShellStyle}>

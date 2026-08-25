@@ -6,8 +6,6 @@ import {
   Button,
   EmptyState,
   Glyph,
-  KpiCard,
-  KpiStrip,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -34,9 +32,6 @@ const IPU_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 const RN_HORIZON_TARGET_HOURS = 24;
 
 const formatInt = (value: number): string => new Intl.NumberFormat().format(value);
-
-const avg = (values: number[]): number =>
-  values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length;
 
 export function IpuUnits(): JSX.Element {
   const client = useApiClient();
@@ -83,14 +78,6 @@ export function IpuUnits(): JSX.Element {
     });
   }, [coverageFilter, searchQuery, statusFilter, units]);
 
-  const total = units?.length ?? 0;
-  const active = (units ?? []).filter((unit) => unit.isActive).length;
-  const bedTotal = (units ?? []).reduce((sum, unit) => sum + unit.bedCount, 0);
-  const shortCoverage = (units ?? []).filter(
-    (unit) => unit.rnCoverageHorizonHours < RN_HORIZON_TARGET_HOURS,
-  ).length;
-  const averageHorizon = Math.round(avg((units ?? []).map((unit) => unit.rnCoverageHorizonHours)));
-
   const hasActiveFilters =
     searchQuery.trim() !== "" || statusFilter !== "all" || coverageFilter !== "all";
   const pageCount = Math.max(1, Math.ceil(filteredUnits.length / pageSize));
@@ -112,50 +99,6 @@ export function IpuUnits(): JSX.Element {
             Monitor unit readiness, bed capacity, RN coverage horizon, and turnover expectations.
           </div>
         </PageHeader>
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard
-            label="Units"
-            value={units === null ? "—" : formatInt(total)}
-            detail="Configured locations"
-            tone={total > 0 ? "info" : "neutral"}
-            accentColor={total > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"}
-            selected={statusFilter === "all" && coverageFilter === "all"}
-            onSelect={clearFilters}
-          />
-          <KpiCard
-            label="Active"
-            value={units === null ? "—" : formatInt(active)}
-            detail="Accepting IPU stays"
-            tone={active > 0 ? "success" : "neutral"}
-            accentColor={active > 0 ? "var(--color-success)" : "var(--color-outline-variant)"}
-            selected={statusFilter === "active"}
-            onSelect={() => {
-              setStatusFilter("active");
-              setPage(1);
-            }}
-          />
-          <KpiCard
-            label="Beds"
-            value={units === null ? "—" : formatInt(bedTotal)}
-            detail="Total staffed capacity"
-            tone="info"
-            accentColor="var(--color-primary)"
-          />
-          <KpiCard
-            label="RN horizon"
-            value={units === null ? "—" : `${averageHorizon}h`}
-            detail="Average coverage"
-            tone={shortCoverage > 0 ? "warning" : "success"}
-            accentColor={shortCoverage > 0 ? "var(--color-warning)" : "var(--color-success)"}
-            selected={coverageFilter === "short"}
-            onSelect={() => {
-              setCoverageFilter("short");
-              setPage(1);
-            }}
-          />
-        </KpiStrip>
       }
       filters={
         <div style={filterShellStyle}>

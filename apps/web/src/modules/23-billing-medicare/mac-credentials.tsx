@@ -30,6 +30,7 @@ import {
 // schemas → reads cast, inits `as never`.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
+import { ProviderEntityLookupField } from "../../shared/entity-lookups";
 import { statusLabel } from "./billing-status";
 
 type MacJurisdiction =
@@ -599,16 +600,12 @@ function UpsertCeremony({
           {isEdit ? "Edit MAC credential" : "Add MAC credential"}
         </h2>
 
-        <Labeled id="mc-pe" label="Provider entity id">
-          <input
-            id="mc-pe"
-            value={draft.providerEntityId}
-            disabled={isEdit}
-            onChange={(e) => onChange({ ...draft, providerEntityId: e.target.value })}
-            placeholder="Provider entity UUID…"
-            style={{ ...inputStyle, fontFamily: t.fontMono }}
-          />
-        </Labeled>
+        <ProviderEntityLookupField
+          label="Provider entity"
+          value={draft.providerEntityId}
+          disabled={isEdit}
+          onChange={(value) => onChange({ ...draft, providerEntityId: value })}
+        />
         <Labeled id="mc-mac" label="MAC jurisdiction">
           <select
             id="mc-mac"

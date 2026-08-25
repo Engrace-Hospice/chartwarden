@@ -23,6 +23,7 @@ import type { GateItem, GateStatus } from "@wardenx/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { PatientLookupField, ProviderEntityLookupField } from "../../shared/entity-lookups";
 import { dollars, statusLabel, tobLabel } from "./billing-status";
 import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-workflow";
 
@@ -174,7 +175,8 @@ export function ClaimAssemblyWizard(): JSX.Element {
           }
         >
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Build a Medicare claim from server-derived coverage, rates, lines, and initial validation.
+            Build a Medicare claim from server-derived coverage, rates, lines, and initial
+            validation.
           </div>
         </PageHeader>
       }
@@ -277,21 +279,17 @@ function IdentifyStep({
         The server assembles a DRAFT claim from the elected coverage that spans this service-date
         range — the patient must have an active Medicare hospice election covering the period.
       </p>
-      <LabeledInput
+      <ProviderEntityLookupField
         label="Provider entity"
-        ariaLabel="Provider entity id"
-        placeholder="Provider entity id…"
         value={form.providerEntityId}
-        mono
         onChange={(v) => setForm((f) => ({ ...f, providerEntityId: v }))}
+        required
       />
-      <LabeledInput
+      <PatientLookupField
         label="Patient"
-        ariaLabel="Patient id"
-        placeholder="Patient id…"
         value={form.patientId}
-        mono
         onChange={(v) => setForm((f) => ({ ...f, patientId: v }))}
+        required
       />
       <div
         style={{
@@ -358,7 +356,13 @@ function TobStep({
         >
           Type of bill
         </legend>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(16rem, 1fr))", gap: "0.5rem" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(16rem, 1fr))",
+            gap: "0.5rem",
+          }}
+        >
           {ASSEMBLABLE_TOBS.map((code) => (
             <label
               key={code}

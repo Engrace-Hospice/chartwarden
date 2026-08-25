@@ -4,8 +4,6 @@ import {
   Button,
   EmptyState,
   Glyph,
-  KpiCard,
-  KpiStrip,
   LoadingSpinner,
   Modal,
   PageHeader,
@@ -130,12 +128,7 @@ export function EscalationInboxScreen(): JSX.Element {
       .sort(inboxRank);
   }, [attention, rows, searchQuery]);
 
-  const unacknowledged = rows.filter((row) => row.state === "open").length;
   const mandatoryOpen = rows.filter((row) => row.mandatory && row.state !== "resolved").length;
-  const overAnHour = rows.filter((row) => row.state === "open" && row.minutesOpen >= 60).length;
-  const external = rows.filter(
-    (row) => row.tier === "tier_5_external" || row.escalatedToExternalActorId !== null,
-  ).length;
   const hasActiveFilters =
     searchQuery.trim() !== "" || tier !== "" || scope !== "open" || attention !== "all";
 
@@ -190,61 +183,6 @@ export function EscalationInboxScreen(): JSX.Element {
               Acknowledge pages quickly, then resolve the ones that require a named response.
             </div>
           </PageHeader>
-        }
-        kpis={
-          <KpiStrip>
-            <KpiCard
-              label="Loaded"
-              value={loading ? "—" : rows.length}
-              detail={truncated ? `At least ${rows.length}` : "Fetched page"}
-              tone={rows.length > 0 ? "info" : "neutral"}
-              accentColor={
-                rows.length > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"
-              }
-              selected={attention === "all"}
-              onSelect={() => setAttention("all")}
-            />
-            <KpiCard
-              label="Unacknowledged"
-              value={loading ? "—" : unacknowledged}
-              detail="Needs response"
-              tone={unacknowledged > 0 ? "danger" : "neutral"}
-              accentColor={
-                unacknowledged > 0 ? "var(--color-error)" : "var(--color-outline-variant)"
-              }
-              selected={attention === "open"}
-              onSelect={() => setAttention("open")}
-            />
-            <KpiCard
-              label="Mandatory"
-              value={loading ? "—" : mandatoryOpen}
-              detail="Platform floor"
-              tone={mandatoryOpen > 0 ? "danger" : "neutral"}
-              accentColor={
-                mandatoryOpen > 0 ? "var(--color-error)" : "var(--color-outline-variant)"
-              }
-              selected={attention === "mandatory"}
-              onSelect={() => setAttention("mandatory")}
-            />
-            <KpiCard
-              label="Over 1h"
-              value={loading ? "—" : overAnHour}
-              detail="Still open"
-              tone={overAnHour > 0 ? "warning" : "neutral"}
-              accentColor={overAnHour > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"}
-              selected={attention === "over_hour"}
-              onSelect={() => setAttention("over_hour")}
-            />
-            <KpiCard
-              label="External"
-              value={loading ? "—" : external}
-              detail="Vendor tier"
-              tone={external > 0 ? "warning" : "neutral"}
-              accentColor={external > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"}
-              selected={attention === "external"}
-              onSelect={() => setAttention("external")}
-            />
-          </KpiStrip>
         }
         filters={
           <div style={filterShellStyle}>

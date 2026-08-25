@@ -22,6 +22,7 @@ import {
 // billing-status.ts (§6.6).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { ProviderEntityLookupField } from "../../shared/entity-lookups";
 import { claimStateTone, dollars, statusLabel } from "./billing-status";
 
 interface MetricsBucket {
@@ -147,17 +148,12 @@ export function MetricsSurface(): JSX.Element {
               : undefined
           }
         >
-          <div style={{ position: "relative", minWidth: "18rem" }}>
-            <input
-              aria-label="Provider entity id"
-              placeholder="Provider entity UUID..."
+          <div style={{ minWidth: "18rem" }}>
+            <ProviderEntityLookupField
+              label="Provider entity"
               value={providerEntityId}
-              onChange={(e) => setProviderEntityId(e.target.value)}
-              style={{ ...inputStyle, width: "100%", paddingLeft: "2rem" }}
+              onChange={setProviderEntityId}
             />
-            <span style={inputIconStyle}>
-              <Glyph name="shield" size={14} />
-            </span>
           </div>
           <Button size="sm" onClick={() => setApplied(providerEntityId.trim())}>
             Apply

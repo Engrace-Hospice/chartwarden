@@ -22,6 +22,7 @@ import {
 // emits no billing schemas, so reads are cast and the query/mutation inits go through `as never`.
 import { useCallback, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { PatientLookupField, ProviderEntityLookupField } from "../../shared/entity-lookups";
 import {
   eligibilityOutcomeTone,
   eligibilityStalenessLabel,
@@ -147,23 +148,13 @@ export function EligibilityCenter(): JSX.Element {
             }}
             style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}
           >
-            <div style={{ position: "relative", minWidth: "18rem" }}>
-              <input
-                id="el-patient"
-                aria-label="Patient id"
+            <div style={{ minWidth: "18rem" }}>
+              <PatientLookupField
+                label="Patient"
                 value={patientId}
-                onChange={(e) => setPatientId(e.target.value)}
-                placeholder="Patient UUID..."
-                style={{
-                  ...inputStyle,
-                  width: "100%",
-                  paddingLeft: "2rem",
-                  fontFamily: t.fontMono,
-                }}
+                onChange={setPatientId}
+                clearable
               />
-              <span style={inputIconStyle}>
-                <Glyph name="user" size={14} />
-              </span>
             </div>
             <Button type="submit" size="sm">
               Load history
@@ -339,18 +330,11 @@ function RefreshPanel({
         </p>
       ) : (
         <>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-            <label htmlFor="el-pe" style={labelStyle}>
-              Provider entity id
-            </label>
-            <input
-              id="el-pe"
-              value={providerEntityId}
-              onChange={(e) => setProviderEntityId(e.target.value)}
-              placeholder="Provider entity UUID…"
-              style={{ ...inputStyle, fontFamily: t.fontMono }}
-            />
-          </div>
+          <ProviderEntityLookupField
+            label="Provider entity"
+            value={providerEntityId}
+            onChange={setProviderEntityId}
+          />
           <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
             <label htmlFor="el-asof" style={labelStyle}>
               As-of service date

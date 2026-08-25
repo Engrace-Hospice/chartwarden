@@ -24,6 +24,7 @@ import {
 // patient-care hours has no ratio to fail.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
+import { MembershipLookupField, ProviderEntityLookupField } from "../../shared/entity-lookups";
 import { type HourRatioView, errorMessage, getHourRatio, writeHeaders } from "./discipline-api";
 import { RATIO_STATUS_TONE, hours, humanize, pct, toneOf } from "./discipline-status";
 import {
@@ -119,8 +120,8 @@ export function VolunteerHourRatio(): JSX.Element {
         }
         filters={
           <FilterRow>
-            <TextField
-              label="Provider entity id"
+            <ProviderEntityLookupField
+              label="Provider entity"
               value={providerEntityId}
               onChange={setProviderEntityId}
             />
@@ -306,10 +307,10 @@ function HourAdjustmentModal({
         </button>
       }
     >
-      <TextField label="Provider entity id" value={pe} onChange={setPe} />
+      <ProviderEntityLookupField label="Provider entity" value={pe} onChange={setPe} />
       <TextField label="Fiscal year" type="number" value={year} onChange={setYear} />
-      <TextField
-        label="Volunteer membership id"
+      <MembershipLookupField
+        label="Volunteer"
         value={volunteerMembershipId}
         onChange={setVolunteer}
       />

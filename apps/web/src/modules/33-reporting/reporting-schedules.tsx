@@ -1,6 +1,5 @@
 import {
   EmptyState,
-  FilterBar,
   LoadingSpinner,
   PageHeader,
   StatusPill,
@@ -17,7 +16,7 @@ import type { paths } from "@wardenx/ui";
 // Lantern: No-Line tables, primary-tint selected row, mono ids (wx-data-md), tabular-nums dates,
 // CSS-var tokens only. Run/schedule status pills resolve through the §6.6 tone map (reporting-status.ts).
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { runTone, scheduleTone, statusLabel } from "./reporting-status";
 
 type Tab = "mine" | "affecting";
@@ -97,43 +96,50 @@ export function ReportingSchedules(): JSX.Element {
 
   return (
     <WorkQueueLayout
-      header={<PageHeader title="Scheduled Reports" breadcrumb="Reporting & Analytics" />}
+      header={
+        <PageHeader title="Scheduled Reports" breadcrumb="Reporting & Analytics">
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Manage report delivery schedules and inspect the run ledger for a selected schedule.
+          </div>
+        </PageHeader>
+      }
       filters={
-        <FilterBar
-          actions={
-            <button type="button" onClick={() => void load()}>
+        <div style={filterShellStyle}>
+          {error ? (
+            <div role="alert" style={errorBannerStyle}>
+              {error}
+            </div>
+          ) : null}
+          <div style={toolbarStyle}>
+            <div role="tablist" aria-label="Schedule scope" style={tabListStyle}>
+              <TabButton active={tab === "mine"} onClick={() => setTab("mine")}>
+                My Schedules
+              </TabButton>
+              <TabButton active={tab === "affecting"} onClick={() => setTab("affecting")}>
+                Affecting Me
+              </TabButton>
+            </div>
+            <select
+              aria-label="Schedule status"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={selectStyle}
+            >
+              <option value="">Status: All</option>
+              {["active", "paused", "cancelled"].map((s) => (
+                <option key={s} value={s}>
+                  Status: {statusLabel(s)}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={() => void load()} style={buttonStyle}>
               Refresh
             </button>
-          }
-        >
-          <div
-            role="tablist"
-            aria-label="Schedule scope"
-            style={{ display: "flex", gap: "0.25rem" }}
-          >
-            <TabButton active={tab === "mine"} onClick={() => setTab("mine")}>
-              My Schedules
-            </TabButton>
-            <TabButton active={tab === "affecting"} onClick={() => setTab("affecting")}>
-              Affecting Me
-            </TabButton>
           </div>
-          <select
-            aria-label="Schedule status"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="">All statuses</option>
-            {["active", "paused", "cancelled"].map((s) => (
-              <option key={s} value={s}>
-                {statusLabel(s)}
-              </option>
-            ))}
-          </select>
-        </FilterBar>
+        </div>
       }
       table={
-        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+        <div style={contentShellStyle}>
           <ScheduleTable
             schedules={schedules}
             loading={loading}
@@ -144,6 +150,7 @@ export function ReportingSchedules(): JSX.Element {
           {selectedId ? <RunLedger scheduleId={selectedId} /> : null}
         </div>
       }
+      fullPageScroll
     />
   );
 }
@@ -164,8 +171,10 @@ function TabButton({
         fontWeight: active ? 600 : 400,
         color: active ? "var(--color-on-surface)" : "var(--color-on-surface-variant)",
         background: active ? "var(--color-primary-tint)" : "transparent",
-        borderRadius: "var(--radius-md, 0.5rem)",
-        padding: "0.25rem 0.75rem",
+        borderRadius: "var(--radius-md)",
+        border: "none",
+        padding: "0.45rem 0.75rem",
+        cursor: "pointer",
       }}
     >
       {children}
@@ -193,16 +202,16 @@ function ScheduleTable({
       <EmptyState title="No schedules" description="No scheduled reports match this filter." />
     );
   return (
-    <div style={{ padding: "0 1.5rem" }}>
-      <table>
+    <div style={tableShellStyle}>
+      <table style={tableStyle}>
         <thead>
-          <tr>
-            <th>Schedule</th>
-            <th>Cron</th>
-            <th>Format</th>
-            <th>Recipients</th>
-            <th>Next run</th>
-            <th>Status</th>
+          <tr style={tableHeadRowStyle}>
+            <th style={thStyle}>Schedule</th>
+            <th style={thStyle}>Cron</th>
+            <th style={thStyle}>Format</th>
+            <th style={{ ...thStyle, textAlign: "right" }}>Recipients</th>
+            <th style={thStyle}>Next run</th>
+            <th style={thStyle}>Status</th>
           </tr>
         </thead>
         <tbody>
@@ -223,16 +232,23 @@ function ScheduleTable({
               style={{
                 cursor: "pointer",
                 background: s.id === selectedId ? "var(--color-primary-tint)" : undefined,
+                borderTop: "1px solid var(--color-surface-container)",
               }}
             >
-              <td className="wx-data-md">{s.id.slice(0, 8)}</td>
-              <td className="wx-data-md">{s.cronExpression}</td>
-              <td>{s.format.toUpperCase()}</td>
-              <td className="tabular-nums">{s.recipientMembershipIds.length}</td>
-              <td className="tabular-nums">
+              <td className="wx-data-md" style={tdStyle}>
+                {s.id.slice(0, 8)}
+              </td>
+              <td className="wx-data-md" style={tdStyle}>
+                {s.cronExpression}
+              </td>
+              <td style={tdStyle}>{s.format.toUpperCase()}</td>
+              <td className="tabular-nums" style={{ ...tdStyle, textAlign: "right" }}>
+                {s.recipientMembershipIds.length}
+              </td>
+              <td className="tabular-nums" style={tdStyle}>
                 {s.nextRunAt ? new Date(s.nextRunAt).toLocaleString() : "—"}
               </td>
-              <td>
+              <td style={tdStyle}>
                 <StatusPill label={statusLabel(s.status)} tone={scheduleTone(s.status)} />
               </td>
             </tr>
@@ -271,24 +287,8 @@ function RunLedger({ scheduleId }: { scheduleId: string }): JSX.Element {
   }, [load]);
 
   return (
-    <section
-      style={{
-        padding: "0 1.5rem 1.5rem",
-        display: "flex",
-        flexDirection: "column",
-        gap: "0.75rem",
-      }}
-    >
-      <h2
-        style={{
-          margin: 0,
-          fontSize: "0.6875rem",
-          fontWeight: 600,
-          letterSpacing: "0.04em",
-          textTransform: "uppercase",
-          color: "var(--color-on-surface-variant)",
-        }}
-      >
+    <section style={ledgerShellStyle}>
+      <h2 style={sectionTitleStyle}>
         Run history · <span className="wx-data-md">{scheduleId.slice(0, 8)}</span>
       </h2>
       {loading ? (
@@ -298,28 +298,34 @@ function RunLedger({ scheduleId }: { scheduleId: string }): JSX.Element {
       ) : runs.length === 0 ? (
         <EmptyState title="No runs" description="This schedule has no run history yet." />
       ) : (
-        <table>
+        <table style={tableStyle}>
           <thead>
-            <tr>
-              <th>Scheduled for</th>
-              <th>Status</th>
-              <th>Rows</th>
-              <th>Finished</th>
-              <th>Document</th>
+            <tr style={tableHeadRowStyle}>
+              <th style={thStyle}>Scheduled for</th>
+              <th style={thStyle}>Status</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Rows</th>
+              <th style={thStyle}>Finished</th>
+              <th style={thStyle}>Document</th>
             </tr>
           </thead>
           <tbody>
             {runs.map((r) => (
-              <tr key={r.id}>
-                <td className="tabular-nums">{new Date(r.scheduledFor).toLocaleString()}</td>
-                <td>
+              <tr key={r.id} style={{ borderTop: "1px solid var(--color-surface-container)" }}>
+                <td className="tabular-nums" style={tdStyle}>
+                  {new Date(r.scheduledFor).toLocaleString()}
+                </td>
+                <td style={tdStyle}>
                   <StatusPill label={statusLabel(r.status)} tone={runTone(r.status)} />
                 </td>
-                <td className="tabular-nums">{r.rowCount ?? "—"}</td>
-                <td className="tabular-nums">
+                <td className="tabular-nums" style={{ ...tdStyle, textAlign: "right" }}>
+                  {r.rowCount ?? "—"}
+                </td>
+                <td className="tabular-nums" style={tdStyle}>
                   {r.finishedAt ? new Date(r.finishedAt).toLocaleString() : "—"}
                 </td>
-                <td className="wx-data-md">{r.documentId ? r.documentId.slice(0, 8) : "—"}</td>
+                <td className="wx-data-md" style={tdStyle}>
+                  {r.documentId ? r.documentId.slice(0, 8) : "—"}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -328,3 +334,112 @@ function RunLedger({ scheduleId }: { scheduleId: string }): JSX.Element {
     </section>
   );
 }
+
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+
+const toolbarStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  flexWrap: "wrap",
+  gap: "0.5rem",
+};
+
+const tabListStyle: CSSProperties = {
+  display: "flex",
+  gap: "0.25rem",
+  background: "var(--color-surface-container)",
+  padding: "0.2rem",
+  borderRadius: "var(--radius-md)",
+};
+
+const selectStyle: CSSProperties = {
+  minHeight: "2.25rem",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+  background: "var(--color-surface-low)",
+  color: "var(--color-on-surface)",
+  cursor: "pointer",
+  fontSize: "0.85rem",
+  padding: "0.35rem 0.65rem",
+};
+
+const buttonStyle: CSSProperties = {
+  minHeight: "2.25rem",
+  padding: "0.5rem 0.85rem",
+  borderRadius: "var(--radius-md)",
+  border: "none",
+  cursor: "pointer",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.82rem",
+  fontWeight: 600,
+};
+
+const errorBannerStyle: CSSProperties = {
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
+  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+  color: "var(--color-error)",
+  fontSize: "0.85rem",
+};
+
+const contentShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "1.5rem",
+};
+
+const tableShellStyle: CSSProperties = {
+  width: "100%",
+  overflowX: "auto",
+  padding: "0 1.5rem",
+};
+
+const tableStyle: CSSProperties = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: "0.85rem",
+};
+
+const thStyle: CSSProperties = {
+  padding: "0.5rem 0.75rem",
+  textAlign: "left",
+  fontSize: "0.7rem",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color: "var(--color-on-surface-variant)",
+};
+
+const tdStyle: CSSProperties = {
+  padding: "0.55rem 0.75rem",
+  verticalAlign: "top",
+  color: "var(--color-on-surface)",
+};
+
+const tableHeadRowStyle: CSSProperties = {
+  background: "var(--color-surface-low)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+};
+
+const ledgerShellStyle: CSSProperties = {
+  padding: "0 1.5rem 1.5rem",
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+};
+
+const sectionTitleStyle: CSSProperties = {
+  margin: 0,
+  fontSize: "0.6875rem",
+  fontWeight: 600,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  color: "var(--color-on-surface-variant)",
+};

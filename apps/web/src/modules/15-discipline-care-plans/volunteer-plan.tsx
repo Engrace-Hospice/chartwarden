@@ -12,6 +12,7 @@ import { StatusPill, t, useApiClient } from "@wardenx/ui";
 // A frontend that simply greyed the button out would make the spec's audited override unreachable.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
+import { MembershipLookupField } from "../../shared/entity-lookups";
 import {
   type AssignmentView,
   type GateView,
@@ -145,10 +146,11 @@ function AssignmentModal({
         </button>
       }
     >
-      <TextField
-        label="Volunteer membership id"
+      <MembershipLookupField
+        label="Volunteer"
         value={volunteerMembershipId}
         onChange={setVolunteer}
+        required
       />
 
       {gatesError ? <Notice tone="warning">{gatesError}</Notice> : null}

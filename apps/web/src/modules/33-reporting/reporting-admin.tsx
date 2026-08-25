@@ -3,8 +3,8 @@ import {
   Glyph,
   LoadingSpinner,
   PageHeader,
-  StatusBoardLayout,
   StatusPill,
+  WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/33-reporting — M33 Reporting & Analytics, the platform/compliance ADMIN CONSOLE (R2).
@@ -16,7 +16,7 @@ import {
 // This is a service-state board (not metric-led) → StatusBoardLayout: the replica-lag gauge is the
 // page freshness anchor; each MV row carries its own last-refresh chip. Lantern: No-Line, CSS-var tokens.
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import {
   asOfLabel,
   freshnessLabel,
@@ -112,11 +112,22 @@ export function ReportingAdmin(): JSX.Element {
   if (error) return <EmptyState title="Unavailable" description={error} />;
 
   return (
-    <StatusBoardLayout
-      header={<PageHeader title="Reporting Admin" breadcrumb="Platform · Materialized Views" />}
-      services={
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <WorkQueueLayout
+      header={
+        <PageHeader title="Reporting Admin" breadcrumb="Platform / Materialized Views">
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Monitor materialized-view freshness, replica lag, refresh failures, and administrative
+            controls.
+          </div>
+        </PageHeader>
+      }
+      filters={
+        <div style={filterShellStyle}>
           <LagGauge lag={lag} />
+        </div>
+      }
+      table={
+        <div style={tableShellStyle}>
           <MvCatalog
             mvs={mvs}
             busyKey={busyKey}
@@ -125,36 +136,121 @@ export function ReportingAdmin(): JSX.Element {
           />
         </div>
       }
+      fullPageScroll
     />
   );
 }
 
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+
+const tableShellStyle: CSSProperties = {
+  width: "100%",
+  overflowX: "auto",
+  padding: "0 1.5rem 1.5rem",
+};
+
+const tableStyle: CSSProperties = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: "0.85rem",
+};
+
+const thStyle: CSSProperties = {
+  padding: "0.5rem 0.75rem",
+  textAlign: "left",
+  fontSize: "0.7rem",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color: "var(--color-on-surface-variant)",
+};
+
+const tdStyle: CSSProperties = {
+  padding: "0.55rem 0.75rem",
+  verticalAlign: "top",
+  color: "var(--color-on-surface)",
+};
+
+const rowStyle: CSSProperties = {
+  borderTop: "1px solid var(--color-surface-container)",
+};
+
+const tableHeadRowStyle: CSSProperties = {
+  background: "var(--color-surface-low)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+};
+
+const actionButtonStyle: CSSProperties = {
+  minHeight: "2.25rem",
+  padding: "0.45rem 0.75rem",
+  borderRadius: "var(--radius-md)",
+  border: "none",
+  cursor: "pointer",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.75rem",
+  fontWeight: 600,
+};
+
+const disabledActionButtonStyle: CSSProperties = {
+  ...actionButtonStyle,
+  cursor: "not-allowed",
+  opacity: 0.5,
+};
+
+const cardShellStyle: CSSProperties = {
+  background: "var(--color-surface-lowest)",
+  borderRadius: "var(--radius-lg)",
+  boxShadow: "var(--shadow-soft)",
+};
+
+const cardInsetStyle: CSSProperties = {
+  padding: "1rem 1.25rem",
+};
+
+const emptyShellStyle: CSSProperties = {
+  padding: "2rem 1.5rem",
+};
+
+const gaugeShellStyle: CSSProperties = {
+  ...cardShellStyle,
+  ...cardInsetStyle,
+  display: "flex",
+  alignItems: "center",
+  gap: "2rem",
+  flexWrap: "wrap",
+};
+
+const gaugeLabelStyle: CSSProperties = {
+  fontSize: "0.6875rem",
+  fontWeight: 600,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  color: "var(--color-on-surface-variant)",
+};
+
+const gaugeMetaStyle: CSSProperties = {
+  fontSize: "0.7rem",
+  color: "var(--color-on-surface-variant)",
+};
+
+const gaugeValueStyle: CSSProperties = {
+  fontSize: "1.25rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+};
+
 // ── replica-lag gauge (the page freshness anchor; D14 breaker) ────────────────────────────────────────
 function LagGauge({ lag }: { lag: ReplicaLag | null }): JSX.Element {
   return (
-    <section
-      style={{
-        background: "var(--color-surface-lowest)",
-        borderRadius: "var(--radius-xl, 1rem)",
-        boxShadow: "var(--shadow-soft)",
-        padding: "1rem 1.25rem",
-        display: "flex",
-        alignItems: "center",
-        gap: "2rem",
-      }}
-    >
+    <section style={gaugeShellStyle}>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-        <span
-          style={{
-            fontSize: "0.6875rem",
-            fontWeight: 600,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
-            color: "var(--color-on-surface-variant)",
-          }}
-        >
-          Read-replica posture
-        </span>
+        <span style={gaugeLabelStyle}>Read-replica posture</span>
         {lag ? (
           <StatusPill
             label={lagLabel(lag.lagSeconds, lag.breakerOpen)}
@@ -171,9 +267,7 @@ function LagGauge({ lag }: { lag: ReplicaLag | null }): JSX.Element {
           <Gauge label="Lag" value={`${Math.round(lag.lagSeconds)}s`} />
           <Gauge label="Threshold" value={`${Math.round(lag.thresholdSeconds)}s`} />
           <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <span style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>
-              Breaker
-            </span>
+            <span style={gaugeMetaStyle}>Breaker</span>
             <span
               style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.9rem" }}
             >
@@ -204,11 +298,8 @@ function LagGauge({ lag }: { lag: ReplicaLag | null }): JSX.Element {
 function Gauge({ label, value }: { label: string; value: string }): JSX.Element {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-      <span style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>{label}</span>
-      <span
-        className="tabular-nums"
-        style={{ fontSize: "1.25rem", fontWeight: 600, color: "var(--color-on-surface)" }}
-      >
+      <span style={gaugeMetaStyle}>{label}</span>
+      <span className="tabular-nums" style={gaugeValueStyle}>
         {value}
       </span>
     </div>
@@ -228,26 +319,23 @@ function MvCatalog({
   onSuspend: (mvKey: string) => void;
 }): JSX.Element {
   if (mvs.length === 0)
-    return <EmptyState title="No materialized views" description="No MVs are registered." />;
+    return (
+      <div style={emptyShellStyle}>
+        <EmptyState title="No materialized views" description="No MVs are registered." />
+      </div>
+    );
   return (
-    <section
-      style={{
-        background: "var(--color-surface-lowest)",
-        borderRadius: "var(--radius-xl, 1rem)",
-        boxShadow: "var(--shadow-soft)",
-        padding: "1rem 1.25rem",
-      }}
-    >
-      <table>
+    <div style={cardShellStyle}>
+      <table style={tableStyle}>
         <thead>
-          <tr>
-            <th>View</th>
-            <th>Strategy</th>
-            <th>Status</th>
-            <th>Freshness</th>
-            <th>Failures</th>
-            <th>Refresh ms</th>
-            <th>Actions</th>
+          <tr style={tableHeadRowStyle}>
+            <th style={thStyle}>View</th>
+            <th style={thStyle}>Strategy</th>
+            <th style={thStyle}>Status</th>
+            <th style={thStyle}>Freshness</th>
+            <th style={{ ...thStyle, textAlign: "right" }}>Failures</th>
+            <th style={{ ...thStyle, textAlign: "right" }}>Refresh ms</th>
+            <th style={thStyle}>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -255,16 +343,18 @@ function MvCatalog({
             const failedState = mv.refreshFailureCount > 0 ? "failed" : undefined;
             const busy = busyKey === mv.mvKey;
             return (
-              <tr key={mv.id}>
-                <td className="wx-data-md">{mv.mvKey}</td>
-                <td>{statusLabel(mv.refreshStrategy)}</td>
-                <td>
+              <tr key={mv.id} style={rowStyle}>
+                <td className="wx-data-md" style={tdStyle}>
+                  {mv.mvKey}
+                </td>
+                <td style={tdStyle}>{statusLabel(mv.refreshStrategy)}</td>
+                <td style={tdStyle}>
                   <StatusPill
                     label={statusLabel(mv.status)}
                     tone={mvTone(mv.status, mv.refreshFailureCount)}
                   />
                 </td>
-                <td>
+                <td style={tdStyle}>
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
                     <StatusPill
                       label={freshnessLabel(mv.lastRefreshedAt, failedState)}
@@ -278,15 +368,19 @@ function MvCatalog({
                     </span>
                   </div>
                 </td>
-                <td className="tabular-nums">{mv.refreshFailureCount}</td>
-                <td className="tabular-nums">{mv.lastRefreshDurationMs ?? "—"}</td>
-                <td>
-                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                <td className="tabular-nums" style={{ ...tdStyle, textAlign: "right" }}>
+                  {mv.refreshFailureCount}
+                </td>
+                <td className="tabular-nums" style={{ ...tdStyle, textAlign: "right" }}>
+                  {mv.lastRefreshDurationMs ?? "—"}
+                </td>
+                <td style={tdStyle}>
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                     <button
                       type="button"
                       onClick={() => onRefresh(mv.mvKey)}
                       disabled={busy}
-                      style={{ fontSize: "0.75rem" }}
+                      style={busy ? disabledActionButtonStyle : actionButtonStyle}
                     >
                       {busy ? "…" : "Refresh"}
                     </button>
@@ -294,7 +388,11 @@ function MvCatalog({
                       type="button"
                       onClick={() => onSuspend(mv.mvKey)}
                       disabled={busy || mv.status === "suspended"}
-                      style={{ fontSize: "0.75rem" }}
+                      style={
+                        busy || mv.status === "suspended"
+                          ? disabledActionButtonStyle
+                          : actionButtonStyle
+                      }
                     >
                       Suspend
                     </button>
@@ -305,6 +403,6 @@ function MvCatalog({
           })}
         </tbody>
       </table>
-    </section>
+    </div>
   );
 }

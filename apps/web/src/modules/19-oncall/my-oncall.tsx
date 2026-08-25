@@ -20,9 +20,17 @@
 // labelled "call supervisor now" that opened nothing would be worse than its absence. The queue below is
 // the same server-side board the supervisor sees, narrowed to what is open; M19 publishes no "assigned to
 // me" filter because a triage call has no assignee column — the covering SHIFT is the assignment.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  t,
+  useApiClient,
+} from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
 import {
   type CurrentOnCallView,
@@ -116,8 +124,6 @@ export function MyOnCallScreen(): JSX.Element {
       .filter((s) => s.status === "scheduled" && Date.parse(s.shiftStartsAt) > Date.now())
       .sort((a, b) => a.shiftStartsAt.localeCompare(b.shiftStartsAt))[0] ?? null;
 
-  const escalated = calls.filter((c) => c.openEscalationCount > 0).length;
-  const redFlagged = calls.filter((c) => c.redFlagAnswerCount > 0).length;
   const board = [...calls].sort(
     (a, b) =>
       b.openEscalationCount - a.openEscalationCount ||
@@ -126,150 +132,188 @@ export function MyOnCallScreen(): JSX.Element {
   );
 
   return (
-    <div style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>My on-call</span>}
-        breadcrumb="On-call triage"
-        actions={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <Link to="/triage/intake" style={ghostButtonStyle}>
-              Take a call
-            </Link>
-            <Link to="/triage" style={ghostButtonStyle}>
-              Full queue
-            </Link>
+    <WorkQueueLayout
+      header={
+        <PageHeader
+          title="My on-call"
+          breadcrumb="On-call triage"
+          actions={
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <Link to="/triage/intake" style={primaryLinkButtonStyle}>
+                Take a call
+              </Link>
+              <Link to="/triage" style={linkButtonStyle}>
+                Full queue
+              </Link>
+            </div>
+          }
+        >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Live coverage, current shift context, and the open triage board for your on-call window.
           </div>
-        }
-      />
-
-      {coverage === "on" ? (
-        <Notice tone="success" live>
-          <strong>ON CALL</strong>
-          {activeShift ? ` until ${dateTime(activeShift.shiftEndsAt)}` : ""} — the server resolves a
-          covering actor for your scope as of {dateTime(current?.asOf)}.
-        </Notice>
-      ) : coverage === "off" ? (
-        <Notice tone="info" live>
-          <strong>OFF</strong> — no actor is covering in your scope right now. That is the server's
-          answer, read at {dateTime(current?.asOf)}, not an absence of data.
-        </Notice>
-      ) : (
-        <Notice tone="warning" live>
-          <strong>Coverage status unknown.</strong> The live read did not answer. This is NOT "off
-          call" — do not treat it as one. Check the roster, and assume you are reachable until you
-          know otherwise.
-        </Notice>
-      )}
-
-      <Card title="Shift">
-        {activeShift ? (
-          <SummaryGrid>
-            <Field
-              label="Shift"
-              value={
-                <Link to={`/triage/shifts/${activeShift.id}`} style={linkStyle}>
-                  {shortId(activeShift.id)}
-                </Link>
-              }
-            />
-            <Field label="Discipline" value={disciplineLabel(activeShift.discipline)} />
-            <Field
-              label="Started"
-              value={dateTime(activeShift.openedAt ?? activeShift.shiftStartsAt)}
-            />
-            <Field label="Ends" value={dateTime(activeShift.shiftEndsAt)} />
-            <Field
-              label="On shift for"
-              value={durationLabel(minutesSince(activeShift.openedAt ?? activeShift.shiftStartsAt))}
-            />
-          </SummaryGrid>
-        ) : nextShift ? (
-          <SummaryGrid>
-            <Field
-              label="Next shift"
-              value={
-                <Link to={`/triage/shifts/${nextShift.id}`} style={linkStyle}>
-                  {shortId(nextShift.id)}
-                </Link>
-              }
-            />
-            <Field label="Discipline" value={disciplineLabel(nextShift.discipline)} />
-            <Field label="Starts" value={dateTime(nextShift.shiftStartsAt)} />
-            <Field label="Ends" value={dateTime(nextShift.shiftEndsAt)} />
-            <Field
-              label="Status"
-              value={<StatusPill label={humanize(nextShift.status)} tone="progress" />}
-            />
-          </SummaryGrid>
-        ) : (
-          <span style={mutedStyle}>
-            No active or upcoming shift is on the roster in this window. The roster read is scoped
-            by the server; a shift belonging to a colleague is simply absent.
-          </span>
-        )}
-        <span style={mutedStyle}>
-          The roster shows what is scheduled for your scope, not "assigned to me" — M19 publishes no
-          per-membership roster filter, and a triage call has no assignee at all: the covering shift
-          is the assignment.
-        </span>
-      </Card>
-
-      <Card title="Open now">
-        <CountGrid
-          entries={[
-            { label: "Open calls", value: calls.length },
-            {
-              label: "With an escalation",
-              value: escalated,
-              tone: escalated > 0 ? "error" : undefined,
-            },
-            { label: "Red-flagged", value: redFlagged, tone: redFlagged > 0 ? "error" : undefined },
-          ]}
-        />
-        {board.length === 0 ? (
-          <span style={mutedStyle}>Nothing is open. A quiet night.</span>
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Call</th>
-                <th style={th}>State</th>
-                <th style={th}>Protocol</th>
-                <th style={thNum}>Escalations</th>
-                <th style={thNum}>Open</th>
-              </tr>
-            </thead>
-            <tbody>
-              {board.map((c) => (
-                <tr key={c.id} style={rowLine}>
-                  <td style={td}>
-                    <Link to={`/triage/calls/${c.id}`} style={linkStyle}>
-                      {shortId(c.id)}
+        </PageHeader>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          {coverage === "on" ? (
+            <Notice tone="success" live>
+              <strong>ON CALL</strong>
+              {activeShift ? ` until ${dateTime(activeShift.shiftEndsAt)}` : ""} — the server
+              resolves a covering actor for your scope as of {dateTime(current?.asOf)}.
+            </Notice>
+          ) : coverage === "off" ? (
+            <Notice tone="info" live>
+              <strong>OFF</strong> — no actor is covering in your scope right now. That is the
+              server's answer, read at {dateTime(current?.asOf)}, not an absence of data.
+            </Notice>
+          ) : (
+            <Notice tone="warning" live>
+              <strong>Coverage status unknown.</strong> The live read did not answer. This is NOT
+              "off call" — do not treat it as one. Check the roster, and assume you are reachable
+              until you know otherwise.
+            </Notice>
+          )}
+        </div>
+      }
+      table={
+        <div style={contentShellStyle}>
+          <Card title={activeShift ? "Active shift" : nextShift ? "Next shift" : "Shift"}>
+            {activeShift ? (
+              <SummaryGrid>
+                <Field
+                  label="Shift"
+                  value={
+                    <Link to={`/triage/shifts/${activeShift.id}`} style={linkStyle}>
+                      {shortId(activeShift.id)}
                     </Link>
-                  </td>
-                  <td style={td}>
-                    <CallStatePill state={c.state} />
-                  </td>
-                  <td style={td}>{c.protocolLabel ?? "—"}</td>
-                  <td style={tdNum}>{c.openEscalationCount}</td>
-                  <td style={tdNum}>{durationLabel(minutesSince(c.openedAt))}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
+                  }
+                />
+                <Field label="Discipline" value={disciplineLabel(activeShift.discipline)} />
+                <Field
+                  label="Started"
+                  value={dateTime(activeShift.openedAt ?? activeShift.shiftStartsAt)}
+                />
+                <Field label="Ends" value={dateTime(activeShift.shiftEndsAt)} />
+                <Field
+                  label="On shift for"
+                  value={durationLabel(
+                    minutesSince(activeShift.openedAt ?? activeShift.shiftStartsAt),
+                  )}
+                />
+              </SummaryGrid>
+            ) : nextShift ? (
+              <SummaryGrid>
+                <Field
+                  label="Next shift"
+                  value={
+                    <Link to={`/triage/shifts/${nextShift.id}`} style={linkStyle}>
+                      {shortId(nextShift.id)}
+                    </Link>
+                  }
+                />
+                <Field label="Discipline" value={disciplineLabel(nextShift.discipline)} />
+                <Field label="Starts" value={dateTime(nextShift.shiftStartsAt)} />
+                <Field label="Ends" value={dateTime(nextShift.shiftEndsAt)} />
+                <Field
+                  label="Status"
+                  value={<StatusPill label={humanize(nextShift.status)} tone="progress" />}
+                />
+              </SummaryGrid>
+            ) : (
+              <span style={mutedStyle}>
+                No active or upcoming shift is on the roster in this window. The roster read is
+                scoped by the server; a shift belonging to a colleague is simply absent.
+              </span>
+            )}
+            <span style={mutedStyle}>
+              The roster shows what is scheduled for your scope, not "assigned to me" — M19
+              publishes no per-membership roster filter, and a triage call has no assignee at all:
+              the covering shift is the assignment.
+            </span>
+          </Card>
 
-      <Card title="Working a call away from a desk">
-        <span style={mutedStyle}>
-          The triage panel is <strong>online-only</strong>. If connectivity drops mid-call, finish
-          on paper and re-enter it when service is restored — no partial triage state is kept on the
-          device, because a disposition gate that can be reconstructed offline is not a gate. The
-          paper re-entry path is a separate, permissioned screen and it back-dates the call
-          honestly, inside the outage window it is filed against. Push notification, Do-Not-Disturb
-          bypass and one-tap dialling belong to the native shell rather than to this web view.
-        </span>
-      </Card>
-    </div>
+          <Card title="Open now">
+            {board.length === 0 ? (
+              <span style={mutedStyle}>Nothing is open. A quiet night.</span>
+            ) : (
+              <div style={{ width: "100%", overflowX: "auto" }}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr style={tableHeadRowStyle}>
+                      <th style={th}>Call</th>
+                      <th style={th}>State</th>
+                      <th style={th}>Protocol</th>
+                      <th style={thNum}>Escalations</th>
+                      <th style={thNum}>Open</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {board.map((c) => (
+                      <tr key={c.id} style={rowLine}>
+                        <td style={td}>
+                          <Link to={`/triage/calls/${c.id}`} style={linkStyle}>
+                            {shortId(c.id)}
+                          </Link>
+                        </td>
+                        <td style={td}>
+                          <CallStatePill state={c.state} />
+                        </td>
+                        <td style={td}>{c.protocolLabel ?? "—"}</td>
+                        <td style={tdNum}>{c.openEscalationCount}</td>
+                        <td style={tdNum}>{durationLabel(minutesSince(c.openedAt))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          <Card title="Working a call away from a desk">
+            <span style={mutedStyle}>
+              The triage panel is <strong>online-only</strong>. If connectivity drops mid-call,
+              finish on paper and re-enter it when service is restored — no partial triage state is
+              kept on the device, because a disposition gate that can be reconstructed offline is
+              not a gate. The paper re-entry path is a separate, permissioned screen and it
+              back-dates the call honestly, inside the outage window it is filed against. Push
+              notification, Do-Not-Disturb bypass and one-tap dialling belong to the native shell
+              rather than to this web view.
+            </span>
+          </Card>
+        </div>
+      }
+      fullPageScroll
+    />
   );
 }
+
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+
+const contentShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "1rem",
+  padding: "0 1.5rem 1.5rem",
+};
+
+const tableHeadRowStyle: CSSProperties = {
+  background: "var(--color-surface-low)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+};
+
+const linkButtonStyle: CSSProperties = {
+  ...ghostButtonStyle,
+  minHeight: "2.25rem",
+  padding: "0.5rem 0.85rem",
+};
+
+const primaryLinkButtonStyle: CSSProperties = {
+  ...linkButtonStyle,
+  background: "var(--color-primary)",
+  color: "var(--color-on-primary)",
+};

@@ -103,18 +103,6 @@ Use three terminals in `wardenx/`:
 bun run dev:backend
 ```
 
-/me/oncall
-/triage/protocols
-/triage/policy
-/triage/vendors
-/triage/paper-reentry
-/triage/metrics
-/platform/cap/constants
-/reports/admin
-/reports
-/reports/schedules
-/scheduling/day
-/scheduling/week
 /scheduling/proposals
 /scheduling/recurring
 /scheduling/time-off

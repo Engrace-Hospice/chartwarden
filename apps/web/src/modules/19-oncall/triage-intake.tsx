@@ -7,8 +7,6 @@ import {
   Button,
   EmptyState,
   Glyph,
-  KpiCard,
-  KpiStrip,
   PageHeader,
   StatusPill,
   WorkQueueLayout,
@@ -121,44 +119,6 @@ export function TriageIntakeScreen(): JSX.Element {
             server-authored.
           </div>
         </PageHeader>
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard
-            label="Provider"
-            value={peValid ? "Ready" : "Required"}
-            detail="Coverage scope"
-            tone={peValid ? "success" : "warning"}
-            accentColor={peValid ? "var(--color-success)" : "var(--color-warning)"}
-          />
-          <KpiCard
-            label="Caller"
-            value={hasCaller ? "Captured" : "Optional"}
-            detail="Name or callback"
-            tone={hasCaller ? "info" : "neutral"}
-            accentColor={hasCaller ? "var(--color-primary)" : "var(--color-outline-variant)"}
-          />
-          <KpiCard
-            label="Chart"
-            value={chartLinked ? "Linked" : "Later"}
-            detail="Patient + admission"
-            tone={anchorValid ? (chartLinked ? "success" : "neutral") : "danger"}
-            accentColor={
-              anchorValid
-                ? chartLinked
-                  ? "var(--color-success)"
-                  : "var(--color-outline-variant)"
-                : "var(--color-error)"
-            }
-          />
-          <KpiCard
-            label="Narrative"
-            value={hasNarrative ? "Started" : "Blank"}
-            detail="Complaint or quote"
-            tone={hasNarrative ? "info" : "neutral"}
-            accentColor={hasNarrative ? "var(--color-primary)" : "var(--color-outline-variant)"}
-          />
-        </KpiStrip>
       }
       filters={
         <div style={filterShellStyle}>

@@ -20,9 +20,16 @@
 // minimization profile can be changed after creation, because either would silently re-point live PHI at a
 // different contract. Changing one means creating a new binding, and the screen says that instead of
 // offering fields that will be refused.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
 import {
   type MinimizationProfile,
@@ -42,17 +49,14 @@ import {
 import {
   Card,
   CheckboxField,
-  CountGrid,
   Modal,
   Notice,
   SelectField,
   TextField,
   alertStyle,
-  columnStyle,
   disabledButtonStyle,
   ghostButtonStyle,
   mutedStyle,
-  pageTitleStyle,
   primaryButtonStyle,
   rowLine,
   tableStyle,
@@ -106,9 +110,7 @@ export function ExternalVendorAdminScreen(): JSX.Element {
   if (loading) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
 
-  const live = bindings.filter((b) => b.adapterRegistered && b.baaInEffect).length;
   const inert = bindings.filter((b) => !b.adapterRegistered).length;
-  const baaGap = bindings.filter((b) => !b.baaInEffect).length;
 
   const canCreate =
     UUID_RE.test(mdmVendorId) &&
@@ -158,121 +160,131 @@ export function ExternalVendorAdminScreen(): JSX.Element {
   }
 
   return (
-    <div style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>External triage vendors</span>}
-        breadcrumb="On-call triage · configuration"
-        actions={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <button type="button" style={ghostButtonStyle} onClick={() => setCreating(true)}>
-              Bind a vendor
-            </button>
-            <Link to="/triage/policy" style={ghostButtonStyle}>
-              On-call policy
-            </Link>
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader
+            title="External triage vendors"
+            breadcrumb="On-call triage / Configuration"
+            actions={
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  style={primaryButtonCompactStyle}
+                  onClick={() => setCreating(true)}
+                >
+                  Bind a vendor
+                </button>
+                <Link to="/triage/policy" style={linkButtonStyle}>
+                  On-call policy
+                </Link>
+              </div>
+            }
+          >
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Review vendor bindings, adapter readiness, BAA status, and PHI-minimization profiles.
+            </div>
+          </PageHeader>
+        }
+        filters={
+          <div style={filterShellStyle}>
+            <Notice tone="info">
+              No credential appears on this page and none can be entered: vendor secrets live in the
+              platform secret store. A binding carries vendor identity, adapter readiness, BAA
+              status, and outbound PHI minimization.
+            </Notice>
+            {inert > 0 ? (
+              <Notice tone="error" live>
+                {inert} binding{inert === 1 ? " has" : "s have"} no loaded adapter. Such a binding
+                is configured and inert — it cannot carry a call.
+              </Notice>
+            ) : null}
+            {actionError ? (
+              <div role="alert" style={errorBannerStyle}>
+                {actionError}
+              </div>
+            ) : null}
           </div>
         }
+        table={
+          <div style={tableShellStyle}>
+            {bindings.length === 0 ? (
+              <div style={emptyShellStyle}>
+                <EmptyState
+                  title="No external vendors"
+                  description="The direct model needs none; every night is answered by your own clinicians."
+                />
+              </div>
+            ) : (
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={tableHeadRowStyle}>
+                    <th style={th}>Vendor</th>
+                    <th style={th}>Canonical entity</th>
+                    <th style={th}>Adapter</th>
+                    <th style={th}>Adapter loaded</th>
+                    <th style={th}>BAA</th>
+                    <th style={th}>BAA expires</th>
+                    <th style={th}>RN coverage</th>
+                    <th style={th}>Minimization</th>
+                    <th style={th}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bindings.map((b) => (
+                    <tr key={b.id} style={rowLine}>
+                      <td style={td}>{b.name}</td>
+                      <td style={{ ...td, fontFamily: "var(--font-mono)" }}>
+                        {shortId(b.mdmVendorId)}
+                      </td>
+                      <td style={{ ...td, fontFamily: "var(--font-mono)" }}>{b.adapterKey}</td>
+                      <td style={td}>
+                        {b.adapterRegistered ? (
+                          <StatusPill label="Loaded" tone="success" />
+                        ) : (
+                          <StatusPill label="Not registered" tone="error" />
+                        )}
+                      </td>
+                      <td style={td}>
+                        {b.baaInEffect ? (
+                          <StatusPill label="In force" tone="success" />
+                        ) : (
+                          <StatusPill label="Not in force" tone="error" />
+                        )}
+                      </td>
+                      <td style={td}>
+                        {b.baaExpiresOn ? shortDate(b.baaExpiresOn) : "no stated expiry"}
+                      </td>
+                      <td style={td}>{b.rnCoverageAttested ? "Yes" : "No"}</td>
+                      <td style={td}>{humanize(b.minimizationProfile)}</td>
+                      <td style={td}>
+                        <button
+                          type="button"
+                          style={busy ? disabledButtonCompactStyle : linkButtonStyle}
+                          disabled={busy}
+                          onClick={() => {
+                            setRenewing(b);
+                            setRenewBaa(b.baaInEffect);
+                            setRenewRn(b.rnCoverageAttested);
+                            setRenewExpiry(b.baaExpiresOn ?? "");
+                          }}
+                        >
+                          BAA renewal
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <div style={tableFootnoteStyle}>
+              "No stated expiry" means the BAA carries no end date. The adapter key and minimization
+              profile cannot be changed after creation; changing one means binding the vendor again.
+            </div>
+          </div>
+        }
+        fullPageScroll
       />
-
-      <Notice tone="info">
-        No credential appears on this page and none can be entered: vendor secrets live in the
-        platform secret store, and this table has no column for one. What a binding carries is who
-        the vendor is, which adapter serves them, whether a BAA is in force, and which
-        PHI-minimization profile every outbound handoff is filtered through.
-      </Notice>
-
-      {inert > 0 ? (
-        <Notice tone="error" live>
-          {inert} binding{inert === 1 ? " has" : "s have"} no loaded adapter. Such a binding is
-          configured and inert — it cannot carry a call. The adapter registry ships empty by design,
-          so on a fresh deployment this is expected until an adapter is installed; what it must
-          never be is a surprise at 2 a.m.
-        </Notice>
-      ) : null}
-
-      <Card title="Bindings">
-        <CountGrid
-          entries={[
-            { label: "Configured", value: bindings.length },
-            { label: "Live (adapter + BAA)", value: live },
-            { label: "No adapter loaded", value: inert, tone: inert > 0 ? "error" : undefined },
-            { label: "No BAA in force", value: baaGap, tone: baaGap > 0 ? "error" : undefined },
-          ]}
-        />
-        {bindings.length === 0 ? (
-          <span style={mutedStyle}>
-            No external triage vendor is bound. The direct model needs none — it is the Phase-1 live
-            surface, and every night is answered by your own clinicians.
-          </span>
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Vendor</th>
-                <th style={th}>Canonical entity</th>
-                <th style={th}>Adapter</th>
-                <th style={th}>Adapter loaded</th>
-                <th style={th}>BAA</th>
-                <th style={th}>BAA expires</th>
-                <th style={th}>RN coverage attested</th>
-                <th style={th}>Minimization</th>
-                <th style={th}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bindings.map((b) => (
-                <tr key={b.id} style={rowLine}>
-                  <td style={td}>{b.name}</td>
-                  <td style={{ ...td, fontFamily: t.fontMono }}>{shortId(b.mdmVendorId)}</td>
-                  <td style={{ ...td, fontFamily: t.fontMono }}>{b.adapterKey}</td>
-                  <td style={td}>
-                    {b.adapterRegistered ? (
-                      <StatusPill label="Loaded" tone="success" />
-                    ) : (
-                      <StatusPill label="Not registered" tone="error" />
-                    )}
-                  </td>
-                  <td style={td}>
-                    {b.baaInEffect ? (
-                      <StatusPill label="In force" tone="success" />
-                    ) : (
-                      <StatusPill label="Not in force" tone="error" />
-                    )}
-                  </td>
-                  <td style={td}>
-                    {b.baaExpiresOn ? shortDate(b.baaExpiresOn) : "no stated expiry"}
-                  </td>
-                  <td style={td}>{b.rnCoverageAttested ? "Yes" : "No"}</td>
-                  <td style={td}>{humanize(b.minimizationProfile)}</td>
-                  <td style={td}>
-                    <button
-                      type="button"
-                      style={busy ? disabledButtonStyle : ghostButtonStyle}
-                      disabled={busy}
-                      onClick={() => {
-                        setRenewing(b);
-                        setRenewBaa(b.baaInEffect);
-                        setRenewRn(b.rnCoverageAttested);
-                        setRenewExpiry(b.baaExpiresOn ?? "");
-                      }}
-                    >
-                      BAA renewal
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <span style={mutedStyle}>
-          "No stated expiry" means the BAA carries no end date — it does NOT mean the expiry is
-          unknown. The adapter key and the minimization profile cannot be changed after creation:
-          either would silently re-point live patient data at a different contract, so changing one
-          means binding the vendor again.
-        </span>
-      </Card>
-
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
 
       {creating ? (
         <Modal
@@ -368,6 +380,61 @@ export function ExternalVendorAdminScreen(): JSX.Element {
           <TextField label="BAA expiry" value={renewExpiry} onChange={setRenewExpiry} type="date" />
         </Modal>
       ) : null}
-    </div>
+    </>
   );
 }
+
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+
+const tableShellStyle: CSSProperties = {
+  width: "100%",
+  overflowX: "auto",
+  padding: "0 1.5rem 1.5rem",
+};
+
+const tableHeadRowStyle: CSSProperties = {
+  background: "var(--color-surface-low)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+};
+
+const tableFootnoteStyle: CSSProperties = {
+  marginTop: "0.85rem",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.8rem",
+};
+
+const emptyShellStyle: CSSProperties = {
+  padding: "2rem 1.5rem",
+};
+
+const errorBannerStyle: CSSProperties = {
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
+  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+  color: "var(--color-error)",
+  fontSize: "0.85rem",
+};
+
+const linkButtonStyle: CSSProperties = {
+  ...ghostButtonStyle,
+  minHeight: "2.25rem",
+  padding: "0.5rem 0.85rem",
+};
+
+const primaryButtonCompactStyle: CSSProperties = {
+  ...primaryButtonStyle,
+  minHeight: "2.25rem",
+  padding: "0.5rem 0.85rem",
+};
+
+const disabledButtonCompactStyle: CSSProperties = {
+  ...disabledButtonStyle,
+  minHeight: "2.25rem",
+  padding: "0.5rem 0.85rem",
+};
