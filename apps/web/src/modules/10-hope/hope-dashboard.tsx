@@ -1,11 +1,13 @@
 import {
+  Button,
   CountdownChip,
   DashboardLayout,
   EmptyState,
-  FilterBar,
+  Glyph,
   KpiCard,
   KpiStrip,
   LoadingSpinner,
+  OffsetPagination,
   PageHeader,
   StatusPill,
   useApiClient,
@@ -17,7 +19,7 @@ import {
 // (green/amber/red/grey) is derived client-side as a UX cue only — the SERVER is authoritative for status
 // (ADR-0030, no frontend authz). Reads GET /api/v1/hope/schedules via the typed client. Leaves only (@wardenx/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { BUCKET_TONE, rfaLabel, stateLabel } from "./hope-status";
 
@@ -34,6 +36,7 @@ interface ScheduleRow {
 
 const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 type Bucket = "" | "open" | "closing" | "late" | "expired";
+const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
 // Pure window-state derivation — a UX cue only; the server owns the authoritative status.
 function bucketOf(row: ScheduleRow, nowMs: number): Exclude<Bucket, ""> {
@@ -50,6 +53,10 @@ export function HopeDashboard(): JSX.Element {
   const navigate = useNavigate();
   const [items, setItems] = useState<ScheduleRow[]>([]);
   const [filter, setFilter] = useState<Bucket>("");
+  const [rfaFilter, setRfaFilter] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,93 +94,381 @@ export function HopeDashboard(): JSX.Element {
     [tagged],
   );
 
+  const rfaOptions = useMemo(
+    () => [
+      { value: "", label: "Any RFA" },
+      ...Array.from(new Set(items.map((r) => r.rfaKind)))
+        .sort()
+        .map((value) => ({ value, label: rfaLabel(value) })),
+    ],
+    [items],
+  );
   const rows = useMemo(() => {
-    const visible = filter ? tagged.filter((t) => t.bucket === filter) : tagged;
+    const q = searchQuery.trim().toLowerCase();
+    const visible = tagged.filter((t) => {
+      const matchesBucket = !filter || t.bucket === filter;
+      const matchesRfa = !rfaFilter || t.row.rfaKind === rfaFilter;
+      const matchesSearch =
+        !q ||
+        [
+          t.row.id,
+          t.row.patientId,
+          t.row.admissionId,
+          t.row.rfaKind,
+          t.row.status,
+          t.row.windowOpensAt,
+          t.row.windowClosesAt,
+        ].some((value) => value.toLowerCase().includes(q));
+      return matchesBucket && matchesRfa && matchesSearch;
+    });
     return [...visible].sort(
       (a, b) => Date.parse(a.row.windowClosesAt) - Date.parse(b.row.windowClosesAt),
     );
-  }, [tagged, filter]);
+  }, [filter, rfaFilter, searchQuery, tagged]);
+  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+  const activePage = Math.min(page, pageCount);
+  const pagedRows = rows.slice((activePage - 1) * pageSize, activePage * pageSize);
+  const hasActiveFilters = filter !== "" || rfaFilter !== "" || searchQuery !== "";
+  const clearFilters = (): void => {
+    setFilter("");
+    setRfaFilter("");
+    setSearchQuery("");
+    setPage(1);
+  };
 
   return (
     <DashboardLayout
-      header={<PageHeader title="HOPE Timepoints" />}
+      header={
+        <PageHeader title="HOPE Timepoints" breadcrumb="Clinical Quality — HOPE schedules">
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Track open HOPE timepoint windows, closing deadlines, late schedules, and expired items
+            by RFA.
+          </div>
+        </PageHeader>
+      }
       kpis={
         <KpiStrip>
-          <KpiCard label="Open" value={counts.open} onSelect={() => setFilter("open")} />
+          <KpiCard
+            label="Open"
+            value={loading || error ? "—" : counts.open}
+            detail="Outside final 48h"
+            tone="info"
+            accentColor="var(--color-primary)"
+            selected={filter === "open"}
+            onSelect={() => {
+              setFilter("open");
+              setPage(1);
+            }}
+          />
           <KpiCard
             label="Closing 48h"
-            value={counts.closing}
-            onSelect={() => setFilter("closing")}
+            value={loading || error ? "—" : counts.closing}
+            detail="Needs attention"
+            tone={counts.closing > 0 ? "warning" : "neutral"}
+            accentColor={
+              counts.closing > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
+            }
+            selected={filter === "closing"}
+            onSelect={() => {
+              setFilter("closing");
+              setPage(1);
+            }}
           />
-          <KpiCard label="Late" value={counts.late} onSelect={() => setFilter("late")} />
-          <KpiCard label="Expired" value={counts.expired} onSelect={() => setFilter("expired")} />
+          <KpiCard
+            label="Late"
+            value={loading || error ? "—" : counts.late}
+            detail="Window closed"
+            tone={counts.late > 0 ? "danger" : "neutral"}
+            accentColor={counts.late > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
+            selected={filter === "late"}
+            onSelect={() => {
+              setFilter("late");
+              setPage(1);
+            }}
+          />
+          <KpiCard
+            label="Expired"
+            value={loading || error ? "—" : counts.expired}
+            detail="Terminal schedule"
+            tone="neutral"
+            accentColor="var(--color-outline-variant)"
+            selected={filter === "expired"}
+            onSelect={() => {
+              setFilter("expired");
+              setPage(1);
+            }}
+          />
         </KpiStrip>
       }
       charts={
-        <FilterBar
-          actions={
-            <button type="button" onClick={() => setFilter("")}>
-              Clear
-            </button>
-          }
-        >
-          <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
-            {filter ? `Filtered: ${stateLabel(filter)}` : "All open schedules"}
-          </span>
-        </FilterBar>
+        <div style={filterPanelStyle}>
+          {error ? (
+            <div role="alert" style={errorBannerStyle}>
+              <Glyph name="alert" size={16} />
+              <span>{error}</span>
+            </div>
+          ) : null}
+          <div style={filterRowStyle}>
+            <div style={{ position: "relative", minWidth: "17rem" }}>
+              <input
+                type="search"
+                placeholder="Search schedule, patient, admission..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setPage(1);
+                }}
+                aria-label="Search HOPE schedules"
+                style={searchInputStyle}
+              />
+              <div style={searchIconStyle}>
+                <Glyph name="eye" size={14} />
+              </div>
+            </div>
+            <label style={filterLabelStyle}>
+              <span style={mutedStyle}>State</span>
+              <select
+                aria-label="Filter by state"
+                value={filter}
+                onChange={(e) => {
+                  setFilter(e.target.value as Bucket);
+                  setPage(1);
+                }}
+                style={selectStyle}
+              >
+                <option value="">Any state</option>
+                <option value="open">Open</option>
+                <option value="closing">Closing 48h</option>
+                <option value="late">Late</option>
+                <option value="expired">Expired</option>
+              </select>
+            </label>
+            <label style={filterLabelStyle}>
+              <span style={mutedStyle}>RFA</span>
+              <select
+                aria-label="Filter by RFA"
+                value={rfaFilter}
+                onChange={(e) => {
+                  setRfaFilter(e.target.value);
+                  setPage(1);
+                }}
+                style={selectStyle}
+              >
+                {rfaOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {hasActiveFilters ? (
+              <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                Clear
+              </Button>
+            ) : null}
+            <span style={mutedStyle}>
+              {rows.length} of {items.length} schedules
+            </span>
+          </div>
+        </div>
       }
       table={
         error ? (
-          <EmptyState title="Unavailable" description={error} />
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState title="Unavailable" description={error} />
+          </div>
         ) : loading && items.length === 0 ? (
-          <LoadingSpinner />
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
         ) : rows.length === 0 ? (
-          <EmptyState
-            title="No HOPE schedules"
-            description="No timepoint windows match the current filter."
-          />
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState
+              title="No HOPE schedules"
+              description={
+                hasActiveFilters
+                  ? "No timepoint windows match the current filters."
+                  : "No HOPE schedules are currently open."
+              }
+              action={
+                hasActiveFilters ? (
+                  <Button tone="secondary" size="sm" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                ) : undefined
+              }
+            />
+          </div>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>RFA</th>
-                <th>Window closes</th>
-                <th>State</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(({ row, bucket }) => (
-                <tr
-                  key={row.id}
-                  // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => navigate(`/patients/${row.patientId}/hope`)}
-                  onKeyDown={(ev) => {
-                    if (ev.key === "Enter" || ev.key === " ") {
-                      ev.preventDefault();
-                      navigate(`/patients/${row.patientId}/hope`);
-                    }
-                  }}
-                  style={{ cursor: "pointer" }}
-                >
-                  <td>{rfaLabel(row.rfaKind)}</td>
-                  <td>
-                    {/* §2.2.1 window — count down to close; warning at 48h, alert at 12h, overdue when late. */}
-                    <CountdownChip dueAt={row.windowClosesAt} warnWithinHours={48} label="Closes" />
-                  </td>
-                  <td>
-                    <StatusPill
-                      label={stateLabel(bucket)}
-                      tone={BUCKET_TONE[bucket] ?? "neutral"}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <>
+            <div style={tableViewportStyle}>
+              <table style={tableStyle}>
+                <colgroup>
+                  <col style={{ width: "26%" }} />
+                  <col style={{ width: "18%" }} />
+                  <col style={{ width: "20%" }} />
+                  <col style={{ width: "16%" }} />
+                  <col style={{ width: "20%" }} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>RFA</th>
+                    <th>Window closes</th>
+                    <th>State</th>
+                    <th>Patient</th>
+                    <th>Admission</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedRows.map(({ row, bucket }) => (
+                    <tr
+                      key={row.id}
+                      // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => navigate(`/patients/${row.patientId}/hope`)}
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter" || ev.key === " ") {
+                          ev.preventDefault();
+                          navigate(`/patients/${row.patientId}/hope`);
+                        }
+                      }}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <td>
+                        <div style={primaryCellStyle}>
+                          <span style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
+                            {rfaLabel(row.rfaKind)}
+                          </span>
+                          <span style={monoMutedStyle}>{row.id.slice(0, 8)}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <CountdownChip
+                          dueAt={row.windowClosesAt}
+                          warnWithinHours={48}
+                          label="Closes"
+                        />
+                      </td>
+                      <td>
+                        <StatusPill
+                          label={stateLabel(bucket)}
+                          tone={BUCKET_TONE[bucket] ?? "neutral"}
+                        />
+                      </td>
+                      <td style={monoMutedStyle}>{row.patientId.slice(0, 8)}</td>
+                      <td style={monoMutedStyle}>{row.admissionId.slice(0, 8)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <OffsetPagination
+              page={activePage}
+              pageSize={pageSize}
+              totalItems={rows.length}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPage(1);
+              }}
+              pageSizeOptions={PAGE_SIZES}
+              noun="schedules"
+            />
+          </>
         )
       }
     />
   );
 }
+
+const filterPanelStyle: CSSProperties = {
+  padding: "0 1.5rem 0.75rem",
+};
+
+const filterRowStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "end",
+  gap: "0.75rem",
+};
+
+const filterLabelStyle: CSSProperties = {
+  display: "grid",
+  gap: "0.25rem",
+};
+
+const mutedStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.8125rem",
+};
+
+const searchInputStyle: CSSProperties = {
+  width: "100%",
+  minHeight: "2.35rem",
+  padding: "0.45rem 0.75rem 0.45rem 2rem",
+  borderRadius: "0.5rem",
+  border: "1px solid var(--color-surface-container)",
+  background: "var(--color-surface)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.875rem",
+};
+
+const searchIconStyle: CSSProperties = {
+  position: "absolute",
+  left: "0.65rem",
+  top: "50%",
+  transform: "translateY(-50%)",
+  color: "var(--color-on-surface-variant)",
+  pointerEvents: "none",
+};
+
+const selectStyle: CSSProperties = {
+  minHeight: "2.35rem",
+  padding: "0.45rem 0.65rem",
+  borderRadius: "0.5rem",
+  border: "1px solid var(--color-surface-container)",
+  background: "var(--color-surface)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.875rem",
+};
+
+const errorBannerStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  marginBottom: "0.75rem",
+  padding: "0.65rem 0.75rem",
+  borderRadius: "0.5rem",
+  border: "1px solid var(--color-error)",
+  color: "var(--color-error)",
+  background: "color-mix(in srgb, var(--color-error) 8%, var(--color-surface))",
+  fontSize: "0.875rem",
+};
+
+const tableViewportStyle: CSSProperties = {
+  width: "100%",
+  boxSizing: "border-box",
+  overflowX: "auto",
+  padding: "0 1.5rem 1.5rem",
+};
+
+const tableStyle: CSSProperties = {
+  width: "100%",
+  minWidth: "66rem",
+  borderCollapse: "collapse",
+  tableLayout: "fixed",
+  fontSize: "0.875rem",
+};
+
+const primaryCellStyle: CSSProperties = {
+  display: "grid",
+  gap: "0.2rem",
+};
+
+const monoMutedStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontFamily: "var(--font-mono)",
+  fontSize: "0.8125rem",
+  fontVariantNumeric: "tabular-nums",
+};

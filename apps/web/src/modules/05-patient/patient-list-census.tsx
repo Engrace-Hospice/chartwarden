@@ -4,10 +4,10 @@ import {
   CursorPagination,
   DataTable,
   EmptyState,
-  FilterBar,
+  Glyph,
+  KpiCard,
   KpiStrip,
   LoadingSpinner,
-  MetricCard,
   PageHeader,
   RightDetailPanel,
   StatusPill,
@@ -23,7 +23,7 @@ import type { DataTableColumn } from "@wardenx/ui";
 // row-select, with Open Chart deep-linking to /patients/:id. No hardcoded colors — the global
 // table styles (index.css) carry the Lantern tokens.
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { STATUS_TONE, ageFromDob, statusLabel } from "./patient-status";
 
@@ -69,18 +69,19 @@ function CensusKpis({
   const total = metrics?.total ?? 0;
   return (
     <KpiStrip>
-      <MetricCard
+      <KpiCard
         label="Active census"
-        value={metrics ? active : "…"}
+        value={metrics ? active : "—"}
         detail={metrics ? `${total} total in organization` : "Loading metrics"}
         tone="success"
+        accentColor="var(--color-success)"
         selected={status === "active"}
         onSelect={() => onStatusSelect(status === "active" ? "" : "active")}
       />
-      <MetricCard label="Admissions" value="—" detail="Today · M6 Admission" />
-      <MetricCard label="Discharges" value="—" detail="Today · M6 Admission" />
-      <MetricCard label="GIP" value="—" detail="Billing source pending" />
-      <MetricCard label="Recerts due" value="—" detail="M6 Certification" />
+      <KpiCard label="Admissions" value="—" detail="Today · M6 Admission" />
+      <KpiCard label="Discharges" value="—" detail="Today · M6 Admission" />
+      <KpiCard label="GIP" value="—" detail="Billing source pending" />
+      <KpiCard label="Recerts due" value="—" detail="M6 Certification" />
     </KpiStrip>
   );
 }
@@ -96,6 +97,7 @@ export function PatientListCensus(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<PatientSummary | null>(null);
   const [metrics, setMetrics] = useState<CensusMetrics | null>(null);
+  const hasActiveFilters = q.trim() !== "" || status !== "";
 
   // §4.2 census KPIs — the active count is real (GET /patients/census-metrics); the cross-module KPIs
   // (admissions/discharges/GIP/recerts) render as honest placeholders until M6/billing reads land.
@@ -142,43 +144,86 @@ export function PatientListCensus(): JSX.Element {
       header={
         <PageHeader
           title="Patients · Census"
+          breadcrumb="Clinical — patient list"
           actions={
             <Link to="/referrals" style={ADMIT_BTN}>
               Admit patient
             </Link>
           }
-        />
+        >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Search the organization census, review patient status, and open the chart quick summary
+            from a selected row.
+          </div>
+        </PageHeader>
       }
       kpis={<CensusKpis metrics={metrics} status={status} onStatusSelect={setStatus} />}
       filters={
-        <FilterBar
-          activeFilterCount={Number(Boolean(q.trim())) + Number(Boolean(status))}
-          onClear={() => {
-            setQ("");
-            setStatus("");
-          }}
-        >
-          <input
-            aria-label="Search name or MRN"
-            placeholder="Name or MRN"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-          <select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="">Any status</option>
-            <option value="prospective">Prospective</option>
-            <option value="active">Active</option>
-            <option value="on_hold">On hold</option>
-            <option value="discharged">Discharged</option>
-            <option value="deceased">Deceased</option>
-          </select>
-        </FilterBar>
+        <div style={filterPanelStyle}>
+          {error ? (
+            <div role="alert" style={errorBannerStyle}>
+              <Glyph name="alert" size={16} />
+              <span>{error}</span>
+            </div>
+          ) : null}
+          <div style={filterRowStyle}>
+            <div style={{ position: "relative", minWidth: "17rem" }}>
+              <input
+                type="search"
+                aria-label="Search name or MRN"
+                placeholder="Search name or MRN..."
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                style={searchInputStyle}
+              />
+              <div style={searchIconStyle}>
+                <Glyph name="eye" size={14} />
+              </div>
+            </div>
+            <label style={filterLabelStyle}>
+              <span style={mutedStyle}>Status</span>
+              <select
+                aria-label="Status"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                style={selectStyle}
+              >
+                <option value="">Any status</option>
+                <option value="prospective">Prospective</option>
+                <option value="active">Active</option>
+                <option value="on_hold">On hold</option>
+                <option value="discharged">Discharged</option>
+                <option value="deceased">Deceased</option>
+              </select>
+            </label>
+            {hasActiveFilters ? (
+              <Button
+                size="sm"
+                tone="tertiary"
+                onClick={() => {
+                  setQ("");
+                  setStatus("");
+                }}
+              >
+                Clear
+              </Button>
+            ) : null}
+            <span style={mutedStyle}>
+              {items.length} loaded{nextCursor ? " · more available" : ""}
+            </span>
+          </div>
+        </div>
       }
       table={
         <CensusTable
           items={items}
           loading={loading}
           error={error}
+          hasActiveFilters={hasActiveFilters}
+          onClearFilters={() => {
+            setQ("");
+            setStatus("");
+          }}
           selectedId={selected?.id ?? null}
           onSelect={setSelected}
           onLoadMore={nextCursor ? () => load(nextCursor) : undefined}
@@ -201,6 +246,8 @@ function CensusTable({
   items,
   loading,
   error,
+  hasActiveFilters,
+  onClearFilters,
   selectedId,
   onSelect,
   onLoadMore,
@@ -208,16 +255,46 @@ function CensusTable({
   items: PatientSummary[];
   loading: boolean;
   error: string | null;
+  hasActiveFilters: boolean;
+  onClearFilters: () => void;
   selectedId: string | null;
   onSelect: (p: PatientSummary) => void;
   onLoadMore?: () => void;
 }): JSX.Element {
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (loading && items.length === 0) return <LoadingSpinner />;
+  if (error)
+    return (
+      <div style={{ padding: "2rem 1.5rem" }}>
+        <EmptyState title="Unavailable" description={error} />
+      </div>
+    );
+  if (loading && items.length === 0)
+    return (
+      <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+        <LoadingSpinner />
+      </div>
+    );
   if (items.length === 0)
-    return <EmptyState title="No patients" description="No patients match the current filters." />;
+    return (
+      <div style={{ padding: "2rem 1.5rem" }}>
+        <EmptyState
+          title="No patients"
+          description={
+            hasActiveFilters
+              ? "No patients match the current filters."
+              : "No patients are visible in the current census."
+          }
+          action={
+            hasActiveFilters ? (
+              <Button tone="secondary" size="sm" onClick={onClearFilters}>
+                Clear filters
+              </Button>
+            ) : undefined
+          }
+        />
+      </div>
+    );
   return (
-    <div style={{ padding: "0 1.5rem 1.5rem" }}>
+    <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem" }}>
       <DataTable
         ariaLabel="Patient census"
         caption="Patients visible in the current census filters"
@@ -238,13 +315,82 @@ function CensusTable({
   );
 }
 
+const filterPanelStyle: CSSProperties = {
+  padding: "0 1.5rem 0.75rem",
+};
+
+const filterRowStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "end",
+  gap: "0.75rem",
+};
+
+const filterLabelStyle: CSSProperties = {
+  display: "grid",
+  gap: "0.25rem",
+};
+
+const mutedStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.8125rem",
+};
+
+const searchInputStyle: CSSProperties = {
+  width: "100%",
+  minHeight: "2.35rem",
+  padding: "0.45rem 0.75rem 0.45rem 2rem",
+  borderRadius: "0.5rem",
+  border: "1px solid var(--color-surface-container)",
+  background: "var(--color-surface)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.875rem",
+};
+
+const searchIconStyle: CSSProperties = {
+  position: "absolute",
+  left: "0.65rem",
+  top: "50%",
+  transform: "translateY(-50%)",
+  color: "var(--color-on-surface-variant)",
+  pointerEvents: "none",
+};
+
+const selectStyle: CSSProperties = {
+  minHeight: "2.35rem",
+  padding: "0.45rem 0.65rem",
+  borderRadius: "0.5rem",
+  border: "1px solid var(--color-surface-container)",
+  background: "var(--color-surface)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.875rem",
+};
+
+const errorBannerStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  marginBottom: "0.75rem",
+  padding: "0.65rem 0.75rem",
+  borderRadius: "0.5rem",
+  border: "1px solid var(--color-error)",
+  color: "var(--color-error)",
+  background: "color-mix(in srgb, var(--color-error) 8%, var(--color-surface))",
+  fontSize: "0.875rem",
+};
+
 const CENSUS_COLUMNS: readonly DataTableColumn<PatientSummary>[] = [
   {
     id: "name",
     header: "Name",
     cell: (patient) => (
-      <span style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
-        {patient.lastName}, {patient.firstName}
+      <span style={{ display: "grid", gap: "0.2rem" }}>
+        <span style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
+          {patient.lastName}, {patient.firstName}
+        </span>
+        <span style={{ color: "var(--color-on-surface-variant)", fontSize: "0.8125rem" }}>
+          Patient {patient.id.slice(0, 8)}
+        </span>
       </span>
     ),
   },

@@ -598,12 +598,34 @@
     width: 100%;
     overflow-x: auto;
   }
+  .wx-data-table {
+    display: table;
+    width: 100%;
+    min-width: 58rem;
+    table-layout: fixed;
+  }
   .wx-data-table th,
   .wx-data-table td {
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+  }
+  .wx-data-table thead tr {
+    background: var(--color-surface-low);
   }
   .wx-data-row-interactive:hover {
     background: var(--color-surface-low);
+  }
+  tbody tr:hover {
+    background: color-mix(in srgb, var(--color-surface-low) 70%, transparent);
+  }
+  tbody tr[role="button"]:hover {
+    background: var(--color-surface-low);
+  }
+  tbody tr[role="button"]:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: -2px;
   }
 
   /* Roles & Permissions: header + KPI scroll away in `.wx-main`; the workspace sticks below the

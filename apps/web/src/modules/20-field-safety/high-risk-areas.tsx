@@ -1,28 +1,18 @@
-// apps/web/src/modules/20-field-safety — §5.1 "HIGH-RISK AREAS" (`/safety/high-risk-areas`,
+// apps/web/src/modules/20-field-safety - §5.1 "HIGH-RISK AREAS" (`/safety/high-risk-areas`,
 // Track B / ADR-0030).
 //
-// D12's advisory polygon registry: geography a Compliance Officer draws so a clinician knows to ring
-// first. Every area is ADVISORY — none blocks a visit, none reroutes one, and `requires_buddy_visit` is a
-// flag M20 emits for M17 to act on rather than a gate M20 enforces. That sentence is on the screen, not
-// only in this comment, because "high-risk area" reads like a barrier to everybody who has not read D12.
-//
-// ── THE MAP EDITOR §5.1 ASKS FOR IS NOT BUILT, AND THE REASON IS NOT EFFORT ──────────────────────────
-//
-// §5.1 sketches a Leaflet/MapLibre polygon editor. Two things stand in the way and neither is cosmetic:
-//
-//   1. **M20-F07 struck PostGIS from Phase 1.** The polygon is `jsonb` rings and point-in-polygon
-//      membership is an even-odd ray-cast in app code. Nothing about the storage needs a map — but
-//      nothing about it provides one either.
-//   2. **A map means tiles, and tiles mean a third party.** Every basemap request sends the viewport to a
-//      tile server. On a page whose whole subject is where an agency's clinicians are exposed to harm,
-//      that is a disclosure with no agreement covering it, and it would be made by merely OPENING the
-//      page — which is the same failure the coordinate boundary on the SOS screen exists to prevent.
-//
-// So rings are entered and rendered as coordinates, with the validity rules D12 needs — ≥4 points, first
-// point equal to last — checked here and again by the server. A polygon a Compliance Officer can read as
-// numbers is worse to author and honest about what it costs.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
-import { useCallback, useEffect, useState } from "react";
+// D12's advisory polygon registry. Areas warn; they do not block visits.
+import {
+  Button,
+  EmptyState,
+  LoadingSpinner,
+  OffsetPagination,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -47,67 +37,52 @@ import {
   toneOf,
 } from "./safety-status";
 import {
-  Card,
-  CheckboxField,
-  CountGrid,
-  FilterRow,
   Modal,
   Notice,
   SelectField,
   TextAreaField,
   TextField,
-  columnStyle,
   disabledButtonStyle,
-  ghostButtonStyle,
-  mutedStyle,
-  pageTitleStyle,
   primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  tdNum,
-  th,
-  thNum,
 } from "./safety-ui";
 
-/** One ring per line, `lon,lat lon,lat …`. The format is stated on the field; it is not guessed at. */
+const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
+
 function parseRings(text: string): { rings: [number, number][][]; error: string | null } {
   const lines = text
     .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
   if (lines.length === 0) return { rings: [], error: "Enter at least one ring." };
   const rings: [number, number][][] = [];
-  for (const [i, line] of lines.entries()) {
-    const pts: [number, number][] = [];
+  for (const [index, line] of lines.entries()) {
+    const points: [number, number][] = [];
     for (const pair of line.split(/\s+/)) {
       const [lonRaw, latRaw] = pair.split(",");
       const lon = Number(lonRaw);
       const lat = Number(latRaw);
       if (!Number.isFinite(lon) || !Number.isFinite(lat))
-        return { rings: [], error: `Ring ${i + 1}: "${pair}" is not a lon,lat pair.` };
+        return { rings: [], error: `Ring ${index + 1}: "${pair}" is not a lon,lat pair.` };
       if (lon < -180 || lon > 180 || lat < -90 || lat > 90)
-        return { rings: [], error: `Ring ${i + 1}: ${lon},${lat} is off the globe.` };
-      pts.push([lon, lat]);
+        return { rings: [], error: `Ring ${index + 1}: ${lon},${lat} is off the globe.` };
+      points.push([lon, lat]);
     }
-    // Four points and a closed ring: the two rules the CHECK cannot express and a clinician standing in
-    // the polygon at 9 p.m. must not be the one to discover.
-    if (pts.length < 4)
-      return { rings: [], error: `Ring ${i + 1}: a polygon ring needs at least 4 points.` };
-    const first = pts[0];
-    const last = pts[pts.length - 1];
+    if (points.length < 4)
+      return { rings: [], error: `Ring ${index + 1}: a polygon ring needs at least 4 points.` };
+    const first = points[0];
+    const last = points[points.length - 1];
     if (!first || !last || first[0] !== last[0] || first[1] !== last[1])
       return {
         rings: [],
-        error: `Ring ${i + 1}: the last point must repeat the first, so the ring is closed.`,
+        error: `Ring ${index + 1}: the last point must repeat the first, so the ring is closed.`,
       };
-    rings.push(pts);
+    rings.push(points);
   }
   return { rings, error: null };
 }
 
 function ringsToText(rings: [number, number][][]): string {
-  return rings.map((r) => r.map(([lon, lat]) => `${lon},${lat}`).join(" ")).join("\n");
+  return rings.map((ring) => ring.map(([lon, lat]) => `${lon},${lat}`).join(" ")).join("\n");
 }
 
 export function HighRiskAreasScreen(): JSX.Element {
@@ -116,6 +91,8 @@ export function HighRiskAreasScreen(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [includeExpired, setIncludeExpired] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const [editing, setEditing] = useState<SafetyHighRiskAreaView | "new" | null>(null);
   const [riskCategory, setRiskCategory] = useState(DEFAULT_HIGH_RISK_CATEGORY);
@@ -174,7 +151,6 @@ export function HighRiskAreasScreen(): JSX.Element {
     }
     setSaving(true);
     setModalError(null);
-    // `riskCategory`/`areaPolicy` are always one of the closed vocabularies the SelectFields below offer.
     const res =
       editing === "new"
         ? await createHighRiskArea(client, {
@@ -225,217 +201,404 @@ export function HighRiskAreasScreen(): JSX.Element {
     [client, load],
   );
 
-  if (loading) return <LoadingSpinner />;
-  if (error && rows.length === 0)
-    return <EmptyState title="High-risk areas unavailable" description={error} />;
+  const activePage = Math.min(page, Math.max(1, Math.ceil(rows.length / pageSize)));
+  const pagedRows = useMemo(
+    () => rows.slice((activePage - 1) * pageSize, activePage * pageSize),
+    [activePage, pageSize, rows],
+  );
 
-  const now = Date.now();
-  const inForce = rows.filter((r) => !r.effectiveTo || Date.parse(r.effectiveTo) > now).length;
-  const mandating = rows.filter(
-    (r) => r.policyForVisitsToArea === "requires_pre_visit_check_in",
-  ).length;
-  const buddy = rows.filter((r) => r.policyForVisitsToArea === "requires_buddy_visit").length;
+  if (loading && rows.length === 0) {
+    return (
+      <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (error && rows.length === 0) {
+    return (
+      <div style={{ padding: "2rem 1.5rem" }}>
+        <EmptyState title="High-risk areas unavailable" description={error} />
+      </div>
+    );
+  }
 
   return (
-    <div style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>High-risk areas</span>}
-        breadcrumb="Field safety"
-        actions={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <Link to="/safety" style={ghostButtonStyle}>
-              Safety board
-            </Link>
-            <button type="button" onClick={openNew} style={primaryButtonStyle}>
-              Draw an area
-            </button>
-          </div>
-        }
-      />
-
-      <Notice tone="info" live>
-        <strong>Every area here is advisory (D12).</strong> None blocks a visit, none reroutes one,
-        and none can. "Requires a buddy visit" is a flag M20 raises for scheduling to act on — M20
-        itself never stops a clinician going. What an area DOES do is put a message in front of her
-        before she knocks.
-      </Notice>
-
-      <Card title="Registry">
-        <CountGrid
-          entries={[
-            { label: "Areas listed", value: rows.length },
-            { label: "In force now", value: inForce },
-            { label: "Mandate a pre-visit check-in", value: mandating },
-            { label: "Suggest a buddy visit", value: buddy },
-          ]}
-        />
-        <FilterRow>
-          <CheckboxField
-            label="Include areas that have been retired"
-            checked={includeExpired}
-            onChange={setIncludeExpired}
-          />
-        </FilterRow>
-        <span style={mutedStyle}>
-          The list defaults to what is in force, because the pre-visit advisory must never surface a
-          polygon retired last winter. Retired areas are kept — an incident review has to be able to
-          ask what advisory was in force on the day.
-        </span>
-      </Card>
-
-      <Card title="Areas">
-        {rows.length === 0 ? (
-          <span style={mutedStyle}>
-            No areas are registered. That is a normal starting state, not a failure — a tenant that
-            has never had an incident in a particular place has nothing to flag.
-          </span>
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Category</th>
-                <th style={th}>What the clinician sees</th>
-                <th style={th}>Visit policy</th>
-                <th style={thNum}>Rings</th>
-                <th style={thNum}>Points</th>
-                <th style={th}>In force</th>
-                <th style={th}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const retired = r.effectiveTo !== null && Date.parse(r.effectiveTo) <= now;
-                return (
-                  <tr key={r.id} style={rowLine}>
-                    <td style={td}>
-                      <StatusPill
-                        label={humanize(r.riskCategory)}
-                        tone={toneOf(HIGH_RISK_CATEGORY_TONE, r.riskCategory)}
-                      />
-                      <div style={{ ...mutedStyle, fontFamily: t.fontMono }}>{shortId(r.id)}</div>
-                    </td>
-                    <td style={td}>{r.advisoryMessage}</td>
-                    <td style={td}>{humanize(r.policyForVisitsToArea)}</td>
-                    <td style={tdNum}>{r.polygon.length}</td>
-                    <td style={tdNum}>{r.polygon.reduce((n, ring) => n + ring.length, 0)}</td>
-                    <td style={td}>
-                      {dateTime(r.effectiveFrom)}
-                      <div style={mutedStyle}>
-                        {r.effectiveTo ? `→ ${dateTime(r.effectiveTo)}` : "→ no end"}
-                      </div>
-                      {retired ? <StatusPill label="Retired" tone="neutral" /> : null}
-                    </td>
-                    <td style={td}>
-                      <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-                        <button type="button" onClick={() => openEdit(r)} style={ghostButtonStyle}>
-                          Edit
-                        </button>
-                        {retired ? null : (
-                          <button
-                            type="button"
-                            onClick={() => void retire(r)}
-                            style={ghostButtonStyle}
-                          >
-                            Retire now
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </Card>
-
-      <Card title="Why there is no map here">
-        <span style={mutedStyle}>
-          A basemap means tile requests, and a tile request sends this viewport to a third party. On
-          a page whose subject is where an agency's clinicians are exposed to harm, that disclosure
-          would be made by merely opening the screen — the same failure the coordinate boundary on
-          the SOS page exists to prevent, and with no agreement covering it. Rings are therefore
-          entered and read as coordinates. Storage does not need a map either: M20-F07 struck
-          PostGIS from Phase 1, so the polygon is JSON rings and membership is an even-odd ray-cast
-          in application code.
-        </span>
-      </Card>
-
-      {editing !== null ? (
-        <Modal
-          title={editing === "new" ? "Draw a high-risk area" : "Edit this area"}
-          onClose={() => setEditing(null)}
-          footer={
-            <button
-              type="button"
-              onClick={() => void save()}
-              disabled={
-                saving || advisoryMessage.trim().length === 0 || ringText.trim().length === 0
-              }
-              style={
-                saving || advisoryMessage.trim().length === 0 || ringText.trim().length === 0
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
-              }
-            >
-              {saving ? "Saving…" : editing === "new" ? "Create area" : "Save changes"}
-            </button>
+    <WorkQueueLayout
+      header={
+        <PageHeader
+          title="High-Risk Areas"
+          breadcrumb="Field safety"
+          actions={
+            <div style={actionGroupStyle}>
+              <Link to="/safety" style={linkButtonStyle}>
+                Safety board
+              </Link>
+              <Button type="button" tone="primary" onClick={openNew}>
+                Draw area
+              </Button>
+            </div>
           }
         >
-          <SelectField
-            label="Category"
-            value={riskCategory}
-            options={HIGH_RISK_CATEGORIES.map((v) => ({ value: v, label: humanize(v) }))}
-            onChange={setRiskCategory}
-          />
-          <TextField
-            label="Advisory message (≤200 characters)"
-            value={advisoryMessage}
-            onChange={setAdvisoryMessage}
-            hint="This exact sentence is what a clinician reads on her pre-visit card. Write it for her, not for the file."
-          />
-          <TextAreaField
-            label="Polygon rings"
-            value={ringText}
-            onChange={setRingText}
-            rows={6}
-            hint="One ring per line; each ring is space-separated lon,lat pairs (SRID 4326), at least four points, and the last point must repeat the first. The first line is the outer boundary; any further lines are holes."
-          />
-          <SelectField
-            label="Visit policy for this area"
-            value={areaPolicy}
-            options={HIGH_RISK_AREA_POLICIES.map((v) => ({ value: v, label: humanize(v) }))}
-            onChange={setAreaPolicy}
-          />
-          {areaPolicy === "requires_buddy_visit" ? (
-            <Notice tone="warning">
-              This raises a flag for scheduling. It does not pair anybody, and it does not stop a
-              solo visit — M20 emits, M17 routes, and neither blocks.
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Advisory polygon registry. Areas warn clinicians before a visit; M20 does not block
+            routing.
+          </div>
+        </PageHeader>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          {error ? (
+            <Notice tone="warning" live>
+              {error} The table below is the last registry read that answered.
             </Notice>
           ) : null}
-          {editing === "new" ? (
-            <TextField
-              label="Effective from"
-              value={effectiveFrom}
-              onChange={setEffectiveFrom}
-              type="datetime-local"
-              hint="Leave blank for 'now'."
-            />
+          <Notice tone="info" live>
+            Every area here is advisory. A buddy-visit policy is surfaced for scheduling to act on;
+            it does not stop a solo visit by itself.
+          </Notice>
+          <div style={toolbarStyle}>
+            <div style={toolbarTitleStyle}>
+              <span style={toolbarEyebrowStyle}>Registry controls</span>
+              <strong>Choose whether retired areas are included in this read</strong>
+            </div>
+            <div style={controlGroupStyle}>
+              <label style={checkboxLabelStyle}>
+                <input
+                  type="checkbox"
+                  checked={includeExpired}
+                  onChange={(event) => {
+                    setIncludeExpired(event.target.checked);
+                    setPage(1);
+                  }}
+                />
+                Include retired
+              </label>
+              <Button size="sm" tone="secondary" onClick={() => void load()} loading={loading}>
+                Refresh
+              </Button>
+            </div>
+          </div>
+        </div>
+      }
+      table={
+        <div style={tableWrapStyle}>
+          {rows.length === 0 ? (
+            <div style={{ padding: "2rem 0" }}>
+              <EmptyState
+                title="No high-risk areas"
+                description="No advisory areas are registered for this read."
+                action={
+                  <Button size="sm" tone="primary" onClick={openNew}>
+                    Draw area
+                  </Button>
+                }
+              />
+            </div>
+          ) : (
+            <>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={headerRowStyle}>
+                    <th style={{ ...thStyle, width: "15%" }}>Category</th>
+                    <th style={{ ...thStyle, width: "28%" }}>Clinician advisory</th>
+                    <th style={{ ...thStyle, width: "17%" }}>Visit policy</th>
+                    <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Rings</th>
+                    <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Points</th>
+                    <th style={{ ...thStyle, width: "16%" }}>In force</th>
+                    <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedRows.map((row) => (
+                    <HighRiskAreaRow key={row.id} row={row} onEdit={openEdit} onRetire={retire} />
+                  ))}
+                </tbody>
+              </table>
+              <OffsetPagination
+                page={activePage}
+                pageSize={pageSize}
+                totalItems={rows.length}
+                onPageChange={setPage}
+                onPageSizeChange={(nextPageSize) => {
+                  setPageSize(nextPageSize);
+                  setPage(1);
+                }}
+                pageSizeOptions={PAGE_SIZES}
+                noun="areas"
+              />
+            </>
+          )}
+          <div role="note" style={noteStyle}>
+            <StatusPill label="No basemap" tone="neutral" />
+            <span>
+              Basemap tiles would disclose the viewport to a third party. Rings are entered as
+              coordinates and validated again by the server.
+            </span>
+          </div>
+          {editing !== null ? (
+            <Modal
+              title={editing === "new" ? "Draw a high-risk area" : "Edit this area"}
+              onClose={() => setEditing(null)}
+              footer={
+                <button
+                  type="button"
+                  onClick={() => void save()}
+                  disabled={
+                    saving || advisoryMessage.trim().length === 0 || ringText.trim().length === 0
+                  }
+                  style={
+                    saving || advisoryMessage.trim().length === 0 || ringText.trim().length === 0
+                      ? disabledButtonStyle
+                      : primaryButtonStyle
+                  }
+                >
+                  {saving ? "Saving..." : editing === "new" ? "Create area" : "Save changes"}
+                </button>
+              }
+            >
+              <SelectField
+                label="Category"
+                value={riskCategory}
+                options={HIGH_RISK_CATEGORIES.map((value) => ({ value, label: humanize(value) }))}
+                onChange={setRiskCategory}
+              />
+              <TextField
+                label="Advisory message (<=200 characters)"
+                value={advisoryMessage}
+                onChange={setAdvisoryMessage}
+                hint="This exact sentence is what a clinician reads on the pre-visit card."
+              />
+              <TextAreaField
+                label="Polygon rings"
+                value={ringText}
+                onChange={setRingText}
+                rows={6}
+                hint="One ring per line; each ring is space-separated lon,lat pairs, at least four points, and the last point must repeat the first."
+              />
+              <SelectField
+                label="Visit policy for this area"
+                value={areaPolicy}
+                options={HIGH_RISK_AREA_POLICIES.map((value) => ({
+                  value,
+                  label: humanize(value),
+                }))}
+                onChange={setAreaPolicy}
+              />
+              {areaPolicy === "requires_buddy_visit" ? (
+                <Notice tone="warning">
+                  This raises a flag for scheduling. It does not pair anybody and it does not stop a
+                  solo visit.
+                </Notice>
+              ) : null}
+              {editing === "new" ? (
+                <TextField
+                  label="Effective from"
+                  value={effectiveFrom}
+                  onChange={setEffectiveFrom}
+                  type="datetime-local"
+                  hint="Leave blank for now."
+                />
+              ) : null}
+              <TextField
+                label="Effective to"
+                value={effectiveTo}
+                onChange={setEffectiveTo}
+                type="datetime-local"
+                hint="Retiring an area is an end date, never a delete."
+              />
+              {modalError ? (
+                <Notice tone="error" assertive>
+                  {modalError}
+                </Notice>
+              ) : null}
+            </Modal>
           ) : null}
-          <TextField
-            label="Effective to"
-            value={effectiveTo}
-            onChange={setEffectiveTo}
-            type="datetime-local"
-            hint="Retiring an area is an end date, never a delete — a review has to be able to ask what advisory was in force on the day."
-          />
-          {modalError ? (
-            <Notice tone="error" assertive>
-              {modalError}
-            </Notice>
-          ) : null}
-        </Modal>
-      ) : null}
-    </div>
+        </div>
+      }
+      fullPageScroll
+    />
   );
 }
+
+function HighRiskAreaRow({
+  row,
+  onEdit,
+  onRetire,
+}: {
+  row: SafetyHighRiskAreaView;
+  onEdit: (area: SafetyHighRiskAreaView) => void;
+  onRetire: (area: SafetyHighRiskAreaView) => Promise<void>;
+}): JSX.Element {
+  const retired = row.effectiveTo !== null && Date.parse(row.effectiveTo) <= Date.now();
+  return (
+    <tr style={rowStyle}>
+      <td style={tdStyle}>
+        <div style={primaryCellStyle}>
+          <StatusPill
+            label={humanize(row.riskCategory)}
+            tone={toneOf(HIGH_RISK_CATEGORY_TONE, row.riskCategory)}
+          />
+          <code className="wx-data-md" style={inlineCodeStyle}>
+            {shortId(row.id)}
+          </code>
+        </div>
+      </td>
+      <td style={tdStyle}>{row.advisoryMessage}</td>
+      <td style={tdStyle}>{humanize(row.policyForVisitsToArea)}</td>
+      <td style={tdNumStyle}>{row.polygon.length}</td>
+      <td style={tdNumStyle}>{row.polygon.reduce((total, ring) => total + ring.length, 0)}</td>
+      <td style={tdStyle}>
+        <div style={primaryCellStyle}>
+          <span>{dateTime(row.effectiveFrom)}</span>
+          <span style={secondaryTextStyle}>
+            {row.effectiveTo ? `to ${dateTime(row.effectiveTo)}` : "no end"}
+          </span>
+          {retired ? <StatusPill label="Retired" tone="neutral" /> : null}
+        </div>
+      </td>
+      <td style={{ ...tdStyle, textAlign: "right" }}>
+        <div style={actionCellStyle}>
+          <Button size="sm" tone="secondary" onClick={() => onEdit(row)}>
+            Edit
+          </Button>
+          {retired ? null : (
+            <Button size="sm" tone="tertiary" onClick={() => void onRetire(row)}>
+              Retire
+            </Button>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+const actionGroupStyle = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  gap: "0.5rem",
+};
+const linkButtonStyle = {
+  minHeight: "2.25rem",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0 0.75rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+  fontWeight: 600,
+  textDecoration: "none",
+};
+const filterShellStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+const toolbarStyle = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+};
+const toolbarTitleStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.125rem",
+  color: "var(--color-on-surface)",
+  fontSize: "0.875rem",
+};
+const toolbarEyebrowStyle = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};
+const controlGroupStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  flexWrap: "wrap" as const,
+};
+const checkboxLabelStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  minHeight: "2.25rem",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+};
+const tableWrapStyle = {
+  width: "100%",
+  overflowX: "auto" as const,
+  padding: "0 1.5rem 1.5rem",
+};
+const tableStyle = {
+  display: "table",
+  width: "100%",
+  borderCollapse: "collapse" as const,
+  fontSize: "0.875rem",
+};
+const headerRowStyle = {
+  textAlign: "left" as const,
+  color: "var(--color-on-surface-variant)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  background: "var(--color-surface-low)",
+};
+const rowStyle = {
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+};
+const thStyle = {
+  padding: "0.625rem 1rem",
+  fontWeight: 600,
+  fontSize: "0.75rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};
+const tdStyle = {
+  padding: "0.75rem 1rem",
+  verticalAlign: "middle" as const,
+};
+const tdNumStyle = {
+  ...tdStyle,
+  textAlign: "right" as const,
+  fontVariantNumeric: "tabular-nums",
+};
+const primaryCellStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  alignItems: "flex-start",
+  gap: "0.25rem",
+  minWidth: 0,
+};
+const secondaryTextStyle = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+};
+const inlineCodeStyle = {
+  color: "var(--color-on-surface-variant)",
+  background: "var(--color-surface-container)",
+  borderRadius: "var(--radius-sm)",
+  padding: "0.1rem 0.3rem",
+  fontSize: "0.75rem",
+};
+const actionCellStyle = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "0.5rem",
+  flexWrap: "wrap" as const,
+};
+const noteStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.75rem",
+  marginTop: "1rem",
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-low)",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.85rem",
+};

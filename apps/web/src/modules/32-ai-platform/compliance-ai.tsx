@@ -1,4 +1,13 @@
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import {
+  Button,
+  EmptyState,
+  LoadingSpinner,
+  OffsetPagination,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 // apps/web/src/modules/32-ai-platform — M32 §5.2 Compliance Officer view (`/compliance/ai`,
 // `ai.invocation.read`). GAP-049.
@@ -9,18 +18,8 @@ import type { operations } from "@wardenx/ui";
 //   • Tenant opt-in audit — which capabilities this org enabled, with the BAA / ZDR / clinical-review
 //     acknowledgments captured at enrolment, plus revocations.
 //   • Hallucination report archive — reports filed inside this org with their triage outcomes.
-//
-// PHI. The invocation projection carries no prompt, response or chart-context field at all, and this
-// console binds no reveal affordance. The banner states that plainly and names the M2 elevated-access
-// route, because "the column is empty" and "you may not see this column" are different facts and an
-// officer reviewing disclosures needs to know which one they are looking at.
-//
-// NOT BUILT: §5.2's per-month evidence-pack export. It is described as an async job queued on
-// `ai:invocations:async` producing a ZIP of five artifacts; there is no route, no job binding and no
-// object-store handshake for it. A button that silently did nothing — or worse, produced a partial pack
-// an officer then filed as evidence — is worse than its absence, so the section says what is missing.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CSSProperties, JSX } from "react";
+import type { JSX } from "react";
 
 type InvocationPage =
   operations["getApiV1AiInvocations"]["responses"][200]["content"]["application/json"];
@@ -33,31 +32,6 @@ type ReportPage =
 type Report = ReportPage["reports"][number];
 type CapabilityPage =
   operations["getApiV1AiCapabilities"]["responses"][200]["content"]["application/json"];
-
-const cap = (s: string): string => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-const formatDate = (iso: string | null | undefined): string => {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString();
-};
-
-const cellStyle: CSSProperties = { padding: "0.6rem 0.75rem" };
-const tableStyle: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.85rem",
-};
-const headRow: CSSProperties = { textAlign: "left", color: "var(--color-on-surface-variant)" };
-const rowStyle: CSSProperties = { borderTop: "1px solid var(--color-outline-variant)" };
-const sectionStyle: CSSProperties = {
-  border: "1px solid var(--color-outline-variant)",
-  borderRadius: "var(--radius-lg, 0.75rem)",
-  background: "var(--color-surface)",
-  padding: "1rem 1.1rem",
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.75rem",
-};
 
 const INVOCATION_TONE: Record<string, "success" | "error" | "warning" | "critical" | "neutral"> = {
   completed: "success",
@@ -85,6 +59,15 @@ export function ComplianceAiView(): JSX.Element {
   const [reports, setReports] = useState<Report[]>([]);
   const [capabilityKeys, setCapabilityKeys] = useState<Map<string, string>>(new Map());
   const [phiMasked, setPhiMasked] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [invocationStatus, setInvocationStatus] = useState("");
+  const [reportStatus, setReportStatus] = useState("");
+  const [invocationPage, setInvocationPage] = useState(1);
+  const [invocationPageSize, setInvocationPageSize] = useState(10);
+  const [optInPage, setOptInPage] = useState(1);
+  const [optInPageSize, setOptInPageSize] = useState(5);
+  const [reportPage, setReportPage] = useState(1);
+  const [reportPageSize, setReportPageSize] = useState(5);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -116,204 +99,582 @@ export function ComplianceAiView(): JSX.Element {
   }, [load]);
 
   const keyOf = useMemo(() => (id: string) => capabilityKeys.get(id) ?? id, [capabilityKeys]);
-  /** The §164.528 subset: calls whose chart context actually reached a cloud vendor. */
-  const disclosures = invocations.filter((i) => i.disclosedToVendor);
 
-  if (loading && invocations.length === 0 && optIns.length === 0) return <LoadingSpinner />;
-  if (error) return <EmptyState title={error} description="Retry shortly." />;
+  const filteredInvocations = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return invocations.filter((i) => {
+      const matchesStatus = !invocationStatus || i.status === invocationStatus;
+      const matchesSearch =
+        !q ||
+        i.invocationId.toLowerCase().includes(q) ||
+        i.capabilityKey.toLowerCase().includes(q) ||
+        i.backendKey.toLowerCase().includes(q) ||
+        i.status.toLowerCase().includes(q);
+      return matchesStatus && matchesSearch;
+    });
+  }, [invocations, invocationStatus, searchQuery]);
+
+  const filteredOptIns = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return optIns.filter((o) => {
+      const capability = keyOf(o.capabilityId).toLowerCase();
+      return (
+        !q ||
+        o.id.toLowerCase().includes(q) ||
+        capability.includes(q) ||
+        o.status.toLowerCase().includes(q) ||
+        (o.routingPreferenceSnapshot?.toLowerCase().includes(q) ?? false)
+      );
+    });
+  }, [keyOf, optIns, searchQuery]);
+
+  const filteredReports = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return reports.filter((r) => {
+      const capability = keyOf(r.capabilityId).toLowerCase();
+      const matchesStatus = !reportStatus || r.triageStatus === reportStatus;
+      const matchesSearch =
+        !q ||
+        r.id.toLowerCase().includes(q) ||
+        capability.includes(q) ||
+        r.hallucinationKind.toLowerCase().includes(q) ||
+        r.severity.toLowerCase().includes(q) ||
+        r.triageStatus.toLowerCase().includes(q);
+      return matchesStatus && matchesSearch;
+    });
+  }, [keyOf, reports, reportStatus, searchQuery]);
+
+  const pagedInvocations = paginate(filteredInvocations, invocationPage, invocationPageSize);
+  const pagedOptIns = paginate(filteredOptIns, optInPage, optInPageSize);
+  const pagedReports = paginate(filteredReports, reportPage, reportPageSize);
+  const activeFilters = [
+    searchQuery.trim() !== "",
+    invocationStatus !== "",
+    reportStatus !== "",
+  ].filter(Boolean).length;
+
+  const clearFilters = (): void => {
+    setSearchQuery("");
+    setInvocationStatus("");
+    setReportStatus("");
+    setInvocationPage(1);
+    setOptInPage(1);
+    setReportPage(1);
+  };
 
   return (
-    <div
-      style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}
-    >
-      <PageHeader title="AI compliance" breadcrumb="Compliance" />
-
-      <div role="note" style={{ ...sectionStyle, flexDirection: "row", alignItems: "center" }}>
-        <StatusPill
-          label={phiMasked ? "PHI masked" : "PHI visible"}
-          tone={phiMasked ? "warning" : "critical"}
-        />
-        <span style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>
-          {phiMasked
-            ? "Prompt, response and chart-context payloads are never returned to this view. Patient identity is masked. Request elevated access through the M2 audit-grade access flow."
-            : "This view is serving unmasked patient identity. Every read is audited."}
-        </span>
-      </div>
-
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: "0.95rem", fontWeight: 600 }}>
-          Tenant invocation log — {disclosures.length} of {invocations.length} disclosed to a vendor
-        </h2>
-        {invocations.length === 0 ? (
-          <EmptyState
-            title="No invocations"
-            description="No AI call has been made in this window."
-          />
+    <WorkQueueLayout
+      header={
+        <PageHeader title="AI compliance" breadcrumb="Compliance / AI">
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Review masked AI invocation disclosures, tenant opt-ins, and hallucination reports.
+          </div>
+        </PageHeader>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          {error ? (
+            <div role="alert" style={errorBannerStyle}>
+              <span>{error}</span>
+              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
+                x
+              </button>
+            </div>
+          ) : null}
+          <div role="note" style={noteStyle}>
+            <StatusPill
+              label={phiMasked ? "PHI masked" : "PHI visible"}
+              tone={phiMasked ? "warning" : "critical"}
+            />
+            <span>
+              {phiMasked
+                ? "Prompt, response and chart-context payloads are never returned to this view. Patient identity is masked."
+                : "This view is serving unmasked patient identity. Every read is audited."}
+            </span>
+          </div>
+          <div style={toolbarStyle}>
+            <div style={toolbarTitleStyle}>
+              <span style={toolbarEyebrowStyle}>Compliance ledger</span>
+              <strong>
+                {filteredInvocations.length} invocations / {filteredReports.length} reports
+              </strong>
+            </div>
+            <div style={controlGroupStyle}>
+              <div style={searchWrapStyle}>
+                <input
+                  type="search"
+                  placeholder="Search capability, backend, report..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setInvocationPage(1);
+                    setOptInPage(1);
+                    setReportPage(1);
+                  }}
+                  aria-label="Search AI compliance"
+                  style={searchInputStyle}
+                />
+              </div>
+              <select
+                aria-label="Invocation status"
+                value={invocationStatus}
+                onChange={(e) => {
+                  setInvocationStatus(e.target.value);
+                  setInvocationPage(1);
+                }}
+                style={selectStyle}
+              >
+                <option value="">Invocation: All</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+                <option value="timed_out">Timed out</option>
+                <option value="killed">Killed</option>
+                <option value="capability_unavailable">Capability unavailable</option>
+              </select>
+              <select
+                aria-label="Report triage status"
+                value={reportStatus}
+                onChange={(e) => {
+                  setReportStatus(e.target.value);
+                  setReportPage(1);
+                }}
+                style={selectStyle}
+              >
+                <option value="">Report: All</option>
+                <option value="open">Open</option>
+                <option value="investigating">Investigating</option>
+                <option value="root_cause_identified">Root cause identified</option>
+                <option value="mitigated">Mitigated</option>
+                <option value="closed">Closed</option>
+                <option value="escalated_to_clinical_safety">Escalated</option>
+              </select>
+              {activeFilters > 0 ? (
+                <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                  Clear
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      }
+      table={
+        loading ? (
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
+        ) : error ? (
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState title={error} description="Retry shortly." />
+          </div>
         ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr style={headRow}>
-                <th style={cellStyle}>Invoked</th>
-                <th style={cellStyle}>Capability</th>
-                <th style={cellStyle}>Backend</th>
-                <th style={cellStyle}>Touched chart</th>
-                <th style={cellStyle}>Disclosed</th>
-                <th style={cellStyle}>ZDR</th>
-                <th style={cellStyle}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invocations.map((i) => (
-                <tr key={i.invocationId} style={rowStyle}>
-                  <td style={cellStyle} className="tabular-nums">
-                    {formatDate(i.invokedAt)}
-                  </td>
-                  <td style={cellStyle}>
-                    <code>{i.capabilityKey}</code>
-                  </td>
-                  <td style={cellStyle}>
-                    <code>{i.backendKey}</code>
-                  </td>
-                  <td style={cellStyle}>{i.touchedPatientChart ? "Yes" : "No"}</td>
-                  <td style={cellStyle}>
-                    {i.disclosedToVendor ? <StatusPill label="Vendor" tone="warning" /> : "No"}
-                  </td>
-                  {/* A vendor disclosure WITHOUT a confirmed zero-data-retention contract is the row a
-                      compliance officer is actually hunting for, so it is called out rather than left
-                      as a bare boolean. */}
-                  <td style={cellStyle}>
-                    {i.disclosedToVendor && !i.zdrConfirmed ? (
-                      <StatusPill label="Not confirmed" tone="error" />
-                    ) : i.zdrConfirmed ? (
-                      "Confirmed"
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td style={cellStyle}>
-                    <StatusPill
-                      label={cap(i.status)}
-                      tone={INVOCATION_TONE[i.status] ?? "neutral"}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+          <div style={tableWrapStyle}>
+            <SectionTitle
+              title="Tenant invocation log"
+              detail="Vendor disclosures are flagged per row"
+            />
+            {filteredInvocations.length === 0 ? (
+              <EmptyBlock
+                title="No invocations"
+                description="No AI call has been made in this window."
+              />
+            ) : (
+              <>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr style={headerRowStyle}>
+                      <th style={{ ...thStyle, width: "18%" }}>Invoked</th>
+                      <th style={{ ...thStyle, width: "22%" }}>Capability</th>
+                      <th style={{ ...thStyle, width: "16%" }}>Backend</th>
+                      <th style={{ ...thStyle, width: "12%" }}>Chart</th>
+                      <th style={{ ...thStyle, width: "12%" }}>Disclosed</th>
+                      <th style={{ ...thStyle, width: "10%" }}>ZDR</th>
+                      <th style={{ ...thStyle, width: "10%", textAlign: "right" }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedInvocations.map((i) => (
+                      <tr key={i.invocationId} style={rowStyle}>
+                        <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                          {formatDate(i.invokedAt)}
+                        </td>
+                        <td style={tdStyle}>
+                          <code className="wx-data-md" style={codeStyle}>
+                            {i.capabilityKey}
+                          </code>
+                        </td>
+                        <td style={tdStyle}>
+                          <code className="wx-data-md" style={codeStyle}>
+                            {i.backendKey}
+                          </code>
+                        </td>
+                        <td style={tdStyle}>{i.touchedPatientChart ? "Yes" : "No"}</td>
+                        <td style={tdStyle}>
+                          {i.disclosedToVendor ? (
+                            <StatusPill label="Vendor" tone="warning" />
+                          ) : (
+                            "No"
+                          )}
+                        </td>
+                        <td style={tdStyle}>
+                          {i.disclosedToVendor && !i.zdrConfirmed ? (
+                            <StatusPill label="Not confirmed" tone="error" />
+                          ) : i.zdrConfirmed ? (
+                            "Confirmed"
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: "right" }}>
+                          <StatusPill
+                            label={cap(i.status)}
+                            tone={INVOCATION_TONE[i.status] ?? "neutral"}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <OffsetPagination
+                  page={clampPage(invocationPage, filteredInvocations.length, invocationPageSize)}
+                  pageSize={invocationPageSize}
+                  totalItems={filteredInvocations.length}
+                  onPageChange={setInvocationPage}
+                  onPageSizeChange={(nextPageSize) => {
+                    setInvocationPageSize(nextPageSize);
+                    setInvocationPage(1);
+                  }}
+                  pageSizeOptions={AI_PAGE_SIZES}
+                  noun="invocations"
+                />
+              </>
+            )}
 
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: "0.95rem", fontWeight: 600 }}>Tenant opt-in audit</h2>
-        {optIns.length === 0 ? (
-          <EmptyState
-            title="No opt-in records"
-            description="This organization has not enabled any AI capability."
-          />
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr style={headRow}>
-                <th style={cellStyle}>Capability</th>
-                <th style={cellStyle}>Status</th>
-                <th style={cellStyle}>Routing</th>
-                <th style={cellStyle}>Pilot</th>
-                <th style={cellStyle}>Opted in</th>
-                <th style={cellStyle}>Paused</th>
-                <th style={cellStyle}>Revoked</th>
-              </tr>
-            </thead>
-            <tbody>
-              {optIns.map((o) => (
-                <tr key={o.id} style={rowStyle}>
-                  <td style={cellStyle}>
-                    <code>{keyOf(o.capabilityId)}</code>
-                  </td>
-                  <td style={cellStyle}>{cap(o.status)}</td>
-                  <td style={cellStyle}>
-                    {o.routingPreferenceSnapshot ? cap(o.routingPreferenceSnapshot) : "—"}
-                  </td>
-                  <td style={cellStyle}>{o.pilotEnrollment ? "Yes" : "No"}</td>
-                  <td style={cellStyle} className="tabular-nums">
-                    {formatDate(o.optedInAt)}
-                  </td>
-                  <td style={cellStyle} className="tabular-nums">
-                    {formatDate(o.pausedAt)}
-                  </td>
-                  <td style={cellStyle} className="tabular-nums">
-                    {formatDate(o.optedOutAt)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        {/* The acknowledgments themselves (BAA reference, ZDR contract, clinical-reviewer attestation)
-            are recorded on the opt-in row at enrolment, but the read projection does not return them —
-            so they are not shown rather than guessed at from the fields that are here. */}
-        <p style={{ fontSize: "0.78rem", color: "var(--color-on-surface-variant)" }}>
-          The BAA, ZDR and clinical-reviewer acknowledgments captured at enrolment are stored on
-          each record for audit but are not returned by this read surface.
-        </p>
-      </section>
+            <SectionTitle title="Tenant opt-in audit" />
+            {filteredOptIns.length === 0 ? (
+              <EmptyBlock
+                title="No opt-in records"
+                description="This organization has not enabled any AI capability."
+              />
+            ) : (
+              <>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr style={headerRowStyle}>
+                      <th style={{ ...thStyle, width: "24%" }}>Capability</th>
+                      <th style={{ ...thStyle, width: "12%" }}>Status</th>
+                      <th style={{ ...thStyle, width: "18%" }}>Routing</th>
+                      <th style={{ ...thStyle, width: "10%" }}>Pilot</th>
+                      <th style={{ ...thStyle, width: "12%" }}>Opted in</th>
+                      <th style={{ ...thStyle, width: "12%" }}>Paused</th>
+                      <th style={{ ...thStyle, width: "12%", textAlign: "right" }}>Revoked</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedOptIns.map((o) => (
+                      <tr key={o.id} style={rowStyle}>
+                        <td style={tdStyle}>
+                          <code className="wx-data-md" style={codeStyle}>
+                            {keyOf(o.capabilityId)}
+                          </code>
+                        </td>
+                        <td style={tdStyle}>{cap(o.status)}</td>
+                        <td style={tdStyle}>
+                          {o.routingPreferenceSnapshot ? cap(o.routingPreferenceSnapshot) : "—"}
+                        </td>
+                        <td style={tdStyle}>{o.pilotEnrollment ? "Yes" : "No"}</td>
+                        <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                          {formatDate(o.optedInAt)}
+                        </td>
+                        <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                          {formatDate(o.pausedAt)}
+                        </td>
+                        <td
+                          style={{
+                            ...tdStyle,
+                            textAlign: "right",
+                            fontVariantNumeric: "tabular-nums",
+                          }}
+                        >
+                          {formatDate(o.optedOutAt)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <OffsetPagination
+                  page={clampPage(optInPage, filteredOptIns.length, optInPageSize)}
+                  pageSize={optInPageSize}
+                  totalItems={filteredOptIns.length}
+                  onPageChange={setOptInPage}
+                  onPageSizeChange={(nextPageSize) => {
+                    setOptInPageSize(nextPageSize);
+                    setOptInPage(1);
+                  }}
+                  pageSizeOptions={AI_PAGE_SIZES}
+                  noun="opt-ins"
+                />
+              </>
+            )}
+            <p style={mutedNoteStyle}>
+              The BAA, ZDR and clinical-reviewer acknowledgments captured at enrolment are stored on
+              each record for audit but are not returned by this read surface.
+            </p>
 
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: "0.95rem", fontWeight: 600 }}>Hallucination report archive</h2>
-        {reports.length === 0 ? (
-          <EmptyState
-            title="No reports"
-            description="No clinician in this organization has filed an AI hallucination report."
-          />
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr style={headRow}>
-                <th style={cellStyle}>Reported</th>
-                <th style={cellStyle}>Capability</th>
-                <th style={cellStyle}>Kind</th>
-                <th style={cellStyle}>Severity</th>
-                <th style={cellStyle}>Triage</th>
-                <th style={cellStyle}>Disposition</th>
-                <th style={cellStyle}>Closed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reports.map((r) => (
-                <tr key={r.id} style={rowStyle}>
-                  <td style={cellStyle} className="tabular-nums">
-                    {formatDate(r.reportedAt)}
-                  </td>
-                  <td style={cellStyle}>
-                    <code>{keyOf(r.capabilityId)}</code>
-                  </td>
-                  <td style={cellStyle}>{cap(r.hallucinationKind)}</td>
-                  <td style={cellStyle}>{cap(r.severity)}</td>
-                  <td style={cellStyle}>
-                    <StatusPill
-                      label={cap(r.triageStatus)}
-                      tone={TRIAGE_TONE[r.triageStatus] ?? "neutral"}
-                    />
-                  </td>
-                  <td style={cellStyle}>{r.triageDisposition ? cap(r.triageDisposition) : "—"}</td>
-                  <td style={cellStyle} className="tabular-nums">
-                    {formatDate(r.closedAt)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+            <SectionTitle title="Hallucination report archive" />
+            {filteredReports.length === 0 ? (
+              <EmptyBlock
+                title="No reports"
+                description="No clinician in this organization has filed an AI hallucination report."
+              />
+            ) : (
+              <>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr style={headerRowStyle}>
+                      <th style={{ ...thStyle, width: "16%" }}>Reported</th>
+                      <th style={{ ...thStyle, width: "22%" }}>Capability</th>
+                      <th style={{ ...thStyle, width: "16%" }}>Kind</th>
+                      <th style={{ ...thStyle, width: "12%" }}>Severity</th>
+                      <th style={{ ...thStyle, width: "16%" }}>Triage</th>
+                      <th style={{ ...thStyle, width: "10%" }}>Disposition</th>
+                      <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Closed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedReports.map((r) => (
+                      <tr key={r.id} style={rowStyle}>
+                        <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                          {formatDate(r.reportedAt)}
+                        </td>
+                        <td style={tdStyle}>
+                          <code className="wx-data-md" style={codeStyle}>
+                            {keyOf(r.capabilityId)}
+                          </code>
+                        </td>
+                        <td style={tdStyle}>{cap(r.hallucinationKind)}</td>
+                        <td style={tdStyle}>{cap(r.severity)}</td>
+                        <td style={tdStyle}>
+                          <StatusPill
+                            label={cap(r.triageStatus)}
+                            tone={TRIAGE_TONE[r.triageStatus] ?? "neutral"}
+                          />
+                        </td>
+                        <td style={tdStyle}>
+                          {r.triageDisposition ? cap(r.triageDisposition) : "—"}
+                        </td>
+                        <td
+                          style={{
+                            ...tdStyle,
+                            textAlign: "right",
+                            fontVariantNumeric: "tabular-nums",
+                          }}
+                        >
+                          {formatDate(r.closedAt)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <OffsetPagination
+                  page={clampPage(reportPage, filteredReports.length, reportPageSize)}
+                  pageSize={reportPageSize}
+                  totalItems={filteredReports.length}
+                  onPageChange={setReportPage}
+                  onPageSizeChange={(nextPageSize) => {
+                    setReportPageSize(nextPageSize);
+                    setReportPage(1);
+                  }}
+                  pageSizeOptions={AI_PAGE_SIZES}
+                  noun="reports"
+                />
+              </>
+            )}
 
-      <section style={sectionStyle}>
-        <h2 style={{ fontSize: "0.95rem", fontWeight: 600 }}>Monthly evidence pack</h2>
-        <p style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>
-          The §5.2 per-month evidence-pack export — a ZIP of the masked invocation summary, opt-in
-          records, hallucination reports, kill-switch activations and calibration changes — is not
-          built. No route, job binding or object-store handshake exists for it yet, and a partial
-          pack filed as §164.528 evidence would be worse than none.
-        </p>
-      </section>
+            <SectionTitle title="Monthly evidence pack" />
+            <p style={mutedNoteStyle}>
+              The §5.2 per-month evidence-pack export is not built. No route, job binding or
+              object-store handshake exists for it yet, and a partial pack filed as §164.528
+              evidence would be worse than none.
+            </p>
+          </div>
+        )
+      }
+      fullPageScroll
+    />
+  );
+}
+
+function SectionTitle({ title, detail }: { title: string; detail?: string }): JSX.Element {
+  return (
+    <div style={sectionTitleRowStyle}>
+      <h2 style={sectionTitleStyle}>{title}</h2>
+      {detail ? <span style={sectionDetailStyle}>{detail}</span> : null}
     </div>
   );
 }
+
+function EmptyBlock({ title, description }: { title: string; description: string }): JSX.Element {
+  return (
+    <div style={{ padding: "1rem 0" }}>
+      <EmptyState title={title} description={description} />
+    </div>
+  );
+}
+
+const AI_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
+
+function paginate<T>(items: readonly T[], page: number, pageSize: number): T[] {
+  const current = clampPage(page, items.length, pageSize);
+  return items.slice((current - 1) * pageSize, current * pageSize);
+}
+
+function clampPage(page: number, total: number, pageSize: number): number {
+  return Math.min(page, Math.max(1, Math.ceil(total / pageSize)));
+}
+
+function cap(s: string): string {
+  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? "—"
+    : d.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+}
+
+const filterShellStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+const noteStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.75rem",
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-low)",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.85rem",
+};
+const toolbarStyle = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+};
+const toolbarTitleStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.125rem",
+  color: "var(--color-on-surface)",
+  fontSize: "0.875rem",
+};
+const toolbarEyebrowStyle = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};
+const controlGroupStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  flexWrap: "wrap" as const,
+};
+const searchWrapStyle = { minWidth: "15rem" };
+const searchInputStyle = { width: "100%", height: "2.25rem", fontSize: "0.85rem" };
+const selectStyle = { height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" };
+const errorBannerStyle = {
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
+  color: "var(--color-error)",
+  fontSize: "0.85rem",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+};
+const dismissButtonStyle = {
+  border: "none",
+  background: "none",
+  color: "inherit",
+  cursor: "pointer",
+  fontWeight: 600,
+};
+const tableWrapStyle = {
+  width: "100%",
+  overflowX: "auto" as const,
+  padding: "0 1.5rem 1.5rem 1.5rem",
+};
+const tableStyle = {
+  display: "table",
+  width: "100%",
+  borderCollapse: "collapse" as const,
+  fontSize: "0.875rem",
+};
+const headerRowStyle = {
+  textAlign: "left" as const,
+  color: "var(--color-on-surface-variant)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  background: "var(--color-surface-low)",
+};
+const rowStyle = {
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+};
+const thStyle = {
+  padding: "0.625rem 1rem",
+  fontWeight: 600,
+  fontSize: "0.75rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};
+const tdStyle = {
+  padding: "0.75rem 1rem",
+  verticalAlign: "middle" as const,
+};
+const codeStyle = {
+  display: "inline-block",
+  maxWidth: "14rem",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap" as const,
+  color: "var(--color-on-surface-variant)",
+  background: "var(--color-surface-container)",
+  borderRadius: "var(--radius-sm)",
+  padding: "0.1rem 0.3rem",
+  fontSize: "0.75rem",
+};
+const sectionTitleRowStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "1rem",
+  paddingTop: "1rem",
+};
+const sectionTitleStyle = {
+  margin: "0 0 0.75rem",
+  fontSize: "1.05rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+};
+const sectionDetailStyle = {
+  marginBottom: "0.75rem",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.8rem",
+};
+const mutedNoteStyle = {
+  margin: "0.75rem 0 0",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.8rem",
+};
