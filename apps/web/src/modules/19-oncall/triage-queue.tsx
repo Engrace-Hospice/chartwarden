@@ -2,27 +2,26 @@
 // Spec: docs/design/screens/clinical/WARDENX_UI_ON_CALL_TRIAGE.md — "Use Work Queue + Documentation
 // Workspace." This screen is the Work-Queue half; the Documentation-Workspace half is the triage panel.
 //
-// THE BOARD IS SORTED BY WHAT IS UNANSWERED, NOT BY WHAT IS NEWEST. An open escalation outranks a red-flag
-// answer, which outranks age. A queue sorted by arrival puts the suicidal-ideation call that came in at
-// 01:40 below the medication question that came in at 02:10, and the whole D7 ladder exists so that does
-// not happen.
-//
-// THE KPI TILES ARE PAGE-DERIVED, AND THE SCREEN SAYS SO. §4.1 publishes no aggregate route and §4.1.1
-// forbids `total_count` on a PHI list (a count is an enumeration oracle — a caller who cannot READ another
-// ProviderEntity's calls could still learn how many there were). So every tile counts the page it was
-// given. When the page is truncated the row carries an explicit "at least" notice rather than a number that
-// reads like a census.
-//
-// §5.1's "ack / take / re-route actions" are NOT rendered as queue-row buttons. §4.1 publishes no assign,
-// no claim and no re-route route — a triage call has no assignee column at all; the covering SHIFT is the
-// assignment, and it is resolved server-side at open. A button here would have to invent a write, so the
-// row links to the panel, which is where every published action lives.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
-import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+// The board is sorted by unresolved clinical risk, not newest-first: open escalation, red flag, then age.
+// Counts are derived only from the fetched PHI page. M19 intentionally publishes no aggregate total_count.
+import {
+  Button,
+  EmptyState,
+  Glyph,
+  KpiCard,
+  KpiStrip,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
 import {
   type TriageCallListItem,
+  type TriageCallSource,
   type TriageCallState,
   errorMessage,
   listTriageCalls,
@@ -38,35 +37,27 @@ import {
   shortId,
   toneOf,
 } from "./oncall-status";
-import {
-  CallStatePill,
-  Card,
-  CountGrid,
-  FilterRow,
-  Notice,
-  SelectField,
-  columnStyle,
-  ghostButtonStyle,
-  linkStyle,
-  mutedStyle,
-  pageTitleStyle,
-  rowLine,
-  tableStyle,
-  td,
-  tdNum,
-  th,
-  thNum,
-} from "./oncall-ui";
+import { CallStatePill } from "./oncall-ui";
 
-/** §4.1.1's `triageCalls` hard max. Named so the "at least" copy and the request agree — a literal in the
- *  query and a different literal in the sentence is how a KPI starts lying. */
+/** §4.1.1's `triageCalls` hard max. */
 const QUEUE_PAGE = 100;
 
-const STATE_FILTERS = [{ value: "", label: "open (default)" }].concat(
-  CALL_STATES.map((s) => ({ value: s, label: humanize(s) })),
+const STATE_FILTERS = [{ value: "", label: "Open board" }].concat(
+  CALL_STATES.map((state) => ({ value: state, label: humanize(state) })),
 );
 
-/** The board's rank: unacknowledged escalations first, then red flags, then age. */
+const SOURCE_FILTERS: readonly { value: "" | TriageCallSource; label: string }[] = [
+  { value: "", label: "Source: All" },
+  { value: "manual", label: "Manual" },
+  { value: "no_show", label: "No-show" },
+  { value: "late_checkout", label: "Late checkout" },
+  { value: "geofence_anomaly", label: "Geofence anomaly" },
+  { value: "m36_delivery_failure", label: "Delivery failure" },
+  { value: "paper_origin", label: "Paper origin" },
+];
+
+type AttentionFilter = "all" | "escalated" | "red_flag" | "callback" | "pending_note";
+
 function boardRank(a: TriageCallListItem, b: TriageCallListItem): number {
   if (a.openEscalationCount !== b.openEscalationCount) {
     return b.openEscalationCount - a.openEscalationCount;
@@ -77,192 +68,551 @@ function boardRank(a: TriageCallListItem, b: TriageCallListItem): number {
   return a.openedAt.localeCompare(b.openedAt);
 }
 
+function matchesAttention(call: TriageCallListItem, filter: AttentionFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "escalated") return call.openEscalationCount > 0;
+  if (filter === "red_flag") return call.redFlagAnswerCount > 0;
+  if (filter === "callback") return call.state === "awaiting_callback";
+  return call.state === "documented_pending_encounter";
+}
+
 export function TriageQueueScreen(): JSX.Element {
   const client = useApiClient();
   const [state, setState] = useState("");
+  const [source, setSource] = useState<"" | TriageCallSource>("");
+  const [attention, setAttention] = useState<AttentionFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [calls, setCalls] = useState<TriageCallListItem[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    // `state` and `openOnly` are mutually exclusive server-side semantics: naming a state IS the filter, so
-    // `openOnly` only rides along when no explicit state was picked.
-    const res = await listTriageCalls(client, {
-      limit: QUEUE_PAGE,
-      // `state` is always "" (open-only) or one of CALL_STATES — the SelectField below offers no other value.
-      ...(state ? { state: state as TriageCallState } : { openOnly: true }),
-    });
-    if (res.error) {
-      setError(errorMessage(res.error, "The triage queue could not be loaded."));
+  const load = useCallback(
+    async (cursor?: string) => {
+      if (cursor) setLoadingMore(true);
+      else setLoading(true);
+      setError(null);
+      const res = await listTriageCalls(client, {
+        limit: QUEUE_PAGE,
+        ...(cursor ? { cursor } : {}),
+        ...(state ? { state: state as TriageCallState } : { openOnly: true }),
+      });
+      if (res.error) {
+        setError(errorMessage(res.error, "The triage queue could not be loaded."));
+        setLoading(false);
+        setLoadingMore(false);
+        return;
+      }
+      setCalls((current) =>
+        cursor ? current.concat(res.page?.data ?? []) : (res.page?.data ?? []),
+      );
+      setNextCursor(res.page?.next_cursor ?? null);
+      setTruncated(res.page?.has_more ?? false);
       setLoading(false);
-      return;
-    }
-    setCalls(res.page?.data ?? []);
-    setTruncated(res.page?.has_more ?? false);
-    setLoading(false);
-  }, [client, state]);
+      setLoadingMore(false);
+    },
+    [client, state],
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
+  const visibleCalls = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return [...calls]
+      .filter((call) => {
+        const matchesSearch =
+          q.length === 0 ||
+          call.id.toLowerCase().includes(q) ||
+          call.providerEntityId.toLowerCase().includes(q) ||
+          (call.patientId ?? "").toLowerCase().includes(q) ||
+          humanize(call.callerKind).toLowerCase().includes(q) ||
+          humanize(call.inboundChannel).toLowerCase().includes(q) ||
+          (call.protocolLabel ?? "").toLowerCase().includes(q) ||
+          (call.disposition ? dispositionLabel(call.disposition).toLowerCase().includes(q) : false);
+        const matchesSource = source === "" || call.source === source;
+        return matchesSearch && matchesSource && matchesAttention(call, attention);
+      })
+      .sort(boardRank);
+  }, [attention, calls, searchQuery, source]);
 
-  const sorted = [...calls].sort(boardRank);
-  const escalated = calls.filter((c) => c.openEscalationCount > 0).length;
-  const awaitingCallback = calls.filter((c) => c.state === "awaiting_callback").length;
-  const pendingEncounter = calls.filter((c) => c.state === "documented_pending_encounter").length;
-  const unresolved = calls.filter((c) => c.state === "escalated_unresolved").length;
-  const redFlagged = calls.filter((c) => c.redFlagAnswerCount > 0).length;
+  const escalated = calls.filter((call) => call.openEscalationCount > 0).length;
+  const awaitingCallback = calls.filter((call) => call.state === "awaiting_callback").length;
+  const pendingEncounter = calls.filter(
+    (call) => call.state === "documented_pending_encounter",
+  ).length;
+  const unresolved = calls.filter((call) => call.state === "escalated_unresolved").length;
+  const redFlagged = calls.filter((call) => call.redFlagAnswerCount > 0).length;
+  const hasActiveFilters =
+    searchQuery.trim() !== "" || state !== "" || source !== "" || attention !== "all";
+
+  const clearLocalFilters = (): void => {
+    setSearchQuery("");
+    setSource("");
+    setAttention("all");
+  };
+
+  const clearAllFilters = (): void => {
+    clearLocalFilters();
+    setState("");
+  };
 
   return (
-    <div style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Triage queue</span>}
-        breadcrumb="On-call triage"
-        actions={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <Link to="/triage/intake" style={ghostButtonStyle}>
-              Take a call
-            </Link>
-            <Link to="/triage/escalations" style={ghostButtonStyle}>
-              Escalations
-            </Link>
-            <Link to="/me/oncall" style={ghostButtonStyle}>
-              My on-call
-            </Link>
+    <WorkQueueLayout
+      header={
+        <PageHeader
+          title="Triage queue"
+          breadcrumb="On-call / Active board"
+          actions={
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <Link to="/triage/intake" style={primaryLinkStyle}>
+                Take a call
+              </Link>
+              <Link to="/triage/escalations" style={linkButtonStyle}>
+                Escalations
+              </Link>
+              <Link to="/me/oncall" style={linkButtonStyle}>
+                My on-call
+              </Link>
+            </div>
+          }
+        >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Prioritize unanswered escalation, red flags, callbacks, and unsigned documentation.
           </div>
-        }
-      />
-
-      {/* §7.2: while an escalation is unacknowledged, no disposition other than hand-off is permitted. */}
-      {unresolved > 0 ? (
-        <Notice tone="error" assertive>
-          {unresolved} call{unresolved === 1 ? " is" : "s are"} parked in{" "}
-          <strong>escalated — unresolved</strong>: a named human has been paged and has not
-          answered. Until the escalation is acknowledged, the only disposition allowed is a
-          hand-off.
-        </Notice>
-      ) : null}
-
-      {/* §4.1 publishes no aggregate route and §4.1.1 forbids a total count on a PHI list (a count is an
-          enumeration oracle), so every tile below counts only the page it was given, never the tenant. */}
-      {truncated ? (
-        <Notice tone="info">
-          More than {QUEUE_PAGE} calls match this filter. The counts below are therefore "at least"
-          — each tile counts only the calls on this page, not the full list. Narrow the filter for
-          an exact figure.
-        </Notice>
-      ) : null}
-
-      <Card title="Board">
-        <CountGrid
-          entries={[
-            { label: "On the board", value: calls.length },
-            {
-              label: "With an open escalation",
-              value: escalated,
-              tone: escalated > 0 ? "error" : undefined,
-            },
-            {
-              label: "Red-flag answers",
-              value: redFlagged,
-              tone: redFlagged > 0 ? "error" : undefined,
-            },
-            { label: "Awaiting callback", value: awaitingCallback },
-            { label: "Awaiting encounter signature", value: pendingEncounter },
-            {
-              label: "Escalated — unresolved",
-              value: unresolved,
-              tone: unresolved > 0 ? "error" : undefined,
-            },
-          ]}
-        />
-        {/* M19-F06 / ADR-0022: a call whose encounter can't be reached yet (M8 seam down) must stay
-            visible to the supervisor rather than silently drop off the board once a disposition is
-            picked — hence "Documented — pending encounter" staying on the board deliberately. */}
-        <span style={mutedStyle}>
-          Calls stay on the board until their encounter note is signed off — even after a
-          disposition has been picked — so nothing gets lost if that note is delayed.
-        </span>
-      </Card>
-
-      <FilterRow>
-        <SelectField label="State" value={state} options={STATE_FILTERS} onChange={setState} />
-      </FilterRow>
-
-      <Card title="Calls">
-        {sorted.length === 0 ? (
-          <span style={mutedStyle}>
-            Nothing is open on this board. A quiet night is the ordinary outcome — this is not an
-            error, and it is not the same as "you cannot see these calls": a call outside your reach
-            is absent, and the server does not distinguish the two.
-          </span>
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Call</th>
-                <th style={th}>State</th>
-                <th style={th}>Patient</th>
-                <th style={th}>Caller</th>
-                <th style={th}>Protocol</th>
-                <th style={th}>Disposition</th>
-                <th style={th}>Source</th>
-                <th style={thNum}>Escalations</th>
-                <th style={thNum}>Red flags</th>
-                <th style={thNum}>Open</th>
-                <th style={th}>Received</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((c) => (
-                <tr key={c.id} style={rowLine}>
-                  <td style={td}>
-                    <Link to={`/triage/calls/${c.id}`} style={linkStyle}>
-                      {shortId(c.id)}
-                    </Link>
-                  </td>
-                  <td style={td}>
-                    <CallStatePill state={c.state} />
-                  </td>
-                  {/* An unidentified caller is the ORDINARY case at 2 a.m.: `patient_id` is nullable until
-                      route 4 resolves the caller to a served person, and rendering "—" is the honest state,
-                      not a data fault. */}
-                  <td style={td}>{c.patientId ? shortId(c.patientId) : "not yet identified"}</td>
-                  <td style={td}>
-                    {humanize(c.callerKind)} · {humanize(c.inboundChannel)}
-                  </td>
-                  <td style={td}>{c.protocolLabel ?? "—"}</td>
-                  <td style={td}>{c.disposition ? dispositionLabel(c.disposition) : "—"}</td>
-                  <td style={td}>
-                    <StatusPill
-                      label={humanize(c.source)}
-                      tone={toneOf(CALL_SOURCE_TONE, c.source)}
-                    />
-                  </td>
-                  <td style={tdNum}>{c.openEscalationCount}</td>
-                  <td style={tdNum}>{c.redFlagAnswerCount}</td>
-                  <td style={tdNum}>
-                    {c.closedAt ? "—" : durationLabel(minutesSince(c.openedAt))}
-                  </td>
-                  <td style={td}>{dateTime(c.openedAt)}</td>
-                </tr>
+        </PageHeader>
+      }
+      kpis={
+        <KpiStrip>
+          <KpiCard
+            label="Loaded"
+            value={loading ? "—" : calls.length}
+            detail={truncated ? `At least ${calls.length}` : "Fetched page"}
+            tone={calls.length > 0 ? "info" : "neutral"}
+            accentColor={calls.length > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"}
+            selected={attention === "all" && source === ""}
+            onSelect={clearLocalFilters}
+          />
+          <KpiCard
+            label="Escalated"
+            value={loading ? "—" : escalated}
+            detail="Open escalations"
+            tone={escalated > 0 ? "danger" : "neutral"}
+            accentColor={escalated > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
+            selected={attention === "escalated"}
+            onSelect={() => setAttention("escalated")}
+          />
+          <KpiCard
+            label="Red flags"
+            value={loading ? "—" : redFlagged}
+            detail="Positive answers"
+            tone={redFlagged > 0 ? "danger" : "neutral"}
+            accentColor={redFlagged > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
+            selected={attention === "red_flag"}
+            onSelect={() => setAttention("red_flag")}
+          />
+          <KpiCard
+            label="Callbacks"
+            value={loading ? "—" : awaitingCallback}
+            detail="Awaiting return call"
+            tone={awaitingCallback > 0 ? "warning" : "neutral"}
+            accentColor={
+              awaitingCallback > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
+            }
+            selected={attention === "callback"}
+            onSelect={() => setAttention("callback")}
+          />
+          <KpiCard
+            label="Pending note"
+            value={loading ? "—" : pendingEncounter}
+            detail="Encounter unsigned"
+            tone={pendingEncounter > 0 ? "warning" : "neutral"}
+            accentColor={
+              pendingEncounter > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
+            }
+            selected={attention === "pending_note"}
+            onSelect={() => setAttention("pending_note")}
+          />
+        </KpiStrip>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          {unresolved > 0 ? (
+            <div role="alert" style={criticalBannerStyle}>
+              <Glyph name="alert" size={16} />
+              <span>
+                {unresolved} call{unresolved === 1 ? " is" : "s are"} escalated and unresolved. Only
+                hand-off is allowed until escalation is acknowledged.
+              </span>
+            </div>
+          ) : null}
+          {truncated ? (
+            <output style={infoBannerStyle}>
+              <Glyph name="info" size={16} />
+              <span>
+                More rows match this server filter. Counts are page-derived; use Load more for the
+                next cursor.
+              </span>
+            </output>
+          ) : null}
+          {error ? (
+            <div role="alert" style={errorBannerStyle}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Glyph name="alert" size={16} />
+                <span>{error}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                style={dismissButtonStyle}
+                aria-label="Dismiss error"
+              >
+                x
+              </button>
+            </div>
+          ) : null}
+          <div style={toolbarStyle}>
+            <div style={searchBoxStyle}>
+              <Glyph name="eye" size={14} />
+              <input
+                type="search"
+                placeholder="Search call, patient, protocol, provider..."
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                aria-label="Search triage calls"
+                style={searchInputStyle}
+              />
+            </div>
+            <select
+              value={state}
+              onChange={(event) => {
+                setState(event.target.value);
+                clearLocalFilters();
+              }}
+              aria-label="Filter triage calls by state"
+              style={selectStyle}
+            >
+              {STATE_FILTERS.map((option) => (
+                <option key={option.value || "open"} value={option.value}>
+                  State: {option.label}
+                </option>
               ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
-
-      {/* §5.1 sketches "ack / take / re-route" row actions here; none is built, because §4.1
-          publishes no assign/claim/re-route route and `triage_call` has no assignee column — the
-          covering SHIFT is the assignment, resolved server-side at open. A row action here would
-          have had to invent a write nobody can audit. Acknowledging an escalation is a real write,
-          so that action lives on the Escalations inbox (linked above) instead. */}
-    </div>
+            </select>
+            <select
+              value={source}
+              onChange={(event) => setSource(event.target.value as "" | TriageCallSource)}
+              aria-label="Filter triage calls by source"
+              style={selectStyle}
+            >
+              {SOURCE_FILTERS.map((option) => (
+                <option key={option.value || "all"} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={attention}
+              onChange={(event) => setAttention(event.target.value as AttentionFilter)}
+              aria-label="Filter triage calls by attention"
+              style={selectStyle}
+            >
+              <option value="all">Attention: All</option>
+              <option value="escalated">Escalated</option>
+              <option value="red_flag">Red flags</option>
+              <option value="callback">Awaiting callback</option>
+              <option value="pending_note">Pending note</option>
+            </select>
+            {hasActiveFilters ? (
+              <Button size="sm" tone="tertiary" onClick={clearAllFilters}>
+                Clear
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      }
+      table={
+        loading ? (
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
+        ) : visibleCalls.length === 0 ? (
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState
+              title={hasActiveFilters ? "No matching calls" : "Nothing open on this board"}
+              description={
+                hasActiveFilters
+                  ? "Adjust the filters or clear them to return to the loaded triage board."
+                  : "A quiet board is normal. Calls outside your reach remain absent by design."
+              }
+              action={
+                hasActiveFilters ? (
+                  <Button tone="secondary" size="sm" onClick={clearAllFilters}>
+                    Clear filters
+                  </Button>
+                ) : (
+                  <Link to="/triage/intake" style={primaryLinkStyle}>
+                    Take a call
+                  </Link>
+                )
+              }
+            />
+          </div>
+        ) : (
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr style={headerRowStyle}>
+                  <th style={{ ...thStyle, width: "13%" }}>Call</th>
+                  <th style={{ ...thStyle, width: "17%" }}>State</th>
+                  <th style={{ ...thStyle, width: "14%" }}>Patient</th>
+                  <th style={{ ...thStyle, width: "16%" }}>Caller</th>
+                  <th style={{ ...thStyle, width: "15%" }}>Protocol</th>
+                  <th style={{ ...thStyle, width: "13%" }}>Signals</th>
+                  <th style={{ ...thStyle, width: "12%" }}>Open</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleCalls.map((call) => (
+                  <tr key={call.id} style={rowStyle} className="wx-data-row-interactive">
+                    <td style={tdStyle}>
+                      <Link to={`/triage/calls/${call.id}`} style={callLinkStyle}>
+                        {shortId(call.id)}
+                      </Link>
+                      <div style={subtleTextStyle}>{dateTime(call.openedAt)}</div>
+                    </td>
+                    <td style={tdStyle}>
+                      <CallStatePill state={call.state} />
+                    </td>
+                    <td style={tdStyle}>
+                      {call.patientId ? (
+                        <code className="wx-data-md" style={codeStyle}>
+                          {shortId(call.patientId)}
+                        </code>
+                      ) : (
+                        <span style={subtleTextStyle}>Not identified</span>
+                      )}
+                    </td>
+                    <td style={tdStyle}>
+                      <div style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
+                        {humanize(call.callerKind)}
+                      </div>
+                      <div style={subtleTextStyle}>{humanize(call.inboundChannel)}</div>
+                    </td>
+                    <td style={tdStyle}>
+                      <div style={{ color: "var(--color-on-surface)" }}>
+                        {call.protocolLabel ?? "—"}
+                      </div>
+                      <div style={subtleTextStyle}>
+                        {call.disposition ? dispositionLabel(call.disposition) : "No disposition"}
+                      </div>
+                    </td>
+                    <td style={tdStyle}>
+                      <div style={signalStackStyle}>
+                        <StatusPill
+                          label={humanize(call.source)}
+                          tone={toneOf(CALL_SOURCE_TONE, call.source)}
+                        />
+                        {call.openEscalationCount > 0 ? (
+                          <StatusPill tone="error" label={`${call.openEscalationCount} esc`} />
+                        ) : null}
+                        {call.redFlagAnswerCount > 0 ? (
+                          <StatusPill tone="critical" label={`${call.redFlagAnswerCount} red`} />
+                        ) : null}
+                      </div>
+                    </td>
+                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                      {call.closedAt ? "—" : durationLabel(minutesSince(call.openedAt))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={footerStyle}>
+              <span style={subtleTextStyle}>
+                Showing {visibleCalls.length} of {calls.length} loaded calls
+                {truncated ? " · more available" : ""}.
+              </span>
+              {nextCursor ? (
+                <Button
+                  size="sm"
+                  tone="secondary"
+                  onClick={() => void load(nextCursor)}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? "Loading..." : "Load more"}
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        )
+      }
+      fullPageScroll
+    />
   );
 }
+
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+
+const toolbarStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: "0.5rem",
+};
+
+const searchBoxStyle: CSSProperties = {
+  position: "relative",
+  display: "flex",
+  alignItems: "center",
+  minWidth: "min(100%, 20rem)",
+  color: "var(--color-on-surface-variant)",
+};
+
+const searchInputStyle: CSSProperties = {
+  width: "100%",
+  height: "2.25rem",
+  paddingLeft: "2rem",
+  fontSize: "0.85rem",
+};
+
+const selectStyle: CSSProperties = {
+  height: "2.25rem",
+  fontSize: "0.85rem",
+  cursor: "pointer",
+};
+
+const tableWrapStyle: CSSProperties = {
+  width: "100%",
+  overflowX: "auto",
+  padding: "0 1.5rem 1.5rem",
+};
+
+const tableStyle: CSSProperties = {
+  display: "table",
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: "0.875rem",
+  fontVariantNumeric: "tabular-nums",
+};
+
+const headerRowStyle: CSSProperties = {
+  textAlign: "left",
+  color: "var(--color-on-surface-variant)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  background: "var(--color-surface-low)",
+};
+
+const thStyle: CSSProperties = {
+  padding: "0.75rem 1rem",
+  fontWeight: 600,
+  fontSize: "0.75rem",
+  textTransform: "uppercase",
+};
+
+const tdStyle: CSSProperties = {
+  padding: "0.875rem 1rem",
+  verticalAlign: "middle",
+  color: "var(--color-on-surface-variant)",
+};
+
+const rowStyle: CSSProperties = {
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+};
+
+const signalStackStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "0.35rem",
+};
+
+const footerStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+  paddingTop: "0.875rem",
+};
+
+const subtleTextStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+};
+
+const codeStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+};
+
+const callLinkStyle: CSSProperties = {
+  color: "var(--color-primary)",
+  textDecoration: "none",
+  fontWeight: 700,
+};
+
+const linkButtonBaseStyle: CSSProperties = {
+  minHeight: "2.25rem",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0.45rem 0.8rem",
+  borderRadius: "var(--radius-md)",
+  fontSize: "0.85rem",
+  fontWeight: 650,
+  textDecoration: "none",
+};
+
+const primaryLinkStyle: CSSProperties = {
+  ...linkButtonBaseStyle,
+  background: "var(--color-primary)",
+  color: "var(--color-on-primary)",
+};
+
+const linkButtonStyle: CSSProperties = {
+  ...linkButtonBaseStyle,
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface)",
+};
+
+const bannerBaseStyle: CSSProperties = {
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  fontSize: "0.85rem",
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+};
+
+const criticalBannerStyle: CSSProperties = {
+  ...bannerBaseStyle,
+  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
+  color: "var(--color-error)",
+};
+
+const infoBannerStyle: CSSProperties = {
+  ...bannerBaseStyle,
+  background: "var(--color-primary-tint)",
+  border: "1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)",
+  color: "var(--color-on-surface)",
+};
+
+const errorBannerStyle: CSSProperties = {
+  ...criticalBannerStyle,
+  justifyContent: "space-between",
+};
+
+const dismissButtonStyle: CSSProperties = {
+  border: "none",
+  background: "none",
+  color: "inherit",
+  cursor: "pointer",
+  fontWeight: 600,
+};

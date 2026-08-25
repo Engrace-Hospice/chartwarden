@@ -103,6 +103,35 @@ Use three terminals in `wardenx/`:
 bun run dev:backend
 ```
 
+/me/oncall
+/triage/protocols
+/triage/policy
+/triage/vendors
+/triage/paper-reentry
+/triage/metrics
+/platform/cap/constants
+/reports/admin
+/reports
+/reports/schedules
+/scheduling/day
+/scheduling/week
+/scheduling/proposals
+/scheduling/recurring
+/scheduling/time-off
+/subscription
+/subscription/plan
+/subscription/payment_methods
+/subscription/invoices
+/subscription/usage
+/subscription/dunning
+/subscription/promos
+/supplies
+/supplies/dispatches/new
+/supplies/par-stock
+/supplies/vendor-routing
+/supplies/comfort-kit-templates
+/supplies/items
+
 ```bash
 # Terminal 2 — background jobs and worker probes: http://localhost:3001
 bun --cwd=apps/backend run worker
