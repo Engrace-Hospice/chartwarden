@@ -112,27 +112,16 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
     }
   }
 
-  /**
-   * The PRE-ORG envelope: signed in, no org chosen yet — `app.user_id` is set and `app.org_id` was
-   * NEVER established.
-   *
-   * This takes a FRESH connection rather than reusing `db`, and that is not incidental. The org
-   * policy casts unconditionally — `(current_setting('app.org_id', true))::uuid` — so a session that
-   * has ever set `app.org_id` cannot get back to "no org context" by blanking it: `''::uuid` raises
-   * `invalid input syntax for type uuid`, and the whole query errors instead of returning no rows.
-   * Only a never-set GUC reads as NULL and lets the org policy contribute nothing. A pooled
-   * connection handed to the pre-org picker after serving an org-scoped request has the same
-   * problem, which is worth knowing while fixing this.
-   */
-  async function withUserOnly<T>(user: string, fn: (c: Client) => Promise<T>): Promise<T> {
-    const fresh = new Client({ connectionString: DB_URL });
-    await fresh.connect();
+  /** The PRE-ORG envelope: signed in, no org chosen yet. `app.org_id` is unset, `app.user_id` is not. */
+  async function withUserOnly<T>(user: string, fn: () => Promise<T>): Promise<T> {
+    await db.query("SET ROLE wardenx_app");
+    await db.query("SELECT set_config('app.org_id', '', false)");
+    await db.query("SELECT set_config('app.user_id', $1, false)", [user]);
     try {
-      await fresh.query("SET ROLE wardenx_app");
-      await fresh.query("SELECT set_config('app.user_id', $1, false)", [user]);
-      return await fn(fresh);
+      return await fn();
     } finally {
-      await fresh.end();
+      await db.query("RESET ROLE");
+      await db.query("SELECT set_config('app.user_id', '', false)");
     }
   }
 
@@ -429,7 +418,10 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
   // The existing `it.each(COVERED)` case above covers `membership` and passes, because `withOrg`
   // never sets `app.user_id`. These cases use the real envelope instead.
   //
-  // RED at the time of writing (develop@612bd641). This is the reproduction for #15, not the fix.
+  // Migration 0215 is the fix: both policies are DROPPED and the picker moves behind
+  // `membership_pre_org_picker`, a SECURITY DEFINER function owned by wardenx_admin whose scope is its
+  // argument rather than a session GUC (the ADR-0010 D2/D3 pattern of migrations 0193/0194). These
+  // cases were RED at main@c526c79b and are the regression net for that fix.
   describe("F-001 (#15) — pre-org picker policies must not widen an org-scoped session", () => {
     it("membership: a session scoped to org B cannot read the caller's own row in org A", async () => {
       // The caller is a member of BOTH orgs (seeded above), operating inside org B. Their org-A
@@ -462,23 +454,46 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
       expect(withUser.rows[0].n).toBe(withoutUser.rows[0].n);
     });
 
-    // THIS ONE MUST STAY GREEN. It is the constraint the fix has to preserve: deleting the pre-org
-    // policies closes the leak and locks every user out at the org picker, because
+    // THIS ONE MUST STAY GREEN. It is the constraint the fix has to preserve: closing the leak by
+    // simply deleting the pre-org policies would lock every user out at the org picker, because
     // GET /api/v1/auth/memberships would return nothing. A fix that turns the three cases above green
-    // and this one red has not fixed anything.
+    // and this one red has not fixed anything. Migration 0215 keeps it working through the
+    // SECURITY DEFINER picker, which is what the repository now calls.
     it("the pre-org picker still works: with NO org context, the user reads their own memberships", async () => {
-      const rows = await withUserOnly(USER, (c) =>
-        c.query("SELECT organization_id FROM membership WHERE user_id=$1", [USER]),
+      const rows = await withUserOnly(USER, () =>
+        db.query("SELECT organization_id, organization_name FROM membership_pre_org_picker($1)", [
+          USER,
+        ]),
       );
       const orgs = rows.rows.map((r: { organization_id: string }) => r.organization_id).sort();
       expect(orgs).toEqual([ORG_A, ORG_B].sort());
+      // The org DISPLAY NAME is what the picker actually renders — prove the join inside the definer
+      // resolves it, not just the id (that join is why `organization` needed a pre-org policy before).
+      for (const r of rows.rows as { organization_name: string | null }[])
+        expect(r.organization_name).toBeTruthy();
+    });
 
-      const orgRows = await withUserOnly(USER, (c) =>
-        c.query("SELECT count(*)::int AS n FROM organization WHERE id = ANY($1::uuid[])", [
-          [ORG_A, ORG_B],
-        ]),
+    // The picker is EXECUTE-granted to wardenx_app and to nobody else.
+    it("the picker is not executable by PUBLIC", async () => {
+      const { rows } = await db.query<{ ok: boolean }>(
+        "SELECT has_function_privilege('public', 'membership_pre_org_picker(uuid)', 'EXECUTE') AS ok",
       );
-      expect(orgRows.rows[0].n).toBe(2);
+      expect(rows[0].ok).toBe(false);
+    });
+
+    // Regression for the second defect migration 0215 closes: `set_config(..., true)` reverts a custom
+    // GUC to the EMPTY STRING at commit, not NULL, so a pooled connection that previously served an
+    // org-scoped transaction carries app.org_id=''. Unguarded, `''::uuid` raises 22P02 (SQLSTATE for
+    // invalid_text_representation) and ABORTS the statement instead of denying it. It must deny.
+    it("an empty app.org_id denies cleanly instead of raising 22P02", async () => {
+      const seen = await withUserOnly(USER, () =>
+        db.query("SELECT count(*)::int AS n FROM membership"),
+      );
+      expect(seen.rows[0].n).toBe(0);
+      const orgs = await withUserOnly(USER, () =>
+        db.query("SELECT count(*)::int AS n FROM organization"),
+      );
+      expect(orgs.rows[0].n).toBe(0);
     });
 
     it("no PERMISSIVE policy for wardenx_app on a tenant table omits app.org_id", async () => {
