@@ -10,6 +10,10 @@ WardenX repository (multi-tenant hospice EHR SaaS, 40 modules, ~460 tables, ~122
   issue backlog was never carried over. Read it, port from it (§4), never push to it.
 - **Delivery is `github`.** Work ships as: **GitHub issue → branch → PR into `develop` → merge after
   CI is green.** File issues, open PRs, and read/label/close them freely.
+- **You share this repo with a human developer, `Jacobson-svg`.** Either of you may fix any finding.
+  GitHub issues are the shared queue and the **assignee is the lock** — see §7a for the claim
+  protocol and §2.9 for the rule that keeps you out of his way. Write every issue so he can pick it
+  up cold, without having run the audit (§8a).
 - **`main` is off-limits.** See §2.5 — merging to `main` deploys to the production VPS.
 - `BATCH_SIZE`: findings remediated per checkpoint. **Default: 5.**
 - `LIVE_INFRA`: you may start local Postgres/Valkey/MinIO and an app instance for live/E2E suites.
@@ -58,6 +62,13 @@ WardenX repository (multi-tenant hospice EHR SaaS, 40 modules, ~460 tables, ~122
 8. **No silent caps.** If you bound coverage (sampled a module, deferred a class of check, skipped a
    suite), say so explicitly in the report and in the tracking issue. An unreported truncation reads
    as "covered".
+9. **Do not take another person's work.** An issue with an assignee who is not you is taken —
+   do not fix it, reassign it, close it, or open a competing PR. Never push to, force-push to, rebase,
+   or merge a branch or PR you did not create. `Jacobson-svg` is a person with work in flight, not a
+   queue to be optimised; if his work overlaps yours, say so on the issue and pick something else.
+10. **Do not fill his queue silently.** Auto-assigning findings to a human is not routing, it is
+   dumping. File them `status/available` and let him choose, except where he has asked otherwise on
+   the issue itself.
 
 ## 3. Phase 0 — Baseline evidence (do not fix anything yet)
 
@@ -220,37 +231,95 @@ Do not replace a real integration with a mock outside tests.
 
 ## 7. Phase 4 — Remediate in batches of `BATCH_SIZE`
 
-Work the ranked queue. For each finding:
+**You are not the only person fixing these.** `Jacobson-svg` works this repo too, and either of you may
+take any finding. The queue is shared: GitHub issues are the queue, the **assignee is the lock**, and
+the `status/*` labels make the queue readable at a glance.
 
-1. **File a GitHub issue** on `Engrace-Hospice/wardenx` using the §8a schema, narrowly scoped, with
-   the reproduction in the body. Label it `audit`, its priority (`P0`…`P7`), and its area
-   (`area/security`, `area/backend`, …). One finding per issue. Do not re-file what §4 already
-   ported. `REFUTED` findings get **no** issue — they live in the audit file and the §9 report.
-2. **Branch** from `develop`: `audit/F-NNN-<slug>`. Implement the **smallest complete end-to-end fix**.
-3. Wire **every** affected layer: UI/UX → frontend → API contract → backend → persistence →
+Write every issue so that a developer who did not run this audit can pick it up cold. That is the
+whole point of §8a's handoff sections — if an issue only makes sense to the agent that filed it, it is
+not a handoff, it is a note to self.
+
+### 7a. The claim protocol
+
+**Before you touch any finding**, check that nobody else already has it:
+
+```bash
+gh issue view <n> --json assignees,labels          # an assignee means it is taken — leave it alone
+gh pr list --state open --search "F-NNN"           # someone may already have a branch open
+git ls-remote --heads origin 'audit/F-NNN*'        # …including one with no PR yet
+```
+
+Then, in order:
+
+1. **Claim it.** `gh issue edit <n> --add-assignee @me --add-label status/claimed --remove-label status/available`,
+   and comment what you are about to do. Claim **one batch at a time** (`BATCH_SIZE` findings) — never
+   the whole queue. Findings you are not working on stay `status/available` so he can take them.
+2. **Push a branch early.** `audit/F-NNN-<slug>` off `develop`, with the red regression test in the
+   first commit, then open a **draft PR** immediately (§8b). A visible draft PR is what stops two
+   people starting the same work; a local branch is invisible.
+3. **Release what you cannot finish.** If you stop, get blocked, or run out of scope:
+   unassign yourself, restore `status/available` (or apply `status/blocked` with the reason), and
+   comment what you did, what you learned, and where the branch is. Never leave a finding claimed and
+   silent.
+
+**Never** reassign, close, force-push to, or merge anything assigned to `Jacobson-svg` or carrying a
+branch you did not create. If his work overlaps yours, comment on the issue and pick something else.
+
+### 7b. Which findings you take, and which you leave
+
+Both of you can fix anything. These are defaults, not rules — and a human's stated preference on an
+issue always overrides them:
+
+- **Take:** findings where the evidence you already hold is most of the work — a failing test you can
+  write immediately, a policy or config fix, a regeneration, a gate you can turn green. Take **P0/P1**
+  first when it is live in production and you can fix it end to end.
+- **Leave `status/available` (and say why in the issue):** anything needing product or clinical
+  judgement, a UX decision, a schema change with a migration ordering risk, an accepted-risk call, or
+  credentials/infrastructure you do not have. Label these `needs-decision` and name the question.
+- **Label `good-first-fix`** when a finding is self-contained, needs no cross-module context, and its
+  acceptance criteria are fully checkable — so he can pick up a quick win without reading the audit.
+
+### 7c. For each finding you take
+
+1. **File the GitHub issue first** (§8a), even if you fix it seconds later. The issue is the durable
+   record and the thing he can search; the PR is not. `REFUTED` findings get **no** issue — they live
+   in the audit file and the §9 report.
+2. **Branch** from `develop`: `audit/F-NNN-<slug>`. Commit the **red regression test first**, on its
+   own, so `git log` carries the red-before proof and he can check out that commit and watch it fail.
+3. Implement the **smallest complete end-to-end fix**.
+4. Wire **every** affected layer: UI/UX → frontend → API contract → backend → persistence →
    permissions → observability. A backend-only fix for a user-facing gap is not complete.
-4. Add regression tests — negative, cross-tenant, failure-path, live-DB, E2E as applicable. Capture
-   each **red-before / green-after** transcript for the PR body.
-5. Run targeted checks, then the full validate gate. Regenerate affected artifacts
+5. Add the remaining regression tests — negative, cross-tenant, failure-path, live-DB, E2E as
+   applicable. Capture each **red-before / green-after** transcript for the PR body.
+6. Run targeted checks, then the full validate gate — **and run the gates individually** (§3.2), since
+   the chain hides everything after the first failure. Regenerate affected artifacts
    (`status:matrix`, `openapi:coverage`, `ui:parity`, `frame:fidelity`, `openapi:check`,
    `client:check`) — never hand-edit a generated report; resolve conflicts by regenerating.
-6. Update docs when the change makes prose false. Corpus gates
+7. Update docs when the change makes prose false. Corpus gates
    (`arch:architecture-docs`, `arch:module-docs`, `arch:adr-docs`, `docs:ui`) enforce this.
-7. Review the whole diff for security, tenancy, a11y, compatibility, and unrelated changes.
-8. `ListAgents`, then commit and **open a PR into `develop`** using the §8b schema, with
-   `Closes #NNN`. One finding class per PR — keep unrelated fixes separate.
+8. Review the whole diff for security, tenancy, a11y, compatibility, and unrelated changes.
+9. `ListAgents`, then mark the draft PR **ready for review** and request review from `Jacobson-svg`.
+   One finding class per PR — keep unrelated fixes separate.
    - If the PR edits `docs/plans/**`, apply the **`allow-plan-edits`** label or
      `arch:plan-integrity` fails it (ADR-0030); a PR without that label is *supposed* to be blocked.
    - Wait for CI: `gh pr checks <n> --watch`. **Never merge a PR whose CI is red**, and never
      re-run-until-green without explaining the flake in the PR.
-   - Merge with `gh pr merge <n> --squash --delete-branch` **only** after CI is green. The issue
-     closes itself via `Closes #NNN`.
+   - **Do not merge your own P0 or P1 fix.** Leave it ready-for-review for `Jacobson-svg`. For P2–P7,
+     merging your own green PR is fine: `gh pr merge <n> --squash --delete-branch`.
    - Never `--admin`, never `--auto` past a red check, never retarget a PR at `main`.
 
-**Checkpoint after each batch:** post a comment on the tracking issue (§8c) — fixed / blocked /
-newly found / queue depth — and continue. Stop and ask only if a fix requires infrastructure you
-cannot provision, an irreversible or outward-facing action, a `develop → main` promotion, or an
-accepted-risk decision that needs an owner.
+### 7d. Handing a finding over mid-flight
+
+If you file an issue you are **not** going to fix, the issue must stand alone. Where a reproduction
+exists, prefer handing over a **runnable** one rather than a described one: push
+`audit/F-NNN-<slug>` with the failing test committed, open it as a draft PR titled
+`F-NNN · red test only — needs a fix`, and link it from the issue. He then pushes the fix onto that
+branch and turns it green, instead of re-deriving your reproduction from prose.
+
+**Checkpoint after each batch:** comment on the tracking issue (§8c) — fixed / blocked / newly found /
+queue depth / **what is left `status/available` and why**. Stop and ask only if a fix requires
+infrastructure you cannot provision, an irreversible or outward-facing action, a `develop → main`
+promotion, or an accepted-risk decision that needs an owner.
 
 ## 8. Output contract
 
@@ -265,6 +334,7 @@ Status:        CONFIRMED | REFUTED | BLOCKED | ACCEPTED-RISK | FIXED
 Area:          frontend|ui|ux|backend|db|api|integration|infra|security|test
 Issue:         Engrace-Hospice/wardenx#NNN  (or "none — REFUTED")
 PR:            Engrace-Hospice/wardenx#NNN  (or "none")
+Owner:         @me | @Jacobson-svg | unclaimed
 Evidence:      file:line, command output, query result, or runtime trace
 Reproduction:  the exact command/test showing the bad behavior
 Root cause:    <one paragraph>
@@ -274,26 +344,58 @@ Verification:  exact gate output
 Residual risk: <or none>
 ```
 
-### 8a. Issue schema
+### 8a. Issue schema — written for whoever picks it up
 
 Title: `F-NNN · <area> — <one-line defect>` (ported issues keep their original id: `HIP-07 · …`).
-Labels: `audit` + one of `P0`…`P7` + one or more `area/*`.
-Body: **Evidence** · **Reproduction** (copy-pasteable) · **Root cause** · **Expected + acceptance
-criteria** · **Blast radius** (is it live in production?) · **Source** (ported / discovered, with the
-commit or run id). Use `.github/ISSUE_TEMPLATE/audit-finding.yml`.
+
+Labels: `audit` + one of `P0`…`P7` + one or more `area/*` + **`status/available`** on filing.
+Add `ported`, `good-first-fix`, `needs-decision`, `status/blocked` where they apply.
+
+Assignee: **none on filing.** Assign only when someone claims it (§7a).
+
+Body — the first six are the finding, the last three are the handoff, and the handoff is not optional:
+
+1. **Evidence** — `file:line`, command output, query result, or runtime trace. Verbatim.
+2. **Reproduction** — copy-pasteable. Include the setup it depends on (containers up? migrations run?
+   `BYPASSRLS` removed?). A reproduction that only works in the state your shell happened to be in is
+   not a reproduction.
+3. **Root cause** — one paragraph. If you do not know, say you do not know; do not guess in the voice
+   of a fact.
+4. **Expected behavior + acceptance criteria** — a checkable list that closes the issue. Someone must
+   be able to tell they are done without asking you.
+5. **Blast radius** — is it live in production? Which tenants, roles, or data? Worst realistic outcome?
+6. **Source** — discovered (commit / CI run id) or ported (`Ported from fabwebdev/wardenx#141`).
+7. **Where to start** — the files and functions you would open first, and why. Name the layers a
+   complete fix has to touch. If you are unsure, say which you checked and which you did not.
+8. **How to verify** — the exact gate, script, or test that proves it fixed, and the exact command.
+   If a regression test does not exist yet, say what it must assert.
+9. **Watch out for** — the trap next to this fix. The obvious fix that is wrong; the gate that goes
+   green for the wrong reason; the neighbouring code that looks unrelated and is not. This is where
+   §6a's failure modes get written down for the specific finding.
+
+Use `.github/ISSUE_TEMPLATE/audit-finding.yml`, which makes all of this required.
+
+Two rules about tone, because a person reads these: state what you verified and what you inferred,
+separately and plainly. Never write an instruction to another developer as though it were a finding —
+if you are recommending rather than reporting, say so.
 
 ### 8b. PR schema
 
-Title: `F-NNN · <what changed>`. Base: **`develop`** — always.
+Title: `F-NNN · <what changed>`, or `F-NNN · red test only — needs a fix` for a handoff draft.
+Base: **`develop`** — always. Draft while you work; ready-for-review when it is complete.
+
 Body: `Closes #NNN` · **Layers touched** · **Red-before / green-after** transcripts ·
-**Gate output** (`build`, `arch:fitness`, `test`, plus any regenerated artifact) · **Residual risk**.
-Use `.github/pull_request_template.md`.
+**Gate output** (`build`, `arch:fitness` *and* the per-gate run, `test`, plus any regenerated
+artifact) · **Residual risk** · **Who should review and why**.
+
+Request review from `Jacobson-svg` on every PR. Use `.github/pull_request_template.md`.
 
 ### 8c. Tracking issue
 
 Open one issue titled `Production-readiness audit — <YYYY-MM-DD>`, labelled `audit`, at the start.
-Keep the finding list, the batch checkpoints, the skipped-suite ledger, and the refutation summary in
-its comments so the run is legible without reading the repo.
+Keep in its comments: the finding list with current owner, the batch checkpoints, the skipped-suite
+ledger, the refutation summary, and **the current `status/available` queue** — so anyone can see what
+is free to pick up without reading every issue.
 
 ## 9. Finish
 

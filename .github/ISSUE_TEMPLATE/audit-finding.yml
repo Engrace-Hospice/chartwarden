@@ -1,14 +1,21 @@
 name: Audit finding
 description: A reproduced production-readiness finding (see docs/reviews/PROMPT_5_WARDENX_PRODUCTION_READINESS_AUDIT.md)
 title: "F-NNN · <area> — <one-line defect>"
-labels: ["audit"]
+labels: ["audit", "status/available"]
 body:
   - type: markdown
     attributes:
       value: |
-        A finding needs a **reproduction**: a failing command, a failing test you wrote, a query
-        result, or a cited `file:line` whose behavior you traced end to end. A plausible reading of
-        the code is a suspicion, not a finding — suspicions belong in the audit file, not here.
+        **A finding needs a reproduction** — a failing command, a failing test you wrote, a query
+        result, or a cited `file:line` you traced end to end. A plausible reading of the code is a
+        suspicion, not a finding; suspicions belong in the audit file, not here.
+
+        **This issue will be read by someone who did not run the audit.** The last three fields are
+        the handoff — *Where to start*, *How to verify*, *Watch out for*. They are what turn a
+        finding into something another developer can pick up cold. They are not optional.
+
+        **Do not assign this issue on filing.** It lands `status/available`; whoever takes it assigns
+        themselves and swaps the label to `status/claimed`.
 
   - type: dropdown
     id: severity
@@ -41,7 +48,7 @@ body:
     id: reproduction
     attributes:
       label: Reproduction
-      description: The exact copy-pasteable command or test that shows the bad behavior.
+      description: Copy-pasteable. Include the setup it depends on — containers up? migrations run? BYPASSRLS removed? A reproduction that only works in the state your shell happened to be in is not a reproduction.
       render: shell
     validations:
       required: true
@@ -50,7 +57,7 @@ body:
     id: root-cause
     attributes:
       label: Root cause
-      description: One paragraph. If unknown, say so — do not guess in the voice of a fact.
+      description: One paragraph. If you do not know, say so — do not guess in the voice of a fact.
     validations:
       required: true
 
@@ -58,7 +65,7 @@ body:
     id: expected
     attributes:
       label: Expected behavior + acceptance criteria
-      description: What should happen, and a checkable list that closes this issue.
+      description: A checkable list that closes this issue. Whoever picks it up must be able to tell they are done without asking you.
     validations:
       required: true
 
@@ -66,7 +73,32 @@ body:
     id: blast-radius
     attributes:
       label: Blast radius
-      description: Is this live in production? Which tenants/roles/data does it touch? What is the worst realistic outcome?
+      description: Is this live in production? Which tenants, roles, or data does it touch? What is the worst realistic outcome?
+    validations:
+      required: true
+
+  - type: textarea
+    id: where-to-start
+    attributes:
+      label: Where to start
+      description: The files and functions you would open first, and why. Name the layers a complete fix has to touch (UI · frontend · API contract · backend · persistence · permissions · observability · docs). If you are unsure, say which you checked and which you did not.
+    validations:
+      required: true
+
+  - type: textarea
+    id: how-to-verify
+    attributes:
+      label: How to verify
+      description: The exact gate, script, or test that proves this fixed, and the exact command. If no regression test exists yet, say what it must assert. Remember `arch:fitness` short-circuits — name the individual gate.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: watch-out
+    attributes:
+      label: Watch out for
+      description: The trap next to this fix. The obvious fix that is wrong; the gate that goes green for the wrong reason; the neighbouring code that looks unrelated and is not.
     validations:
       required: true
 
@@ -77,3 +109,13 @@ body:
       description: 'Discovered (commit / CI run id) or ported (e.g. "Ported from fabwebdev/wardenx#141")'
     validations:
       required: true
+
+  - type: checkboxes
+    id: handoff
+    attributes:
+      label: Handoff
+      options:
+        - label: A developer who has not read the audit could start on this from the body alone
+          required: true
+        - label: Everything above separates what was verified from what was inferred
+          required: true
