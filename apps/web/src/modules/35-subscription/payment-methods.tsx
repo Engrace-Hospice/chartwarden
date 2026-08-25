@@ -1,5 +1,7 @@
 import {
+  Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   PageHeader,
   StatusPill,
@@ -59,42 +61,52 @@ export function PaymentMethods(): JSX.Element {
           title="Payment methods"
           breadcrumb="Billing"
           actions={
-            <button
-              type="button"
-              style={{
-                padding: "0.5rem 1rem",
-                borderRadius: "var(--radius-md, 0.5rem)",
-                border: "none",
-                background: "var(--color-primary)",
-                color: "var(--color-on-primary)",
-                fontSize: "0.875rem",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
+            <Button type="button" tone="primary">
               Add card
-            </button>
+            </Button>
           }
-        />
+        >
+          <div style={headerDescriptionStyle}>
+            Manage saved cards for subscription renewal, dunning recovery, and future invoices.
+          </div>
+        </PageHeader>
+      }
+      filters={
+        <div style={toolbarStyle}>
+          <div style={toolbarCopyStyle}>
+            <Glyph name="shield" size={16} />
+            <span>
+              Card entry is handled by the Stripe payment element; raw card data stays off WardenX.
+            </span>
+          </div>
+        </div>
       }
       table={
         methods.length === 0 ? (
-          <EmptyState
-            title="No payment methods"
-            description="Add a card to keep your subscription active."
-          />
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState
+              title="No payment methods"
+              description="Add a card to keep your subscription active."
+            />
+          </div>
         ) : (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.75rem",
-              padding: "0 1.5rem 1.5rem",
-            }}
-          >
-            {methods.map((m) => (
-              <MethodRow key={m.id} method={m} />
-            ))}
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr style={tableHeadRowStyle}>
+                  <th style={{ ...thStyle, width: "38%" }}>Payment method</th>
+                  <th style={{ ...thStyle, width: "18%" }}>Kind</th>
+                  <th style={{ ...thStyle, width: "18%" }}>Expires</th>
+                  <th style={{ ...thStyle, width: "14%" }}>Status</th>
+                  <th style={{ ...thStyle, width: "12%", textAlign: "right" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {methods.map((m) => (
+                  <MethodRow key={m.id} method={m} />
+                ))}
+              </tbody>
+            </table>
           </div>
         )
       }
@@ -104,39 +116,173 @@ export function PaymentMethods(): JSX.Element {
 
 function MethodRow({ method }: { method: PaymentMethod }): JSX.Element {
   return (
-    <div
+    <tr
+      className="wx-data-row-interactive"
       style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "1rem",
-        background: "var(--color-surface-lowest)",
-        borderRadius: "var(--radius-lg, 0.75rem)",
-        boxShadow: "var(--shadow-soft)",
-        padding: "1rem 1.25rem",
         opacity: method.isActive ? 1 : 0.6,
+        borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
       }}
     >
-      <span className="wx-data-md" style={{ fontSize: "1rem", fontWeight: 600 }}>
-        {method.brand ?? "Card"} ····{method.last4 ?? "----"}
-      </span>
-      <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
-        Expires {formatDate(method.expiresAt)}
-      </span>
-      {method.isDefault ? <StatusPill label="Default" tone="success" /> : null}
-      {!method.isActive ? <StatusPill label="Inactive" tone="neutral" /> : null}
-      <div style={{ marginLeft: "auto", display: "flex", gap: "0.75rem" }}>
-        {!method.isDefault && method.isActive ? (
-          <button type="button" style={linkBtn}>
-            Set default
+      <td style={tdStyle}>
+        <div style={methodCellStyle}>
+          <div aria-hidden style={cardGlyphStyle}>
+            <Glyph name="shield" size={16} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem", minWidth: 0 }}>
+            <span className="wx-data-md" style={methodNameStyle}>
+              {method.brand ?? "Card"} ....{method.last4 ?? "----"}
+            </span>
+            <code className="wx-data-md" style={methodIdStyle}>
+              {method.id}
+            </code>
+          </div>
+        </div>
+      </td>
+      <td style={tdStyle}>
+        <span style={softChipStyle}>{method.kind}</span>
+      </td>
+      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+        {formatDate(method.expiresAt)}
+      </td>
+      <td style={tdStyle}>
+        <div style={statusStackStyle}>
+          {method.isDefault ? <StatusPill label="Default" tone="success" /> : null}
+          {!method.isActive ? <StatusPill label="Inactive" tone="neutral" /> : null}
+          {!method.isDefault && method.isActive ? (
+            <StatusPill label="Active" tone="progress" />
+          ) : null}
+        </div>
+      </td>
+      <td style={{ ...tdStyle, textAlign: "right" }}>
+        <div style={actionsStyle}>
+          {!method.isDefault && method.isActive ? (
+            <button type="button" style={linkBtn}>
+              Set default
+            </button>
+          ) : null}
+          <button type="button" style={{ ...linkBtn, color: "var(--color-error)" }}>
+            Detach
           </button>
-        ) : null}
-        <button type="button" style={{ ...linkBtn, color: "var(--color-error)" }}>
-          Detach
-        </button>
-      </div>
-    </div>
+        </div>
+      </td>
+    </tr>
   );
 }
+
+const headerDescriptionStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.875rem",
+};
+
+const toolbarStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+  padding: "0 1.5rem 1rem",
+  flexWrap: "wrap",
+};
+
+const toolbarCopyStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.85rem",
+};
+
+const tableWrapStyle: CSSProperties = {
+  width: "100%",
+  overflowX: "auto",
+  padding: "0 1.5rem 1.5rem",
+};
+
+const tableStyle: CSSProperties = {
+  display: "table",
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: "0.875rem",
+};
+
+const tableHeadRowStyle: CSSProperties = {
+  textAlign: "left",
+  color: "var(--color-on-surface-variant)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  background: "var(--color-surface-low)",
+};
+
+const thStyle: CSSProperties = {
+  padding: "0.625rem 1rem",
+  fontWeight: 600,
+  fontSize: "0.75rem",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+};
+
+const tdStyle: CSSProperties = {
+  padding: "0.75rem 1rem",
+  verticalAlign: "middle",
+};
+
+const methodCellStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.75rem",
+  minWidth: 0,
+};
+
+const cardGlyphStyle: CSSProperties = {
+  width: "2.25rem",
+  height: "2.25rem",
+  borderRadius: "9999px",
+  background: "var(--color-primary-tint)",
+  color: "var(--color-primary)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+};
+
+const methodNameStyle: CSSProperties = {
+  color: "var(--color-on-surface)",
+  fontSize: "0.95rem",
+  fontWeight: 650,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const methodIdStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.72rem",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const softChipStyle: CSSProperties = {
+  display: "inline-block",
+  padding: "0.2rem 0.5rem",
+  borderRadius: "var(--radius-sm)",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+  fontWeight: 600,
+};
+
+const statusStackStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.35rem",
+  flexWrap: "wrap",
+};
+
+const actionsStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "0.75rem",
+  whiteSpace: "nowrap",
+};
 
 const linkBtn: CSSProperties = {
   background: "none",

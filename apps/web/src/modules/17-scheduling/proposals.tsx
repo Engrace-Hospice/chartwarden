@@ -13,7 +13,7 @@ import {
 // patient filter comes from `?patient=`. Reads GET /api/v1/visit-proposals via the typed client. Leaves only
 // (@wardenx/ui).
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PROPOSAL_TONE, stateLabel } from "./scheduling-status";
 
@@ -56,45 +56,134 @@ export function SchedulingProposals(): JSX.Element {
 
   return (
     <WorkQueueLayout
-      header={<PageHeader title="Proposal Inbox" />}
+      header={
+        <PageHeader title="Proposal Inbox" breadcrumb="Scheduling">
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Pending visit proposals awaiting publish
+            {patient ? ` for patient ${patient.slice(0, 8)}` : ""}.
+          </div>
+        </PageHeader>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          <div style={infoBannerStyle}>
+            The server owns proposal visibility and publish eligibility. Bulk publish/dismiss
+            actions remain outside this read-only queue until those write paths land.
+          </div>
+        </div>
+      }
       table={
         error ? (
-          <EmptyState title="Unavailable" description={error} />
+          <div style={emptyShellStyle}>
+            <EmptyState title="Unavailable" description={error} />
+          </div>
         ) : loading && rows.length === 0 ? (
-          <LoadingSpinner />
+          <div style={loadingShellStyle}>
+            <LoadingSpinner />
+          </div>
         ) : pending.length === 0 ? (
-          <EmptyState
-            title="No pending proposals"
-            description="There are no proposals awaiting publish."
-          />
+          <div style={emptyShellStyle}>
+            <EmptyState
+              title="No pending proposals"
+              description="There are no proposals awaiting publish."
+            />
+          </div>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>For date</th>
-                <th>Purpose</th>
-                <th>Patient</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pending.map((r) => (
-                <tr key={r.id}>
-                  <td className="tabular-nums">{r.proposedForDate}</td>
-                  <td>{stateLabel(r.proposedVisitPurpose)}</td>
-                  <td className="wx-data-md">{r.patientId.slice(0, 8)}</td>
-                  <td>
-                    <StatusPill
-                      label={stateLabel(r.status)}
-                      tone={PROPOSAL_TONE[r.status] ?? "neutral"}
-                    />
-                  </td>
+          <div style={tableShellStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr style={tableHeadRowStyle}>
+                  <th style={thStyle}>For date</th>
+                  <th style={thStyle}>Purpose</th>
+                  <th style={thStyle}>Patient</th>
+                  <th style={thStyle}>Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {pending.map((r) => (
+                  <tr key={r.id} style={rowStyle}>
+                    <td className="tabular-nums" style={tdStyle}>
+                      {r.proposedForDate}
+                    </td>
+                    <td style={tdStyle}>{stateLabel(r.proposedVisitPurpose)}</td>
+                    <td className="wx-data-md" style={tdStyle}>
+                      {r.patientId.slice(0, 8)}
+                    </td>
+                    <td style={tdStyle}>
+                      <StatusPill
+                        label={stateLabel(r.status)}
+                        tone={PROPOSAL_TONE[r.status] ?? "neutral"}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )
       }
+      fullPageScroll
     />
   );
 }
+
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+
+const tableShellStyle: CSSProperties = {
+  width: "100%",
+  overflowX: "auto",
+  padding: "0 1.5rem 1.5rem",
+};
+
+const emptyShellStyle: CSSProperties = {
+  padding: "2rem 1.5rem",
+};
+
+const loadingShellStyle: CSSProperties = {
+  padding: "2.5rem 1.5rem",
+  textAlign: "center",
+};
+
+const infoBannerStyle: CSSProperties = {
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)",
+  background: "var(--color-primary-tint)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+};
+
+const tableStyle: CSSProperties = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: "0.85rem",
+};
+
+const tableHeadRowStyle: CSSProperties = {
+  background: "var(--color-surface-low)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+};
+
+const thStyle: CSSProperties = {
+  padding: "0.5rem 0.75rem",
+  textAlign: "left",
+  fontSize: "0.7rem",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color: "var(--color-on-surface-variant)",
+};
+
+const tdStyle: CSSProperties = {
+  padding: "0.55rem 0.75rem",
+  color: "var(--color-on-surface)",
+};
+
+const rowStyle: CSSProperties = {
+  borderTop: "1px solid var(--color-surface-container)",
+};

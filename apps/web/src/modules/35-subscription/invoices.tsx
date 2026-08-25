@@ -1,6 +1,5 @@
 import {
   EmptyState,
-  FilterBar,
   LoadingSpinner,
   PageHeader,
   StatusPill,
@@ -12,7 +11,7 @@ import {
 // links to the invoice detail and (where present) the Stripe-hosted page. Amounts are integer cents from
 // the wire, formatted once at the boundary. Lantern: Work Queue pattern, tabular-nums, §6.6 pills.
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
 import { cap, formatCents, formatDate, invoiceTone } from "./billing-status";
 
@@ -65,94 +64,103 @@ export function Invoices(): JSX.Element {
 
   return (
     <WorkQueueLayout
-      header={<PageHeader title="Invoices" breadcrumb="Billing" />}
+      header={
+        <PageHeader title="Invoices" breadcrumb="Billing">
+          <div style={headerDescriptionStyle}>
+            Review issued invoices, payment state, due dates, and detailed invoice records.
+          </div>
+        </PageHeader>
+      }
       filters={
-        <FilterBar>
-          {STATUSES.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setStatusFilter(s)}
-              style={{
-                padding: "0.35rem 0.85rem",
-                borderRadius: "var(--radius-md, 0.5rem)",
-                border: "none",
-                background:
-                  statusFilter === s ? "var(--color-primary)" : "var(--color-surface-lowest)",
-                color: statusFilter === s ? "var(--color-on-primary)" : "var(--color-on-surface)",
-                fontSize: "0.8rem",
-                fontWeight: 500,
-                cursor: "pointer",
-              }}
-            >
-              {cap(s)}
-            </button>
-          ))}
-        </FilterBar>
+        <div style={filtersStyle}>
+          <div style={tabShellStyle}>
+            {STATUSES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatusFilter(s)}
+                style={tabButtonStyle(statusFilter === s)}
+              >
+                {cap(s)}
+              </button>
+            ))}
+          </div>
+          <span style={filterHintStyle}>Showing latest 50 invoices for the selected status.</span>
+        </div>
       }
       table={
         loading ? (
-          <LoadingSpinner />
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
         ) : error ? (
-          <EmptyState title="Unavailable" description={error} />
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState title="Unavailable" description={error} />
+          </div>
         ) : invoices.length === 0 ? (
-          <EmptyState title="No invoices" description="No invoices match this filter." />
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState title="No invoices" description="No invoices match this filter." />
+          </div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
-            <thead>
-              <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
-                <Th>Invoice</Th>
-                <Th>Status</Th>
-                <Th>Period</Th>
-                <Th>Issued</Th>
-                <Th align="right">Total</Th>
-                <Th />
-              </tr>
-            </thead>
-            <tbody>
-              {invoices.map((inv) => (
-                <tr key={inv.id} style={{ borderTop: "1px solid var(--color-outline-variant)" }}>
-                  <Td>
-                    <Link
-                      to={`/subscription/invoices/${inv.id}`}
-                      className="wx-data-md"
-                      style={{ color: "var(--color-primary)", textDecoration: "none" }}
-                    >
-                      {inv.invoiceNumber ?? inv.id.slice(0, 8)}
-                    </Link>
-                  </Td>
-                  <Td>
-                    <StatusPill label={cap(inv.status)} tone={invoiceTone(inv.status)} />
-                  </Td>
-                  <Td>
-                    <span className="tabular-nums">
-                      {formatDate(inv.periodStart)} — {formatDate(inv.periodEnd)}
-                    </span>
-                  </Td>
-                  <Td>
-                    <span className="tabular-nums">{formatDate(inv.issuedAt)}</span>
-                  </Td>
-                  <Td align="right">
-                    <span className="tabular-nums">
-                      {formatCents(inv.totalCents, inv.currencyCode)}
-                    </span>
-                  </Td>
-                  <Td align="right">
-                    <Link
-                      to={`/subscription/invoices/${inv.id}`}
-                      style={{
-                        color: "var(--color-primary)",
-                        textDecoration: "none",
-                        fontSize: "0.8rem",
-                      }}
-                    >
-                      View →
-                    </Link>
-                  </Td>
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr style={tableHeadRowStyle}>
+                  <Th width="23%">Invoice</Th>
+                  <Th width="14%">Status</Th>
+                  <Th width="27%">Period</Th>
+                  <Th width="14%">Issued</Th>
+                  <Th width="12%" align="right">
+                    Total
+                  </Th>
+                  <Th width="10%" align="right">
+                    Actions
+                  </Th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {invoices.map((inv) => (
+                  <tr key={inv.id} className="wx-data-row-interactive" style={tableRowStyle}>
+                    <Td>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                        <Link
+                          to={`/subscription/invoices/${inv.id}`}
+                          className="wx-data-md"
+                          style={invoiceLinkStyle}
+                        >
+                          {inv.invoiceNumber ?? inv.id.slice(0, 8)}
+                        </Link>
+                        <code className="wx-data-md" style={invoiceIdStyle}>
+                          {inv.id}
+                        </code>
+                      </div>
+                    </Td>
+                    <Td>
+                      <StatusPill label={cap(inv.status)} tone={invoiceTone(inv.status)} />
+                    </Td>
+                    <Td>
+                      <span className="tabular-nums">
+                        {formatDate(inv.periodStart)} - {formatDate(inv.periodEnd)}
+                      </span>
+                    </Td>
+                    <Td>
+                      <span className="tabular-nums">{formatDate(inv.issuedAt)}</span>
+                    </Td>
+                    <Td align="right">
+                      <span className="tabular-nums" style={amountStyle}>
+                        {formatCents(inv.totalCents, inv.currencyCode)}
+                      </span>
+                    </Td>
+                    <Td align="right">
+                      <Link to={`/subscription/invoices/${inv.id}`} style={viewLinkStyle}>
+                        View
+                      </Link>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )
       }
     />
@@ -162,13 +170,118 @@ export function Invoices(): JSX.Element {
 function Th({
   children,
   align,
-}: { children?: JSX.Element | string; align?: "right" }): JSX.Element {
-  return (
-    <th style={{ padding: "0.6rem 1rem", fontWeight: 600, textAlign: align ?? "left" }}>
-      {children ?? null}
-    </th>
-  );
+  width,
+}: { children?: JSX.Element | string; align?: "right"; width?: string }): JSX.Element {
+  return <th style={{ ...thStyle, textAlign: align ?? "left", width }}>{children ?? null}</th>;
 }
 function Td({ children, align }: { children: JSX.Element | string; align?: "right" }): JSX.Element {
-  return <td style={{ padding: "0.6rem 1rem", textAlign: align ?? "left" }}>{children}</td>;
+  return <td style={{ ...tdStyle, textAlign: align ?? "left" }}>{children}</td>;
 }
+
+const headerDescriptionStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.875rem",
+};
+
+const filtersStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+  padding: "0 1.5rem 1rem",
+};
+
+const tabShellStyle: CSSProperties = {
+  display: "flex",
+  gap: "0.25rem",
+  padding: "0.2rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-container)",
+};
+
+const tabButtonStyle = (active: boolean): CSSProperties => ({
+  border: "none",
+  background: active ? "var(--color-surface-lowest)" : "transparent",
+  color: active ? "var(--color-primary)" : "var(--color-on-surface-variant)",
+  boxShadow: active ? "var(--shadow-soft)" : "none",
+  fontWeight: active ? 600 : 500,
+  fontSize: "0.85rem",
+  padding: "0.35rem 0.75rem",
+  borderRadius: "var(--radius-md)",
+  cursor: "pointer",
+});
+
+const filterHintStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.8rem",
+};
+
+const tableWrapStyle: CSSProperties = {
+  width: "100%",
+  overflowX: "auto",
+  padding: "0 1.5rem 1.5rem",
+};
+
+const tableStyle: CSSProperties = {
+  display: "table",
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: "0.875rem",
+};
+
+const tableHeadRowStyle: CSSProperties = {
+  textAlign: "left",
+  color: "var(--color-on-surface-variant)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  background: "var(--color-surface-low)",
+};
+
+const tableRowStyle: CSSProperties = {
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+};
+
+const thStyle: CSSProperties = {
+  padding: "0.625rem 1rem",
+  fontWeight: 600,
+  fontSize: "0.75rem",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+};
+
+const tdStyle: CSSProperties = {
+  padding: "0.75rem 1rem",
+  verticalAlign: "middle",
+};
+
+const invoiceLinkStyle: CSSProperties = {
+  color: "var(--color-primary)",
+  textDecoration: "none",
+  fontWeight: 650,
+};
+
+const invoiceIdStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.72rem",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const amountStyle: CSSProperties = {
+  color: "var(--color-on-surface)",
+  fontWeight: 650,
+};
+
+const viewLinkStyle: CSSProperties = {
+  display: "inline-flex",
+  justifyContent: "center",
+  minWidth: "3.25rem",
+  padding: "0.35rem 0.6rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-container)",
+  color: "var(--color-primary)",
+  textDecoration: "none",
+  fontSize: "0.8rem",
+  fontWeight: 600,
+};

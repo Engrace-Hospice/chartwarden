@@ -200,7 +200,8 @@ export function AdmissionDetail(): JSX.Element {
     <DetailPageLayout
       header={
         <PageHeader
-          title={`Admission ${admission.id}`}
+          title="Admission"
+          breadcrumb="Admissions / Detail"
           actions={
             <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
               <StatusPill
@@ -219,7 +220,12 @@ export function AdmissionDetail(): JSX.Element {
               ) : null}
             </div>
           }
-        />
+        >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Admission <span className="wx-data-md">{admission.id}</span> · version{" "}
+            <span className="tabular-nums">{admission.version}</span>
+          </div>
+        </PageHeader>
       }
       aside={
         <RightDetailPanel title="Activation gate">
@@ -227,12 +233,37 @@ export function AdmissionDetail(): JSX.Element {
         </RightDetailPanel>
       }
     >
-      <Section title="Election periods">
-        <RowList rows={periods} empty="No election periods yet." />
-      </Section>
-      <Section title="Compliance windows">
-        <RowList rows={windows} empty="No open compliance windows." toneFor={WINDOW_TONE} />
-      </Section>
+      <div style={contentShellStyle}>
+        <section style={summaryCardStyle}>
+          <div style={summaryHeaderStyle}>
+            <div>
+              <h2 style={sectionTitleStyle}>Admission state</h2>
+              <div style={summaryMetaStyle}>
+                Server-truth lifecycle state and activation readiness.
+              </div>
+            </div>
+            <StatusPill
+              label={stateLabel(admission.state)}
+              tone={ADMISSION_TONE[admission.state] ?? "neutral"}
+            />
+          </div>
+          <div style={fieldGridStyle}>
+            <Field label="Admission ID" value={admission.id} mono />
+            <Field label="Version" value={String(admission.version)} mono />
+            <Field
+              label="Activation"
+              value={admission.activationGate.ready ? "Ready" : "Blocked"}
+            />
+          </div>
+        </section>
+
+        <Section title="Election periods">
+          <RowList rows={periods} empty="No election periods yet." />
+        </Section>
+        <Section title="Compliance windows">
+          <RowList rows={windows} empty="No open compliance windows." toneFor={WINDOW_TONE} />
+        </Section>
+      </div>
 
       <CeremonyModal
         open={ceremony === "nor"}
@@ -328,8 +359,9 @@ export function AdmissionDetail(): JSX.Element {
 }
 
 const primaryBtn = {
-  padding: "0.4rem 0.9rem",
-  borderRadius: "9999px",
+  minHeight: "2.25rem",
+  padding: "0.5rem 0.85rem",
+  borderRadius: "var(--radius-md)",
   background: "var(--color-primary)",
   color: "var(--color-on-primary)",
   fontSize: "0.8125rem",
@@ -338,8 +370,9 @@ const primaryBtn = {
   cursor: "pointer",
 } as const;
 const ghostBtn: CSSProperties = {
-  padding: "0.4rem 0.9rem",
-  borderRadius: "9999px",
+  minHeight: "2.25rem",
+  padding: "0.5rem 0.85rem",
+  borderRadius: "var(--radius-md)",
   background: "var(--color-surface-container)",
   color: "var(--color-on-surface)",
   fontSize: "0.8125rem",
@@ -358,6 +391,98 @@ const inputStyle: CSSProperties = {
   border: "1px solid var(--color-outline-variant)",
 };
 const alertStyle: CSSProperties = { margin: 0, fontSize: "0.8rem", color: "var(--color-error)" };
+
+const contentShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "1rem",
+};
+
+const summaryCardStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "1rem",
+  padding: "1rem 1.25rem",
+  borderRadius: "var(--radius-lg)",
+  background: "var(--color-surface-lowest)",
+  boxShadow: "var(--shadow-soft)",
+};
+
+const summaryHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: "1rem",
+};
+
+const summaryMetaStyle: CSSProperties = {
+  marginTop: "0.25rem",
+  fontSize: "0.82rem",
+  color: "var(--color-on-surface-variant)",
+};
+
+const sectionTitleStyle: CSSProperties = {
+  margin: 0,
+  fontSize: "0.95rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+};
+
+const fieldGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))",
+  gap: "0.75rem 1rem",
+};
+
+const fieldStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.2rem",
+};
+
+const fieldLabelStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.7rem",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+};
+
+const fieldValueStyle: CSSProperties = {
+  color: "var(--color-on-surface)",
+  fontSize: "0.9rem",
+};
+
+const sectionCardStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "1rem 1.25rem",
+  borderRadius: "var(--radius-lg)",
+  background: "var(--color-surface-lowest)",
+  boxShadow: "var(--shadow-soft)",
+};
+
+const tableStyle: CSSProperties = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: "0.85rem",
+};
+
+const tdStyle: CSSProperties = {
+  padding: "0.55rem 0.75rem",
+  color: "var(--color-on-surface)",
+};
+
+const rowStyle: CSSProperties = {
+  borderTop: "1px solid var(--color-surface-container)",
+};
+
+const emptyTextStyle: CSSProperties = {
+  margin: 0,
+  fontSize: "0.85rem",
+  color: "var(--color-on-surface-variant)",
+};
 
 // §5.2.5 activation gate as a Guardrail treatment: a blocked GuardChip summary (or a success pill when
 // ready) over a GateStepper whose rows render server-truth — each unmet precondition is `blocked`
@@ -385,10 +510,25 @@ function ActivationChecklist({
   );
 }
 
+function Field({
+  label,
+  value,
+  mono,
+}: { label: string; value: string; mono?: boolean }): JSX.Element {
+  return (
+    <div style={fieldStyle}>
+      <span style={fieldLabelStyle}>{label}</span>
+      <span className={mono ? "wx-data-md" : undefined} style={fieldValueStyle}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
 function Section({ title, children }: { title: string; children: JSX.Element }): JSX.Element {
   return (
-    <section style={{ marginBottom: "1.5rem" }}>
-      <h3 style={{ fontSize: "0.95rem", fontWeight: 600, margin: "0 0 0.5rem" }}>{title}</h3>
+    <section style={sectionCardStyle}>
+      <h3 style={sectionTitleStyle}>{title}</h3>
       {children}
     </section>
   );
@@ -403,15 +543,16 @@ function RowList({
   empty: string;
   toneFor?: Record<string, StatusTone>;
 }): JSX.Element {
-  if (rows.length === 0)
-    return <p style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>{empty}</p>;
+  if (rows.length === 0) return <p style={emptyTextStyle}>{empty}</p>;
   return (
-    <table>
+    <table style={tableStyle}>
       <tbody>
         {rows.map((r) => (
-          <tr key={r.id}>
-            <td className="wx-data-md">{r.id}</td>
-            <td>
+          <tr key={r.id} style={rowStyle}>
+            <td className="wx-data-md" style={tdStyle}>
+              {r.id}
+            </td>
+            <td style={tdStyle}>
               <StatusPill label={stateLabel(r.state)} tone={toneFor?.[r.state] ?? "neutral"} />
             </td>
           </tr>

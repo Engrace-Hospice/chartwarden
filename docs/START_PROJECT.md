@@ -103,15 +103,6 @@ Use three terminals in `wardenx/`:
 bun run dev:backend
 ```
 
-/scheduling/proposals
-/scheduling/recurring
-/scheduling/time-off
-/subscription
-/subscription/plan
-/subscription/payment_methods
-/subscription/invoices
-/subscription/usage
-/subscription/dunning
 /subscription/promos
 /supplies
 /supplies/dispatches/new
