@@ -1,29 +1,18 @@
-// apps/web/src/modules/20-field-safety — §5.1 "TENANT POLICY EDITOR" (`/safety/policy`, Track B/ADR-0030).
+// apps/web/src/modules/20-field-safety - §5.1 "TENANT POLICY EDITOR" (`/safety/policy`, Track B/ADR-0030).
 //
-// The knobs that decide how often a clinician is asked "are you OK", how long she has to answer before
-// somebody is paged, how long the D5 cancel window is, and whether her location may be streamed at all.
-//
-// ── TIGHTEN-ONLY IS A BAND PER KNOB, NOT ONE COMPARISON, AND THE SCREEN RENDERS THE BANDS ────────────
-//
-// D4's rule reads as "a tenant may tighten, never loosen", but "tighter" runs in opposite directions
-// depending on the knob: a SHORTER supervisor-alert threshold pages sooner (tighter), a SHORTER mid-visit
-// cadence asks more often (tighter), and a LONGER cancel window gives more chance to undo an accidental
-// press (also tighter). So the platform expresses it as a BAND per knob — `SAFETY_POLICY_BOUNDS`, mirrored
-// into §3.3's CHECK constraints — and this editor shows each band beside its field rather than implying a
-// direction. The SERVER is the authority: `assertPolicyEditValid` returns a 422 naming the knob and its
-// band, and it also enforces the ladder invariant (reminder ≤ supervisor ≤ escalation ≤ SOS-equivalent)
-// that no per-field range can express.
-//
-// ── THE `asOf` READ IS NOT A CURIOSITY ──────────────────────────────────────────────────────────────
-//
-// §2.2.4's replay arm exists because a 2031 review of a 2026 incident must read the 2026 thresholds.
-// Reading today's would turn a policy that TIGHTENED into a regression that never happened. The date box
-// is therefore a first-class control on this page, and switching it puts the editor into a read-only
-// historical view — because editing a version you time-travelled to would write today's row with
-// yesterday's numbers.
-import { EmptyState, LoadingSpinner, PageHeader, t, useApiClient } from "@wardenx/ui";
+// The server owns every policy invariant. This screen renders the active or historical version, lets an
+// authorized user create a new version, and keeps historical reads read-only.
+import {
+  Button,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { type SafetyPolicyView, errorMessage, getPolicy, patchPolicy } from "./safety-api";
 import {
@@ -39,38 +28,19 @@ import {
   toInstant,
 } from "./safety-status";
 import {
-  Card,
   CheckboxField,
   ChipMultiSelect,
-  Field,
-  FilterRow,
   Modal,
   Notice,
   SelectField,
-  SummaryGrid,
   TextAreaField,
   TextField,
-  columnStyle,
   disabledButtonStyle,
-  ghostButtonStyle,
-  mutedStyle,
-  pageTitleStyle,
   primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  tdNum,
-  th,
-  thNum,
 } from "./safety-ui";
 
 /**
- * The §3.3 CHECK bands, mirrored for DISPLAY.
- *
- * Each pair is copied from migration 0110's `m20_spv_*_band` constraints, which are themselves the
- * `SAFETY_POLICY_BOUNDS` constant. They are shown, never enforced here: a client-side range that
- * disagreed with the database would refuse an edit the platform allows, and one that agreed would be a
- * second copy to keep in step. The server names the knob and the band in its 422.
+ * The §3.3 CHECK bands, mirrored for display only. The server still validates the merged policy.
  */
 const BANDS: Record<string, [number, number]> = {
   midVisitCadenceMinutes: [30, 120],
@@ -89,7 +59,6 @@ const BANDS: Record<string, [number, number]> = {
   sosTier3SlaSeconds: [60, 300],
 };
 
-/** The knobs, grouped the way a DON reads them rather than the way the row stores them. */
 const CADENCE_KNOBS = [
   ["midVisitCadenceMinutes", "Mid-visit cadence", "minutes"],
   ["midVisitMinVisitDurationMinutes", "Shortest visit that gets a mid-visit prompt", "minutes"],
@@ -98,10 +67,10 @@ const CADENCE_KNOBS = [
 ] as const;
 
 const OVERDUE_KNOBS = [
-  ["gentleReminderMinutes", "Rung 1 — gentle reminder to her", "minutes late"],
-  ["supervisorAlertMinutes", "Rung 2 — page the supervisor", "minutes late"],
-  ["escalationMinutes", "Rung 3 — escalate", "minutes late"],
-  ["sosEquivalentMinutes", "Rung 4 — treat as an SOS", "minutes late"],
+  ["gentleReminderMinutes", "Rung 1 - gentle reminder to her", "minutes late"],
+  ["supervisorAlertMinutes", "Rung 2 - page the supervisor", "minutes late"],
+  ["escalationMinutes", "Rung 3 - escalate", "minutes late"],
+  ["sosEquivalentMinutes", "Rung 4 - treat as an SOS", "minutes late"],
 ] as const;
 
 const SOS_KNOBS = [
@@ -178,9 +147,6 @@ export function SafetyPolicyScreen(): JSX.Element {
     const body: Record<string, unknown> = { editReason };
     for (const [k, raw] of Object.entries(draft)) {
       const n = Number(raw);
-      // A knob left blank or unparseable is OMITTED rather than sent as 0 or NaN. §4.1's PATCH is
-      // partial: an absent key keeps the current value, and a 0 would be a deliberate loosening the
-      // server would then have to refuse on the DON's behalf.
       if (raw.trim() !== "" && Number.isFinite(n)) body[k] = Math.trunc(n);
     }
     body.sosCancelRequiresBiometric = biometric;
@@ -191,10 +157,6 @@ export function SafetyPolicyScreen(): JSX.Element {
       body.afterHoursStartHour = Math.trunc(Number(afterHoursStart));
     if (afterHoursEnd.trim() !== "") body.afterHoursEndHour = Math.trunc(Number(afterHoursEnd));
 
-    // The policy DTO carries no `version` column of its own — §2.5's optimistic guard on this route reads
-    // the header when the caller has one. `null` means "no version to echo", which the route accepts for
-    // the policy PATCH (it is not marked If-Match-required), and a concurrent edit is caught by the
-    // version-chain rule server-side rather than by a number this screen never saw.
     const res = await patchPolicy(
       client,
       null,
@@ -223,25 +185,39 @@ export function SafetyPolicyScreen(): JSX.Element {
     streamEnabled,
   ]);
 
-  if (loading) return <LoadingSpinner />;
-  if (!policy)
+  if (loading && !policy) {
     return (
-      <EmptyState
-        title="Safety policy unavailable"
-        description={error ?? "No policy answered for this organization."}
-      />
+      <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+        <LoadingSpinner />
+      </div>
     );
+  }
+
+  if (!policy) {
+    return (
+      <div style={{ padding: "2rem 1.5rem" }}>
+        <EmptyState
+          title="Safety policy unavailable"
+          description={error ?? "No policy answered for this organization."}
+        />
+      </div>
+    );
+  }
 
   const knobRow = (key: KnobKey, label: string, unit: string) => {
     const band = BANDS[key];
     const value = policy[key as keyof SafetyPolicyView] as number;
     return (
-      <tr key={key} style={rowLine}>
-        <td style={td}>{label}</td>
-        <td style={tdNum}>{value}</td>
-        <td style={td}>{unit}</td>
-        <td style={tdNum}>{band ? `${band[0]}–${band[1]}` : "—"}</td>
-        <td style={td}>
+      <tr key={key} style={rowStyle}>
+        <td style={tdStyle}>{label}</td>
+        <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+          {value}
+        </td>
+        <td style={tdStyle}>{unit}</td>
+        <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+          {band ? `${band[0]}-${band[1]}` : "-"}
+        </td>
+        <td style={tdStyle}>
           {unit === "seconds"
             ? secondsLabel(value)
             : unit === "hours"
@@ -253,263 +229,454 @@ export function SafetyPolicyScreen(): JSX.Element {
   };
 
   return (
-    <div style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Safety policy</span>}
-        breadcrumb="Field safety"
-        actions={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <Link to="/safety" style={ghostButtonStyle}>
-              Safety board
-            </Link>
-            <button
-              type="button"
-              onClick={openEditor}
-              disabled={historical}
-              style={historical ? disabledButtonStyle : primaryButtonStyle}
-            >
-              Edit policy
-            </button>
-          </div>
-        }
-      />
-
-      {historical ? (
-        <Notice tone="warning" live>
-          <strong>Historical view.</strong> These are the thresholds that were in force at{" "}
-          {dateTime(toInstant(asOf))} — version {policy.versionId}. Editing is disabled here on
-          purpose: saving from a time-travelled view would write today's row with yesterday's
-          numbers. Clear the date to come back to the policy actually in force.
-        </Notice>
-      ) : null}
-
-      <Card title="Version in force">
-        <SummaryGrid>
-          <Field label="Version" value={policy.versionId} mono />
-          <Field label="Effective from" value={dateTime(policy.effectiveFrom)} />
-          <Field
-            label="Effective to"
-            value={policy.effectiveTo ? dateTime(policy.effectiveTo) : "Still in force"}
-          />
-          <Field label="Subscription model" value={humanize(policy.subscriptionModel)} />
-          <Field
-            label="After-hours window"
-            value={`${String(policy.afterHoursStartHour).padStart(2, "0")}:00 → ${String(policy.afterHoursEndHour).padStart(2, "0")}:00`}
-          />
-          <Field
-            label="Cancel needs a biometric"
-            value={policy.sosCancelRequiresBiometric ? "Yes" : "No"}
-          />
-          <Field
-            label="Continuous location during SOS"
-            value={policy.sosContinuousLocationEnabled ? "Enabled by the agency" : "Off"}
-          />
-        </SummaryGrid>
-        <FilterRow>
-          <TextField
-            label="Read the policy as it stood at"
-            value={asOf}
-            onChange={setAsOf}
-            type="datetime-local"
-          />
-          <button
-            type="button"
-            onClick={() => {
-              setHistorical(true);
-              void load(toInstant(asOf));
-            }}
-            disabled={asOf.trim() === ""}
-            style={asOf.trim() === "" ? disabledButtonStyle : ghostButtonStyle}
-          >
-            Time-travel
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setHistorical(false);
-              setAsOf("");
-              void load();
-            }}
-            style={ghostButtonStyle}
-          >
-            Back to current
-          </button>
-        </FilterRow>
-        <span style={mutedStyle}>
-          §2.2.4's replay arm. A review of a 2026 incident must read the 2026 thresholds — reading
-          today's would turn a policy that tightened into a regression that never happened.
-        </span>
-      </Card>
-
-      <Card title="Check-in cadence">
-        <table style={tableStyle}>
-          <thead>
-            <tr>
-              <th style={th}>Knob</th>
-              <th style={thNum}>Value</th>
-              <th style={th}>Unit</th>
-              <th style={thNum}>Allowed band</th>
-              <th style={th}>Reads as</th>
-            </tr>
-          </thead>
-          <tbody>{CADENCE_KNOBS.map(([k, label, unit]) => knobRow(k, label, unit))}</tbody>
-        </table>
-      </Card>
-
-      <Card title="Overdue ladder (D4)">
-        <table style={tableStyle}>
-          <thead>
-            <tr>
-              <th style={th}>Rung</th>
-              <th style={thNum}>Value</th>
-              <th style={th}>Unit</th>
-              <th style={thNum}>Allowed band</th>
-              <th style={th}>Reads as</th>
-            </tr>
-          </thead>
-          <tbody>{OVERDUE_KNOBS.map(([k, label, unit]) => knobRow(k, label, unit))}</tbody>
-        </table>
-        <span style={mutedStyle}>
-          The four rungs are an ORDER, not four independent numbers: the database refuses a policy
-          where the reminder fires after the supervisor page, or the escalation after the
-          SOS-equivalent. That invariant is not expressible as a per-field range, which is why the
-          server checks the MERGED result rather than each box as you type it.
-        </span>
-      </Card>
-
-      <Card title="SOS (D5 / D6)">
-        <table style={tableStyle}>
-          <thead>
-            <tr>
-              <th style={th}>Knob</th>
-              <th style={thNum}>Value</th>
-              <th style={th}>Unit</th>
-              <th style={thNum}>Allowed band</th>
-              <th style={th}>Reads as</th>
-            </tr>
-          </thead>
-          <tbody>{SOS_KNOBS.map(([k, label, unit]) => knobRow(k, label, unit))}</tbody>
-        </table>
-        <Notice tone="info">
-          <strong>Continuous location is two gates, not one.</strong> The agency switch above is
-          only the first: D6 additionally requires each clinician's own{" "}
-          <code>continuous_location_during_sos</code> consent before a single sample may be written.
-          Turning it on here does not start streaming anybody, and turning it off stops everybody.
-        </Notice>
-      </Card>
-
-      <Card title="OSHA auto-flag categories (D9)">
-        {policy.oshaReportableAutoFlagCategories.length === 0 ? (
-          <span style={mutedStyle}>No category is auto-flagged.</span>
-        ) : (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: t.space2 }}>
-            {policy.oshaReportableAutoFlagCategories.map((c) => (
-              <span key={c} style={{ ...mutedStyle, color: t.onSurface }}>
-                {incidentCategoryLabel(c)}
-              </span>
-            ))}
-          </div>
-        )}
-        <span style={mutedStyle}>
-          Auto-flagging <strong>suggests</strong>; it never signs. D9 keeps the classification a
-          supervisor's separate, step-up'd act precisely so an automatic heuristic cannot file with
-          a state agency.
-        </span>
-      </Card>
-
-      {editing ? (
-        <Modal
-          title="Edit the safety policy"
-          onClose={() => setEditing(false)}
-          footer={
-            <button
-              type="button"
-              onClick={() => void save()}
-              disabled={saving || !meetsMinChars(editReason, POLICY_EDIT_REASON_MIN_CHARS)}
-              style={
-                saving || !meetsMinChars(editReason, POLICY_EDIT_REASON_MIN_CHARS)
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
-              }
-            >
-              {saving ? "Saving…" : "Save new version"}
-            </button>
+    <WorkQueueLayout
+      header={
+        <PageHeader
+          title="Safety Policy"
+          breadcrumb="Field safety"
+          actions={
+            <div style={actionGroupStyle}>
+              <Link to="/safety" style={linkButtonStyle}>
+                Safety board
+              </Link>
+              <Button type="button" tone="primary" onClick={openEditor} disabled={historical}>
+                Edit policy
+              </Button>
+            </div>
           }
         >
-          <Notice tone="warning" assertive>
-            This is a <strong>step-up</strong> act. It writes a NEW policy version — the current one
-            is kept and stays attached to every alert and incident already stamped with it, so
-            nothing that has already happened is re-judged by today's numbers. A change that loosens
-            a knob past the platform floor is refused with the knob named.
-          </Notice>
-          {[...CADENCE_KNOBS, ...OVERDUE_KNOBS, ...SOS_KNOBS].map(([k, label, unit]) => {
-            const band = BANDS[k];
-            return (
-              <TextField
-                key={k}
-                label={`${label} (${unit})`}
-                value={draft[k] ?? ""}
-                onChange={(v) => setDraft((d) => ({ ...d, [k]: v }))}
-                type="number"
-                hint={
-                  band
-                    ? `Platform band: ${band[0]}–${band[1]}. Leave blank to keep the current value.`
-                    : undefined
-                }
-              />
-            );
-          })}
-          <CheckboxField
-            label="Cancelling an SOS requires a biometric check (D5)"
-            checked={biometric}
-            onChange={setBiometric}
-          />
-          <CheckboxField
-            label="Allow continuous location streaming during an active SOS (D6)"
-            checked={streamEnabled}
-            onChange={setStreamEnabled}
-          />
-          <SelectField
-            label="Default supervisor subscription model (D8)"
-            value={model}
-            options={SUBSCRIPTION_MODELS.map((v) => ({ value: v, label: humanize(v) }))}
-            onChange={setModel}
-          />
-          <TextField
-            label="After-hours starts at (hour, 0–23)"
-            value={afterHoursStart}
-            onChange={setAfterHoursStart}
-            type="number"
-          />
-          <TextField
-            label="After-hours ends at (hour, 0–23)"
-            value={afterHoursEnd}
-            onChange={setAfterHoursEnd}
-            type="number"
-            hint="Inside this window an SOS also pages M19's on-call actors in parallel with your own supervisors (D14)."
-          />
-          <ChipMultiSelect
-            label="Auto-flag these categories as OSHA-reportable candidates"
-            values={INCIDENT_CATEGORIES}
-            selected={autoFlag}
-            onChange={setAutoFlag}
-            labeller={incidentCategoryLabel}
-          />
-          <TextAreaField
-            label="Why are you changing this?"
-            value={editReason}
-            onChange={setEditReason}
-            rows={4}
-            minChars={POLICY_EDIT_REASON_MIN_CHARS}
-            hint="Emitted at warn severity. This is the sentence a later compliance review reads to understand why an agency changed its own watch."
-          />
-          {modalError ? (
-            <Notice tone="error" assertive>
-              {modalError}
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Version {policy.versionId} in force from {dateTime(policy.effectiveFrom)}.
+          </div>
+        </PageHeader>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          {error ? (
+            <Notice tone="warning" live>
+              {error} The table below is the last policy version that answered.
             </Notice>
           ) : null}
-        </Modal>
-      ) : null}
+          {historical ? (
+            <Notice tone="warning" live>
+              Historical view for {dateTime(toInstant(asOf))}. Editing is disabled until you return
+              to the current policy.
+            </Notice>
+          ) : null}
+          <div style={toolbarStyle}>
+            <div style={toolbarTitleStyle}>
+              <span style={toolbarEyebrowStyle}>Policy replay</span>
+              <strong>Read the thresholds that were active at a specific instant</strong>
+            </div>
+            <div style={controlGroupStyle}>
+              <input
+                type="datetime-local"
+                value={asOf}
+                onChange={(event) => setAsOf(event.target.value)}
+                aria-label="Read the policy as it stood at"
+                style={inputStyle}
+              />
+              <Button
+                size="sm"
+                tone="secondary"
+                onClick={() => {
+                  setHistorical(true);
+                  void load(toInstant(asOf));
+                }}
+                disabled={asOf.trim() === ""}
+              >
+                Time-travel
+              </Button>
+              <Button
+                size="sm"
+                tone="tertiary"
+                onClick={() => {
+                  setHistorical(false);
+                  setAsOf("");
+                  void load();
+                }}
+              >
+                Back to current
+              </Button>
+            </div>
+          </div>
+        </div>
+      }
+      table={
+        <div style={contentStyle}>
+          <section style={sectionStyle}>
+            <div style={sectionHeaderStyle}>
+              <div style={toolbarTitleStyle}>
+                <span style={toolbarEyebrowStyle}>Version in force</span>
+                <strong>Tenant safety defaults</strong>
+              </div>
+              <StatusPill
+                label={historical ? "Historical" : "Current"}
+                tone={historical ? "warning" : "success"}
+              />
+            </div>
+            <div style={detailGridStyle}>
+              <DetailField label="Version" value={policy.versionId} mono />
+              <DetailField label="Effective from" value={dateTime(policy.effectiveFrom)} />
+              <DetailField
+                label="Effective to"
+                value={policy.effectiveTo ? dateTime(policy.effectiveTo) : "Still in force"}
+              />
+              <DetailField label="Subscription model" value={humanize(policy.subscriptionModel)} />
+              <DetailField
+                label="After-hours"
+                value={`${String(policy.afterHoursStartHour).padStart(2, "0")}:00 to ${String(
+                  policy.afterHoursEndHour,
+                ).padStart(2, "0")}:00`}
+              />
+              <DetailField
+                label="SOS cancel biometric"
+                value={policy.sosCancelRequiresBiometric ? "Required" : "Not required"}
+              />
+              <DetailField
+                label="Continuous location"
+                value={policy.sosContinuousLocationEnabled ? "Enabled by agency" : "Off"}
+              />
+            </div>
+          </section>
+
+          <PolicyTable
+            title="Check-in cadence"
+            eyebrow="D4 prompts"
+            columns={["Knob", "Value", "Unit", "Allowed band", "Reads as"]}
+          >
+            {CADENCE_KNOBS.map(([k, label, unit]) => knobRow(k, label, unit))}
+          </PolicyTable>
+
+          <PolicyTable
+            title="Overdue ladder"
+            eyebrow="D4 escalation"
+            columns={["Rung", "Value", "Unit", "Allowed band", "Reads as"]}
+            note="The four rungs are ordered by the server: reminder, supervisor page, escalation, then SOS-equivalent."
+          >
+            {OVERDUE_KNOBS.map(([k, label, unit]) => knobRow(k, label, unit))}
+          </PolicyTable>
+
+          <PolicyTable
+            title="SOS response"
+            eyebrow="D5 / D6"
+            columns={["Knob", "Value", "Unit", "Allowed band", "Reads as"]}
+            note="Continuous location also requires each clinician's consent; enabling it here does not start a stream by itself."
+          >
+            {SOS_KNOBS.map(([k, label, unit]) => knobRow(k, label, unit))}
+          </PolicyTable>
+
+          <section style={sectionStyle}>
+            <div style={sectionHeaderStyle}>
+              <div style={toolbarTitleStyle}>
+                <span style={toolbarEyebrowStyle}>D9 OSHA</span>
+                <strong>Auto-flag categories</strong>
+              </div>
+            </div>
+            {policy.oshaReportableAutoFlagCategories.length === 0 ? (
+              <span style={secondaryTextStyle}>No category is auto-flagged.</span>
+            ) : (
+              <div style={chipListStyle}>
+                {policy.oshaReportableAutoFlagCategories.map((category) => (
+                  <StatusPill
+                    key={category}
+                    label={incidentCategoryLabel(category)}
+                    tone="neutral"
+                  />
+                ))}
+              </div>
+            )}
+            <span style={secondaryTextStyle}>
+              Auto-flagging suggests a classification; a supervisor still signs the reportable
+              determination separately.
+            </span>
+          </section>
+
+          {editing ? (
+            <Modal
+              title="Edit the safety policy"
+              onClose={() => setEditing(false)}
+              footer={
+                <button
+                  type="button"
+                  onClick={() => void save()}
+                  disabled={saving || !meetsMinChars(editReason, POLICY_EDIT_REASON_MIN_CHARS)}
+                  style={
+                    saving || !meetsMinChars(editReason, POLICY_EDIT_REASON_MIN_CHARS)
+                      ? disabledButtonStyle
+                      : primaryButtonStyle
+                  }
+                >
+                  {saving ? "Saving..." : "Save new version"}
+                </button>
+              }
+            >
+              <Notice tone="warning" assertive>
+                This writes a new policy version. Existing alerts and incidents keep the thresholds
+                that were active when they happened.
+              </Notice>
+              {[...CADENCE_KNOBS, ...OVERDUE_KNOBS, ...SOS_KNOBS].map(([k, label, unit]) => {
+                const band = BANDS[k];
+                return (
+                  <TextField
+                    key={k}
+                    label={`${label} (${unit})`}
+                    value={draft[k] ?? ""}
+                    onChange={(value) => setDraft((current) => ({ ...current, [k]: value }))}
+                    type="number"
+                    hint={
+                      band
+                        ? `Platform band: ${band[0]}-${band[1]}. Leave blank to keep the current value.`
+                        : undefined
+                    }
+                  />
+                );
+              })}
+              <CheckboxField
+                label="Cancelling an SOS requires a biometric check (D5)"
+                checked={biometric}
+                onChange={setBiometric}
+              />
+              <CheckboxField
+                label="Allow continuous location streaming during an active SOS (D6)"
+                checked={streamEnabled}
+                onChange={setStreamEnabled}
+              />
+              <SelectField
+                label="Default supervisor subscription model (D8)"
+                value={model}
+                options={SUBSCRIPTION_MODELS.map((value) => ({
+                  value,
+                  label: humanize(value),
+                }))}
+                onChange={setModel}
+              />
+              <TextField
+                label="After-hours starts at (hour, 0-23)"
+                value={afterHoursStart}
+                onChange={setAfterHoursStart}
+                type="number"
+              />
+              <TextField
+                label="After-hours ends at (hour, 0-23)"
+                value={afterHoursEnd}
+                onChange={setAfterHoursEnd}
+                type="number"
+                hint="Inside this window an SOS also pages M19's on-call actors in parallel with safety supervisors."
+              />
+              <ChipMultiSelect
+                label="Auto-flag these categories as OSHA-reportable candidates"
+                values={INCIDENT_CATEGORIES}
+                selected={autoFlag}
+                onChange={setAutoFlag}
+                labeller={incidentCategoryLabel}
+              />
+              <TextAreaField
+                label="Why are you changing this?"
+                value={editReason}
+                onChange={setEditReason}
+                rows={4}
+                minChars={POLICY_EDIT_REASON_MIN_CHARS}
+                hint="This reason is written with the new policy version."
+              />
+              {modalError ? (
+                <Notice tone="error" assertive>
+                  {modalError}
+                </Notice>
+              ) : null}
+            </Modal>
+          ) : null}
+        </div>
+      }
+      fullPageScroll
+    />
+  );
+}
+
+function PolicyTable({
+  title,
+  eyebrow,
+  columns,
+  note,
+  children,
+}: {
+  title: string;
+  eyebrow: string;
+  columns: string[];
+  note?: string;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <section style={sectionStyle}>
+      <div style={sectionHeaderStyle}>
+        <div style={toolbarTitleStyle}>
+          <span style={toolbarEyebrowStyle}>{eyebrow}</span>
+          <strong>{title}</strong>
+        </div>
+      </div>
+      <table style={tableStyle}>
+        <thead>
+          <tr style={headerRowStyle}>
+            {columns.map((column, index) => (
+              <th
+                key={column}
+                style={{
+                  ...thStyle,
+                  textAlign: index === 1 || index === 3 ? "right" : "left",
+                }}
+              >
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+      {note ? <span style={secondaryTextStyle}>{note}</span> : null}
+    </section>
+  );
+}
+
+function DetailField({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: ReactNode;
+  mono?: boolean;
+}): JSX.Element {
+  return (
+    <div style={primaryCellStyle}>
+      <span style={detailLabelStyle}>{label}</span>
+      <span style={mono ? { fontFamily: "var(--font-mono)" } : undefined}>{value}</span>
     </div>
   );
 }
+
+const actionGroupStyle = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  gap: "0.5rem",
+};
+const linkButtonStyle = {
+  minHeight: "2.25rem",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0 0.75rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+  fontWeight: 600,
+  textDecoration: "none",
+};
+const filterShellStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+const toolbarStyle = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+};
+const toolbarTitleStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.125rem",
+  color: "var(--color-on-surface)",
+  fontSize: "0.875rem",
+};
+const toolbarEyebrowStyle = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};
+const controlGroupStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  flexWrap: "wrap" as const,
+};
+const inputStyle = {
+  height: "2.25rem",
+  minWidth: "16rem",
+  fontSize: "0.85rem",
+};
+const contentStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "1rem",
+  padding: "0 1.5rem 1.5rem",
+};
+const sectionStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.75rem",
+};
+const sectionHeaderStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+};
+const detailGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))",
+  gap: "0.75rem 1rem",
+  paddingBottom: "0.5rem",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
+};
+const primaryCellStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.25rem",
+  minWidth: 0,
+};
+const detailLabelStyle = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.7rem",
+  fontWeight: 650,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};
+const tableStyle = {
+  display: "table",
+  width: "100%",
+  borderCollapse: "collapse" as const,
+  fontSize: "0.875rem",
+};
+const headerRowStyle = {
+  color: "var(--color-on-surface-variant)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  background: "var(--color-surface-low)",
+};
+const rowStyle = {
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+};
+const thStyle = {
+  padding: "0.625rem 1rem",
+  fontWeight: 600,
+  fontSize: "0.75rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};
+const tdStyle = {
+  padding: "0.75rem 1rem",
+  verticalAlign: "middle" as const,
+};
+const secondaryTextStyle = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+};
+const chipListStyle = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  gap: "0.5rem",
+};

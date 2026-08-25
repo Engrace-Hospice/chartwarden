@@ -1,65 +1,33 @@
 // apps/web/src/modules/20-field-safety — §5.1 "CHECK-IN LEDGER" (`/safety/check-ins`, Track B/ADR-0030).
 //
-// ── §4.1 PUBLISHES NO ORG-WIDE CHECK-IN LIST, AND THIS SCREEN SAYS SO RATHER THAN FAKING ONE ─────────
-//
-// §5.1 asks for a "searchable check-in ledger; filter by clinician, date range, status, kind". The four
-// check-in routes are: POST one, GET one BY ID, PATCH one, and GET **my own** day. There is no
-// supervisor-facing list of `safety_check_in` rows anywhere in the §4.1 inventory, and inventing one here
-// is not something a screen task may do — a route is a permission surface, an audit surface and an RLS
-// surface, and adding one from the UI side would create all three unreviewed.
-//
-// So this screen is built from the two reads that DO exist, and is explicit about which question each
-// answers:
-//
-//   1. **The board's check-in column, widened.** `GET /safety/dashboard` returns, per clinician, her last
-//      check-in, its status, her next expected one and her D4 overdue rung. That is a CURRENT-STATE
-//      ledger — "who is behind right now" — and it is the question a supervisor actually opens this page
-//      with. It is filterable by clinician name, status and rung, all page-local over one snapshot.
-//   2. **One row, by id.** `GET /safety/check-ins/:id` is the only way to read an individual check-in,
-//      including its `concernNote` (§3.6-denylisted free text, audited on read) and its five-minute
-//      amendment grace. The lookup box is here because §7.2's suppression review is exactly this: a
-//      supervisor sees a suppression on the board and clicks through for the reason.
-//
-// What is NOT here, and would be the lie: a date-ranged HISTORY of everybody's check-ins. Rendering the
-// snapshot under a "history" heading would let a reviewer conclude that a clinician posted nothing last
-// Tuesday when in fact nobody asked.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
+// M20 publishes no org-wide check-in history route. This screen shows the current dashboard snapshot and
+// offers the one audited by-id check-in read.
+import {
+  Button,
+  EmptyState,
+  LoadingSpinner,
+  OffsetPagination,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   type SafetyCheckInView,
+  type SafetyClinicianStatusView,
   type SafetyDashboardView,
   errorMessage,
   getCheckIn,
   getDashboard,
 } from "./safety-api";
 import { dateTime, durationLabel, humanize, minutesSince, shortId } from "./safety-status";
-import {
-  Card,
-  CheckInStatusPill,
-  CountGrid,
-  Field,
-  FilterRow,
-  Notice,
-  OverduePill,
-  SelectField,
-  SummaryGrid,
-  TextField,
-  columnStyle,
-  disabledButtonStyle,
-  ghostButtonStyle,
-  linkStyle,
-  mutedStyle,
-  pageTitleStyle,
-  primaryButtonStyle,
-  rowLine,
-  tableStyle,
-  td,
-  th,
-} from "./safety-ui";
+import { CheckInStatusPill, Notice, OverduePill } from "./safety-ui";
 
 const ANY = "";
+const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
 export function CheckInLedgerScreen(): JSX.Element {
   const client = useApiClient();
@@ -70,8 +38,9 @@ export function CheckInLedgerScreen(): JSX.Element {
   const [name, setName] = useState("");
   const [status, setStatus] = useState(ANY);
   const [rung, setRung] = useState(ANY);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
-  // The by-id lookup (read 2 in the header).
   const [lookupId, setLookupId] = useState("");
   const [lookingUp, setLookingUp] = useState(false);
   const [found, setFound] = useState<SafetyCheckInView | null>(null);
@@ -106,7 +75,7 @@ export function CheckInLedgerScreen(): JSX.Element {
       setLookupError(
         errorMessage(
           res.error,
-          "No check-in with that id is readable by you. The server does not distinguish 'absent' from 'out of reach'.",
+          "No check-in with that id is readable by you. The server does not distinguish absent from out of reach.",
         ),
       );
       return;
@@ -117,9 +86,9 @@ export function CheckInLedgerScreen(): JSX.Element {
   const rows = useMemo(() => {
     const needle = name.trim().toLowerCase();
     return [...(board?.clinicians ?? [])]
-      .filter((c) => (needle ? c.displayName.toLowerCase().includes(needle) : true))
-      .filter((c) => (status ? c.lastCheckInStatus === status : true))
-      .filter((c) => (rung ? c.overdueState === rung : true))
+      .filter((row) => (needle ? row.displayName.toLowerCase().includes(needle) : true))
+      .filter((row) => (status ? row.lastCheckInStatus === status : true))
+      .filter((row) => (rung ? row.overdueState === rung : true))
       .sort(
         (a, b) =>
           Number(b.overdueState !== "on_time") - Number(a.overdueState !== "on_time") ||
@@ -127,265 +96,485 @@ export function CheckInLedgerScreen(): JSX.Element {
       );
   }, [board, name, rung, status]);
 
-  if (loading) return <LoadingSpinner />;
-  if (!board)
-    return (
-      <EmptyState
-        title="Check-in ledger unavailable"
-        description={
-          error ??
-          "The read did not answer. Treat this as unknown — an empty check-in ledger and an unreachable one look identical and mean opposite things."
-        }
-      />
-    );
+  const activePage = Math.min(page, Math.max(1, Math.ceil(rows.length / pageSize)));
+  const pagedRows = rows.slice((activePage - 1) * pageSize, activePage * pageSize);
+  const activeFilters = [name.trim() !== "", status !== ANY, rung !== ANY].filter(Boolean).length;
 
-  const concerned = rows.filter(
-    (r) => r.lastCheckInStatus === "concerned_continue" || r.lastCheckInStatus === "concerned_stop",
-  ).length;
-  const never = rows.filter((r) => r.lastCheckInAt === null).length;
+  const clearFilters = (): void => {
+    setName("");
+    setStatus(ANY);
+    setRung(ANY);
+    setPage(1);
+  };
+
+  if (loading && !board) {
+    return (
+      <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (!board) {
+    return (
+      <div style={{ padding: "2rem 1.5rem" }}>
+        <EmptyState
+          title="Check-in ledger unavailable"
+          description={
+            error ??
+            "The read did not answer. Treat this as unknown; an empty check-in ledger and an unreachable one mean opposite things."
+          }
+        />
+      </div>
+    );
+  }
 
   return (
-    <div style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Check-in status</span>}
-        breadcrumb="Field safety"
-        actions={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <Link to="/safety" style={ghostButtonStyle}>
-              Safety board
-            </Link>
-            <button type="button" onClick={() => void load()} style={ghostButtonStyle}>
-              Refresh
-            </button>
+    <WorkQueueLayout
+      header={
+        <PageHeader
+          title="Check-in Status"
+          breadcrumb="Field safety"
+          actions={
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+              <Link to="/safety" style={linkButtonStyle}>
+                Safety board
+              </Link>
+              <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
+                Refresh
+              </Button>
+            </div>
+          }
+        >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Current board snapshot as of {dateTime(board.fetchedAt)}. Individual check-ins are read
+            by ID below.
           </div>
-        }
-      />
-
-      <Notice tone="info" live>
-        This page answers <strong>"who is behind right now"</strong>, not "who checked in last
-        Tuesday". M20 publishes no org-wide check-in history route — the four §4.1 check-in rows are
-        post, read-one, amend, and each clinician's own day — so a date-ranged ledger would have to
-        be invented, and a snapshot presented as history is how a reviewer concludes somebody posted
-        nothing when in fact nobody asked. Individual rows are readable by id below.
-      </Notice>
-
-      <Card title="Snapshot">
-        <CountGrid
-          entries={[
-            { label: "Clinicians", value: rows.length },
-            {
-              label: "Overdue (server count)",
-              value: board.overdueCount,
-              tone: board.overdueCount > 0 ? "error" : undefined,
-            },
-            {
-              label: "Last check-in was a concern",
-              value: concerned,
-              tone: concerned > 0 ? "warning" : undefined,
-            },
-            {
-              label: "No check-in on record",
-              value: never,
-              tone: never > 0 ? "warning" : undefined,
-            },
-          ]}
-        />
-        <span style={mutedStyle}>
-          As of {dateTime(board.fetchedAt)}. The overdue figure is the SERVER's, over the same
-          snapshot as the rows; the other three count the rows shown after the filters below.
-        </span>
-      </Card>
-
-      <Card title="Filters">
-        <FilterRow>
-          <TextField label="Clinician name contains" value={name} onChange={setName} />
-          <SelectField
-            label="Last status"
-            value={status}
-            options={[
-              { value: ANY, label: "Any" },
-              { value: "ok", label: "I'm OK" },
-              { value: "concerned_continue", label: "Concerned — continuing" },
-              { value: "concerned_stop", label: "Not OK — stopping" },
-            ]}
-            onChange={setStatus}
-          />
-          <SelectField
-            label="Overdue rung"
-            value={rung}
-            options={[
-              { value: ANY, label: "Any" },
-              { value: "on_time", label: "On time" },
-              { value: "reminder", label: "Reminder" },
-              { value: "overdue", label: "Overdue" },
-              { value: "escalated", label: "Escalated" },
-            ]}
-            onChange={setRung}
-          />
-        </FilterRow>
-        <span style={mutedStyle}>
-          All three narrow the snapshot in the browser. None of them re-queries, because the board
-          read takes no such parameter — they are honest about being a view over one answer rather
-          than a search.
-        </span>
-      </Card>
-
-      <Card title="Clinicians">
-        {rows.length === 0 ? (
-          <span style={mutedStyle}>
-            No clinician matches these filters in the current snapshot.
-          </span>
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Clinician</th>
-                <th style={th}>Last check-in</th>
-                <th style={th}>Status</th>
-                <th style={th}>Next expected</th>
-                <th style={th}>Rung</th>
-                <th style={th}>Currently</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.membershipId} style={rowLine}>
-                  <td style={td}>
-                    {r.displayName}
-                    <div style={{ ...mutedStyle, fontFamily: t.fontMono }}>
-                      {shortId(r.membershipId)}
-                    </div>
-                  </td>
-                  <td style={td}>
-                    {r.lastCheckInAt ? (
-                      <>
-                        {dateTime(r.lastCheckInAt)}
-                        <div style={mutedStyle}>
-                          {durationLabel(minutesSince(r.lastCheckInAt))} ago
-                        </div>
-                      </>
-                    ) : (
-                      <span style={mutedStyle}>None on record</span>
-                    )}
-                  </td>
-                  <td style={td}>
-                    {r.lastCheckInStatus ? (
-                      <CheckInStatusPill status={r.lastCheckInStatus} />
-                    ) : (
-                      <span style={mutedStyle}>—</span>
-                    )}
-                  </td>
-                  <td style={td}>{dateTime(r.nextExpectedCheckInAt)}</td>
-                  <td style={td}>
-                    <OverduePill state={r.overdueState} />
-                  </td>
-                  <td style={td}>
-                    {r.activeSosAlert ? (
-                      <Link to={`/safety/sos/${r.activeSosAlert.id}`} style={linkStyle}>
-                        <StatusPill label="Active SOS" tone="critical" />
-                      </Link>
-                    ) : r.currentVisitId ? (
-                      <span style={{ fontFamily: t.fontMono }}>{shortId(r.currentVisitId)}</span>
-                    ) : (
-                      <span style={mutedStyle}>Not on a visit</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
-
-      <Card title="Read one check-in">
-        <FilterRow>
-          <TextField
-            label="Check-in id"
-            value={lookupId}
-            onChange={setLookupId}
-            mono
-            hint="From a §7.2 suppression on the board, or from an incident review."
-          />
-          <button
-            type="button"
-            onClick={() => void lookup()}
-            disabled={lookingUp || lookupId.trim().length === 0}
-            style={
-              lookingUp || lookupId.trim().length === 0 ? disabledButtonStyle : primaryButtonStyle
-            }
-          >
-            {lookingUp ? "Reading…" : "Read"}
-          </button>
-        </FilterRow>
-        <Notice tone="warning">
-          Reading one check-in writes an <strong>audit entry naming you</strong>, and it can return
-          the clinician's own <code>concernNote</code> — including a §7.2 suppression reason
-          ("patient sleeping; don't disturb"). That text is denylisted from the write-audit trail
-          precisely so it is not copied around; reading it here is the audited path §7.2 describes,
-          not a way around it.
-        </Notice>
-        {lookupError ? (
-          <Notice tone="error" assertive>
-            {lookupError}
-          </Notice>
-        ) : null}
-        {found ? (
-          <>
-            <SummaryGrid>
-              <Field label="Check-in" value={shortId(found.id)} mono />
-              <Field label="Posted" value={dateTime(found.postedAt)} />
-              <Field label="Kind" value={humanize(found.kind)} />
-              <Field label="Status" value={<CheckInStatusPill status={found.status} />} />
-              <Field label="Posted by" value={shortId(found.postedByMembershipId)} mono />
-              <Field
-                label="Visit"
-                value={found.visitId ? shortId(found.visitId) : "None"}
-                mono={found.visitId !== null}
+        </PageHeader>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          {error ? (
+            <Notice tone="warning" live>
+              {error} The table below is the last snapshot that answered.
+            </Notice>
+          ) : null}
+          <div role="note" style={noteStyle}>
+            <StatusPill label="Snapshot only" tone="neutral" />
+            <span>
+              This answers who is behind right now. M20 has no supervisor-facing historical check-in
+              list route.
+            </span>
+          </div>
+          <div style={toolbarStyle}>
+            <div style={toolbarTitleStyle}>
+              <span style={toolbarEyebrowStyle}>Clinician snapshot</span>
+              <strong>
+                {rows.length} matching clinicians · {board.overdueCount} overdue by server snapshot
+              </strong>
+            </div>
+            <div style={controlGroupStyle}>
+              <input
+                type="search"
+                placeholder="Search clinician..."
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setPage(1);
+                }}
+                aria-label="Search clinician"
+                style={searchInputStyle}
               />
-              <Field
-                label="Coordinate captured"
-                value={found.coordinatesCaptured ? "Yes (not shown here)" : "No"}
-              />
-              <Field
-                label="Part of an SOS bracket"
-                value={found.isPartOfSosBracket ? "Yes" : "No"}
-              />
-              <Field
-                label="Amendable until"
-                value={found.amendableUntil ? dateTime(found.amendableUntil) : "Grace has closed"}
-              />
-              <Field
-                label="Superseded"
-                value={
-                  found.supersededAt
-                    ? `${dateTime(found.supersededAt)} by ${shortId(found.supersededByCheckInId)}`
-                    : "No"
+              <select
+                aria-label="Last check-in status"
+                value={status}
+                onChange={(event) => {
+                  setStatus(event.target.value);
+                  setPage(1);
+                }}
+                style={selectStyle}
+              >
+                <option value={ANY}>Status: Any</option>
+                <option value="ok">I'm OK</option>
+                <option value="concerned_continue">Concerned - continuing</option>
+                <option value="concerned_stop">Not OK - stopping</option>
+              </select>
+              <select
+                aria-label="Overdue rung"
+                value={rung}
+                onChange={(event) => {
+                  setRung(event.target.value);
+                  setPage(1);
+                }}
+                style={selectStyle}
+              >
+                <option value={ANY}>Rung: Any</option>
+                <option value="on_time">On time</option>
+                <option value="reminder">Reminder</option>
+                <option value="overdue">Overdue</option>
+                <option value="escalated">Escalated</option>
+              </select>
+              {activeFilters > 0 ? (
+                <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                  Clear
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      }
+      table={
+        <div style={tableWrapStyle}>
+          {rows.length === 0 ? (
+            <div style={{ padding: "2rem 0" }}>
+              <EmptyState
+                title="No matching clinicians"
+                description="No clinician matches these filters in the current snapshot."
+                action={
+                  activeFilters > 0 ? (
+                    <Button size="sm" tone="secondary" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  ) : undefined
                 }
               />
-              <Field
-                label="Corrects"
-                value={found.correctsCheckInId ? shortId(found.correctsCheckInId) : "—"}
-                mono={found.correctsCheckInId !== null}
+            </div>
+          ) : (
+            <>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={headerRowStyle}>
+                    <th style={{ ...thStyle, width: "22%" }}>Clinician</th>
+                    <th style={{ ...thStyle, width: "18%" }}>Last check-in</th>
+                    <th style={{ ...thStyle, width: "16%" }}>Status</th>
+                    <th style={{ ...thStyle, width: "18%" }}>Next expected</th>
+                    <th style={{ ...thStyle, width: "12%" }}>Rung</th>
+                    <th style={{ ...thStyle, width: "14%", textAlign: "right" }}>Currently</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedRows.map((row) => (
+                    <CheckInSnapshotRow key={row.membershipId} row={row} />
+                  ))}
+                </tbody>
+              </table>
+              <OffsetPagination
+                page={activePage}
+                pageSize={pageSize}
+                totalItems={rows.length}
+                onPageChange={setPage}
+                onPageSizeChange={(nextPageSize) => {
+                  setPageSize(nextPageSize);
+                  setPage(1);
+                }}
+                pageSizeOptions={PAGE_SIZES}
+                noun="clinicians"
               />
-            </SummaryGrid>
-            {found.concernNote ? (
+            </>
+          )}
+          <LookupPanel
+            lookupId={lookupId}
+            onLookupIdChange={setLookupId}
+            lookingUp={lookingUp}
+            onLookup={lookup}
+            lookupError={lookupError}
+            found={found}
+          />
+        </div>
+      }
+      fullPageScroll
+    />
+  );
+}
+
+function CheckInSnapshotRow({ row }: { row: SafetyClinicianStatusView }): JSX.Element {
+  return (
+    <tr style={rowStyle}>
+      <td style={tdStyle}>
+        <div style={primaryCellStyle}>
+          <span style={primaryTextStyle}>{row.displayName}</span>
+          <code className="wx-data-md" style={codeStyle}>
+            {shortId(row.membershipId)}
+          </code>
+        </div>
+      </td>
+      <td style={tdStyle}>
+        {row.lastCheckInAt ? (
+          <div style={primaryCellStyle}>
+            <span>{dateTime(row.lastCheckInAt)}</span>
+            <span style={secondaryTextStyle}>
+              {durationLabel(minutesSince(row.lastCheckInAt))} ago
+            </span>
+          </div>
+        ) : (
+          <span style={secondaryTextStyle}>None on record</span>
+        )}
+      </td>
+      <td style={tdStyle}>
+        {row.lastCheckInStatus ? (
+          <CheckInStatusPill status={row.lastCheckInStatus} />
+        ) : (
+          <span style={secondaryTextStyle}>—</span>
+        )}
+      </td>
+      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+        {dateTime(row.nextExpectedCheckInAt)}
+      </td>
+      <td style={tdStyle}>
+        <OverduePill state={row.overdueState} />
+      </td>
+      <td style={{ ...tdStyle, textAlign: "right" }}>
+        {row.activeSosAlert ? (
+          <Link to={`/safety/sos/${row.activeSosAlert.id}`} style={{ textDecoration: "none" }}>
+            <StatusPill label="Active SOS" tone="critical" />
+          </Link>
+        ) : row.currentVisitId ? (
+          <code className="wx-data-md" style={codeStyle}>
+            {shortId(row.currentVisitId)}
+          </code>
+        ) : (
+          <span style={secondaryTextStyle}>Not on a visit</span>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function LookupPanel({
+  lookupId,
+  onLookupIdChange,
+  lookingUp,
+  onLookup,
+  lookupError,
+  found,
+}: {
+  lookupId: string;
+  onLookupIdChange: (value: string) => void;
+  lookingUp: boolean;
+  onLookup: () => void;
+  lookupError: string | null;
+  found: SafetyCheckInView | null;
+}): JSX.Element {
+  return (
+    <section style={lookupSectionStyle}>
+      <div style={toolbarStyle}>
+        <div style={toolbarTitleStyle}>
+          <span style={toolbarEyebrowStyle}>Read one check-in</span>
+          <strong>Audited by-id lookup</strong>
+        </div>
+        <div style={controlGroupStyle}>
+          <input
+            type="text"
+            placeholder="Check-in id"
+            value={lookupId}
+            onChange={(event) => onLookupIdChange(event.target.value)}
+            aria-label="Check-in id"
+            style={monoInputStyle}
+          />
+          <Button
+            size="sm"
+            tone="secondary"
+            disabled={lookingUp || lookupId.trim().length === 0}
+            onClick={() => onLookup()}
+          >
+            {lookingUp ? "Reading..." : "Read"}
+          </Button>
+        </div>
+      </div>
+      <Notice tone="warning">
+        Reading one check-in can return the clinician's own concern note. That read is the audited
+        path for suppression review.
+      </Notice>
+      {lookupError ? (
+        <Notice tone="error" assertive>
+          {lookupError}
+        </Notice>
+      ) : null}
+      {found ? (
+        <div style={detailGridStyle}>
+          <DetailField label="Check-in" value={shortId(found.id)} mono />
+          <DetailField label="Posted" value={dateTime(found.postedAt)} />
+          <DetailField label="Kind" value={humanize(found.kind)} />
+          <DetailField label="Status" value={<CheckInStatusPill status={found.status} />} />
+          <DetailField label="Posted by" value={shortId(found.postedByMembershipId)} mono />
+          <DetailField label="Visit" value={found.visitId ? shortId(found.visitId) : "None"} mono />
+          <DetailField
+            label="Coordinate captured"
+            value={found.coordinatesCaptured ? "Yes (not shown here)" : "No"}
+          />
+          <DetailField label="SOS bracket" value={found.isPartOfSosBracket ? "Yes" : "No"} />
+          <DetailField
+            label="Amendable until"
+            value={found.amendableUntil ? dateTime(found.amendableUntil) : "Grace has closed"}
+          />
+          <DetailField
+            label="Superseded"
+            value={
+              found.supersededAt
+                ? `${dateTime(found.supersededAt)} by ${
+                    found.supersededByCheckInId ? shortId(found.supersededByCheckInId) : "unknown"
+                  }`
+                : "No"
+            }
+          />
+          {found.concernNote ? (
+            <div style={{ gridColumn: "1 / -1" }}>
               <Notice tone="warning">
                 <strong>Her note:</strong> {found.concernNote}
               </Notice>
-            ) : (
-              <span style={mutedStyle}>No note on this check-in.</span>
-            )}
-            {found.coordinatesCaptured ? (
-              <span style={mutedStyle}>
-                A coordinate was captured with this check-in and is NOT shown: no check-in read on
-                the platform returns one. D11 keeps non-SOS coordinates out of every projection, so
-                the only coordinate surface in M20 is an SOS's own stream, behind its own
-                permission.
-              </span>
-            ) : null}
-          </>
-        ) : null}
-      </Card>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function DetailField({
+  label,
+  value,
+  mono,
+}: { label: string; value: ReactNode; mono?: boolean }): JSX.Element {
+  return (
+    <div style={primaryCellStyle}>
+      <span style={detailLabelStyle}>{label}</span>
+      <span style={mono ? { fontFamily: "var(--font-mono)" } : undefined}>{value}</span>
     </div>
   );
 }
+
+const linkButtonStyle = {
+  minHeight: "2.25rem",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0 0.75rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+  fontWeight: 600,
+  textDecoration: "none",
+};
+const filterShellStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+const noteStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.75rem",
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-low)",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.85rem",
+};
+const toolbarStyle = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+};
+const toolbarTitleStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.125rem",
+  color: "var(--color-on-surface)",
+  fontSize: "0.875rem",
+};
+const toolbarEyebrowStyle = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};
+const controlGroupStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  flexWrap: "wrap" as const,
+};
+const searchInputStyle = { minWidth: "16rem", height: "2.25rem", fontSize: "0.85rem" };
+const monoInputStyle = {
+  minWidth: "16rem",
+  height: "2.25rem",
+  fontSize: "0.85rem",
+  fontFamily: "var(--font-mono)",
+};
+const selectStyle = { height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" };
+const tableWrapStyle = {
+  width: "100%",
+  overflowX: "auto" as const,
+  padding: "0 1.5rem 1.5rem 1.5rem",
+};
+const tableStyle = {
+  display: "table",
+  width: "100%",
+  borderCollapse: "collapse" as const,
+  fontSize: "0.875rem",
+};
+const headerRowStyle = {
+  textAlign: "left" as const,
+  color: "var(--color-on-surface-variant)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  background: "var(--color-surface-low)",
+};
+const rowStyle = {
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+};
+const thStyle = {
+  padding: "0.625rem 1rem",
+  fontWeight: 600,
+  fontSize: "0.75rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};
+const tdStyle = {
+  padding: "0.75rem 1rem",
+  verticalAlign: "middle" as const,
+};
+const primaryCellStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.25rem",
+  minWidth: 0,
+};
+const primaryTextStyle = { fontWeight: 600, color: "var(--color-on-surface)" };
+const secondaryTextStyle = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+};
+const codeStyle = {
+  display: "inline-block",
+  maxWidth: "13rem",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap" as const,
+  color: "var(--color-on-surface-variant)",
+  background: "var(--color-surface-container)",
+  borderRadius: "var(--radius-sm)",
+  padding: "0.1rem 0.3rem",
+  fontSize: "0.75rem",
+};
+const lookupSectionStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.75rem",
+  paddingTop: "1rem",
+};
+const detailGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))",
+  gap: "0.75rem 1rem",
+};
+const detailLabelStyle = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.7rem",
+  fontWeight: 650,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};

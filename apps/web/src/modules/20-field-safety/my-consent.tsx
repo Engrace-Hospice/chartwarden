@@ -1,34 +1,17 @@
-// apps/web/src/modules/20-field-safety — §5.1 "MY SAFETY CONSENT" (`/me/safety/consent`,
+// apps/web/src/modules/20-field-safety - §5.1 "MY SAFETY CONSENT" (`/me/safety/consent`,
 // Track B / ADR-0030). D6 / D10 / M20-F06.
 //
-// The clinician's own consent surface: three separately grantable, separately revocable purposes, each
-// with the exact acknowledgment text she was shown at the moment she agreed.
-//
-// ── THE ACKNOWLEDGMENT TEXT IS THE PRODUCT, NOT THE CHROME ──────────────────────────────────────────
-//
-// `acknowledgmentTextSnapshot` is REQUIRED on the grant and is deliberately NOT audit-denylisted (§3.3
-// says so in its own note): it is the one thing a consent dispute turns on. So the screen sends the exact
-// sentence it displayed — {@link CONSENT_TEXT} below — rather than a summary or a version tag. If the
-// wording here changes, past grants keep the wording they were given, which is the whole point of storing
-// a snapshot instead of a pointer.
-//
-// ── DECLINING `sos_coordinates` DOES NOT DISABLE THE SOS BUTTON (M20-F16) ────────────────────────────
-//
-// §5.2's own sketch says the opposite ("declining disables the SOS feature with an explanatory banner").
-// M20-F16 overrides it and the implementation follows M20-F16: the press always succeeds, the alert
-// always fans out, and the recipients are simply told there is no position. This screen says that
-// plainly, because a clinician who believes declining will disable her panic button will consent under
-// duress — which is exactly the coercion §2.2.8 keeps `revoked` and `expired` distinct in order to detect.
-//
-// ── `emergency_contact_call` IS M20-F06: THIS ROW *IS* THE CONTACT ──────────────────────────────────
-//
-// M2 has no emergency-contact table, so the consent row carries the contact in its encrypted scope
-// detail. The read projection returns a BOOLEAN (`contactOnFile`), never the number — re-displaying a
-// spouse's phone on every page load would widen the disclosure the consent was given for. Changing the
-// contact is therefore a fresh grant, and the screen says so rather than offering an edit that does not
-// exist.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
-import { useCallback, useEffect, useState } from "react";
+// The clinician's own consent surface. Each purpose is separate and revocable.
+import {
+  Button,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -48,35 +31,21 @@ import {
   toneOf,
 } from "./safety-status";
 import {
-  Card,
-  Field,
   Modal,
   Notice,
-  SummaryGrid,
   TextAreaField,
   TextField,
-  columnStyle,
   disabledButtonStyle,
-  ghostButtonStyle,
-  mutedStyle,
-  pageTitleStyle,
   primaryButtonStyle,
 } from "./safety-ui";
 
-/**
- * The exact text sent as `acknowledgmentTextSnapshot`, per purpose.
- *
- * These sentences are the record. They are written in the second person and in plain words, because the
- * person who has to understand them is a nurse on a doorstep, and because a snapshot of legalese proves
- * only that legalese was displayed.
- */
 const CONSENT_TEXT: Record<string, string> = {
   sos_coordinates:
-    "I agree that when I press the SOS button, my device's location at that moment may be recorded and shown to the people responding to my alert. I understand that every time somebody views my location it is logged with their name, and that I can see those views on this page. I understand that declining this does NOT disable my SOS button — my alert will still be raised, and the responders will simply be told my location is unknown.",
+    "I agree that when I press the SOS button, my device's location at that moment may be recorded and shown to the people responding to my alert. I understand that every time somebody views my location it is logged with their name, and that I can see those views on this page. I understand that declining this does NOT disable my SOS button - my alert will still be raised, and the responders will simply be told my location is unknown.",
   continuous_location_during_sos:
-    "I agree that while an SOS of mine is active, my device's location may be sampled repeatedly and shown to the people responding, until the alert is resolved or the agency's time limit is reached. I understand this happens only while an alert of mine is open — never at any other time — and only if my agency has also enabled it. I can withdraw this at any time.",
+    "I agree that while an SOS of mine is active, my device's location may be sampled repeatedly and shown to the people responding, until the alert is resolved or the agency's time limit is reached. I understand this happens only while an alert of mine is open - never at any other time - and only if my agency has also enabled it. I can withdraw this at any time.",
   emergency_contact_call:
-    "I give the person named below as my emergency contact, and I agree that my agency may call them if I raise an SOS and cannot be reached. I understand their details are stored encrypted and are not shown back to me or to my supervisors on any screen — only used to place that call.",
+    "I give the person named below as my emergency contact, and I agree that my agency may call them if I raise an SOS and cannot be reached. I understand their details are stored encrypted and are not shown back to me or to my supervisors on any screen - only used to place that call.",
 };
 
 export function MyConsentScreen(): JSX.Element {
@@ -120,14 +89,11 @@ export function MyConsentScreen(): JSX.Element {
     setModalError(null);
     const text = CONSENT_TEXT[granting];
     if (!text) {
-      // Unreachable through the UI, and a refusal rather than a fallback: sending a placeholder snapshot
-      // would record a consent to text nobody wrote.
       setSaving(false);
       setModalError("No consent wording is defined for that purpose, so nothing was sent.");
       return;
     }
     const res = await grantConsent(client, {
-      // `granting` is always one of CONSENT_PURPOSES — the caller only ever sets it from that list.
       purpose: granting as NonNullable<SafetyConsentPurpose>,
       acknowledgmentTextSnapshot: text,
       ...(granting === "emergency_contact_call"
@@ -157,7 +123,6 @@ export function MyConsentScreen(): JSX.Element {
     setSaving(true);
     setModalError(null);
     const res = await revokeConsent(client, {
-      // `revoking` is always one of CONSENT_PURPOSES — the caller only ever sets it from that list.
       purpose: revoking as NonNullable<SafetyConsentPurpose>,
       ...(revokeReason.trim() ? { reason: revokeReason.trim() } : {}),
     });
@@ -171,252 +136,368 @@ export function MyConsentScreen(): JSX.Element {
     await load();
   }, [client, load, revokeReason, revoking]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error && consents.length === 0)
-    return <EmptyState title="Consent settings unavailable" description={error} />;
+  const byPurpose = useMemo(
+    () => new Map(consents.map((consent) => [consent.purpose, consent])),
+    [consents],
+  );
 
-  const byPurpose = new Map(consents.map((c) => [c.purpose, c]));
+  if (loading && consents.length === 0) {
+    return (
+      <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (error && consents.length === 0) {
+    return (
+      <div style={{ padding: "2rem 1.5rem" }}>
+        <EmptyState title="Consent settings unavailable" description={error} />
+      </div>
+    );
+  }
 
   return (
-    <div style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>My safety consent</span>}
-        breadcrumb="Field safety"
-        actions={
-          <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <Link to="/me/safety" style={ghostButtonStyle}>
-              My safety
-            </Link>
-            <button type="button" onClick={() => void load()} style={ghostButtonStyle}>
-              Refresh
-            </button>
+    <WorkQueueLayout
+      header={
+        <PageHeader
+          title="My Safety Consent"
+          breadcrumb="Field safety"
+          actions={
+            <div style={actionGroupStyle}>
+              <Link to="/me/safety" style={linkButtonStyle}>
+                My safety
+              </Link>
+              <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
+                Refresh
+              </Button>
+            </div>
+          }
+        >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            {asOf ? `Read at ${dateTime(asOf)}.` : "Consent settings scoped to your own account."}
           </div>
-        }
-      />
-
-      <Notice tone="info" live>
-        These three are <strong>separate</strong>: you can give one and refuse another, and withdraw
-        any of them at any time without affecting the others.{" "}
-        <strong>Refusing all three does not disable your SOS button.</strong> The alert is raised
-        either way — the people responding are simply told your location is unknown.
-      </Notice>
-
-      {error ? (
-        <Notice tone="warning" live>
-          {error}
-        </Notice>
-      ) : null}
-
-      {CONSENT_PURPOSES.map((purpose) => {
-        const c = byPurpose.get(purpose);
-        const granted = c?.status === "granted";
-        return (
-          <Card
-            key={purpose}
-            title={consentPurposeLabel(purpose)}
-            actions={
-              <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-                {granted ? (
-                  <button
-                    type="button"
-                    onClick={() => {
+        </PageHeader>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          <Notice tone="info" live>
+            These consents are separate. Refusing all three does not disable SOS; the alert is still
+            raised and responders are told location is unknown.
+          </Notice>
+          {error ? (
+            <Notice tone="warning" live>
+              {error}
+            </Notice>
+          ) : null}
+        </div>
+      }
+      table={
+        <div style={contentStyle}>
+          <table style={tableStyle}>
+            <thead>
+              <tr style={headerRowStyle}>
+                <th style={{ ...thStyle, width: "24%" }}>Purpose</th>
+                <th style={{ ...thStyle, width: "13%" }}>Status</th>
+                <th style={{ ...thStyle, width: "15%" }}>Given</th>
+                <th style={{ ...thStyle, width: "15%" }}>Withdrawn</th>
+                <th style={{ ...thStyle, width: "15%" }}>Expires</th>
+                <th style={{ ...thStyle, width: "10%" }}>Contact</th>
+                <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {CONSENT_PURPOSES.map((purpose) => {
+                const consent = byPurpose.get(purpose);
+                return (
+                  <ConsentRow
+                    key={purpose}
+                    purpose={purpose}
+                    consent={consent}
+                    onGrant={() => {
+                      setModalError(null);
+                      setGranting(purpose);
+                    }}
+                    onRevoke={() => {
                       setRevokeReason("");
                       setModalError(null);
                       setRevoking(purpose);
                     }}
-                    style={ghostButtonStyle}
-                  >
-                    Withdraw
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setModalError(null);
-                      setGranting(purpose);
-                    }}
-                    style={primaryButtonStyle}
-                  >
-                    {c ? "Give it again" : "Give consent"}
-                  </button>
-                )}
-              </div>
-            }
-          >
-            {c ? (
-              <>
-                <SummaryGrid>
-                  <Field
-                    label="Status"
-                    value={
-                      <StatusPill
-                        label={humanize(c.status)}
-                        tone={toneOf(CONSENT_STATUS_TONE, c.status)}
-                      />
-                    }
                   />
-                  <Field label="Given" value={dateTime(c.grantedAt)} />
-                  <Field label="Withdrawn" value={dateTime(c.revokedAt)} />
-                  <Field
-                    label="Expires"
-                    value={c.expiresAt ? dateTime(c.expiresAt) : "No expiry set"}
-                  />
-                  {purpose === "emergency_contact_call" ? (
-                    <Field
-                      label="Contact on file"
-                      value={c.contactOnFile ? "Yes — held, not shown" : "None"}
-                    />
-                  ) : null}
-                </SummaryGrid>
-                {c.status === "expired" ? (
-                  <Notice tone="warning">
-                    This lapsed on your agency's rotation schedule — it is <strong>not</strong> the
-                    same as you withdrawing it, and the record keeps the two apart. Give it again if
-                    you still agree.
-                  </Notice>
-                ) : null}
-                <details>
-                  <summary style={{ ...mutedStyle, cursor: "pointer" }}>
-                    What you were shown when you agreed
-                  </summary>
-                  <p
-                    style={{
-                      margin: `${t.space2} 0 0`,
-                      fontSize: "0.85rem",
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
-                    {c.acknowledgmentTextSnapshot}
-                  </p>
+                );
+              })}
+            </tbody>
+          </table>
+
+          <section style={sectionStyle}>
+            <div style={toolbarTitleStyle}>
+              <span style={toolbarEyebrowStyle}>Consent wording</span>
+              <strong>Current text shown before a grant</strong>
+            </div>
+            <div style={wordingGridStyle}>
+              {CONSENT_PURPOSES.map((purpose) => (
+                <details key={purpose} style={detailsStyle}>
+                  <summary style={summaryStyle}>{consentPurposeLabel(purpose)}</summary>
+                  <p style={paragraphStyle}>{CONSENT_TEXT[purpose]}</p>
                 </details>
-                {purpose === "emergency_contact_call" && c.contactOnFile ? (
-                  <span style={mutedStyle}>
-                    Your contact's details are held encrypted and are never shown back — not to you,
-                    not to your supervisors. To change them, give this consent again with the new
-                    details; the new grant replaces the old one.
-                  </span>
-                ) : null}
-              </>
-            ) : (
-              <>
-                <Notice tone="info">You have not been asked for this one yet.</Notice>
-                <p style={{ margin: 0, fontSize: "0.85rem", whiteSpace: "pre-wrap" }}>
-                  {CONSENT_TEXT[purpose]}
-                </p>
-              </>
-            )}
-          </Card>
-        );
-      })}
+              ))}
+            </div>
+          </section>
 
-      <Card title="Who has looked at my location">
-        <span style={mutedStyle}>
-          Every read of your coordinates is logged at raised severity with the reader's name, and
-          once an alert has closed a supervisor must write a reason of at least forty characters
-          before the system will decrypt anything. §8.7 gives you the right to see that list here.
-          M20 publishes no route that returns it to this page yet — the entries are in the audit
-          record, reachable through your compliance officer — so this section names the gap rather
-          than showing an empty list that would read as "nobody has looked".
-        </span>
-      </Card>
+          <div role="note" style={noteStyle}>
+            <StatusPill label="Audit gap" tone="neutral" />
+            <span>
+              Coordinate reads are logged, but M20 does not yet expose a self-service read route for
+              that audit list. This page names the gap instead of showing an empty list.
+            </span>
+          </div>
 
-      {asOf ? <span style={mutedStyle}>Read at {dateTime(asOf)}.</span> : null}
-
-      {granting ? (
-        <Modal
-          title={consentPurposeLabel(granting)}
-          onClose={() => setGranting(null)}
-          footer={
-            <button
-              type="button"
-              onClick={() => void doGrant()}
-              disabled={
-                saving ||
-                (granting === "emergency_contact_call" &&
-                  (contactName.trim().length === 0 || contactPhone.trim().length === 0))
-              }
-              style={
-                saving ||
-                (granting === "emergency_contact_call" &&
-                  (contactName.trim().length === 0 || contactPhone.trim().length === 0))
-                  ? disabledButtonStyle
-                  : primaryButtonStyle
+          {granting ? (
+            <Modal
+              title={consentPurposeLabel(granting)}
+              onClose={() => setGranting(null)}
+              footer={
+                <button
+                  type="button"
+                  onClick={() => void doGrant()}
+                  disabled={
+                    saving ||
+                    (granting === "emergency_contact_call" &&
+                      (contactName.trim().length === 0 || contactPhone.trim().length === 0))
+                  }
+                  style={
+                    saving ||
+                    (granting === "emergency_contact_call" &&
+                      (contactName.trim().length === 0 || contactPhone.trim().length === 0))
+                      ? disabledButtonStyle
+                      : primaryButtonStyle
+                  }
+                >
+                  {saving ? "Recording..." : "I consent"}
+                </button>
               }
             >
-              {saving ? "Recording…" : "I consent"}
-            </button>
-          }
-        >
-          {/* The exact text sent as the snapshot. Displayed and stored are the same string, by
-              construction — see the module header. */}
-          <p style={{ margin: 0, fontSize: "0.9rem", whiteSpace: "pre-wrap" }}>
-            {CONSENT_TEXT[granting]}
-          </p>
-          {granting === "emergency_contact_call" ? (
-            <>
-              <TextField label="Their name" value={contactName} onChange={setContactName} />
-              <TextField
-                label="Their phone number"
-                value={contactPhone}
-                onChange={setContactPhone}
-                type="tel"
-                hint="Stored encrypted. It is not shown back on any screen — including this one, next time you visit."
-              />
-              <TextField
-                label="Relationship to you (optional)"
-                value={contactRelationship}
-                onChange={setContactRelationship}
-              />
-            </>
+              <p style={paragraphStyle}>{CONSENT_TEXT[granting]}</p>
+              {granting === "emergency_contact_call" ? (
+                <>
+                  <TextField label="Their name" value={contactName} onChange={setContactName} />
+                  <TextField
+                    label="Their phone number"
+                    value={contactPhone}
+                    onChange={setContactPhone}
+                    type="tel"
+                    hint="Stored encrypted. It is not shown back on any screen."
+                  />
+                  <TextField
+                    label="Relationship to you (optional)"
+                    value={contactRelationship}
+                    onChange={setContactRelationship}
+                  />
+                </>
+              ) : null}
+              <Notice tone="info">
+                The words above are stored with your consent exactly as written.
+              </Notice>
+              {modalError ? (
+                <Notice tone="error" assertive>
+                  {modalError}
+                </Notice>
+              ) : null}
+            </Modal>
           ) : null}
-          <Notice tone="info">
-            The words above are stored with your consent exactly as written, so a later question
-            about what you agreed to is answered by what you were actually shown.
-          </Notice>
-          {modalError ? (
-            <Notice tone="error" assertive>
-              {modalError}
-            </Notice>
-          ) : null}
-        </Modal>
-      ) : null}
 
-      {revoking ? (
-        <Modal
-          title={`Withdraw: ${consentPurposeLabel(revoking)}`}
-          onClose={() => setRevoking(null)}
-          footer={
-            <button
-              type="button"
-              onClick={() => void doRevoke()}
-              disabled={saving}
-              style={saving ? disabledButtonStyle : primaryButtonStyle}
+          {revoking ? (
+            <Modal
+              title={`Withdraw: ${consentPurposeLabel(revoking)}`}
+              onClose={() => setRevoking(null)}
+              footer={
+                <button
+                  type="button"
+                  onClick={() => void doRevoke()}
+                  disabled={saving}
+                  style={saving ? disabledButtonStyle : primaryButtonStyle}
+                >
+                  {saving ? "Recording..." : "Withdraw my consent"}
+                </button>
+              }
             >
-              {saving ? "Recording…" : "Withdraw my consent"}
-            </button>
-          }
-        >
-          <Notice tone="info">
-            You do not have to give a reason, and nobody has to approve this.{" "}
-            {revoking === "sos_coordinates"
-              ? "Your SOS button keeps working exactly as before — the responders will simply be told your location is unknown."
-              : revoking === "continuous_location_during_sos"
-                ? "Your SOS keeps working and the responders still get your position at the moment you pressed; they just will not see you move."
-                : "Your agency will no longer call this contact."}
-          </Notice>
-          <TextAreaField
-            label="Reason (optional)"
-            value={revokeReason}
-            onChange={setRevokeReason}
-            rows={3}
-          />
-          {modalError ? (
-            <Notice tone="error" assertive>
-              {modalError}
-            </Notice>
+              <Notice tone="info">{withdrawalCopy(revoking)}</Notice>
+              <TextAreaField
+                label="Reason (optional)"
+                value={revokeReason}
+                onChange={setRevokeReason}
+                rows={3}
+              />
+              {modalError ? (
+                <Notice tone="error" assertive>
+                  {modalError}
+                </Notice>
+              ) : null}
+            </Modal>
           ) : null}
-        </Modal>
-      ) : null}
-    </div>
+        </div>
+      }
+      fullPageScroll
+    />
   );
 }
+
+function ConsentRow({
+  purpose,
+  consent,
+  onGrant,
+  onRevoke,
+}: {
+  purpose: string;
+  consent: SafetyConsentView | undefined;
+  onGrant: () => void;
+  onRevoke: () => void;
+}): JSX.Element {
+  const granted = consent?.status === "granted";
+  return (
+    <tr style={rowStyle}>
+      <td style={tdStyle}>{consentPurposeLabel(purpose)}</td>
+      <td style={tdStyle}>
+        {consent ? (
+          <StatusPill
+            label={humanize(consent.status)}
+            tone={toneOf(CONSENT_STATUS_TONE, consent.status)}
+          />
+        ) : (
+          <StatusPill label="Not asked" tone="neutral" />
+        )}
+      </td>
+      <td style={tdStyle}>{consent ? dateTime(consent.grantedAt) : "-"}</td>
+      <td style={tdStyle}>{consent ? dateTime(consent.revokedAt) : "-"}</td>
+      <td style={tdStyle}>{consent?.expiresAt ? dateTime(consent.expiresAt) : "No expiry"}</td>
+      <td style={tdStyle}>
+        {purpose === "emergency_contact_call" ? (consent?.contactOnFile ? "On file" : "None") : "-"}
+      </td>
+      <td style={{ ...tdStyle, textAlign: "right" }}>
+        <Button
+          size="sm"
+          tone={granted ? "tertiary" : "primary"}
+          onClick={granted ? onRevoke : onGrant}
+        >
+          {granted ? "Withdraw" : consent ? "Give again" : "Give"}
+        </Button>
+      </td>
+    </tr>
+  );
+}
+
+function withdrawalCopy(purpose: string): string {
+  if (purpose === "sos_coordinates") {
+    return "Your SOS button keeps working exactly as before; responders will simply be told your location is unknown.";
+  }
+  if (purpose === "continuous_location_during_sos") {
+    return "Your SOS keeps working, but responders will not see continuous movement while the alert is active.";
+  }
+  return "Your agency will no longer call this contact.";
+}
+
+const actionGroupStyle = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  gap: "0.5rem",
+};
+const linkButtonStyle = {
+  minHeight: "2.25rem",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0 0.75rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+  fontWeight: 600,
+  textDecoration: "none",
+};
+const filterShellStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+const contentStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "1rem",
+  padding: "0 1.5rem 1.5rem",
+};
+const sectionStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.75rem",
+};
+const toolbarTitleStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.125rem",
+  color: "var(--color-on-surface)",
+  fontSize: "0.875rem",
+};
+const toolbarEyebrowStyle = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};
+const tableStyle = {
+  display: "table",
+  width: "100%",
+  borderCollapse: "collapse" as const,
+  fontSize: "0.875rem",
+};
+const headerRowStyle = {
+  textAlign: "left" as const,
+  color: "var(--color-on-surface-variant)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  background: "var(--color-surface-low)",
+};
+const rowStyle = {
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+};
+const thStyle = {
+  padding: "0.625rem 1rem",
+  fontWeight: 600,
+  fontSize: "0.75rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};
+const tdStyle = {
+  padding: "0.75rem 1rem",
+  verticalAlign: "middle" as const,
+};
+const wordingGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(16rem, 1fr))",
+  gap: "0.75rem",
+};
+const detailsStyle = {
+  paddingBottom: "0.75rem",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+};
+const summaryStyle = {
+  cursor: "pointer",
+  color: "var(--color-on-surface)",
+  fontWeight: 600,
+  fontSize: "0.875rem",
+};
+const paragraphStyle = {
+  margin: 0,
+  color: "var(--color-on-surface)",
+  fontSize: "0.875rem",
+  whiteSpace: "pre-wrap" as const,
+};
+const noteStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.75rem",
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-low)",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.85rem",
+};

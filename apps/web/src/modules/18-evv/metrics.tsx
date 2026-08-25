@@ -1,6 +1,8 @@
 import {
   Button,
   EmptyState,
+  KpiCard,
+  KpiStrip,
   LoadingSpinner,
   PageHeader,
   StatusPill,
@@ -11,8 +13,7 @@ import {
 // Track B / ADR-0030). Spec: docs/design/screens — "Use Dashboard". Org-wide EVV health over a trailing-30-day
 // window: compliant-event rate, late-checkout rate, geofence-deviation rate, GPS-spoof rate, aggregator
 // acceptance rate (the §4.3 EvvMetricsProvider seam computes them SERVER-side; ADR-0030 — no frontend authz).
-// The 7/30/90-day window selector + trend charts fill in as the metrics surface hardens. Reads
-// GET /api/v1/evv/metrics via the typed client. Leaves only (@wardenx/ui).
+// The request still sends a 30-day window, but the currently measured backend rows are all-time.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 
@@ -22,6 +23,15 @@ interface EvvMetrics {
   geofenceDeviationRate: number;
   gpsSpoofingDetectedRate: number;
   aggregatorSubmissionSuccessRate: number;
+}
+
+interface MetricRow {
+  id: string;
+  label: string;
+  value: string;
+  detail: string;
+  tone: "success" | "warning" | "error" | "neutral";
+  measured: boolean;
 }
 
 const pct = (v: number): string => `${(v * 100).toFixed(1)}%`;
@@ -34,7 +44,7 @@ function EvvMetricsDashboard({ title }: { title: string }): JSX.Element {
 
   const window = useMemo(() => {
     const to = new Date();
-    const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000); // trailing 30 days
+    const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
     return { from: from.toISOString(), to: to.toISOString() };
   }, []);
 
@@ -57,6 +67,52 @@ function EvvMetricsDashboard({ title }: { title: string }): JSX.Element {
     void load();
   }, [load]);
 
+  const rows = useMemo<MetricRow[]>(() => {
+    if (!metrics) return [];
+    return [
+      {
+        id: "compliance",
+        label: "Compliant rate",
+        value: "—",
+        detail: "Backend does not expose a real numerator yet",
+        tone: "neutral",
+        measured: false,
+      },
+      {
+        id: "late_checkout",
+        label: "Late-checkout rate",
+        value: "—",
+        detail: "Backend does not expose a real numerator yet",
+        tone: "neutral",
+        measured: false,
+      },
+      {
+        id: "geofence",
+        label: "Geofence-deviation rate",
+        value: pct(metrics.geofenceDeviationRate),
+        detail: "All-time measured rows",
+        tone: metrics.geofenceDeviationRate > 0.05 ? "warning" : "success",
+        measured: true,
+      },
+      {
+        id: "gps_spoof",
+        label: "GPS-spoof rate",
+        value: pct(metrics.gpsSpoofingDetectedRate),
+        detail: "All-time measured rows",
+        tone: metrics.gpsSpoofingDetectedRate > 0 ? "error" : "success",
+        measured: true,
+      },
+      {
+        id: "aggregator",
+        label: "Aggregator acceptance",
+        value: pct(metrics.aggregatorSubmissionSuccessRate),
+        detail: "All-time measured rows",
+        tone: metrics.aggregatorSubmissionSuccessRate >= 0.95 ? "success" : "warning",
+        measured: true,
+      },
+    ];
+  }, [metrics]);
+
   return (
     <WorkQueueLayout
       header={
@@ -74,8 +130,68 @@ function EvvMetricsDashboard({ title }: { title: string }): JSX.Element {
           </div>
         </PageHeader>
       }
+      kpis={
+        <KpiStrip>
+          <KpiCard
+            label="Geofence deviation"
+            value={loading || error || !metrics ? "—" : pct(metrics.geofenceDeviationRate)}
+            detail="All-time measured"
+            tone={metrics && metrics.geofenceDeviationRate > 0.05 ? "warning" : "success"}
+            accentColor={
+              metrics && metrics.geofenceDeviationRate > 0.05
+                ? "var(--color-warning)"
+                : "var(--color-success)"
+            }
+          />
+          <KpiCard
+            label="GPS spoof"
+            value={loading || error || !metrics ? "—" : pct(metrics.gpsSpoofingDetectedRate)}
+            detail="All-time measured"
+            tone={metrics && metrics.gpsSpoofingDetectedRate > 0 ? "danger" : "success"}
+            accentColor={
+              metrics && metrics.gpsSpoofingDetectedRate > 0
+                ? "var(--color-error)"
+                : "var(--color-success)"
+            }
+          />
+          <KpiCard
+            label="Aggregator acceptance"
+            value={
+              loading || error || !metrics ? "—" : pct(metrics.aggregatorSubmissionSuccessRate)
+            }
+            detail="All-time measured"
+            tone={
+              metrics && metrics.aggregatorSubmissionSuccessRate >= 0.95 ? "success" : "warning"
+            }
+            accentColor={
+              metrics && metrics.aggregatorSubmissionSuccessRate >= 0.95
+                ? "var(--color-success)"
+                : "var(--color-warning)"
+            }
+          />
+        </KpiStrip>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          {error ? (
+            <div role="alert" style={errorBannerStyle}>
+              <span>{error}</span>
+              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
+                x
+              </button>
+            </div>
+          ) : null}
+          <div role="note" style={noteStyle}>
+            <StatusPill label="Partial" tone="warning" />
+            <span>
+              Compliance and late-checkout values stay blank until backend numerators are available.
+              The UI does not print hardcoded perfect scores.
+            </span>
+          </div>
+        </div>
+      }
       table={
-        error ? (
+        error && !metrics ? (
           <div style={{ padding: "2rem 1.5rem" }}>
             <EmptyState title="Unavailable" description={error} />
           </div>
@@ -84,47 +200,43 @@ function EvvMetricsDashboard({ title }: { title: string }): JSX.Element {
             <LoadingSpinner />
           </div>
         ) : (
-          <div style={contentStyle}>
-            {/* UI-003 containment (production-readiness audit 2026-08-03): the backend HARDCODES
-                complianceRate:1 / lateCheckoutRate:0 (evv-route-service-db.ts metrics()) — a
-                CMS-mandated program was showing a fixed perfect score. Render "—" until a real
-                numerator exists; never print a fabricated 100%. The three computed rates are real
-                rows but the service ignores the from/to window, so they are all-time, not 30d —
-                the labels say so. */}
-            <section style={sectionStyle}>
-              <div style={sectionHeaderStyle}>
-                <div>
-                  <h2 style={sectionTitleStyle}>EVV Health</h2>
-                  <div style={sectionSubtitleStyle}>
-                    Partial server metrics; measured rows are all-time.
-                  </div>
-                </div>
-                <StatusPill label="Partial" tone="warning" />
-              </div>
-              <div style={factsGridStyle}>
-                <MetricFact label="Compliant rate" value="—" detail="Not yet measured by backend" />
-                <MetricFact
-                  label="Late-checkout rate"
-                  value="—"
-                  detail="Not yet measured by backend"
-                />
-                <MetricFact
-                  label="Geofence-deviation rate"
-                  value={pct(metrics.geofenceDeviationRate)}
-                  detail="All time"
-                />
-                <MetricFact
-                  label="GPS-spoof rate"
-                  value={pct(metrics.gpsSpoofingDetectedRate)}
-                  detail="All time"
-                />
-                <MetricFact
-                  label="Aggregator acceptance"
-                  value={pct(metrics.aggregatorSubmissionSuccessRate)}
-                  detail="All time"
-                />
-              </div>
-            </section>
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr style={headerRowStyle}>
+                  <th style={{ ...thStyle, width: "28%" }}>Metric</th>
+                  <th style={{ ...thStyle, width: "16%" }}>Value</th>
+                  <th style={{ ...thStyle, width: "16%" }}>Status</th>
+                  <th style={{ ...thStyle, width: "20%" }}>Window</th>
+                  <th style={{ ...thStyle, width: "20%", textAlign: "right" }}>Evidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id} style={rowStyle}>
+                    <td style={tdStyle}>
+                      <div style={primaryCellStyle}>
+                        <span style={primaryTextStyle}>{row.label}</span>
+                        <span style={secondaryTextStyle}>{row.detail}</span>
+                      </div>
+                    </td>
+                    <td className="tabular-nums" style={{ ...tdStyle, fontWeight: 700 }}>
+                      {row.value}
+                    </td>
+                    <td style={tdStyle}>
+                      <StatusPill
+                        label={row.measured ? statusLabel(row.tone) : "Not measured"}
+                        tone={row.measured ? row.tone : "neutral"}
+                      />
+                    </td>
+                    <td style={tdStyle}>{row.measured ? "All time" : "Pending backend support"}</td>
+                    <td style={{ ...tdStyle, textAlign: "right" }}>
+                      {row.measured ? "Server computed" : "Suppressed"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )
       }
@@ -133,15 +245,15 @@ function EvvMetricsDashboard({ title }: { title: string }): JSX.Element {
           <section style={railSectionStyle}>
             <h3 style={railTitleStyle}>Measurement Notes</h3>
             <p style={railTextStyle}>
-              Compliance and late-checkout values are intentionally blank until the backend exposes
-              real numerators. The UI does not print hardcoded perfect scores.
+              The request sends a trailing-30-day window, but measured EVV rates currently come back
+              from the service as all-time values.
             </p>
           </section>
           <section style={railSectionStyle}>
-            <h3 style={railTitleStyle}>Window</h3>
+            <h3 style={railTitleStyle}>Privacy Boundary</h3>
             <p style={railTextStyle}>
-              The request sends a trailing-30-day window, but the currently measured EVV rates are
-              returned by the service as all-time values.
+              This dashboard summarizes EVV health only. Coordinate reads remain isolated behind the
+              separate EVV coordinate permission.
             </p>
           </section>
         </div>
@@ -151,20 +263,11 @@ function EvvMetricsDashboard({ title }: { title: string }): JSX.Element {
   );
 }
 
-function MetricFact({
-  label,
-  value,
-  detail,
-}: { label: string; value: string; detail: string }): JSX.Element {
-  return (
-    <div style={factStyle}>
-      <div style={factLabelStyle}>{label}</div>
-      <div className="tabular-nums" style={factValueStyle}>
-        {value}
-      </div>
-      <div style={factDetailStyle}>{detail}</div>
-    </div>
-  );
+function statusLabel(tone: MetricRow["tone"]): string {
+  if (tone === "success") return "Healthy";
+  if (tone === "warning") return "Watch";
+  if (tone === "error") return "Exception";
+  return "Observed";
 }
 
 export function EvvDashboard(): JSX.Element {
@@ -175,90 +278,101 @@ export function EvvMetrics(): JSX.Element {
   return <EvvMetricsDashboard title="EVV Metrics" />;
 }
 
-const contentStyle = {
-  padding: "0 1.5rem 1.5rem",
-  maxWidth: "72rem",
-};
-
-const sectionStyle = {
-  padding: "1rem",
-  borderRadius: "var(--radius-md)",
-  background: "var(--color-surface-lowest)",
-  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
-};
-
-const sectionHeaderStyle = {
+const filterShellStyle = {
   display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: "1rem",
-  marginBottom: "1rem",
-};
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: "1rem",
-  fontWeight: 600,
-  color: "var(--color-on-surface)",
-};
-
-const sectionSubtitleStyle = {
-  marginTop: "0.2rem",
-  fontSize: "0.8rem",
-  color: "var(--color-on-surface-variant)",
-};
-
-const factsGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(11rem, 1fr))",
+  flexDirection: "column" as const,
   gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
 };
-
-const factStyle = {
-  padding: "0.75rem",
+const noteStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.75rem",
+  padding: "0.625rem 1rem",
   borderRadius: "var(--radius-md)",
   background: "var(--color-surface-low)",
-};
-
-const factLabelStyle = {
-  fontSize: "0.75rem",
   color: "var(--color-on-surface-variant)",
+  fontSize: "0.85rem",
 };
-
-const factValueStyle = {
-  marginTop: "0.35rem",
-  fontSize: "1.35rem",
-  fontWeight: 700,
-  color: "var(--color-on-surface)",
+const errorBannerStyle = {
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
+  color: "var(--color-error)",
+  fontSize: "0.85rem",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
 };
-
-const factDetailStyle = {
-  marginTop: "0.25rem",
-  fontSize: "0.75rem",
+const dismissButtonStyle = {
+  border: "none",
+  background: "none",
+  color: "inherit",
+  cursor: "pointer",
+  fontWeight: 600,
+};
+const tableWrapStyle = {
+  width: "100%",
+  overflowX: "auto" as const,
+  padding: "0 1.5rem 1.5rem 1.5rem",
+};
+const tableStyle = {
+  display: "table",
+  width: "100%",
+  borderCollapse: "collapse" as const,
+  fontSize: "0.875rem",
+};
+const headerRowStyle = {
+  textAlign: "left" as const,
   color: "var(--color-on-surface-variant)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  background: "var(--color-surface-low)",
 };
-
+const rowStyle = {
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+};
+const thStyle = {
+  padding: "0.625rem 1rem",
+  fontWeight: 600,
+  fontSize: "0.75rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};
+const tdStyle = {
+  padding: "0.75rem 1rem",
+  verticalAlign: "middle" as const,
+};
+const primaryCellStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.25rem",
+  minWidth: 0,
+};
+const primaryTextStyle = { fontWeight: 600, color: "var(--color-on-surface)" };
+const secondaryTextStyle = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+};
 const detailStyle = {
   display: "flex",
-  flexDirection: "column",
+  flexDirection: "column" as const,
   gap: "0.75rem",
-} as const;
-
+};
 const railSectionStyle = {
   padding: "1rem",
   borderRadius: "var(--radius-md)",
   background: "var(--color-surface-lowest)",
 };
-
 const railTitleStyle = {
   margin: "0 0 0.5rem",
   fontSize: "0.875rem",
   fontWeight: 600,
   color: "var(--color-on-surface)",
 };
-
 const railTextStyle = {
   margin: 0,
-  fontSize: "0.8rem",
   color: "var(--color-on-surface-variant)",
+  fontSize: "0.85rem",
+  lineHeight: 1.45,
 };

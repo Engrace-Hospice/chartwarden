@@ -1,12 +1,13 @@
 import {
+  Button,
   EmptyState,
   KpiCard,
   KpiStrip,
   LoadingSpinner,
+  OffsetPagination,
   PageHeader,
   StatusPill,
-  cardSurface,
-  t,
+  WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
 import type { paths } from "@wardenx/ui";
@@ -21,7 +22,7 @@ import type { paths } from "@wardenx/ui";
 // "not meeting target". A measure below the CMS reportable-denominator floor has NO verdict; counting it
 // as a miss would invent one, and counting it as a pass would hide one.
 import { useEffect, useMemo, useState } from "react";
-import type { CSSProperties, JSX } from "react";
+import type { JSX } from "react";
 import {
   COP_STATUS_TONE,
   DOMAIN_LABEL,
@@ -33,29 +34,10 @@ import {
   toneOf,
 } from "./quality-status";
 
-// Rows come from the GENERATED client, not a hand-written mirror — see the note in qapi-incidents.tsx
-// for what the local interfaces cost. Here they widened `bandColor` and `status` to `string`, which is
-// how `MEASURE_BAND_TONE`'s `amber` key (the server emits `yellow`) survived review: every wrong
-// literal is a valid `string`, so nothing objected and yellow-band measures rendered untoned.
 type MeasureRow =
   paths["/api/v1/quality/measures"]["get"]["responses"][200]["content"]["application/json"]["items"][number];
 type CitationRow =
   paths["/api/v1/quality/cop/citations"]["get"]["responses"][200]["content"]["application/json"]["items"][number];
-
-const cell: CSSProperties = {
-  padding: "0.55rem 0.75rem",
-  textAlign: "left",
-  verticalAlign: "middle",
-};
-const head: CSSProperties = {
-  ...cell,
-  fontSize: "0.72rem",
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-  color: t.onSurfaceVariant,
-  fontWeight: 600,
-};
-const row: CSSProperties = { borderTop: `1px solid ${t.surfaceContainer}` };
 
 /** The §4.12 page bound M30's list queries enforce (`PageQuery.limit` max). Exceeding it is a 422. */
 const MAX_PAGE = 100;
@@ -64,6 +46,11 @@ export function QualityHub(): JSX.Element {
   const client = useApiClient();
   const [measures, setMeasures] = useState<MeasureRow[]>([]);
   const [citations, setCitations] = useState<CitationRow[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [domain, setDomain] = useState("");
+  const [band, setBand] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,7 +64,10 @@ export function QualityHub(): JSX.Element {
       ]);
       if (!active) return;
       if (mRes.error) setError(readErrorMessage(mRes.response?.status, "quality.measure.read"));
-      else setMeasures(mRes.data?.items ?? []);
+      else {
+        setError(null);
+        setMeasures(mRes.data?.items ?? []);
+      }
       if (!cRes.error) setCitations(cRes.data?.items ?? []);
       setLoading(false);
     })();
@@ -106,125 +96,462 @@ export function QualityHub(): JSX.Element {
     [citations],
   );
 
+  const domainOptions = useMemo(
+    () => [...new Set(measures.map((m) => m.domain).filter(Boolean))].sort(),
+    [measures],
+  );
+
+  const filteredMeasures = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return measures.filter((m) => {
+      const currentBand = m.latestValue?.bandColor ?? "not_computed";
+      const matchesDomain = !domain || m.domain === domain;
+      const matchesBand = !band || currentBand === band;
+      const matchesSearch =
+        !q ||
+        m.measureId.toLowerCase().includes(q) ||
+        m.displayName.toLowerCase().includes(q) ||
+        m.domain.toLowerCase().includes(q) ||
+        currentBand.toLowerCase().includes(q);
+      return matchesDomain && matchesBand && matchesSearch;
+    });
+  }, [measures, band, domain, searchQuery]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredMeasures.length / pageSize));
+  const activePage = Math.min(page, pageCount);
+  const pagedMeasures = filteredMeasures.slice((activePage - 1) * pageSize, activePage * pageSize);
+  const activeFilters = [searchQuery.trim() !== "", domain !== "", band !== ""].filter(
+    Boolean,
+  ).length;
+
+  const clearFilters = (): void => {
+    setSearchQuery("");
+    setDomain("");
+    setBand("");
+    setPage(1);
+  };
+
   return (
-    <>
-      <PageHeader title="Quality">
-        <p style={{ margin: 0, color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
-          HQRP measures and Conditions of Participation posture.
-        </p>
-      </PageHeader>
-
-      <KpiStrip>
-        <KpiCard label="Meeting target" value={loading ? "—" : String(kpis.meeting)} />
-        <KpiCard label="Below target" value={loading ? "—" : String(kpis.missing)} />
-        <KpiCard label="Suppressed (low N)" value={loading ? "—" : String(kpis.suppressed)} />
-        <KpiCard label="Not yet computed" value={loading ? "—" : String(kpis.uncomputed)} />
-        <KpiCard label="CoP at risk / deficient" value={loading ? "—" : String(deficient)} />
-      </KpiStrip>
-
-      <section style={{ ...cardSurface, marginInline: t.space5 }}>
-        <h2 style={{ margin: 0, fontSize: "1.05rem" }}>Measures</h2>
-        <p style={{ margin: "0.25rem 0 1rem", color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
-          Latest computed value per measure. The population is shown beside every rate — a rate
-          without its denominator cannot be judged, and a suppressed measure shows “—”, never 0%.
-        </p>
-        {loading ? (
-          <LoadingSpinner />
+    <WorkQueueLayout
+      header={
+        <PageHeader title="Quality" breadcrumb="Compliance / Quality">
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            HQRP measures and Conditions of Participation posture.
+          </div>
+        </PageHeader>
+      }
+      kpis={
+        <KpiStrip>
+          <KpiCard
+            label="Meeting target"
+            value={loading ? "—" : String(kpis.meeting)}
+            detail="Threshold met"
+            tone={kpis.meeting > 0 ? "success" : "neutral"}
+            accentColor={kpis.meeting > 0 ? "var(--color-success)" : "var(--color-outline-variant)"}
+          />
+          <KpiCard
+            label="Below target"
+            value={loading ? "—" : String(kpis.missing)}
+            detail="Needs attention"
+            tone={kpis.missing > 0 ? "danger" : "neutral"}
+            accentColor={kpis.missing > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
+            selected={band === "red"}
+            onSelect={() => {
+              setBand("red");
+              setPage(1);
+            }}
+          />
+          <KpiCard
+            label="Suppressed (low N)"
+            value={loading ? "—" : String(kpis.suppressed)}
+            detail="Low denominator"
+            tone="neutral"
+            accentColor="var(--color-outline-variant)"
+            selected={band === "insufficient_n"}
+            onSelect={() => {
+              setBand("insufficient_n");
+              setPage(1);
+            }}
+          />
+          <KpiCard
+            label="Not yet computed"
+            value={loading ? "—" : String(kpis.uncomputed)}
+            detail="Awaiting worker"
+            tone={kpis.uncomputed > 0 ? "warning" : "neutral"}
+            accentColor={
+              kpis.uncomputed > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
+            }
+            selected={band === "not_computed"}
+            onSelect={() => {
+              setBand("not_computed");
+              setPage(1);
+            }}
+          />
+          <KpiCard
+            label="CoP at risk / deficient"
+            value={loading ? "—" : String(deficient)}
+            detail="At risk or deficient"
+            tone={deficient > 0 ? "danger" : "neutral"}
+            accentColor={deficient > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
+          />
+        </KpiStrip>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          {error ? (
+            <div role="alert" style={errorBannerStyle}>
+              <span>{error}</span>
+              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
+                x
+              </button>
+            </div>
+          ) : null}
+          <div style={toolbarStyle}>
+            <div style={toolbarTitleStyle}>
+              <span style={toolbarEyebrowStyle}>Measures</span>
+              <strong>{filteredMeasures.length} matching measures</strong>
+            </div>
+            <div style={controlGroupStyle}>
+              <div style={searchWrapStyle}>
+                <input
+                  type="search"
+                  placeholder="Search measure, domain, band..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setPage(1);
+                  }}
+                  aria-label="Search quality measures"
+                  style={searchInputStyle}
+                />
+              </div>
+              <select
+                aria-label="Measure domain"
+                value={domain}
+                onChange={(e) => {
+                  setDomain(e.target.value);
+                  setPage(1);
+                }}
+                style={selectStyle}
+              >
+                <option value="">Domain: All</option>
+                {domainOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {DOMAIN_LABEL[option] ?? humanize(option)}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Measure band"
+                value={band}
+                onChange={(e) => {
+                  setBand(e.target.value);
+                  setPage(1);
+                }}
+                style={selectStyle}
+              >
+                <option value="">Band: All</option>
+                <option value="green">Green</option>
+                <option value="yellow">Yellow</option>
+                <option value="red">Red</option>
+                <option value="insufficient_n">Suppressed</option>
+                <option value="not_computed">Not computed</option>
+              </select>
+              {activeFilters > 0 ? (
+                <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                  Clear
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      }
+      table={
+        loading ? (
+          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+            <LoadingSpinner />
+          </div>
         ) : error ? (
-          <EmptyState title="Unavailable" description={error} />
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState title="Unavailable" description={error} />
+          </div>
         ) : measures.length === 0 ? (
-          <EmptyState
-            title="No measures computed"
-            description="Nothing has been computed for this fiscal year yet. Measures land as the recompute worker runs."
-          />
+          <div style={{ padding: "2rem 1.5rem" }}>
+            <EmptyState
+              title="No measures computed"
+              description="Nothing has been computed for this fiscal year yet. Measures land as the recompute worker runs."
+            />
+          </div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={head}>Measure</th>
-                <th style={head}>Domain</th>
-                <th style={head}>FY</th>
-                <th style={head}>Rate</th>
-                <th style={head}>Population</th>
-                <th style={head}>Band</th>
-              </tr>
-            </thead>
-            <tbody>
-              {measures.map((m) => (
-                <tr key={m.measureId} style={row}>
-                  <td style={cell}>{m.displayName}</td>
-                  <td style={cell}>{DOMAIN_LABEL[m.domain] ?? humanize(m.domain)}</td>
-                  <td style={cell}>{m.fiscalYear}</td>
-                  <td style={cell}>
-                    {m.latestValue ? ratePct(m.latestValue.rate, m.latestValue.bandColor) : "—"}
-                  </td>
-                  <td style={cell}>
-                    {m.latestValue
-                      ? fraction(m.latestValue.numerator, m.latestValue.denominator)
-                      : "—"}
-                  </td>
-                  <td style={cell}>
-                    {m.latestValue ? (
-                      <StatusPill
-                        tone={toneOf(MEASURE_BAND_TONE, m.latestValue.bandColor)}
-                        label={
-                          m.latestValue.bandColor === "insufficient_n"
-                            ? "Suppressed"
-                            : humanize(m.latestValue.bandColor)
-                        }
-                      />
-                    ) : (
-                      <StatusPill tone="neutral" label="Not computed" />
-                    )}
-                  </td>
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr style={headerRowStyle}>
+                  <th style={{ ...thStyle, width: "32%" }}>Measure</th>
+                  <th style={{ ...thStyle, width: "14%" }}>Domain</th>
+                  <th style={{ ...thStyle, width: "10%" }}>FY</th>
+                  <th style={{ ...thStyle, width: "12%" }}>Rate</th>
+                  <th style={{ ...thStyle, width: "14%" }}>Population</th>
+                  <th style={{ ...thStyle, width: "18%", textAlign: "right" }}>Band</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      <section style={{ ...cardSurface, marginTop: "1rem", marginInline: t.space5 }}>
-        <h2 style={{ margin: 0, fontSize: "1.05rem" }}>Conditions of Participation</h2>
-        <p style={{ margin: "0.25rem 0 1rem", color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
-          Survey citation posture. A deficiency is grounds for termination under 418.310, so it
-          reads as an error, not a warning.
-        </p>
-        {citations.length === 0 ? (
-          <EmptyState
-            title="No citations"
-            description="No CoP citations are on file for this agency."
-          />
-        ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={head}>Ref</th>
-                <th style={head}>Condition</th>
-                <th style={head}>Status</th>
-                <th style={head}>Last reviewed</th>
-                <th style={head}>Next due</th>
-              </tr>
-            </thead>
-            <tbody>
-              {citations.map((c) => (
-                <tr key={c.citationId} style={row}>
-                  <td style={cell}>{c.citationRef}</td>
-                  <td style={cell}>{c.displayName}</td>
-                  <td style={cell}>
-                    <StatusPill
-                      tone={toneOf(COP_STATUS_TONE, c.status)}
-                      label={humanize(c.status)}
-                    />
-                  </td>
-                  <td style={cell}>{c.lastReviewedAt?.slice(0, 10) ?? "—"}</td>
-                  <td style={cell}>{c.nextReviewDueAt?.slice(0, 10) ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-    </>
+              </thead>
+              <tbody>
+                {pagedMeasures.map((m) => (
+                  <tr key={m.measureId} style={rowStyle}>
+                    <td style={tdStyle}>
+                      <div style={primaryCellStyle}>
+                        <span style={primaryTextStyle}>{m.displayName}</span>
+                        <code className="wx-data-md" style={codeStyle}>
+                          {m.measureId}
+                        </code>
+                      </div>
+                    </td>
+                    <td style={tdStyle}>{DOMAIN_LABEL[m.domain] ?? humanize(m.domain)}</td>
+                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                      {m.fiscalYear}
+                    </td>
+                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                      {m.latestValue ? ratePct(m.latestValue.rate, m.latestValue.bandColor) : "—"}
+                    </td>
+                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                      {m.latestValue
+                        ? fraction(m.latestValue.numerator, m.latestValue.denominator)
+                        : "—"}
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: "right" }}>
+                      {m.latestValue ? (
+                        <StatusPill
+                          tone={toneOf(MEASURE_BAND_TONE, m.latestValue.bandColor)}
+                          label={
+                            m.latestValue.bandColor === "insufficient_n"
+                              ? "Suppressed"
+                              : humanize(m.latestValue.bandColor)
+                          }
+                        />
+                      ) : (
+                        <StatusPill tone="neutral" label="Not computed" />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <OffsetPagination
+              page={activePage}
+              pageSize={pageSize}
+              totalItems={filteredMeasures.length}
+              onPageChange={setPage}
+              onPageSizeChange={(nextPageSize) => {
+                setPageSize(nextPageSize);
+                setPage(1);
+              }}
+              pageSizeOptions={QUALITY_PAGE_SIZES}
+              noun="measures"
+            />
+            <section style={{ paddingTop: "1rem" }}>
+              <h2 style={sectionTitleStyle}>Conditions of Participation</h2>
+              {citations.length === 0 ? (
+                <div style={{ padding: "1rem 0" }}>
+                  <EmptyState
+                    title="No citations"
+                    description="No CoP citations are on file for this agency."
+                  />
+                </div>
+              ) : (
+                <table style={tableStyle}>
+                  <thead>
+                    <tr style={headerRowStyle}>
+                      <th style={{ ...thStyle, width: "18%" }}>Ref</th>
+                      <th style={{ ...thStyle, width: "34%" }}>Condition</th>
+                      <th style={{ ...thStyle, width: "16%" }}>Status</th>
+                      <th style={{ ...thStyle, width: "16%" }}>Last reviewed</th>
+                      <th style={{ ...thStyle, width: "16%", textAlign: "right" }}>Next due</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {citations.map((c) => (
+                      <tr key={c.citationId} style={rowStyle}>
+                        <td style={tdStyle}>{c.citationRef}</td>
+                        <td style={tdStyle}>{c.displayName}</td>
+                        <td style={tdStyle}>
+                          <StatusPill
+                            tone={toneOf(COP_STATUS_TONE, c.status)}
+                            label={humanize(c.status)}
+                          />
+                        </td>
+                        <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                          {formatDate(c.lastReviewedAt)}
+                        </td>
+                        <td
+                          style={{
+                            ...tdStyle,
+                            textAlign: "right",
+                            fontVariantNumeric: "tabular-nums",
+                          }}
+                        >
+                          {formatDate(c.nextReviewDueAt)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+          </div>
+        )
+      }
+      fullPageScroll
+    />
   );
 }
+
+const QUALITY_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
+
+function formatDate(iso?: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+const filterShellStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+
+const toolbarStyle = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+};
+
+const toolbarTitleStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.125rem",
+  color: "var(--color-on-surface)",
+  fontSize: "0.875rem",
+};
+
+const toolbarEyebrowStyle = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};
+
+const controlGroupStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  flexWrap: "wrap" as const,
+};
+
+const searchWrapStyle = {
+  minWidth: "15rem",
+};
+
+const searchInputStyle = {
+  width: "100%",
+  height: "2.25rem",
+  fontSize: "0.85rem",
+};
+
+const selectStyle = {
+  height: "2.25rem",
+  fontSize: "0.85rem",
+  cursor: "pointer",
+};
+
+const errorBannerStyle = {
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
+  color: "var(--color-error)",
+  fontSize: "0.85rem",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+};
+
+const dismissButtonStyle = {
+  border: "none",
+  background: "none",
+  color: "inherit",
+  cursor: "pointer",
+  fontWeight: 600,
+};
+
+const tableWrapStyle = {
+  width: "100%",
+  overflowX: "auto" as const,
+  padding: "0 1.5rem 1.5rem 1.5rem",
+};
+
+const tableStyle = {
+  display: "table",
+  width: "100%",
+  borderCollapse: "collapse" as const,
+  fontSize: "0.875rem",
+};
+
+const headerRowStyle = {
+  textAlign: "left" as const,
+  color: "var(--color-on-surface-variant)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  background: "var(--color-surface-low)",
+};
+
+const rowStyle = {
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+};
+
+const thStyle = {
+  padding: "0.625rem 1rem",
+  fontWeight: 600,
+  fontSize: "0.75rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+};
+
+const tdStyle = {
+  padding: "0.75rem 1rem",
+  verticalAlign: "middle" as const,
+};
+
+const primaryCellStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.25rem",
+  minWidth: 0,
+};
+
+const primaryTextStyle = {
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+};
+
+const codeStyle = {
+  display: "inline-block",
+  maxWidth: "18rem",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap" as const,
+  color: "var(--color-on-surface-variant)",
+  background: "var(--color-surface-container)",
+  borderRadius: "var(--radius-sm)",
+  padding: "0.1rem 0.3rem",
+  fontSize: "0.75rem",
+};
+
+const sectionTitleStyle = {
+  margin: "0 0 0.75rem",
+  fontSize: "1.05rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+};
