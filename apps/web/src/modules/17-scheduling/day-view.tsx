@@ -7,7 +7,7 @@ import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient }
 // from `?membership=`, the date from `?date=` (defaults to today). Reads GET /api/v1/day-view via the typed
 // client. Leaves only (@wardenx/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { type VisitRow, VisitRows } from "./visit-table";
 
@@ -47,21 +47,75 @@ export function SchedulingDay(): JSX.Element {
       ),
     [visits],
   );
-
   return (
     <WorkQueueLayout
-      header={<PageHeader title={`Day View — ${date}`} />}
+      header={
+        <PageHeader title="Day View" breadcrumb="Scheduling">
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Scheduled visits for {date}
+            {membership ? `, scoped to clinician ${membership.slice(0, 8)}` : ""}.
+          </div>
+        </PageHeader>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          <div style={infoBannerStyle}>
+            Reads are server-scoped by date and optional membership query parameters. Drag/drop
+            reschedule and publish actions remain outside this read-only view.
+          </div>
+        </div>
+      }
       table={
         error ? (
-          <EmptyState title="Unavailable" description={error} />
+          <div style={emptyShellStyle}>
+            <EmptyState title="Unavailable" description={error} />
+          </div>
         ) : loading && visits.length === 0 ? (
-          <LoadingSpinner />
+          <div style={loadingShellStyle}>
+            <LoadingSpinner />
+          </div>
         ) : sorted.length === 0 ? (
-          <EmptyState title="No visits" description="No visits are scheduled for this day." />
+          <div style={emptyShellStyle}>
+            <EmptyState title="No visits" description="No visits are scheduled for this day." />
+          </div>
         ) : (
-          <VisitRows visits={sorted} onSelect={(id) => navigate(`/scheduling/visits/${id}`)} />
+          <div style={tableShellStyle}>
+            <VisitRows visits={sorted} onSelect={(id) => navigate(`/scheduling/visits/${id}`)} />
+          </div>
         )
       }
+      fullPageScroll
     />
   );
 }
+
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+
+const tableShellStyle: CSSProperties = {
+  width: "100%",
+  overflowX: "auto",
+  padding: "0 1.5rem 1.5rem",
+};
+
+const emptyShellStyle: CSSProperties = {
+  padding: "2rem 1.5rem",
+};
+
+const loadingShellStyle: CSSProperties = {
+  padding: "2.5rem 1.5rem",
+  textAlign: "center",
+};
+
+const infoBannerStyle: CSSProperties = {
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)",
+  background: "var(--color-primary-tint)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+};

@@ -20,6 +20,7 @@ import {
 // Backed by GET/POST /api/v1/medicaid-eligibility-checks. Lantern: WorkQueueLayout + No-Line table (§6.7).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { PatientLookupField, PatientPayerLookupField } from "../../shared/entity-lookups";
 import { ELIGIBILITY_OUTCOME_TONE, humanize, shortDate, shortId, toneOf } from "./medicaid-status";
 import {
   FilterRow,
@@ -220,27 +221,27 @@ export function MedicaidEligibilityCenter(): JSX.Element {
                 <Glyph name="eye" size={14} />
               </div>
             </div>
-            <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-              <span style={mutedStyle}>Patient id</span>
-              <input
-                aria-label="Patient id"
+            <div style={{ minWidth: "16rem" }}>
+              <PatientLookupField
+                label="Patient"
                 value={patientId}
-                onChange={(e) => {
-                  setPatientId(e.target.value);
+                onChange={(value) => {
+                  setPatientId(value);
+                  setPayerId("");
                   setPage(1);
                 }}
-                style={inputStyle}
               />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-              <span style={mutedStyle}>Patient payer id</span>
-              <input
-                aria-label="Patient payer id"
+            </div>
+            <div style={{ minWidth: "16rem" }}>
+              <PatientPayerLookupField
+                label="Patient payer"
                 value={payerId}
-                onChange={(e) => setPayerId(e.target.value)}
-                style={inputStyle}
+                onChange={setPayerId}
+                patientId={patientId}
+                disabled={!UUID_RE.test(patientId)}
+                hint={!UUID_RE.test(patientId) ? "Select a patient first." : undefined}
               />
-            </label>
+            </div>
             <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
               <span style={mutedStyle}>As of service date</span>
               <input

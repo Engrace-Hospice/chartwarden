@@ -22,6 +22,13 @@ export type {
 export { DegradedBanner } from "./components/degraded-banner";
 export { EmptyState } from "./components/empty-state";
 export type { EmptyStateProps } from "./components/empty-state";
+export { EntityLookupField } from "./components/entity-lookup-field";
+export type {
+  EntityLookupFieldProps,
+  EntityLookupLoadInput,
+  EntityLookupLoadResult,
+  EntityLookupOption,
+} from "./components/entity-lookup-field";
 export { ErrorBoundary } from "./components/error-boundary";
 export type { ErrorBoundaryProps } from "./components/error-boundary";
 export { ErrorState } from "./components/error-state";

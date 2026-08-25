@@ -27,6 +27,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { PatientLookupField, ProviderEntityLookupField } from "../../shared/entity-lookups";
 import { claimStateTone, dollars, statusLabel, tobLabel } from "./billing-status";
 import { authFailureRedirect } from "./write-workflow";
 
@@ -164,17 +165,16 @@ export function ClaimWorkbench(): JSX.Element {
           }
         >
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Review Medicare claims, submit ready claims, and open replace or void ceremonies from the editor.
+            Review Medicare claims, submit ready claims, and open replace or void ceremonies from
+            the editor.
           </div>
         </PageHeader>
       }
       filters={
         <FilterBar
-          activeFilterCount={[
-            filters.state,
-            filters.providerEntityId,
-            filters.patientId,
-          ].filter(Boolean).length}
+          activeFilterCount={
+            [filters.state, filters.providerEntityId, filters.patientId].filter(Boolean).length
+          }
           onClear={() => setFilters({ state: "", providerEntityId: "", patientId: "" })}
           actions={
             <span style={{ color: "var(--color-on-surface-variant)", fontSize: "0.8125rem" }}>
@@ -195,29 +195,19 @@ export function ClaimWorkbench(): JSX.Element {
               </option>
             ))}
           </select>
-          <div style={{ position: "relative", minWidth: "15rem" }}>
-            <input
-              aria-label="Provider entity id"
-              placeholder="Provider entity..."
+          <div style={{ minWidth: "15rem" }}>
+            <ProviderEntityLookupField
+              label="Provider entity"
               value={filters.providerEntityId}
-              onChange={(e) => setFilters((f) => ({ ...f, providerEntityId: e.target.value }))}
-              style={{ ...inputStyle, width: "100%", paddingLeft: "2rem" }}
+              onChange={(v) => setFilters((f) => ({ ...f, providerEntityId: v }))}
             />
-            <div style={inputIconStyle}>
-              <Glyph name="shield" size={14} />
-            </div>
           </div>
-          <div style={{ position: "relative", minWidth: "15rem" }}>
-            <input
-              aria-label="Patient id"
-              placeholder="Patient..."
+          <div style={{ minWidth: "15rem" }}>
+            <PatientLookupField
+              label="Patient"
               value={filters.patientId}
-              onChange={(e) => setFilters((f) => ({ ...f, patientId: e.target.value }))}
-              style={{ ...inputStyle, width: "100%", paddingLeft: "2rem" }}
+              onChange={(v) => setFilters((f) => ({ ...f, patientId: v }))}
             />
-            <div style={inputIconStyle}>
-              <Glyph name="user" size={14} />
-            </div>
           </div>
         </FilterBar>
       }
@@ -286,7 +276,9 @@ function ClaimTable({
   onSelect: (c: ClaimSummary) => void;
 }): JSX.Element {
   return (
-    <table style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+    <table
+      style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}
+    >
       <thead>
         <tr
           style={{

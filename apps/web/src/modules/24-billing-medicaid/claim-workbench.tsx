@@ -19,6 +19,7 @@ import {
 // (§6.7) + §6.6 StatusPill via medicaid-status.ts; mono control numbers; CSS-var tokens only.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { MdmEntityLookupField, PatientLookupField } from "../../shared/entity-lookups";
 import {
   CLAIM_STATE_TONE,
   humanize,
@@ -314,39 +315,11 @@ export function MedicaidClaimWorkbench(): JSX.Element {
                 <Glyph name="shield" size={14} />
               </span>
             </div>
-            <div style={{ position: "relative", minWidth: "12rem" }}>
-              <input
-                aria-label="MCO id"
-                value={mcoId}
-                placeholder="MCO UUID..."
-                onChange={(e) => setMcoId(e.target.value)}
-                style={{
-                  ...inputStyle,
-                  width: "100%",
-                  paddingLeft: "2rem",
-                  fontFamily: "var(--font-mono)",
-                }}
-              />
-              <span style={inputIconStyle}>
-                <Glyph name="search" size={14} />
-              </span>
+            <div style={{ minWidth: "12rem" }}>
+              <MdmEntityLookupField kind="payer" label="MCO" value={mcoId} onChange={setMcoId} />
             </div>
-            <div style={{ position: "relative", minWidth: "12rem" }}>
-              <input
-                aria-label="Patient id"
-                value={patientId}
-                placeholder="Patient UUID..."
-                onChange={(e) => setPatientId(e.target.value)}
-                style={{
-                  ...inputStyle,
-                  width: "100%",
-                  paddingLeft: "2rem",
-                  fontFamily: "var(--font-mono)",
-                }}
-              />
-              <span style={inputIconStyle}>
-                <Glyph name="user" size={14} />
-              </span>
+            <div style={{ minWidth: "12rem" }}>
+              <PatientLookupField label="Patient" value={patientId} onChange={setPatientId} />
             </div>
           </FilterBar>
           {actionError ? (
@@ -412,6 +385,7 @@ export function MedicaidClaimWorkbench(): JSX.Element {
                   return (
                     <tr
                       key={r.id}
+                      tabIndex={0}
                       style={{
                         ...enhancedRowLine,
                         background: active ? "var(--color-primary-tint)" : "transparent",
@@ -419,8 +393,18 @@ export function MedicaidClaimWorkbench(): JSX.Element {
                       }}
                       className="wx-data-row-interactive"
                       onClick={() => setSelectedPreviewId(r.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedPreviewId(r.id);
+                        }
+                      }}
                     >
-                      <td style={td} onClick={(e) => e.stopPropagation()}>
+                      <td
+                        style={td}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
                         <input
                           type="checkbox"
                           checked={selected.has(r.id)}

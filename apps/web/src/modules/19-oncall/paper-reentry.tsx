@@ -15,9 +15,17 @@
 // A WORKLIST ROW EXPIRES. §2.7 gives the row a TTL; after it lapses the re-entry path closes and the
 // outage becomes a documented gap rather than a set of calls that appear days later. The screen sorts by
 // expiry and marks what is close, because "we ran out of time to type it in" is a finding, not a filing.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  t,
+  useApiClient,
+} from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
 import {
   type PaperReentryWorklistView,
@@ -38,21 +46,17 @@ import {
   toInstant,
 } from "./oncall-status";
 import {
-  Card,
-  CountGrid,
   Modal,
   Notice,
   SelectField,
   TextAreaField,
   TextField,
   alertStyle,
-  columnStyle,
   disabledButtonStyle,
   enumOptions,
   ghostButtonStyle,
   linkStyle,
   mutedStyle,
-  pageTitleStyle,
   primaryButtonStyle,
   rowLine,
   tableStyle,
@@ -117,9 +121,9 @@ export function PaperReentryWorklistScreen(): JSX.Element {
   if (loading) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
 
-  const outstanding = rows.filter((r) => r.reenteredAt === null);
-  const expiringSoon = outstanding.filter((r) => minutesUntil(r.expiresAt) < 12 * 60).length;
-  const lapsed = outstanding.filter((r) => minutesUntil(r.expiresAt) <= 0).length;
+  const lapsed = rows.filter(
+    (r) => r.reenteredAt === null && minutesUntil(r.expiresAt) <= 0,
+  ).length;
   const sorted = [...rows].sort((a, b) => a.expiresAt.localeCompare(b.expiresAt));
 
   const anchorValid =
@@ -157,128 +161,131 @@ export function PaperReentryWorklistScreen(): JSX.Element {
   }
 
   return (
-    <div style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>Paper re-entry</span>}
-        breadcrumb="On-call triage · business continuity"
-        actions={
-          <Link to="/triage" style={ghostButtonStyle}>
-            Triage queue
-          </Link>
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader
+            title="Paper re-entry"
+            breadcrumb="On-call triage / Business continuity"
+            actions={
+              <Link to="/triage" style={linkButtonStyle}>
+                Triage queue
+              </Link>
+            }
+          >
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Re-enter calls taken on paper during outage windows, bounded by documented continuity
+              evidence.
+            </div>
+          </PageHeader>
         }
-      />
-
-      <Notice tone="warning">
-        <strong>This is the one write that back-dates a call.</strong> It exists so that calls taken
-        on paper during an outage enter the record with the time they actually happened — and it is
-        gated by its own permission and a step-up, because the same capability is how a coverage gap
-        would be hidden. Each entry is bounded by the outage window it is filed against; the server
-        refuses an instant outside it.
-      </Notice>
-
-      <Card title="Worklist">
-        <CountGrid
-          entries={[
-            { label: "Rows", value: rows.length },
-            { label: "Outstanding", value: outstanding.length },
-            {
-              label: "Expiring within 12h",
-              value: expiringSoon,
-              tone: expiringSoon > 0 ? "error" : undefined,
-            },
-            { label: "Lapsed", value: lapsed, tone: lapsed > 0 ? "error" : undefined },
-          ]}
-        />
-        {lapsed > 0 ? (
-          <Notice tone="error" live>
-            {lapsed} window{lapsed === 1 ? " has" : "s have"} lapsed. The re-entry path is closed
-            for those: what was on paper stays on paper, and the outage is a documented gap rather
-            than a set of calls that appear days later with a time nobody can corroborate.
-          </Notice>
-        ) : null}
-      </Card>
-
-      <Card title="Outage windows">
-        {sorted.length === 0 ? (
-          <span style={mutedStyle}>
-            Nothing is outstanding. A worklist row is created when an outage window closes — an
-            empty list means no outage has left calls on paper.
-          </span>
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Window</th>
-                <th style={th}>Provider entity</th>
-                <th style={th}>Shift</th>
-                <th style={th}>Assigned to</th>
-                <th style={thNum}>Expires in</th>
-                <th style={th}>Re-entered</th>
-                <th style={th}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((r) => {
-                const remaining = minutesUntil(r.expiresAt);
-                const done = r.reenteredAt !== null;
-                return (
-                  <tr key={r.id} style={rowLine}>
-                    <td style={td}>
-                      {dateTime(r.shiftStartsAt)} → {dateTime(r.shiftEndsAt)}
-                    </td>
-                    <td style={{ ...td, fontFamily: t.fontMono }}>{shortId(r.providerEntityId)}</td>
-                    <td style={{ ...td, fontFamily: t.fontMono }}>{shortId(r.shiftId)}</td>
-                    <td style={{ ...td, fontFamily: t.fontMono }}>
-                      {shortId(r.assignedToMembershipId)}
-                    </td>
-                    <td style={tdNum}>
-                      {remaining > 0 ? (
-                        durationLabel(remaining)
-                      ) : (
-                        <StatusPill label="Lapsed" tone="error" />
-                      )}
-                    </td>
-                    <td style={td}>
-                      {done ? (
-                        r.linkedTriageCallId ? (
-                          <Link to={`/triage/calls/${r.linkedTriageCallId}`} style={linkStyle}>
-                            {dateTime(r.reenteredAt)}
-                          </Link>
-                        ) : (
-                          dateTime(r.reenteredAt)
-                        )
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td style={td}>
-                      {done ? (
-                        <span style={mutedStyle}>filed</span>
-                      ) : remaining <= 0 ? (
-                        <span style={mutedStyle}>window closed</span>
-                      ) : (
-                        <button
-                          type="button"
-                          style={busy ? disabledButtonStyle : primaryButtonStyle}
-                          disabled={busy}
-                          onClick={() => {
-                            setEntering(r);
-                            setOpenedAt(localFromInstant(r.shiftStartsAt));
-                          }}
-                        >
-                          Re-enter a call
-                        </button>
-                      )}
-                    </td>
+        filters={
+          <div style={filterShellStyle}>
+            <Notice tone="warning">
+              <strong>This is the one write that back-dates a call.</strong> It exists so that calls
+              taken on paper during an outage enter the record with the time they actually happened.
+              Each entry is bounded by the outage window it is filed against.
+            </Notice>
+            {lapsed > 0 ? (
+              <Notice tone="error" live>
+                {lapsed} window{lapsed === 1 ? " has" : "s have"} lapsed. The re-entry path is
+                closed for those; the outage is now a documented gap.
+              </Notice>
+            ) : null}
+            {actionError ? (
+              <div role="alert" style={errorBannerStyle}>
+                {actionError}
+              </div>
+            ) : null}
+          </div>
+        }
+        table={
+          <div style={tableShellStyle}>
+            {sorted.length === 0 ? (
+              <div style={emptyShellStyle}>
+                <EmptyState
+                  title="No paper re-entry rows"
+                  description="No outage window has left calls on paper."
+                />
+              </div>
+            ) : (
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={tableHeadRowStyle}>
+                    <th style={th}>Window</th>
+                    <th style={th}>Provider entity</th>
+                    <th style={th}>Shift</th>
+                    <th style={th}>Assigned to</th>
+                    <th style={thNum}>Expires in</th>
+                    <th style={th}>Re-entered</th>
+                    <th style={th}>Action</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </Card>
-
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+                </thead>
+                <tbody>
+                  {sorted.map((r) => {
+                    const remaining = minutesUntil(r.expiresAt);
+                    const done = r.reenteredAt !== null;
+                    return (
+                      <tr key={r.id} style={rowLine}>
+                        <td style={td}>
+                          {dateTime(r.shiftStartsAt)} → {dateTime(r.shiftEndsAt)}
+                        </td>
+                        <td style={{ ...td, fontFamily: t.fontMono }}>
+                          {shortId(r.providerEntityId)}
+                        </td>
+                        <td style={{ ...td, fontFamily: t.fontMono }}>{shortId(r.shiftId)}</td>
+                        <td style={{ ...td, fontFamily: t.fontMono }}>
+                          {shortId(r.assignedToMembershipId)}
+                        </td>
+                        <td style={tdNum}>
+                          {remaining > 0 ? (
+                            durationLabel(remaining)
+                          ) : (
+                            <StatusPill label="Lapsed" tone="error" />
+                          )}
+                        </td>
+                        <td style={td}>
+                          {done ? (
+                            r.linkedTriageCallId ? (
+                              <Link to={`/triage/calls/${r.linkedTriageCallId}`} style={linkStyle}>
+                                {dateTime(r.reenteredAt)}
+                              </Link>
+                            ) : (
+                              dateTime(r.reenteredAt)
+                            )
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td style={td}>
+                          {done ? (
+                            <span style={mutedStyle}>filed</span>
+                          ) : remaining <= 0 ? (
+                            <span style={mutedStyle}>window closed</span>
+                          ) : (
+                            <button
+                              type="button"
+                              style={busy ? disabledButtonCompactStyle : primaryButtonCompactStyle}
+                              disabled={busy}
+                              onClick={() => {
+                                setEntering(r);
+                                setOpenedAt(localFromInstant(r.shiftStartsAt));
+                              }}
+                            >
+                              Re-enter a call
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        }
+        fullPageScroll
+      />
 
       {entering ? (
         <Modal
@@ -346,6 +353,55 @@ export function PaperReentryWorklistScreen(): JSX.Element {
           </span>
         </Modal>
       ) : null}
-    </div>
+    </>
   );
 }
+
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+
+const tableShellStyle: CSSProperties = {
+  width: "100%",
+  overflowX: "auto",
+  padding: "0 1.5rem 1.5rem",
+};
+
+const tableHeadRowStyle: CSSProperties = {
+  background: "var(--color-surface-low)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+};
+
+const emptyShellStyle: CSSProperties = {
+  padding: "2rem 1.5rem",
+};
+
+const errorBannerStyle: CSSProperties = {
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
+  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+  color: "var(--color-error)",
+  fontSize: "0.85rem",
+};
+
+const linkButtonStyle: CSSProperties = {
+  ...ghostButtonStyle,
+  minHeight: "2.25rem",
+  padding: "0.5rem 0.85rem",
+};
+
+const primaryButtonCompactStyle: CSSProperties = {
+  ...primaryButtonStyle,
+  minHeight: "2.25rem",
+  padding: "0.5rem 0.85rem",
+};
+
+const disabledButtonCompactStyle: CSSProperties = {
+  ...disabledButtonStyle,
+  minHeight: "2.25rem",
+  padding: "0.5rem 0.85rem",
+};

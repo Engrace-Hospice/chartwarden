@@ -23,6 +23,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { MdmEntityLookupField, PatientLookupField } from "../../shared/entity-lookups";
 import { REFERRAL_TONE, stateLabel } from "./admission-status";
 import { authFailureRedirect } from "./write-workflow";
 
@@ -250,21 +251,19 @@ export function ReferralDetail(): JSX.Element {
               onChange={(ev) => setPrimaryDiagnosisIcd10(ev.target.value)}
               placeholder="e.g. C34.90"
             />
-            <label htmlFor="accept-attending" style={fieldLabel}>
-              Attending physician id (optional)
-            </label>
-            <input
-              id="accept-attending"
+            <MdmEntityLookupField
+              kind="physician"
+              label="Attending physician"
               value={attendingPhysicianId}
-              onChange={(ev) => setAttendingPhysicianId(ev.target.value)}
+              onChange={setAttendingPhysicianId}
+              clearable
             />
-            <label htmlFor="accept-patient" style={fieldLabel}>
-              Patient id (optional — leave blank to seed a placeholder)
-            </label>
-            <input
-              id="accept-patient"
+            <PatientLookupField
+              label="Patient"
               value={patientId}
-              onChange={(ev) => setPatientId(ev.target.value)}
+              onChange={setPatientId}
+              hint="Leave blank to seed a placeholder."
+              clearable
             />
             {actionError ? (
               <p role="alert" aria-live="assertive" style={alertStyle}>

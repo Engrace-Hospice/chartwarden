@@ -13553,6 +13553,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/provider-entities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search provider entities for selector controls (cursor-paginated, non-PHI) */
+        get: operations["getApiV1Providerentities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/signup-intents": {
         parameters: {
             query?: never;
@@ -54238,6 +54255,42 @@ export interface operations {
                         items: {
                             [key: string]: unknown;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Providerentities: {
+        parameters: {
+            query?: {
+                q?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            legalName: string;
+                            doingBusinessAs: string | null;
+                            ccn: string | null;
+                            npi: string | null;
+                            status: string;
+                        }[];
+                        nextCursor: string | null;
                     };
                 };
             };

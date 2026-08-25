@@ -28,9 +28,9 @@
 // WHAT IS BUILT IS WHAT THE LIST DTO HONESTLY SUPPORTS: volume, disposition mix, escalation and red-flag
 // incidence, mean time to first response and mean time to close, and the coverage-gap verdict per
 // ProviderEntity read live.
-import { EmptyState, LoadingSpinner, PageHeader, useApiClient } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
 import {
   type CurrentOnCallView,
@@ -42,14 +42,11 @@ import {
 import { dateTime, dispositionLabel, durationLabel, humanize, shortId } from "./oncall-status";
 import {
   Card,
-  CountGrid,
   FilterRow,
   Notice,
   SelectField,
-  columnStyle,
   ghostButtonStyle,
   mutedStyle,
-  pageTitleStyle,
   rowLine,
   tableStyle,
   td,
@@ -152,192 +149,236 @@ export function TriageMetricsScreen(): JSX.Element {
   const gapEntities = current?.perProviderEntity.filter((p) => p.rnCoverageGap).length ?? 0;
 
   return (
-    <div style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>On-call metrics</span>}
-        breadcrumb="On-call triage · program health"
-        actions={
-          <Link to="/triage/shifts" style={ghostButtonStyle}>
-            Roster
-          </Link>
-        }
-      />
+    <WorkQueueLayout
+      header={
+        <PageHeader
+          title="On-call metrics"
+          breadcrumb="On-call triage / Program health"
+          actions={
+            <Link to="/triage/shifts" style={linkButtonStyle}>
+              Roster
+            </Link>
+          }
+        >
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Page-derived operational indicators for triage volume, timeliness, escalation, and live
+            coverage.
+          </div>
+        </PageHeader>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          <Notice tone="info">
+            Every number here is computed from the call page this screen fetched — at most{" "}
+            {METRICS_PAGE} calls in the selected window. There is no aggregate route and no total
+            count on a triage list.
+          </Notice>
+          {truncated ? (
+            <Notice tone="warning" live>
+              The window returned more calls than one page holds. Every count below is therefore "at
+              least" — narrow the window before reading any of them as a rate.
+            </Notice>
+          ) : null}
+          <FilterRow>
+            <SelectField label="Window" value={days} options={WINDOWS} onChange={setDays} />
+          </FilterRow>
+        </div>
+      }
+      table={
+        <div style={contentShellStyle}>
+          <Card title="Volume">
+            <div style={metricGridStyle}>
+              <MetricTile label="Abandoned" value={abandoned} danger={abandoned > 0} />
+              <MetricTile label="Machine-triggered" value={fromMachine} />
+              <MetricTile
+                label="Re-entered from paper"
+                value={paperOrigin}
+                danger={paperOrigin > 0}
+              />
+              <MetricTile
+                label="Mean first response"
+                value={durationLabel(mean(firstResponse) ?? undefined)}
+              />
+              <MetricTile label="Mean close" value={durationLabel(mean(toClose) ?? undefined)} />
+              <MetricTile label="Red-flagged" value={withRedFlag} danger={withRedFlag > 0} />
+            </div>
+            <span style={mutedStyle}>
+              Machine-triggered calls are proactive contact the agency made because a system noticed
+              something, not because a family rang.
+            </span>
+          </Card>
 
-      <Notice tone="info">
-        Every number here is computed from the call page this screen fetched — at most{" "}
-        {METRICS_PAGE} calls in the selected window. There is no aggregate route and no total count
-        on a triage list (a count is an enumeration oracle), so these are program indicators, not a
-        census. Where a §5.1 metric cannot be computed honestly, it is listed at the bottom rather
-        than approximated.
-      </Notice>
+          <Card title="Disposition mix">
+            {mix.length === 0 ? (
+              <span style={mutedStyle}>No call in this window carries a disposition yet.</span>
+            ) : (
+              <div style={{ width: "100%", overflowX: "auto" }}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr style={tableHeadRowStyle}>
+                      <th style={th}>Disposition</th>
+                      <th style={thNum}>Calls</th>
+                      <th style={thNum}>Share of dispositioned calls</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mix.map(([d, n]) => {
+                      const total = mix.reduce((a, [, v]) => a + v, 0);
+                      return (
+                        <tr key={d} style={rowLine}>
+                          <td style={td}>{dispositionLabel(d)}</td>
+                          <td style={tdNum}>{n}</td>
+                          <td style={tdNum}>
+                            {total > 0 ? `${Math.round((n / total) * 100)}%` : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <span style={mutedStyle}>
+              The share is of calls in this page that have a disposition, not of all calls.
+            </span>
+          </Card>
 
-      {truncated ? (
-        <Notice tone="warning" live>
-          The window returned more calls than one page holds. Every count below is therefore "at
-          least" — narrow the window before reading any of them as a rate.
-        </Notice>
-      ) : null}
+          <Card title="Coverage right now">
+            {!current ? (
+              <span style={mutedStyle}>
+                The live coverage verdict could not be read. That is an outage, not a finding of "no
+                coverage".
+              </span>
+            ) : (
+              <div style={{ width: "100%", overflowX: "auto" }}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr style={tableHeadRowStyle}>
+                      <th style={th}>Provider entity</th>
+                      <th style={th}>RN coverage</th>
+                      <th style={thNum}>Covering actors</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {current.perProviderEntity.map((p) => (
+                      <tr key={p.providerEntityId} style={rowLine}>
+                        <td style={td}>{shortId(p.providerEntityId)}</td>
+                        <td style={td}>{p.rnCoverageGap ? "Gap — no RN" : "Covered"}</td>
+                        <td style={tdNum}>{p.actors.length}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <span style={mutedStyle}>Read at {dateTime(current?.asOf)}.</span>
+          </Card>
 
-      <FilterRow>
-        <SelectField label="Window" value={days} options={WINDOWS} onChange={setDays} />
-      </FilterRow>
+          <Card title="What is deliberately not on this page">
+            <ul style={{ margin: 0, paddingLeft: "1.1rem", fontSize: "0.82rem", color: "inherit" }}>
+              <li style={mutedStyle}>
+                <strong>Hospitalization-avoidance rate.</strong> The outcome lives in admission data
+                M19 does not read.
+              </li>
+              <li style={mutedStyle}>
+                <strong>After-hours visit-conversion rate.</strong> The conversion happens when
+                scheduling accepts the proposal.
+              </li>
+              <li style={mutedStyle}>
+                <strong>Late-checkout-to-triage conversion.</strong> The denominator belongs to the
+                visit verification module.
+              </li>
+              <li style={mutedStyle}>
+                <strong>Calls per shift / per clinician.</strong> The call list carries no
+                membership.
+              </li>
+              <li style={mutedStyle}>
+                <strong>AI suggestion-acceptance rate.</strong> It belongs to the AI-governance
+                channel that owns suggestion-vs-selection deltas.
+              </li>
+              <li style={mutedStyle}>
+                <strong>Escalation acknowledgement against SLA.</strong> No route resolves tenant
+                policy JSON to a per-row target.
+              </li>
+            </ul>
+          </Card>
+        </div>
+      }
+      fullPageScroll
+    />
+  );
+}
 
-      <Card title="Volume">
-        <CountGrid
-          entries={[
-            { label: "Calls in window", value: calls.length },
-            { label: "Closed / documented", value: closed },
-            { label: "Abandoned", value: abandoned, tone: abandoned > 0 ? "error" : undefined },
-            { label: "Machine-triggered", value: fromMachine },
-            {
-              label: "Re-entered from paper",
-              value: paperOrigin,
-              tone: paperOrigin > 0 ? "error" : undefined,
-            },
-            {
-              label: "Busiest hour",
-              value: calls.length > 0 ? `${String(peakHour).padStart(2, "0")}:00` : "—",
-            },
-          ]}
-        />
-        <span style={mutedStyle}>
-          Machine-triggered calls are the ones a no-show, a late check-out or a failed alert opened
-          — proactive contact the agency made because a system noticed something, not because a
-          family rang.
-        </span>
-      </Card>
-
-      <Card title="Escalation & safety">
-        <CountGrid
-          entries={[
-            { label: "Calls with an escalation", value: withEscalation },
-            { label: "Calls with a red-flag answer", value: withRedFlag },
-            {
-              label: "Provider entities with an RN gap now",
-              value: gapEntities,
-              tone: gapEntities > 0 ? "error" : undefined,
-            },
-          ]}
-        />
-        <span style={mutedStyle}>
-          The coverage figure is read live and counted per provider entity, never unioned: coverage
-          is proved per CCN, and one covered entity must not mask another's dark night.
-        </span>
-      </Card>
-
-      <Card title="Timeliness">
-        <CountGrid
-          entries={[
-            {
-              label: "Mean time to first response",
-              value: durationLabel(mean(firstResponse) ?? undefined),
-            },
-            { label: "Mean time to close", value: durationLabel(mean(toClose) ?? undefined) },
-            { label: "Calls with a first response recorded", value: firstResponse.length },
-            { label: "Calls closed in window", value: toClose.length },
-          ]}
-        />
-        <span style={mutedStyle}>
-          A mean over no calls is shown as "—", not as zero: an unanswerable average is not an
-          achievement. Both means cover only the calls in this page that carry the stamp — the
-          counts beside them are the denominators, stated rather than implied.
-        </span>
-      </Card>
-
-      <Card title="Disposition mix">
-        {mix.length === 0 ? (
-          <span style={mutedStyle}>No call in this window carries a disposition yet.</span>
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Disposition</th>
-                <th style={thNum}>Calls</th>
-                <th style={thNum}>Share of dispositioned calls</th>
-              </tr>
-            </thead>
-            <tbody>
-              {mix.map(([d, n]) => {
-                const total = mix.reduce((a, [, v]) => a + v, 0);
-                return (
-                  <tr key={d} style={rowLine}>
-                    <td style={td}>{dispositionLabel(d)}</td>
-                    <td style={tdNum}>{n}</td>
-                    <td style={tdNum}>{total > 0 ? `${Math.round((n / total) * 100)}%` : "—"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-        <span style={mutedStyle}>
-          The share is of calls in this page that HAVE a disposition, not of all calls — an open
-          call has not chosen yet, and folding it into the denominator would understate every
-          outcome.
-        </span>
-      </Card>
-
-      <Card title="Coverage right now">
-        {!current ? (
-          <span style={mutedStyle}>
-            The live coverage verdict could not be read. That is an outage, not a finding of "no
-            coverage".
-          </span>
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Provider entity</th>
-                <th style={th}>RN coverage</th>
-                <th style={thNum}>Covering actors</th>
-              </tr>
-            </thead>
-            <tbody>
-              {current.perProviderEntity.map((p) => (
-                <tr key={p.providerEntityId} style={rowLine}>
-                  <td style={td}>{shortId(p.providerEntityId)}</td>
-                  <td style={td}>{p.rnCoverageGap ? "Gap — no RN" : "Covered"}</td>
-                  <td style={tdNum}>{p.actors.length}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <span style={mutedStyle}>Read at {dateTime(current?.asOf)}.</span>
-      </Card>
-
-      <Card title="What is deliberately not on this page">
-        <ul style={{ margin: 0, paddingLeft: "1.1rem", fontSize: "0.82rem", color: "inherit" }}>
-          <li style={mutedStyle}>
-            <strong>Hospitalization-avoidance rate.</strong> The outcome lives in admission data M19
-            does not read; computing it from dispositions would count an intention as a result.
-          </li>
-          <li style={mutedStyle}>
-            <strong>After-hours visit-conversion rate.</strong> The conversion happens when
-            scheduling accepts the proposal; M19 knows only that it emitted one.
-          </li>
-          <li style={mutedStyle}>
-            <strong>Late-checkout-to-triage conversion.</strong> The denominator belongs to the
-            visit verification module, not to this one.
-          </li>
-          <li style={mutedStyle}>
-            <strong>Calls per shift / per clinician.</strong> The call list carries no membership —
-            the covering shift is the assignment, and joining the two needs a read M19 does not
-            publish.
-          </li>
-          <li style={mutedStyle}>
-            <strong>AI suggestion-acceptance rate.</strong> Both facts are recorded per call but not
-            on the list, so the figure would cost one patient-level read per row to produce a
-            management statistic. The suggestion-vs-selection delta already flows to the
-            AI-governance channel that owns it.
-          </li>
-          <li style={mutedStyle}>
-            <strong>Escalation acknowledgement against SLA.</strong> The per-severity target is
-            tenant-shaped JSON on the on-call policy and no route resolves it to a per-row target;
-            the escalation inbox shows true elapsed minutes instead.
-          </li>
-        </ul>
-      </Card>
+function MetricTile({
+  label,
+  value,
+  danger,
+}: { label: string; value: string | number; danger?: boolean }): JSX.Element {
+  return (
+    <div style={metricTileStyle}>
+      <span style={metricLabelStyle}>{label}</span>
+      <span
+        style={{
+          ...metricValueStyle,
+          color: danger ? "var(--color-error)" : "var(--color-on-surface)",
+        }}
+      >
+        {value}
+      </span>
     </div>
   );
 }
+
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+
+const contentShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "1rem",
+  padding: "0 1.5rem 1.5rem",
+};
+
+const metricGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(11rem, 1fr))",
+  gap: "0.75rem",
+};
+
+const metricTileStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.25rem",
+  padding: "0.75rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-low)",
+};
+
+const metricLabelStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.72rem",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+};
+
+const metricValueStyle: CSSProperties = {
+  fontSize: "1.15rem",
+  fontWeight: 650,
+  fontVariantNumeric: "tabular-nums",
+};
+
+const tableHeadRowStyle: CSSProperties = {
+  background: "var(--color-surface-low)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+};
+
+const linkButtonStyle: CSSProperties = {
+  ...ghostButtonStyle,
+  minHeight: "2.25rem",
+  padding: "0.5rem 0.85rem",
+};

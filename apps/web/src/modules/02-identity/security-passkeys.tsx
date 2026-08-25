@@ -3,8 +3,6 @@ import {
   Button,
   EmptyState,
   Glyph,
-  KpiCard,
-  KpiStrip,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -92,13 +90,6 @@ export function SecurityPasskeys(): JSX.Element {
   const pageCount = Math.max(1, Math.ceil(filteredPasskeys.length / pageSize));
   const activePage = Math.min(page, pageCount);
   const pagedPasskeys = filteredPasskeys.slice((activePage - 1) * pageSize, activePage * pageSize);
-  const passkeyCount = passkeys?.length ?? 0;
-  const platformCount =
-    passkeys?.filter((passkey) => normalizeDeviceType(passkey.deviceType) === "platform").length ??
-    0;
-  const crossPlatformCount =
-    passkeys?.filter((passkey) => normalizeDeviceType(passkey.deviceType) === "cross-platform")
-      .length ?? 0;
 
   const clearFilters = (): void => {
     setSearchQuery("");
@@ -114,35 +105,6 @@ export function SecurityPasskeys(): JSX.Element {
             Manage device biometrics and security keys used for passwordless sign-in.
           </div>
         </PageHeader>
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard
-            label="Registered"
-            value={passkeys === null ? "—" : passkeyCount}
-            detail="Passkeys on this account"
-            tone={passkeyCount > 0 ? "success" : "neutral"}
-            accentColor={passkeyCount > 0 ? "var(--color-success)" : "var(--color-outline-variant)"}
-          />
-          <KpiCard
-            label="This Device"
-            value={passkeys === null ? "—" : platformCount}
-            detail="Platform authenticators"
-            tone={platformCount > 0 ? "info" : "neutral"}
-            accentColor={
-              platformCount > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"
-            }
-          />
-          <KpiCard
-            label="Security Keys"
-            value={passkeys === null ? "—" : crossPlatformCount}
-            detail="Roaming authenticators"
-            tone={crossPlatformCount > 0 ? "info" : "neutral"}
-            accentColor={
-              crossPlatformCount > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"
-            }
-          />
-        </KpiStrip>
       }
       filters={
         <div style={filterShellStyle}>

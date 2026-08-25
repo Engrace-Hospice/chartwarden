@@ -19,6 +19,7 @@ import type { WorkflowStep } from "@wardenx/ui";
 import { useCallback, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { MdmEntityLookupField, PatientLookupField } from "../../shared/entity-lookups";
 import { authFailureRedirect } from "./write-workflow";
 
 const INTAKE_METHODS = [
@@ -203,11 +204,11 @@ export function AdmissionCreate(): JSX.Element {
             description="Identify the patient and how this intake arrived."
           >
             <div style={formGrid}>
-              <TextField
-                label="Patient ID"
+              <PatientLookupField
+                label="Patient"
                 value={patientId}
-                onChange={(event) => setPatientId(event.target.value)}
-                error={patientId.trim() ? undefined : "Patient ID is required before continuing."}
+                onChange={setPatientId}
+                error={patientId.trim() ? undefined : "Select a patient before continuing."}
                 required
               />
               <TextField
@@ -231,20 +232,20 @@ export function AdmissionCreate(): JSX.Element {
             description="Identify the clinicians accountable for the new admission."
           >
             <div style={formGrid}>
-              <TextField
-                label="Attending physician ID"
+              <MdmEntityLookupField
+                kind="physician"
+                label="Attending physician"
                 value={attendingPhysicianId}
-                onChange={(event) => setAttendingPhysicianId(event.target.value)}
+                onChange={setAttendingPhysicianId}
                 hint="Optional when an attending physician is not yet assigned."
               />
-              <TextField
-                label="Hospice medical director ID"
+              <MdmEntityLookupField
+                kind="physician"
+                label="Hospice medical director"
                 value={hospiceMedicalDirectorId}
-                onChange={(event) => setHospiceMedicalDirectorId(event.target.value)}
+                onChange={setHospiceMedicalDirectorId}
                 error={
-                  hospiceMedicalDirectorId.trim()
-                    ? undefined
-                    : "A hospice medical director is required."
+                  hospiceMedicalDirectorId.trim() ? undefined : "Select a hospice medical director."
                 }
                 required
               />
