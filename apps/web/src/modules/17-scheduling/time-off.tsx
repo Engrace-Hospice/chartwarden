@@ -12,7 +12,7 @@ import {
 // paths harden (approval triggers the SERVER-side reassignment scan); ADR-0030 — no frontend authz. Optional
 // `?state=` / `?membership=` filters. Reads GET /api/v1/time-off via the typed client. Leaves only (@wardenx/ui).
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { useSearchParams } from "react-router-dom";
 import { TIMEOFF_TONE, stateLabel } from "./scheduling-status";
 
@@ -57,47 +57,139 @@ export function SchedulingTimeOff(): JSX.Element {
 
   return (
     <WorkQueueLayout
-      header={<PageHeader title="Time-Off Queue" />}
+      header={
+        <PageHeader title="Time-Off Queue" breadcrumb="Scheduling">
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Supervisor review queue for requested time off
+            {membership ? `, scoped to clinician ${membership.slice(0, 8)}` : ""}
+            {state ? `, filtered to ${stateLabel(state)}` : ""}.
+          </div>
+        </PageHeader>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          <div style={infoBannerStyle}>
+            Approval and denial actions remain server-owned. This view reflects the current filtered
+            request queue from the scheduling service.
+          </div>
+        </div>
+      }
       table={
         error ? (
-          <EmptyState title="Unavailable" description={error} />
+          <div style={emptyShellStyle}>
+            <EmptyState title="Unavailable" description={error} />
+          </div>
         ) : loading && rows.length === 0 ? (
-          <LoadingSpinner />
+          <div style={loadingShellStyle}>
+            <LoadingSpinner />
+          </div>
         ) : rows.length === 0 ? (
-          <EmptyState
-            title="No time-off requests"
-            description="There are no time-off requests in this view."
-          />
+          <div style={emptyShellStyle}>
+            <EmptyState
+              title="No time-off requests"
+              description="There are no time-off requests in this view."
+            />
+          </div>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Clinician</th>
-                <th>Kind</th>
-                <th>Starts</th>
-                <th>Ends</th>
-                <th>State</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id}>
-                  <td className="wx-data-md">{r.membershipId.slice(0, 8)}</td>
-                  <td>{stateLabel(r.kind)}</td>
-                  <td className="tabular-nums">{ts(r.startsAt)}</td>
-                  <td className="tabular-nums">{ts(r.endsAt)}</td>
-                  <td>
-                    <StatusPill
-                      label={stateLabel(r.state)}
-                      tone={TIMEOFF_TONE[r.state] ?? "neutral"}
-                    />
-                  </td>
+          <div style={tableShellStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr style={tableHeadRowStyle}>
+                  <th style={thStyle}>Clinician</th>
+                  <th style={thStyle}>Kind</th>
+                  <th style={thStyle}>Starts</th>
+                  <th style={thStyle}>Ends</th>
+                  <th style={thStyle}>State</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id} style={rowStyle}>
+                    <td className="wx-data-md" style={tdStyle}>
+                      {r.membershipId.slice(0, 8)}
+                    </td>
+                    <td style={tdStyle}>{stateLabel(r.kind)}</td>
+                    <td className="tabular-nums" style={tdStyle}>
+                      {ts(r.startsAt)}
+                    </td>
+                    <td className="tabular-nums" style={tdStyle}>
+                      {ts(r.endsAt)}
+                    </td>
+                    <td style={tdStyle}>
+                      <StatusPill
+                        label={stateLabel(r.state)}
+                        tone={TIMEOFF_TONE[r.state] ?? "neutral"}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )
       }
+      fullPageScroll
     />
   );
 }
+
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+
+const tableShellStyle: CSSProperties = {
+  width: "100%",
+  overflowX: "auto",
+  padding: "0 1.5rem 1.5rem",
+};
+
+const emptyShellStyle: CSSProperties = {
+  padding: "2rem 1.5rem",
+};
+
+const loadingShellStyle: CSSProperties = {
+  padding: "2.5rem 1.5rem",
+  textAlign: "center",
+};
+
+const infoBannerStyle: CSSProperties = {
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)",
+  background: "var(--color-primary-tint)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+};
+
+const tableStyle: CSSProperties = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: "0.85rem",
+};
+
+const tableHeadRowStyle: CSSProperties = {
+  background: "var(--color-surface-low)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+};
+
+const thStyle: CSSProperties = {
+  padding: "0.5rem 0.75rem",
+  textAlign: "left",
+  fontSize: "0.7rem",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color: "var(--color-on-surface-variant)",
+};
+
+const tdStyle: CSSProperties = {
+  padding: "0.55rem 0.75rem",
+  color: "var(--color-on-surface)",
+};
+
+const rowStyle: CSSProperties = {
+  borderTop: "1px solid var(--color-surface-container)",
+};

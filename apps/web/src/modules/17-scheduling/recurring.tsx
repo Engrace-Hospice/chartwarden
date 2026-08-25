@@ -12,7 +12,7 @@ import {
 // harden; the SERVER owns the §7.7 materialization/discontinuation (ADR-0030 — no frontend authz). Reads GET
 // /api/v1/recurring-visits via the typed client. Leaves only (@wardenx/ui).
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { useSearchParams } from "react-router-dom";
 import { RECURRING_TONE, stateLabel } from "./scheduling-status";
 
@@ -60,50 +60,140 @@ export function SchedulingRecurring(): JSX.Element {
 
   return (
     <WorkQueueLayout
-      header={<PageHeader title="Recurring Policies" />}
+      header={
+        <PageHeader title="Recurring Policies" breadcrumb="Scheduling">
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Active recurring-visit policies{patient ? ` for patient ${patient.slice(0, 8)}` : ""}.
+          </div>
+        </PageHeader>
+      }
+      filters={
+        <div style={filterShellStyle}>
+          <div style={infoBannerStyle}>
+            Recurring policy reads are patient-scoped. Create and discontinue actions remain on
+            their dedicated write surfaces once the server paths are enabled.
+          </div>
+        </div>
+      }
       table={
         !patient ? (
-          <EmptyState
-            title="Select a patient"
-            description="Open this view from a patient context to see their recurring-visit policies."
-          />
+          <div style={emptyShellStyle}>
+            <EmptyState
+              title="Select a patient"
+              description="Open this view from a patient context to see their recurring-visit policies."
+            />
+          </div>
         ) : error ? (
-          <EmptyState title="Unavailable" description={error} />
+          <div style={emptyShellStyle}>
+            <EmptyState title="Unavailable" description={error} />
+          </div>
         ) : loading && rows.length === 0 ? (
-          <LoadingSpinner />
+          <div style={loadingShellStyle}>
+            <LoadingSpinner />
+          </div>
         ) : active.length === 0 ? (
-          <EmptyState
-            title="No active policies"
-            description="This patient has no active recurring-visit policies."
-          />
+          <div style={emptyShellStyle}>
+            <EmptyState
+              title="No active policies"
+              description="This patient has no active recurring-visit policies."
+            />
+          </div>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Purpose</th>
-                <th>Clinician</th>
-                <th>RRULE</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {active.map((r) => (
-                <tr key={r.id}>
-                  <td>{stateLabel(r.visitPurpose)}</td>
-                  <td className="wx-data-md">{r.assignedMembershipId.slice(0, 8)}</td>
-                  <td className="wx-data-md">{r.rrule}</td>
-                  <td>
-                    <StatusPill
-                      label={stateLabel(r.status)}
-                      tone={RECURRING_TONE[r.status] ?? "neutral"}
-                    />
-                  </td>
+          <div style={tableShellStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr style={tableHeadRowStyle}>
+                  <th style={thStyle}>Purpose</th>
+                  <th style={thStyle}>Clinician</th>
+                  <th style={thStyle}>RRULE</th>
+                  <th style={thStyle}>Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {active.map((r) => (
+                  <tr key={r.id} style={rowStyle}>
+                    <td style={tdStyle}>{stateLabel(r.visitPurpose)}</td>
+                    <td className="wx-data-md" style={tdStyle}>
+                      {r.assignedMembershipId.slice(0, 8)}
+                    </td>
+                    <td className="wx-data-md" style={tdStyle}>
+                      {r.rrule}
+                    </td>
+                    <td style={tdStyle}>
+                      <StatusPill
+                        label={stateLabel(r.status)}
+                        tone={RECURRING_TONE[r.status] ?? "neutral"}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )
       }
+      fullPageScroll
     />
   );
 }
+
+const filterShellStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "0 1.5rem 0.75rem",
+};
+
+const tableShellStyle: CSSProperties = {
+  width: "100%",
+  overflowX: "auto",
+  padding: "0 1.5rem 1.5rem",
+};
+
+const emptyShellStyle: CSSProperties = {
+  padding: "2rem 1.5rem",
+};
+
+const loadingShellStyle: CSSProperties = {
+  padding: "2.5rem 1.5rem",
+  textAlign: "center",
+};
+
+const infoBannerStyle: CSSProperties = {
+  padding: "0.625rem 1rem",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)",
+  background: "var(--color-primary-tint)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+};
+
+const tableStyle: CSSProperties = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: "0.85rem",
+};
+
+const tableHeadRowStyle: CSSProperties = {
+  background: "var(--color-surface-low)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+};
+
+const thStyle: CSSProperties = {
+  padding: "0.5rem 0.75rem",
+  textAlign: "left",
+  fontSize: "0.7rem",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color: "var(--color-on-surface-variant)",
+};
+
+const tdStyle: CSSProperties = {
+  padding: "0.55rem 0.75rem",
+  color: "var(--color-on-surface)",
+};
+
+const rowStyle: CSSProperties = {
+  borderTop: "1px solid var(--color-surface-container)",
+};
