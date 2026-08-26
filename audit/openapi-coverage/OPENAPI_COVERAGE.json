@@ -1,9 +1,9 @@
 {
   "totals": {
-    "routes": 1257,
-    "enriched": 1250,
+    "routes": 1258,
+    "enriched": 1251,
     "deficit": 7,
-    "mutating": 714,
+    "mutating": 715,
     "mutatingNoBody": 89,
     "gets": 510,
     "getsNoResponse": 8
@@ -181,10 +181,10 @@
     },
     {
       "module": "19-oncall",
-      "routes": 38,
-      "enriched": 38,
+      "routes": 39,
+      "enriched": 39,
       "deficit": 0,
-      "mutating": 26,
+      "mutating": 27,
       "mutatingNoBody": 2,
       "gets": 12,
       "getsNoResponse": 0

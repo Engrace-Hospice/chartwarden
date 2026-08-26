@@ -176,6 +176,7 @@ export type SeamName =
   | "SessionContextResolver" // M2 — authenticated, org-scoped request context (actor + step-up state)
   | "AuditorSessionMinter" // M2 — mint a time-boxed auditor magic-link session (M3 calls it)
   | "PortalSessionBinder" // M2 — stamp class + scope on an M31 portal session (M31 calls it)
+  | "VendorSessionBinder" // M2 — stamp class + vendor scope on an M19 answering-service session (M19 calls it)
   | "TenantOrgCreationProvider" // M2 — create/attach the per-tenant org M34's provision worker needs (§7.1)
   | "OrganizationReader" // M2 — resolve org display metadata by id (M35 admin lists label cross-tenant rows)
   | "TerminologyProvider" // M38 — version-aware code/value-set resolution (every clinical/billing module)
@@ -629,6 +630,17 @@ export interface ResolvedActor {
    * diagnostics. Structural, not an enum, so this leaf stays decoupled from M2's provider vocabulary.
    */
   readonly deviceAttestation: { readonly valid: boolean; readonly verifiedAt?: string } | null;
+  /**
+   * The `external_triage_vendor` row an M19 answering-service session acts for, or null on every other
+   * class (F-030 / #75).
+   *
+   * This is the authorization SUBJECT of M19's `external_triage_actor`, which compares it against the
+   * shift's vendor — so it is class-gated at the source (`sessionExternalActorId`) rather than read off
+   * the `scope` jsonb. M19's own predicate header states the risk that gating buys: folding the vendor
+   * arm into the owner predicate "would let any staff session that happened to carry an
+   * `externalActorId` attribute reach a vendor-scoped call".
+   */
+  readonly externalActorId: string | null;
 }
 
 /**
@@ -786,6 +798,37 @@ export interface PortalSessionBinder {
   }): Promise<void>;
 }
 
+/** The two M19 answering-service session classes (mirrors the `session_class` enum members). */
+export type VendorSessionClass = "external_triage_vendor" | "external_triage_operator";
+
+/**
+ * M2 — stamp the class + vendor scope on an M19 answering-service session (F-030 / #75).
+ *
+ * The `PortalSessionBinder` shape, one module over and for the same reason: M19 owns the vendor
+ * (`external_triage_vendor`) and the shift that puts it on call; M2 owns the `session` row. Nothing
+ * connected the two, so no session ever carried a vendor class or a `scope.externalActorId`, M19's
+ * `external_triage_actor` predicate compared the shift's vendor against `undefined`, and every
+ * vendor-scoped call was refused.
+ *
+ * ONE operation, not two. A portal session is minted before its patient is known, which is why that
+ * binder splits account-binding from patient-binding — a vendor session has no equivalent gap: it is
+ * minted BY the vendor binding, so the vendor is known at the only moment the session exists.
+ */
+export interface VendorSessionBinder {
+  /**
+   * Stamp an authenticated session as an M19 vendor session for one `external_triage_vendor` row.
+   *
+   * The caller must have already proven the vendor is real, active, and BAA-covered for this org —
+   * this writes the binding the request context is then assembled from, it does not authorize it.
+   */
+  bindVendorSession(input: {
+    scope: OrgScope;
+    sessionId: string;
+    externalActorId: string;
+    sessionClass: VendorSessionClass;
+  }): Promise<{ sessionClass: VendorSessionClass }>;
+}
+
 /** The intent M34's `tenant.provision` worker hands M2 to create / attach the per-tenant organization
  *  (M34 §2.5 r2 / §7.1 step 3). PHI-free — every field is resolved by the platform-ops route that
  *  enqueued the provision job. `organizationId` is the org spine the §7.1 step-1 route pre-creates in
@@ -876,6 +919,7 @@ export interface SeamContracts {
   SessionContextResolver: SessionContextResolver;
   AuditorSessionMinter: AuditorSessionMinter;
   PortalSessionBinder: PortalSessionBinder;
+  VendorSessionBinder: VendorSessionBinder;
   // M2 — LEAF-TYPED: M34's provision worker (CONSUMER) and M2 (PRODUCER) can't import each other's
   // package, so the contract lives here. M2 registers the real Drizzle-backed provider over the deny-stub.
   TenantOrgCreationProvider: TenantOrgCreationProvider;

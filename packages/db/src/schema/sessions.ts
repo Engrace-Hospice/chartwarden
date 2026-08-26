@@ -67,7 +67,7 @@ export const sessions = pgTable(
       sql`(${t.sessionClass} IN ('external_collaborator','funeral_home') AND COALESCE(${t.scope}, '{}'::jsonb) ? 'patientId')
         OR (${t.sessionClass} = 'auditor' AND ${t.engagementStart} IS NOT NULL AND ${t.engagementEnd} IS NOT NULL)
         OR (${t.sessionClass} IN ('patient_portal','caregiver_portal','bereaved_portal') AND COALESCE(${t.scope}, '{}'::jsonb) ? 'portalAccountId')
-        OR (${t.sessionClass} IN ('external_triage_vendor','external_triage_operator'))
+        OR (${t.sessionClass} IN ('external_triage_vendor','external_triage_operator') AND COALESCE(${t.scope}, '{}'::jsonb) ? 'externalActorId')
         OR (${t.sessionClass} = 'staff')`,
     ),
     // Step-up paired-write invariant (D8): both NULL or both set.

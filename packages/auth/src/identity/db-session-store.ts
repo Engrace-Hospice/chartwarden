@@ -16,7 +16,12 @@ import type {
   StepUpFactor,
 } from "@wardenx/types";
 import { eq } from "drizzle-orm";
-import { SESSION_CLASSES, type SessionClass, sessionPinnedPatientId } from "./session-classes";
+import {
+  SESSION_CLASSES,
+  type SessionClass,
+  sessionExternalActorId,
+  sessionPinnedPatientId,
+} from "./session-classes";
 import type { SessionContextRecord, SessionContextStore } from "./session-seam";
 
 /** The session-table columns this store reads. */
@@ -64,6 +69,7 @@ export function toSessionContextRecord(
 ): SessionContextRecord {
   const sessionClass = row.sessionClass ?? "staff";
   const patientId = scopeString(row.scope, "patientId");
+  const externalActorId = scopeString(row.scope, "externalActorId");
   return {
     sessionId,
     userId: row.userId,
@@ -87,6 +93,15 @@ export function toSessionContextRecord(
         })
       : null,
     deviceAttestation: liveDeviceAttestation(row.deviceAttestation, now),
+    // Through the CLASS predicate for the same reason `sessionPatientId` is: this key is the
+    // authorization subject of `external_triage_actor`, so a staff session that somehow carried an
+    // `externalActorId` in its jsonb must read null rather than reach a vendor-scoped call.
+    externalActorId: isSessionClass(sessionClass)
+      ? sessionExternalActorId({
+          sessionClass,
+          scope: { ...(externalActorId ? { externalActorId } : {}) },
+        })
+      : null,
   };
 }
 
@@ -118,7 +133,10 @@ export function liveDeviceAttestation(
 }
 
 /** One string field out of the `scope` jsonb, or null. Never throws on a malformed/absent value. */
-function scopeString(scope: unknown, key: "portalAccountId" | "patientId"): string | null {
+function scopeString(
+  scope: unknown,
+  key: "portalAccountId" | "patientId" | "externalActorId",
+): string | null {
   if (typeof scope !== "object" || scope === null) return null;
   const value = (scope as Record<string, unknown>)[key];
   return typeof value === "string" && value.length > 0 ? value : null;

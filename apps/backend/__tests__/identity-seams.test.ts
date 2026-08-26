@@ -67,6 +67,7 @@ describe("M2-T07 — published seams register over the M1 deny-stubs (§4.7)", (
       // Explicitly null rather than undefined: a session with no attested device behind it must read
       // as a decided "no device", which is what the §12.4 gate denies on.
       deviceAttestation: null,
+      externalActorId: null,
     });
     const stepUp = await resolver.resolveStepUpState({ orgId: ORG }, "sess_1");
     expect(stepUp).toEqual({ lastStepUpAt: at, lastStepUpFactor: "webauthn" });

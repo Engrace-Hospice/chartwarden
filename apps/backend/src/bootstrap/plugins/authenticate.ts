@@ -173,6 +173,13 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     if (actor.deviceAttestation) {
       request.context.attributes[DEVICE_ATTESTATION_ATTRIBUTE] = actor.deviceAttestation;
     }
+    // F-030 — the `external_triage_vendor` an M19 answering-service session acts for. Class-gated at
+    // the source, so a staff session carrying a stray `scope.externalActorId` stamps nothing: this key
+    // IS what `external_triage_actor` compares against, and a session that could acquire it any other
+    // way would reach a vendor-scoped triage call.
+    if (actor.externalActorId) {
+      request.context.attributes.externalActorId = actor.externalActorId;
+    }
     request.context.attributes.stepUpRecent = await stepUpFreshFor({
       organizationId: actor.organizationId,
       sessionId: snap.sessionId,

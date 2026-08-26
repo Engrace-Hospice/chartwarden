@@ -2,8 +2,8 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1246,
-    "coveredRoutes": 1246,
+    "routes": 1247,
+    "coveredRoutes": 1247,
     "directRoutesReferenced": 1187
   },
   "modules": [
@@ -192,7 +192,7 @@
     },
     {
       "module": "19-oncall",
-      "routes": 38,
+      "routes": 39,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/oncall-inject.test.ts"

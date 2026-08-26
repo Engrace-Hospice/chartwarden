@@ -68,10 +68,28 @@ describe("context-attribute producer gate", () => {
     }
   });
 
-  it("still has blocked keys to check that rule against — an empty registry would vacuously pass", () => {
-    // When the last blocked entry goes, the loop above stops asserting anything. That is the good outcome,
-    // but it must be a deliberate edit here rather than a test that quietly stops testing.
-    expect(blockedKeys.length).toBe(1);
+  it("the registry is now FULLY PRODUCED — every key read has a writer", () => {
+    // The good outcome, and the deliberate edit the previous assertion existed to force: the blocked
+    // list is empty, so the `blocker-stale` loop above asserts nothing. It is kept rather than deleted
+    // because a future key that genuinely cannot be produced yet belongs there, and the rule it checks
+    // must still work when it arrives — see the synthetic case below, which does not depend on the
+    // registry having a blocked entry.
+    expect(blockedKeys).toEqual([]);
+  });
+
+  it("`blocker-stale` still fires — proven on a synthetic entry, not on whatever happens to be blocked", () => {
+    // Hard-coding a blocked key broke this suite twice as the F-030 work retired them (`licensure`,
+    // then `disciplines`), and deriving it from the registry then went vacuous when the last one was
+    // fixed. A synthetic registry depends on neither.
+    const synthetic = {
+      reads: [{ file: "apps/backend/src/x.ts", line: 1, key: "k" }],
+      writes: [{ file: "apps/backend/src/x.ts", line: 2, key: "k" }],
+    };
+    expect(
+      findViolations(synthetic, {
+        k: { blocked: "a reason long enough to satisfy the entry rule" },
+      }),
+    ).toContainEqual(expect.objectContaining({ kind: "blocker-stale", key: "k" }));
   });
 
   it("every entry is exactly one of producer or blocked, and says something", () => {

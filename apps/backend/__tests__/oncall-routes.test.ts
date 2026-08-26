@@ -90,7 +90,7 @@ const VENDOR_ID = "55555555-5555-4555-8555-555555555555";
 // ── §4.6 permission keys ─────────────────────────────────────────────────────────────────────────────
 
 describe("M19-T07 §4.6 permission keys", () => {
-  it("registers exactly the seventeen §4.6 keys, verbatim", () => {
+  it("registers exactly the eighteen §4.6 keys, verbatim", () => {
     expect(M19_PERMISSION_KEY_LIST).toEqual([
       "triage.open",
       "triage.read",
@@ -107,6 +107,10 @@ describe("M19-T07 §4.6 permission keys", () => {
       "oncall.write_schedule",
       "oncall.read_policy",
       "oncall.admin_policy",
+      // F-030 — binding a session to an `external_triage_vendor`. `admin`, alongside
+      // `oncall.admin_policy`: §8.3.2 names tampering with the vendor binding as a threat, and this
+      // decides which outside party answers the agency's nights.
+      "oncall.bind_vendor_session",
       "portal.triage.read_recent",
       "triage.paper_reentry",
     ]);

@@ -11531,6 +11531,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/oncall/vendor-sessions/bind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bind this session to an external triage vendor (D3 hybrid/centralized) */
+        post: operations["postApiV1OncallVendorsessionsBind"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ops/outbox": {
         parameters: {
             query?: never;
@@ -49120,6 +49137,40 @@ export interface operations {
                         m17VisitAssignmentRef: string | null;
                         cancellationReason: string | null;
                         version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OncallVendorsessionsBind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    externalActorId: string;
+                    sessionClass: "external_triage_vendor" | "external_triage_operator";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sessionClass: "external_triage_vendor" | "external_triage_operator";
+                        /** Format: uuid */
+                        externalActorId: string;
                     };
                 };
             };

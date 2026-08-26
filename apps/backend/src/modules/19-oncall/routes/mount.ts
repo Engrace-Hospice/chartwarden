@@ -15,12 +15,20 @@ import { registerPortalTriageRoutes } from "./portal.routes";
 import { registerProtocolRoutes } from "./protocols.routes";
 import { registerShiftRoutes } from "./shifts.routes";
 import { registerTriageCallRoutes } from "./triage-calls.routes";
+import { registerVendorSessionRoutes } from "./vendor-sessions.routes";
 
 export { registerTriageCallRoutes, type TriageCallRouteDeps } from "./triage-calls.routes";
 export { registerEscalationRoutes, type EscalationRouteDeps } from "./escalations.routes";
 export { registerShiftRoutes, type ShiftRouteDeps } from "./shifts.routes";
 export { registerProtocolRoutes, type ProtocolRouteDeps } from "./protocols.routes";
 export { registerPortalTriageRoutes, type PortalRouteDeps } from "./portal.routes";
+export {
+  registerVendorSessionRoutes,
+  type VendorBindingFacts,
+  type VendorSessionBindReader,
+  type VendorSessionRouteDeps,
+} from "./vendor-sessions.routes";
+export { buildDrizzleVendorSessionBindReader } from "./vendor-session-reader-drizzle";
 
 /** Mount every M19 §4.1 route plugin over the Drizzle-backed READ + WRITE services. */
 export function mountM19Routes(app: FastifyInstance, services: M19RouteServices): void {
@@ -30,4 +38,10 @@ export function mountM19Routes(app: FastifyInstance, services: M19RouteServices)
   registerShiftRoutes(app, { readService, writeService });
   registerProtocolRoutes(app, { readService, writeService });
   registerPortalTriageRoutes(app, { readService });
+  // F-030 — the vendor-session bind route mounts only when a real reader is supplied. Absent, not a
+  // deny-stub: a deployment that has not wired it should not advertise a bind endpoint that always
+  // refuses, which is the shape that made the ORIGINAL defect invisible.
+  if (services.vendorSessionBindReader) {
+    registerVendorSessionRoutes(app, { reader: services.vendorSessionBindReader });
+  }
 }

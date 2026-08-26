@@ -11,6 +11,7 @@ export type {
   AdmissionStatusReader,
   AuditorSessionMinter,
   PortalSessionBinder,
+  VendorSessionBinder,
   BillingStatusProvider,
   ExternalInterfaceMetricsProvider,
   IpuAdmissionReader,

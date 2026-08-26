@@ -4169,6 +4169,18 @@ export const M19_CONTRIBUTED_PERMISSIONS = {
     category: "admin",
     abac: "inOrg",
   },
+  // F-030 / #75 — binding an authenticated session to an `external_triage_vendor` (D3 Hybrid/Centralized).
+  //
+  // `admin`, alongside `oncall.admin_policy`, for exactly the reason that one is: the binding decides
+  // which outside party may act on the agency's after-hours line, and §8.3.2 lists tampering with the
+  // vendor binding as a named threat. It is the same authority as editing the policy that names the
+  // vendor, so it carries the same category rather than the operational `oncall` one.
+  "oncall.bind_vendor_session": {
+    resource: "external_triage_vendor",
+    action: "bind_session",
+    category: "admin",
+    abac: "inOrg",
+  },
   // ── portal (§4.1 row 36) ────────────────────────────────────────────────────────────────────────────
   // Decision 4 — §4.6's `oncall` category kept verbatim.
   "portal.triage.read_recent": {
