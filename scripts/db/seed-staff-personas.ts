@@ -10,9 +10,10 @@
  * quorum, M15's required-signer quorum) — none of the 4 existing roles carry ANY of these tokens, so
  * every one of those routes 403s regardless of how many permission keys the caller holds. This was
  * confirmed by tracing `context.roles` end-to-end through `packages/auth/src/identity/
- * db-session-store.ts` — it's the literal `role.key` values bound to the membership, and
- * `context.attributes.disciplines` (which some ABAC predicates also consult) is never populated
- * anywhere in the backend.
+ * db-session-store.ts` — it's the literal `role.key` values bound to the membership. Those seven
+ * predicates also consulted a `context.attributes.disciplines` array that nothing populated; the reads
+ * are gone (F-030) and the role keys this script grants are now the sole derivation, which is what
+ * M17 (`resolveDisciplinesTx`) and M19 (`TRIAGE_DISCIPLINE_FOR_ROLE_KEY`) had always done.
  *
  * This script adds distinct staff logins, one per discipline persona, each granted the same
  * `clinical` permission-category set `casey@wardenx.local` already gets (so the route's

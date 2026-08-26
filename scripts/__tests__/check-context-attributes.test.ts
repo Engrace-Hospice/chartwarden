@@ -23,6 +23,9 @@ const REPO_ROOT = join(__dirname, "../..");
 const scan = scanContextAttributes(REPO_ROOT);
 const keysWritten = new Set(scan.writes.map((w) => w.key));
 const keysRead = new Set(scan.reads.map((r) => r.key));
+const blockedKeys = Object.entries(CONTEXT_ATTRIBUTES)
+  .filter(([, e]) => e.blocked)
+  .map(([k]) => k);
 
 describe("context-attribute producer gate", () => {
   it("the repo is clean", () => {
@@ -51,13 +54,24 @@ describe("context-attribute producer gate", () => {
   });
 
   it("catches a blocked key that gains a writer, so an entry cannot outlive its reason", () => {
-    const withWrite = {
-      reads: scan.reads,
-      writes: [...scan.writes, { file: "apps/backend/src/x.ts", line: 1, key: "disciplines" }],
-    };
-    expect(findViolations(withWrite)).toContainEqual(
-      expect.objectContaining({ kind: "blocker-stale", key: "disciplines" }),
-    );
+    // The example is taken FROM the registry rather than hard-coded. Naming one broke this test twice as
+    // the F-030 work retired blocked keys out from under it (`licensure`, then `disciplines`) — and a test
+    // that fails because the thing it named got FIXED reports a regression where there is none.
+    for (const key of blockedKeys) {
+      const withWrite = {
+        reads: scan.reads,
+        writes: [...scan.writes, { file: "apps/backend/src/x.ts", line: 1, key }],
+      };
+      expect(findViolations(withWrite)).toContainEqual(
+        expect.objectContaining({ kind: "blocker-stale", key }),
+      );
+    }
+  });
+
+  it("still has blocked keys to check that rule against — an empty registry would vacuously pass", () => {
+    // When the last blocked entry goes, the loop above stops asserting anything. That is the good outcome,
+    // but it must be a deliberate edit here rather than a test that quietly stops testing.
+    expect(blockedKeys.length).toBe(2);
   });
 
   it("every entry is exactly one of producer or blocked, and says something", () => {

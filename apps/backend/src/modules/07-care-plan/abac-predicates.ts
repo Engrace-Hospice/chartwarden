@@ -203,18 +203,35 @@ export async function sudDisclosureAllowedForPatient(
   return !verdict.restrictedToNamedWorkforce && hasRole(context, "rn_case_manager");
 }
 
-/** Assemble the actor's §7.4 discipline scope from session roles/attributes (never client input). */
+/**
+ * Assemble the actor's §7.4 discipline scope from the session ROLE KEYS (never client input).
+ *
+ * WHY ROLE KEYS AND NOT A WORKFORCE READ — the platform's one derivation, stated in three places and now
+ * followed in all of them. M19's `TRIAGE_DISCIPLINE_FOR_ROLE_KEY` puts it plainly ("M3's
+ * `RoleGrant.roleKey` is the platform's one authority-derivation input"), and M17 — which OWNS the
+ * discipline vocabulary AND the `membership_credential` table — resolves its own D8 pre-schedule gate
+ * exactly this way (`resolveDisciplinesTx`: active role grants ∩ the scheduling-discipline vocabulary).
+ * M17 reads the credential for a DIFFERENT and deliberately orthogonal question — is the licence active —
+ * because a clinician can hold the `rn` role while their nursing licence has lapsed. Authority comes from
+ * the grant; the credential says whether it is currently exercisable.
+ *
+ * THIS USED TO UNION IN AN `attributes.disciplines` ARRAY FIRST, and so did the same derivation in M8, M9,
+ * M10, M11, M12 and M13 — seven modules, seven copies, one key that no producer in the platform has ever
+ * written. The union was therefore with the empty set on every request ever served: the role arm has been
+ * the entire answer everywhere, all along. It degraded instead of dying, which is why it went unnoticed
+ * for the whole life of the codebase (F-030). Seven dead reads standing in front of the derivation that
+ * actually answers is the one arrangement that could not stay — either the fact gets produced or the reads
+ * go, and producing an EIGHTH answer to a question three modules already answer identically would have
+ * been the drift, not the fix.
+ */
 export function disciplineScopeOf(context: AbacContext): AuthoringDisciplineScope {
-  const fromAttributes = Array.isArray(context.attributes.disciplines)
-    ? context.attributes.disciplines.filter((x): x is string => typeof x === "string")
-    : [];
-  const fromRoles = context.roles.filter((r) =>
+  const disciplines = context.roles.filter((r) =>
     (DISCIPLINE_ROLE_TOKENS as readonly string[]).includes(r),
-  );
-  const disciplines = [
-    ...new Set([...fromAttributes, ...fromRoles]),
-  ] as AuthoringDisciplineScope["disciplines"];
-  return { disciplines, isIdgCoordinator: hasRole(context, IDG_COORDINATOR_ROLE) };
+  ) as AuthoringDisciplineScope["disciplines"];
+  return {
+    disciplines: [...new Set(disciplines)] as AuthoringDisciplineScope["disciplines"],
+    isIdgCoordinator: hasRole(context, IDG_COORDINATOR_ROLE),
+  };
 }
 
 /** The signer roles a `care_plan_signature` may be captured under (mirrors `CarePlanSignerRole`). */

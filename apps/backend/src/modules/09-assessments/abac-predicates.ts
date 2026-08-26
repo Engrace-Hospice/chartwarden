@@ -71,15 +71,20 @@ const targetStr = (target: AbacTarget, field: string): string | null => {
   return typeof value === "string" && value.length > 0 ? value : null;
 };
 
-/** Assemble the actor's discipline set from session roles/attributes (never client input). */
+/**
+ * Assemble the actor's discipline set from the session role keys (never client input).
+ *
+ * Derived from the ROLE KEYS M2 assembled onto the request context. It USED to union in an
+ * `attributes.disciplines` array first; nothing in the platform has ever written that key, so the union was
+ * with the empty set on every request ever served, and the role arm has been the whole answer all along
+ * (F-030). See `07-care-plan/abac-predicates.ts` for the full argument.
+ */
 export function disciplinesOf(context: AbacContext): readonly string[] {
-  const fromAttributes = Array.isArray(context.attributes.disciplines)
-    ? context.attributes.disciplines.filter((x): x is string => typeof x === "string")
-    : [];
-  const fromRoles = context.roles.filter((r) =>
-    (ASSESSMENT_DISCIPLINES as readonly string[]).includes(r),
-  );
-  return [...new Set([...fromAttributes, ...fromRoles])];
+  return [
+    ...new Set(
+      context.roles.filter((r) => (ASSESSMENT_DISCIPLINES as readonly string[]).includes(r)),
+    ),
+  ];
 }
 
 /** Whether the actor holds a cosign-eligible role/discipline (RN / RN Case Manager / Clinical Supervisor). */

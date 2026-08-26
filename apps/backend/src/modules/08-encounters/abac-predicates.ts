@@ -55,11 +55,15 @@ const targetId = (target: AbacTarget, field: string): string | null => {
   return typeof value === "string" && value.length > 0 ? value : null;
 };
 
-/** Whether the actor holds the RN discipline (from role keys or the session-assembled discipline set). */
+/**
+ * Whether the actor holds the RN discipline, from the session role keys.
+ *
+ * The second arm used to re-ask the same question of an `attributes.disciplines` array that no producer
+ * has ever written, so it could only ever agree with the role arm or contribute nothing (F-030). See
+ * `07-care-plan/abac-predicates.ts` for why role keys are the platform's one derivation.
+ */
 function isRn(context: AbacContext): boolean {
-  if (hasRole(context, "rn") || hasRole(context, "rn_case_manager")) return true;
-  const disciplines = context.attributes.disciplines;
-  return Array.isArray(disciplines) && disciplines.includes("rn");
+  return hasRole(context, "rn") || hasRole(context, "rn_case_manager");
 }
 
 /** Deps for M8's ABAC predicate resolvers (the slice injects an in-memory resolver over its dataset). */
