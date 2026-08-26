@@ -142,7 +142,7 @@ export const ABAC_ESCALATION_RECIPIENT = (action: string): PreHandler =>
 /**
  * §4.1 row 36 — the M31 portal read (`portal_session_consent_active`).
  *
- * The target's `patientId` comes from the SESSION (`context.attributes.portalPatientId`), never from the
+ * The target's `patientId` comes from the SESSION (`context.attributes.sessionPatientId`), never from the
  * query string. §8.3.1's threat (b) is precisely a caregiver with a valid portal session naming another
  * patient's id; taking the id from the session makes the mismatch unrepresentable rather than merely
  * refused, and §8.3.1 fixes the answer at 403.
@@ -150,9 +150,8 @@ export const ABAC_ESCALATION_RECIPIENT = (action: string): PreHandler =>
 export const ABAC_PORTAL_CONSENT = (action: string): PreHandler =>
   requireAbac(action, "portal_session_consent_active", {
     getTarget: (r) => {
-      const attrs = (r as { context?: { attributes?: Record<string, unknown> } }).context
-        ?.attributes;
-      const fromSession = attrs?.portalPatientId ?? attrs?.patientId;
+      const fromSession = (r as { context?: { attributes?: Record<string, unknown> } }).context
+        ?.attributes?.sessionPatientId;
       return typeof fromSession === "string" ? { patientId: fromSession } : {};
     },
     notFoundOnDeny: false,

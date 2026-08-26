@@ -598,8 +598,22 @@ export interface ResolvedActor {
   readonly sessionClass: string;
   /** M31 portal sessions — the portal account the session acts for; null on every other class. */
   readonly portalAccountId: string | null;
-  /** M31 portal sessions — the one patient `select-patient` bound; null before that, and on staff. */
-  readonly portalPatientId: string | null;
+  /**
+   * The ONE patient this session is pinned to, or null on an org-scoped class.
+   *
+   * Deliberately NOT named for a class. Three different modules read this same fact under three
+   * different names — M31/M19 as `portalPatientId`, M19's portal-triage guard as a `patientId`
+   * fallback beside it, and M7's `caseload_or_scope` as a `scopePatientIds` array — and all three
+   * resolved to `undefined`, because the one thing none of the names described was the fact itself:
+   * `session.scope.patientId`, which a PORTAL session carries after `select-patient` and an
+   * `external_collaborator` / `funeral_home` session carries from the moment it is minted (F-030).
+   * M7's readers are collaborator sessions, so a key named `portal…` would have been the fourth
+   * name rather than the last one.
+   *
+   * Sourced through `sessionPinnedPatientId`, so an org-scoped class reads null even if its `scope`
+   * jsonb somehow carries a patient id — the class decides, not the column.
+   */
+  readonly sessionPatientId: string | null;
 }
 
 /** The membership + active role keys for an actor in one org (the actor-context fields M3 owns). */

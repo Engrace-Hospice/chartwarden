@@ -16,6 +16,7 @@ import type {
   StepUpFactor,
 } from "@wardenx/types";
 import { eq } from "drizzle-orm";
+import { SESSION_CLASSES, type SessionClass, sessionPinnedPatientId } from "./session-classes";
 import type { SessionContextRecord, SessionContextStore } from "./session-seam";
 
 /** The session-table columns this store reads. */
@@ -42,6 +43,8 @@ export function toSessionContextRecord(
   sessionId: string,
   enrichment?: ActorEnrichment | null,
 ): SessionContextRecord {
+  const sessionClass = row.sessionClass ?? "staff";
+  const patientId = scopeString(row.scope, "patientId");
   return {
     sessionId,
     userId: row.userId,
@@ -52,9 +55,18 @@ export function toSessionContextRecord(
     locationIds: enrichment?.locationIds ?? [],
     lastStepUpAt: row.lastStepUpAt ?? null,
     lastStepUpFactor: (row.lastStepUpFactor as StepUpFactor | null) ?? null,
-    sessionClass: row.sessionClass ?? "staff", // column is NOT NULL DEFAULT 'staff'
+    sessionClass, // column is NOT NULL DEFAULT 'staff'
     portalAccountId: scopeString(row.scope, "portalAccountId"),
-    portalPatientId: scopeString(row.scope, "patientId"),
+    // Through the CLASS predicate, not straight off the column. `scope` is jsonb: a staff session
+    // that somehow carries a `patientId` in it must still resolve to null, because what pins a
+    // session is its class, not the presence of a key. `sessionPinnedPatientId` is the same
+    // predicate `isSessionScopeValid` mirrors the DB CHECK with, so the read and the write agree.
+    sessionPatientId: isSessionClass(sessionClass)
+      ? sessionPinnedPatientId({
+          sessionClass,
+          scope: { ...(patientId ? { patientId } : {}) },
+        })
+      : null,
   };
 }
 
@@ -63,6 +75,12 @@ function scopeString(scope: unknown, key: "portalAccountId" | "patientId"): stri
   if (typeof scope !== "object" || scope === null) return null;
   const value = (scope as Record<string, unknown>)[key];
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/** Is this column value one of the enum's labels? A row written by a NEWER migration than this
+ *  build knows about is not — and an unrecognised class pins nothing, which is the closed end. */
+function isSessionClass(value: string): value is SessionClass {
+  return (SESSION_CLASSES as readonly string[]).includes(value);
 }
 
 /**

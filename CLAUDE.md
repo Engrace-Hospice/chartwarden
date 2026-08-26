@@ -223,7 +223,7 @@ the prose docs in `docs/architecture/`.
   **across** files (`attributes[REVIEW_FLOOR_OVERRIDE_ATTRIBUTE]` is read in M14's routes and
   declared in its predicate file), the SCREAMING_CASE identifier-index write form (how both
   in-request producers actually write), and whole-bag aliases (`const attrs = ctx.attributes ?? {}`,
-  which is the only way two of the unproduced keys are read at all). **13 keys are currently
+  which is the only way two of the unproduced keys are read at all). **8 keys are currently
   declared blocked** and the gate prints them on every run — they are the standing finding, not a
   passing state. The largest is `sessionClass`: M16/M31/M39 read it and default to `"staff"`, and
   M31's portal predicates gate on it being one of `patient_portal`/`caregiver_portal`/
@@ -239,7 +239,17 @@ the prose docs in `docs/architecture/`.
   app-layer mirror (`isSessionScopeValid`) never had the hole, so the defense-in-depth layer was the
   strict one and the DB floor was the loose one — which is why nothing going through the auth layer
   ever hit it. Both are proven by `session_scope_chk (F-030) — live` in `auth.live.test.ts`, which
-  is that constraint's only executable coverage.
+  is that constraint's only executable coverage. **Resolved next (2026-08-26):** the session's
+  pinned patient, which was read under THREE names and written under none — M31/M19 as
+  `portalPatientId`, M19's portal-triage guard as `portalPatientId ?? patientId` (a `??` chain of
+  two undefineds, shaped like a safety net), and M7's `caseload_or_scope` as a `scopePatientIds`
+  ARRAY, so a collaborator session's scope grant never fired and every collaborator fell through to
+  a caseload they are not in. One key now, `sessionPatientId`, named for the fact rather than for
+  one of its three readers — M7's readers are `external_collaborator` sessions, so a `portal…` name
+  would have become the fourth rather than the last. It resolves through `sessionPinnedPatientId`,
+  so the CLASS decides and a staff session carrying a stray `scope.patientId` pins nothing (reading
+  the jsonb key directly, as the store did, would have widened the one predicate whose job is to
+  narrow). Blocked keys: **10 → 8**.
 - `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
   Every live-database / live-Redis / browser suite in `package.json` must be invoked by a job in
   `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so

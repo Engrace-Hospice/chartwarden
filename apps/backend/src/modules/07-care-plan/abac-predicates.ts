@@ -68,10 +68,19 @@ const targetId = (target: AbacTarget, field: string): string | null => {
   return typeof value === "string" && value.length > 0 ? value : null;
 };
 
-/** Patient ids a collaborator/portal session is scoped to (assembled server-side onto `attributes`). */
-function sessionScopePatientIds(context: AbacContext): readonly string[] {
-  const raw = context.attributes.scopePatientIds;
-  return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : [];
+/**
+ * The patient a collaborator / funeral / portal session is pinned to (server-assembled, §3.6 `scope`).
+ *
+ * This read used to be `attributes.scopePatientIds`, an ARRAY — a third name for a fact M31 and M19
+ * were reading as `portalPatientId` and `patientId`, and that nothing wrote under any of them, so
+ * `caseload_or_scope`'s session-scope arm never once fired and every collaborator fell through to the
+ * caseload lookup they are not in (F-030). A session pins exactly ONE patient — that is what the
+ * `session_scope_chk` CHECK enforces and what `sessionPinnedPatientId` returns — so the plural was
+ * never true either: an empty-or-one array dressed up as a set.
+ */
+function sessionScopePatientId(context: AbacContext): string | null {
+  const raw = context.attributes.sessionPatientId;
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
 }
 
 /** A consent-type checker matching {@link CarePlanAbacDeps.isConsentActive}'s shape. */
@@ -258,7 +267,7 @@ export function buildCarePlanAbacPredicates(
   /** Caseload-or-scope over a patient: org-wide role, session scope, or caseload membership. */
   const caseloadOrScopeFor = async (context: AbacContext, patientId: string): Promise<boolean> => {
     if (ORG_WIDE_SCOPE_ROLES.some((r) => hasRole(context, r))) return true;
-    if (sessionScopePatientIds(context).includes(patientId)) return true;
+    if (sessionScopePatientId(context) === patientId) return true;
     if (!context.userId) return false;
     return isInCaseload({
       organizationId: context.organizationId,

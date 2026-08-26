@@ -19,6 +19,13 @@
  *                                       by M15/M23's `requireSystemPrincipal()`, while M23's predicate
  *                                       and M25's internal-seam guard checked a name nothing wrote,
  *                                       so those service-to-service routes refused every caller (F-030)
+ *   the session's pinned patient      — the same shape once more, at THREE names: M31/M19 read it as
+ *                                       `portalPatientId`, M19's portal-triage guard read
+ *                                       `portalPatientId ?? patientId`, and M7's `caseload_or_scope`
+ *                                       read a `scopePatientIds` ARRAY. One fact (`session.scope
+ *                                       .patientId`), no writer, and a `??` chain of two undefineds
+ *                                       that read as a safety net. Now one key, `sessionPatientId`,
+ *                                       named for the fact rather than for one of its three readers.
  *
  * The common shape: the read is correct, the doc comment asserts the hook assembles it, and nothing
  * assembles it. `arch:abac-predicates` cannot see this — it proves a predicate NAME resolves, not
@@ -93,11 +100,11 @@ export const CONTEXT_ATTRIBUTES: Readonly<Record<string, AttributeEntry>> = {
   },
   portalAccountId: {
     producer:
-      "authenticate hook — the portal account off the session's `scope` jsonb, written at mint by M2's `PortalSessionMinter`. Null on every non-portal class. Never falls back to a request parameter (§8.3.1).",
+      "authenticate hook — the portal account off the session's `scope` jsonb, written at mint by M2's `PortalSessionBinder`. Null on every non-portal class. Never falls back to a request parameter (§8.3.1).",
   },
-  portalPatientId: {
+  sessionPatientId: {
     producer:
-      "authenticate hook — the one patient `select-patient` bound, off the session's `scope` jsonb. Legitimately null between mint and select-patient (M31 §2.3 / D2), which is why the CHECK requires the ACCOUNT and not the patient.",
+      "authenticate hook — the ONE patient the session is pinned to, resolved through `sessionPinnedPatientId` off the `scope` jsonb (so the CLASS decides, not the presence of a key). Legitimately null between mint and select-patient on a portal session (M31 §2.3 / D2), which is why the CHECK requires the ACCOUNT and not the patient; non-null from mint on collaborator/funeral. Retired three names for this one fact: M31/M19's `portalPatientId`, M19's `patientId` fallback beside it, and M7's `scopePatientIds` array.",
   },
 
   breakGlassEventId: {
@@ -118,10 +125,6 @@ export const CONTEXT_ATTRIBUTES: Readonly<Record<string, AttributeEntry>> = {
     blocked:
       "Read by M27 and M30's owner-OR-admin predicates as the actor's resolved grant set; nothing assembles it. The fact exists — `resolveActorPermissions` (@wardenx/auth) is the documented check-don't-gate seam — but stamping the full grant set on every request has a cost worth deciding deliberately rather than by default. Fails closed: the explicit-grant arm of `abuseAllegationAccess`/`ownsQapiProject`/`ownsSraCycle` never fires.",
   },
-  scopePatientIds: {
-    blocked:
-      "M7's care-plan predicates read the patient ids a collaborator/portal session is scoped to. The source is `session.scope` jsonb (`{ patientId }`, per the `session_scope_chk` CHECK), which no store or seam reads today. Same blocker family as `sessionClass` — the collaborator/funeral session classes are the ones that carry it.",
-  },
   licensure: {
     blocked:
       "M22's §4.7 high-risk-field review gate reads `licensure.type` (RN/NP/PA/MD/DO). Its comment sources it from `user.licensure.type`; no such column or seam field exists. Fails closed, so no non-RN reviews a high-risk field — but no RN does either.",
@@ -141,10 +144,6 @@ export const CONTEXT_ATTRIBUTES: Readonly<Record<string, AttributeEntry>> = {
   organizationName: {
     blocked:
       "M2's invitation routes read it for the org name embedded in the invitation, falling back to the literal `Organization`. Cosmetic rather than authorization — but it is the string a real invited user sees in a real email, and today every WardenX invitation says `Organization`. The name is on the `organization` row the hook already has an id for.",
-  },
-  patientId: {
-    blocked:
-      "M19's portal triage routes read `portalPatientId ?? patientId` as the session's patient anchor, so this is the second name for the same unproduced fact. Both arms are undefined, and the route refuses rather than falling back to the query parameter (§8.3.1) — which is the right refusal for the wrong reason.",
   },
   isPlatformOperator: {
     blocked:
@@ -170,9 +169,9 @@ const CONST_RE = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*["'`
  * `const attrs = ctx.attributes ?? {}` — an ALIAS for the whole bag, after which every read is
  * `attrs.foo` and the token `attributes` never appears again on the line.
  *
- * This is not a hypothetical: it is how M31's `actorOf` reads `portalAccountId`/`portalPatientId`,
+ * This is not a hypothetical: it is how M31's `actorOf` reads `portalAccountId`/`sessionPatientId`,
  * two of the unproduced keys, so a scanner that only matched `attributes.<key>` would have declared
- * the registry entry for `portalPatientId` unused and been wrong. The alias is resolved per FILE
+ * the registry entry for `sessionPatientId` unused and been wrong. The alias is resolved per FILE
  * (unlike the string constants, which are resolved across files) because it is always a local.
  */
 const ALIAS_RE =

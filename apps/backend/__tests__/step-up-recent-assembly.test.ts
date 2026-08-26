@@ -48,7 +48,7 @@ const ACTOR: ResolvedActor = {
   locationIds: [],
   sessionClass: "staff",
   portalAccountId: null,
-  portalPatientId: null,
+  sessionPatientId: null,
 };
 
 /** `agoSec: null` — the session never stepped up; a number — it did, that long ago, with TOTP. */
@@ -199,7 +199,7 @@ describe("F-030 — the session class and portal scope reach the predicates that
     expect(attrs.sessionClass).toBe("staff");
     // A staff session carries no portal anchors at all — absent, not empty-string.
     expect(attrs.portalAccountId).toBeUndefined();
-    expect(attrs.portalPatientId).toBeUndefined();
+    expect(attrs.sessionPatientId).toBeUndefined();
   });
 
   it("stamps each portal class, so `isPortalSession` can finally be true", async () => {
@@ -207,12 +207,12 @@ describe("F-030 — the session class and portal scope reach the predicates that
       const attrs = await contextFor({
         sessionClass: cls,
         portalAccountId: "acct-1",
-        portalPatientId: "pt-1",
+        sessionPatientId: "pt-1",
       });
       expect(attrs.sessionClass).toBe(cls);
       expect(isPortalSessionClass(String(attrs.sessionClass))).toBe(true);
       expect(attrs.portalAccountId).toBe("acct-1");
-      expect(attrs.portalPatientId).toBe("pt-1");
+      expect(attrs.sessionPatientId).toBe("pt-1");
     }
   });
 
@@ -222,10 +222,23 @@ describe("F-030 — the session class and portal scope reach the predicates that
     const attrs = await contextFor({
       sessionClass: "caregiver_portal",
       portalAccountId: "acct-1",
-      portalPatientId: null,
+      sessionPatientId: null,
     });
     expect(attrs.portalAccountId).toBe("acct-1");
-    expect(attrs.portalPatientId).toBeUndefined();
+    expect(attrs.sessionPatientId).toBeUndefined();
+  });
+
+  it("stamps a COLLABORATOR session's pinned patient — the reader that is not a portal", async () => {
+    // M7's `caseload_or_scope` is the third reader of this fact, and its sessions are collaborator
+    // sessions, not portal ones. That is why the attribute is `sessionPatientId` and not
+    // `portalPatientId`: naming the key after one of its three readers is what produced three names
+    // for it in the first place (F-030).
+    for (const cls of ["external_collaborator", "funeral_home"]) {
+      const attrs = await contextFor({ sessionClass: cls, sessionPatientId: "pt-7" });
+      expect(attrs.sessionClass).toBe(cls);
+      expect(attrs.sessionPatientId).toBe("pt-7");
+      expect(attrs.portalAccountId).toBeUndefined();
+    }
   });
 
   it("stamps the M19 vendor classes", async () => {

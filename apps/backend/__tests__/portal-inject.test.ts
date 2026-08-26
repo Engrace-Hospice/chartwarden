@@ -23,7 +23,7 @@
 // header-auth shim with no portal attributes (`actor.sessionClass` defaults `"staff"`, guards.ts's
 // `ABAC_IN_ORG`). Patient/caregiver-facing routes (`/api/v1/portal/...`, the portal-side telehealth
 // join/leave) need `request.context.attributes.sessionClass` ∈ {patient_portal, caregiver_portal,
-// bereaved_portal} PLUS `.portalAccountId` / `.portalPatientId` — the session anchors `actor.ts` reads
+// bereaved_portal} PLUS `.portalAccountId` / `.sessionPatientId` — the session anchors `actor.ts` reads
 // (never a body/query field, §8.3.1). The header-auth shim below is extended with
 // `x-test-session-class` / `x-test-portal-account` / `x-test-portal-patient` (the `bereavement-inject.test.ts`
 // precedent for exactly this class of module-specific session attribute).
@@ -40,7 +40,7 @@
 //
 //   1. `POST /api/v1/portal/sessions/select-patient` — the whole point of this route is to bind the FIRST
 //      patient a portal session is scoped to (§8.1/D2). Its `ABAC_GRANT` guard (routes/guards.ts) read its
-//      `patientId` target from `context.attributes.portalPatientId` — the SESSION — not the request BODY the
+//      `patientId` target from `context.attributes.sessionPatientId` — the SESSION — not the request BODY the
 //      caller is trying to select, so a freshly-minted session (no patient selected yet) ALWAYS 403'd, even
 //      for a valid active grant. Fixed by removing `ABAC_GRANT` from this one route (`session.routes.ts`):
 //      the handler already independently re-derives and checks the exact same invariant, correctly, against
@@ -122,7 +122,7 @@ function headerAuth(request: FastifyRequest): void {
   }
   const portalPatient = request.headers["x-test-portal-patient"];
   if (typeof portalPatient === "string" && portalPatient.length > 0) {
-    request.context.attributes.portalPatientId = portalPatient;
+    request.context.attributes.sessionPatientId = portalPatient;
   }
 }
 

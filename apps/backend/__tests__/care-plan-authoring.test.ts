@@ -396,7 +396,7 @@ describe("M7-T06 §6 — caseload_or_scope & signer_role_match predicates", () =
     const scoped = makePredicates();
     expect(
       await scoped.predicates.caseload_or_scope(
-        makeContext({ attributes: { scopePatientIds: [PATIENT] } }),
+        makeContext({ attributes: { sessionPatientId: PATIENT } }),
         target,
       ),
     ).toBe(true);
