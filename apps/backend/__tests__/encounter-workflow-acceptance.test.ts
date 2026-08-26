@@ -101,7 +101,7 @@ describe("M8-T12 §7 workflow acceptance", () => {
     await svc.sign(ORG, id, ACTOR, { at: PAST });
     const add = await svc.createAddendum(ORG, id);
     expect(add.status).toBe("draft");
-    await svc.updateAddendumSelections(ORG, id, add.id);
+    await svc.updateAddendumSelections(ORG, id, add.id, { sections: [] });
     await svc.finalizeAddendum(ORG, id, add.id);
     const sa = await svc.signAddendum(ORG, id, add.id, ACTOR, { at: PAST });
     expect(sa.status).toBe("signed");
@@ -111,9 +111,10 @@ describe("M8-T12 §7 workflow acceptance", () => {
 
   it("§7.14 — concurrency: an edit against a stale version is rejected (optimistic concurrency)", async () => {
     const { svc, id } = await draft("rn");
-    await svc.updateSelections(ORG, id, 0); // version 0 → 1
-    await expect(svc.updateSelections(ORG, id, 0)).rejects.toThrow(); // stale If-Match
-    await expect(svc.updateSelections(ORG, id, 1)).resolves.toBeDefined(); // current version succeeds
+    const EMPTY = { sections: [] };
+    await svc.updateSelections(ORG, id, 0, EMPTY); // version 0 → 1
+    await expect(svc.updateSelections(ORG, id, 0, EMPTY)).rejects.toThrow(); // stale If-Match
+    await expect(svc.updateSelections(ORG, id, 1, EMPTY)).resolves.toBeDefined(); // current succeeds
   });
 
   it("cross-tenant isolation: an encounter is invisible to another org (non-leaking 404)", async () => {

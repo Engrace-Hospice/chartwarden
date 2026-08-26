@@ -86,6 +86,7 @@ const ALL_AUTHOR = [
   "encounter.finalize",
   "encounter.sign",
   "encounter.cosign",
+  "encounter.addendum_author",
   "vitals.author",
   "mileage.author",
 ];
@@ -94,6 +95,7 @@ const PERMISSION_SEED = [
   { userId: "rn_1", permissions: ALL_AUTHOR },
   { userId: "lpn_cos", permissions: ["encounter.read", "encounter.cosign"] },
   { userId: "viewer_1", permissions: ["encounter.read"] },
+  { userId: "svc_m22", permissions: ["encounter.read_internal"] },
 ];
 
 function makeServer(
@@ -186,6 +188,8 @@ function makeServer(
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
 const LPN_COSIGNER = { "x-test-user": "lpn_cos", "x-test-org": ORG, "x-test-roles": "lpn" };
+/** The system principal the M22 render seam (route 31) is called as. */
+const INTERNAL = { "x-test-user": "svc_m22", "x-test-org": ORG, "x-test-roles": "system" };
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -411,11 +415,13 @@ describe("M8-T09 — §7.7 optimistic concurrency on selections PATCH", () => {
     });
     const id = draft.json().id as string;
 
+    // `{ sections: [] }` is the empty tree. It used to be `{ selections: {} }` against a schema that
+    // validated nothing and a handler that read nothing (#114).
     const noMatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/encounters/${id}/selections`,
       headers: RN,
-      payload: { selections: {} },
+      payload: { sections: [] },
     });
     expect(noMatch.statusCode).toBe(428);
 
@@ -423,7 +429,7 @@ describe("M8-T09 — §7.7 optimistic concurrency on selections PATCH", () => {
       method: "PATCH",
       url: `/api/v1/encounters/${id}/selections`,
       headers: { ...RN, "if-match": "0" },
-      payload: { selections: {} },
+      payload: { sections: [] },
     });
     expect(ok.statusCode).toBe(200);
     expect(ok.json().version).toBe(1);
@@ -432,10 +438,182 @@ describe("M8-T09 — §7.7 optimistic concurrency on selections PATCH", () => {
       method: "PATCH",
       url: `/api/v1/encounters/${id}/selections`,
       headers: { ...RN, "if-match": "0" },
-      payload: { selections: {} },
+      payload: { sections: [] },
     });
     expect(stale.statusCode).toBe(412);
     expect(stale.json().error.code).toBe("VERSION_MISMATCH");
+  });
+});
+
+// #114 — the two selections PATCHes published a required body, parsed none of it, bumped the version and
+// returned 200. The clinician's note was accepted and dropped; nothing had ever written a
+// `hearthnote_selection` row, and no read existed through which the loss could be seen.
+describe("M8 §2.6 — the HearthNote selection tree round-trips (#114)", () => {
+  const TREE = {
+    sections: [
+      {
+        sectionId: "assessment",
+        entries: [{ code: "nv.cv.stable" }, { code: "nv.cv.edema", params: { edema_grade: "2+" } }],
+      },
+      { sectionId: "plan", entries: [], freeText: "Family to call if pain escalates overnight." },
+    ],
+  };
+
+  async function draft(app: Awaited<ReturnType<typeof makeServer>>["app"]): Promise<string> {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/encounters",
+      headers: RN,
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "rn",
+        serviceDate: "2026-06-20",
+      },
+    });
+    return res.json().id as string;
+  }
+
+  it("writes the tree and reads it back through a caller-facing route", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "0" },
+      payload: TREE,
+    });
+    expect(patched.statusCode).toBe(200);
+    // The response is the assembled note, not an empty string — the entry's `${edema_grade}` param and
+    // the verbatim free text are both in it.
+    expect(patched.json().layer1Preview).toContain("cardiovascularly stable");
+    expect(patched.json().layer1Preview).toContain("2+ dependent edema");
+    expect(patched.json().layer1Preview).toContain("Family to call if pain escalates overnight.");
+
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: RN,
+    });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().templateKey).toBe("routine_visit:rn");
+    expect(read.json().sections).toEqual(TREE.sections);
+    expect(read.json().layer1Preview).toBe(patched.json().layer1Preview);
+  });
+
+  it("a fresh draft reads back an EMPTY tree — absent is distinguishable from written", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: RN,
+    });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().sections).toEqual([]);
+    expect(read.json().layer1Preview).toBe("");
+  });
+
+  it("refuses a vocabulary code the corpus does not have — and stores nothing", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "0" },
+      payload: { sections: [{ sectionId: "assessment", entries: [{ code: "nv.not.a.code" }] }] },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("UNKNOWN_VOCAB_CODE");
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: RN,
+    });
+    expect(read.json().sections).toEqual([]);
+  });
+
+  // `assembleLayer1` walks the TEMPLATE's sections and looks each one up in the selection, so a section
+  // the template does not have is never visited — it would be stored and then vanish from every render.
+  it("refuses a section the template does not have, rather than storing content that never renders", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "0" },
+      payload: { sections: [{ sectionId: "not_a_section", entries: [{ code: "nv.cv.stable" }] }] },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("UNKNOWN_TEMPLATE_SECTION");
+  });
+
+  it("the M22 render seam serves the assembled note, and 404s when there is none to render", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+
+    // Was `{ final: "" }` with a 200 — a renderable answer for a note that does not exist.
+    const empty = await app.inject({
+      method: "GET",
+      url: `/api/v1/internal/encounters/${id}/render-payload`,
+      headers: INTERNAL,
+    });
+    expect(empty.statusCode).toBe(404);
+
+    await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "0" },
+      payload: TREE,
+    });
+    const rendered = await app.inject({
+      method: "GET",
+      url: `/api/v1/internal/encounters/${id}/render-payload`,
+      headers: INTERNAL,
+    });
+    expect(rendered.statusCode).toBe(200);
+    expect(rendered.json().final).toContain("Assessment");
+    expect(rendered.json().final).toContain("cardiovascularly stable");
+  });
+
+  it("an addendum keeps its own tree, against its parent's template", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const created = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/addenda`,
+      headers: RN,
+      payload: { reason: "late clarification of the evening pain plan" },
+    });
+    expect(created.statusCode).toBe(201);
+    const addendumId = created.json().id as string;
+
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/addenda/${addendumId}/selections`,
+      headers: { ...RN, "if-match": "0" },
+      payload: { sections: [{ sectionId: "plan", entries: [], freeText: "Clarifying the plan." }] },
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().layer1Preview).toContain("Clarifying the plan.");
+
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/addenda/${addendumId}/selections`,
+      headers: RN,
+    });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().templateKey).toBe("routine_visit:rn");
+    expect(read.json().layer1Preview).toContain("Clarifying the plan.");
+    // The parent's own tree is untouched — the addendum is a separate row, not an overwrite.
+    const parent = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: RN,
+    });
+    expect(parent.json().sections).toEqual([]);
   });
 });
 

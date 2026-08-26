@@ -45,6 +45,26 @@ const SESSION_A = "66666666-6666-6666-6666-666666666666";
 /** A session id the store never seeds — `resolveStepUpState` resolves it to `null` (never fresh). */
 const STALE_SESSION = "77777777-7777-7777-7777-777777777777";
 
+/** §2.6 selection trees (#114). Real template sections + real `@wardenx/narrative-vocab` codes. */
+const EMPTY_TREE = { sections: [] };
+const TREE = {
+  sections: [
+    {
+      sectionId: "assessment",
+      entries: [{ code: "nv.cv.stable" }, { code: "nv.cv.edema", params: { edema_grade: "2+" } }],
+    },
+  ],
+};
+/** A deterministic stand-in for the tenant-DEK envelope: reversible, and never the plaintext. */
+const FAKE_CIPHER = {
+  async seal(_org: string, plaintext: string) {
+    return `sealed:${Buffer.from(plaintext, "utf8").toString("base64url")}`;
+  },
+  async open(_org: string, envelope: string) {
+    return Buffer.from(envelope.replace(/^sealed:/, ""), "base64url").toString("utf8");
+  },
+};
+
 describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T02)", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
@@ -316,7 +336,15 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
     const a = await svc.createAddendum(ORG_A, id);
     expect(a.status).toBe("draft");
-    await svc.updateAddendumSelections(ORG_A, id, a.id);
+    const addendumNote = await svc.updateAddendumSelections(ORG_A, id, a.id, TREE);
+    expect(addendumNote.layer1Preview).toContain("cardiovascularly stable");
+    // The addendum's note is its OWN hearthnote_selection row, keyed by addendum_id (#114).
+    const addendumRows = await admin.query(
+      "SELECT template_key FROM hearthnote_selection WHERE addendum_id=$1",
+      [a.id],
+    );
+    expect(addendumRows.rowCount).toBe(1);
+    expect(addendumRows.rows[0].template_key).toBe("routine_visit:rn");
     const fin = await svc.finalizeAddendum(ORG_A, id, a.id);
     expect(fin.status).toBe("finalized");
     const signed = await svc.signAddendum(ORG_A, id, a.id, ACTOR_A, { at: SERVICE_DATE as never });
@@ -326,8 +354,10 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
   it("§7.7 optimistic concurrency — a stale updateSelections is 412, a fresh one bumps the version", async () => {
     const id = await draft("routine_visit", "rn");
-    await expect(svc.updateSelections(ORG_A, id, 99)).rejects.toMatchObject({ statusCode: 412 });
-    const bumped = await svc.updateSelections(ORG_A, id, 0);
+    await expect(svc.updateSelections(ORG_A, id, 99, EMPTY_TREE)).rejects.toMatchObject({
+      statusCode: 412,
+    });
+    const bumped = await svc.updateSelections(ORG_A, id, 0, EMPTY_TREE);
     expect(bumped.version).toBe(1);
   });
 
@@ -407,6 +437,114 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const id = await draft("routine_visit", "rn");
     await svc.captureVitals(ORG_A, id, { heartRate: 72 });
     await expect(svc.listVitals(ORG_B, id)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  // ── §2.6 HearthNote selections (#114) ─────────────────────────────────────────────────────────────
+  //
+  // The two selections PATCHes published a required body, parsed none of it, bumped `version` and
+  // returned 200. Nothing had ever written a `hearthnote_selection` row — the only code that touched the
+  // three hearthnote tables was the ERASER. These cases drive the real Drizzle path as the NOBYPASSRLS
+  // role and read the row back out of Postgres.
+
+  it("§2.6 — the tree is PERSISTED to hearthnote_selection and reads back assembled", async () => {
+    const id = await draft("routine_visit", "rn");
+    const written = await svc.updateSelections(ORG_A, id, 0, TREE);
+    expect(written.version).toBe(1);
+    expect(written.layer1Preview).toContain("2+ dependent edema");
+
+    // The row exists. Asserted against the TABLE, not the service, because "nothing writes this table"
+    // is the finding — a service that returns the right shape from memory would satisfy a weaker test.
+    const rows = await admin.query(
+      "SELECT template_key, template_version, selections, free_text_cipher, provider_entity_id FROM hearthnote_selection WHERE encounter_id=$1",
+      [id],
+    );
+    expect(rows.rowCount).toBe(1);
+    expect(rows.rows[0].template_key).toBe("routine_visit:rn");
+    expect(rows.rows[0].selections.sections).toHaveLength(1);
+    // No cipher is bound in this suite, so the tree carries no free text and the column stays NULL —
+    // never plaintext prose in a column named `_cipher`.
+    expect(rows.rows[0].free_text_cipher).toBeNull();
+
+    const read = await svc.getSelections(ORG_A, id);
+    expect(read.sections).toEqual(TREE.sections);
+    expect(read.layer1Preview).toBe(written.layer1Preview);
+  });
+
+  it("§2.6 — a second PATCH UPDATES the one row rather than adding a second (mig 0225)", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.updateSelections(ORG_A, id, 0, TREE);
+    await svc.updateSelections(ORG_A, id, 1, {
+      sections: [{ sectionId: "assessment", entries: [{ code: "nv.neuro.alert" }] }],
+    });
+    const rows = await admin.query(
+      "SELECT version, selections FROM hearthnote_selection WHERE encounter_id=$1",
+      [id],
+    );
+    // Before 0225 the "unique" indexes were plain indexes, so this would have been two rows and every
+    // reader afterwards would have had to guess which one was the note.
+    expect(rows.rowCount).toBe(1);
+    expect(Number(rows.rows[0].version)).toBe(1);
+    const read = await svc.getSelections(ORG_A, id);
+    expect(read.sections[0]?.entries[0]?.code).toBe("nv.neuro.alert");
+  });
+
+  it("§3.6 — free text is REFUSED with no cipher bound, and nothing is written", async () => {
+    const id = await draft("routine_visit", "rn");
+    await expect(
+      svc.updateSelections(ORG_A, id, 0, {
+        sections: [{ sectionId: "plan", entries: [], freeText: "Family to call overnight." }],
+      }),
+    ).rejects.toMatchObject({ statusCode: 503, code: "HEARTHNOTE_CIPHER_UNBOUND" });
+    const rows = await admin.query("SELECT 1 FROM hearthnote_selection WHERE encounter_id=$1", [
+      id,
+    ]);
+    expect(rows.rowCount).toBe(0);
+    // The refusal is a refusal, not a partial write: the encounter's own version did not move either.
+    expect((await svc.getEncounter(ORG_A, id)).version).toBe(0);
+  });
+
+  it("§3.6 — with a cipher bound, the prose round-trips and is NEVER stored in the clear", async () => {
+    const cipherSvc = createDbEncounterRouteService(handle.db, undefined, FAKE_CIPHER);
+    const id = await draft("routine_visit", "rn");
+    const prose = "Family to call if pain escalates overnight.";
+    const written = await cipherSvc.updateSelections(ORG_A, id, 0, {
+      sections: [{ sectionId: "plan", entries: [], freeText: prose }],
+    });
+    expect(written.layer1Preview).toContain(prose);
+
+    const rows = await admin.query(
+      "SELECT selections, free_text_cipher FROM hearthnote_selection WHERE encounter_id=$1",
+      [id],
+    );
+    expect(rows.rows[0].free_text_cipher).not.toBeNull();
+    expect(rows.rows[0].free_text_cipher).not.toContain(prose);
+    // And it is not hiding in the structured column either — the split is the §3.6 minimization rule.
+    expect(JSON.stringify(rows.rows[0].selections)).not.toContain(prose);
+
+    const read = await cipherSvc.getSelections(ORG_A, id);
+    expect(read.sections[0]?.freeText).toBe(prose);
+  });
+
+  it("the M22 render seam 404s with no note, and serves the assembled one after a PATCH", async () => {
+    const id = await draft("routine_visit", "rn");
+    // Was a 200 with `final: ""` — an empty note reported as a successful render.
+    await expect(svc.renderPayload(ORG_A, id)).rejects.toMatchObject({ statusCode: 404 });
+    await svc.updateSelections(ORG_A, id, 0, TREE);
+    const rendered = await svc.renderPayload(ORG_A, id);
+    expect(rendered.final).toContain("Assessment");
+    expect(rendered.final).toContain("cardiovascularly stable");
+  });
+
+  it("RLS — org B cannot read or write org A's hearthnote_selection (non-leaking 404)", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.updateSelections(ORG_A, id, 0, TREE);
+    await expect(svc.getSelections(ORG_B, id)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(svc.updateSelections(ORG_B, id, 1, TREE)).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    await expect(svc.renderPayload(ORG_B, id)).rejects.toMatchObject({ statusCode: 404 });
+    // Org A's note is untouched by org B's attempt.
+    expect((await svc.getSelections(ORG_A, id)).sections).toEqual(TREE.sections);
   });
 
   it("RLS — org B cannot read or write org A's encounter (non-leaking 404)", async () => {

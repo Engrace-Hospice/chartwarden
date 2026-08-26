@@ -1380,6 +1380,7 @@ import {
   ModificationResponseSchema as M8ModificationResponseSchema,
   RenderPayloadResponseSchema as M8RenderPayloadResponseSchema,
   SelectionsUpdateResponseSchema as M8SelectionsUpdateResponseSchema,
+  SelectionsViewResponseSchema as M8SelectionsViewResponseSchema,
   SignEncounterSchema as M8SignEncounterSchema,
   SignResponseSchema as M8SignResponseSchema,
   SignedSinceQuerySchema as M8SignedSinceQuerySchema,
@@ -5951,10 +5952,15 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M8EncounterViewResponseSchema,
   },
   "PATCH /api/v1/encounters/:encounterId/selections": {
-    summary: "Update draft selections (§7.7 If-Match)",
+    summary:
+      "Write the draft's HearthNote selection tree (§7.7 If-Match). Returns the Layer-1 assembly of what was stored",
     body: M8UpdateSelectionsSchema,
     response: M8SelectionsUpdateResponseSchema,
     headers: IF_MATCH_HEADER,
+  },
+  "GET /api/v1/encounters/:encounterId/selections": {
+    summary: "Read the stored HearthNote selection tree back, with its assembled Layer-1 narrative",
+    response: M8SelectionsViewResponseSchema,
   },
   "POST /api/v1/encounters/:encounterId/vitals": {
     summary: "Capture a vitals set",
@@ -6053,10 +6059,15 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M8CreateAddendumResponseSchema,
   },
   "PATCH /api/v1/encounters/:encounterId/addenda/:addendumId/selections": {
-    summary: "Update addendum selections (§7.7 If-Match)",
+    summary:
+      "Write an addendum's HearthNote selection tree (§7.7 If-Match). Returns the Layer-1 assembly of what was stored",
     body: M8UpdateSelectionsSchema,
     response: M8AddendumSelectionsResponseSchema,
     headers: IF_MATCH_HEADER,
+  },
+  "GET /api/v1/encounters/:encounterId/addenda/:addendumId/selections": {
+    summary: "Read an addendum's stored HearthNote selection tree back, assembled",
+    response: M8SelectionsViewResponseSchema,
   },
   "POST /api/v1/encounters/:encounterId/addenda/:addendumId/finalize": {
     summary: "Finalize an addendum",
@@ -6078,7 +6089,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M8EncounterListResponseSchema,
   },
   "GET /api/v1/internal/encounters/:encounterId/render-payload": {
-    summary: "Internal: M22 PDF-render payload",
+    summary:
+      "Internal: M22 PDF-render payload — the assembled HearthNote. 404 when the encounter has no selection tree to render (never an empty string)",
     response: M8RenderPayloadResponseSchema,
   },
 });

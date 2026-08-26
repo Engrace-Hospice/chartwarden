@@ -70816,12 +70816,123 @@
       }
     },
     "/api/v1/encounters/{encounterId}/addenda/{addendumId}/selections": {
+      "get": {
+        "operationId": "getApiV1EncountersByEncounterIdAddendaByAddendumIdSelections",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Read an addendum's stored HearthNote selection tree back, assembled",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "addendumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "templateKey",
+                    "vocabVersion",
+                    "sections",
+                    "layer1Preview",
+                    "version"
+                  ],
+                  "properties": {
+                    "templateKey": {
+                      "type": "string"
+                    },
+                    "vocabVersion": {
+                      "type": "string"
+                    },
+                    "sections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "sectionId",
+                          "entries"
+                        ],
+                        "properties": {
+                          "sectionId": {
+                            "type": "string"
+                          },
+                          "entries": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "code"
+                              ],
+                              "properties": {
+                                "code": {
+                                  "type": "string"
+                                },
+                                "params": {
+                                  "type": "object",
+                                  "patternProperties": {
+                                    "^(.*)$": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "number"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "freeText": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "layer1Preview": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "patch": {
         "operationId": "patchApiV1EncountersByEncounterIdAddendaByAddendumIdSelections",
         "tags": [
           "08-encounters"
         ],
-        "summary": "Update addendum selections (§7.7 If-Match)",
+        "summary": "Write an addendum's HearthNote selection tree (§7.7 If-Match). Returns the Layer-1 assembly of what was stored",
         "parameters": [
           {
             "name": "encounterId",
@@ -70857,11 +70968,15 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "version"
+                    "version",
+                    "layer1Preview"
                   ],
                   "properties": {
                     "version": {
                       "type": "integer"
+                    },
+                    "layer1Preview": {
+                      "type": "string"
                     }
                   }
                 }
@@ -70882,20 +70997,61 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "selections"
+                  "sections"
                 ],
                 "properties": {
-                  "selections": {
-                    "type": "object",
-                    "patternProperties": {
-                      "^(.*)$": {}
-                    }
-                  },
-                  "freeText": {
-                    "type": "object",
-                    "patternProperties": {
-                      "^(.*)$": {
-                        "type": "string"
+                  "sections": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "sectionId",
+                        "entries"
+                      ],
+                      "properties": {
+                        "sectionId": {
+                          "minLength": 1,
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "entries": {
+                          "maxItems": 200,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "code"
+                            ],
+                            "properties": {
+                              "code": {
+                                "minLength": 1,
+                                "maxLength": 64,
+                                "type": "string"
+                              },
+                              "params": {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^(.*)$": {
+                                    "anyOf": [
+                                      {
+                                        "maxLength": 200,
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "number"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "freeText": {
+                          "maxLength": 20000,
+                          "type": "string"
+                        }
                       }
                     }
                   }
@@ -72135,12 +72291,115 @@
       }
     },
     "/api/v1/encounters/{encounterId}/selections": {
+      "get": {
+        "operationId": "getApiV1EncountersByEncounterIdSelections",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Read the stored HearthNote selection tree back, with its assembled Layer-1 narrative",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "templateKey",
+                    "vocabVersion",
+                    "sections",
+                    "layer1Preview",
+                    "version"
+                  ],
+                  "properties": {
+                    "templateKey": {
+                      "type": "string"
+                    },
+                    "vocabVersion": {
+                      "type": "string"
+                    },
+                    "sections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "sectionId",
+                          "entries"
+                        ],
+                        "properties": {
+                          "sectionId": {
+                            "type": "string"
+                          },
+                          "entries": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "code"
+                              ],
+                              "properties": {
+                                "code": {
+                                  "type": "string"
+                                },
+                                "params": {
+                                  "type": "object",
+                                  "patternProperties": {
+                                    "^(.*)$": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "number"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "freeText": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "layer1Preview": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "patch": {
         "operationId": "patchApiV1EncountersByEncounterIdSelections",
         "tags": [
           "08-encounters"
         ],
-        "summary": "Update draft selections (§7.7 If-Match)",
+        "summary": "Write the draft's HearthNote selection tree (§7.7 If-Match). Returns the Layer-1 assembly of what was stored",
         "parameters": [
           {
             "name": "encounterId",
@@ -72197,20 +72456,61 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "selections"
+                  "sections"
                 ],
                 "properties": {
-                  "selections": {
-                    "type": "object",
-                    "patternProperties": {
-                      "^(.*)$": {}
-                    }
-                  },
-                  "freeText": {
-                    "type": "object",
-                    "patternProperties": {
-                      "^(.*)$": {
-                        "type": "string"
+                  "sections": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "sectionId",
+                        "entries"
+                      ],
+                      "properties": {
+                        "sectionId": {
+                          "minLength": 1,
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "entries": {
+                          "maxItems": 200,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "code"
+                            ],
+                            "properties": {
+                              "code": {
+                                "minLength": 1,
+                                "maxLength": 64,
+                                "type": "string"
+                              },
+                              "params": {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^(.*)$": {
+                                    "anyOf": [
+                                      {
+                                        "maxLength": 200,
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "number"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "freeText": {
+                          "maxLength": 20000,
+                          "type": "string"
+                        }
                       }
                     }
                   }
@@ -90402,7 +90702,7 @@
         "tags": [
           "08-encounters"
         ],
-        "summary": "Internal: M22 PDF-render payload",
+        "summary": "Internal: M22 PDF-render payload — the assembled HearthNote. 404 when the encounter has no selection tree to render (never an empty string)",
         "parameters": [
           {
             "name": "encounterId",

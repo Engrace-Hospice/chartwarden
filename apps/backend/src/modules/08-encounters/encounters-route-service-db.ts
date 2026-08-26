@@ -21,13 +21,16 @@
 // status + signed_at/cosigned_at carry the signed state, exactly as the in-memory reference models it.
 import { isStepUpRecent } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
+import { templateKey as hearthnoteTemplateKey } from "@wardenx/hearthnote";
+import { VOCAB_VERSION } from "@wardenx/narrative-vocab";
 import { withOrgContext } from "@wardenx/tenancy";
 import { type LocalDate, NotFoundError, STEP_UP_POLICY, type StepUpFactor } from "@wardenx/types";
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { planF2fDualWrite, planMileageCapture, planVitalsCapture } from "./authoring/index";
 import { transitionCosignature } from "./cosignature/index";
 import type { CosignatureState } from "./cosignature/index";
+import type { HearthnoteFreeTextCipher } from "./hearthnote-crypto";
 import { transitionAddendum } from "./lifecycle/addendum";
 import { transitionEncounter } from "./lifecycle/encounter";
 import { EncounterStateError } from "./lifecycle/errors";
@@ -44,7 +47,9 @@ import type {
   EncounterAbacResolver,
   EncounterRouteService,
   EncounterView,
+  SelectionSectionInput,
 } from "./routes/service";
+import { assembleSelections } from "./routes/service";
 
 const ENC = schema.encounters;
 const COSIGN = schema.cosignatureRequests;
@@ -52,6 +57,7 @@ const ADDENDUM = schema.encounterAddenda;
 const VITALS = schema.vitals;
 const MILEAGE = schema.mileage;
 const SIG = schema.encounterSignatures;
+const SEL = schema.hearthnoteSelections;
 
 // ── §3.3/D13 signature provenance (CoP 418.104(c), 21 CFR Part 11 principles) ─────────────────────────
 //
@@ -239,7 +245,59 @@ const toView = (r: EncounterRow): EncounterView => ({
 export function createDbEncounterRouteService(
   db: DbClient,
   outbox: EncounterWriteOutboxPort = NOOP_OUTBOX,
+  freeTextCipher?: HearthnoteFreeTextCipher,
 ): EncounterRouteService {
+  // ── HearthNote selections (§2.6/§3.6, #114) ────────────────────────────────────────────────────────
+  //
+  // `selections` (vocabulary codes + numeric slot params) goes to the jsonb column in the clear; the
+  // clinician's verbatim prose goes to `free_text_cipher`, sealed under the tenant DEK. With NO cipher
+  // bound, a tree carrying prose is REFUSED — the M32 R18 / M31 #117 posture: writing prose in the clear
+  // into a column named `_cipher` would make the §3.6 minimization a claim rather than a fact. A tree
+  // with no prose writes normally, so the structured note — which is what Layer-1 actually assembles —
+  // never depends on a key ring that has not bound yet.
+  const splitFreeText = (
+    sections: readonly SelectionSectionInput[],
+  ): { stored: SelectionSectionInput[]; prose: Record<string, string> } => {
+    const stored: SelectionSectionInput[] = [];
+    const prose: Record<string, string> = {};
+    for (const s of sections) {
+      stored.push({ sectionId: s.sectionId, entries: s.entries });
+      if (s.freeText !== undefined && s.freeText.length > 0) prose[s.sectionId] = s.freeText;
+    }
+    return { stored, prose };
+  };
+
+  async function sealProse(
+    organizationId: string,
+    prose: Record<string, string>,
+  ): Promise<string | null> {
+    if (Object.keys(prose).length === 0) return null;
+    if (!freeTextCipher) {
+      throw new EncounterStateError(
+        "HEARTHNOTE_CIPHER_UNBOUND",
+        "no per-tenant DEK envelope is bound for M8, so the clinician's free text cannot be sealed; a selection tree with no free text writes normally",
+      );
+    }
+    return freeTextCipher.seal(organizationId, JSON.stringify(prose));
+  }
+
+  /** Re-attach the sealed prose to the stored tree. Never throws on a missing cipher — a reader without
+   *  one still gets the structured note, and the absent `freeText` is the honest answer for it. */
+  async function openProse(
+    organizationId: string,
+    row: { selections: unknown; freeTextCipher: string | null },
+  ): Promise<SelectionSectionInput[]> {
+    const stored = ((row.selections as { sections?: SelectionSectionInput[] } | null)?.sections ??
+      []) as SelectionSectionInput[];
+    if (row.freeTextCipher === null || !freeTextCipher) return stored;
+    const prose = JSON.parse(
+      await freeTextCipher.open(organizationId, row.freeTextCipher),
+    ) as Record<string, string>;
+    return stored.map((s) => {
+      const text = prose[s.sectionId];
+      return text === undefined ? s : { ...s, freeText: text };
+    });
+  }
   /** Load one org-scoped encounter row → the shared projection, or `null` when absent/cross-tenant. */
   async function loadRow(
     organizationId: string,
@@ -366,11 +424,28 @@ export function createDbEncounterRouteService(
       if (!r) throw new NotFoundError("encounter"); // non-leaking 404 (mirrors the in-memory `load`)
       return toView(r);
     },
+    // ── M22 render seam (§4.1 route 31) ────────────────────────────────────────────────────────────
+    //
+    // Was `final: ""` unconditionally, with a comment saying the real render arrived later. An empty
+    // string is a RENDERABLE answer: a bound M22 renderer would have produced an empty note for a signed
+    // encounter and reported success. A 404 is the truthful answer when there is no HearthNote to render
+    // (#114) — the renderer can distinguish "nothing to render" from "here is nothing".
     async renderPayload(organizationId, encounterId) {
-      const r = await loadRow(organizationId, encounterId);
-      if (!r) throw new NotFoundError("encounter");
-      // The assembled HearthNote render arrives with the M8L-T02+ write/assembly lifecycle; empty for now.
-      return { encounterId: r.id, final: "" };
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadEnc(t, encounterId);
+        const [row] = await t.select().from(SEL).where(eq(SEL.encounterId, encounterId)).limit(1);
+        if (!row) throw new NotFoundError("hearthnote_selection");
+        return {
+          encounterId: r.id,
+          final: assembleSelections(
+            r.encounterType,
+            r.discipline,
+            r.serviceDate,
+            await openProse(organizationId, row),
+          ),
+        };
+      });
     },
     async listEncounters(organizationId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
@@ -499,13 +574,27 @@ export function createDbEncounterRouteService(
       });
     },
 
-    // ── HearthNote selection edit (§2.3 — bumps the optimistic-lock version) ───────────────────────────
-    async updateSelections(organizationId, encounterId, ifVersion) {
+    // ── HearthNote selection edit (§2.3/§2.6 — persists the tree, bumps the optimistic-lock version) ──
+    //
+    // This used to bump `version`, stamp `updated_at` and return `layer1Preview: ""` — the clinician's
+    // note accepted with a 200 and dropped on the floor (#114). It now writes the row the table was
+    // shaped for. One row per parent (mig 0225 made that index genuinely unique), so this is an upsert.
+    async updateSelections(organizationId, encounterId, ifVersion, input) {
+      const { stored, prose } = splitFreeText(input.sections);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
         checkMutableForEdit({ status: r.status });
         checkVersion({ expected: ifVersion, actual: Number(r.version) });
+        // Assemble BEFORE the write: an unknown code or section must reject the PATCH, not be stored and
+        // discovered by whoever later tries to render the note.
+        const layer1Preview = assembleSelections(
+          r.encounterType,
+          r.discipline,
+          r.serviceDate,
+          input.sections,
+        );
+        const freeTextCipherValue = await sealProse(organizationId, prose);
         const updated = firstOrThrow(
           await t
             .update(ENC)
@@ -514,7 +603,47 @@ export function createDbEncounterRouteService(
             .returning({ version: ENC.version }),
           "updateSelections matched no row (stale write)",
         );
-        return { version: Number(updated.version), layer1Preview: "" };
+        await t
+          .insert(SEL)
+          .values({
+            organizationId,
+            providerEntityId: r.providerEntityId,
+            locationId: r.locationId,
+            encounterId,
+            templateKey: hearthnoteTemplateKey(r.encounterType, r.discipline),
+            templateVersion: VOCAB_VERSION,
+            selections: { sections: stored },
+            freeTextCipher: freeTextCipherValue,
+          })
+          .onConflictDoUpdate({
+            target: SEL.encounterId,
+            targetWhere: isNotNull(SEL.encounterId),
+            set: {
+              selections: { sections: stored },
+              freeTextCipher: freeTextCipherValue,
+              templateKey: hearthnoteTemplateKey(r.encounterType, r.discipline),
+              templateVersion: VOCAB_VERSION,
+              updatedAt: new Date(),
+              version: sql`${SEL.version} + 1`,
+            },
+          });
+        return { version: Number(updated.version), layer1Preview };
+      });
+    },
+
+    async getSelections(organizationId, encounterId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadEnc(t, encounterId); // non-leaking 404 before the child read
+        const [row] = await t.select().from(SEL).where(eq(SEL.encounterId, encounterId)).limit(1);
+        const sections = row ? await openProse(organizationId, row) : [];
+        return {
+          templateKey: hearthnoteTemplateKey(r.encounterType, r.discipline),
+          vocabVersion: VOCAB_VERSION,
+          sections,
+          layer1Preview: assembleSelections(r.encounterType, r.discipline, r.serviceDate, sections),
+          version: row ? Number(row.version) : 0,
+        };
       });
     },
 
@@ -1103,10 +1232,21 @@ export function createDbEncounterRouteService(
         return { id: a.id, status: "draft" };
       });
     },
-    async updateAddendumSelections(organizationId, encounterId, addendumId) {
+    async updateAddendumSelections(organizationId, encounterId, addendumId, input) {
+      const { stored, prose } = splitFreeText(input.sections);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const a = await loadAddendum(t, encounterId, addendumId);
+        // The addendum inherits its parent's template — an addendum to an RN routine visit is written
+        // against the RN routine-visit template, not one of its own.
+        const parent = await loadEnc(t, encounterId);
+        const layer1Preview = assembleSelections(
+          parent.encounterType,
+          parent.discipline,
+          parent.serviceDate,
+          input.sections,
+        );
+        const freeTextCipherValue = await sealProse(organizationId, prose);
         const updated = firstOrThrow(
           await t
             .update(ADDENDUM)
@@ -1118,7 +1258,51 @@ export function createDbEncounterRouteService(
             .returning({ version: ADDENDUM.version }),
           "addendum update matched no row",
         );
-        return { version: Number(updated.version) };
+        await t
+          .insert(SEL)
+          .values({
+            organizationId,
+            providerEntityId: a.providerEntityId,
+            locationId: a.locationId,
+            addendumId,
+            templateKey: hearthnoteTemplateKey(parent.encounterType, parent.discipline),
+            templateVersion: VOCAB_VERSION,
+            selections: { sections: stored },
+            freeTextCipher: freeTextCipherValue,
+          })
+          .onConflictDoUpdate({
+            target: SEL.addendumId,
+            targetWhere: isNotNull(SEL.addendumId),
+            set: {
+              selections: { sections: stored },
+              freeTextCipher: freeTextCipherValue,
+              updatedAt: new Date(),
+              version: sql`${SEL.version} + 1`,
+            },
+          });
+        return { version: Number(updated.version), layer1Preview };
+      });
+    },
+
+    async getAddendumSelections(organizationId, encounterId, addendumId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        await loadAddendum(t, encounterId, addendumId);
+        const parent = await loadEnc(t, encounterId);
+        const [row] = await t.select().from(SEL).where(eq(SEL.addendumId, addendumId)).limit(1);
+        const sections = row ? await openProse(organizationId, row) : [];
+        return {
+          templateKey: hearthnoteTemplateKey(parent.encounterType, parent.discipline),
+          vocabVersion: VOCAB_VERSION,
+          sections,
+          layer1Preview: assembleSelections(
+            parent.encounterType,
+            parent.discipline,
+            parent.serviceDate,
+            sections,
+          ),
+          version: row ? Number(row.version) : 0,
+        };
       });
     },
     async finalizeAddendum(organizationId, encounterId, addendumId) {
