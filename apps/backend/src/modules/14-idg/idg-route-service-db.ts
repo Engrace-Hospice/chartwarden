@@ -573,7 +573,13 @@ export function createDbIdgBackend(
     },
 
     // ── meeting lifecycle (writes) ─────────────────────────────────────────────────────────────────────
-    async cancelMeeting(orgId, userId, id, reason, overrideAuthorized = false): Promise<MeetingView> {
+    async cancelMeeting(
+      orgId,
+      userId,
+      id,
+      reason,
+      overrideAuthorized = false,
+    ): Promise<MeetingView> {
       return withOrg(orgId, async (tx) => {
         const m = await loadMeeting(tx, id);
         // The route's `per_patient_review_floor_clear` ABAC gate already checked this (403 before the

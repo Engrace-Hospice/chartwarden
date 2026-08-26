@@ -426,7 +426,10 @@ describe("DisciplineComplianceProvider (§4.3) — an empty scope is null, never
     });
     const provider = createDisciplineComplianceProvider(store);
     const scope = { orgId: ORG };
-    expect(await provider.supervisoryOnTimeCounts(scope)).toEqual({ numerator: 9, denominator: 10 });
+    expect(await provider.supervisoryOnTimeCounts(scope)).toEqual({
+      numerator: 9,
+      denominator: 10,
+    });
     expect(await provider.volunteerGateComplianceCounts(scope)).toEqual({
       numerator: 5,
       denominator: 5,

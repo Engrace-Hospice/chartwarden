@@ -43,7 +43,12 @@
 //   (6) `upsertAvailability` MERGES per (membership, day_of_week) — wardenx_app has no DELETE grant on any M17
 //       table, so a weekday dropped from the new set is not pruned (the append-only posture); `time_zone` has
 //       no column, so the write echoes the request tz while reads report UTC (the T01 read TODO).
-import { type DbClient, organizationSettingsReader, organizationTimezone, schema } from "@wardenx/db";
+import {
+  type DbClient,
+  organizationSettingsReader,
+  organizationTimezone,
+  schema,
+} from "@wardenx/db";
 import {
   type SchedulingDiscipline,
   type SchedulingSideEffect,
@@ -347,7 +352,11 @@ export function createDbSchedulingBackend(
   }
 
   async function allowsUnassignedPoolTx(tx: DbClient, orgId: string): Promise<boolean> {
-    const [org] = await tx.select({ settings: ORG.settings }).from(ORG).where(eq(ORG.id, orgId)).limit(1);
+    const [org] = await tx
+      .select({ settings: ORG.settings })
+      .from(ORG)
+      .where(eq(ORG.id, orgId))
+      .limit(1);
     return (
       organizationSettingsReader.get<boolean>(
         (org?.settings as Record<string, unknown> | undefined) ?? null,
@@ -1663,7 +1672,10 @@ export function createDbSchedulingBackend(
     // ── GAP-093 — membership_credential grant/revoke/list (the management surface a real D8 gate
     // needs, or `clinician_credentials_active` would deny every caller forever for lack of any way to
     // ever satisfy it — the same regression GAP-030 fixed, one layer down) ─────────────────────────────
-    async listCredentials(orgId: string, membershipId: string): Promise<readonly CredentialRecord[]> {
+    async listCredentials(
+      orgId: string,
+      membershipId: string,
+    ): Promise<readonly CredentialRecord[]> {
       return credentialStore.listForMembership(orgId, membershipId);
     },
     async grantCredential(

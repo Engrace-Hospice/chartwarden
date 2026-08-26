@@ -158,10 +158,15 @@ describe.skipIf(!DB_URL)("GAP-030 — M17 visit-create ABAC — LIVE Postgres", 
   }
 
   /** A user + membership (sited to org/pe/location) + optional 'rn' role grant (the shared role row). */
-  async function seedClinician(opts: { rn: boolean }): Promise<{ userId: string; membershipId: string }> {
+  async function seedClinician(opts: { rn: boolean }): Promise<{
+    userId: string;
+    membershipId: string;
+  }> {
     const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const userId = (
-      await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`g30-${suffix}@x.test`])
+      await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [
+        `g30-${suffix}@x.test`,
+      ])
     ).rows[0].id as string;
     const membershipId = (
       await admin.query(
@@ -208,11 +213,16 @@ describe.skipIf(!DB_URL)("GAP-030 — M17 visit-create ABAC — LIVE Postgres", 
       {
         orgId: org,
         userId: grantedUserId,
-        grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["visit.create"] }],
+        grants: [
+          { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["visit.create"] },
+        ],
       },
     ]);
     registerEffectivePermissionResolver(grantStore);
-    registerPatientSeams({ db: handle.db, caseload: { store: createDrizzleCaseloadStore(handle.db) } });
+    registerPatientSeams({
+      db: handle.db,
+      caseload: { store: createDrizzleCaseloadStore(handle.db) },
+    });
     registerSchedulingSeams({ credentials: { store: createDrizzleCredentialStore(handle.db) } });
 
     const backend = createDbSchedulingBackend(handle.db);
@@ -255,7 +265,11 @@ describe.skipIf(!DB_URL)("GAP-030 — M17 visit-create ABAC — LIVE Postgres", 
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/visits",
-      headers: { "x-test-user": rn.userId, "x-test-membership": rn.membershipId, "x-test-org": org },
+      headers: {
+        "x-test-user": rn.userId,
+        "x-test-membership": rn.membershipId,
+        "x-test-org": org,
+      },
       payload: visitPayload(patientId, rn.membershipId),
     });
     expect(res.statusCode).toBe(201);
@@ -292,7 +306,11 @@ describe.skipIf(!DB_URL)("GAP-030 — M17 visit-create ABAC — LIVE Postgres", 
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/visits",
-      headers: { "x-test-user": rn.userId, "x-test-membership": rn.membershipId, "x-test-org": org },
+      headers: {
+        "x-test-user": rn.userId,
+        "x-test-membership": rn.membershipId,
+        "x-test-org": org,
+      },
       payload: visitPayload(patientId, rn.membershipId),
     });
     expect(res.statusCode).toBe(403);

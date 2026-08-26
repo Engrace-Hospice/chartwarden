@@ -27,7 +27,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { __resetSeamsForTest, getSeam, registerSeam } from "../src/bootstrap/seams/registry";
 import { buildEncounterAbacPredicates } from "../src/modules/08-encounters/index";
-import { createInMemoryEncounterBackend, registerEncounterRoutes } from "../src/modules/08-encounters/index";
+import {
+  createInMemoryEncounterBackend,
+  registerEncounterRoutes,
+} from "../src/modules/08-encounters/index";
 
 /**
  * GAP-014: a FRESH `createPredicateRegistry()` per server/test — reusing the shared module-level
@@ -41,7 +44,10 @@ import { createInMemoryEncounterBackend, registerEncounterRoutes } from "../src/
  * `SessionContextResolver` seam + `isStepUpRecent` decision the real M3 predicate uses — not a
  * second, divergent copy of the DECISION, just a second registration site for the same pure check.
  */
-function stepUpRecentPredicate(context: { organizationId: string; attributes: Record<string, unknown> }) {
+function stepUpRecentPredicate(context: {
+  organizationId: string;
+  attributes: Record<string, unknown>;
+}) {
   const sessionId =
     typeof context.attributes.sessionId === "string" ? context.attributes.sessionId : null;
   if (!sessionId || !context.organizationId) return Promise.resolve(false);

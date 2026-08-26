@@ -52,14 +52,49 @@ interface Persona {
 }
 
 const PERSONAS: Persona[] = [
-  { email: "rita@wardenx.local", name: "Rita Alvarez, RN", roleKeys: ["rn", "rn_case_manager"], roleName: "RN Case Manager" },
+  {
+    email: "rita@wardenx.local",
+    name: "Rita Alvarez, RN",
+    roleKeys: ["rn", "rn_case_manager"],
+    roleName: "RN Case Manager",
+  },
   { email: "dana@wardenx.local", name: "Dana Kim, LPN", roleKeys: ["lpn"], roleName: "LPN" },
-  { email: "drharris@wardenx.local", name: "Dr. Sam Harris", roleKeys: ["md", "hospice_physician", "medical_director"], roleName: "Hospice Medical Director" },
-  { email: "nora@wardenx.local", name: "Nora Patel, NP", roleKeys: ["np"], roleName: "Nurse Practitioner" },
-  { email: "mira@wardenx.local", name: "Mira Chen, MSW", roleKeys: ["msw"], roleName: "Medical Social Worker" },
-  { email: "cole@wardenx.local", name: "Cole Jennings, Chaplain", roleKeys: ["chaplain"], roleName: "Chaplain" },
-  { email: "vera@wardenx.local", name: "Vera Simmons", roleKeys: ["volunteer_coordinator"], roleName: "Volunteer Coordinator" },
-  { email: "valentina@wardenx.local", name: "Valentina Okafor", roleKeys: ["volunteer"], roleName: "Volunteer" },
+  {
+    email: "drharris@wardenx.local",
+    name: "Dr. Sam Harris",
+    roleKeys: ["md", "hospice_physician", "medical_director"],
+    roleName: "Hospice Medical Director",
+  },
+  {
+    email: "nora@wardenx.local",
+    name: "Nora Patel, NP",
+    roleKeys: ["np"],
+    roleName: "Nurse Practitioner",
+  },
+  {
+    email: "mira@wardenx.local",
+    name: "Mira Chen, MSW",
+    roleKeys: ["msw"],
+    roleName: "Medical Social Worker",
+  },
+  {
+    email: "cole@wardenx.local",
+    name: "Cole Jennings, Chaplain",
+    roleKeys: ["chaplain"],
+    roleName: "Chaplain",
+  },
+  {
+    email: "vera@wardenx.local",
+    name: "Vera Simmons",
+    roleKeys: ["volunteer_coordinator"],
+    roleName: "Volunteer Coordinator",
+  },
+  {
+    email: "valentina@wardenx.local",
+    name: "Valentina Okafor",
+    roleKeys: ["volunteer"],
+    roleName: "Volunteer",
+  },
   {
     email: "supervisor@wardenx.local",
     name: "Sam Rivera",
@@ -69,7 +104,12 @@ const PERSONAS: Persona[] = [
     roleKeys: ["clinical_supervisor", "compliance_officer"],
     roleName: "Clinical Supervisor",
   },
-  { email: "amy@wardenx.local", name: "Amy Torres, CHHA", roleKeys: ["chha"], roleName: "Home Health Aide" },
+  {
+    email: "amy@wardenx.local",
+    name: "Amy Torres, CHHA",
+    roleKeys: ["chha"],
+    roleName: "Home Health Aide",
+  },
 ];
 
 function genPassword(): string {
@@ -80,7 +120,8 @@ function adminPassword(): string {
   const md = readFileSync(SEED_CREDENTIALS_PATH, "utf8");
   const line = md.split("\n").find((l) => l.includes("admin@wardenx.local"));
   const m = line?.match(/`([^`]+)`\s*\|\s*`([^`]+)`/);
-  if (!m) throw new Error("could not read admin password from CREDENTIALS.local.md (run db:seed first)");
+  if (!m)
+    throw new Error("could not read admin password from CREDENTIALS.local.md (run db:seed first)");
   return m[2];
 }
 
@@ -94,7 +135,8 @@ async function signUp(email: string, password: string, name: string): Promise<st
     },
     `sign-up for ${email}`,
   );
-  if (!res.ok) throw new Error(`sign-up failed for ${email}: HTTP ${res.status} ${await res.text()}`);
+  if (!res.ok)
+    throw new Error(`sign-up failed for ${email}: HTTP ${res.status} ${await res.text()}`);
   const body = (await res.json()) as { user?: { id?: string } };
   if (!body.user?.id) throw new Error(`sign-up for ${email} returned no user id`);
   return body.user.id;
@@ -232,7 +274,8 @@ async function main(): Promise<void> {
   const userIdByEmail = new Map<string, string>();
   const roleIdByKey = new Map<string, string>();
   for (const key of priorRoleKeys) {
-    const owner = PERSONAS.find((p) => p.roleKeys[0] === key) ?? PERSONAS.find((p) => p.roleKeys.includes(key));
+    const owner =
+      PERSONAS.find((p) => p.roleKeys[0] === key) ?? PERSONAS.find((p) => p.roleKeys.includes(key));
     const r = await db.query<{ id: string }>(
       `INSERT INTO role (organization_id, key, name, category, scope_level, enabled, description)
        VALUES ($1,$2,$3,'clinical_staff'::role_category,'organization', true, $4) RETURNING id`,
@@ -298,7 +341,8 @@ async function main(): Promise<void> {
     "| Persona | Email | Password | Role key(s) |",
     "|---|---|---|---|",
     ...creds.map(
-      (c) => `| ${c.persona.roleName} | \`${c.persona.email}\` | \`${c.password}\` | ${c.persona.roleKeys.join(", ")} |`,
+      (c) =>
+        `| ${c.persona.roleName} | \`${c.persona.email}\` | \`${c.password}\` | ${c.persona.roleKeys.join(", ")} |`,
     ),
     "",
   ];

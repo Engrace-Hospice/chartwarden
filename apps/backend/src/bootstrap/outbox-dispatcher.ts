@@ -456,7 +456,8 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
             attemptCount: row.attemptCount - 1,
             dispatchedAt: null,
             nextAttemptAt: new Date(now.getTime() + deferredRetryMs),
-            lastError: "deferred: consumers for this event are bound platform-scoped, not org-scoped",
+            lastError:
+              "deferred: consumers for this event are bound platform-scoped, not org-scoped",
           });
           summary.deferred += 1;
           continue;
@@ -673,7 +674,9 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
         if (!routing.recordOnly.has(row.eventType)) {
           // The mirror of pollOrg's case: every declared module is live, but bound ORG-scoped while this
           // row is platform-wide. Defer with the mismatch named rather than crash the relay.
-          await deferRow("deferred: consumers for this event are bound org-scoped, not platform-scoped");
+          await deferRow(
+            "deferred: consumers for this event are bound org-scoped, not platform-scoped",
+          );
           continue;
         }
         await deps.db.execute(
@@ -776,7 +779,8 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
     const platformResult = await deps.db.execute(
       sql`SELECT report_writer_platform_outbox_pending_depth() AS count`,
     );
-    const platformRow = (platformResult as unknown as { rows?: Array<{ count?: number }> }).rows?.[0];
+    const platformRow = (platformResult as unknown as { rows?: Array<{ count?: number }> })
+      .rows?.[0];
     total += Number(platformRow?.count ?? 0);
     return total;
   }

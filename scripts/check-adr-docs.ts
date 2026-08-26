@@ -46,11 +46,18 @@ const numbers = files.map((f) => f.slice(4, 8));
 const numberSet = new Set(numbers);
 
 // ---- Rule 1: numbering unique + contiguous ---------------------------------------------------
-if (numberSet.size !== numbers.length) fail("(corpus)", 1, "INDEX", "duplicate ADR numbers on disk");
+if (numberSet.size !== numbers.length)
+  fail("(corpus)", 1, "INDEX", "duplicate ADR numbers on disk");
 const max = Math.max(...numbers.map(Number));
 for (let n = 1; n <= max; n++) {
   const id = String(n).padStart(4, "0");
-  if (!numberSet.has(id)) fail("(corpus)", 1, "INDEX", `numbering gap: ADR-${id} has no file (1…${String(max).padStart(4, "0")} should be contiguous)`);
+  if (!numberSet.has(id))
+    fail(
+      "(corpus)",
+      1,
+      "INDEX",
+      `numbering gap: ADR-${id} has no file (1…${String(max).padStart(4, "0")} should be contiguous)`,
+    );
 }
 
 // ---- Rules 2: status lines -------------------------------------------------------------------
@@ -64,10 +71,17 @@ for (const f of files) {
   }
   const word = m[1];
   statusByNumber.set(f.slice(4, 8), word);
-  if (!STATUS_WORDS.has(word)) fail(f, 1, "STATUS", `status word '${word}' not one of ${[...STATUS_WORDS].join("/")}`);
+  if (!STATUS_WORDS.has(word))
+    fail(f, 1, "STATUS", `status word '${word}' not one of ${[...STATUS_WORDS].join("/")}`);
   if (word === "Superseded") {
     const statusLine = text.split("\n").find((l) => l.includes("**Status:**")) ?? "";
-    if (!/ADR-\d{4}/.test(statusLine)) fail(f, 1, "STATUS", "Superseded status must cite the superseding ADR-NNNN on the status line");
+    if (!/ADR-\d{4}/.test(statusLine))
+      fail(
+        f,
+        1,
+        "STATUS",
+        "Superseded status must cite the superseding ADR-NNNN on the status line",
+      );
   }
 }
 
@@ -75,12 +89,15 @@ for (const f of files) {
 const readme = readFileSync(join(ROOT, DIR, "README.md"), "utf8");
 const rows = new Map<string, { line: number; status: string; target: string }>();
 readme.split("\n").forEach((line, i) => {
-  const m = line.match(/^\|\s*\[(\d{4})\]\(([^)]+)\)\s*\|.*\|\s*\*{0,2}([A-Za-z]+)\*{0,2}[^|]*\|\s*$/);
+  const m = line.match(
+    /^\|\s*\[(\d{4})\]\(([^)]+)\)\s*\|.*\|\s*\*{0,2}([A-Za-z]+)\*{0,2}[^|]*\|\s*$/,
+  );
   if (!m) return;
   const [, num, target, status] = m;
   if (rows.has(num)) fail("README.md", i + 1, "INDEX", `ADR-${num} indexed more than once`);
   rows.set(num, { line: i + 1, status, target });
-  if (!existsSync(join(ROOT, DIR, target))) fail("README.md", i + 1, "INDEX", `row ${num} links '${target}', which does not exist`);
+  if (!existsSync(join(ROOT, DIR, target)))
+    fail("README.md", i + 1, "INDEX", `row ${num} links '${target}', which does not exist`);
 });
 for (const f of files) {
   const num = f.slice(4, 8);
@@ -89,14 +106,21 @@ for (const f of files) {
     fail("README.md", 1, "INDEX", `ADR file ${f} has no index row`);
     continue;
   }
-  if (row.target !== f) fail("README.md", row.line, "INDEX", `row ${num} links '${row.target}' but the file is '${f}'`);
+  if (row.target !== f)
+    fail("README.md", row.line, "INDEX", `row ${num} links '${row.target}' but the file is '${f}'`);
   const fileStatus = statusByNumber.get(num);
   if (fileStatus && row.status !== fileStatus) {
-    fail("README.md", row.line, "AGREEMENT", `row ${num} says '${row.status}' but ${f} declares '${fileStatus}' — the register must not promote (or demote) a decision the file doesn't`);
+    fail(
+      "README.md",
+      row.line,
+      "AGREEMENT",
+      `row ${num} says '${row.status}' but ${f} declares '${fileStatus}' — the register must not promote (or demote) a decision the file doesn't`,
+    );
   }
 }
 for (const [num, row] of rows) {
-  if (!numberSet.has(num)) fail("README.md", row.line, "INDEX", `row ${num} has no ADR file on disk`);
+  if (!numberSet.has(num))
+    fail("README.md", row.line, "INDEX", `row ${num} has no ADR file on disk`);
 }
 
 // ---- Rules 4 + 5: citations + links ----------------------------------------------------------
@@ -108,11 +132,13 @@ for (const f of [...files, "README.md"]) {
   for (let i = 0; i < lines.length; i++) {
     for (const m of lines[i].matchAll(/\bADR-(\d{4})\b/g)) {
       adrsChecked++;
-      if (!numberSet.has(m[1])) fail(f, i + 1, "CITATIONS", `cites ADR-${m[1]}, which has no file in ${DIR}`);
+      if (!numberSet.has(m[1]))
+        fail(f, i + 1, "CITATIONS", `cites ADR-${m[1]}, which has no file in ${DIR}`);
     }
     for (const m of lines[i].matchAll(/\]\((\.\.?\/[^)#\s]+)(#[^)\s]*)?\)/g)) {
       linksChecked++;
-      if (!existsSync(resolve(dirname(abs), m[1]))) fail(f, i + 1, "LINKS", `relative link \`${m[1]}\` does not resolve`);
+      if (!existsSync(resolve(dirname(abs), m[1])))
+        fail(f, i + 1, "LINKS", `relative link \`${m[1]}\` does not resolve`);
     }
   }
 }

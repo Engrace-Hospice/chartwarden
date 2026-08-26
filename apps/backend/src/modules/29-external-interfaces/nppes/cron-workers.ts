@@ -30,8 +30,8 @@ import type { NppesSyncKind, NppesSyncRunId, NppesSyncTrigger } from "@wardenx/t
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 
 import { NppesClient, type NppesClientConfig } from "./nppes-client";
-import { NPPES_SYNC_SCHEDULE } from "./schedule";
 import { type NppesOutboxPublishPort, buildNppesOutboxSink } from "./outbox-sink";
+import { NPPES_SYNC_SCHEDULE } from "./schedule";
 import { createDrizzleNppesProviderCache, createDrizzleNppesSyncRunStore } from "./stores-drizzle";
 import {
   type NppesNpiSourcePort,
@@ -68,7 +68,9 @@ export interface NppesSyncWorkerDeps {
    * production so the client's own CMS-courteous defaults apply; the live suite pins `maxRetries: 0` and a
    * no-op sleep so an outage test measures the ORCHESTRATION, not thirty seconds of real backoff.
    */
-  readonly clientOverrides?: Partial<Pick<NppesClientConfig, "maxRetries" | "sleep" | "requestsPerSecond">>;
+  readonly clientOverrides?: Partial<
+    Pick<NppesClientConfig, "maxRetries" | "sleep" | "requestsPerSecond">
+  >;
   readonly log?: (
     level: "info" | "warn" | "error",
     event: string,

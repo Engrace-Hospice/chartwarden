@@ -209,7 +209,14 @@ export function BereavementSupervisorDashboard(): JSX.Element {
         </KpiStrip>
       }
       filters={
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", padding: "0 1.5rem 0.75rem" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.75rem",
+            padding: "0 1.5rem 0.75rem",
+          }}
+        >
           {view.unassignedPlanCount > 0 ? (
             <Notice tone="warning">
               {view.unassignedPlanCount === 1
@@ -420,7 +427,9 @@ function MetricTable({
   onSelectMetric: (id: string) => void;
 }): JSX.Element {
   return (
-    <table style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+    <table
+      style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}
+    >
       <thead>
         <tr
           style={{
@@ -484,7 +493,8 @@ function MetricDrawerContent({
   riskEntries: { label: string; value: number }[];
   closureEntries: { label: string; value: number }[];
 }): JSX.Element {
-  const rate = copCounts.denominator === 0 ? null : (copCounts.numerator / copCounts.denominator) * 100;
+  const rate =
+    copCounts.denominator === 0 ? null : (copCounts.numerator / copCounts.denominator) * 100;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -511,7 +521,13 @@ function MetricDrawerContent({
         <Field label="Touchpoints owed" value={copCounts.denominator} />
         <Field
           label="On-time rate"
-          value={rate === null ? <StatusPill label="No touchpoints owed" tone="neutral" /> : `${rate.toFixed(1)}%`}
+          value={
+            rate === null ? (
+              <StatusPill label="No touchpoints owed" tone="neutral" />
+            ) : (
+              `${rate.toFixed(1)}%`
+            )
+          }
         />
       </div>
 
@@ -527,7 +543,17 @@ function MetricDrawerContent({
           <Field label="Risk groups" value={riskEntries.length} />
           <Field label="Closure groups" value={closureEntries.length} />
         </SummaryGrid>
-        <CountGrid entries={row.category === "plans" ? planEntries : row.category === "touchpoints" ? outreachEntries : row.category === "risk" ? riskEntries : closureEntries} />
+        <CountGrid
+          entries={
+            row.category === "plans"
+              ? planEntries
+              : row.category === "touchpoints"
+                ? outreachEntries
+                : row.category === "risk"
+                  ? riskEntries
+                  : closureEntries
+          }
+        />
       </div>
 
       <Link to="/bereavement/eligible" style={drawerActionStyle}>

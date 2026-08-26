@@ -56,7 +56,9 @@ function readPassword(email: string): string {
     const m = lines[i].match(/`([^`]+)`\s*\|\s*`([^`]+)`/);
     if (m) return m[2];
   }
-  throw new Error(`could not read password for ${email} from CREDENTIALS.local.md (run db:seed first)`);
+  throw new Error(
+    `could not read password for ${email} from CREDENTIALS.local.md (run db:seed first)`,
+  );
 }
 
 function absorbSetCookie(jar: Map<string, string>, res: Response): void {
@@ -89,7 +91,9 @@ export async function signIn(email: string): Promise<WxSession> {
     `sign-in for ${email}`,
   );
   if (!signInRes.ok) {
-    throw new Error(`sign-in failed for ${email}: HTTP ${signInRes.status} ${await signInRes.text()}`);
+    throw new Error(
+      `sign-in failed for ${email}: HTTP ${signInRes.status} ${await signInRes.text()}`,
+    );
   }
   absorbSetCookie(jar, signInRes);
   const signInBody = (await signInRes.json()) as { user?: { id?: string } };
@@ -117,7 +121,9 @@ export async function signIn(email: string): Promise<WxSession> {
     body: JSON.stringify({ organizationId: org.organizationId }),
   });
   if (!selRes.ok) {
-    throw new Error(`select-organization failed for ${email}: HTTP ${selRes.status} ${await selRes.text()}`);
+    throw new Error(
+      `select-organization failed for ${email}: HTTP ${selRes.status} ${await selRes.text()}`,
+    );
   }
   absorbSetCookie(jar, selRes);
 
@@ -157,7 +163,8 @@ export async function findPatientIdByLastName(
   });
   if (error) throw new Error(`patient search for "${lastName}" failed: ${JSON.stringify(error)}`);
   const hit = data?.items.find((p) => p.lastName === lastName);
-  if (!hit) throw new Error(`no patient found with last name "${lastName}" — run db:seed:patients first`);
+  if (!hit)
+    throw new Error(`no patient found with last name "${lastName}" — run db:seed:patients first`);
   return hit.id;
 }
 

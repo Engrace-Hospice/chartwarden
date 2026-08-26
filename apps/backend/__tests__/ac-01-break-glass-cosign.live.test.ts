@@ -95,10 +95,10 @@ describe.skipIf(!DB_URL)("AC-01 break-glass two-person co-signature — LIVE Pos
       "INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,'ac01-a','A','A','active')",
       [ORG_A],
     );
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'inv@ac01.test'),($2,'co@ac01.test')`, [
-      USER_INVOKER,
-      USER_COSIGNER,
-    ]);
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'inv@ac01.test'),($2,'co@ac01.test')`,
+      [USER_INVOKER, USER_COSIGNER],
+    );
 
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
@@ -131,9 +131,7 @@ describe.skipIf(!DB_URL)("AC-01 break-glass two-person co-signature — LIVE Pos
     expect(row.status).toBe("cosign_pending");
     expect(row.cosigned_by).toBeNull();
     const grant = await asUser(USER_INVOKER, () =>
-      Promise.resolve(
-        store.findActiveGrant(ORG_A, USER_INVOKER, TARGET_PATIENT, Date.now()),
-      ),
+      Promise.resolve(store.findActiveGrant(ORG_A, USER_INVOKER, TARGET_PATIENT, Date.now())),
     );
     expect(grant).toBeNull();
   });
@@ -151,9 +149,7 @@ describe.skipIf(!DB_URL)("AC-01 break-glass two-person co-signature — LIVE Pos
     expect(row.cosigned_by).toBe(USER_COSIGNER);
     // The §2.2 branch now finds the glass — the co-signature is what opened it.
     const grant = await asUser(USER_INVOKER, () =>
-      Promise.resolve(
-        store.findActiveGrant(ORG_A, USER_INVOKER, TARGET_PATIENT, Date.now()),
-      ),
+      Promise.resolve(store.findActiveGrant(ORG_A, USER_INVOKER, TARGET_PATIENT, Date.now())),
     );
     expect(grant?.eventId).toBe(event.eventId);
   });

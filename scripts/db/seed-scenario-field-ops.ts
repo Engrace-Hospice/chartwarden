@@ -22,7 +22,7 @@
  * Run:     bun run db:seed:scenario-field-ops
  */
 import { Client } from "pg";
-import { findPatientIdByLastName, ScenarioLog, signIn } from "./lib/api-session";
+import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001";
@@ -234,7 +234,9 @@ async function wipePriorFieldOps(patientId: string, organizationId: string): Pro
   if (callIds.length) {
     await db.query("DELETE FROM triage_call_answer WHERE triage_call_id = ANY($1)", [callIds]);
     await db.query("DELETE FROM triage_escalation WHERE triage_call_id = ANY($1)", [callIds]);
-    await db.query("DELETE FROM triage_call_state_history WHERE triage_call_id = ANY($1)", [callIds]);
+    await db.query("DELETE FROM triage_call_state_history WHERE triage_call_id = ANY($1)", [
+      callIds,
+    ]);
     await db.query("DELETE FROM triage_call WHERE id = ANY($1)", [callIds]);
   }
   await db.query(
@@ -244,16 +246,14 @@ async function wipePriorFieldOps(patientId: string, organizationId: string): Pro
 
   // M20 field safety
   await db.query("DELETE FROM safety_incident WHERE patient_id = $1", [patientId]);
-  await db.query(
-    `DELETE FROM safety_sos_alert WHERE posted_by_membership_id = $1`,
-    [ritaId],
-  );
+  await db.query(`DELETE FROM safety_sos_alert WHERE posted_by_membership_id = $1`, [ritaId]);
   await db.query(`DELETE FROM safety_check_in WHERE posted_by_membership_id = $1`, [ritaId]);
 
   // M21 supplies
-  const reqs = await db.query<{ id: string }>("SELECT id FROM supply_request WHERE patient_id = $1", [
-    patientId,
-  ]);
+  const reqs = await db.query<{ id: string }>(
+    "SELECT id FROM supply_request WHERE patient_id = $1",
+    [patientId],
+  );
   const reqIds = reqs.rows.map((r) => r.id);
   if (reqIds.length) {
     const dispatches = await db.query<{ id: string }>(
@@ -284,9 +284,10 @@ async function main(): Promise<void> {
   const cert = await rn.client.GET("/api/v1/patients/{patientId}/election-certification", {
     params: { path: { patientId } },
   });
-  const admissionId = (cert.data as unknown as { admission?: { id?: string } } | undefined)?.admission
-    ?.id;
-  if (!admissionId) throw new Error("Whitfield has no admission — run db:seed:scenario-admissions first");
+  const admissionId = (cert.data as unknown as { admission?: { id?: string } } | undefined)
+    ?.admission?.id;
+  if (!admissionId)
+    throw new Error("Whitfield has no admission — run db:seed:scenario-admissions first");
 
   console.log("wiping any prior field-ops data for a clean re-run...");
   await wipePriorFieldOps(patientId, rn.organizationId);
@@ -320,19 +321,26 @@ async function main(): Promise<void> {
           validUntil: gateKind === "initial_training" ? null : "2027-01-01",
         },
       });
-      if (gate.error) throw new Error(`compliance gate '${gateKind}' failed: ${JSON.stringify(gate.error)}`);
+      if (gate.error)
+        throw new Error(`compliance gate '${gateKind}' failed: ${JSON.stringify(gate.error)}`);
     }
 
-    const assign = await coord.client.POST("/api/v1/discipline-plans/{planId}/volunteer-assignments", {
-      params: { path: { planId } },
-      body: {
-        volunteerMembershipId: volunteerId,
-        activities: ["Companionship visits", "Light errands"],
-        startsAt: nowIso(),
+    const assign = await coord.client.POST(
+      "/api/v1/discipline-plans/{planId}/volunteer-assignments",
+      {
+        params: { path: { planId } },
+        body: {
+          volunteerMembershipId: volunteerId,
+          activities: ["Companionship visits", "Light errands"],
+          startsAt: nowIso(),
+        },
       },
-    });
-    if (assign.error) throw new Error(`volunteer assignment failed: ${JSON.stringify(assign.error)}`);
-    log.ok("Volunteer plan: draft plan seeded, 2 compliance gates + volunteer assignment via real API");
+    );
+    if (assign.error)
+      throw new Error(`volunteer assignment failed: ${JSON.stringify(assign.error)}`);
+    log.ok(
+      "Volunteer plan: draft plan seeded, 2 compliance gates + volunteer assignment via real API",
+    );
   } catch (err) {
     log.fail(`M15 volunteer plan: ${String(err)}`);
   }
@@ -341,7 +349,14 @@ async function main(): Promise<void> {
   let visitId: string | null = null;
   try {
     const ritaId = await membershipIdFor("rita@wardenx.local");
-    visitId = await seedPublishedVisit(rn.organizationId, patientId, admissionId, ritaId, addHours(24), addHours(25));
+    visitId = await seedPublishedVisit(
+      rn.organizationId,
+      patientId,
+      admissionId,
+      ritaId,
+      addHours(24),
+      addHours(25),
+    );
     log.ok(
       "Scheduling: 1 visit published (tomorrow, Rita RN) — DB-seeded, POST /visits is unreachable in prod (see file header)",
     );
@@ -352,10 +367,15 @@ async function main(): Promise<void> {
   // ── M18 — EVV ──────────────────────────────────────────────────────────────────────────────────
   try {
     const dev = await rn.client.POST("/api/v1/evv/devices/self-register", {
-      body: { platform: "ios", modelDescription: "Demo iPhone", attestationId: crypto.randomUUID() },
+      body: {
+        platform: "ios",
+        modelDescription: "Demo iPhone",
+        attestationId: crypto.randomUUID(),
+      },
     });
     const devData = dev.data as unknown as { id: string } | undefined;
-    if (dev.error || !devData) throw new Error(`device register failed: ${JSON.stringify(dev.error)}`);
+    if (dev.error || !devData)
+      throw new Error(`device register failed: ${JSON.stringify(dev.error)}`);
 
     const approve = await supervisor.client.POST("/api/v1/evv/devices/{id}/approve", {
       params: { path: { id: devData.id } },
@@ -389,7 +409,8 @@ async function main(): Promise<void> {
       },
     });
     const shiftData = shift.data as unknown as { id: string; version: number } | undefined;
-    if (shift.error || !shiftData) throw new Error(`on-call shift create failed: ${JSON.stringify(shift.error)}`);
+    if (shift.error || !shiftData)
+      throw new Error(`on-call shift create failed: ${JSON.stringify(shift.error)}`);
 
     // A shift is created `scheduled`, not `active` — `oncall_eligible`'s shift path (and `m19.oncall_shift.
     // activated`, which M20's SOS coverage-lookup subscribes to) both require the explicit open transition.
@@ -410,7 +431,8 @@ async function main(): Promise<void> {
       },
     });
     const callData = call.data as unknown as { triageCallId: string; version: number } | undefined;
-    if (call.error || !callData) throw new Error(`triage call create failed: ${JSON.stringify(call.error)}`);
+    if (call.error || !callData)
+      throw new Error(`triage call create failed: ${JSON.stringify(call.error)}`);
 
     const identify = await rn.client.POST("/api/v1/triage-calls/{triageCallId}/identify-patient", {
       params: { path: { triageCallId: callData.triageCallId } },
@@ -433,12 +455,19 @@ async function main(): Promise<void> {
       body: { triageProtocolId: OTHER_CLINICAL_CONCERN_PROTOCOL_ID },
     });
     const applyData = apply.data as unknown as { version: number } | undefined;
-    if (apply.error || !applyData) throw new Error(`apply-protocol failed: ${JSON.stringify(apply.error)}`);
+    if (apply.error || !applyData)
+      throw new Error(`apply-protocol failed: ${JSON.stringify(apply.error)}`);
 
-    const QUESTIONS: ReadonlyArray<{ id: string; value: { kind: "text" | "bool"; value: string | boolean } }> = [
+    const QUESTIONS: ReadonlyArray<{
+      id: string;
+      value: { kind: "text" | "bool"; value: string | boolean };
+    }> = [
       {
         id: "00000000-0019-0001-2801-000000000000",
-        value: { kind: "text", value: "Caregiver reports increased shortness of breath overnight." },
+        value: {
+          kind: "text",
+          value: "Caregiver reports increased shortness of breath overnight.",
+        },
       },
       { id: "00000000-0019-0001-2802-000000000000", value: { kind: "bool", value: false } },
       { id: "00000000-0019-0001-2803-000000000000", value: { kind: "bool", value: true } },
@@ -477,9 +506,12 @@ async function main(): Promise<void> {
         },
       },
     });
-    if (disposition.error) throw new Error(`disposition failed: ${JSON.stringify(disposition.error)}`);
+    if (disposition.error)
+      throw new Error(`disposition failed: ${JSON.stringify(disposition.error)}`);
 
-    log.ok("On-call: shift opened, 1 triage call identified to Whitfield, dispositioned (education only)");
+    log.ok(
+      "On-call: shift opened, 1 triage call identified to Whitfield, dispositioned (education only)",
+    );
   } catch (err) {
     log.fail(`M19 on-call: ${String(err)}`);
   }
@@ -519,7 +551,10 @@ async function main(): Promise<void> {
 
     const ack = await supervisor.client.POST("/api/v1/safety/sos/{sosAlertId}/acknowledge", {
       params: { path: { sosAlertId: sosData.id } },
-      body: { actionTaken: "Called clinician directly; confirmed a false alarm from an accidental button press." },
+      body: {
+        actionTaken:
+          "Called clinician directly; confirmed a false alarm from an accidental button press.",
+      },
     });
     if (ack.error) throw new Error(`SOS acknowledge failed: ${JSON.stringify(ack.error)}`);
 
@@ -542,7 +577,12 @@ async function main(): Promise<void> {
         patientId,
         admissionId,
         locationId: LOCATION_MAIN_ID,
-        deliveryAddress: { line1: "42 Camellia Ln", city: "Asheville", state: "NC", postalCode: "28801" },
+        deliveryAddress: {
+          line1: "42 Camellia Ln",
+          city: "Asheville",
+          state: "NC",
+          postalCode: "28801",
+        },
         kindPayload: {
           kind: "dme",
           skuId: crypto.randomUUID(),
@@ -555,7 +595,8 @@ async function main(): Promise<void> {
         },
       },
     });
-    if (supplyReq.error) throw new Error(`supply request failed: ${JSON.stringify(supplyReq.error)}`);
+    if (supplyReq.error)
+      throw new Error(`supply request failed: ${JSON.stringify(supplyReq.error)}`);
 
     const template = await rn.client.POST("/api/v1/supplies/comfort-kit-templates", {
       body: {
@@ -610,7 +651,8 @@ async function main(): Promise<void> {
         ],
       },
     });
-    if (template.error) throw new Error(`comfort-kit template failed: ${JSON.stringify(template.error)}`);
+    if (template.error)
+      throw new Error(`comfort-kit template failed: ${JSON.stringify(template.error)}`);
 
     log.ok("Supplies: 1 DME request (hospital bed) + D3 comfort-kit template created");
   } catch (err) {

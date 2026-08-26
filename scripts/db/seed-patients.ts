@@ -113,8 +113,7 @@ async function main(): Promise<void> {
     headers: { cookie: cookieHeader(jar) },
   });
   absorb(jar, mem);
-  if (!mem.ok)
-    throw new Error(`list memberships failed: ${mem.status} ${await mem.text()}`);
+  if (!mem.ok) throw new Error(`list memberships failed: ${mem.status} ${await mem.text()}`);
   const memBody = (await mem.json()) as {
     memberships: Array<{ organizationId: string; organizationName: string }>;
   };

@@ -1,3 +1,4 @@
+import { safeErrorMessage } from "./redact-database-error";
 // apps/backend/src/bootstrap/readiness-probe.ts — the real `/ready` probe (TASK-040B,
 // production-readiness audit 2026-08-03, OPS-004).
 //
@@ -14,7 +15,6 @@
 // forward-reference). Omitting a check reports "ok": no configured dependency means nothing to be
 // unready about (mirrors today's boot posture — a slice/test boot with no DB/Redis still serves).
 import type { ReadinessChecks, ReadinessProbe } from "./routes/health";
-import { safeErrorMessage } from "./redact-database-error";
 
 export interface ReadinessProbeDeps {
   /** Cheap DB reachability probe, e.g. a `SELECT 1`; omitted when no DB is configured. */

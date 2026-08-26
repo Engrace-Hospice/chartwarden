@@ -123,7 +123,9 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       "SELECT last_idg_reviewed_at FROM idg_patient_packet WHERE idg_meeting_id=$1 AND patient_id=$2",
       [meetingId, patientId],
     );
-    return rows[0]?.last_idg_reviewed_at ? new Date(rows[0].last_idg_reviewed_at).toISOString() : null;
+    return rows[0]?.last_idg_reviewed_at
+      ? new Date(rows[0].last_idg_reviewed_at).toISOString()
+      : null;
   }
 
   beforeAll(async () => {
@@ -259,7 +261,10 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     const note = await svc.recordDecision(ORG_A, MEMBER, m, {
       patientId: null,
       decisionKind: "team_note",
-      payload: { kind: "team_note", noteText: "Team reviewed the caseload; no patient-scoped action." },
+      payload: {
+        kind: "team_note",
+        noteText: "Team reviewed the caseload; no patient-scoped action.",
+      },
     });
     expect(await eventsFor(note.id)).not.toContain("m14.decision.recorded_open");
 
@@ -540,12 +545,22 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     // last_idg_reviewed_at is still null — the store must not let this newer-but-unreviewed row shadow
     // the older packet's real reviewed date (the exact bug `reviewClockPatientsForOrg`'s per-patient
     // aggregation, not a naive "latest packet" read, exists to avoid).
-    await seedPacket(ORG_A, reviewed, patientId, new Date(Date.now() - 40 * 86400000).toISOString());
+    await seedPacket(
+      ORG_A,
+      reviewed,
+      patientId,
+      new Date(Date.now() - 40 * 86400000).toISOString(),
+    );
     await admin.query(
       "UPDATE idg_patient_packet SET last_idg_reviewed_at=$1 WHERE idg_meeting_id=$2 AND patient_id=$3",
       [new Date(Date.now() - 15 * 86400000), reviewed, patientId],
     );
-    await seedPacket(ORG_A, laterUnreviewed, patientId, new Date(Date.now() - 3 * 86400000).toISOString());
+    await seedPacket(
+      ORG_A,
+      laterUnreviewed,
+      patientId,
+      new Date(Date.now() - 3 * 86400000).toISOString(),
+    );
 
     const deps = buildM14WorkerDeps({
       connection: {} as never, // runReviewClockSweepCron never touches BullMQ — no Redis needed

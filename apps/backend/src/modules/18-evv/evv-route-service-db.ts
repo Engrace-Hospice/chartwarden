@@ -38,7 +38,6 @@
 import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { decodeStoredCoords, encodeStoredCoords } from "./coords";
 import {
   type EvvAggregatorSubmissionDto,
   type EvvAggregatorSubmissionStatus,
@@ -60,6 +59,7 @@ import {
   DEFAULT_EVV_WINDOW_BEFORE_MS,
   type EvvCaptureWindow,
 } from "./abac-predicates";
+import { decodeStoredCoords, encodeStoredCoords } from "./coords";
 import { transitionAggregatorSubmission } from "./domain/aggregator-submission";
 import { transitionMissingResolution } from "./domain/missing-resolution";
 import type {

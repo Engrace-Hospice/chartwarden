@@ -222,7 +222,10 @@ describe("M17-T09 §7 workflow acceptance", () => {
     expect(await predicates.discipline_matches_visit!(ctx(), target)).toBe(true);
     // …and the volunteer half is not a free pass onto a purpose neither discipline covers.
     expect(
-      await predicates.discipline_matches_visit!(ctx(), { ...target, visitPurpose: "msw_assessment" }),
+      await predicates.discipline_matches_visit!(ctx(), {
+        ...target,
+        visitPurpose: "msw_assessment",
+      }),
     ).toBe(false);
     // The service-layer D8 gate reads the same set, so the two layers still agree.
     expect(() =>

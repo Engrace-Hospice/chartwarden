@@ -105,7 +105,10 @@ const MATCH_SCAN_CAP = 2000;
 
 type EventRow = { resourceKind: string };
 
-function matchesResourceKinds(row: EventRow, resourceKinds: readonly string[] | undefined): boolean {
+function matchesResourceKinds(
+  row: EventRow,
+  resourceKinds: readonly string[] | undefined,
+): boolean {
   return !resourceKinds || resourceKinds.length === 0 || resourceKinds.includes(row.resourceKind);
 }
 
@@ -186,7 +189,9 @@ export function registerLegalHoldsRoutes(app: FastifyInstance, deps: LegalHoldsR
       if (q.status) where.push(eq(HOLD.status, q.status));
       const cur = q.cursor ? decodeCursor(q.cursor) : null;
       if (cur) {
-        where.push(sql`(${HOLD.appliedAt}, ${HOLD.id}) < (${cur.createdAt}::timestamptz, ${cur.id})`);
+        where.push(
+          sql`(${HOLD.appliedAt}, ${HOLD.id}) < (${cur.createdAt}::timestamptz, ${cur.id})`,
+        );
       }
       const rows = await tx
         .select()
@@ -198,68 +203,66 @@ export function registerLegalHoldsRoutes(app: FastifyInstance, deps: LegalHoldsR
       const page = rows.slice(0, limit);
       const last = page[page.length - 1];
       const nextCursor =
-        hasMore && last ? encodeCursor({ createdAt: last.appliedAt.toISOString(), id: last.id }) : null;
+        hasMore && last
+          ? encodeCursor({ createdAt: last.appliedAt.toISOString(), id: last.id })
+          : null;
       return { items: page.map(toLegalHoldView), nextCursor };
     });
   });
 
-  app.post(
-    "/api/v1/legal-holds",
-    { preHandler: [legalHoldManage] },
-    async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
-      const body = parse(CreateLegalHoldBodySchema, request.body) as CreateLegalHoldBody;
-      if (!hasSelector(body.criteria)) {
-        throw new WardenXError(
-          "EMPTY_CRITERIA",
-          "legal hold criteria must specify at least one of patientIds, dateRange, or resourceKinds",
-          422,
-        );
-      }
-      const matchedRecordCount = await countMatchingEvents(deps.query, organizationId, body.criteria);
-      // Explicit `Tx = DbClient` (the M30/M34 `withOrgContext<DbClient, T>` precedent,
-      // apps/backend/src/bootstrap/outbox-persister.ts's `OutboxTx` comment) so `tx` is directly
-      // assignable to both `AuditExecutor` and the outbox port's `tx: DbClient` — no cast needed.
-      const result = await withOrgContext<DbClient, typeof HOLD.$inferSelect>(
-        deps.db,
-        { organizationId, userId },
-        async (tx) => {
-          const [row] = await tx
-            .insert(HOLD)
-            .values({
-              organizationId,
-              name: body.name,
-              criteria: body.criteria,
-              reason: body.reason,
-              appliedBy: userId,
-            })
-            .returning();
-          if (!row) throw new Error("legal_hold insert returned no row");
-          await audit(tx, auditContextFor(request), {
-            eventType: "data.legal_hold_applied",
-            resourceKind: "legal_hold",
-            resourceId: row.id,
-            outcome: "success",
-            severity: "warn",
-            retentionClass: "compliance",
-            context: { name: body.name, matchedRecordCount, reason: body.reason },
-          });
-          if (deps.outbox) {
-            await deps.outbox.publish(tx, {
-              eventName: "m4.legal_hold.applied",
-              payload: { holdId: row.id, matched: matchedRecordCount, reason: body.reason },
-              organizationId,
-              aggregateKind: "legal_hold",
-              aggregateId: row.id,
-            });
-          }
-          return row;
-        },
+  app.post("/api/v1/legal-holds", { preHandler: [legalHoldManage] }, async (request, reply) => {
+    const { organizationId, userId } = actorOf(request);
+    const body = parse(CreateLegalHoldBodySchema, request.body) as CreateLegalHoldBody;
+    if (!hasSelector(body.criteria)) {
+      throw new WardenXError(
+        "EMPTY_CRITERIA",
+        "legal hold criteria must specify at least one of patientIds, dateRange, or resourceKinds",
+        422,
       );
-      reply.code(201);
-      return { legalHoldId: result.id, matchedRecordCount };
-    },
-  );
+    }
+    const matchedRecordCount = await countMatchingEvents(deps.query, organizationId, body.criteria);
+    // Explicit `Tx = DbClient` (the M30/M34 `withOrgContext<DbClient, T>` precedent,
+    // apps/backend/src/bootstrap/outbox-persister.ts's `OutboxTx` comment) so `tx` is directly
+    // assignable to both `AuditExecutor` and the outbox port's `tx: DbClient` — no cast needed.
+    const result = await withOrgContext<DbClient, typeof HOLD.$inferSelect>(
+      deps.db,
+      { organizationId, userId },
+      async (tx) => {
+        const [row] = await tx
+          .insert(HOLD)
+          .values({
+            organizationId,
+            name: body.name,
+            criteria: body.criteria,
+            reason: body.reason,
+            appliedBy: userId,
+          })
+          .returning();
+        if (!row) throw new Error("legal_hold insert returned no row");
+        await audit(tx, auditContextFor(request), {
+          eventType: "data.legal_hold_applied",
+          resourceKind: "legal_hold",
+          resourceId: row.id,
+          outcome: "success",
+          severity: "warn",
+          retentionClass: "compliance",
+          context: { name: body.name, matchedRecordCount, reason: body.reason },
+        });
+        if (deps.outbox) {
+          await deps.outbox.publish(tx, {
+            eventName: "m4.legal_hold.applied",
+            payload: { holdId: row.id, matched: matchedRecordCount, reason: body.reason },
+            organizationId,
+            aggregateKind: "legal_hold",
+            aggregateId: row.id,
+          });
+        }
+        return row;
+      },
+    );
+    reply.code(201);
+    return { legalHoldId: result.id, matchedRecordCount };
+  });
 
   app.post(
     "/api/v1/legal-holds/:id/release",

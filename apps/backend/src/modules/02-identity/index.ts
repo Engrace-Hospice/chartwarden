@@ -114,6 +114,10 @@ import type { DbClient } from "@wardenx/db";
 import type { AdminMembershipReader } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import {
+  createDrizzleElevatedApprovalStore as _drizzleElevatedApprovalStore,
+  createElevatedApprovalService as _elevatedApprovalService,
+} from "./elevated-approvals";
+import {
   type IdentityRouteDeps,
   createInMemoryCollaboratorLinkStore as _collabStore,
   createContextActorResolver as _ctxActor,
@@ -122,10 +126,6 @@ import {
   createDbInvitationStore as _dbInvitations,
   createDbUserDirectory as _dbUserDirectory,
 } from "./identity-stores-db";
-import {
-  createDrizzleElevatedApprovalStore as _drizzleElevatedApprovalStore,
-  createElevatedApprovalService as _elevatedApprovalService,
-} from "./elevated-approvals";
 import { createDbMembershipRepository as _dbMemberships } from "./membership-repository";
 import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
 import { createDbSessionWriter as _dbSessionWriter } from "./session-writer-db";

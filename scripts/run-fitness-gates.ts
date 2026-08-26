@@ -106,8 +106,7 @@ function main(): never {
   }
 
   console.error(
-    `\n${red(`FAIL arch:fitness: ${failed.length} of ${results.length} gate(s) failed`)} — ` +
-      failed.map((f) => f.gate).join(", "),
+    `\n${red(`FAIL arch:fitness: ${failed.length} of ${results.length} gate(s) failed`)} — ${failed.map((f) => f.gate).join(", ")}`,
   );
   console.error(
     "  Each failing gate's own output is above, under its heading. Every gate ran, so this is the\n" +

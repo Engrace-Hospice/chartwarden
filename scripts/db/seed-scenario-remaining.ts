@@ -70,7 +70,7 @@
  * Run:     bun run db:seed:scenario-remaining
  */
 import { Client } from "pg";
-import { findPatientIdByLastName, ScenarioLog, signIn } from "./lib/api-session";
+import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001"; // db:seed:org-structure
@@ -168,7 +168,14 @@ async function seedDocument(
      VALUES ($1,$2,$3,$4,$5,'clinical_record','user_upload','discharge_summary',
              'Sample uploaded document (dev seed)', true, $6)
      RETURNING id`,
-    [organizationId, patientId, PROVIDER_ENTITY_ID, LOCATION_MAIN_ID, admissionId, createdByMembershipId],
+    [
+      organizationId,
+      patientId,
+      PROVIDER_ENTITY_ID,
+      LOCATION_MAIN_ID,
+      admissionId,
+      createdByMembershipId,
+    ],
   );
   const documentId = doc.rows[0].id;
   const version = await db.query<{ id: string }>(
@@ -231,7 +238,12 @@ async function wipePrior(
     );
     const contactIds = contacts.rows.map((r) => r.id);
     if (contactIds.length) {
-      for (const t of ["bereavement_contact_log", "bereavement_opt_out", "bereavement_outreach", "bereavement_risk_score"]) {
+      for (const t of [
+        "bereavement_contact_log",
+        "bereavement_opt_out",
+        "bereavement_outreach",
+        "bereavement_risk_score",
+      ]) {
         await db.query(`DELETE FROM ${t} WHERE bereaved_contact_id = ANY($1)`, [contactIds]);
       }
       await db.query("DELETE FROM bereaved_contact WHERE id = ANY($1)", [contactIds]);
@@ -245,7 +257,9 @@ async function wipePrior(
   // M30 — mortality review for Fairbanks; incidents/QAPI/SRA/infection for Whitfield/org.
   await db.query("DELETE FROM mortality_review WHERE admission_id = $1", [fairbanksAdmissionId]);
   await db.query("DELETE FROM incident_report WHERE patient_id = $1", [whitfieldPatientId]);
-  await db.query("DELETE FROM infection_surveillance_event WHERE patient_id = $1", [whitfieldPatientId]).catch(() => {});
+  await db
+    .query("DELETE FROM infection_surveillance_event WHERE patient_id = $1", [whitfieldPatientId])
+    .catch(() => {});
   const programs = await db.query<{ id: string }>(
     "SELECT id FROM qapi_program WHERE organization_id = $1 AND plan_year = $2",
     [organizationId, new Date().getFullYear()],
@@ -262,7 +276,9 @@ async function wipePrior(
       await db.query("DELETE FROM qapi_project WHERE id = ANY($1)", [projectIds]);
     }
     await db.query("DELETE FROM qapi_indicator WHERE qapi_program_id = ANY($1)", [programIds]);
-    await db.query("DELETE FROM qapi_governance_minutes WHERE qapi_program_id = ANY($1)", [programIds]);
+    await db.query("DELETE FROM qapi_governance_minutes WHERE qapi_program_id = ANY($1)", [
+      programIds,
+    ]);
     await db.query("DELETE FROM qapi_program WHERE id = ANY($1)", [programIds]);
   }
   const cycles = await db.query<{ id: string }>(
@@ -284,14 +300,17 @@ async function wipePrior(
   }
 
   // M37 — arranged IPU admission for Whitfield.
-  await db.query("DELETE FROM ipu_admission WHERE patient_id = $1", [whitfieldPatientId]).catch(() => {});
+  await db
+    .query("DELETE FROM ipu_admission WHERE patient_id = $1", [whitfieldPatientId])
+    .catch(() => {});
 
   // M39 — consent records for Whitfield created by this script (typeKey hipaa_release — the only one of
   // the three locally-seeded consent_type_catalog rows this script uses).
-  await db.query(
-    `DELETE FROM consent_record WHERE patient_id = $1 AND type_key = 'hipaa_release'`,
-    [whitfieldPatientId],
-  ).catch(() => {});
+  await db
+    .query(`DELETE FROM consent_record WHERE patient_id = $1 AND type_key = 'hipaa_release'`, [
+      whitfieldPatientId,
+    ])
+    .catch(() => {});
 
   // M22 — document + version for Whitfield.
   const docs = await db.query<{ id: string }>(
@@ -320,21 +339,29 @@ async function main(): Promise<void> {
   const whitfieldId = await findPatientIdByLastName(admin, "Whitfield");
   const fairbanksId = await findPatientIdByLastName(admin, "Fairbanks");
 
-  const whitfieldCert = await admin.client.GET("/api/v1/patients/{patientId}/election-certification", {
-    params: { path: { patientId: whitfieldId } },
-  });
+  const whitfieldCert = await admin.client.GET(
+    "/api/v1/patients/{patientId}/election-certification",
+    {
+      params: { path: { patientId: whitfieldId } },
+    },
+  );
   const whitfieldAdmissionId = (
     whitfieldCert.data as unknown as { admission?: { id?: string } } | undefined
   )?.admission?.id;
-  if (!whitfieldAdmissionId) throw new Error("Whitfield has no admission — run db:seed:scenario-admissions first");
+  if (!whitfieldAdmissionId)
+    throw new Error("Whitfield has no admission — run db:seed:scenario-admissions first");
 
-  const fairbanksCert = await admin.client.GET("/api/v1/patients/{patientId}/election-certification", {
-    params: { path: { patientId: fairbanksId } },
-  });
+  const fairbanksCert = await admin.client.GET(
+    "/api/v1/patients/{patientId}/election-certification",
+    {
+      params: { path: { patientId: fairbanksId } },
+    },
+  );
   const fairbanksAdmissionId = (
     fairbanksCert.data as unknown as { admission?: { id?: string } } | undefined
   )?.admission?.id;
-  if (!fairbanksAdmissionId) throw new Error("Fairbanks has no admission — run db:seed:scenario-admissions first");
+  if (!fairbanksAdmissionId)
+    throw new Error("Fairbanks has no admission — run db:seed:scenario-admissions first");
 
   const deathAt = nowIso();
   const deathDate = deathAt.slice(0, 10);
@@ -344,45 +371,65 @@ async function main(): Promise<void> {
 
   // ── M16 — Bereavement (Fairbanks; DB-seeded eligible plan, everything else real API — see file header) ──
   try {
-    const planId = await seedBereavementPlan(admin.organizationId, fairbanksId, fairbanksAdmissionId, deathDate);
+    const planId = await seedBereavementPlan(
+      admin.organizationId,
+      fairbanksId,
+      fairbanksAdmissionId,
+      deathDate,
+    );
     const miraId = await membershipIdFor("mira@wardenx.local");
     const valentinaId = await membershipIdFor("valentina@wardenx.local");
 
-    const assignCounselor = await supervisor.client.POST("/api/v1/bereavement/plans/{planId}/assign-counselor", {
-      params: { path: { planId } },
-      body: { counselorUserId: miraId },
-    });
+    const assignCounselor = await supervisor.client.POST(
+      "/api/v1/bereavement/plans/{planId}/assign-counselor",
+      {
+        params: { path: { planId } },
+        body: { counselorUserId: miraId },
+      },
+    );
     if (assignCounselor.error)
       throw new Error(`assign-counselor failed: ${JSON.stringify(assignCounselor.error)}`);
     let version = (assignCounselor.data as unknown as { version: number }).version;
 
-    const assignVolunteer = await supervisor.client.POST("/api/v1/bereavement/plans/{planId}/assign-volunteer", {
-      params: { path: { planId } },
-      headers: { "If-Match": String(version) },
-      body: { volunteerUserId: valentinaId },
-    });
+    const assignVolunteer = await supervisor.client.POST(
+      "/api/v1/bereavement/plans/{planId}/assign-volunteer",
+      {
+        params: { path: { planId } },
+        headers: { "If-Match": String(version) },
+        body: { volunteerUserId: valentinaId },
+      },
+    );
     if (assignVolunteer.error)
       throw new Error(`assign-volunteer failed: ${JSON.stringify(assignVolunteer.error)}`);
     version = (assignVolunteer.data as unknown as { version: number }).version;
 
-    const seedRoster = await supervisor.client.POST("/api/v1/bereavement/plans/{planId}/seed-roster-and-schedule", {
-      params: { path: { planId } },
-      headers: { "If-Match": String(version) },
-      body: {
-        seedFromCaregivers: false,
-        additionalContacts: [
-          { displayName: "Grace Fairbanks", relationshipCode: "spouse", email: "grace.fairbanks@example.com" },
-        ],
+    const seedRoster = await supervisor.client.POST(
+      "/api/v1/bereavement/plans/{planId}/seed-roster-and-schedule",
+      {
+        params: { path: { planId } },
+        headers: { "If-Match": String(version) },
+        body: {
+          seedFromCaregivers: false,
+          additionalContacts: [
+            {
+              displayName: "Grace Fairbanks",
+              relationshipCode: "spouse",
+              email: "grace.fairbanks@example.com",
+            },
+          ],
+        },
       },
-    });
-    if (seedRoster.error) throw new Error(`seed-roster-and-schedule failed: ${JSON.stringify(seedRoster.error)}`);
+    );
+    if (seedRoster.error)
+      throw new Error(`seed-roster-and-schedule failed: ${JSON.stringify(seedRoster.error)}`);
 
     const contact = await supervisor.client.POST("/api/v1/bereavement/plans/{planId}/contacts", {
       params: { path: { planId } },
       body: { displayName: "Ben Fairbanks", relationshipCode: "child", phone: "555-0142" },
     });
     const contactData = contact.data as unknown as { contactId: string } | undefined;
-    if (contact.error || !contactData) throw new Error(`add contact failed: ${JSON.stringify(contact.error)}`);
+    if (contact.error || !contactData)
+      throw new Error(`add contact failed: ${JSON.stringify(contact.error)}`);
     void contactData;
 
     // `confirm` is skipped: it requires either an ACTIVE M39 `bereavement_outreach_consent` (that
@@ -423,7 +470,8 @@ async function main(): Promise<void> {
       },
     });
     const incidentData = incident.data as unknown as { incidentId: string } | undefined;
-    if (incident.error || !incidentData) throw new Error(`incident create failed: ${JSON.stringify(incident.error)}`);
+    if (incident.error || !incidentData)
+      throw new Error(`incident create failed: ${JSON.stringify(incident.error)}`);
     const incidentId = incidentData.incidentId;
 
     const submit = await admin.client.POST("/api/v1/quality/incidents/{incidentId}/submit", {
@@ -440,17 +488,27 @@ async function main(): Promise<void> {
     });
     if (triage.error) throw new Error(`incident triage failed: ${JSON.stringify(triage.error)}`);
 
-    const investigate = await admin.client.POST("/api/v1/quality/incidents/{incidentId}/investigate", {
-      params: { path: { incidentId } },
-      headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: {
-        rootCauseSummary:
-          "Patient lost balance reaching for a walker that was placed out of arm's reach after a caregiver visit.",
-        actions: [{ action: "Reposition walker within reach at every visit", ownerMembershipId: ritaId, dueAt: nowIso().slice(0, 10) }],
-        verificationCriteria: "Confirm walker placement documented at next 3 consecutive visits.",
+    const investigate = await admin.client.POST(
+      "/api/v1/quality/incidents/{incidentId}/investigate",
+      {
+        params: { path: { incidentId } },
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: {
+          rootCauseSummary:
+            "Patient lost balance reaching for a walker that was placed out of arm's reach after a caregiver visit.",
+          actions: [
+            {
+              action: "Reposition walker within reach at every visit",
+              ownerMembershipId: ritaId,
+              dueAt: nowIso().slice(0, 10),
+            },
+          ],
+          verificationCriteria: "Confirm walker placement documented at next 3 consecutive visits.",
+        },
       },
-    });
-    if (investigate.error) throw new Error(`incident investigate failed: ${JSON.stringify(investigate.error)}`);
+    );
+    if (investigate.error)
+      throw new Error(`incident investigate failed: ${JSON.stringify(investigate.error)}`);
 
     // `capVerifyAuthority` (M30-F03/ADR-0022 two-person control): the resolver must hold
     // qapi_coordinator/compliance_officer AND must NOT be the assignee (rita) — supervisor@, not admin@.
@@ -481,7 +539,8 @@ async function main(): Promise<void> {
       },
     });
     const programData = program.data as unknown as { programId: string } | undefined;
-    if (program.error || !programData) throw new Error(`qapi program failed: ${JSON.stringify(program.error)}`);
+    if (program.error || !programData)
+      throw new Error(`qapi program failed: ${JSON.stringify(program.error)}`);
     const programId = programData.programId;
 
     const indicator = await admin.client.POST("/api/v1/quality/qapi/indicators", {
@@ -495,7 +554,8 @@ async function main(): Promise<void> {
       },
     });
     const indicatorData = indicator.data as unknown as { indicatorId: string } | undefined;
-    if (indicator.error || !indicatorData) throw new Error(`qapi indicator failed: ${JSON.stringify(indicator.error)}`);
+    if (indicator.error || !indicatorData)
+      throw new Error(`qapi indicator failed: ${JSON.stringify(indicator.error)}`);
 
     const project = await admin.client.POST("/api/v1/quality/qapi/projects", {
       headers: { "Idempotency-Key": crypto.randomUUID() },
@@ -503,16 +563,21 @@ async function main(): Promise<void> {
         qapiProgramId: programId,
         title: "Reduce home-visit fall incidence",
         indicatorId: indicatorData.indicatorId,
-        charterNarrative: "Address the fall-incidence trend identified in Q3 with a walker-placement PIP.",
+        charterNarrative:
+          "Address the fall-incidence trend identified in Q3 with a walker-placement PIP.",
       },
     });
     const projectData = project.data as unknown as { projectId: string } | undefined;
-    if (project.error || !projectData) throw new Error(`qapi project failed: ${JSON.stringify(project.error)}`);
+    if (project.error || !projectData)
+      throw new Error(`qapi project failed: ${JSON.stringify(project.error)}`);
 
     const pip = await admin.client.POST("/api/v1/quality/qapi/projects/{projectId}/pips", {
       params: { path: { projectId: projectData.projectId } },
       headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: { charterText: "Standardize walker placement at every home visit; verify at 3 consecutive visits." },
+      body: {
+        charterText:
+          "Standardize walker placement at every home visit; verify at 3 consecutive visits.",
+      },
     });
     const pipData = pip.data as unknown as { pipId: string } | undefined;
     if (pip.error || !pipData) throw new Error(`qapi pip failed: ${JSON.stringify(pip.error)}`);
@@ -530,14 +595,16 @@ async function main(): Promise<void> {
       body: {
         qapiProgramId: programId,
         meetingAt: nowIso(),
-        summary: "Quarterly QAPI governance review — fall-incidence PIP closed with sustained improvement.",
+        summary:
+          "Quarterly QAPI governance review — fall-incidence PIP closed with sustained improvement.",
         attendees: [
           { role: "medical_director", membershipId: drharrisId },
           { role: "qapi_coordinator", membershipId: supervisorId },
         ],
       },
     });
-    if (governance.error) throw new Error(`qapi governance failed: ${JSON.stringify(governance.error)}`);
+    if (governance.error)
+      throw new Error(`qapi governance failed: ${JSON.stringify(governance.error)}`);
 
     // SRA: cycle → finding → remediation → close (step-up).
     const cycle = await admin.client.POST("/api/v1/quality/sra/cycles", {
@@ -545,7 +612,8 @@ async function main(): Promise<void> {
       body: { cycleYear: new Date().getFullYear() },
     });
     const cycleData = cycle.data as unknown as { cycleId: string } | undefined;
-    if (cycle.error || !cycleData) throw new Error(`sra cycle failed: ${JSON.stringify(cycle.error)}`);
+    if (cycle.error || !cycleData)
+      throw new Error(`sra cycle failed: ${JSON.stringify(cycle.error)}`);
 
     const finding = await admin.client.POST("/api/v1/quality/sra/cycles/{cycleId}/findings", {
       params: { path: { cycleId: cycleData.cycleId } },
@@ -555,23 +623,29 @@ async function main(): Promise<void> {
         controlRef: "AC-2",
         likelihood: 2,
         impact: 3,
-        description: "Shared service-account credentials found in one field-staff onboarding checklist.",
+        description:
+          "Shared service-account credentials found in one field-staff onboarding checklist.",
       },
     });
     const findingData = finding.data as unknown as { findingId: string } | undefined;
-    if (finding.error || !findingData) throw new Error(`sra finding failed: ${JSON.stringify(finding.error)}`);
+    if (finding.error || !findingData)
+      throw new Error(`sra finding failed: ${JSON.stringify(finding.error)}`);
 
-    const remediation = await admin.client.POST("/api/v1/quality/sra/findings/{findingId}/remediation", {
-      params: { path: { findingId: findingData.findingId } },
-      headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: {
-        remediationNumber: 1,
-        plan: "Remove shared credentials from onboarding checklist; issue individual accounts.",
-        ownerMembershipId: supervisorId,
-        dueAt: nowIso().slice(0, 10),
+    const remediation = await admin.client.POST(
+      "/api/v1/quality/sra/findings/{findingId}/remediation",
+      {
+        params: { path: { findingId: findingData.findingId } },
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: {
+          remediationNumber: 1,
+          plan: "Remove shared credentials from onboarding checklist; issue individual accounts.",
+          ownerMembershipId: supervisorId,
+          dueAt: nowIso().slice(0, 10),
+        },
       },
-    });
-    if (remediation.error) throw new Error(`sra remediation failed: ${JSON.stringify(remediation.error)}`);
+    );
+    if (remediation.error)
+      throw new Error(`sra remediation failed: ${JSON.stringify(remediation.error)}`);
 
     // `POST /sra/cycles/:cycleId/close` is GENUINELY UNREACHABLE too, same class as the QAPI PIP gap
     // above: `close` is legal only from status `review` (`sra/machine.ts`'s
@@ -582,9 +656,15 @@ async function main(): Promise<void> {
     // Infection surveillance: one event (auto-clusters into an outbreak per the route's own comment).
     const infection = await admin.client.POST("/api/v1/quality/infection/events", {
       headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: { patientId: whitfieldId, pathogen: "Influenza A", bodySite: "respiratory", observedAt: nowIso() },
+      body: {
+        patientId: whitfieldId,
+        pathogen: "Influenza A",
+        bodySite: "respiratory",
+        observedAt: nowIso(),
+      },
     });
-    if (infection.error) throw new Error(`infection event failed: ${JSON.stringify(infection.error)}`);
+    if (infection.error)
+      throw new Error(`infection event failed: ${JSON.stringify(infection.error)}`);
 
     // Mortality review: DB-direct (no create route — see file header), targets Fairbanks.
     await seedMortalityReview(admin.organizationId, fairbanksId, fairbanksAdmissionId, deathAt);
@@ -613,7 +693,8 @@ async function main(): Promise<void> {
         kind: "arranged",
       },
     });
-    if (admission.error) throw new Error(`ipu admission open failed: ${JSON.stringify(admission.error)}`);
+    if (admission.error)
+      throw new Error(`ipu admission open failed: ${JSON.stringify(admission.error)}`);
 
     log.ok(
       "IPU Management (M37): 1 arranged inpatient admission opened for Whitfield (GIP/IRC structurally blocked — no route ever populates ipu_rn_coverage_window, see file header)",
@@ -637,7 +718,8 @@ async function main(): Promise<void> {
       },
     });
     const draftData = draft.data as unknown as { data?: { id: string } } | undefined;
-    if (draft.error || !draftData?.data) throw new Error(`consent draft failed: ${JSON.stringify(draft.error)}`);
+    if (draft.error || !draftData?.data)
+      throw new Error(`consent draft failed: ${JSON.stringify(draft.error)}`);
     const consentId = draftData.data.id;
 
     await stepUpSession(rita.userId);
@@ -653,7 +735,9 @@ async function main(): Promise<void> {
     });
     if (sign.error) throw new Error(`consent sign failed: ${JSON.stringify(sign.error)}`);
 
-    log.ok("Consent (M39): 1 portal-access consent drafted and signed (real step-up predicate via session nudge, see file header)");
+    log.ok(
+      "Consent (M39): 1 portal-access consent drafted and signed (real step-up predicate via session nudge, see file header)",
+    );
   } catch (err) {
     log.fail(`M39 consent: ${String(err)}`);
   }

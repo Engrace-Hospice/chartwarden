@@ -17,7 +17,7 @@
 // so a tenant gets an error instead of a silently-ignored configuration. Both are needed and they
 // do different jobs: without the trigger a tenant's rejected intent looks accepted; without this
 // resolution a row written by any path that bypasses the trigger would take effect.
-import { STEP_UP_POLICY, type ResolvedStepUpPolicy, type StepUpFactor } from "@wardenx/types";
+import { type ResolvedStepUpPolicy, STEP_UP_POLICY, type StepUpFactor } from "@wardenx/types";
 
 /** A tenant override row's policy-bearing fields (mirrors `tenant_step_up_policy_override`). */
 export interface StepUpOverrideRecord {

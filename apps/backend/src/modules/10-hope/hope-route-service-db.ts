@@ -46,6 +46,7 @@ import { NotFoundError } from "@wardenx/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import type { HopeAbacResolver, HopeAssessmentAbacFacts } from "./abac-predicates";
+import type { HopeWriteOutboxPort } from "./outbox-port";
 import type {
   CorrectTimepointArgs,
   HopeAssessmentView,
@@ -58,7 +59,6 @@ import type {
   RecordTimepointArgs,
 } from "./routes/service";
 import { rateOf } from "./routes/service";
-import type { HopeWriteOutboxPort } from "./outbox-port";
 import { regenerateSchedulesForAdmission } from "./scheduling/schedule-writer";
 
 const ASSESS = schema.hopeAssessments;

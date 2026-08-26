@@ -74,7 +74,13 @@ interface DashboardState {
   readonly failed: string[];
 }
 
-const EMPTY_STATE: DashboardState = { kpis: [], attention: [], today: [], activity: [], failed: [] };
+const EMPTY_STATE: DashboardState = {
+  kpis: [],
+  attention: [],
+  today: [],
+  activity: [],
+  failed: [],
+};
 
 const toneColor: Record<Tone, string> = {
   neutral: t.onSurfaceVariant,
@@ -530,7 +536,10 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
   },
 ];
 
-function mergeContributions(results: readonly Contribution[], failed: readonly string[]): DashboardState {
+function mergeContributions(
+  results: readonly Contribution[],
+  failed: readonly string[],
+): DashboardState {
   return {
     kpis: results.flatMap((x) => [...(x.kpis ?? [])]).slice(0, 5),
     attention: results
@@ -643,7 +652,12 @@ export function RoleHome({ screens }: { screens: WebScreenDescriptor[] }): JSX.E
 
       <section aria-label="Summary" style={kpiGridStyle}>
         {loading && state.kpis.length === 0
-          ? Array.from({ length: 4 }, (_, i) => <KpiSkeleton key={i} />)
+          ? // Keyed by a generated id rather than the raw array index. These are identical,
+            // content-free loading placeholders, so no reconciliation bug is possible either way —
+            // but building the ids first says "these have no identity" outright, which a bare
+            // `key={i}` cannot, and it keeps the honest reading of `noArrayIndexKey` intact for
+            // every list that DOES carry identity.
+            KPI_SKELETON_KEYS.map((key) => <KpiSkeleton key={key} />)
           : state.kpis.map((kpi) => <Kpi key={kpi.id} kpi={kpi} />)}
       </section>
 
@@ -689,7 +703,13 @@ export function RoleHome({ screens }: { screens: WebScreenDescriptor[] }): JSX.E
       </div>
 
       {state.failed.length > 0 ? (
-        <div role="status" style={degradedStyle}>
+        <div
+          // biome-ignore lint/a11y/useSemanticElements: `<output>` is a form-associated calculation
+          // result; this is a degraded-state announcement, for which `role="status"` on flow content
+          // is the idiomatic polite live region.
+          role="status"
+          style={degradedStyle}
+        >
           Some dashboard sections could not be loaded: {state.failed.join(", ")}.
         </div>
       ) : null}
@@ -721,7 +741,9 @@ export function RoleHome({ screens }: { screens: WebScreenDescriptor[] }): JSX.E
             ))}
           </div>
         ) : (
-          <p style={mutedStyle}>No recent activity feed is available for your current permissions.</p>
+          <p style={mutedStyle}>
+            No recent activity feed is available for your current permissions.
+          </p>
         )}
       </section>
     </div>
@@ -806,7 +828,9 @@ function ActivityRow({ item }: { item: ActivityItem }): JSX.Element {
         <span style={rowTitleStyle}>{item.title}</span>
         {item.detail ? <span style={rowMetaStyle}>{item.detail}</span> : null}
       </span>
-      {item.timestamp ? <span style={mutedSmallStyle}>{formatRelative(item.timestamp)}</span> : null}
+      {item.timestamp ? (
+        <span style={mutedSmallStyle}>{formatRelative(item.timestamp)}</span>
+      ) : null}
     </Link>
   );
 }
@@ -861,11 +885,20 @@ function KpiSkeleton(): JSX.Element {
   );
 }
 
+/** Stable ids for the four KPI loading placeholders — see the note at the call site. */
+const KPI_SKELETON_KEYS = ["kpi-skeleton-1", "kpi-skeleton-2", "kpi-skeleton-3", "kpi-skeleton-4"];
+
+/** Stable ids for `rows` identical list placeholders. */
+function skeletonRowKeys(rows: number): string[] {
+  return Array.from({ length: rows }, (_, i) => `skeleton-row-${i + 1}`);
+}
+
 function ListSkeleton({ rows }: { rows: number }): JSX.Element {
   return (
     <div style={{ display: "grid", gap: "0.75rem" }}>
-      {Array.from({ length: rows }, (_, i) => (
-        <div key={i} style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+      {/* Generated ids, not the raw index — see the KPI skeleton above. */}
+      {skeletonRowKeys(rows).map((key) => (
+        <div key={key} style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
           <span style={{ ...skeletonStyle, width: "3rem" }} />
           <span style={{ ...skeletonStyle, flex: 1 }} />
           <span style={{ ...skeletonStyle, width: "4rem" }} />

@@ -28,7 +28,13 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
-import { claimStateTone, dollars, statusLabel, windowTierLabel, windowTierTone } from "./billing-status";
+import {
+  claimStateTone,
+  dollars,
+  statusLabel,
+  windowTierLabel,
+  windowTierTone,
+} from "./billing-status";
 
 interface ArAging {
   bucket0to30Cents: number;
@@ -315,9 +321,20 @@ export function ArDashboard(): JSX.Element {
         </KpiStrip>
       }
       filters={
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", padding: "0 1.5rem 0.75rem" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.75rem",
+            padding: "0 1.5rem 0.75rem",
+          }}
+        >
           {degraded ? (
             <p
+              // biome-ignore lint/a11y/useSemanticElements: the rule suggests `<output>`, which is
+              // the result of a CALCULATION inside a form (and is form-associated). This is a
+              // degraded-state announcement, and `role="status"` on ordinary flow content is the
+              // idiomatic polite live region.
               role="status"
               style={{
                 margin: 0,
@@ -500,7 +517,11 @@ function dashboardRowsFor({
   return [...arRows, ...claimRows, ...noticeRows];
 }
 
-function noticeRow(label: string, posture: WindowPosture | null, href: string): DashboardRow | null {
+function noticeRow(
+  label: string,
+  posture: WindowPosture | null,
+  href: string,
+): DashboardRow | null {
   if (!posture) return null;
   const worstDays = posture.breached > 0 ? -1 : posture.atRisk > 0 ? 1 : 5;
   return {
@@ -526,7 +547,9 @@ function BillingMetricTable({
   onSelectRow: (id: string) => void;
 }): JSX.Element {
   return (
-    <table style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+    <table
+      style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}
+    >
       <thead>
         <tr
           style={{
@@ -605,7 +628,10 @@ function BillingMetricDrawer({ row }: { row: DashboardRow }): JSX.Element {
         }}
       >
         <MetricField label="Count" value={row.count ?? "—"} />
-        <MetricField label="Amount" value={row.amountCents === null ? "—" : dollars(row.amountCents)} />
+        <MetricField
+          label="Amount"
+          value={row.amountCents === null ? "—" : dollars(row.amountCents)}
+        />
       </div>
 
       {row.href ? (
@@ -621,7 +647,9 @@ function MetricField({ label, value }: { label: string; value: string | number }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
       <span style={{ color: t.onSurfaceVariant, fontSize: "0.7rem" }}>{label}</span>
-      <span style={{ color: t.onSurface, fontSize: "0.875rem", fontVariantNumeric: "tabular-nums" }}>
+      <span
+        style={{ color: t.onSurface, fontSize: "0.875rem", fontVariantNumeric: "tabular-nums" }}
+      >
         {value}
       </span>
     </div>

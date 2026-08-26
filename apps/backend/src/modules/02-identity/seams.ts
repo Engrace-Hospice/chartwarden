@@ -65,7 +65,8 @@ export function registerIdentitySeams(deps: IdentitySeamDeps = {}): void {
   // `step_up_recent` predicate already resolves, so no new seam and no new dependsOn edge. Without
   // a db the store is absent and every operation resolves to the platform floor: an override may
   // only ever TIGHTEN, so having none is the strict end, not a fail-open default.
-  const stepUpOverrides = deps.stepUpOverrides ?? (deps.db ? createDrizzleStepUpOverrideStore(deps.db) : undefined);
+  const stepUpOverrides =
+    deps.stepUpOverrides ?? (deps.db ? createDrizzleStepUpOverrideStore(deps.db) : undefined);
   registerSeam("SessionContextResolver", createSessionContextResolver(sessions, stepUpOverrides));
   registerSeam("AuditorSessionMinter", createAuditorSessionMinter(auditorLinks));
   // GAP-043 — the per-membership named-approval-authority reader M27's §4.7 approver predicate keys on.

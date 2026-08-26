@@ -178,7 +178,7 @@ async function main(): Promise<void> {
     marker.trimStart(),
     "",
     "> The `org_admin` tenant-admin role (full permission catalog + the tenant-admin authority",
-    "> `hasRole(ctx,\"org_admin\")` predicates check) — distinct from the CoP-418.100 `administrator`",
+    '> `hasRole(ctx,"org_admin")` predicates check) — distinct from the CoP-418.100 `administrator`',
     "> role the original 4 accounts above carry.",
     "",
     "| Persona | Email | Password | Role key(s) |",

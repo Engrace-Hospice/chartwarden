@@ -87,7 +87,9 @@ function makeServer() {
     {
       orgId: ORG,
       userId: "coordinator",
-      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["idg.schedule"] }],
+      grants: [
+        { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["idg.schedule"] },
+      ],
     },
     {
       orgId: ORG,

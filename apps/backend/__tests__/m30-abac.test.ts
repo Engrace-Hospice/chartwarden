@@ -452,7 +452,8 @@ describe("M30 part2Redisclosure grant path (GAP-047)", () => {
 // Neither method touches the db handle (both are pure seam calls), so the resolver can be built over a
 // null handle here. What is under test is the glue that used to be `return false`.
 describe("M30 Drizzle resolver Part-2 reaches (GAP-047 seam glue)", () => {
-  // biome-ignore lint/suspicious/noExplicitAny: the two methods under test never touch the handle.
+  // `null as any`: the two methods under test never touch the handle. (No biome-ignore — the repo
+  // turns `noExplicitAny` off globally, so a suppression here is dead and reports as one.)
   const resolver = () => buildDrizzleM30AbacResolver(null as any);
   const CTX = { organizationId: "org-a", userId: "user-1", membershipId: "mem-1" };
 

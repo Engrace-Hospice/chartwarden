@@ -34,9 +34,10 @@ describe("arch:fitness gate runner", () => {
     // A typo'd name would still fail the run (bun exits non-zero on an unknown script), but it would
     // fail for the wrong reason and read as a broken gate rather than a broken list.
     const missing = GATES.filter((g) => !(g in pkg.scripts));
-    expect(missing, `gate name(s) with no matching package.json script: ${missing.join(", ")}`).toEqual(
-      [],
-    );
+    expect(
+      missing,
+      `gate name(s) with no matching package.json script: ${missing.join(", ")}`,
+    ).toEqual([]);
   });
 
   it("covers every gate the fitness-gate self-test proves red-and-green", () => {
@@ -49,8 +50,15 @@ describe("arch:fitness gate runner", () => {
     // so the two are joined here through package.json: script file -> the script(s) that invoke it ->
     // the runner's list.
     const selfTest = readFileSync(join(__dirname, "fitness-gates.test.ts"), "utf8");
-    const gateFiles = [...new Set([...selfTest.matchAll(/["'`](check-[a-z0-9-]+\.ts)["'`]/g)].map((m) => m[1] as string))];
-    expect(gateFiles.length, "self-test parse found no gate scripts — the regex has gone stale").toBeGreaterThan(5);
+    const gateFiles = [
+      ...new Set(
+        [...selfTest.matchAll(/["'`](check-[a-z0-9-]+\.ts)["'`]/g)].map((m) => m[1] as string),
+      ),
+    ];
+    expect(
+      gateFiles.length,
+      "self-test parse found no gate scripts — the regex has gone stale",
+    ).toBeGreaterThan(5);
 
     const uncovered = gateFiles.filter((file) => {
       const invoking = Object.entries(pkg.scripts)

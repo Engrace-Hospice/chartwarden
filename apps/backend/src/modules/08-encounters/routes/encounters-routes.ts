@@ -419,7 +419,9 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 20 — cosigner signs (§4.6 m8.cosigner_role_match; D13 step-up).
   app.post(
     "/api/v1/encounters/:encounterId/cosignature/sign",
-    { preHandler: [COSIGN, ABAC_COSIGN, SCOPE_FOR("encounter.cosign"), STEP_UP("encounter.cosign")] },
+    {
+      preHandler: [COSIGN, ABAC_COSIGN, SCOPE_FOR("encounter.cosign"), STEP_UP("encounter.cosign")],
+    },
     async (request) => {
       const { organizationId, roles } = actorOf(request);
       parse(SignEncounterSchema, request.body); // validates the attestation-confirmed shape

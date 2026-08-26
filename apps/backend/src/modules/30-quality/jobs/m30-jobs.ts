@@ -71,7 +71,6 @@ import {
   type QualityCostReportConsumer,
   type QualityHopeConsumer,
   QualityMeasureValueRepository,
-  denyStubQualityCostReportConsumer,
   type RiskRegisterRefreshCronPorts,
   type RiskRegisterRefreshJob,
   type RiskRegisterRefreshPorts,
@@ -83,6 +82,7 @@ import {
   buildMeasureRegistry,
   cahpsExportProcessor,
   cahpsMonthlySampleCronProcessor,
+  denyStubQualityCostReportConsumer,
   isOpioidDrugName,
   isoDate,
   measureRecomputeProcessor,
@@ -735,7 +735,12 @@ export async function resolveOperationalMeasureInput(
         fromIso: periodStart,
         toIso: periodEnd,
       });
-      return { ...base, evaluatedPeriods: c.denominator, periodsMeetingGate: c.numerator, threshold };
+      return {
+        ...base,
+        evaluatedPeriods: c.denominator,
+        periodsMeetingGate: c.numerator,
+        threshold,
+      };
     }
     default:
       return unboundWorkerPort(
@@ -1091,15 +1096,22 @@ export async function resolveOpioidOnAdmissionInput(
 ): Promise<unknown> {
   const { organizationId, providerEntityId, periodStart, periodEnd } = request;
 
-  const admissions = await seams.admissionOnsetReader.listAdmissionsStartedInPeriod(organizationId, {
-    from: periodStart,
-    to: periodEnd,
-  });
+  const admissions = await seams.admissionOnsetReader.listAdmissionsStartedInPeriod(
+    organizationId,
+    {
+      from: periodStart,
+      to: periodEnd,
+    },
+  );
 
   let admissionsWithOpioid = 0;
   for (const admission of admissions) {
-    const orders = await seams.medicationOrders.listForAdmission(organizationId, admission.admissionId);
-    const windowEndMs = new Date(admission.admissionAt).getTime() + OPIOID_ON_ADMISSION_WINDOW_HOURS * MS_PER_HOUR;
+    const orders = await seams.medicationOrders.listForAdmission(
+      organizationId,
+      admission.admissionId,
+    );
+    const windowEndMs =
+      new Date(admission.admissionAt).getTime() + OPIOID_ON_ADMISSION_WINDOW_HOURS * MS_PER_HOUR;
     const hasOpioidAtAdmission = orders.some((o) => {
       // Only an ACTIVATED order counts — a draft/never-activated order was never actually given.
       if (o.activatedAt === null) return false;
@@ -1234,7 +1246,10 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
     deps.medicationOrders ??
     ({
       listForAdmission: () =>
-        unboundWorkerPort("measureRecompute.opioidOnAdmission.medicationOrders", UNBOUND_M12_REASON),
+        unboundWorkerPort(
+          "measureRecompute.opioidOnAdmission.medicationOrders",
+          UNBOUND_M12_REASON,
+        ),
     } as unknown as MedicationOrderProvider);
   // GAP-065 — the M27 forward-seam consumer. Its fallback is the package DENY-STUB, not an
   // `unboundWorkerPort` thunk: a forward seam whose producer is not rolled out must SUPPRESS its measure,

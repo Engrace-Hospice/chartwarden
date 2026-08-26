@@ -42,8 +42,16 @@ const period = { from: "2026-01-01T00:00:00.000Z", to: "2026-04-01T00:00:00.000Z
 describe("DischargeReader (M30 HCI indicators 3/4)", () => {
   it("counts every discharge (live + death) in totalDischarges but only classifies LIVE ones", async () => {
     const db = makeFakeDb([
-      { dischargeType: "death", effectiveAt: "2026-02-01", admissionAt: new Date("2026-01-25T00:00:00.000Z") },
-      { dischargeType: "transfer", effectiveAt: "2026-02-01", admissionAt: new Date("2026-01-30T00:00:00.000Z") },
+      {
+        dischargeType: "death",
+        effectiveAt: "2026-02-01",
+        admissionAt: new Date("2026-01-25T00:00:00.000Z"),
+      },
+      {
+        dischargeType: "transfer",
+        effectiveAt: "2026-02-01",
+        admissionAt: new Date("2026-01-30T00:00:00.000Z"),
+      },
     ]);
     const out = await createDischargeReader(db).liveDischargeTimingCounts("org-1", period);
     // death discharge (day 7) is NOT classified early/late even though it'd otherwise qualify — it's a

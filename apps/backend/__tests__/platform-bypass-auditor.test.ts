@@ -33,7 +33,8 @@ interface Row {
 function paramsOf(query: SQL): unknown[] {
   const chunks = (query as unknown as { queryChunks: unknown[] }).queryChunks;
   return chunks.filter(
-    (c) => !(c !== null && typeof c === "object" && Array.isArray((c as { value?: unknown }).value)),
+    (c) =>
+      !(c !== null && typeof c === "object" && Array.isArray((c as { value?: unknown }).value)),
   );
 }
 
@@ -42,8 +43,25 @@ function captureTx() {
   const rows: Row[] = [];
   const tx = {
     execute: async (query: SQL) => {
-      const [eventType, resourceKind, resourceId, outcome, severity, correlationId, contextJson, retentionClass] =
-        paramsOf(query) as [string, string, string | null, string, string, string, string, string];
+      const [
+        eventType,
+        resourceKind,
+        resourceId,
+        outcome,
+        severity,
+        correlationId,
+        contextJson,
+        retentionClass,
+      ] = paramsOf(query) as [
+        string,
+        string,
+        string | null,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ];
       rows.push({
         eventType,
         resourceKind,
