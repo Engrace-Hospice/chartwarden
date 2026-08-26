@@ -59,7 +59,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
     "/api/v1/ai/tenant-opt-in",
     { preHandler: [P("ai.tenant_opt_in"), ABAC_TENANT_CONSENT("ai.tenant_opt_in")] },
     async (request, reply) => {
-      const actor = writeActorOf(request);
+      const actor = await writeActorOf(request);
       const body = parse(RecordTenantOptInBody, request.body);
       const row = await recordAiTenantOptIn(governance, {
         organizationId: actor.organizationId,
@@ -79,7 +79,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
     "/api/v1/ai/tenant-opt-in/:capabilityId",
     { preHandler: [P("ai.tenant_opt_in"), ABAC_TENANT_CONSENT("ai.tenant_opt_in")] },
     async (request) => {
-      const actor = writeActorOf(request);
+      const actor = await writeActorOf(request);
       const { capabilityId } = parse(CapabilityIdParams, request.params);
       const body = parse(RevokeTenantOptInBody, request.body ?? {});
       const reason = body.reason ?? null;
@@ -108,7 +108,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
     "/api/v1/ai/tenant-opt-in",
     { preHandler: [P("ai.tenant_opt_in.read"), ABAC_IN_ORG("ai.tenant_opt_in.read")] },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = await actorOf(request);
       return { optIns: await listAiTenantOptIns(governance, actor.organizationId) };
     },
   );
@@ -121,7 +121,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
     "/api/v1/ai/clinician-opt-out",
     { preHandler: [P("ai.clinician_opt_out"), ABAC_IN_ORG("ai.clinician_opt_out")] },
     async (request, reply) => {
-      const actor = writeActorOf(request);
+      const actor = await writeActorOf(request);
       const body = parse(RecordClinicianOptOutBody, request.body);
       const row = await recordAiClinicianOptOut(governance, {
         organizationId: actor.organizationId,
@@ -140,7 +140,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
     "/api/v1/ai/clinician-opt-out/:capabilityId",
     { preHandler: [P("ai.clinician_opt_out"), ABAC_IN_ORG("ai.clinician_opt_out")] },
     async (request) => {
-      const actor = writeActorOf(request);
+      const actor = await writeActorOf(request);
       const { capabilityId } = parse(CapabilityIdParams, request.params);
       return revertAiClinicianOptOut(governance, {
         organizationId: actor.organizationId,
@@ -156,7 +156,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
     "/api/v1/ai/clinician-opt-out",
     { preHandler: [P("ai.clinician_opt_out.read"), ABAC_IN_ORG("ai.clinician_opt_out.read")] },
     async (request) => {
-      const actor = writeActorOf(request);
+      const actor = await writeActorOf(request);
       return {
         optOuts: await listAiClinicianOptOuts(governance, actor.organizationId, actor.membershipId),
       };

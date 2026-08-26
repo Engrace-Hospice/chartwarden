@@ -223,7 +223,7 @@ the prose docs in `docs/architecture/`.
   **across** files (`attributes[REVIEW_FLOOR_OVERRIDE_ATTRIBUTE]` is read in M14's routes and
   declared in its predicate file), the SCREAMING_CASE identifier-index write form (how both
   in-request producers actually write), and whole-bag aliases (`const attrs = ctx.attributes ?? {}`,
-  which is the only way two of the unproduced keys are read at all). **6 keys are currently
+  which is the only way two of the unproduced keys are read at all). **5 keys are currently
   declared blocked** and the gate prints them on every run — they are the standing finding, not a
   passing state. The largest is `sessionClass`: M16/M31/M39 read it and default to `"staff"`, and
   M31's portal predicates gate on it being one of `patient_portal`/`caregiver_portal`/
@@ -264,7 +264,19 @@ the prose docs in `docs/architecture/`.
   the TTL capped by the soonest grant expiry — so by the time M27/M30's predicates ask, the route's
   own `requirePermission` preHandler has already resolved the same set and it is a cache hit. Nothing
   is stamped; the two `actorHoldsPermission` helpers resolve through the seam. Blocked keys:
-  **7 → 6**.
+  **7 → 6**. Then `phiFullRead`, where the entry was not merely mis-reasoned but wrong on the facts:
+  it recorded the role-token arm as working, so the attribute was "the dead half". BOTH arms were
+  dead. `context.roles.includes("phi.full_read")` asks a list of ROLE keys (`compliance_officer`,
+  `medical_director`, …) for a `resource.action` PERMISSION key — a namespace error nothing can make
+  true — and `phi.full_read` was in no permission catalog either, so it could not be granted to
+  anyone. M32's §164.528 disclosure ledger (R16/R17) therefore masked the patient identity for every
+  caller, always, including the compliance officer the ledger exists for. Masking fails SAFE, which
+  is why nothing surfaced it: a permanently masked ledger and a correctly masked one are
+  indistinguishable. The key is now registered in M5's `phi.*` family (`abac: "none"`, a
+  check-don't-gate key like `cost_report.edit_any_provider`) and resolved through the same seam, and
+  it is deliberately assigned to NO default role template — who reads unmasked PHI by default is a
+  tenant policy decision, and choosing one here would have granted it silently on every existing org.
+  Blocked keys: **6 → 5**.
 - `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
   Every live-database / live-Redis / browser suite in `package.json` must be invoked by a job in
   `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so

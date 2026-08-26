@@ -55,7 +55,7 @@ export function registerTenantOpsRoutes(app: FastifyInstance, deps: TenantOpsRou
     "/api/v1/ai/tokens/ledger",
     { preHandler: [P("ai.tokens.read"), ABAC_IN_ORG("ai.tokens.read")] },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = await actorOf(request);
       return read.tokenLedger(actor, parseQuery(TokenLedgerQuery, request.query));
     },
   );
@@ -66,7 +66,7 @@ export function registerTenantOpsRoutes(app: FastifyInstance, deps: TenantOpsRou
     "/api/v1/ai/tokens/forecast",
     { preHandler: [P("ai.tokens.read"), ABAC_IN_ORG("ai.tokens.read")] },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = await actorOf(request);
       const query = parseQuery(TokenForecastQuery, request.query);
       return {
         forecasts: await read.tokenForecast(actor, query.capabilityId ?? null, now()),
@@ -81,7 +81,7 @@ export function registerTenantOpsRoutes(app: FastifyInstance, deps: TenantOpsRou
     "/api/v1/ai/routing-overrides",
     { preHandler: [P("ai.routing.override"), ABAC_IN_ORG("ai.routing.override")] },
     async (request, reply) => {
-      const actor = writeActorOf(request);
+      const actor = await writeActorOf(request);
       const body = parse(SetRoutingOverrideBody, request.body);
       const row = await routing.insertOverride({
         organizationId: actor.organizationId,
@@ -105,7 +105,7 @@ export function registerTenantOpsRoutes(app: FastifyInstance, deps: TenantOpsRou
     "/api/v1/ai/routing-overrides/:capabilityId",
     { preHandler: [P("ai.routing.override"), ABAC_IN_ORG("ai.routing.override")] },
     async (request) => {
-      const actor = writeActorOf(request);
+      const actor = await writeActorOf(request);
       const { capabilityId } = parse(CapabilityIdParams, request.params);
       const at = now();
       const active = await routing.findActiveOverride(actor.organizationId, capabilityId, at);
@@ -132,7 +132,7 @@ export function registerTenantOpsRoutes(app: FastifyInstance, deps: TenantOpsRou
     "/api/v1/ai/routing-overrides",
     { preHandler: [P("ai.routing.read"), ABAC_IN_ORG("ai.routing.read")] },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = await actorOf(request);
       return { overrides: await routing.listOverrides(actor.organizationId) };
     },
   );
