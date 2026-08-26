@@ -24,7 +24,7 @@ import {
 // patient-care hours has no ratio to fail.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { MembershipLookupField, ProviderEntityLookupField } from "../../shared/entity-lookups";
+import { MembershipLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { type HourRatioView, errorMessage, getHourRatio, writeHeaders } from "./discipline-api";
 import { RATIO_STATUS_TONE, hours, humanize, pct, toneOf } from "./discipline-status";
 import {

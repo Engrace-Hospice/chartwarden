@@ -19,7 +19,7 @@ import type { WorkflowStep } from "@wardenx/ui";
 import { useCallback, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { MdmEntityLookupField, PatientLookupField } from "../../shared/entity-lookups";
+import { MdmEntityLookupField, PatientLookupField } from "../../shell/entity-lookups";
 import { authFailureRedirect } from "./write-workflow";
 
 const INTAKE_METHODS = [
