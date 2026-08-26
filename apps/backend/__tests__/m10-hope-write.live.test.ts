@@ -15,6 +15,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
+import { DEFAULT_ORG_TIME_ZONE, orgLocalDate } from "@wardenx/hope";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
@@ -22,8 +23,13 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 import {
   type HopeWriteOutboxPort,
   M10_OUTBOX_EVENTS,
+  buildM10AdmissionSchedulingConsumer,
   createDbHopeBackend,
 } from "../src/modules/10-hope/index";
+import {
+  runHopeWindowWatchdogCron,
+  runSfvWatchdogCron,
+} from "../src/modules/10-hope/jobs/cron-workers";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -41,6 +47,9 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbHopeBackend>;
+  /** #48 — the same catalog-validating publisher the service uses, handed to the scheduling consumer
+   * and the watchdog cron so their `m10.hope.*` emits are validated against the boot catalog too. */
+  let consumerOutbox: HopeWriteOutboxPort;
   const memberOf: Record<string, string> = {};
   const providerOf: Record<string, string> = {};
   const locationOf: Record<string, string> = {};
@@ -145,6 +154,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m10" }),
     };
     svc = createDbHopeBackend(handle.db, outbox);
+    consumerOutbox = outbox;
   }, 120_000);
 
   afterAll(async () => {
@@ -409,6 +419,260 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     const res = await svc.requestSummaryPdf(ORG_A, memberOf[ORG_A], draft.id);
     expect(res).toEqual({ assessmentId: draft.id, requested: true });
     expect(await eventsFor(draft.id)).toContain("m10.hope.summary_requested");
+  });
+
+  // ── #48 — the timepoint-schedule WRITE path, proven at the row ───────────────────────────────────
+  //
+  // `hope_timepoint_schedule` is the §2.2.1 window ledger the CMS capture gate, the watchdog cron, the
+  // late-deadline math, the worklist and the on-time compliance rate all sit on, and nothing in the repo
+  // ever inserted a row into it. Every test above seeds one by hand as superuser, which is exactly how
+  // the gap survived: the suite proved what the service does WITH a window and never asked where one
+  // comes from.
+  describe("#48 — hope_timepoint_schedule is written", () => {
+    const consumer = () =>
+      buildM10AdmissionSchedulingConsumer({ db: handle.db, outbox: consumerOutbox });
+
+    async function schedulesFor(admissionId: string) {
+      const { rows } = await admin.query(
+        `SELECT rfa_kind, status, generated_by, window_opens_at, window_closes_at, late_deadline_at,
+                provider_entity_id, location_id, patient_id
+           FROM hope_timepoint_schedule WHERE admission_id=$1 ORDER BY rfa_kind`,
+        [admissionId],
+      );
+      return rows as Array<Record<string, string | Date>>;
+    }
+
+    it("materializes the three admission-anchored CMS windows on m6.admission.activated", async () => {
+      const adm = nextAdmission();
+      await consumer().handle({
+        organizationId: ORG_A,
+        eventType: "m6.admission.activated",
+        payload: { admissionId: adm, patientId: PATIENT, activatedAt: "2026-06-01T18:00:00.000Z" },
+      });
+      const rows = await schedulesFor(adm);
+      expect(rows.map((r) => r.rfa_kind)).toEqual(["01_admission", "02_huv1", "03_huv2"]);
+      expect(rows.every((r) => r.status === "open")).toBe(true);
+      expect(rows.every((r) => r.generated_by === "auto_admission")).toBe(true);
+      // Sited from the M6 seam — the NOT NULL columns that make a guessed placement impossible.
+      expect(rows.every((r) => r.provider_entity_id === providerOf[ORG_A])).toBe(true);
+      expect(rows.every((r) => r.location_id === locationOf[ORG_A])).toBe(true);
+      expect(rows.every((r) => r.patient_id === PATIENT)).toBe(true);
+
+      // The CMS day offsets, read back through a DIFFERENT function than the one that wrote them
+      // (orgLocalDate vs startOfOrgDayInstant), so this is not the calculator asserting on itself.
+      const asLocal = (d: Date) => orgLocalDate(d.toISOString(), DEFAULT_ORG_TIME_ZONE);
+      const admissionRow = rows[0] as {
+        window_opens_at: Date;
+        window_closes_at: Date;
+        late_deadline_at: Date;
+      };
+      expect(asLocal(admissionRow.window_opens_at)).toBe("2026-06-01"); // SOC = day 1
+      expect(asLocal(admissionRow.window_closes_at)).toBe("2026-06-05"); // days 1–5
+      expect(asLocal(admissionRow.late_deadline_at)).toBe("2026-06-12"); // + the 7-day D2 grace
+      const huv1 = rows[1] as { window_opens_at: Date; window_closes_at: Date };
+      expect(asLocal(huv1.window_opens_at)).toBe("2026-06-06"); // days 6–15
+      expect(asLocal(huv1.window_closes_at)).toBe("2026-06-15");
+      const huv2 = rows[2] as { window_opens_at: Date; window_closes_at: Date };
+      expect(asLocal(huv2.window_opens_at)).toBe("2026-06-16"); // days 16–30
+      expect(asLocal(huv2.window_closes_at)).toBe("2026-06-30");
+
+      // §2.4 — `m10.hope.timepoint_scheduled` was declared in the catalog and never once emitted.
+      const events = await admin.query(
+        "SELECT event_type FROM outbox_event WHERE event_type=$1 AND organization_id=$2",
+        ["m10.hope.timepoint_scheduled", ORG_A],
+      );
+      expect(events.rows.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it("materializes the single 7-day Discharge RFA window on m6.admission.discharged (D9)", async () => {
+      const adm = nextAdmission();
+      await consumer().handle({
+        organizationId: ORG_A,
+        eventType: "m6.admission.discharged",
+        payload: { admissionId: adm, reason: "death", dischargeDate: "2026-07-02" },
+      });
+      const rows = await schedulesFor(adm);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.rfa_kind).toBe("05_discharge");
+      expect(rows[0]!.generated_by).toBe("auto_discharge");
+      const asLocal = (d: Date) => orgLocalDate(d.toISOString(), DEFAULT_ORG_TIME_ZONE);
+      expect(asLocal(rows[0]!.window_opens_at as Date)).toBe("2026-07-02");
+      expect(asLocal(rows[0]!.window_closes_at as Date)).toBe("2026-07-08"); // 7 calendar days
+    });
+
+    it("is idempotent on redelivery — including after a window has been closed", async () => {
+      const adm = nextAdmission();
+      const deliver = () =>
+        consumer().handle({
+          organizationId: ORG_A,
+          eventType: "m6.admission.activated",
+          payload: {
+            admissionId: adm,
+            patientId: PATIENT,
+            activatedAt: "2026-06-01T18:00:00.000Z",
+          },
+        });
+      await deliver();
+      // The schema's `uniq_hope_sched_admission_rfa_open` partial index only covers `status='open'`, so
+      // a closed window would let a redelivery mint a SECOND obligation for the same RFA. Closing one
+      // first is what makes this a real idempotency test rather than an index test.
+      await admin.query(
+        "UPDATE hope_timepoint_schedule SET status='completed' WHERE admission_id=$1 AND rfa_kind='01_admission'",
+        [adm],
+      );
+      await deliver();
+      await deliver();
+      const rows = await schedulesFor(adm);
+      expect(rows).toHaveLength(3);
+      expect(rows.filter((r) => r.rfa_kind === "01_admission")).toHaveLength(1);
+    });
+
+    it("refuses an unsited admission and writes NOTHING", async () => {
+      const adm = nextAdmission();
+      registerSeam("AdmissionStatusReader", {
+        getAdmissionSummary: async (admissionId: string) => ({
+          admissionId,
+          patientId: PATIENT,
+          organizationId: ORG_A,
+          providerEntityId: providerOf[ORG_A],
+          locationId: null, // activation never sited it
+          status: "active",
+          admissionAt: "2026-06-01",
+          activatedAt: "2026-06-01",
+          dischargedAt: null,
+          currentElectionPeriodId: null,
+          currentLevelOfCare: "routine_home_care",
+        }),
+      });
+      await expect(
+        consumer().handle({
+          organizationId: ORG_A,
+          eventType: "m6.admission.activated",
+          payload: {
+            admissionId: adm,
+            patientId: PATIENT,
+            activatedAt: "2026-06-01T18:00:00.000Z",
+          },
+        }),
+      ).rejects.toMatchObject({ code: "M10_ADMISSION_PROJECTION_GAP" });
+      expect(await schedulesFor(adm)).toHaveLength(0);
+    });
+
+    it("refuses another tenant's admission", async () => {
+      const adm = nextAdmission();
+      await expect(
+        consumer().handle({
+          organizationId: ORG_B, // the seam answers for ORG_A
+          eventType: "m6.admission.activated",
+          payload: {
+            admissionId: adm,
+            patientId: PATIENT,
+            activatedAt: "2026-06-01T18:00:00.000Z",
+          },
+        }),
+      ).rejects.toMatchObject({ code: "M10_ADMISSION_PROJECTION_GAP" });
+      expect(await schedulesFor(adm)).toHaveLength(0);
+    });
+
+    it("route 20 regenerate actually regenerates, idempotently (it used to be a count)", async () => {
+      // The seam stub reports activatedAt 2026-01-05 and no discharge, so the admin path materializes
+      // the same three admission-anchored windows from the admission's own state. This is the supported
+      // way to backfill an admission activated before the scheduling consumer shipped.
+      const adm = nextAdmission();
+      expect(await schedulesFor(adm)).toHaveLength(0);
+      const first = await svc.regenerateSchedules(ORG_A, adm);
+      expect(first.scheduleCount).toBe(3);
+      const second = await svc.regenerateSchedules(ORG_A, adm);
+      expect(second.scheduleCount).toBe(3); // no duplicates
+      expect(await schedulesFor(adm)).toHaveLength(3);
+    });
+
+    it("links the draft to its open window, and the sign trigger then closes it", async () => {
+      // The DB trigger `trg_hope_schedule_mark_completed` fires on draft→signed WHERE schedule_id IS NOT
+      // NULL. `hope_assessment.schedule_id` was ALWAYS null in production (no schedule existed to link),
+      // so the trigger had nothing to close and the whole completion half of the ledger was dead.
+      const adm = nextAdmission();
+      await consumer().handle({
+        organizationId: ORG_A,
+        eventType: "m6.admission.activated",
+        payload: {
+          admissionId: adm,
+          patientId: PATIENT,
+          activatedAt: new Date().toISOString(),
+        },
+      });
+      const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
+      const linked = await admin.query("SELECT schedule_id FROM hope_assessment WHERE id=$1", [
+        draft.id,
+      ]);
+      expect(linked.rows[0].schedule_id).not.toBeNull();
+      await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+      const closed = await admin.query(
+        "SELECT status, completed_by_assessment_id FROM hope_timepoint_schedule WHERE id=$1",
+        [linked.rows[0].schedule_id],
+      );
+      expect(closed.rows[0].status).toBe("completed");
+      expect(closed.rows[0].completed_by_assessment_id).toBe(draft.id);
+    });
+
+    it("the hope-window-watchdog cron expires a real overdue window end to end", async () => {
+      // The cron reads `openHopeSchedulesForOrg`, which was an always-empty set, so
+      // `m10.hope.timepoint_expired` could never be emitted and no missed HOPE timepoint was ever
+      // detected. With a real row it transitions and publishes.
+      const adm = nextAdmission();
+      await consumer().handle({
+        organizationId: ORG_A,
+        eventType: "m6.admission.activated",
+        payload: { admissionId: adm, patientId: PATIENT, activatedAt: "2026-06-01T18:00:00.000Z" },
+      });
+      await runHopeWindowWatchdogCron({
+        connection: {} as never,
+        db: handle.db,
+        outbox: consumerOutbox,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        now: () => new Date("2027-01-01T00:00:00.000Z"), // long past every late deadline
+      });
+      const rows = await schedulesFor(adm);
+      expect(rows.every((r) => r.status === "expired")).toBe(true);
+      const events = await admin.query(
+        `SELECT DISTINCT event_type FROM outbox_event
+           WHERE event_type='m10.hope.timepoint_expired' AND organization_id=$1`,
+        [ORG_A],
+      );
+      expect(events.rows).toHaveLength(1);
+    });
+
+    it("the sfv-watchdog cron completes a transition too (the same actor sentinel)", async () => {
+      // Not this issue's subject, but the same one-line defect: both watchdogs carried a synthetic
+      // `app.user_id` with no `user` row, so every status change died on the audit trigger's FK. The
+      // WINDOW watchdog never showed it because the table it reads was always empty; this one reads
+      // rows that DO exist, so it has been dying every 15 minutes wherever an SFV went past due. This
+      // test is what turns that from a claim into a fact.
+      const adm = nextAdmission();
+      await seedSchedule(ORG_A, adm);
+      const draft = await svc.recordTimepoint(
+        ORG_A,
+        memberOf[ORG_A],
+        adm,
+        recordArgs(TRIGGER_DATA),
+      );
+      await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+      const { sfvs } = await svc.listSfv(ORG_A, "open");
+      const sfv = sfvs.find((x) => x.triggeringAssessmentId === draft.id);
+      expect(sfv).toBeDefined();
+
+      await runSfvWatchdogCron({
+        connection: {} as never,
+        db: handle.db,
+        outbox: consumerOutbox,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        now: () => new Date("2027-01-01T00:00:00.000Z"), // long past every SFV due date
+      });
+      const after = await admin.query("SELECT status FROM symptom_follow_up_visit WHERE id=$1", [
+        sfv!.id,
+      ]);
+      expect(after.rows[0].status).not.toBe("open");
+    });
   });
 
   // ── #45 — the subject of a HOPE record, proven at the row ────────────────────────────────────────

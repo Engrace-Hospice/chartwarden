@@ -70,6 +70,71 @@ export function admissionIsActiveForOrg(
   );
 }
 
+/**
+ * The siting + anchor facts a BACKGROUND consumer needs about one admission (#48).
+ *
+ * Shaped like the §4.7 `AdmissionSummary` but org-EXPLICIT, because the seam's id-keyed reads open
+ * `withOrgContextFromRequest` and a relay tick is not a request: an outbox consumer calling the seam
+ * gets `no ambient request context (call inside runWithRequestContext)` and the row dead-letters. The
+ * org-explicit shape is the established answer for exactly this — `activeAdmissionDraftContextForPatient`
+ * (M11/M12 IDG consumers) and `admissionIsActiveForOrg` (the M8 visit-published consumer) are the same
+ * pattern. Fabricating a request scope inside the relay instead would put the tenant pin somewhere no
+ * reviewer looks for it.
+ *
+ * Nothing here throws on a missing fact: the caller decides what an unsited admission means to it, so
+ * the refusal message stays where the reason lives.
+ */
+export interface AdmissionSchedulingContext {
+  readonly admissionId: string;
+  readonly patientId: string;
+  readonly providerEntityId: string | null;
+  readonly locationId: string | null;
+  /** Org-local `yyyy-mm-dd`, coalescing `admission_at` the way the seam's own projection does. */
+  readonly admissionAt: string | null;
+  readonly activatedAt: string | null;
+  readonly dischargedAt: string | null;
+}
+
+/** One admission's siting + anchors, org-explicit and worker-callable. `null` when the id is unknown in
+ * `organizationId` — indistinguishable from another tenant's, which is the point. */
+export function admissionSchedulingContextForOrg(
+  db: DbClient,
+  organizationId: string,
+  admissionId: string,
+): Promise<AdmissionSchedulingContext | null> {
+  return withOrgContext(
+    db,
+    { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const [row] = await tx
+        .select({
+          id: ADM.id,
+          patientId: ADM.patientId,
+          providerEntityId: ADM.providerEntityId,
+          locationId: ADM.locationId,
+          admissionAt: ADM.admissionAt,
+          activatedAt: ADM.activatedAt,
+          dischargedAt: ADM.dischargedAt,
+        })
+        .from(ADM)
+        // The explicit organization_id predicate is the second wall behind RLS (the `activeAdmissions`
+        // precedent above), so a misconfigured GUC cannot widen this read.
+        .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
+        .limit(1);
+      if (!row) return null;
+      return {
+        admissionId: row.id,
+        patientId: row.patientId,
+        providerEntityId: row.providerEntityId,
+        locationId: row.locationId,
+        admissionAt: localDateN(row.admissionAt ?? row.activatedAt),
+        activatedAt: localDateN(row.activatedAt),
+        dischargedAt: localDateN(row.dischargedAt),
+      };
+    },
+  );
+}
+
 /** Minimal M6-owned context required when an event consumer creates an admission-scoped draft. */
 export interface ActiveAdmissionDraftContext {
   readonly admissionId: string;

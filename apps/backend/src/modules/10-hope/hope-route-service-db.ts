@@ -22,8 +22,13 @@ import { type DbClient, schema } from "@wardenx/db";
 // original's `target_date` (the composite self-FK `(corrects_assessment_id, target_date) → (id,
 // target_date)` demands it); the DB supersede trigger flips the original.
 import {
+  type CaptureDecision,
   HopeStateError,
   type J2051SymptomReading,
+  assertAdmissionActiveAtTarget,
+  assertCaptureAllowed,
+  assertRfaMatchesSchedule,
+  assertSectionQForDischarge,
   evaluateJ2051Trigger,
   planSfvCompletion,
   planSfvCreation,
@@ -32,12 +37,13 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import type {
   AdmissionStatusReader,
+  HopeDischargeReason,
   J2051Severity,
   LatestAssessment,
   ScaleType,
 } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import type { HopeAbacResolver, HopeAssessmentAbacFacts } from "./abac-predicates";
 import type {
@@ -51,6 +57,9 @@ import type {
   RecordSfvArgs,
   RecordTimepointArgs,
 } from "./routes/service";
+import { rateOf } from "./routes/service";
+import type { HopeWriteOutboxPort } from "./outbox-port";
+import { regenerateSchedulesForAdmission } from "./scheduling/schedule-writer";
 
 const ASSESS = schema.hopeAssessments;
 const SCHED = schema.hopeTimepointSchedules;
@@ -65,21 +74,16 @@ type SubmissionRow = typeof SUB.$inferSelect;
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 
-/** The transactional-outbox port (§2.4): the bound publisher validates every emit against the boot
- * catalog and writes the `outbox_event` row on the CALLER'S tx. The no-op default lets the slice/tests
- * commit without a dispatcher. Mirrors M7/M8/M9. */
-export interface HopeWriteOutboxPort {
-  publish(
-    tx: unknown,
-    emission: {
-      readonly eventName: string;
-      readonly payload: Record<string, unknown>;
-      readonly organizationId: string;
-      readonly aggregateKind: string;
-      readonly aggregateId: string;
-    },
-  ): Promise<void>;
-}
+/** D9 — is Section Q (Participation) present on the payload? A death discharge must NOT carry it; every
+ * other discharge reason must. Presence is the key existing with any value, mirroring how the §J reader
+ * below treats its own section: the CMS item-level rules are the validation engine's job, not this gate's. */
+const sectionQPresent = (data: Record<string, unknown>): boolean =>
+  Object.hasOwn(data, "Q") && data.Q != null;
+
+/** The transactional-outbox port (§2.4). Declared in ./outbox-port.ts — a leaf both this file and
+ * scheduling/schedule-writer.ts can import without depending on each other. Re-exported here so the
+ * existing import sites keep working. */
+export type { HopeWriteOutboxPort } from "./outbox-port";
 const NOOP_OUTBOX: HopeWriteOutboxPort = { async publish() {} };
 
 /** First row of a RETURNING/SELECT, or a 500 (unreachable after a successful write). */
@@ -250,7 +254,8 @@ export function createDbHopeBackend(
   }
 
   /**
-   * #45 — WHOSE admission this is, through M6's `AdmissionStatusReader`. The subject of a HOPE record.
+   * #45 / #48 — WHOSE admission this is and WHAT STATE it is in, through M6's `AdmissionStatusReader`:
+   * the subject of a HOPE record, and the fact the §2.3 active-admission guard turns on.
    *
    * `hope_assessment.patient_id` is declared "M5 patient (app-validated; no cross-module FK)" — the
    * whole corpus keeps FKs inside the owning module, so Postgres accepts ANY uuid here and nothing
@@ -267,7 +272,10 @@ export function createDbHopeBackend(
    * `hope.scope`, which resolves this same admission through this same seam and 404s when it cannot, so
    * refusing here costs no availability the route did not already spend.
    */
-  async function admissionPatient(organizationId: string, admissionId: string): Promise<string> {
+  async function admissionFacts(
+    organizationId: string,
+    admissionId: string,
+  ): Promise<{ patientId: string; status: string }> {
     let summary: Awaited<ReturnType<AdmissionStatusReader["getAdmissionSummary"]>>;
     try {
       summary = await getSeam("AdmissionStatusReader").getAdmissionSummary(admissionId);
@@ -285,7 +293,7 @@ export function createDbHopeBackend(
         `Admission ${admissionId} is not visible in this organization.`,
       );
     }
-    return summary.patientId;
+    return { patientId: summary.patientId, status: String(summary.status) };
   }
 
   async function loadA(t: DbClient, id: string): Promise<AssessmentRow> {
@@ -431,15 +439,25 @@ export function createDbHopeBackend(
         const accepted = subs.filter((s) => s.status === "accepted").length;
         return {
           providerEntityId: providerEntityId ?? null,
-          hopeOnTimeRate: denom === 0 ? 1 : completed / denom,
-          sfvOnTimeRate: sfvDenom === 0 ? 1 : sfvOnTime / sfvDenom,
-          submissionAcceptanceRate: subs.length === 0 ? 1 : accepted / subs.length,
+          hopeOnTimeRate: rateOf(completed, denom),
+          hopeOnTimeCounts: { onTime: completed, total: denom },
+          sfvOnTimeRate: rateOf(sfvOnTime, sfvDenom),
+          sfvOnTimeCounts: { onTime: sfvOnTime, total: sfvDenom },
+          submissionAcceptanceRate: rateOf(accepted, subs.length),
+          submissionAcceptanceCounts: { accepted, total: subs.length },
         };
       });
     },
 
-    // ── Schedule count for an admission (read; regeneration itself is a write, deferred) ────────────
+    // ── §4.1 route 20 — admin regenerate: materialize every window the admission is entitled to ──────
+    //
+    // #48 — this used to be a COUNT, documented in place as "regeneration itself is a write, deferred".
+    // It was the only route whose name promised the write path nothing in the repo performed, so an
+    // operator looking at an empty timepoint worklist had a button that reported the emptiness back to
+    // them. It now regenerates, idempotently, which is also the supported way to backfill an admission
+    // activated before the scheduling consumer shipped. The returned count is the total AFTER the write.
     async regenerateSchedules(organizationId, admissionId) {
+      await regenerateSchedulesForAdmission(db, outbox, { organizationId, admissionId });
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const rows = await tx
           .select({ id: SCHED.id })
@@ -514,39 +532,112 @@ export function createDbHopeBackend(
       });
     },
 
-    // ── Record a draft timepoint (§2.2.1 — linked to its open schedule if one exists) ───────────────
+    // ── Record a draft timepoint (§2.2.1 + the §4.4 recording gate) ─────────────────────────────────
+    //
+    // #48 — every guard below is a `@wardenx/hope` function that shipped in M10-T03 with a unit test and
+    // ZERO production callers, so each §4.4 code it raises looked enforced and was not: a HOPE timepoint
+    // could be captured against a discharged admission, outside its federal window, past the hard
+    // cutoff, with no late reason, and a death-discharge RFA could carry the Section Q that D9 forbids.
     async recordTimepoint(organizationId, userId, admissionId, args: RecordTimepointArgs) {
       // #45 — the admission is the ONLY authority on who this record is about, so it is asked every
       // time rather than only when the schedule lookup misses. The schedule row carried a second,
       // unenforced copy of `patient_id`, and having two sources is what let a third (`admissionId`)
       // slip in behind them. Resolved outside the tx, before any write, so a projection gap refuses
       // the request instead of committing a mis-attributed one.
-      const patientId = await admissionPatient(organizationId, admissionId);
+      const facts = await admissionFacts(organizationId, admissionId);
+
+      // §2.3 — the admission must be active at the target date. The Discharge RFA is the documented
+      // exception: by the time it is captured the admission is closed BY DEFINITION, and the fact the
+      // guard wants ("it was active immediately before discharge") is what produced the discharge.
+      if (args.rfaKind !== "05_discharge") {
+        assertAdmissionActiveAtTarget(facts.status === "active");
+      } else {
+        // D9 needs the reason to decide the Section Q branch, so a discharge RFA without one cannot be
+        // evaluated at all. 400 `M10_REQUIRED_SECTION_MISSING` — a required element of the record is
+        // absent; the TypeBox body keeps `dischargeReason` optional because it is only required here.
+        require_(
+          args.dischargeReason != null && args.dischargeReason !== "",
+          "M10_REQUIRED_SECTION_MISSING",
+          "rfa_kind '05_discharge' requires a discharge_reason (D9 decides Section Q from it).",
+        );
+        assertSectionQForDischarge(
+          args.dischargeReason as HopeDischargeReason,
+          sectionQPresent(args.data),
+        );
+      }
+
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        // Link the draft to the open schedule for (admission, rfa) so the sign trigger can close it.
+        // The window ledger row this capture is gated against.
+        //
+        // When the caller names the `scheduleId` it is completing — the timepoint worklist hands them
+        // exactly that — the named row is loaded and `assertRfaMatchesSchedule` is a REAL check: the
+        // payload's RFA and the window the clinician clicked can genuinely disagree. Without it, the row
+        // is resolved BY `rfa_kind`, where the same guard is tautological by construction. Both branches
+        // run it because one code path is worth more than a saved comparison, but only the first can
+        // fail, and no test is written as if the second could.
+        //
+        // `open` first, and ANY status is returned. Looking only at `open` would have made an EXPIRED
+        // window indistinguishable from an unscheduled one — the exact case `M10_TIMEPOINT_EXPIRED`
+        // exists to reject.
         const [sched] = (await t
           .select()
           .from(SCHED)
           .where(
-            and(
-              eq(SCHED.admissionId, admissionId),
-              eq(SCHED.rfaKind, args.rfaKind),
-              eq(SCHED.status, "open"),
-            ),
+            args.scheduleId
+              ? and(eq(SCHED.id, args.scheduleId), eq(SCHED.admissionId, admissionId))
+              : and(eq(SCHED.admissionId, admissionId), eq(SCHED.rfaKind, args.rfaKind)),
           )
+          .orderBy(sql`CASE WHEN ${SCHED.status} = 'open' THEN 0 ELSE 1 END`, desc(SCHED.createdAt))
           .limit(1)) as ScheduleRow[];
+        // A named schedule that does not resolve is a 404, never a silent fall-through to ungated
+        // capture: the caller made a claim about which window this is, and it was wrong.
+        if (args.scheduleId && !sched) {
+          throw new NotFoundError(
+            `HOPE schedule ${args.scheduleId} not found on admission ${admissionId}`,
+          );
+        }
+
+        // §2.3 / D2 / D12 — the capture-window gate. It needs a window, so an admission with no ledger
+        // row for this RFA is captured ungated; that is the honest degradation, and it is why the
+        // scheduling consumer above this file has to exist for the gate to mean anything.
+        let capture: CaptureDecision = { wasLate: false, lateReasonCode: null };
+        if (sched) {
+          assertRfaMatchesSchedule(args.rfaKind, {
+            rfaKind: sched.rfaKind,
+            generatedBy: sched.generatedBy,
+          });
+          capture = assertCaptureAllowed(
+            args.targetDate,
+            {
+              windowOpensAt: sched.windowOpensAt.toISOString(),
+              windowClosesAt: sched.windowClosesAt.toISOString(),
+              lateDeadlineAt: sched.lateDeadlineAt.toISOString(),
+            },
+            {
+              lateReasonCode: args.lateCompletionReasonCode ?? null,
+              adminOverride: args.adminOverride === true,
+            },
+          );
+        }
+
         const row = firstOrThrow(
           await t
             .insert(ASSESS)
             .values({
               organizationId,
-              patientId,
+              patientId: facts.patientId,
               admissionId,
-              scheduleId: sched?.id ?? null,
+              // Only an OPEN window is linked: `trg_hope_schedule_mark_completed` closes the linked
+              // schedule on sign and its own WHERE is `status = 'open'`, so linking a closed row would
+              // record a relationship the trigger will never act on.
+              scheduleId: sched?.status === "open" ? sched.id : null,
               rfaKind: args.rfaKind,
+              dischargeReason: (args.dischargeReason as HopeDischargeReason | undefined) ?? null,
               status: "draft",
               data: args.data,
+              wasLate: capture.wasLate,
+              lateCompletionReasonCode: capture.lateReasonCode,
               targetDate: new Date(args.targetDate),
               sourceEncounterId: args.sourceEncounterId ?? null,
               createdByMembershipId: userId,

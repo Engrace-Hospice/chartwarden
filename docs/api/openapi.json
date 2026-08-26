@@ -15614,6 +15614,49 @@
                       }
                     ]
                   },
+                  "lateCompletionReasonCode": {
+                    "anyOf": [
+                      {
+                        "const": "pto",
+                        "type": "string"
+                      },
+                      {
+                        "const": "hospitalization",
+                        "type": "string"
+                      },
+                      {
+                        "const": "family_meeting_deferral",
+                        "type": "string"
+                      },
+                      {
+                        "const": "refused",
+                        "type": "string"
+                      },
+                      {
+                        "const": "missed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "pandemic_cohort",
+                        "type": "string"
+                      },
+                      {
+                        "const": "admin_override",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "adminOverride": {
+                    "type": "boolean"
+                  },
+                  "scheduleId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
                   "data": {
                     "additionalProperties": true,
                     "type": "object",
@@ -81050,8 +81093,11 @@
                   "required": [
                     "providerEntityId",
                     "hopeOnTimeRate",
+                    "hopeOnTimeCounts",
                     "sfvOnTimeRate",
-                    "submissionAcceptanceRate"
+                    "sfvOnTimeCounts",
+                    "submissionAcceptanceRate",
+                    "submissionAcceptanceCounts"
                   ],
                   "properties": {
                     "providerEntityId": {
@@ -81065,13 +81111,79 @@
                       ]
                     },
                     "hopeOnTimeRate": {
-                      "type": "number"
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hopeOnTimeCounts": {
+                      "type": "object",
+                      "required": [
+                        "onTime",
+                        "total"
+                      ],
+                      "properties": {
+                        "onTime": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
                     },
                     "sfvOnTimeRate": {
-                      "type": "number"
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sfvOnTimeCounts": {
+                      "type": "object",
+                      "required": [
+                        "onTime",
+                        "total"
+                      ],
+                      "properties": {
+                        "onTime": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
                     },
                     "submissionAcceptanceRate": {
-                      "type": "number"
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "submissionAcceptanceCounts": {
+                      "type": "object",
+                      "required": [
+                        "accepted",
+                        "total"
+                      ],
+                      "properties": {
+                        "accepted": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
                     }
                   }
                 }

@@ -23527,6 +23527,10 @@ export interface operations {
                     /** Format: uuid */
                     sourceEncounterId?: string;
                     dischargeReason?: "death" | "revocation" | "transfer_to_hospice" | "live_discharge";
+                    lateCompletionReasonCode?: "pto" | "hospitalization" | "family_meeting_deferral" | "refused" | "missed" | "pandemic_cohort" | "admin_override" | "other";
+                    adminOverride?: boolean;
+                    /** Format: uuid */
+                    scheduleId?: string;
                     data: {
                         J?: {
                             J2051?: {
@@ -40465,9 +40469,21 @@ export interface operations {
                 content: {
                     "application/json": {
                         providerEntityId: string | null;
-                        hopeOnTimeRate: number;
-                        sfvOnTimeRate: number;
-                        submissionAcceptanceRate: number;
+                        hopeOnTimeRate: number | null;
+                        hopeOnTimeCounts: {
+                            onTime: number;
+                            total: number;
+                        };
+                        sfvOnTimeRate: number | null;
+                        sfvOnTimeCounts: {
+                            onTime: number;
+                            total: number;
+                        };
+                        submissionAcceptanceRate: number | null;
+                        submissionAcceptanceCounts: {
+                            accepted: number;
+                            total: number;
+                        };
                     };
                 };
             };

@@ -10,6 +10,7 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { LATE_COMPLETION_REASON_CODES } from "@wardenx/hope";
 import { HOPE_RFA_KINDS } from "@wardenx/types";
 import { ValidationError } from "@wardenx/types";
 import type {
@@ -47,6 +48,8 @@ const DISCHARGE_REASON = Type.Union([
   Type.Literal("transfer_to_hospice"),
   Type.Literal("live_discharge"),
 ]);
+/** §4.4 / D12 — the closed CMS-aligned late-completion codelist (`LATE_COMPLETION_REASON_CODES`). */
+const LATE_COMPLETION_REASON = lit(LATE_COMPLETION_REASON_CODES);
 
 /** §4.3 Section-J J2051 entries — the symptom-impact readings the D4 trigger evaluates. */
 const J2051Entry = Type.Object({
@@ -97,6 +100,13 @@ export const RecordTimepointSchema = Type.Object({
   authorDiscipline: AUTHOR_DISCIPLINE,
   sourceEncounterId: Type.Optional(Type.String({ format: "uuid" })),
   dischargeReason: Type.Optional(DISCHARGE_REASON),
+  // #48 / D12 — the late-completion branch of the §4.4 capture gate. The closed CMS-aligned codelist is
+  // `LATE_COMPLETION_REASON_CODES` in @wardenx/hope; it is spelled out here rather than imported so the
+  // emitted OpenAPI enumerates the accepted values for a client.
+  lateCompletionReasonCode: Type.Optional(LATE_COMPLETION_REASON),
+  adminOverride: Type.Optional(Type.Boolean()),
+  // #48 — the window this capture completes, as the timepoint worklist hands it to the clinician.
+  scheduleId: Type.Optional(Type.String({ format: "uuid" })),
   data: HopeData,
 });
 export const RecordSfvSchema = Type.Object({
@@ -162,6 +172,7 @@ const SCHEDULE_GENERATED_BY = lit([
   "manual_admin",
 ] as const);
 const NullableString = () => Type.Union([Type.String(), Type.Null()]);
+const NullableNumber = () => Type.Union([Type.Number(), Type.Null()]);
 
 /** One HOPE assessment view (sections snapshot + J2051 trigger verdict + correction chain). */
 export const HopeAssessmentResponseSchema = Type.Object({
@@ -221,11 +232,16 @@ export const HopeSubmissionResponseSchema = Type.Object({
   acceptedAt: NullableString(),
 });
 /** Org-level HQRP compliance posture (on-time + acceptance rates). */
+/** #48 — every rate is nullable (`null` = no data, which is NOT 100%) and ships beside the count pair it
+ * was computed from, so a consumer can suppress a small-N rate instead of rendering a fragile one. */
 export const HopeComplianceResponseSchema = Type.Object({
   providerEntityId: NullableString(),
-  hopeOnTimeRate: Type.Number(),
-  sfvOnTimeRate: Type.Number(),
-  submissionAcceptanceRate: Type.Number(),
+  hopeOnTimeRate: NullableNumber(),
+  hopeOnTimeCounts: Type.Object({ onTime: Type.Integer(), total: Type.Integer() }),
+  sfvOnTimeRate: NullableNumber(),
+  sfvOnTimeCounts: Type.Object({ onTime: Type.Integer(), total: Type.Integer() }),
+  submissionAcceptanceRate: NullableNumber(),
+  submissionAcceptanceCounts: Type.Object({ accepted: Type.Integer(), total: Type.Integer() }),
 });
 
 // List / envelope responses (the service returns keyed wrappers, never bare arrays).
