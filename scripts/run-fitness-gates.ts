@@ -52,6 +52,7 @@ export const GATES = [
   "arch:audit-exceptions",
   "docs:ui",
   "openapi:check",
+  "arch:openapi-provenance",
   "arch:openapi-coverage",
   "arch:inject-coverage",
   "client:check",

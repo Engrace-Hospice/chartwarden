@@ -177,6 +177,7 @@
     "inject:coverage:update": "bun run scripts/report-inject-coverage.ts --update",
     "openapi:emit": "bun run scripts/openapi/emit.ts",
     "openapi:check": "bun run scripts/openapi/emit.ts --check",
+    "arch:openapi-provenance": "bun run scripts/check-openapi-provenance.ts",
     "client:gen": "openapi-typescript docs/api/openapi.json -o packages/ui/src/core/api/schema.ts",
     "client:check": "openapi-typescript docs/api/openapi.json -o /tmp/wardenx-client-schema.ts && diff -q packages/ui/src/core/api/schema.ts /tmp/wardenx-client-schema.ts || (echo 'FAIL packages/ui/src/core/api/schema.ts is out of date. Run: bun run client:gen' && exit 1)",
     "test:e2e": "playwright test --config=e2e/playwright.config.ts",
