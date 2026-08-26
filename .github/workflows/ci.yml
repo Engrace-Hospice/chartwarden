@@ -433,6 +433,17 @@ jobs:
 
       - name: Apply against a fresh disposable DB via the real CLI (pre-deploy simulation)
         run: bun run db:migrate
+
+      # F-033/#93 — partition rotation runs HERE rather than in a job of its own because this is the
+      # only job that already holds a fully migrated database, and rotation is a property of the
+      # migrated schema: the suite asserts that every time-RANGE partitioned table the migrations
+      # create has a creator function the catalog scan can find. A migration that adds a partitioned
+      # table without one fails this step, which is the check `arch:fitness` cannot make — it runs
+      # with no database, so it would have to parse migration text, and that approach demonstrably
+      # missed 3 of the 43 tables.
+      - name: Partition rotation — live proof (idempotency, DEFAULT-trap detection, creator coverage)
+        run: bun run test:partition-rotation:live
+
       - name: Verify --strict --schema-only fails the pipeline on checksum drift (not just warns)
         run: |
           docker exec wardenx-ci-pg-migrate psql -U postgres -d wardenx_migration_gate -c \
