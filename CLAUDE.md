@@ -300,7 +300,28 @@ gates cannot drift on who counts as an operator. Both tests that covered it supp
 themselves — the unit test set `isPlatformOperator: true` on the context and the inject suite stamped it
 off an `x-test-platform-operator` header — so each demonstrated the shim, not the gate; the allow arms are
 now real catalog roles, and the inject suite's platform session differs from its tenant session by that
-role alone, so the 403→202 flip can only be the predicate. Blocked keys: **4 → 3**.
+role alone, so the 403→202 flip can only be the predicate. Blocked keys: **4 → 3**. Then `disciplines`,
+which needed a DECISION rather than a diagnosis: seven modules (M7–M13) each assembled the caller's
+clinical discipline set by unioning `attributes.disciplines` with the session role keys, so the union was
+with the empty set on every request the codebase has ever served and the role arm was the whole answer in
+all seven. Unlike every other F-030 key, NO test ever supplied this one — it did not need faking, because
+the derivation degraded instead of dying. The reads are gone rather than the fact produced, because the
+platform already has one derivation and two modules had written down why: M19's
+`TRIAGE_DISCIPLINE_FOR_ROLE_KEY` states the rule ("M3's `RoleGrant.roleKey` is the platform's one
+authority-derivation input") and **M17 — which owns both the discipline vocabulary and
+`membership_credential` — resolves its own D8 pre-schedule gate exactly this way** (`resolveDisciplinesTx`:
+active role grants ∩ the scheduling vocabulary), reading the credential only for the deliberately
+orthogonal question of whether the licence is currently active. Producing an eighth answer to a question
+three modules already answer identically would have been the drift, not the fix. `discipline-derivation.
+test.ts` pins both halves — each module answers from role keys, and a stray `disciplines` attribute cannot
+change the answer, so a future producer of that key cannot silently widen seven clinical floors
+(controlled-substance prescribing, medication administration, order authoring, scale recording) without a
+deliberate edit; 8 of its 21 cases fail against the pre-change code. Blocked keys: **3 → 2**, and both
+survivors are genuine declared absences of the `deviceAttestationValid` kind: `deviceAttestation` (M2 owns
+no attestation table per ADR-0023 D2 and the mobile client doing the §12.4 posture check is unbuilt per
+ADR-0035 — widening it would disable a SecHardening control) and `externalActorId` (M19's binding Phase
+boundary ships the Hybrid/Centralized models feature-flagged-OFF; producing it means building the §7.5
+vendor SSO binding and the `packages/triage-vendors` adapter, i.e. M19 Phase 2).
 - `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
   Every live-database / live-Redis / browser suite in `package.json` must be invoked by a job in
   `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so

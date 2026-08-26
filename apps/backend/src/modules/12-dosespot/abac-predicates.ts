@@ -54,15 +54,16 @@ const targetStr = (target: AbacTarget, field: string): string | null => {
 };
 
 /**
- * Assemble the actor's prescribing-discipline set from session roles/attributes (never client input),
- * normalized to lower-case. Reads `attributes.disciplines` first, then the role tokens — the same source the
- * route's discipline derivation reads (M11 precedent).
+ * Assemble the actor's prescribing-discipline set from the session role keys (never client input),
+ * normalized to lower-case (the M11 precedent).
+ *
+ * Derived from the ROLE KEYS M2 assembled onto the request context. It USED to union in an
+ * `attributes.disciplines` array first; nothing in the platform has ever written that key, so the union was
+ * with the empty set on every request ever served, and the role arm has been the whole answer all along
+ * (F-030). See `07-care-plan/abac-predicates.ts` for the full argument.
  */
 export function prescriberDisciplinesOf(context: AbacContext): readonly string[] {
-  const fromAttributes = Array.isArray(context.attributes.disciplines)
-    ? context.attributes.disciplines.filter((x): x is string => typeof x === "string")
-    : [];
-  return [...new Set([...fromAttributes, ...context.roles])].map((d) => d.toLowerCase());
+  return [...new Set(context.roles)].map((d) => d.toLowerCase());
 }
 
 /** Deps for M12's ABAC predicate resolvers (the slice injects an in-memory resolver over its dataset). */

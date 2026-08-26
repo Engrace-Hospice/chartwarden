@@ -63,15 +63,16 @@ const targetStr = (target: AbacTarget, field: string): string | null => {
 };
 
 /**
- * Assemble the actor's HOPE discipline set from session roles/attributes (never client input), normalized
- * to the uppercase HOPE codes (`RN` / `NP` / `MD`). Reads `attributes.disciplines` first, then the role
- * tokens (case-insensitive) — the same source the route's discipline derivation reads.
+ * Assemble the actor's HOPE discipline set from the session role keys (never client input), normalized to
+ * the uppercase HOPE codes (`RN` / `NP` / `MD`) — the same source the route's discipline derivation reads.
+ *
+ * Derived from the ROLE KEYS M2 assembled onto the request context. It USED to union in an
+ * `attributes.disciplines` array first; nothing in the platform has ever written that key, so the union was
+ * with the empty set on every request ever served, and the role arm has been the whole answer all along
+ * (F-030). See `07-care-plan/abac-predicates.ts` for the full argument.
  */
 export function hopeDisciplinesOf(context: AbacContext): readonly string[] {
-  const fromAttributes = Array.isArray(context.attributes.disciplines)
-    ? context.attributes.disciplines.filter((x): x is string => typeof x === "string")
-    : [];
-  return [...new Set([...fromAttributes, ...context.roles])].map((d) => d.toUpperCase());
+  return [...new Set(context.roles)].map((d) => d.toUpperCase());
 }
 
 /** Whether the actor holds the HOPE clinical-lead role (case-insensitive). */
