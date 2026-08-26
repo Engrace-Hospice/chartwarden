@@ -22,6 +22,7 @@ import { type DbClient, schema } from "@wardenx/db";
 // original's `target_date` (the composite self-FK `(corrects_assessment_id, target_date) → (id,
 // target_date)` demands it); the DB supersede trigger flips the original.
 import {
+  HopeStateError,
   type J2051SymptomReading,
   evaluateJ2051Trigger,
   planSfvCompletion,
@@ -29,7 +30,12 @@ import {
   require_,
 } from "@wardenx/hope";
 import { withOrgContext } from "@wardenx/tenancy";
-import type { J2051Severity, LatestAssessment, ScaleType } from "@wardenx/types";
+import type {
+  AdmissionStatusReader,
+  J2051Severity,
+  LatestAssessment,
+  ScaleType,
+} from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
@@ -241,6 +247,45 @@ export function createDbHopeBackend(
     } catch {
       return null;
     }
+  }
+
+  /**
+   * #45 — WHOSE admission this is, through M6's `AdmissionStatusReader`. The subject of a HOPE record.
+   *
+   * `hope_assessment.patient_id` is declared "M5 patient (app-validated; no cross-module FK)" — the
+   * whole corpus keeps FKs inside the owning module, so Postgres accepts ANY uuid here and nothing
+   * below this line can catch a wrong one. "App-validated" is a contract this backend has to keep, and
+   * the value it used to write when no schedule row existed (`admissionId`) kept none of it.
+   *
+   * Resolved BEFORE the write transaction: the seam's Drizzle store opens its own tenant context, and
+   * nesting that inside an open `withOrgContext` would set the GUC on an already-bound connection (the
+   * `d8Snapshot` / `admissionSiting` rule).
+   *
+   * Fails CLOSED, unlike its two neighbours: they enrich a record whose subject is already known, so
+   * §7.13 ("no external dependency blocks a clinical write") lets them degrade to null. This one IS the
+   * subject. A record attributed to nobody is not a degraded record — and the caller is already past
+   * `hope.scope`, which resolves this same admission through this same seam and 404s when it cannot, so
+   * refusing here costs no availability the route did not already spend.
+   */
+  async function admissionPatient(organizationId: string, admissionId: string): Promise<string> {
+    let summary: Awaited<ReturnType<AdmissionStatusReader["getAdmissionSummary"]>>;
+    try {
+      summary = await getSeam("AdmissionStatusReader").getAdmissionSummary(admissionId);
+    } catch (cause) {
+      throw new HopeStateError(
+        "M10_ADMISSION_PROJECTION_GAP",
+        `Admission ${admissionId} could not be projected by the M6 status seam, so the subject of this ` +
+          `HOPE record is unknown: ${cause instanceof Error ? cause.message : String(cause)}`,
+      );
+    }
+    if (summary.organizationId !== organizationId) {
+      // Cross-tenant: the seam answered about ANOTHER org's admission. Same refusal, no leak of which.
+      throw new HopeStateError(
+        "M10_ADMISSION_PROJECTION_GAP",
+        `Admission ${admissionId} is not visible in this organization.`,
+      );
+    }
+    return summary.patientId;
   }
 
   async function loadA(t: DbClient, id: string): Promise<AssessmentRow> {
@@ -471,6 +516,12 @@ export function createDbHopeBackend(
 
     // ── Record a draft timepoint (§2.2.1 — linked to its open schedule if one exists) ───────────────
     async recordTimepoint(organizationId, userId, admissionId, args: RecordTimepointArgs) {
+      // #45 — the admission is the ONLY authority on who this record is about, so it is asked every
+      // time rather than only when the schedule lookup misses. The schedule row carried a second,
+      // unenforced copy of `patient_id`, and having two sources is what let a third (`admissionId`)
+      // slip in behind them. Resolved outside the tx, before any write, so a projection gap refuses
+      // the request instead of committing a mis-attributed one.
+      const patientId = await admissionPatient(organizationId, admissionId);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // Link the draft to the open schedule for (admission, rfa) so the sign trigger can close it.
@@ -490,7 +541,7 @@ export function createDbHopeBackend(
             .insert(ASSESS)
             .values({
               organizationId,
-              patientId: sched?.patientId ?? admissionId,
+              patientId,
               admissionId,
               scheduleId: sched?.id ?? null,
               rfaKind: args.rfaKind,

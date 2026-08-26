@@ -8,6 +8,7 @@
 // Tier-2 — no external dependency blocks the write path). Every state transition records the §2.4 outbox
 // event the relay publishes (drainable for tests).
 import {
+  HopeStateError,
   type J2051SymptomReading,
   evaluateJ2051Trigger,
   planSfvCompletion,
@@ -244,6 +245,13 @@ export interface HopeRouteSeed {
   readonly now?: () => string;
   /** Injected M9 `LatestAssessmentProvider` seam for the D8 PPS/ESAS-r snapshot (absent ⇒ snapshot skipped). */
   readonly latestAssessments?: LatestAssessmentProvider;
+  /**
+   * #45 — admissionId → patientId, the M6 `AdmissionStatusReader` seam the DB backend resolves the
+   * subject of a recorded timepoint through. The slice takes a plain map because it stands in for the
+   * whole seam. An admission absent from it is a projection gap: `recordTimepoint` REFUSES rather than
+   * inventing a subject (which is what this backend used to do — it wrote the `admissionId`).
+   */
+  readonly admissionPatients?: Readonly<Record<string, string>>;
 }
 
 /** The §D8 scales snapshotted at HOPE sign (PPS + ESAS-r) — read from M9's `LatestAssessmentProvider`. */
@@ -281,6 +289,17 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
   const submissions = new Map<string, SubmissionRecord>();
   const events: RecordedHopeEvent[] = [];
   const latest = seed.latestAssessments;
+  const admissionPatients = seed.admissionPatients ?? {};
+  /** #45 — the subject of a HOPE record, never guessed. Mirrors the DB backend's `admissionPatient`. */
+  const patientOfAdmission = (admissionId: string): string => {
+    const patientId = admissionPatients[admissionId];
+    if (!patientId)
+      throw new HopeStateError(
+        "M10_ADMISSION_PROJECTION_GAP",
+        `Admission ${admissionId} could not be projected by the M6 status seam, so the subject of this HOPE record is unknown`,
+      );
+    return patientId;
+  };
 
   for (const s of seed.assessments ?? [])
     assessments.set(s.id, {
@@ -420,11 +439,12 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
           s.rfaKind === args.rfaKind &&
           s.status === "open",
       );
+      const patientId = patientOfAdmission(admissionId);
       const id = nextId();
       const rec: AssessmentRecord = {
         id,
         organizationId,
-        patientId: sched?.patientId ?? admissionId,
+        patientId,
         admissionId,
         rfaKind: args.rfaKind,
         status: "draft",
