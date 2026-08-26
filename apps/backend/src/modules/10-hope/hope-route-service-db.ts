@@ -58,6 +58,7 @@ import type {
   RecordTimepointArgs,
 } from "./routes/service";
 import { rateOf } from "./routes/service";
+import type { HopeWriteOutboxPort } from "./outbox-port";
 import { regenerateSchedulesForAdmission } from "./scheduling/schedule-writer";
 
 const ASSESS = schema.hopeAssessments;
@@ -79,21 +80,10 @@ const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 const sectionQPresent = (data: Record<string, unknown>): boolean =>
   Object.hasOwn(data, "Q") && data.Q != null;
 
-/** The transactional-outbox port (§2.4): the bound publisher validates every emit against the boot
- * catalog and writes the `outbox_event` row on the CALLER'S tx. The no-op default lets the slice/tests
- * commit without a dispatcher. Mirrors M7/M8/M9. */
-export interface HopeWriteOutboxPort {
-  publish(
-    tx: unknown,
-    emission: {
-      readonly eventName: string;
-      readonly payload: Record<string, unknown>;
-      readonly organizationId: string;
-      readonly aggregateKind: string;
-      readonly aggregateId: string;
-    },
-  ): Promise<void>;
-}
+/** The transactional-outbox port (§2.4). Declared in ./outbox-port.ts — a leaf both this file and
+ * scheduling/schedule-writer.ts can import without depending on each other. Re-exported here so the
+ * existing import sites keep working. */
+export type { HopeWriteOutboxPort } from "./outbox-port";
 const NOOP_OUTBOX: HopeWriteOutboxPort = { async publish() {} };
 
 /** First row of a RETURNING/SELECT, or a 500 (unreachable after a successful write). */

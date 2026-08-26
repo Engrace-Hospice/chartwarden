@@ -333,7 +333,7 @@ export function MedicaidMetricsSurface(): JSX.Element {
                     </thead>
                     <tbody>
                       {metrics.aging.map((b) => (
-                        <tr key={b.bucket} style={rowLine} className="wx-data-row-interactive">
+                        <tr key={b.bucket} style={rowLine}>
                           <td style={td}>{b.bucket}</td>
                           <td style={tdNum}>{b.count.toLocaleString()}</td>
                           <td style={tdNum}>{money(b.chargesCents)}</td>
@@ -390,7 +390,7 @@ export function MedicaidMetricsSurface(): JSX.Element {
                     </thead>
                     <tbody>
                       {pagedChannelRows.map((row) => (
-                        <tr key={row.state} style={rowLine} className="wx-data-row-interactive">
+                        <tr key={row.state} style={rowLine}>
                           <td style={td}>{row.state}</td>
                           <td style={td}>{row.channels.join(", ")}</td>
                           <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>

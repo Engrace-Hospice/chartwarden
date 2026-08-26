@@ -315,7 +315,7 @@ export function CapSettlement(): JSX.Element {
               </thead>
               <tbody>
                 {pagedLines.map((line) => (
-                  <tr key={line.label} style={rowStyle} className="wx-data-row-interactive">
+                  <tr key={line.label} style={rowStyle}>
                     <td style={cellStyle}>{line.label}</td>
                     <td style={valueStyle}>{line.value}</td>
                   </tr>

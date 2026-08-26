@@ -19,7 +19,7 @@ import {
 // (§6.7) + §6.6 StatusPill via medicaid-status.ts; mono control numbers; CSS-var tokens only.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { MdmEntityLookupField, PatientLookupField } from "../../shared/entity-lookups";
+import { MdmEntityLookupField, PatientLookupField } from "../../shell/entity-lookups";
 import {
   CLAIM_STATE_TONE,
   humanize,
