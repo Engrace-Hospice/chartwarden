@@ -43,7 +43,15 @@ All four are green on a clean checkout, and CI (`.github/workflows/ci.yml`) runs
 | `bun run ui:parity` / `arch:ui-parity` | (re)generate / freshness-check the UI implementation-parity report (`audit/ui-parity/`); hard-fails on duplicate screen id/path, unknown `requiredPermission`, or an unregistered `screens.ts`. |
 | `bun run arch:fitness` | all of the above (parity + every fitness gate, including the report freshness checks). |
 | `bun run test` | Vitest self-tests. |
-| `bun run lint` / `lint:fix` | Biome (advisory; not in the blocking gate path). |
+| `bun run lint` / `lint:fix` | Biome — **blocking** in CI (#33). The repo's only automated a11y enforcement outside the E2E axe scans. |
+
+> **One rule is deliberately off.** `lint/style/noUnusedTemplateLiteral` is disabled in
+> `biome.json`. Backticks mark SQL in this codebase — 1676 statements across 216 files — and the
+> rule fires only on the ~31 that happen to be single-line with no interpolation. Obeying it would
+> make the corpus *less* consistent, and would force backslash-escaping the moment a statement
+> contains a literal (SQL quotes values with single quotes). The rationale lives here because
+> `biome.json` is strict JSON and cannot carry a comment.
+
 
 ### Local demo data (`bun run db:reset`)
 
