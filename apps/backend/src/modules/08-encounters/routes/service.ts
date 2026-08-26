@@ -42,7 +42,7 @@ import {
   runEncounterComplianceGate,
 } from "../gate/index";
 import { type AddendumState, transitionAddendum } from "../lifecycle/addendum";
-import { transitionEncounter } from "../lifecycle/encounter";
+import { requiresCosignature, transitionEncounter } from "../lifecycle/encounter";
 import { EncounterStateError } from "../lifecycle/errors";
 import {
   checkEncounterDisciplinePair,
@@ -485,6 +485,8 @@ interface EncounterRecord {
   >;
   /** The stored HearthNote tree (#114). Empty until the clinician PATCHes selections. */
   selections: readonly SelectionSectionInput[];
+  /** The membership the D3 cosignature routed to, once one has (#124); null before sign / when none. */
+  cosignerMembershipId?: string | null;
   vitals: Map<string, { capturedAt: string; bmi: string | null; input: VitalsInput }>;
   mileage: { id: string; milesDriven: string; source: string } | null;
 }
@@ -534,11 +536,23 @@ export function byCapturedAtDesc(a: VitalsView, b: VitalsView): number {
   return a.id < b.id ? 1 : -1;
 }
 
+/** The membership a cosignature routes to when the slice is not told otherwise (see below). */
+export const SLICE_DEFAULT_COSIGNER_MEMBERSHIP_ID = "c0000000-0000-4000-8000-00000000c051";
+
 /** Deterministic, I/O-free seed for the in-memory route service (slice + smoke tests). */
 export interface EncounterRouteSeed {
   readonly encounters?: ReadonlyArray<
     Partial<EncounterRecord> & { id: string; organizationId: string; patientId: string }
   >;
+  /**
+   * §2.4 D3 / §2.6 check 10 — the patient's RN case manager as a membership id, or `null` for "this
+   * patient has none". In production this comes from M5's `CareTeamProvider.primaryRnMembershipId`; this
+   * slice binds no seams, so it is an injected function with a documented stand-in default
+   * ({@link SLICE_DEFAULT_COSIGNER_MEMBERSHIP_ID}) — the same convention as `stepUpFresh` being `true`
+   * here. It is a FUNCTION rather than a constant so a test can model "no eligible cosigner" without
+   * the slice pretending to know the answer for every patient.
+   */
+  readonly primaryRnMembershipId?: (organizationId: string, patientId: string) => string | null;
 }
 
 /** Pads `n` to a uuid-shaped id so created ids round-trip through uuid-validated bodies (M6/M8 slice). */
@@ -580,6 +594,8 @@ export interface EncounterBackendInspect {
   mileageOf(encounterId: string): { id: string; milesDriven: string; source: string } | null;
   /** The number of vitals rows captured on an encounter (§2.2 — 0..n per visit). */
   vitalsCount(encounterId: string): number;
+  /** The membership the D3 cosignature routed to, or null (§2.4 — the assigned RN case manager, #124). */
+  cosignerOf(encounterId: string): string | null;
 }
 
 export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
@@ -611,6 +627,8 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       ...e,
     });
   }
+  const primaryRnMembershipId =
+    seed.primaryRnMembershipId ?? (() => SLICE_DEFAULT_COSIGNER_MEMBERSHIP_ID);
   let created = 0;
   let subCounter = 0;
   const now = () => "2026-06-21T12:00:00.000Z";
@@ -837,7 +855,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       return { modificationId: modId };
     },
 
-    async sign(organizationId, encounterId, _actor, args) {
+    async sign(organizationId, encounterId, actor, args) {
       const r = load(organizationId, encounterId);
       // In-memory reference slice: no real session/step-up infra (not mounted in production — see the
       // module header), so step-up is always treated as fresh here. The production Drizzle backend
@@ -863,6 +881,12 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         recordOutbox(r.id, plan.encounter.effects);
         return { status: "signed", signedAt: r.signedAt, cosignatureRequestId: null };
       }
+      // §2.6 check 10 (#124) — the routed cosigner and the "an eligible cosigner exists" verdict are one
+      // answer, exactly as in the Drizzle service. Excluding the signer is the same structural guard:
+      // a note must never cosign itself.
+      const cosigner = requiresCosignature(r.discipline)
+        ? primaryRnMembershipId(organizationId, r.patientId)
+        : null;
       const t = transitionEncounter(r.status, {
         type: "sign",
         discipline: r.discipline,
@@ -870,7 +894,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         stepUpFresh,
         isF2f: false,
         f2fDualWriteSatisfied: true,
-        eligibleCosignerExists: true,
+        eligibleCosignerExists: cosigner !== null && cosigner !== actor.membershipId,
         at: args.at,
       });
       r.status = t.to;
@@ -878,6 +902,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       recordOutbox(r.id, t.effects);
       if (t.to === "cosign_pending") {
         r.cosignature = "routed";
+        r.cosignerMembershipId = cosigner;
         return { status: "cosign_pending", signedAt: r.signedAt, cosignatureRequestId: subId() };
       }
       return { status: "signed", signedAt: r.signedAt, cosignatureRequestId: null };
@@ -1089,6 +1114,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     f2fAttestations: () => f2fAttestations,
     mileageOf: (encounterId) => byId.get(encounterId)?.mileage ?? null,
     vitalsCount: (encounterId) => byId.get(encounterId)?.vitals.size ?? 0,
+    cosignerOf: (encounterId) => byId.get(encounterId)?.cosignerMembershipId ?? null,
   };
 
   return { service, resolver, inspect };

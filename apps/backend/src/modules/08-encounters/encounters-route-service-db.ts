@@ -45,7 +45,7 @@ import {
 } from "./gate/index";
 import type { HearthnoteFreeTextCipher } from "./hearthnote-crypto";
 import { transitionAddendum } from "./lifecycle/addendum";
-import { transitionEncounter } from "./lifecycle/encounter";
+import { requiresCosignature, transitionEncounter } from "./lifecycle/encounter";
 import { EncounterStateError } from "./lifecycle/errors";
 import {
   checkEncounterDisciplinePair,
@@ -63,7 +63,7 @@ import type {
   SelectionSectionInput,
 } from "./routes/service";
 import { assembleSelections } from "./routes/service";
-import { getCarePlanReader } from "./seams/index";
+import { getCarePlanReader, getCareTeamProvider } from "./seams/index";
 
 const ENC = schema.encounters;
 const COSIGN = schema.cosignatureRequests;
@@ -399,6 +399,44 @@ export function createDbEncounterRouteService(
     });
     assertGatePassed(verdict, at);
     return verdict.pass;
+  }
+
+  /**
+   * §2.4 D3 / §2.6 check 10 (#124) — the patient's RN case manager, as the membership a cosignature is
+   * routed to. `null` means there is no eligible cosigner, which the §2.3 machine turns into
+   * NO_ELIGIBLE_COSIGNER; the sign is refused BEFORE any write, so no signature row and no
+   * `cosignature_request` routed at nobody are left behind.
+   *
+   * The spec is specific about who this is: "a `cosignature_request` row is created with the assigned RN
+   * case manager as the routed cosigner" (§2.4). So the existence question and the routing question have
+   * one answer, resolved once here — they used to have two different wrong ones, `true` and "the LPN who
+   * just signed it".
+   *
+   * The signer is excluded explicitly. `patient_assignment.role = 'primary_rn'` already names an RN, and
+   * the cosign route independently refuses a non-RN caller, so this should be unreachable — but a note
+   * that cosigns itself is the one outcome the whole D3 workflow exists to prevent, and it costs a
+   * comparison to make that structural rather than incidental.
+   */
+  async function cosignerMembershipIdFor(
+    organizationId: string,
+    patientId: string,
+    signedByMembershipId: string,
+  ): Promise<string | null> {
+    let cosigner: string | null;
+    try {
+      cosigner = await getCareTeamProvider().primaryRnMembershipId({ organizationId, patientId });
+    } catch (cause) {
+      // Same posture as the care-plan check: a check that could not RUN must not read as one that
+      // passed, and must not read as one that failed either — NO_ELIGIBLE_COSIGNER would tell a
+      // clinician to go find an RN who may well be assigned.
+      throw new EncounterStateError(
+        "COMPLIANCE_GATE_UNAVAILABLE",
+        `the §2.6 cosigner-exists check could not be decided: M5's CareTeamProvider is unreachable (${
+          cause instanceof Error ? cause.message : String(cause)
+        })`,
+      );
+    }
+    return cosigner === signedByMembershipId ? null : cosigner;
   }
 
   /** Run the §2.6 gate for one addendum (the narrower form — see runAddendumComplianceGate). */
@@ -1087,6 +1125,11 @@ export function createDbEncounterRouteService(
           return { status: "signed", signedAt: now.toISOString(), cosignatureRequestId: null };
         }
 
+        // §2.6 check 10 — resolved ONLY for the disciplines that route a cosignature; an RN/MD/NP note
+        // never asks M5 a question whose answer it would not use.
+        const cosignerMembershipId = requiresCosignature(r.discipline)
+          ? await cosignerMembershipIdFor(organizationId, r.patientId, signedByMembershipId)
+          : null;
         const trans = transitionEncounter(r.status, {
           type: "sign",
           discipline: r.discipline,
@@ -1094,7 +1137,7 @@ export function createDbEncounterRouteService(
           stepUpFresh: provenance.stepUpFresh,
           isF2f: false,
           f2fDualWriteSatisfied: true,
-          eligibleCosignerExists: true,
+          eligibleCosignerExists: cosignerMembershipId !== null,
           at: args.at,
         });
         const requiresCosign = trans.to === "cosign_pending";
@@ -1133,15 +1176,19 @@ export function createDbEncounterRouteService(
           documentRenderPayload: { final: "", addenda: [] },
         });
         if (requiresCosign) {
-          // §2.4 D3 — open the cosignature request already `routed` to the assigned RN. The route threads
-          // no cosigner; it routes to the authoring membership until M5's CaseloadProvider is bound.
+          // §2.4 D3 — open the cosignature request already `routed` to the assigned RN case manager,
+          // resolved above through M5's CareTeamProvider. It used to route to `signedByMembershipId` —
+          // the LPN who just signed the note — so the 12h/24h/48h SLA chain escalated at the author and
+          // the cosignature queue showed them their own note (#124). The machine has already refused the
+          // sign if this is null, so the non-null assertion is the guard's postcondition, not a hope.
+          const routedToMembershipId = cosignerMembershipId as string;
           const cr = firstOrThrow(
             await t
               .insert(COSIGN)
               .values({
                 organizationId,
                 encounterId,
-                routedToMembershipId: signedByMembershipId,
+                routedToMembershipId,
                 status: "routed",
                 routedAt: now,
               })
@@ -1156,7 +1203,7 @@ export function createDbEncounterRouteService(
             cr.id,
             {
               encounterId,
-              routedToMembershipId: signedByMembershipId,
+              routedToMembershipId,
               signedAt: now.toISOString(),
             },
           );

@@ -507,6 +507,23 @@ export interface CareTeamProvider {
    * patient, so this is single-valued by construction.
    */
   primaryRnUserId(input: { organizationId: string; patientId: string }): Promise<string | null>;
+  /**
+   * The same RN case manager as {@link primaryRnUserId}, resolved to their ACTIVE MEMBERSHIP in
+   * `organizationId` — or null when the patient has no open `primary_rn` assignment, or the clinician on
+   * it no longer holds an active membership in that org.
+   *
+   * The two id spaces are both real and neither converts the other. `patient_assignment` stores a USER
+   * id, which is what M13's D10 gate compares against an ABAC context's `userId`; M8's
+   * `cosignature_request.routed_to_membership_id` is a NOT NULL FK to `membership`, and a cosignature is
+   * routed to someone acting IN AN ORG, not to a user account. Resolving it here rather than handing the
+   * user id out for the caller to join keeps the "which membership counts as current" rule in one place
+   * — and makes a lapsed membership answer null, which is the fail-closed direction for a gate that asks
+   * whether an eligible cosigner EXISTS (M8 §2.6 check 10). Leaf-safe (ids only).
+   */
+  primaryRnMembershipId(input: {
+    organizationId: string;
+    patientId: string;
+  }): Promise<string | null>;
 }
 
 /**
