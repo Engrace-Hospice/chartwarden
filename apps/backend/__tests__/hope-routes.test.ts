@@ -89,6 +89,10 @@ function makeServer(
   const backend = createInMemoryHopeBackend({
     now: () => NOW,
     timeZone: "America/New_York",
+    // #45 — the M6 `AdmissionStatusReader` stand-in. `recordTimepoint` resolves the subject of the
+    // record here instead of writing the `admissionId` into `patient_id`; an admission absent from this
+    // map is a projection gap and the record is refused.
+    admissionPatients: { [ADMISSION]: PATIENT },
     schedules: [
       {
         id: SCHEDULE,
@@ -605,5 +609,95 @@ describe("M10-T06 — §4.9.1 out-of-band PHI strip", () => {
     expect(oob.body).not.toContain("Jane");
     expect(oob.body).not.toContain("02_huv1");
     expect(oob.ctaUrl).toBe("https://app/wardenx/hope/123");
+  });
+});
+
+// ── #45 — the subject of a HOPE record ─────────────────────────────────────────────────────────────
+//
+// `hope_assessment.patient_id` used to fall back to the `admissionId` whenever no open
+// `hope_timepoint_schedule` row existed for (admission, RFA). The column carries no FK — the corpus
+// keeps foreign keys inside the owning module — so nothing rejected it, and the row named a subject
+// that does not exist. Every route that scopes on the ASSESSMENT (sign, correct, get) then resolved
+// its caseload check against that non-patient id and 404'd for the clinicians who perform the
+// assessment, while the org-wide scope roles sailed through by skipping the caseload check entirely.
+//
+// The existing tests above never caught it because they all record `02_huv1`, and `makeServer` seeds an
+// open `02_huv1` schedule. Production seeds none: no code anywhere inserts a `hope_timepoint_schedule`
+// row, so the fallback was not the edge case — it was the only path.
+describe("M10 — #45 the recorded timepoint's patient comes from the admission", () => {
+  /** `01_admission` has no seeded schedule, so this is the path that used to fabricate the subject. */
+  const unscheduledBody = () => huv1Body({ rfaKind: "01_admission" });
+
+  it("stores the admission's patient — not the admission id — when no schedule row exists", async () => {
+    const { app, backend } = makeServer();
+    const rec = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: unscheduledBody(),
+    });
+    expect(rec.statusCode).toBe(201);
+    expect(rec.json().patientId).toBe(PATIENT);
+    expect(rec.json().patientId).not.toBe(ADMISSION);
+    // The §4.7 ABAC resolver is the surface `hope.scope` reads on every assessment-scoped route.
+    const facts = await backend.loadAssessment(ORG, rec.json().id as string);
+    expect(facts?.patientId).toBe(PATIENT);
+    await app.close();
+  });
+
+  it("an RN on the patient's caseload can then sign it (this returned 404)", async () => {
+    // Caseload membership is the real predicate, resolved against the STORED patient id. With an
+    // admission id stored, no assignment can ever match and `notFoundOnDeny` renders the denial as 404.
+    const { app } = makeServer({ isInCaseload: async ({ patientId }) => patientId === PATIENT });
+    const rec = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: unscheduledBody(),
+    });
+    expect(rec.statusCode).toBe(201);
+    const signed = await app.inject({
+      method: "POST",
+      url: `/api/v1/hope/assessments/${rec.json().id}/sign`,
+      headers: RN,
+      payload: { attestationConfirmed: true },
+    });
+    expect(signed.statusCode).toBe(200);
+    expect(signed.json().status).toBe("signed");
+    await app.close();
+  });
+
+  it("uses the admission's patient even when a schedule row carries one too", async () => {
+    // Two unenforced copies of `patient_id` is what let a third value slip in behind them; the
+    // admission is the only authority, so it is asked on every record, not only on a schedule miss.
+    const { app } = makeServer();
+    const rec = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: huv1Body(), // 02_huv1 — the seeded open schedule
+    });
+    expect(rec.statusCode).toBe(201);
+    expect(rec.json().patientId).toBe(PATIENT);
+    await app.close();
+  });
+
+  it("refuses with 422 M10_ADMISSION_PROJECTION_GAP when the admission cannot be projected", async () => {
+    // The ABAC guard is deliberately made permissive here: the write path must refuse on its own, not
+    // because something upstream happened to deny first. `UNKNOWN_ADMISSION` is absent from the slice's
+    // admission→patient map, which is how the seam reports "I cannot tell you whose admission this is".
+    const UNKNOWN_ADMISSION = "33333333-3333-4333-8333-999999999999";
+    const { app } = makeServer({
+      resolveAdmissionPatient: async () => ({ patientId: PATIENT }),
+    });
+    const rec = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${UNKNOWN_ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: unscheduledBody(),
+    });
+    expect(rec.statusCode).toBe(422);
+    expect(rec.json().error?.code ?? rec.json().code).toBe("M10_ADMISSION_PROJECTION_GAP");
+    await app.close();
   });
 });

@@ -16,7 +16,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import {
@@ -159,6 +159,34 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     data,
   });
 
+  /**
+   * #45 — M6's `AdmissionStatusReader`, the seam `recordTimepoint` now resolves the SUBJECT of the
+   * record through. Registered before every test because recording is no longer willing to guess: it
+   * used to write the `admissionId` into `patient_id` whenever the schedule lookup missed, and
+   * `hope_assessment.patient_id` has no FK to catch that.
+   */
+  function registerAdmissionReader(
+    over: { patientId?: string; organizationId?: string } = {},
+  ): void {
+    registerSeam("AdmissionStatusReader", {
+      getAdmissionSummary: async (admissionId: string) => ({
+        admissionId,
+        patientId: over.patientId ?? PATIENT,
+        organizationId: over.organizationId ?? ORG_A,
+        providerEntityId: providerOf[ORG_A],
+        locationId: locationOf[ORG_A],
+        status: "active",
+        admissionAt: "2026-01-05",
+        activatedAt: "2026-01-05",
+        dischargedAt: null,
+        currentElectionPeriodId: null,
+        currentLevelOfCare: "routine_home_care",
+      }),
+    });
+  }
+
+  beforeEach(() => registerAdmissionReader());
+
   it("record → sign (no J2051) closes the linked schedule and emits timepoint_signed", async () => {
     const adm = nextAdmission();
     const sched = await seedSchedule(ORG_A, adm);
@@ -284,7 +312,11 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     it("with no seams registered at all the signature still succeeds (the old behaviour, unblocked)", async () => {
       const adm = nextAdmission();
       await seedSchedule(ORG_A, adm);
+      // The draft is recorded WITH the M6 seam (#45 — the subject of the record may not be guessed),
+      // then every seam is dropped before signing. That asymmetry is the point: enrichment degrades
+      // per §7.13, identity does not.
       const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
+      __resetSeamsForTest();
       const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
       expect(signed.status).toBe("signed");
       expect(signed.snapshot).toBeNull();
@@ -377,6 +409,182 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     const res = await svc.requestSummaryPdf(ORG_A, memberOf[ORG_A], draft.id);
     expect(res).toEqual({ assessmentId: draft.id, requested: true });
     expect(await eventsFor(draft.id)).toContain("m10.hope.summary_requested");
+  });
+
+  // ── #45 — the subject of a HOPE record, proven at the row ────────────────────────────────────────
+  //
+  // Every test above seeds an open schedule first, which is why none of them ever exercised the
+  // fallback. Production seeds none — no code in the repo inserts a `hope_timepoint_schedule` row — so
+  // the fallback was the ONLY path a real deployment took, and it wrote the `admissionId` into
+  // `patient_id`. The column has no FK (the corpus keeps them inside the owning module), so Postgres
+  // accepted it and the damage surfaced far away, as a 404 on the sign route.
+  describe("#45 — hope_assessment.patient_id is a patient", () => {
+    const patientIdOf = async (assessmentId: string): Promise<string> =>
+      (await admin.query("SELECT patient_id FROM hope_assessment WHERE id=$1", [assessmentId]))
+        .rows[0].patient_id as string;
+
+    it("with NO schedule row, the stored patient_id is the admission's patient", async () => {
+      const adm = nextAdmission(); // deliberately no seedSchedule — the production shape
+      const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
+      expect(await patientIdOf(draft.id)).toBe(PATIENT);
+      expect(await patientIdOf(draft.id)).not.toBe(adm);
+      // The §4.7 resolver `hope.scope` reads on every assessment-scoped route (sign/correct/get).
+      expect((await svc.loadAssessment(ORG_A, draft.id))?.patientId).toBe(PATIENT);
+    });
+
+    it("carries the real patient onto the SFV row the J2051 trigger opens", async () => {
+      // The corruption used to propagate: sign copies the assessment's patient_id onto the SFV, and
+      // completing the SFV copies it back onto the RFA-04 assessment.
+      const adm = nextAdmission();
+      const draft = await svc.recordTimepoint(
+        ORG_A,
+        memberOf[ORG_A],
+        adm,
+        recordArgs(TRIGGER_DATA),
+      );
+      await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+      const { rows } = await admin.query(
+        "SELECT patient_id FROM symptom_follow_up_visit WHERE triggering_assessment_id=$1",
+        [draft.id],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].patient_id).toBe(PATIENT);
+      const completion = await svc.recordSfv(ORG_A, memberOf[ORG_A], adm, {
+        triggeringAssessmentId: draft.id,
+        targetDate: new Date().toISOString(),
+        authorDiscipline: "RN",
+        data: QUIET_DATA,
+      });
+      expect(await patientIdOf(completion.id)).toBe(PATIENT);
+    });
+
+    it("refuses (422) and writes NOTHING when the M6 seam cannot project the admission", async () => {
+      const adm = nextAdmission();
+      registerSeam("AdmissionStatusReader", {
+        getAdmissionSummary: async () => {
+          throw new Error("M6 seam projection gap: admission is missing provider_entity_id");
+        },
+      });
+      await expect(
+        svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA)),
+      ).rejects.toMatchObject({ code: "M10_ADMISSION_PROJECTION_GAP", statusCode: 422 });
+      const { rows } = await admin.query("SELECT id FROM hope_assessment WHERE admission_id=$1", [
+        adm,
+      ]);
+      expect(rows).toHaveLength(0); // refused BEFORE the transaction, not rolled back after a write
+    });
+
+    it("refuses when the seam answers about another tenant's admission", async () => {
+      const adm = nextAdmission();
+      registerAdmissionReader({ organizationId: ORG_B });
+      await expect(
+        svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA)),
+      ).rejects.toMatchObject({ code: "M10_ADMISSION_PROJECTION_GAP", statusCode: 422 });
+    });
+
+    it("refuses when the M6 seam is not registered at all", async () => {
+      const adm = nextAdmission();
+      __resetSeamsForTest();
+      await expect(
+        svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA)),
+      ).rejects.toMatchObject({ code: "M10_ADMISSION_PROJECTION_GAP", statusCode: 422 });
+    });
+  });
+
+  // ── #45 — migration 0215, the repair of rows the defect already wrote ─────────────────────────────
+  describe("#45 — migration 0215 repairs rows already written", () => {
+    const REPAIR_SQL = readFileSync(
+      join(MIGRATIONS_DIR, "0217_m10_hope_patient_id_repair.sql"),
+      "utf8",
+    );
+    /** Seed a real `admission` row (its patient_id is the truth the repair reads). */
+    async function seedAdmission(org: string, patientId: string): Promise<string> {
+      return (
+        await admin.query(
+          `INSERT INTO admission (organization_id, provider_entity_id, location_id, patient_id,
+             admitted_by_physician_id, status, admission_at)
+           VALUES ($1,$2,$3,$4,gen_random_uuid(),'active', now()) RETURNING id`,
+          [org, providerOf[org], locationOf[org], patientId],
+        )
+      ).rows[0].id as string;
+    }
+    /** Write the corrupt shape the pre-fix service produced: patient_id := admission_id. */
+    async function seedCorruptAssessment(org: string, admissionId: string): Promise<string> {
+      return (
+        await admin.query(
+          `INSERT INTO hope_assessment (organization_id, patient_id, admission_id, rfa_kind, status,
+             data, target_date, created_by_membership_id)
+           VALUES ($1,$2,$2,'01_admission','draft','{}'::jsonb, now(), $3) RETURNING id`,
+          [org, admissionId, memberOf[org]],
+        )
+      ).rows[0].id as string;
+    }
+
+    it("repoints a corrupted assessment (and its SFV) at the admission's real patient", async () => {
+      const realPatient = "44444444-0000-4000-8000-000000000045";
+      const adm = await seedAdmission(ORG_A, realPatient);
+      const assessmentId = await seedCorruptAssessment(ORG_A, adm);
+      await admin.query(
+        `INSERT INTO symptom_follow_up_visit (organization_id, provider_entity_id, location_id,
+           patient_id, admission_id, triggering_assessment_id, triggered_at, due_at, alert_cadence)
+         VALUES ($1,$2,$3,$4,$4,$5, now(), now() + interval '2 days', '{}'::jsonb)`,
+        [ORG_A, providerOf[ORG_A], locationOf[ORG_A], adm, assessmentId],
+      );
+
+      await admin.query(REPAIR_SQL);
+
+      expect(
+        (await admin.query("SELECT patient_id FROM hope_assessment WHERE id=$1", [assessmentId]))
+          .rows[0].patient_id,
+      ).toBe(realPatient);
+      expect(
+        (
+          await admin.query(
+            "SELECT patient_id FROM symptom_follow_up_visit WHERE triggering_assessment_id=$1",
+            [assessmentId],
+          )
+        ).rows[0].patient_id,
+      ).toBe(realPatient);
+    });
+
+    it("leaves a row whose admission cannot be resolved, and is a no-op on re-run", async () => {
+      // No `admission` row exists for this id, so there is nothing to attribute the record to. Deleting
+      // a CMS-reportable clinical record to tidy a data defect would be worse than leaving it broken.
+      const orphanAdmission = "77000000-0000-4000-8000-0000000f0045";
+      const orphanId = await seedCorruptAssessment(ORG_A, orphanAdmission);
+      // Cross-org: the admission exists, but in ORG_B. The repair joins on organization_id too.
+      const crossOrgAdmission = await seedAdmission(ORG_B, "44444444-0000-4000-8000-0000000000b0");
+      const crossOrgId = await seedCorruptAssessment(ORG_A, crossOrgAdmission);
+
+      await admin.query(REPAIR_SQL);
+      expect(
+        (await admin.query("SELECT patient_id FROM hope_assessment WHERE id=$1", [orphanId]))
+          .rows[0].patient_id,
+      ).toBe(orphanAdmission);
+      expect(
+        (await admin.query("SELECT patient_id FROM hope_assessment WHERE id=$1", [crossOrgId]))
+          .rows[0].patient_id,
+      ).toBe(crossOrgAdmission);
+
+      // Re-running touches nothing: a repaired row can never match `patient_id = admission_id` again.
+      const realPatient = "44444444-0000-4000-8000-000000000046";
+      const adm = await seedAdmission(ORG_A, realPatient);
+      const repaired = await seedCorruptAssessment(ORG_A, adm);
+      await admin.query(REPAIR_SQL);
+      const before = (
+        await admin.query("SELECT patient_id, updated_at FROM hope_assessment WHERE id=$1", [
+          repaired,
+        ])
+      ).rows[0];
+      await admin.query(REPAIR_SQL);
+      const after = (
+        await admin.query("SELECT patient_id, updated_at FROM hope_assessment WHERE id=$1", [
+          repaired,
+        ])
+      ).rows[0];
+      expect(after.patient_id).toBe(realPatient);
+      expect(after.updated_at).toEqual(before.updated_at);
+    });
   });
 
   it("RLS — org B cannot sign or correct org A's assessment (non-leaking 404)", async () => {
