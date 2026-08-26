@@ -34,7 +34,7 @@ All four are green on a clean checkout, and CI (`.github/workflows/ci.yml`) runs
 | `bun run arch:parity` | `scaffold --check` — fails on tree↔manifest drift or orphan packages. |
 | `bun run arch:boundaries` | dependency-cruiser: module import boundaries, leaves, vendor-adapter + helper-table rules. |
 | `bun run arch:tables` | table ownership — no cross-module schema access. |
-| `bun run arch:tenancy` | three-column rule, canonical `app.org_id`, no dangerous RLS shapes. |
+| `bun run arch:tenancy` | three-column rule, canonical `app.org_id`, no dangerous RLS shapes. RLS policy predicates are judged on the migrations' **net effect** (replayed in apply order), and the rule's audit/key-ring exemptions are scoped to a single statement — never a policy body. |
 | `bun run arch:ddl` | PostgreSQL DDL legality (partition keys, CHECK subqueries, duplicate enums). |
 | `bun run arch:gaps` | event-catalog `mN.` naming, seam-registry completeness, PHI RLS/audit presence. |
 | `bun run docs:ui` | UI screen-spec corpus consistency. |
