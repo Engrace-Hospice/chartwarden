@@ -91,12 +91,19 @@ export function getFhirReconciliationProvider(): ReconciliationProvider {
 // ── opaque rich-seams — resolved to M28's own minimal consumer views ─────────────────────────────────
 
 /**
- * §8.5 — the M38 `TerminologyProvider` slice M28's mappers use to validate/expand a code before it enters
- * a `CodeableConcept`. M38's rich interface lives in `@wardenx/terminology` (not importable here); this is
- * M28's minimal view.
+ * §8.5 — the M38 `TerminologyProvider` slice M28's mappers use to validate a code before it enters a
+ * `CodeableConcept`, and that R13 `CodeSystem/$validate-code` answers from. M38's rich interface lives in
+ * `@wardenx/terminology` (not importable here); this is M28's minimal view.
+ *
+ * IT MUST MATCH THE REAL METHOD. This view used to declare `validateCode({ system, code })`, a method
+ * `TerminologyProvider` has never had — the real one is `validate(system, code, asOf?)`. A structural view
+ * over a seam resolved with `as` is only as true as the shape it asserts; nothing type-checks it against
+ * the provider, so the mismatch would have surfaced as a runtime `not a function` on the first call. It
+ * survived because there was no first call: the view was declared, exported, and used by nobody (#117).
  */
 export interface FhirTerminologyView {
-  validateCode(input: { system: string; code: string }): Promise<{ valid: boolean }>;
+  /** `system` is an M38 `CodeSystemId` (`icd10cm`, `loinc`, …), never a FHIR canonical URI. */
+  validate(system: string, code: string, asOf?: Date): Promise<{ valid: boolean; status?: string }>;
 }
 
 /** Resolve M38's terminology provider as M28's view. */

@@ -4,9 +4,10 @@
 // patients), so the account itself is NOT patient-scoped and carries no provider_entity_id/location_id —
 // the three-column rule (ARCH-011) applies to PHI-bearing rows, and the patient linkage lives on the grant.
 //
-// The three `*_cipher` columns (display name, email, phone) are DEK envelope-encrypted at the application
-// layer (M34 key ring) and are §3.6 audit-denylisted — free-text contact PHI whose plaintext must never
-// enter `audit_event.before/after` (mirrors `M31_AUDIT_DENYLIST.portal_account` in @wardenx/types).
+// The FOUR `*_cipher` columns (display name, email, phone, status-change reason) are DEK envelope-encrypted
+// at the application layer (M34 key ring) and are §3.6 audit-denylisted — free-text contact PHI, and the
+// operator's reason for the last suspend/reinstate, whose plaintext must never enter
+// `audit_event.before/after` (mirrors `M31_AUDIT_DENYLIST.portal_account` in @wardenx/types).
 //
 // TENANCY: organization_id NOT NULL; RLS keys on app.org_id ALONE (0139). CROSS-MODULE FK POLICY: only
 // organization_id (M1 core) and user_id (M2 `user`) carry real FKs — both are foundation tables. The
@@ -46,6 +47,12 @@ export const portalAccounts = pgTable(
     displayNameCipher: text("display_name_cipher").notNull(),
     emailCipher: text("email_cipher").notNull(),
     phoneCipher: text("phone_cipher"),
+
+    // The reason the account last entered its CURRENT administrative status (suspend/reinstate, #117).
+    // Envelope-encrypted like the contact columns and §3.6 audit-denylisted for the same reason: it is
+    // operator-written free text about an identified caregiver. Nullable — a row whose status was never
+    // administratively changed has no reason, and inventing one would be worse than the absence.
+    statusChangeReasonCipher: text("status_change_reason_cipher"),
 
     preferredLanguageIso639: text("preferred_language_iso639").notNull().default("en"),
     twoFactorEnrolled: boolean("two_factor_enrolled").notNull().default(false),

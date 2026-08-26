@@ -1368,7 +1368,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reverse a portal-account suspension; step-up */
+        /** Reverse a portal-account suspension; step-up. The `reason` is sealed and stored on the account (503 if no tenant key envelope is bound) */
         post: operations["postApiV1AdminPortalaccountsByIdReinstate"];
         delete?: never;
         options?: never;
@@ -1385,7 +1385,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Org-admin temporary disable of a portal account; step-up */
+        /** Org-admin temporary disable of a portal account; step-up. The `reason` is sealed and stored on the account (503 if no tenant key envelope is bound) */
         post: operations["postApiV1AdminPortalaccountsByIdSuspend"];
         delete?: never;
         options?: never;
@@ -18531,7 +18531,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** CodeSystem $validate-code (R13). Requires `system/CodeSystem.read`; returns a well-formed Parameters result */
+        /** CodeSystem $validate-code (R13). Requires `system/CodeSystem.read`; resolves the supplied Parameters (`url` or `system`, plus `code`) through M38 terminology and returns the answer as Parameters. 400 when either is missing; 404 `not-supported` for a code system this server does not serve */
         post: operations["postFhirR4CodeSystemValidatecode"];
         delete?: never;
         options?: never;

@@ -5294,12 +5294,14 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: M31AckResponse,
   },
   "POST /api/v1/admin/portal-accounts/:id/suspend": {
-    summary: "Org-admin temporary disable of a portal account; step-up",
+    summary:
+      "Org-admin temporary disable of a portal account; step-up. The `reason` is sealed and stored on the account (503 if no tenant key envelope is bound)",
     body: M31AccountSuspendRequest,
     response: M31AckResponse,
   },
   "POST /api/v1/admin/portal-accounts/:id/reinstate": {
-    summary: "Reverse a portal-account suspension; step-up",
+    summary:
+      "Reverse a portal-account suspension; step-up. The `reason` is sealed and stored on the account (503 if no tenant key envelope is bound)",
     body: M31AccountSuspendRequest,
     response: M31AckResponse,
   },
@@ -10063,7 +10065,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /fhir/r4/CodeSystem/$validate-code": {
     summary:
-      "CodeSystem $validate-code (R13). Requires `system/CodeSystem.read`; returns a well-formed Parameters result",
+      "CodeSystem $validate-code (R13). Requires `system/CodeSystem.read`; resolves the supplied Parameters (`url` or `system`, plus `code`) through M38 terminology and returns the answer as Parameters. 400 when either is missing; 404 `not-supported` for a code system this server does not serve",
     body: M28ValidateCodeBody,
   },
   "GET /fhir/r4/ValueSet/:vs": {

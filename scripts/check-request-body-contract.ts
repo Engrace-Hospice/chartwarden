@@ -82,26 +82,6 @@ const PUBLISHES_UNREAD: Record<string, Registered> = {
     reason: "the addendum twin of the above, same schema, same discard",
     issue: "#114",
   },
-  "POST /api/v1/assessments/:id/cosignatures": {
-    reason:
-      "publishes attestationConfirmed required:true and ignores it — the cosigner's attestation is " +
-      "demanded by the contract and never checked; the discipline is derived from role keys instead",
-    issue: "#117",
-  },
-  "POST /api/v1/admin/portal-accounts/:id/suspend": {
-    reason: "publishes reason required:true and discards it — the suspension is recorded with none",
-    issue: "#117",
-  },
-  "POST /api/v1/admin/portal-accounts/:id/reinstate": {
-    reason: "publishes reason required:true and discards it — same shape as suspend",
-    issue: "#117",
-  },
-  "POST /fhir/r4/CodeSystem/$validate-code": {
-    reason:
-      "publishes a FHIR Parameters resource (resourceType + parameter, required) and reads none — " +
-      "a $validate-code that ignores its Parameters cannot be validating the code it was asked about",
-    issue: "#117",
-  },
 };
 
 /** Direction B — routes whose handler reads a body the contract publishes none for. */

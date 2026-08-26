@@ -122,9 +122,16 @@ export type M31TableName = "portal_account" | "portal_access_grant" | "telehealt
  * `*_jsonb` columns must NOT enter `audit_event.before/after`: the trigger captures a `<changed>` marker
  * instead. `scope_set_jsonb` is denylisted for size (grant metadata is logged separately); the two
  * envelope-encrypted room identifiers + the free-text end-reason detail carry vendor/PHI-leakable content.
+ * `status_change_reason_cipher` is the operator's reason for the last suspend/reinstate (#117) — the same
+ * class as the grant's `revoke_reason_cipher`.
  */
 export const M31_AUDIT_DENYLIST: { readonly [K in M31TableName]: readonly string[] } = {
-  portal_account: ["display_name_cipher", "email_cipher", "phone_cipher"],
+  portal_account: [
+    "display_name_cipher",
+    "email_cipher",
+    "phone_cipher",
+    "status_change_reason_cipher",
+  ],
   portal_access_grant: ["scope_set_jsonb", "revoke_reason_cipher"],
   telehealth_visit: ["vendor_room_id_cipher", "vendor_room_url_cipher", "end_reason_detail_cipher"],
 } as const;

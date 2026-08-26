@@ -11385,7 +11385,7 @@
         "tags": [
           "31-portal"
         ],
-        "summary": "Reverse a portal-account suspension; step-up",
+        "summary": "Reverse a portal-account suspension; step-up. The `reason` is sealed and stored on the account (503 if no tenant key envelope is bound)",
         "parameters": [
           {
             "name": "id",
@@ -11450,7 +11450,7 @@
         "tags": [
           "31-portal"
         ],
-        "summary": "Org-admin temporary disable of a portal account; step-up",
+        "summary": "Org-admin temporary disable of a portal account; step-up. The `reason` is sealed and stored on the account (503 if no tenant key envelope is bound)",
         "parameters": [
           {
             "name": "id",
@@ -205314,7 +205314,7 @@
         "tags": [
           "28-fhir"
         ],
-        "summary": "CodeSystem $validate-code (R13). Requires `system/CodeSystem.read`; returns a well-formed Parameters result",
+        "summary": "CodeSystem $validate-code (R13). Requires `system/CodeSystem.read`; resolves the supplied Parameters (`url` or `system`, plus `code`) through M38 terminology and returns the answer as Parameters. 400 when either is missing; 404 `not-supported` for a code system this server does not serve",
         "parameters": [],
         "responses": {
           "200": {

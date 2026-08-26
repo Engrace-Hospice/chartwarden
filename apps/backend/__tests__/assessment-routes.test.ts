@@ -366,6 +366,34 @@ describe("M9-T05 — LPN cosignature (§7.4, §4.7 cosigner_role_match)", () => 
     });
     expect(res.statusCode).toBe(403);
   });
+
+  // #117 — the contract has always demanded `attestationConfirmed` and the handler never read it, so an
+  // eligible RN cosigned whether or not they affirmed anything: `payload: {}` returned 201. A cosignature
+  // is a legal clinical act (CoP 418.104(c)); an attestation the API requires and ignores is worse than
+  // one it never asked for, because the UI can truthfully say the clinician was asked.
+  for (const [label, payload] of [
+    ["an absent attestation", {}],
+    ["an explicitly unconfirmed attestation", { attestationConfirmed: false }],
+  ] as const) {
+    it(`refuses ${label} — no cosignature is written`, async () => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/assessments/${PPS_BY_LPN}/cosignatures`,
+        headers: RN,
+        payload,
+      });
+      expect(res.statusCode).toBe(422);
+      // And the row is still cosignable afterwards — the refusal did not half-apply.
+      const after = await app.inject({
+        method: "POST",
+        url: `/api/v1/assessments/${PPS_BY_LPN}/cosignatures`,
+        headers: RN,
+        payload: { attestationConfirmed: true },
+      });
+      expect(after.statusCode).toBe(201);
+    });
+  }
 });
 
 describe("M9-T05 — correction-of-record (§2.3 If-Match → STALE_VERSION)", () => {

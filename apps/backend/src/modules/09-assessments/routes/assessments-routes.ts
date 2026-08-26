@@ -30,6 +30,7 @@ import {
   AssessmentParamsSchema,
   ChangeEventParamsSchema,
   CorrectAssessmentSchema,
+  CosignatureSchema,
   CreateLicenseSchema,
   DeltaQuerySchema,
   LatestBatchQuerySchema,
@@ -271,6 +272,13 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
     async (request, reply) => {
       const { organizationId, userId, roles } = actorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
+      // §7.4 — the cosigner's attestation is a legal clinical act (CoP 418.104(c)), not decoration. The
+      // contract has always demanded `attestationConfirmed` and the handler never looked, so the UI could
+      // truthfully say the clinician was asked while the server signed regardless (#117). This parse IS
+      // the check: `CosignatureSchema.attestationConfirmed` is `Type.Literal(true)`, so a missing or
+      // false flag is a 400 and NO `assessment_cosignature` row is written. The row's `attestation_text`
+      // (COSIGN_ATTESTATION) is what persists the affirmation; this is what earns it.
+      parse(CosignatureSchema, request.body);
       const cosignerDiscipline =
         disciplinesOf(roles)[0] ??
         (roles.includes("clinical_supervisor") ? "clinical_supervisor" : "");
