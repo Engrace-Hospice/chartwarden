@@ -2,7 +2,10 @@
 // reader-seam endpoints reached only by the `m25.system_principal` (architecture §17 service-to-service
 // token), NOT the user-facing gateway. They back the RemittanceReader / DenialMetricsProvider /
 // PatientResponsibilityReader seams other modules (M26/M27/M30/M33) consume. Gated by the §4.6 internal
-// permission key PLUS a server-side `systemPrincipal` attribute assertion (a request-borne actor is refused).
+// permission key PLUS a server-side principal-kind assertion — `actorKind === "system"`, which only the
+// verified `INTERNAL_SERVICE_TOKEN` branch of the authenticate hook can set, so a request-borne actor is
+// refused. It asserted a `systemPrincipal` attribute until F-030; nothing ever wrote that name, so these
+// three endpoints refused every caller including the seam consumers they exist for.
 import { ForbiddenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { M25IngestService } from "../ingest/service";
@@ -18,9 +21,16 @@ export interface InternalRouteDeps {
   readonly ingestService?: M25IngestService;
 }
 
-/** Refuse any caller that is not a server-assembled system principal (§17). */
+/**
+ * Refuse any caller that is not a server-assembled system principal (§17).
+ *
+ * Gates on `actorKind`, which the authenticate hook stamps and which only the verified shared-secret
+ * branch can set to `"system"` — never on a request header. It used to gate on a `systemPrincipal`
+ * attribute nothing has ever written (F-030), so these internal seam routes refused EVERY caller,
+ * including the M23 service-to-service calls they exist for. Fail-closed, but permanently.
+ */
 const SYSTEM_PRINCIPAL: PreHandler = async (request: FastifyRequest) => {
-  if (request.context?.attributes?.systemPrincipal !== true) {
+  if (request.context?.attributes?.actorKind !== "system") {
     throw new ForbiddenError("internal seam endpoints require a system principal");
   }
 };
