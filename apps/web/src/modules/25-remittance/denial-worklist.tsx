@@ -271,7 +271,7 @@ export function DenialWorklist(): JSX.Element {
               </thead>
               <tbody>
                 {pagedRows.map((r) => (
-                  <tr key={r.id} style={rowStyle} className="wx-data-row-interactive">
+                  <tr key={r.id} style={rowStyle}>
                     <td style={tdCodeStyle}>
                       {r.carcCode}
                       {r.rarcCode ? ` / ${r.rarcCode}` : ""}
