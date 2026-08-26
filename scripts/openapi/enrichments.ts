@@ -3746,6 +3746,76 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
       lastStepUpFactor: StepUpFactorSchema,
     }),
   },
+  // M2 (ADR-0023 D2 / SecHardening §12.2/§12.4) — device attestation. The `nonce` in the challenge
+  // response and the `assertion` in the submit body are the two halves of one MAC: the server mints the
+  // nonce, the device MACs it together with everything it claims about itself, and the server recomputes.
+  // Nothing here is an authorization input the CALLER controls — the org and membership an attestation
+  // binds to come off the session, never the body.
+  "POST /api/v1/devices/attestation/challenge": {
+    summary: "Mint a single-use device-attestation challenge for this session (§12.4)",
+    body: Type.Object({}),
+    response: Type.Object({
+      challengeId: Type.String(),
+      nonce: Type.String({ description: "The value the device MACs; single-use, spent on submit" }),
+      expiresInSec: Type.Integer(),
+    }),
+  },
+  "POST /api/v1/devices/attestation": {
+    summary: "Submit a device attestation → record the verdict and bind the session (§12.2/§12.4)",
+    body: Type.Object({
+      challengeId: Type.String({ minLength: 1 }),
+      deviceKeyFingerprint: Type.String({ minLength: 1 }),
+      platform: Type.Union([Type.Literal("ios"), Type.Literal("android")]),
+      provider: Type.Union([
+        Type.Literal("managed_enrollment"),
+        Type.Literal("apple_app_attest"),
+        Type.Literal("google_play_integrity"),
+      ]),
+      posture: Type.Object({
+        osVersion: Type.Optional(Type.String()),
+        jailbrokenOrRooted: Type.Optional(Type.Boolean()),
+        biometricAvailable: Type.Optional(Type.Boolean()),
+        screenLockEnabled: Type.Optional(Type.Boolean()),
+        emulator: Type.Optional(Type.Boolean()),
+      }),
+      assertion: Type.String({
+        minLength: 1,
+        description: "Base64 provider proof over the challenge nonce and every field above",
+      }),
+    }),
+    response: Type.Object({
+      attestationId: Type.String(),
+      verdict: Type.Literal("attested"),
+      verifiedAt: Type.String(),
+      expiresAt: Type.String(),
+    }),
+  },
+  "POST /api/v1/devices/attestation/:id/revoke": {
+    summary: "Revoke a device attestation (lost or compromised handset, §12.4)",
+    body: Type.Object({
+      reason: Type.String({ minLength: 10, description: "Mirrors the DB CHECK floor" }),
+    }),
+    response: Type.Object({ attestationId: Type.String(), verdict: Type.Literal("revoked") }),
+  },
+  "GET /api/v1/devices/attestation": {
+    summary: "List the caller's own device attestations (non-PHI)",
+    response: Type.Object({
+      items: Type.Array(
+        Type.Object({
+          id: Type.String(),
+          organizationId: Type.String(),
+          membershipId: Type.String(),
+          deviceKeyFingerprint: Type.String(),
+          platform: Type.String(),
+          provider: Type.String(),
+          verdict: Type.String(),
+          verifiedAt: Type.String(),
+          expiresAt: Type.String(),
+          revokedAt: Type.Union([Type.String(), Type.Null()]),
+        }),
+      ),
+    }),
+  },
   // M1 Foundation — shared non-PHI selector lookup for provider entities used by billing/admin UX.
   "GET /api/v1/provider-entities": {
     summary: "Search provider entities for selector controls (cursor-paginated, non-PHI)",

@@ -614,6 +614,45 @@ export interface ResolvedActor {
    * jsonb somehow carries a patient id — the class decides, not the column.
    */
   readonly sessionPatientId: string | null;
+  /**
+   * The platform's own verdict on the device this session runs on (SecHardening §12.2/§12.4), or null
+   * when the session is bound to no attested device — a browser session, or a mobile session whose
+   * attestation has expired or been revoked.
+   *
+   * Resolved from M2's `device_attestation` row through the session's `device_attestation_id` pointer,
+   * and RE-CHECKED there rather than trusted: the pointer is a lookup key, so a stale or dangling one
+   * yields null and the gate denies. Never assembled from anything the request carries — a
+   * device-integrity claim supplied by the device being judged is not evidence (§8.3.1's argument, one
+   * layer down).
+   *
+   * `valid` is the whole contract M3's `device_attestation_valid` predicate reads; `verifiedAt` is
+   * diagnostics. Structural, not an enum, so this leaf stays decoupled from M2's provider vocabulary.
+   */
+  readonly deviceAttestation: { readonly valid: boolean; readonly verifiedAt?: string } | null;
+}
+
+/**
+ * The SecHardening §12.2 device-posture facts an attestation reports.
+ *
+ * Every field is what the DEVICE said about itself. The server does not — and for a jailbreak check
+ * cannot — independently observe any of them; what it does is refuse to accept them unless they arrive
+ * under a MAC it can recompute over a nonce it minted (see M2's `DeviceAttestationVerifier`), and then
+ * apply the §12.2 policy to them itself. So the facts are reported and the DECISION is the platform's.
+ *
+ * Optional throughout: a provider that cannot report a field must be able to say nothing rather than
+ * guess, and the policy treats an unreported requirement as unmet.
+ */
+export interface DeviceAttestationPosture {
+  /** The OS version string as the device reports it (§12.2 floor: iOS 16+, Android 12+). */
+  readonly osVersion?: string;
+  /** The §12.4 detector's verdict. `true` fails the check outright — that is the whole control. */
+  readonly jailbrokenOrRooted?: boolean;
+  /** Whether a biometric factor is enrolled and available (§12.2). */
+  readonly biometricAvailable?: boolean;
+  /** Whether the OS screen lock is on (§12.2). */
+  readonly screenLockEnabled?: boolean;
+  /** Whether the app is running on an emulator (§12.4 refuses these). */
+  readonly emulator?: boolean;
 }
 
 /** The membership + active role keys for an actor in one org (the actor-context fields M3 owns). */

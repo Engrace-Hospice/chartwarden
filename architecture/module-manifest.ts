@@ -201,6 +201,11 @@ export const MODULES: ModuleDef[] = [
       "tenant_step_up_policy_override",
       // GAP-043: the per-membership named-approval-authority registry M27's approver predicate keys on.
       "membership_elevated_approval",
+      // ADR-0023 D2 (adjudicated): the device-attestation surface M3's `device_attestation_valid`
+      // predicate and M18's `evv_device.m2_device_attestation_id` both already assert on. D2 offered
+      // exactly two exits — a real ownedTables edit or deletion from the consuming specs — and this
+      // surface has two consumers, one of which stores a row id for it.
+      "device_attestation",
     ],
   },
   {

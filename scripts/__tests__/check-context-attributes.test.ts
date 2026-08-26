@@ -71,7 +71,7 @@ describe("context-attribute producer gate", () => {
   it("still has blocked keys to check that rule against — an empty registry would vacuously pass", () => {
     // When the last blocked entry goes, the loop above stops asserting anything. That is the good outcome,
     // but it must be a deliberate edit here rather than a test that quietly stops testing.
-    expect(blockedKeys.length).toBe(2);
+    expect(blockedKeys.length).toBe(1);
   });
 
   it("every entry is exactly one of producer or blocked, and says something", () => {

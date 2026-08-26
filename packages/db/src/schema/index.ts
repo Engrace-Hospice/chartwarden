@@ -16,6 +16,9 @@ export * from "./users";
 export * from "./memberships";
 // GAP-043 — the M2 per-membership named-approval-authority registry (`cost_report_approval` first).
 export * from "./membership-elevated-approvals";
+// ADR-0023 D2 — the M2 device-attestation surface two consumers already assert on (M3's
+// `device_attestation_valid` predicate; M18's `evv_device.m2_device_attestation_id`).
+export * from "./device-attestations";
 export * from "./sessions";
 export * from "./accounts";
 export * from "./verifications";

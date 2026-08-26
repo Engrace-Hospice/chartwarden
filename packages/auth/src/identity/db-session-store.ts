@@ -33,6 +33,24 @@ export interface SessionRow {
   readonly sessionClass: string | null;
   /** `{ patientId }` for collaborator/funeral; `{ portalAccountId, patientId? }` for the portal classes. */
   readonly scope: unknown;
+  /**
+   * The joined `device_attestation` row this session points at (SecHardening §12.4), or null when the
+   * session is bound to no device — the ordinary case for a browser session.
+   *
+   * The columns come from the ROW, never from the session's pointer: the pointer says which
+   * attestation to look at and the row says whether it still holds. That split is the point — an
+   * attestation revoked or expired AFTER the session was minted must stop satisfying the gate without
+   * anyone having to find and rewrite the session.
+   */
+  readonly deviceAttestation: DeviceAttestationRow | null;
+}
+
+/** The `device_attestation` columns the liveness decision needs. */
+export interface DeviceAttestationRow {
+  readonly verdict: string;
+  readonly verifiedAt: Date | null;
+  readonly expiresAt: Date | null;
+  readonly revokedAt: Date | null;
 }
 
 /** Pure: map a `session` row to a context record, merging optional M3 actor enrichment. Pre-org
@@ -42,6 +60,7 @@ export function toSessionContextRecord(
   row: SessionRow,
   sessionId: string,
   enrichment?: ActorEnrichment | null,
+  now: Date = new Date(),
 ): SessionContextRecord {
   const sessionClass = row.sessionClass ?? "staff";
   const patientId = scopeString(row.scope, "patientId");
@@ -67,6 +86,34 @@ export function toSessionContextRecord(
           scope: { ...(patientId ? { patientId } : {}) },
         })
       : null,
+    deviceAttestation: liveDeviceAttestation(row.deviceAttestation, now),
+  };
+}
+
+/**
+ * The platform's verdict on the session's device, or null when there is not a LIVE attestation behind it.
+ *
+ * Three ways a pointer stops meaning "attested", and all three must read the same as no pointer at all:
+ * the verdict is not `attested` (a recorded failure, or a revocation), the row has been revoked, or the
+ * attestation window has run out. Returning `{ valid: false }` for those instead of null would be
+ * equivalent at today's only reader — `deviceAttestationValid` denies on both — but it would quietly
+ * make "this device failed the posture check" indistinguishable from "there is no device here", which is
+ * the distinction a post-incident review is looking for.
+ *
+ * Expiry is checked HERE rather than in the query so it is unit-testable without a database, and so the
+ * clock is an injected argument rather than whatever `now()` the connection happened to see.
+ */
+export function liveDeviceAttestation(
+  row: DeviceAttestationRow | null | undefined,
+  now: Date,
+): { readonly valid: boolean; readonly verifiedAt?: string } | null {
+  if (!row) return null;
+  if (row.verdict !== "attested") return null;
+  if (row.revokedAt !== null) return null;
+  if (row.expiresAt === null || row.expiresAt.getTime() <= now.getTime()) return null;
+  return {
+    valid: true,
+    ...(row.verifiedAt ? { verifiedAt: row.verifiedAt.toISOString() } : {}),
   };
 }
 
@@ -102,8 +149,18 @@ export function createDbSessionContextStore(
           lastStepUpFactor: schema.sessions.lastStepUpFactor,
           sessionClass: schema.sessions.sessionClass,
           scope: schema.sessions.scope,
+          // SecHardening §12.4 — joined, not a second round trip: this runs on every authenticated
+          // request. LEFT so a session with no device (every browser session) still resolves.
+          attVerdict: schema.deviceAttestations.verdict,
+          attVerifiedAt: schema.deviceAttestations.verifiedAt,
+          attExpiresAt: schema.deviceAttestations.expiresAt,
+          attRevokedAt: schema.deviceAttestations.revokedAt,
         })
         .from(schema.sessions)
+        .leftJoin(
+          schema.deviceAttestations,
+          eq(schema.deviceAttestations.id, schema.sessions.deviceAttestationId),
+        )
         .where(eq(schema.sessions.id, sessionId))
         .limit(1);
       const row = rows[0];
@@ -114,7 +171,22 @@ export function createDbSessionContextStore(
         enrich && row.activeOrganizationId === scope.orgId
           ? await enrich.read(scope, row.userId)
           : null;
-      return toSessionContextRecord(row, sessionId, enrichment);
+      return toSessionContextRecord(
+        {
+          ...row,
+          deviceAttestation:
+            row.attVerdict === null
+              ? null
+              : {
+                  verdict: row.attVerdict,
+                  verifiedAt: row.attVerifiedAt,
+                  expiresAt: row.attExpiresAt,
+                  revokedAt: row.attRevokedAt,
+                },
+        },
+        sessionId,
+        enrichment,
+      );
     },
   };
 }

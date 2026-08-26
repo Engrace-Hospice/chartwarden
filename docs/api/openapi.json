@@ -63637,6 +63637,350 @@
         }
       }
     },
+    "/api/v1/devices/attestation": {
+      "get": {
+        "operationId": "getApiV1DevicesAttestation",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "List the caller's own device attestations (non-PHI)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "membershipId",
+                          "deviceKeyFingerprint",
+                          "platform",
+                          "provider",
+                          "verdict",
+                          "verifiedAt",
+                          "expiresAt",
+                          "revokedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "membershipId": {
+                            "type": "string"
+                          },
+                          "deviceKeyFingerprint": {
+                            "type": "string"
+                          },
+                          "platform": {
+                            "type": "string"
+                          },
+                          "provider": {
+                            "type": "string"
+                          },
+                          "verdict": {
+                            "type": "string"
+                          },
+                          "verifiedAt": {
+                            "type": "string"
+                          },
+                          "expiresAt": {
+                            "type": "string"
+                          },
+                          "revokedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1DevicesAttestation",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Submit a device attestation → record the verdict and bind the session (§12.2/§12.4)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "attestationId",
+                    "verdict",
+                    "verifiedAt",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "attestationId": {
+                      "type": "string"
+                    },
+                    "verdict": {
+                      "const": "attested",
+                      "type": "string"
+                    },
+                    "verifiedAt": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "challengeId",
+                  "deviceKeyFingerprint",
+                  "platform",
+                  "provider",
+                  "posture",
+                  "assertion"
+                ],
+                "properties": {
+                  "challengeId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "deviceKeyFingerprint": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "platform": {
+                    "anyOf": [
+                      {
+                        "const": "ios",
+                        "type": "string"
+                      },
+                      {
+                        "const": "android",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "provider": {
+                    "anyOf": [
+                      {
+                        "const": "managed_enrollment",
+                        "type": "string"
+                      },
+                      {
+                        "const": "apple_app_attest",
+                        "type": "string"
+                      },
+                      {
+                        "const": "google_play_integrity",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "posture": {
+                    "type": "object",
+                    "properties": {
+                      "osVersion": {
+                        "type": "string"
+                      },
+                      "jailbrokenOrRooted": {
+                        "type": "boolean"
+                      },
+                      "biometricAvailable": {
+                        "type": "boolean"
+                      },
+                      "screenLockEnabled": {
+                        "type": "boolean"
+                      },
+                      "emulator": {
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "assertion": {
+                    "minLength": 1,
+                    "description": "Base64 provider proof over the challenge nonce and every field above",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/attestation/{id}/revoke": {
+      "post": {
+        "operationId": "postApiV1DevicesAttestationByIdRevoke",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Revoke a device attestation (lost or compromised handset, §12.4)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "attestationId",
+                    "verdict"
+                  ],
+                  "properties": {
+                    "attestationId": {
+                      "type": "string"
+                    },
+                    "verdict": {
+                      "const": "revoked",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 10,
+                    "description": "Mirrors the DB CHECK floor",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/attestation/challenge": {
+      "post": {
+        "operationId": "postApiV1DevicesAttestationChallenge",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Mint a single-use device-attestation challenge for this session (§12.4)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "challengeId",
+                    "nonce",
+                    "expiresInSec"
+                  ],
+                  "properties": {
+                    "challengeId": {
+                      "type": "string"
+                    },
+                    "nonce": {
+                      "description": "The value the device MACs; single-use, spent on submit",
+                      "type": "string"
+                    },
+                    "expiresInSec": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/discharges/{id}/cosign-for-cause": {
       "post": {
         "operationId": "postApiV1DischargesByIdCosignforcause",

@@ -11,6 +11,10 @@
  *     org; a cross-tenant read/write would leak or forge the credential that grants org membership.
  *   • `tenant_step_up_policy_override` — the per-tenant step-up (re-auth) policy; a cross-tenant write
  *     would let one org WEAKEN another's step-up requirements for sensitive operations.
+ *   • `device_attestation` (ADR-0023 D2) — the platform's verdict on a workforce member's handset. A
+ *     cross-tenant WRITE would let one org attest a device into another's fleet, which is the direct
+ *     route to satisfying that org's §12.4 gate on `report.drilldown.bulk_export`; a cross-tenant READ
+ *     leaks the fleet inventory (who carries what, on which OS) an attacker would target first.
  *
  * EXCLUDED (owned by M2 but out of scope for tenant RLS — see 0006):
  *   • `two_factor`  — USER-owned, cross-org 2FA enrolment; NON_ORG_SCOPED, no org policy (no org_id).
@@ -39,11 +43,13 @@ type SeedIds = {
   membership: string;
   organizationInvitation: string;
   tenantStepUpPolicyOverride: string;
+  deviceAttestation: string;
 };
 
 const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "organization_invitation", key: "organizationInvitation" },
   { table: "tenant_step_up_policy_override", key: "tenantStepUpPolicyOverride" },
+  { table: "device_attestation", key: "deviceAttestation" },
 ];
 
 describe.skipIf(!DB_URL)(
@@ -121,7 +127,17 @@ describe.skipIf(!DB_URL)(
         )
       ).rows[0].id as string;
 
-      return { membership, organizationInvitation, tenantStepUpPolicyOverride };
+      const deviceAttestation = (
+        await db.query(
+          `INSERT INTO device_attestation (organization_id, membership_id, device_key_fingerprint,
+           platform, provider, verdict, verified_at, expires_at)
+         VALUES ($1,$2,$3,'ios','managed_enrollment','attested', now(), now() + interval '30 days')
+         RETURNING id`,
+          [org, membership, `fp-m2${n}`],
+        )
+      ).rows[0].id as string;
+
+      return { membership, organizationInvitation, tenantStepUpPolicyOverride, deviceAttestation };
     }
 
     beforeAll(async () => {
@@ -154,14 +170,33 @@ describe.skipIf(!DB_URL)(
     });
 
     it("every M2 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
-      const rls = readFileSync(
-        join(MIGRATIONS_DIR, "0006_identity_m2_rls_audit_triggers.sql"),
-        "utf8",
+      // Scans EVERY migration, not just M2's original 0006. The repo's convention puts a table's
+      // policy in the migration that creates it, so an M2 table added later (0204's
+      // `membership_elevated_approval`, 0222's `device_attestation`) has its policy somewhere else
+      // entirely — and a scanner pinned to one filename would simply not see it, reporting a table
+      // with no policy identically to a table it never looked for.
+      const rls = readdirSync(MIGRATIONS_DIR)
+        .filter((f) => f.endsWith(".sql"))
+        .sort()
+        .map((f) => readFileSync(join(MIGRATIONS_DIR, f), "utf8"))
+        .join("\n");
+      // Matched to the statement TERMINATOR, not to the next `WITH CHECK`. A policy without a
+      // `WITH CHECK` (a read-only `FOR SELECT` one) has no such clause to stop at, so the old pattern
+      // ran on until it found somebody else's — harmless while it read one file, wrong the moment it
+      // reads the corpus. A policy predicate cannot contain a semicolon, so `;` bounds it exactly.
+      const policyBlocks = (rls.match(/CREATE POLICY[^;]*;/g) ?? []).filter((b) =>
+        COVERED.some((t) => b.includes(`"${t.table}"`)),
       );
-      const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
-        (b) => COVERED.some((t) => b.includes(`"${t.table}"`)),
-      );
-      expect(policyBlocks.length).toBe(COVERED.length);
+      // Per-table, not an exact block COUNT. Scanning every migration means a policy DROPped and
+      // re-CREATEd by a later migration contributes more than one block for the same table, so an
+      // equality check would fail for a remediation that is entirely correct. What must hold is that
+      // each covered table HAS a policy and that every block found obeys the rule.
+      for (const { table } of COVERED) {
+        expect(
+          policyBlocks.filter((b) => b.includes(`"${table}"`)).length,
+          `${table} has no CREATE POLICY block in any migration`,
+        ).toBeGreaterThan(0);
+      }
       for (const block of policyBlocks) {
         const vars = [...block.matchAll(/current_setting\(\s*'([^']+)'/g)].map((m) => m[1]);
         expect(new Set(vars)).toEqual(new Set(["app.org_id"]));
@@ -197,6 +232,83 @@ describe.skipIf(!DB_URL)(
           ),
         ),
       ).rejects.toThrow();
+    });
+
+    it("a WITH CHECK refuses a device attested into another tenant's fleet", async () => {
+      // The attack this closes: attest a handset into org A while holding only org B, then use that
+      // device to satisfy A's §12.4 gate on `report.drilldown.bulk_export` — a CSV of A's
+      // patient-identifiable navigation links.
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO device_attestation (organization_id, membership_id, device_key_fingerprint,
+             platform, provider, verdict, verified_at, expires_at)
+           VALUES ($1,$2,'forged-fp','ios','managed_enrollment','attested', now(), now() + interval '30 days')`,
+            [ORG_A, a.membership],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("org B cannot REVOKE org A's device attestation (the USING clause covers writes too)", async () => {
+      // The mirror-image attack: not forging trust into another tenant but DESTROYING it — revoking a
+      // rival org's attested handsets would lock their field staff out of every §12.4-gated surface.
+      const res = await withOrg(ORG_B, () =>
+        db.query(
+          `UPDATE device_attestation SET verdict='revoked', revoked_at=now(),
+             revoked_by_membership_id=$2, revoked_reason='cross-tenant revocation attempt'
+           WHERE id=$1`,
+          [a.deviceAttestation, b.membership],
+        ),
+      );
+      expect(res.rowCount).toBe(0);
+    });
+
+    it("the attestation window CHECK refuses a proof with no horizon", async () => {
+      // Not an RLS case — the constraint that keeps an attestation from becoming a permanent trust
+      // decision made once. Asserted here because this file is the only place the real DDL runs.
+      await expect(
+        db.query(
+          `INSERT INTO device_attestation (organization_id, membership_id, device_key_fingerprint,
+           platform, provider, verdict, verified_at, expires_at)
+         VALUES ($1,$2,'no-horizon-fp','ios','managed_enrollment','attested', now(), now() - interval '1 day')`,
+          [ORG_A, a.membership],
+        ),
+      ).rejects.toThrow(/device_attestation_window_ordered/);
+    });
+
+    it("the failure-reason CHECK refuses an `attested` row that also carries a failure", async () => {
+      // A row a reviewer cannot interpret is worse than no row. Both directions are refused.
+      await expect(
+        db.query(
+          `INSERT INTO device_attestation (organization_id, membership_id, device_key_fingerprint,
+           platform, provider, verdict, failure_reason, verified_at, expires_at)
+         VALUES ($1,$2,'contradiction-fp','ios','managed_enrollment','attested','device_compromised',
+                 now(), now() + interval '30 days')`,
+          [ORG_A, a.membership],
+        ),
+      ).rejects.toThrow(/device_attestation_failure_reason_consistent/);
+      await expect(
+        db.query(
+          `INSERT INTO device_attestation (organization_id, membership_id, device_key_fingerprint,
+           platform, provider, verdict, verified_at, expires_at)
+         VALUES ($1,$2,'silent-failure-fp','ios','managed_enrollment','failed', now(), now() + interval '30 days')`,
+          [ORG_A, a.membership],
+        ),
+      ).rejects.toThrow(/device_attestation_failure_reason_consistent/);
+    });
+
+    it("only ONE live attestation per device — re-attesting must supersede, not accumulate", async () => {
+      // The partial unique index is what makes the resolver's single-row join correct. Without it a
+      // device could hold two live attestations and which one answered would be arbitrary.
+      await expect(
+        db.query(
+          `INSERT INTO device_attestation (organization_id, membership_id, device_key_fingerprint,
+           platform, provider, verdict, verified_at, expires_at)
+         VALUES ($1,$2,'fp-m21','ios','managed_enrollment','attested', now(), now() + interval '30 days')`,
+          [ORG_A, a.membership],
+        ),
+      ).rejects.toThrow(/device_attestation_live_uq/);
     });
 
     it("org B cannot UPDATE org A's step-up policy override (the USING clause covers writes too)", async () => {

@@ -321,7 +321,28 @@ survivors are genuine declared absences of the `deviceAttestationValid` kind: `d
 no attestation table per ADR-0023 D2 and the mobile client doing the §12.4 posture check is unbuilt per
 ADR-0035 — widening it would disable a SecHardening control) and `externalActorId` (M19's binding Phase
 boundary ships the Hybrid/Centralized models feature-flagged-OFF; producing it means building the §7.5
-vendor SSO binding and the `packages/triage-vendors` adapter, i.e. M19 Phase 2).
+vendor SSO binding and the `packages/triage-vendors` adapter, i.e. M19 Phase 2). Then
+`deviceAttestation` — the one entry the registry itself held up as its own model, and the only one that
+needed a SURFACE built rather than a name rewired. **ADR-0023 D2 named exactly this and offered two exits:
+add it to M2 with a real manifest `ownedTables` edit (the `tenant_step_up_policy_override` precedent) or
+declare it vapor and delete the consuming specs.** It is added, because it had two consumers and one of
+them already wrote to it — M18's `evv_device.m2_device_attestation_id`, documented in that table as "M2 row
+(app-validated; no FK)", a logical foreign key to a table that did not exist and which M18's own
+registration path satisfies with `randomUUID()`. Migration 0222 adds `device_attestation` (org-scoped RLS,
+audit trigger, one LIVE row per device via a partial unique index, revoked/failed rows retained as the
+trail) plus `session.device_attestation_id`; the authenticate hook stamps the fact from
+`ResolvedActor.deviceAttestation`, which is RE-CHECKED off the row (`liveDeviceAttestation`: verdict,
+revocation, expiry) rather than trusted from the pointer — so a revoked handset stops satisfying the gate
+on its NEXT request. The write path is real, not a stub: M2's `managed_enrollment` verifier recomputes an
+HMAC over a **server-minted, single-use** nonce keyed by a per-org derivation of the platform enrolment
+secret, and the MAC covers the reported §12.2 posture, so the assertion is unforgeable, unreplayable and
+unmalleable — the device reports its own posture (§12.4's detector runs on the handset, so it must) but
+the server will not believe the report unless it arrives authenticated, and then applies the §12.2 policy
+itself, where an UNREPORTED requirement counts as unmet. The two hardware providers (App Attest / Play
+Integrity) report `unavailable` rather than denying, and an unconfigured deployment answers 501, so "this
+deployment does not do device enrolment" never looks like "this fleet is compromised". This un-closes M33's
+`report.drilldown.bulk_export`, which had been refused to every caller since it was written. Blocked keys:
+**2 → 1**.
 - `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
   Every live-database / live-Redis / browser suite in `package.json` must be invoked by a job in
   `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so

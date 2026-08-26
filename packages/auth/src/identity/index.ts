@@ -37,7 +37,9 @@ export { loadTwoFactorKey, seal, open, isSealed } from "./two-factor-crypto";
 export { withTwoFactorEncryption, type EncryptableAdapter } from "./two-factor-adapter";
 export {
   createDbSessionContextStore,
+  liveDeviceAttestation,
   toSessionContextRecord,
+  type DeviceAttestationRow,
   type SessionRow,
 } from "./db-session-store";
 export {

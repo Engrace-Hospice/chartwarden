@@ -49,11 +49,24 @@ describe("M2-T07 — published seams register over the M1 deny-stubs (§4.7)", (
     const resolver = getSeam("SessionContextResolver");
 
     const actor = await resolver.resolveActor({ orgId: ORG }, "sess_1");
+    // The FULL `ResolvedActor` shape, not the four fields this seeded row happens to set. It used to
+    // assert only those four and passed because `toEqual` reads an absent property and an `undefined`
+    // one as equal — so every field the actor gained after this test was written (the PE/location
+    // scopes, the session class, the portal anchors, the device attestation) went unasserted here, and
+    // one of them silently disappearing would not have failed anything.
     expect(actor).toEqual({
       userId: "user_1",
       membershipId: "mem_1",
       organizationId: ORG,
       roles: ["clinical_rn"],
+      providerEntityIds: undefined,
+      locationIds: undefined,
+      sessionClass: undefined,
+      portalAccountId: undefined,
+      sessionPatientId: undefined,
+      // Explicitly null rather than undefined: a session with no attested device behind it must read
+      // as a decided "no device", which is what the §12.4 gate denies on.
+      deviceAttestation: null,
     });
     const stepUp = await resolver.resolveStepUpState({ orgId: ORG }, "sess_1");
     expect(stepUp).toEqual({ lastStepUpAt: at, lastStepUpFactor: "webauthn" });

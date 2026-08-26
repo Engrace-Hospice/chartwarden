@@ -34,6 +34,9 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
       // before, so M16/M19/M31's predicates read an absent class, defaulted it to `staff`, and denied.
       sessionClass: "staff",
       portalAccountId: null,
+      // SecHardening §12.4 — a session with no joined `device_attestation` row resolves to null, which
+      // is what `device_attestation_valid` must read as deny. Every browser session is this case.
+      deviceAttestation: null,
       sessionPatientId: null,
     });
   });

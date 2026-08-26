@@ -2,14 +2,14 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1242,
-    "coveredRoutes": 1242,
-    "directRoutesReferenced": 1183
+    "routes": 1246,
+    "coveredRoutes": 1246,
+    "directRoutesReferenced": 1187
   },
   "modules": [
     {
       "module": "02-identity",
-      "routes": 20,
+      "routes": 24,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/audit-accounting.test.ts",
@@ -18,10 +18,11 @@
         "apps/backend/__tests__/authz-idor.test.ts",
         "apps/backend/__tests__/authz-routes.test.ts",
         "apps/backend/__tests__/authz-validation.test.ts",
+        "apps/backend/__tests__/device-attestation-routes.test.ts",
         "apps/backend/__tests__/identity-routes.test.ts",
         "apps/backend/__tests__/session-step-up.test.ts"
       ],
-      "directRoutesReferenced": 20
+      "directRoutesReferenced": 24
     },
     {
       "module": "03-authorization",
