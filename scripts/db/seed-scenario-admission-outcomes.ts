@@ -154,6 +154,15 @@ const today = (): string => new Date().toISOString().slice(0, 10);
 /** The shared prefix every non-transfer-in scenario needs: create → NOR → election → CTI → activate. */
 async function admitAndActivate(
   session: WxSession,
+  /**
+   * The CTI double-signature is PHYSICIAN-ONLY and must not reuse `session` (the org
+   * administrator). §418.22(c) lets only the hospice medical director or a hospice physician
+   * certify terminal illness, and `cti.is_hospice_md` / `cti.is_attending`
+   * (apps/backend/src/modules/06-admission/abac-predicates.ts) enforce exactly that — an
+   * administrator is denied no matter how many permission keys the role carries. See the two
+   * sign calls below; every sibling scenario seed already signs in per persona this way.
+   */
+  md: WxSession,
   patientId: string,
   patientName: string,
 ): Promise<{ admissionId: string; periodId: string }> {
@@ -212,13 +221,18 @@ async function admitAndActivate(
     body: { signingPatientName: patientName, signingRole: "patient", ifVersion: esData.version },
   });
 
-  const ctiMd = await session.client.POST("/api/v1/cti/{id}/sign-hospice-md", {
+  // §418.22(c) hospice-side certification — `md`, not `session`: `cti.is_hospice_md` requires the
+  // signer to BE the CTI's hospice medical director or to hold `medical_director` /
+  // `hospice_physician`. Dr. Harris (seed-staff-personas.ts) holds both.
+  const ctiMd = await md.client.POST("/api/v1/cti/{id}/sign-hospice-md", {
     params: { path: { id: ctiId } },
     body: { signingPhysicianName: "Eleanor Whitfield MD", signingPhysicianNpi: "1003000001", ifVersion: 0 },
   });
   const ctiMdData = ctiMd.data as unknown as { version: number } | undefined;
   if (ctiMd.error || !ctiMdData) throw new Error(`cti hospice-md sign failed: ${JSON.stringify(ctiMd.error)}`);
-  await session.client.POST("/api/v1/cti/{id}/sign-attending", {
+  // Attending certification is likewise a physician signature — `cti.is_attending` accepts the
+  // named attending, `md`, or `hospice_physician`. Dr. Harris holds `md`.
+  await md.client.POST("/api/v1/cti/{id}/sign-attending", {
     params: { path: { id: ctiId } },
     body: {
       signingPhysicianName: "Marcus Delgado DO",
@@ -246,12 +260,16 @@ async function main(): Promise<void> {
   await wipePriorAdmissions();
 
   const session = await signIn("admin@wardenx.local");
+  // The administrator drives intake/activation/discharge; the CTI double-signature is
+  // physician-only (§418.22(c)) and goes through Dr. Harris, who carries `medical_director` +
+  // `hospice_physician` + `md` in seed-staff-personas.ts.
+  const md = await signIn("drharris@wardenx.local");
   const log = new ScenarioLog("admission-outcome scenarios");
 
   // ── 1. Whitfield — active, routine home care (flagship patient) ──────────────────────────────
   try {
     const patientId = await findPatientIdByLastName(session, "Whitfield");
-    const { admissionId } = await admitAndActivate(session, patientId, "Eleanor Whitfield");
+    const { admissionId } = await admitAndActivate(session, md, patientId, "Eleanor Whitfield");
     await session.client.POST("/api/v1/admissions/{id}/level-of-care", {
       params: { path: { id: admissionId } },
       body: {
@@ -269,7 +287,7 @@ async function main(): Promise<void> {
   // ── 2. Okonkwo — active, general inpatient care (IPU/GIP scenario) ───────────────────────────
   try {
     const patientId = await findPatientIdByLastName(session, "Okonkwo");
-    const { admissionId } = await admitAndActivate(session, patientId, "Samuel Okonkwo");
+    const { admissionId } = await admitAndActivate(session, md, patientId, "Samuel Okonkwo");
     const loc = await session.client.POST("/api/v1/admissions/{id}/level-of-care", {
       params: { path: { id: admissionId } },
       body: {
@@ -326,7 +344,7 @@ async function main(): Promise<void> {
   // ── 4. Nakamura — discharged (moved out of service area) ─────────────────────────────────────
   try {
     const patientId = await findPatientIdByLastName(session, "Nakamura");
-    const { admissionId } = await admitAndActivate(session, patientId, "Henry Nakamura");
+    const { admissionId } = await admitAndActivate(session, md, patientId, "Henry Nakamura");
     const dc = await session.client.POST("/api/v1/admissions/{id}/discharge", {
       params: { path: { id: admissionId } },
       body: {
@@ -347,7 +365,7 @@ async function main(): Promise<void> {
   // ── 5. Brandt — revoked ───────────────────────────────────────────────────────────────────────
   try {
     const patientId = await findPatientIdByLastName(session, "Brandt");
-    const { admissionId } = await admitAndActivate(session, patientId, "Margaret Brandt");
+    const { admissionId } = await admitAndActivate(session, md, patientId, "Margaret Brandt");
     const rev = await session.client.POST("/api/v1/admissions/{id}/revocation", {
       params: { path: { id: admissionId } },
       body: {
@@ -370,7 +388,7 @@ async function main(): Promise<void> {
   // ── 6. Fairbanks — death discharge (feeds M16 bereavement) ───────────────────────────────────
   try {
     const patientId = await findPatientIdByLastName(session, "Fairbanks");
-    const { admissionId } = await admitAndActivate(session, patientId, "Walter Fairbanks");
+    const { admissionId } = await admitAndActivate(session, md, patientId, "Walter Fairbanks");
     const dc = await session.client.POST("/api/v1/admissions/{id}/discharge", {
       params: { path: { id: admissionId } },
       body: {

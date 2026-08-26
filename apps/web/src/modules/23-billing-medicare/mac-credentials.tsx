@@ -30,7 +30,7 @@ import {
 // schemas → reads cast, inits `as never`.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { ProviderEntityLookupField } from "../../shared/entity-lookups";
+import { ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { statusLabel } from "./billing-status";
 
 type MacJurisdiction =

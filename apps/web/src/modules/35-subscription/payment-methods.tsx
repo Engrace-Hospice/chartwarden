@@ -1,5 +1,6 @@
 import {
   Button,
+  ConfirmDialog,
   EmptyState,
   Glyph,
   LoadingSpinner,
@@ -7,6 +8,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
+  useToast,
 } from "@wardenx/ui";
 // apps/web/src/modules/35-subscription — M35 payment methods (§5.1 `/billing/payment_methods`).
 // The stored payment methods over GET /api/v1/payment_methods, with "Set default"/"Detach" affordances
@@ -30,9 +32,14 @@ interface PaymentMethod {
 
 export function PaymentMethods(): JSX.Element {
   const client = useApiClient();
+  const toast = useToast();
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** The row whose action is in flight — disables that row's controls without freezing the table. */
+  const [busyId, setBusyId] = useState<string | null>(null);
+  /** Detach is irreversible from this screen, so it goes through a confirm step (UI-005). */
+  const [confirmDetach, setConfirmDetach] = useState<PaymentMethod | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -51,17 +58,64 @@ export function PaymentMethods(): JSX.Element {
     void load();
   }, [load]);
 
+  // Action failures surface as a toast rather than through `setError`: `error` short-circuits the
+  // whole render into an EmptyState, so reusing it here would delete the table the user is acting on.
+  // The server is the authority on permission — a caller without `payment_method.write` gets a 403,
+  // which lands here as a message, matching how the staff-management roster handles the same case.
+  async function setDefault(method: PaymentMethod): Promise<void> {
+    setBusyId(method.id);
+    const { error: err } = await client.PATCH("/api/v1/payment_methods/{id}/set_default", {
+      params: { path: { id: method.id } },
+    });
+    setBusyId(null);
+    if (err) {
+      toast.show("Could not set that card as the default.", { tone: "error" });
+      return;
+    }
+    toast.show(`${cardLabel(method)} is now the default payment method.`, { tone: "success" });
+    void load();
+  }
+
+  async function performDetach(): Promise<void> {
+    if (!confirmDetach) return;
+    setBusyId(confirmDetach.id);
+    const { error: err } = await client.DELETE("/api/v1/payment_methods/{id}", {
+      params: { path: { id: confirmDetach.id } },
+    });
+    setBusyId(null);
+    if (err) {
+      toast.show("Could not detach that card.", { tone: "error" });
+      setConfirmDetach(null);
+      return;
+    }
+    toast.show(`Detached ${cardLabel(confirmDetach)}.`, { tone: "success" });
+    setConfirmDetach(null);
+    void load();
+  }
+
   if (loading) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
 
   return (
+    <>
     <WorkQueueLayout
       header={
         <PageHeader
           title="Payment methods"
           breadcrumb="Billing"
           actions={
-            <Button type="button" tone="primary">
+            // Card entry needs the Stripe Payment Element to mint a payment-method id, and the
+            // outbound Stripe integration is not wired yet: there is no Stripe SDK dependency, and
+            // `POST /api/v1/payment_methods/setup_intent` answers `{clientSecret: null,
+            // status: "pending"}` because the stripe-dispatcher worker that would provision it is
+            // deferred. Wiring this button would replace a dead control with a spinner that never
+            // resolves, so it states the blocker instead (#27).
+            <Button
+              type="button"
+              tone="primary"
+              disabled
+              title="Card entry requires the Stripe payment element, which is not enabled yet. Contact support to add a card."
+            >
               Add card
             </Button>
           }
@@ -75,8 +129,13 @@ export function PaymentMethods(): JSX.Element {
         <div style={toolbarStyle}>
           <div style={toolbarCopyStyle}>
             <Glyph name="shield" size={16} />
+            {/* A `title` on a DISABLED button is unreachable by keyboard and unread by screen
+                readers (a disabled control takes no focus), so the blocker is also stated here in
+                the visible copy. The previous wording described card entry as if it worked. */}
             <span>
-              Card entry is handled by the Stripe payment element; raw card data stays off WardenX.
+              Card entry is handled by the Stripe payment element, so raw card data stays off
+              WardenX. Adding a card is not enabled yet — contact support to add or replace one.
+              Existing cards can still be set as default or detached below.
             </span>
           </div>
         </div>
@@ -103,7 +162,13 @@ export function PaymentMethods(): JSX.Element {
               </thead>
               <tbody>
                 {methods.map((m) => (
-                  <MethodRow key={m.id} method={m} />
+                  <MethodRow
+                    key={m.id}
+                    method={m}
+                    busy={busyId === m.id}
+                    onSetDefault={() => void setDefault(m)}
+                    onDetach={() => setConfirmDetach(m)}
+                  />
                 ))}
               </tbody>
             </table>
@@ -111,10 +176,40 @@ export function PaymentMethods(): JSX.Element {
         )
       }
     />
+    <ConfirmDialog
+      open={confirmDetach !== null}
+      title="Detach this card?"
+      description={
+        confirmDetach?.isDefault
+          ? `${cardLabel(confirmDetach)} is the DEFAULT payment method. Detaching it leaves the subscription with no card for renewal and dunning recovery until another is set as default.`
+          : `${confirmDetach ? cardLabel(confirmDetach) : "This card"} will no longer be available for subscription renewal or dunning recovery.`
+      }
+      tone="danger"
+      confirmLabel="Detach card"
+      pending={busyId !== null && busyId === confirmDetach?.id}
+      onConfirm={() => void performDetach()}
+      onCancel={() => setConfirmDetach(null)}
+    />
+    </>
   );
 }
 
-function MethodRow({ method }: { method: PaymentMethod }): JSX.Element {
+/** "Visa ....4242" — the human-readable handle used in confirmations and toasts. */
+function cardLabel(method: PaymentMethod): string {
+  return `${method.brand ?? "Card"} ....${method.last4 ?? "----"}`;
+}
+
+function MethodRow({
+  method,
+  busy,
+  onSetDefault,
+  onDetach,
+}: {
+  method: PaymentMethod;
+  busy: boolean;
+  onSetDefault: () => void;
+  onDetach: () => void;
+}): JSX.Element {
   return (
     <tr
       style={{
@@ -155,11 +250,23 @@ function MethodRow({ method }: { method: PaymentMethod }): JSX.Element {
       <td style={{ ...tdStyle, textAlign: "right" }}>
         <div style={actionsStyle}>
           {!method.isDefault && method.isActive ? (
-            <button type="button" style={linkBtn}>
+            <button
+              type="button"
+              style={linkBtn}
+              disabled={busy}
+              onClick={onSetDefault}
+              aria-label={`Set default — ${cardLabel(method)}`}
+            >
               Set default
             </button>
           ) : null}
-          <button type="button" style={{ ...linkBtn, color: "var(--color-error)" }}>
+          <button
+            type="button"
+            style={{ ...linkBtn, color: "var(--color-error)" }}
+            disabled={busy}
+            onClick={onDetach}
+            aria-label={`Detach — ${cardLabel(method)}`}
+          >
             Detach
           </button>
         </div>
