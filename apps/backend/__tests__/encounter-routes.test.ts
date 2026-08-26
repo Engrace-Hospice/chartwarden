@@ -31,6 +31,7 @@ import {
   createInMemoryEncounterBackend,
   registerEncounterRoutes,
 } from "../src/modules/08-encounters/index";
+import { requiredSectionSelections } from "./_hearthnote-fixtures";
 
 /**
  * GAP-014: a FRESH `createPredicateRegistry()` per server/test — reusing the shared module-level
@@ -333,6 +334,17 @@ describe("M8-T09 — finalize → sign happy path (§2.3)", () => {
     });
     const id = draft.json().id as string;
 
+    // The §2.6 Layer-3 gate (#121) refuses a note with nothing in it, so the happy path documents one
+    // first — which is what this test always claimed to be exercising. Before the gate was real it
+    // finalized and signed an encounter carrying zero selections, and passed.
+    const documented = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "0" },
+      payload: requiredSectionSelections("routine_visit", "rn"),
+    });
+    expect(documented.statusCode).toBe(200);
+
     const finalize = await app.inject({
       method: "POST",
       url: `/api/v1/encounters/${id}/finalize`,
@@ -368,11 +380,21 @@ describe("M8-T09 — finalize → sign happy path (§2.3)", () => {
     });
     const id = draft.json().id as string;
     await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "0" },
+      payload: requiredSectionSelections("routine_visit", "rn"),
+    });
+    const finalized = await app.inject({
       method: "POST",
       url: `/api/v1/encounters/${id}/finalize`,
       headers: RN,
       payload: {},
     });
+    // Asserted so the 403 below can only be the step-up gate: an undocumented draft never reaches
+    // `finalized`, and a sign attempt on a still-`draft` row would 403 at the preHandler for a
+    // different reason entirely.
+    expect(finalized.statusCode).toBe(200);
     // Push rn_1's session past the 300s step-up floor (PARAM-004/CoP-418.104(c) follow-up — freshness
     // is now a real server-side check via requireStepUp, not a client-supplied timestamp; a stale
     // step-up denies at the ABAC gate (403) rather than reaching the old service-layer 412 domain check.

@@ -35,6 +35,12 @@ import {
   planVitalsCapture,
 } from "../authoring/index";
 import { type CosignatureState, transitionCosignature } from "../cosignature/index";
+import {
+  type GateSectionSelection,
+  assertGatePassed,
+  runAddendumComplianceGate,
+  runEncounterComplianceGate,
+} from "../gate/index";
 import { type AddendumState, transitionAddendum } from "../lifecycle/addendum";
 import { transitionEncounter } from "../lifecycle/encounter";
 import { EncounterStateError } from "../lifecycle/errors";
@@ -207,6 +213,19 @@ export interface SelectionsView {
 export const ASSEMBLY_PATIENT_SLOT = "Patient";
 
 /** Build the `SelectionState` the pure assembler takes from the stored tree + the encounter's own facts. */
+/**
+ * The §2.6 gate's view of a selection tree: presence only (how many entries, and whether the clinician
+ * attached prose) — never the content. The Drizzle service derives the same shape from the STORED tree,
+ * where the prose lives inside the DEK envelope and only a `hasFreeText` marker sits beside the codes.
+ */
+export function toGateSections(sections: readonly SelectionSectionInput[]): GateSectionSelection[] {
+  return sections.map((s) => ({
+    sectionId: s.sectionId,
+    entryCount: s.entries.length,
+    hasFreeText: (s.freeText?.length ?? 0) > 0,
+  }));
+}
+
 export function toSelectionState(
   encounterType: EncounterType,
   discipline: EncounterDiscipline,
@@ -616,6 +635,33 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
   }
 
   const subId = () => uuidFromCounter("1", ++subCounter);
+  /**
+   * §2.6 Layer-3 gate (#121) — the same pure function the Drizzle service runs, over this slice's
+   * records. `carePlanOverdue: null` is this slice's convention, not a verdict: it binds no seams (the
+   * M7 reader reads under the caller's ambient request context and this dataset has none), the same
+   * reason `stepUpFresh` is `true` here and resolved for real in the Drizzle backend. So the slice
+   * decides the checks it CAN — every required template section populated — and defers the one it
+   * cannot to the production path, where the verdict is real.
+   */
+  const gate = (r: EncounterRecord, at: "finalize" | "sign"): boolean => {
+    const verdict = runEncounterComplianceGate({
+      encounterType: r.encounterType,
+      discipline: r.discipline,
+      sections: toGateSections(r.selections),
+      carePlanOverdue: null,
+    });
+    assertGatePassed(verdict, at);
+    return verdict.pass;
+  };
+
+  const gateAddendum = (
+    sections: readonly SelectionSectionInput[],
+    at: "finalize" | "sign",
+  ): boolean => {
+    const verdict = runAddendumComplianceGate(toGateSections(sections));
+    assertGatePassed(verdict, at);
+    return verdict.pass;
+  };
 
   const service: EncounterRouteService = {
     async createDraft(organizationId, actorUserId, args) {
@@ -771,7 +817,11 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
 
     async finalize(organizationId, encounterId, at) {
       const r = load(organizationId, encounterId);
-      const t = transitionEncounter(r.status, { type: "finalize", gatePreviewPassed: true, at });
+      const t = transitionEncounter(r.status, {
+        type: "finalize",
+        gatePreviewPassed: gate(r, "finalize"),
+        at,
+      });
       r.status = t.to;
       r.version += 1;
       recordOutbox(r.id, t.effects);
@@ -803,7 +853,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
           encounterId: r.id,
           faceToFaceEncounterId: r.faceToFaceEncounterId,
           discipline: r.discipline,
-          gatePassed: true,
+          gatePassed: gate(r, "sign"),
           stepUpFresh,
           at: args.at,
         });
@@ -816,7 +866,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       const t = transitionEncounter(r.status, {
         type: "sign",
         discipline: r.discipline,
-        gatePassed: true,
+        gatePassed: gate(r, "sign"),
         stepUpFresh,
         isF2f: false,
         f2fDualWriteSatisfied: true,
@@ -940,7 +990,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       if (!a) throw new NotFoundError("addendum");
       const t = transitionAddendum(a.status, {
         type: "finalize",
-        gatePreviewPassed: true,
+        gatePreviewPassed: gateAddendum(a.selections, "finalize"),
         at: now().slice(0, 10),
       });
       a.status = t.to;
@@ -952,7 +1002,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       if (!a) throw new NotFoundError("addendum");
       const t = transitionAddendum(a.status, {
         type: "sign",
-        gatePassed: true,
+        gatePassed: gateAddendum(a.selections, "sign"),
         // In-memory reference slice: no real step-up infra (not mounted in production).
         stepUpFresh: true,
         at: args.at,

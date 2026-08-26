@@ -27,6 +27,7 @@ import {
   M8_OUTBOX_EVENTS,
   createDbEncounterRouteService,
 } from "../src/modules/08-encounters/index";
+import { requiredSectionSelections } from "./_hearthnote-fixtures";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -69,6 +70,8 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbEncounterRouteService>;
+  /** What the faked M7 reader answers (see the seam registration in beforeAll). */
+  let carePlanOverdue: unknown = null;
   const membershipOf: Record<string, string> = {};
   /** The real caller signing (§3.3/D13) — `resolveSignatureProvenance` resolves SESSION_A's step-up
    *  through the SessionContextResolver seam registered in beforeAll (fresh, webauthn). */
@@ -163,6 +166,16 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       },
     ]);
     registerSeam("SessionContextResolver", createSessionContextResolver(sessions.store));
+    // §2.6 check 6 (#121) — the gate consults M7's CarePlanReader at finalize and sign. In production
+    // the composition root binds M7's real reader; here a fake stands in, because M7's Drizzle store
+    // reads under the CALLER'S ambient request context and this suite drives the service directly with
+    // none. `carePlanOverdue` is the switch the overdue tests below flip.
+    registerSeam("CarePlanReader", {
+      relevantElementsForEncounter: async () => null,
+      isReviewOverdue: async () => carePlanOverdue,
+      fifteenDayCycleCountsForOrg: async () => ({ numerator: 0, denominator: 0 }),
+      terminologyCodeUsageForOrg: async () => [],
+    } as never);
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
@@ -183,7 +196,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   async function draft(
     encounterType: string,
     discipline: string,
-    extra: { faceToFaceEncounterId?: string } = {},
+    extra: { faceToFaceEncounterId?: string; document?: boolean } = {},
   ): Promise<string> {
     const d = await svc.createDraft(ORG_A, membershipOf[ORG_A], {
       patientId: PATIENT,
@@ -191,13 +204,26 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       encounterType: encounterType as never,
       discipline: discipline as never,
       serviceDate: SERVICE_DATE as never,
-      ...extra,
+      ...(extra.faceToFaceEncounterId
+        ? { faceToFaceEncounterId: extra.faceToFaceEncounterId }
+        : {}),
     });
     await admin.query("UPDATE encounter SET provider_entity_id=$1, location_id=$2 WHERE id=$3", [
       SITING_A.providerEntityId,
       SITING_A.locationId,
       d.id,
     ]);
+    // Document it to the §2.6 gate's floor (#121) unless the caller is testing the gate itself. Every
+    // finalize/sign case below went through this draft helper and documented NOTHING before the gate
+    // was real — and signed anyway.
+    if (extra.document !== false) {
+      await svc.updateSelections(
+        ORG_A,
+        d.id,
+        0,
+        requiredSectionSelections(encounterType as never, discipline as never),
+      );
+    }
     return d.id;
   }
 
@@ -250,7 +276,8 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const id = await draft("routine_visit", "rn");
     const fin = await svc.finalize(ORG_A, id, SERVICE_DATE as never);
     expect(fin.status).toBe("finalized");
-    expect(fin.version).toBe(1);
+    // 2, not 1: documenting the note to the §2.6 gate's floor (#121) is itself a versioned edit.
+    expect(fin.version).toBe(2);
     const [row] = (await admin.query("SELECT vocab_version_id FROM encounter WHERE id=$1", [id]))
       .rows;
     expect(row.vocab_version_id).not.toBeNull(); // D11 pinned at finalize
@@ -353,7 +380,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   });
 
   it("§7.7 optimistic concurrency — a stale updateSelections is 412, a fresh one bumps the version", async () => {
-    const id = await draft("routine_visit", "rn");
+    const id = await draft("routine_visit", "rn", { document: false });
     await expect(svc.updateSelections(ORG_A, id, 99, EMPTY_TREE)).rejects.toMatchObject({
       statusCode: 412,
     });
@@ -447,7 +474,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   // role and read the row back out of Postgres.
 
   it("§2.6 — the tree is PERSISTED to hearthnote_selection and reads back assembled", async () => {
-    const id = await draft("routine_visit", "rn");
+    const id = await draft("routine_visit", "rn", { document: false });
     const written = await svc.updateSelections(ORG_A, id, 0, TREE);
     expect(written.version).toBe(1);
     expect(written.layer1Preview).toContain("2+ dependent edema");
@@ -471,7 +498,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   });
 
   it("§2.6 — a second PATCH UPDATES the one row rather than adding a second (mig 0225)", async () => {
-    const id = await draft("routine_visit", "rn");
+    const id = await draft("routine_visit", "rn", { document: false });
     await svc.updateSelections(ORG_A, id, 0, TREE);
     await svc.updateSelections(ORG_A, id, 1, {
       sections: [{ sectionId: "assessment", entries: [{ code: "nv.neuro.alert" }] }],
@@ -489,7 +516,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   });
 
   it("§3.6 — free text is REFUSED with no cipher bound, and nothing is written", async () => {
-    const id = await draft("routine_visit", "rn");
+    const id = await draft("routine_visit", "rn", { document: false });
     await expect(
       svc.updateSelections(ORG_A, id, 0, {
         sections: [{ sectionId: "plan", entries: [], freeText: "Family to call overnight." }],
@@ -505,7 +532,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
   it("§3.6 — with a cipher bound, the prose round-trips and is NEVER stored in the clear", async () => {
     const cipherSvc = createDbEncounterRouteService(handle.db, undefined, FAKE_CIPHER);
-    const id = await draft("routine_visit", "rn");
+    const id = await draft("routine_visit", "rn", { document: false });
     const prose = "Family to call if pain escalates overnight.";
     const written = await cipherSvc.updateSelections(ORG_A, id, 0, {
       sections: [{ sectionId: "plan", entries: [], freeText: prose }],
@@ -526,7 +553,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   });
 
   it("the M22 render seam 404s with no note, and serves the assembled one after a PATCH", async () => {
-    const id = await draft("routine_visit", "rn");
+    const id = await draft("routine_visit", "rn", { document: false });
     // Was a 200 with `final: ""` — an empty note reported as a successful render.
     await expect(svc.renderPayload(ORG_A, id)).rejects.toMatchObject({ statusCode: 404 });
     await svc.updateSelections(ORG_A, id, 0, TREE);
@@ -536,7 +563,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   });
 
   it("RLS — org B cannot read or write org A's hearthnote_selection (non-leaking 404)", async () => {
-    const id = await draft("routine_visit", "rn");
+    const id = await draft("routine_visit", "rn", { document: false });
     await svc.updateSelections(ORG_A, id, 0, TREE);
     await expect(svc.getSelections(ORG_B, id)).rejects.toMatchObject({ statusCode: 404 });
     await expect(svc.updateSelections(ORG_B, id, 1, TREE)).rejects.toMatchObject({
@@ -547,8 +574,89 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     expect((await svc.getSelections(ORG_A, id)).sections).toEqual(TREE.sections);
   });
 
-  it("RLS — org B cannot read or write org A's encounter (non-leaking 404)", async () => {
+  // ── §2.6 Layer-3 compliance gate (#121) ───────────────────────────────────────────────────────────
+  //
+  // `transitionEncounter` enforced `gatePreviewPassed`/`gatePassed` correctly and all four callers in
+  // this file's subject handed it the literal `true`, so an encounter with nothing documented in any of
+  // its four required sections finalized, signed, and emitted `m8.encounter.signed`. These cases drive
+  // the real Drizzle path and assert against the TABLE — the row must still be a draft afterwards.
+
+  it("§2.6 — an undocumented encounter does not finalize, and the ROW stays draft", async () => {
+    const id = await draft("routine_visit", "rn", { document: false });
+    await expect(svc.finalize(ORG_A, id, SERVICE_DATE as never)).rejects.toMatchObject({
+      statusCode: 422,
+      code: "COMPLIANCE_GATE_FAILED",
+    });
+    const rows = await admin.query("SELECT status, vocab_version_id FROM encounter WHERE id=$1", [
+      id,
+    ]);
+    expect(rows.rows[0].status).toBe("draft");
+    // The D11 pin is a finalize side-effect, so a refused finalize must not have left one behind.
+    expect(rows.rows[0].vocab_version_id).toBeNull();
+    expect(await eventsFor(id)).not.toContain("m8.encounter.finalized");
+  });
+
+  it("§2.6 — a note documented short of its required sections is refused, per section", async () => {
+    const id = await draft("routine_visit", "rn", { document: false });
+    // Only two of the four required sections for routine_visit × rn.
+    await svc.updateSelections(ORG_A, id, 0, {
+      sections: [
+        { sectionId: "chief_concern", entries: [{ code: "nv.cv.stable" }] },
+        { sectionId: "assessment", entries: [{ code: "nv.neuro.alert" }] },
+      ],
+    });
+    const err = await svc.finalize(ORG_A, id, SERVICE_DATE as never).catch((e: unknown) => e);
+    const details = (err as { details?: Array<{ field?: string }> }).details ?? [];
+    expect(details.map((d) => d.field).sort()).toEqual(["plan", "vitals_review"]);
+  });
+
+  it("§2.6 check 6 — an overdue M7 care plan blocks the SIGN of a fully documented note", async () => {
     const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    carePlanOverdue = {
+      planId: "cp_1",
+      patientId: PATIENT,
+      overdue: true,
+      initialOverdue: false,
+      reviewOverdue: true,
+      initialDueAt: "2026-01-06T00:00:00.000Z",
+      nextReviewDueAt: "2026-01-20T00:00:00.000Z",
+    };
+    try {
+      await expect(
+        svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never }),
+      ).rejects.toMatchObject({ statusCode: 422, code: "COMPLIANCE_GATE_FAILED" });
+      const rows = await admin.query("SELECT status FROM encounter WHERE id=$1", [id]);
+      expect(rows.rows[0].status).toBe("finalized");
+      expect(await eventsFor(id)).not.toContain("m8.encounter.signed");
+      // No signature provenance row either — a refused sign leaves no CoP 418.104(c) trail.
+      const sigs = await admin.query("SELECT 1 FROM encounter_signature WHERE encounter_id=$1", [
+        id,
+      ]);
+      expect(sigs.rowCount).toBe(0);
+    } finally {
+      carePlanOverdue = null;
+    }
+    // With the plan back in window the same encounter signs — so the block was the plan, not the note.
+    const signed = await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    expect(signed.status).toBe("signed");
+  });
+
+  it("§2.6 — an addendum with nothing in it does not finalize", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    const a = await svc.createAddendum(ORG_A, id);
+    await expect(svc.finalizeAddendum(ORG_A, id, a.id)).rejects.toMatchObject({
+      statusCode: 422,
+      code: "COMPLIANCE_GATE_FAILED",
+    });
+    const rows = await admin.query("SELECT status FROM encounter_addendum WHERE id=$1", [a.id]);
+    expect(rows.rows[0].status).toBe("draft");
+  });
+
+  it("RLS — org B cannot read or write org A's encounter (non-leaking 404)", async () => {
+    const id = await draft("routine_visit", "rn", { document: false });
     await expect(svc.getEncounter(ORG_B, id)).rejects.toMatchObject({ statusCode: 404 });
     await expect(svc.finalize(ORG_B, id, SERVICE_DATE as never)).rejects.toMatchObject({
       statusCode: 404,

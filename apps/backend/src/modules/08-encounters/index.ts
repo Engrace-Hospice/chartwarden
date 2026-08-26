@@ -33,6 +33,8 @@ export function mountEncounterRoutes(
 }
 
 export * from "./lifecycle/index";
+// #121 — the §2.6 Layer-3 compliance gate + the register of what each of its twelve checks is today.
+export * from "./gate/index";
 // M8-T06 — the §2.4 D3 cosignature-request state machine + 12h/24h/48h SLA clock.
 export * from "./cosignature/index";
 // M8-T07 — the §2.5 D4 late-entry tier clock + significant/administrative override workflows.

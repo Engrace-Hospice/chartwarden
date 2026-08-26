@@ -6,6 +6,7 @@
 // transitions, cosignature routing/escalation/release, late-entry tiers, addenda, concurrency).
 import { describe, expect, it } from "vitest";
 import { createInMemoryEncounterBackend } from "../src/modules/08-encounters/index";
+import { ADDENDUM_SELECTIONS, requiredSectionSelections } from "./_hearthnote-fixtures";
 
 const ORG = "org_a";
 const ORG_B = "org_b";
@@ -16,8 +17,12 @@ const PAST = "2020-01-01"; // a non-future service date (createDraft rejects fut
 // session infra in the slice — see routes/service.ts); the shape just needs to be well-formed.
 const ACTOR = { membershipId: "actor_1", sessionId: "sess_1" };
 
-/** Create a draft routine_visit for the given discipline and return the backend + the new encounter id. */
-async function draft(discipline: "rn" | "lpn") {
+/**
+ * Create a draft routine_visit for the given discipline and DOCUMENT it — one selection per required
+ * template section, which is what the §2.6 Layer-3 gate (#121) asks of a note before it may finalize.
+ * Pass `document: false` for a scenario whose subject is the gate itself.
+ */
+async function draft(discipline: "rn" | "lpn", document = true) {
   const backend = createInMemoryEncounterBackend();
   const created = await backend.service.createDraft(ORG, `${discipline}_1`, {
     patientId: PATIENT,
@@ -26,6 +31,14 @@ async function draft(discipline: "rn" | "lpn") {
     discipline,
     serviceDate: PAST,
   });
+  if (document) {
+    await backend.service.updateSelections(
+      ORG,
+      created.id,
+      0,
+      requiredSectionSelections("routine_visit", discipline),
+    );
+  }
   return { backend, svc: backend.service, id: created.id };
 }
 
@@ -101,7 +114,7 @@ describe("M8-T12 §7 workflow acceptance", () => {
     await svc.sign(ORG, id, ACTOR, { at: PAST });
     const add = await svc.createAddendum(ORG, id);
     expect(add.status).toBe("draft");
-    await svc.updateAddendumSelections(ORG, id, add.id, { sections: [] });
+    await svc.updateAddendumSelections(ORG, id, add.id, ADDENDUM_SELECTIONS);
     await svc.finalizeAddendum(ORG, id, add.id);
     const sa = await svc.signAddendum(ORG, id, add.id, ACTOR, { at: PAST });
     expect(sa.status).toBe("signed");
@@ -109,8 +122,40 @@ describe("M8-T12 §7 workflow acceptance", () => {
     expect((await svc.getEncounter(ORG, id)).status).toBe("signed");
   });
 
-  it("§7.14 — concurrency: an edit against a stale version is rejected (optimistic concurrency)", async () => {
+  it("§2.6 — an undocumented encounter does not finalize: the Layer-3 gate names every missing section", async () => {
+    const { svc, id } = await draft("rn", false);
+    await expect(svc.finalize(ORG, id, PAST)).rejects.toMatchObject({
+      code: "COMPLIANCE_GATE_FAILED",
+      statusCode: 422,
+    });
+    // The remediation is per-section, so the UI can scroll to the first one (§7 "Finalize" flow).
+    const err = await svc.finalize(ORG, id, PAST).catch((e: unknown) => e);
+    const details = (err as { details?: Array<{ code: string; field?: string }> }).details ?? [];
+    expect(details.map((d) => d.field).sort()).toEqual([
+      "assessment",
+      "chief_concern",
+      "plan",
+      "vitals_review",
+    ]);
+    expect(new Set(details.map((d) => d.code))).toEqual(new Set(["MISSING_SECTION"]));
+    // ... and the row is still a draft: a failed preview is the transition not happening (§2.3).
+    expect((await svc.getEncounter(ORG, id)).status).toBe("draft");
+  });
+
+  it("§2.6 — an addendum with nothing in it does not sign", async () => {
     const { svc, id } = await draft("rn");
+    await svc.finalize(ORG, id, PAST);
+    await svc.sign(ORG, id, ACTOR, { at: PAST });
+    const add = await svc.createAddendum(ORG, id);
+    await expect(svc.finalizeAddendum(ORG, id, add.id)).rejects.toMatchObject({
+      code: "COMPLIANCE_GATE_FAILED",
+    });
+  });
+
+  it("§7.14 — concurrency: an edit against a stale version is rejected (optimistic concurrency)", async () => {
+    // Undocumented on purpose: this scenario's subject is the If-Match ladder, so the draft starts at
+    // version 0 rather than at the 1 that documenting it would leave behind.
+    const { svc, id } = await draft("rn", false);
     const EMPTY = { sections: [] };
     await svc.updateSelections(ORG, id, 0, EMPTY); // version 0 → 1
     await expect(svc.updateSelections(ORG, id, 0, EMPTY)).rejects.toThrow(); // stale If-Match
