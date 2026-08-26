@@ -111,11 +111,29 @@ the prose docs in `docs/architecture/`.
 - `architecture/module-manifest.ts` (+ `.cjs`) — single source of truth for each module's
   `codePaths`, `dependsOn`, and `ownedTables` (460 tables across 40 modules).
 - `architecture/.dependency-cruiser.cjs` — import-boundary rules.
-- `scripts/check-table-ownership.ts`, `check-tenancy.ts`, `check-ddl-legality.ts`,
+- `scripts/check-table-ownership.ts`, `check-ddl-legality.ts`,
   `check-fitness-gaps.ts` (event-catalog `mN.` convention, seam-registry completeness, PHI
   RLS/audit-trigger presence — armed-inert until app source lands), `check-ui-screens.ts` —
   enforced via `package.json` scripts (`bun run arch:fitness`; UI-corpus check also standalone
   as `bun run docs:ui`).
+- `scripts/check-tenancy.ts` — **tenancy & RLS invariants** (`bun run arch:tenancy`, in
+  `arch:fitness`): the three-column rule, the canonical `app.org_id` session variable, and the
+  dangerous policy shapes ADR-0010 D3 bans. Its Rule 2 exemptions — M4 audit attribution, the M34
+  key-ring SECURITY DEFINER GUCs — are scoped to the **statement** they were written for and never
+  reach a policy predicate. They used to be tested against the whole FILE, and the repo's own
+  convention puts a module's RLS policies in the same migration as its audit triggers
+  (`*_rls_audit_triggers.sql`), so one `INSERT INTO audit_event` exempted every `app.user_id` in the
+  file — policy bodies included. That is how `user_notif_pref_self` (#21: an org-unscoped `FOR ALL`
+  policy on an org-scoped table, a confirmed cross-tenant read AND write) sat green in `0017` while
+  the gate reported only the two migrations that happened not to contain a trigger. Policy
+  predicates are now judged on the migrations' **net effect** — the files replayed in apply order,
+  so a violation a later migration drops and replaces stops counting, which is what lets a
+  remediated policy go green without the offending text ever leaving its original file. Deliberately
+  a static replay and not a `pg_policies` read: `arch:fitness` runs where there is no database (the
+  same reason the live suites are `skipIf`-guarded), so a catalog-reading gate would skip in CI —
+  `m1-rls-isolation.live.test.ts` is the catalog-side complement and runs in `rls-live`. A policy
+  created through dynamic SQL inside a `DO` block is the known limit, and the plain text scan still
+  sees the session variables inside it.
 - `scripts/check-abac-predicates.ts` — **ABAC named-predicate resolution** (`bun run arch:abac-predicates`). Every `requireAbac(_, "<name>")` — including through each module's
   local `guards.ts` factory — must name a predicate some module declares. M3's registry fails
   closed on an unknown name, so a typo'd or never-registered name is a permanently dead endpoint

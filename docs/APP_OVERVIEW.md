@@ -168,7 +168,10 @@ convention.
 Every PHI-bearing table carries an org-scoping column and `FORCE ROW LEVEL SECURITY`; the app sets
 `app.org_id` per request/transaction and Postgres itself refuses cross-tenant reads/writes — this
 is enforced at the database layer, not just in application code. `scripts/check-tenancy.ts`
-enforces the three-column tenancy shape and forbids dangerous RLS patterns at the schema level.
+enforces the three-column tenancy shape and forbids dangerous RLS patterns at the schema level. It
+also reads the RLS policies the migrations leave BEHIND — replayed in apply order, so a policy a
+later migration drops and replaces stops counting — and reports any surviving predicate that keys
+on a session variable other than `app.org_id` without it, whatever else its migration contains.
 Cross-tenant platform operations (tenant provisioning, support sessions, billing ops) run through
 an explicit `withPlatformContext` runner rather than ever bypassing RLS silently.
 
