@@ -6205,6 +6205,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/devices/attestation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the caller's own device attestations (non-PHI) */
+        get: operations["getApiV1DevicesAttestation"];
+        put?: never;
+        /** Submit a device attestation → record the verdict and bind the session (§12.2/§12.4) */
+        post: operations["postApiV1DevicesAttestation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/attestation/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke a device attestation (lost or compromised handset, §12.4) */
+        post: operations["postApiV1DevicesAttestationByIdRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/attestation/challenge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mint a single-use device-attestation challenge for this session (§12.4) */
+        post: operations["postApiV1DevicesAttestationChallenge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/discharges/{id}/cosign-for-cause": {
         parameters: {
             query?: never;
@@ -35432,6 +35484,153 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         status: "held";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1DevicesAttestation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            organizationId: string;
+                            membershipId: string;
+                            deviceKeyFingerprint: string;
+                            platform: string;
+                            provider: string;
+                            verdict: string;
+                            verifiedAt: string;
+                            expiresAt: string;
+                            revokedAt: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DevicesAttestation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    challengeId: string;
+                    deviceKeyFingerprint: string;
+                    platform: "ios" | "android";
+                    provider: "managed_enrollment" | "apple_app_attest" | "google_play_integrity";
+                    posture: {
+                        osVersion?: string;
+                        jailbrokenOrRooted?: boolean;
+                        biometricAvailable?: boolean;
+                        screenLockEnabled?: boolean;
+                        emulator?: boolean;
+                    };
+                    /** @description Base64 provider proof over the challenge nonce and every field above */
+                    assertion: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        attestationId: string;
+                        /** @constant */
+                        verdict: "attested";
+                        verifiedAt: string;
+                        expiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DevicesAttestationByIdRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Mirrors the DB CHECK floor */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        attestationId: string;
+                        /** @constant */
+                        verdict: "revoked";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DevicesAttestationChallenge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        challengeId: string;
+                        /** @description The value the device MACs; single-use, spent on submit */
+                        nonce: string;
+                        expiresInSec: number;
                     };
                 };
             };

@@ -109,6 +109,7 @@ import type { QualityHopeConsumer } from "@wardenx/quality";
 import type { DsarDocumentUploadRequest } from "@wardenx/saas-tenant-platform";
 import {
   createDrizzleIdentityEraserStore,
+  mountDeviceAttestationRoutes,
   mountIdentityRoutes,
   registerIdentityErasers,
   registerIdentitySeams,
@@ -2515,6 +2516,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             label:
               "M2 mountIdentityRoutes — external-collaborator magic-link store is a per-process Map (no M2-owned pending-token table exists)",
             task: "new M2-owned token table + RLS + audit trigger (audit report 07 §M2)",
+          });
+          // M2 (ADR-0023 D2 / SecHardening §12.2/§12.4) — the device-attestation write path. This is what
+          // puts rows in `device_attestation`, which is what lets the authenticate hook stamp
+          // `attributes.deviceAttestation`, which is what M3's `device_attestation_valid` predicate has
+          // been denying on for want of a producer since it was written (F-030).
+          mountDeviceAttestationRoutes(app, dbHandle.db);
+          noteInMemoryBinding({
+            kind: "route-dep",
+            label:
+              "M2 mountDeviceAttestationRoutes — the attestation CHALLENGE store is a per-process Map, so a challenge minted on one replica cannot be spent on another",
+            task: "move the challenge store to Valkey behind DeviceAttestationChallengeStore",
           });
           mountAuditRoutes(app, dbHandle.db, { outbox: m4OutboxPublisher }); // M4 — audit-log search + GAP-003 compliance surface
           mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table

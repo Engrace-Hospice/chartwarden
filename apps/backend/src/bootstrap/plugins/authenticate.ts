@@ -6,6 +6,7 @@
 // injected, so this stays M1-owned and unit-testable. Roles come from the resolver (M2 over the M1
 // session repo); permission evaluation remains M3's separate concern.
 import { timingSafeEqual } from "node:crypto";
+import { DEVICE_ATTESTATION_ATTRIBUTE } from "@wardenx/auth";
 import type { OrgScope, SessionContextResolver } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import { stepUpFreshFor } from "../step-up";
@@ -164,6 +165,14 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     if (actor.portalAccountId) request.context.attributes.portalAccountId = actor.portalAccountId;
     if (actor.sessionPatientId)
       request.context.attributes.sessionPatientId = actor.sessionPatientId;
+    // SecHardening §12.4 — the platform's OWN verdict on the device, resolved from M2's
+    // `device_attestation` row and never from anything the request carries. Stamped only when a LIVE
+    // attestation stands behind the session: absent means "no attested device", which is exactly what
+    // `deviceAttestationValid` must read as deny. Writing `{ valid: false }` instead would be the same
+    // decision at the gate and a worse record at the audit — see `liveDeviceAttestation`.
+    if (actor.deviceAttestation) {
+      request.context.attributes[DEVICE_ATTESTATION_ATTRIBUTE] = actor.deviceAttestation;
+    }
     request.context.attributes.stepUpRecent = await stepUpFreshFor({
       organizationId: actor.organizationId,
       sessionId: snap.sessionId,

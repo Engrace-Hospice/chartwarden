@@ -116,11 +116,12 @@ export const CONTEXT_ATTRIBUTES: Readonly<Record<string, AttributeEntry>> = {
       "M14's `per_patient_review_floor_clear` predicate (GAP-091) — set when the audited escape valve allows, so the handler knows to pass `overrideAuthorized` into the service. Read through the exported `REVIEW_FLOOR_OVERRIDE_ATTRIBUTE` constant, not the literal.",
   },
 
-  // ── blocked: read by real authorization logic, produced by nothing ──────────────────────────────
   deviceAttestation: {
-    blocked:
-      "The other entry that was already done RIGHT, and the model for this whole registry: `deviceAttestationValid` (packages/auth/src/abac/registry.ts) is a REGISTERED predicate that denies and says why, rather than an unregistered name — and its comment states the contract exactly: when M2 lands the attestation surface the auth plugin starts setting DEVICE_ATTESTATION_ATTRIBUTE and the gate begins passing, with nothing at the predicate or the route changing. Listed for completeness.",
+    producer:
+      "authenticate hook — `ResolvedActor.deviceAttestation`, resolved from M2's `device_attestation` row through the session's `device_attestation_id` pointer and RE-CHECKED there (`liveDeviceAttestation`: verdict, revocation, expiry), so a stale or dangling pointer yields null and the gate denies. Written only when a LIVE attestation stands behind the session. This entry was blocked until ADR-0023 D2 was adjudicated in M2's favour — the ADR offered exactly two exits, a real `ownedTables` edit or deletion from the consuming specs, and the surface had two consumers (M3's predicate; M18's `evv_device.m2_device_attestation_id`, a logical FK to a table that did not exist).",
   },
+
+  // ── blocked: read by real authorization logic, produced by nothing ──────────────────────────────
   externalActorId: {
     blocked:
       "M19's on-call predicates and route actor read the vendor/answering-service actor id for a vendor-scoped call. Nothing assembles it, so no vendor-scoped call can be recognised as one — but unlike the rest of this list that is DECLARED rather than accidental: the M19 spec's Phase boundary ships the Hybrid and Centralized models feature-flagged-OFF in Phase 1, with only the data shape (`external_triage_vendor`, `triage_call.external_actor_id`) in the migration so a Phase-2 tenant is a config flip. Producing it needs the vendor session mint path that phase has not built, plus a `session_scope_chk` branch for the two vendor classes (migration 0219 added the classes; 0220 required no scope of them). The `deviceAttestationValid` shape, one layer up.",

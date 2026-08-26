@@ -1932,6 +1932,27 @@ export const M17_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "none",
   },
+
+  // --- ADR-0023 D2 / SecHardening §12.4 — the device-attestation surface (M2). ---
+  //
+  // No `.attest` key: a clinician attesting the phone in their own hand is not an administrative act,
+  // and gating it on a permission would mean an org had to grant every field user a security-management
+  // key just to sign in from a device. The attest route is bound to the CALLER'S OWN membership by the
+  // session, which is the narrower control — you can only ever enrol a device for yourself.
+  "device_attestation.read": {
+    resource: "device_attestation",
+    action: "read",
+    category: "compliance",
+    abac: "none",
+  },
+  // Revoking IS administrative: it is how a lost or compromised handset is taken out of service, and it
+  // acts on someone else's device. Org-wide staff management, the `membership_credential.revoke` shape.
+  "device_attestation.revoke": {
+    resource: "device_attestation",
+    action: "revoke",
+    category: "compliance",
+    abac: "none",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M17 contributed permission keys. */

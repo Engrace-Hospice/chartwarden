@@ -3613,3 +3613,28 @@ export const credentialStatus = pgEnum("credential_status", ["active", "suspende
  *  because certifying a CMS-1984-14 filing is a named-officer act, not something every membership
  *  holding `cost_report.approve_for_submit` should inherit. Additive: a new authority adds a member. */
 export const elevatedApprovalKind = pgEnum("elevated_approval_kind", ["cost_report_approval"]);
+
+/** `device_attestation_platform` — the §12.1 mobile platform an attestation covers. Web is not a member:
+ *  a browser offers no hardware-backed posture assertion, so a browser session simply carries no
+ *  attestation and the §12.4 gate denies it, which is the intended answer rather than a missing value. */
+export const deviceAttestationPlatform = pgEnum("device_attestation_platform", ["ios", "android"]);
+
+/** `device_attestation_provider` — WHAT the platform's verdict rests on (SecHardening §12.4). The value is
+ *  the evidence class, not the outcome: it records how the assertion was proved so a later reviewer can
+ *  tell a hardware-backed attestation from a managed-fleet one. `managed_enrollment` is the org-secret
+ *  HMAC path M2 verifies itself; the two vendor providers are the hardware paths whose signature check
+ *  runs in the `DeviceAttestationVerifier` adapter. */
+export const deviceAttestationProvider = pgEnum("device_attestation_provider", [
+  "managed_enrollment",
+  "apple_app_attest",
+  "google_play_integrity",
+]);
+
+/** `device_attestation_verdict` — the platform's OWN answer about the device. `failed` rows are retained
+ *  rather than dropped: a device that repeatedly fails the §12.4 posture check is exactly the signal the
+ *  server-side audit complement is supposed to surface. */
+export const deviceAttestationVerdict = pgEnum("device_attestation_verdict", [
+  "attested",
+  "failed",
+  "revoked",
+]);

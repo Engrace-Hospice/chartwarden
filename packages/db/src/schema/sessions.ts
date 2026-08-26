@@ -10,6 +10,7 @@
 //   • engagement_start/end — the auditor engagement window
 //   • screen_locked_at     — UI screen-lock timestamp (staff/auditor lifecycle)
 //   • last_step_up_at / last_step_up_factor — step-up freshness (paired-write, D8)
+//   • device_attestation_id — the attested device this session runs on (SecHardening §12.4)
 import { sql } from "drizzle-orm";
 import { check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { sessionClass, stepUpFactor } from "../enums";
@@ -39,6 +40,14 @@ export const sessions = pgTable(
     screenLockedAt: timestamp("screen_locked_at", { withTimezone: true }),
     lastStepUpAt: timestamp("last_step_up_at", { withTimezone: true }),
     lastStepUpFactor: stepUpFactor("last_step_up_factor"),
+    // SecHardening §12.4 — the `device_attestation` row this session is bound to, stamped at mint when
+    // the device proved itself. NULL on a browser session, which offers no hardware-backed posture
+    // assertion: absent is the correct answer there, not a missing one, and the §12.4 gate denies it.
+    // Deliberately a plain uuid with no FK, matching `evv_device.m2_device_attestation_id`: `session` is
+    // a Better Auth table on the NON_ORG_SCOPED side and the attestation is org-scoped, so a hard FK
+    // would tie session deletion to an org-RLS'd row. The resolver re-reads the attestation and re-checks
+    // it is live, so a dangling pointer denies rather than admits.
+    deviceAttestationId: uuid("device_attestation_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -44,6 +44,13 @@ export interface SessionContextRecord {
    * collaborator/funeral session from mint — or null on an org-scoped class (F-030).
    */
   readonly sessionPatientId: string | null;
+  /**
+   * The platform's verdict on the device this session runs on, or null when no LIVE attestation stands
+   * behind it (SecHardening §12.4). Optional on the record so the in-memory slice and every existing
+   * fixture keep their current shape and resolve to null — which is what a session with no device
+   * should say, and what the gate must read as deny.
+   */
+  readonly deviceAttestation?: { readonly valid: boolean; readonly verifiedAt?: string } | null;
 }
 
 /** Reads a session-context row by id within an org scope (M1 `session` repo in production). */
@@ -85,6 +92,7 @@ export function createSessionContextResolver(
         sessionClass: row.sessionClass,
         portalAccountId: row.portalAccountId,
         sessionPatientId: row.sessionPatientId,
+        deviceAttestation: row.deviceAttestation ?? null,
       };
     },
     async resolveStepUpState(scope, sessionId): Promise<SessionStepUpFields | null> {
