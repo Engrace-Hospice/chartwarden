@@ -6,9 +6,25 @@
 // migration; the at-most-one-active-license-per-(org,scale) rule is a partial unique index.
 import { sql } from "drizzle-orm";
 import { date, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { businessRule } from "../../business-rules";
 import { scaleLicenseStatus, scaleType } from "../../enums";
 import { memberships } from "../memberships";
 import { organizations } from "../organizations";
+
+/**
+ * At most one ACTIVE license per (org, scale) — the rule the partial unique index enforces, together
+ * with what violating it means to the caller. `businessRule()` returns the constraint name, so the
+ * index below is defined by this declaration and there is no second list to keep in sync; a `23505`
+ * on it answers 409 with this sentence instead of a bare 500 (F-022 / #55).
+ *
+ * Declared HERE rather than inside `pgTable`'s config callback because Drizzle invokes that callback
+ * lazily (only when the table's config is read), and a registration that has not run is a rule the
+ * error handler cannot see.
+ */
+const ACTIVE_PER_ORG_SCALE_UQ = businessRule(
+  "scale_license_active_per_org_scale_uq",
+  "This organization already has an active license for this scale type. Expire or replace the existing license before registering another.",
+);
 
 export const scaleLicenses = pgTable(
   "scale_license",
@@ -30,8 +46,8 @@ export const scaleLicenses = pgTable(
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    // At most one active license per (org, scale).
-    activePerOrgScale: uniqueIndex("scale_license_active_per_org_scale_uq")
+    // At most one active license per (org, scale) — see ACTIVE_PER_ORG_SCALE_UQ above.
+    activePerOrgScale: uniqueIndex(ACTIVE_PER_ORG_SCALE_UQ)
       .on(t.organizationId, t.scaleType)
       .where(sql`status = 'active'`),
   }),

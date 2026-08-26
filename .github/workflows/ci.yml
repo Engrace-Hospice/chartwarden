@@ -9,6 +9,12 @@ on:
     branches:
       - develop
       - main
+
+  # Callable as a reusable workflow so `deploy.yml` can require THIS ENTIRE workflow — every job
+  # below, live-DB suites included — before it publishes an image or touches the production VPS
+  # (#16). Expressing the deploy gate as a call rather than a copy of `build-and-verify` means the
+  # two can never drift: whatever CI checks on a PR is exactly what a release must satisfy.
+  workflow_call:
 # Phase 0 gate (PHASE_0_SCAFFOLD_PLAN.md PR-0.6): every PR must install from the committed
 # lockfile, build the project-reference graph, pass all six fitness gates + scaffold parity,
 # and pass the Vitest fitness-gate self-test (which proves each gate goes red on a violation).
@@ -112,6 +118,9 @@ jobs:
           - { name: "M31 Portal & Telehealth", script: "test:rls:live:m31" }
           - { name: "M35 Subscription Billing", script: "test:rls:live:m35" }
           - { name: "M37 IPU Management", script: "test:rls:live:m37" }
+          # #41 — not an RLS-isolation suite, but the same shape: a migrations live suite needing the
+          # full replay + raised lock limit this job already provides. Had no runner.
+          - { name: "M4 nested audit redaction", script: "test:audit:nested-redaction:live" }
     env:
       WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
     steps:
@@ -162,7 +171,16 @@ jobs:
       fail-fast: false
       matrix:
         suite:
-          - { name: "M6 Admission", scripts: "test:m6:read:live test:m6:write:live" }
+          # #41 — t3/t4/t5 were invisible to the coverage gate (its pattern allowed hyphens but not
+          # colons in the middle segment, and `t3:write` is two segments), so 24 tests / 97 assertions
+          # over the election-CTI, discharge/F2F/LOC and compliance-window write lifecycles had no
+          # runner. They pass; the gap was the runner, not the code.
+          - {
+              name: "M6 Admission",
+              scripts:
+                "test:m6:read:live test:m6:write:live test:m6:t3:write:live test:m6:t4:write:live
+                test:m6:t5:write:live",
+            }
           - { name: "M7 Care Plan", scripts: "test:m7:read:live test:m7:write:live" }
           - { name: "M8 Encounters", scripts: "test:m8:read:live test:m8:write:live" }
           - { name: "M9 Assessments", scripts: "test:m9:read:live test:m9:write:live" }
@@ -223,6 +241,12 @@ jobs:
           # store/seam make a tightening bind at evaluation time, and it DERIVES its boundary cases
           # from `STEP_UP_POLICY` so the TS floor and the SQL floor cannot drift apart in silence.
           - { name: "M2 step-up override", scripts: "test:m2:step-up-override:live" }
+          # F-001 (#15): the sign-in org picker. Migrations 0213/0214 served it with two PERMISSIVE
+          # `app.user_id` policies, which PostgreSQL UNIONs into EVERY org-scoped session — a
+          # cross-org read on every authenticated request. 0215 replaces them with a SECURITY DEFINER
+          # function; this drives `listForUser` (which had no live coverage) through the production
+          # repository as wardenx_app, so the hand-written raw-query row mapping is proven too.
+          - { name: "M2 pre-org membership picker", scripts: "test:m2:pre-org-picker:live" }
           # GAP-079: M4's §2.5 read-audit EMISSION over the M26 Cap + M39 Consent read surfaces —
           # proves the events land in the partitioned audit_event table carrying the patient id the
           # §164.528 accounting query joins on, as the NOBYPASSRLS app role.
@@ -354,6 +378,7 @@ jobs:
       - name: Better Auth sign-up/sign-in over the reconciled schema (real Postgres)
         run: bun run test:auth:live
 
+<<<<<<< HEAD
   outbox-boot:
     # F-020 (issue #49): the backend refused to START in the documented production configuration —
     # `DATABASE_PLATFORM_URL` set — because the outbox dispatcher's catalog validation throws before
@@ -375,6 +400,29 @@ jobs:
       BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
       BETTER_AUTH_URL: http://localhost:3999
       TWO_FACTOR_ENCRYPTION_KEY: Y2ktMmZhLXRlc3Qta2V5LTAxMjM0NTY3ODlhYmNkZWY=
+=======
+  # #41 — the ONLY live suite gated on WARDENX_TEST_REDIS_URL rather than WARDENX_TEST_DATABASE_URL,
+  # which is a second reason it went unnoticed: it needs no Postgres at all, so it fitted none of the
+  # existing live jobs and nothing ran it. It proves the cluster-wide rate limiter — that two backend
+  # replicas sharing one Redis enforce ONE combined limit rather than one each, the exact gap the
+  # in-memory Map store has (WX-PR-017, SD-055). A `services:` block is fine here: unlike the Postgres
+  # jobs this needs no command arguments and replays no migrations.
+  rate-limit-store-live:
+    name: Rate-limit store live (Valkey) — cluster-wide counter (WX-PR-017)
+    runs-on: ubuntu-latest
+    services:
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      WARDENX_TEST_REDIS_URL: redis://localhost:6379
+>>>>>>> origin/main
     steps:
       - uses: actions/checkout@v4
       - name: Install Bun
@@ -383,6 +431,7 @@ jobs:
           bun-version: "1.3.5"
       - name: Install dependencies (frozen lockfile)
         run: bun install --frozen-lockfile
+<<<<<<< HEAD
       # Same pgvector image + raised lock limit as rls-live: booting applies the full migration set.
       - name: Start Postgres (pgvector image; raised lock limit)
         run: |
@@ -403,3 +452,7 @@ jobs:
         run: bun run db:provision-roles
       - name: Boot with the platform credential and prove the relay starts
         run: bun run check:boot:platform
+=======
+      - name: Shared fixed-window counter across two clients (real Valkey)
+        run: bun run test:rate-limit-store:live
+>>>>>>> origin/main

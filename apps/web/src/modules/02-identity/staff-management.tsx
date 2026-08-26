@@ -12,8 +12,9 @@ import {
   PageHeader,
   RightDetailPanel,
   StatusPill,
-  type StatusTone,
   WorkQueueLayout,
+  interactiveRowProps,
+  type StatusTone,
   useApiClient,
   useToast,
 } from "@wardenx/ui";
@@ -615,7 +616,11 @@ export function StaffManagement(): JSX.Element {
                     return (
                       <tr
                         key={m.membershipId}
-                        onClick={() => setSelectedMemberId(m.membershipId)}
+                        {...interactiveRowProps(
+                          () => setSelectedMemberId(m.membershipId),
+                          isSelected,
+                          true,
+                        )}
                         style={{
                           borderBottom:
                             "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
@@ -669,6 +674,10 @@ export function StaffManagement(): JSX.Element {
                         <td style={tdStyle}>
                           <StatusPill label={cap(m.status)} tone={STATUS_TONE[m.status]} />
                         </td>
+                        {/* biome-ignore lint/a11y/useKeyWithClickEvents: not a control — this
+                            only stops a click on the action menu from ALSO selecting the row. The
+                            keyboard path needs no twin, because the row's own handler ignores any
+                            key event whose target is not the row itself. */}
                         <td
                           style={{ ...tdStyle, textAlign: "right" }}
                           onClick={(e) => e.stopPropagation()}

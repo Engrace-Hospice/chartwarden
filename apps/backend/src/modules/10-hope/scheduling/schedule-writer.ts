@@ -30,7 +30,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import type { HopeRfaKind, LocalDate } from "@wardenx/types";
 import { and, eq, inArray } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
-import type { HopeWriteOutboxPort } from "../hope-route-service-db";
+import type { HopeWriteOutboxPort } from "../outbox-port";
 
 const SCHED = schema.hopeTimepointSchedules;
 

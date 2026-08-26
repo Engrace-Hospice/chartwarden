@@ -20,7 +20,7 @@ import {
   planAdmissionTimepoints,
   planDischargeTimepoint,
 } from "@wardenx/hope";
-import type { HopeWriteOutboxPort } from "../hope-route-service-db";
+import type { HopeWriteOutboxPort } from "../outbox-port";
 import {
   type AdmissionSitingResolver,
   HOPE_SCHEDULE_TIME_ZONE,

@@ -24,6 +24,7 @@ import {
   RightDetailPanel,
   StatusPill,
   WorkQueueLayout,
+  interactiveRowProps,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -390,7 +391,7 @@ function IntakeTable({
           return (
             <tr
               key={p.planId}
-              onClick={() => onSelectPlan(p.planId)}
+              {...interactiveRowProps(() => onSelectPlan(p.planId), isSelected, true)}
               className="wx-data-row-interactive"
               style={{
                 borderBottom:
@@ -429,6 +430,10 @@ function IntakeTable({
               <td style={{ ...tdStyle, fontFamily: t.fontMono }}>
                 {shortId(p.assignedVolunteerUserId)}
               </td>
+              {/* biome-ignore lint/a11y/useKeyWithClickEvents: not a control — this only stops a
+                  click on the assign buttons from ALSO selecting the row. The keyboard path needs
+                  no twin, because the row's own handler ignores any key event whose target is not
+                  the row itself. */}
               <td
                 style={{ ...tdStyle, textAlign: "right" }}
                 onClick={(event) => event.stopPropagation()}

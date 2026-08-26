@@ -120,7 +120,7 @@ export function Invoices(): JSX.Element {
               </thead>
               <tbody>
                 {invoices.map((inv) => (
-                  <tr key={inv.id} className="wx-data-row-interactive" style={tableRowStyle}>
+                  <tr key={inv.id} style={tableRowStyle}>
                     <Td>
                       <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
                         <Link
