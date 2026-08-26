@@ -133,6 +133,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       "m5",
       "m7",
       "m8",
+      // #48 — M10 materializes the three admission-anchored HOPE timepoint windows here. It was absent
+      // from this list for the same reason nothing ever inserted a `hope_timepoint_schedule` row: the
+      // handshake the planners were written for had no consumer end.
+      "m10",
       "m11",
       "m14",
       "m16",
@@ -181,6 +185,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       dischargeDate: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: [
+      // #48 — M10 materializes the single 7-day Discharge RFA window here (D9 keeps it out of the
+      // admission plan because its `discharge_reason` branch is unknown until discharge happens).
+      "m10",
       "m14",
       "m16",
       "m22",

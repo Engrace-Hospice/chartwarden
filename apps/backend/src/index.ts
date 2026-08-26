@@ -144,6 +144,7 @@ import {
   M6_OUTBOX_EVENTS,
   activeAdmissionDraftContextForPatient,
   admissionIsActiveForOrg,
+  admissionSchedulingContextForOrg,
   buildM6ProposalAcceptedConsumer,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
@@ -199,6 +200,7 @@ import {
 import {
   M10_OUTBOX_EVENTS,
   M10_PLATFORM_JOB_ID,
+  buildM10AdmissionSchedulingConsumer,
   buildM10WorkerDeps,
   createDrizzleHopeEraseStore,
   mountHopeRoutes,
@@ -4026,6 +4028,22 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // DeathDischargeReader seam and flips patient.status='deceased' + emits
           // m5.patient.deceased (seeds M16 bereavement / M23 final claim / M28 FHIR / M36 IDG alert).
           buildM5DeathCascadeConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
+          // M10 §2.2.1 (#48) — the HOPE timepoint-schedule write path. `hope_timepoint_schedule` is the
+          // window ledger the CMS capture gate, the `hope-window-watchdog` cron, the late-deadline math,
+          // the timepoint worklist and the on-time compliance rate are all built on, and NOTHING in the
+          // repo ever inserted a row into it: the pure planners and the `m10.hope.timepoint_scheduled`
+          // catalog entry both shipped, the consumer end never did. Activation materializes Admission /
+          // HUV1 / HUV2; discharge materializes the 7-day Discharge RFA (D9).
+          buildM10AdmissionSchedulingConsumer({
+            db: dbHandle.db,
+            outbox: m10OutboxPublisher,
+            // The relay is not a request, so M6's §4.7 seam (which pins the tenant from the ambient
+            // request scope) cannot answer here — every delivery would dead-letter with "no ambient
+            // request context". Bound to M6's org-explicit reader instead, the same shape
+            // `activeAdmissionDraftContextForPatient` / `admissionIsActiveForOrg` already take above.
+            resolveSiting: (organizationId, admissionId) =>
+              admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
+          }),
           // M6 §4.8.3 — the LIVE admission-event applier (task-15): resolves facts + executes
           // through the Drizzle gateway (external death / HL7 withdrawal / compliance windows),
           // records refusals durably + emits m6.applier.refused. Second consumer on the event so

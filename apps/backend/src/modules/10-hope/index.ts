@@ -85,6 +85,22 @@ export {
 // M10-T06 — the §2.4 outbox contract (the full `m10.hope.*` taxonomy; check-fitness-gaps.ts scans
 // events-by-m10.ts for naming + ownership + declared consumers).
 export { M10_OUTBOX_EVENTS } from "./events-by-m10";
+// #48 — the LIVE `m6.admission.activated` / `m6.admission.discharged` → timepoint-schedule consumer and
+// the write path it shares with the §4.1 route-20 admin regenerate. Nothing wrote `hope_timepoint_schedule`
+// before these, so the whole CMS capture-window model sat on an empty table.
+export {
+  M10_ADMISSION_ACTIVATED_EVENT,
+  M10_ADMISSION_DISCHARGED_EVENT,
+  M10_SCHEDULING_CONSUMER_NAME,
+  buildM10AdmissionSchedulingConsumer,
+} from "./outbox-consumers/m6-admission-scheduling";
+export {
+  HOPE_SCHEDULE_TIME_ZONE,
+  type SchedulingSiting,
+  regenerateSchedulesForAdmission,
+  schedulingSitingFor,
+  writeSchedules,
+} from "./scheduling/schedule-writer";
 // M10-T06 — the §4.8 BullMQ queue catalog + the pure window / SFV watchdog + alert-dispatch scans.
 export {
   type HopeScheduleSnapshot,

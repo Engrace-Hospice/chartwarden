@@ -39,7 +39,21 @@ import {
 /** The system actor id the crons stamp on their per-org `withOrgContext` reads (audit attribution). Chosen
  * to not collide with the other modules' `00000000-0000-0000-0000-0000000000xx` cron system-actor ids
  * (M25 `...e5`, M26 `...e6`, M7 `...07` — grepped the repo first). */
-const M10_WORKER_SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000010";
+/**
+ * The `app.user_id` a watchdog tick carries — the EMPTY-STRING system sentinel, which the M4 PHI
+ * write-audit triggers `NULLIF(...)` to NULL. A cron transition has no acting user.
+ *
+ * #48 — this was the synthetic uuid `00000000-0000-0000-0000-000000000010`, which has no `user` row.
+ * `audit_event.actor_user_id` is a nullable column with an FK to `user`, so the trigger's
+ * `NULLIF(current_setting('app.user_id', true), '')::uuid` passed the sentinel straight through and
+ * every transition died on `audit_event_actor_user_id_user_id_fk`. NEITHER watchdog could complete a
+ * single status change. `hope-window-watchdog` never showed it because the table it reads was always
+ * empty (nothing wrote `hope_timepoint_schedule` at all); `sfv-watchdog` reads rows that DO exist, so
+ * it has been failing every 15 minutes wherever an SFV went past due. Surfaced the moment this branch
+ * gave the window watchdog a real row to expire. M10's own org-rollup store already used the empty
+ * sentinel with this exact reasoning.
+ */
+const M10_WORKER_SYSTEM_USER_ID = "";
 
 /** The two `hope-*-watchdog` job names this file wires (a narrower key set than `M10_JOB_PARAMS`/
  * `M10_JOB_SCHEDULES`, which also carry the five NOT-yet-wired §4.8 jobs). */

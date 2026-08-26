@@ -84,7 +84,12 @@ type ResolveAdmissionPatient = (
 ) => Promise<{ patientId: string } | null>;
 
 function makeServer(
-  options: { isInCaseload?: IsInCaseload; resolveAdmissionPatient?: ResolveAdmissionPatient } = {},
+  options: {
+    isInCaseload?: IsInCaseload;
+    resolveAdmissionPatient?: ResolveAdmissionPatient;
+    /** #48 — the M6 admission status the §2.3 active-admission guard turns on (default `active`). */
+    admissionStatus?: string;
+  } = {},
 ) {
   const backend = createInMemoryHopeBackend({
     now: () => NOW,
@@ -93,6 +98,9 @@ function makeServer(
     // record here instead of writing the `admissionId` into `patient_id`; an admission absent from this
     // map is a projection gap and the record is refused.
     admissionPatients: { [ADMISSION]: PATIENT },
+    ...(options.admissionStatus
+      ? { admissionStatuses: { [ADMISSION]: options.admissionStatus } }
+      : {}),
     schedules: [
       {
         id: SCHEDULE,
@@ -698,6 +706,228 @@ describe("M10 — #45 the recorded timepoint's patient comes from the admission"
     });
     expect(rec.statusCode).toBe(422);
     expect(rec.json().error?.code ?? rec.json().code).toBe("M10_ADMISSION_PROJECTION_GAP");
+    await app.close();
+  });
+});
+
+// ── #48 — the §4.4 recording gate ─────────────────────────────────────────────────────────────────
+//
+// Every guard exercised below is a `@wardenx/hope` function that shipped in M10-T03 with a unit test
+// and ZERO production callers:
+//
+//   assertAdmissionActiveAtTarget   M10_ADMISSION_NOT_ACTIVE          0 callers in apps/backend/src
+//   assertRfaMatchesSchedule        M10_RFA_KIND_MISMATCH             0
+//   assertCaptureAllowed            M10_TIMEPOINT_NOT_OPEN / _EXPIRED / LATE_REASON_REQUIRED|INVALID  0
+//   assertSectionQForDischarge      M10_REQUIRED_SECTION_MISSING / _FORBIDDEN_SECTION_PRESENT         0
+//
+// Each §4.4 code therefore looked enforced and was not. The seeded `02_huv1` window is
+// [2026-06-06, 2026-06-20] with a late deadline of 2026-06-27, and NOW (2026-06-08) sits inside it,
+// which is why every pre-existing record test above passes the gate without noticing it.
+describe("M10 — #48 the §4.4 capture-window gate", () => {
+  const codeOf = (res: { json(): { error?: { code?: string } } }): string | undefined =>
+    res.json().error?.code;
+  const record = async (
+    app: { inject: (o: unknown) => Promise<{ statusCode: number; json(): never }> },
+    over: Record<string, unknown>,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: huv1Body(over),
+    });
+
+  it("rejects a capture before the window opens (409 M10_TIMEPOINT_NOT_OPEN)", async () => {
+    const { app } = makeServer();
+    const res = await record(app, { targetDate: "2026-06-01T12:00:00.000Z" });
+    expect(res.statusCode).toBe(409);
+    expect(codeOf(res)).toBe("M10_TIMEPOINT_NOT_OPEN");
+    await app.close();
+  });
+
+  it("requires a typed late reason inside the grace span (400 M10_LATE_REASON_REQUIRED)", async () => {
+    const { app } = makeServer();
+    const res = await record(app, { targetDate: "2026-06-23T12:00:00.000Z" });
+    expect(res.statusCode).toBe(400);
+    expect(codeOf(res)).toBe("M10_LATE_REASON_REQUIRED");
+    await app.close();
+  });
+
+  it("rejects a late reason outside the CMS codelist at the route boundary (422)", async () => {
+    // Stated precisely because it differs from the §4.4 table: the route's TypeBox enumerates the
+    // closed codelist, so an off-list value is refused as VALIDATION_FAILED (422) BEFORE the domain
+    // guard runs. `M10_LATE_REASON_INVALID` (400) is therefore not reachable over HTTP — it remains the
+    // floor for a caller that reaches the service directly (a job, a script, another module).
+    // The boundary refusal is the tighter of the two, so it is kept rather than loosened to expose the
+    // domain code.
+    const { app } = makeServer();
+    const res = await record(app, {
+      targetDate: "2026-06-23T12:00:00.000Z",
+      lateCompletionReasonCode: "because_i_forgot",
+    });
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("accepts a late capture with a valid reason and marks it wasLate", async () => {
+    const { app } = makeServer();
+    const res = await record(app, {
+      targetDate: "2026-06-23T12:00:00.000Z",
+      lateCompletionReasonCode: "hospitalization",
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().wasLate).toBe(true);
+    await app.close();
+  });
+
+  it("rejects a capture past the late deadline (409 M10_TIMEPOINT_EXPIRED)", async () => {
+    const { app } = makeServer();
+    const res = await record(app, {
+      targetDate: "2026-07-01T12:00:00.000Z",
+      lateCompletionReasonCode: "pto",
+    });
+    expect(res.statusCode).toBe(409);
+    expect(codeOf(res)).toBe("M10_TIMEPOINT_EXPIRED");
+    await app.close();
+  });
+
+  it("an admin override extends the hard cutoff but still demands the late reason", async () => {
+    const { app } = makeServer();
+    const withoutReason = await record(app, {
+      targetDate: "2026-07-01T12:00:00.000Z",
+      adminOverride: true,
+    });
+    expect(withoutReason.statusCode).toBe(400);
+    expect(codeOf(withoutReason)).toBe("M10_LATE_REASON_REQUIRED");
+
+    const withReason = await record(app, {
+      targetDate: "2026-07-01T12:00:00.000Z",
+      adminOverride: true,
+      lateCompletionReasonCode: "admin_override",
+    });
+    expect(withReason.statusCode).toBe(201);
+    expect(withReason.json().wasLate).toBe(true);
+    await app.close();
+  });
+
+  it("in-window capture is not late and ignores a late reason it did not need", async () => {
+    const { app } = makeServer();
+    const res = await record(app, { lateCompletionReasonCode: "pto" });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().wasLate).toBe(false);
+    await app.close();
+  });
+});
+
+describe("M10 — #48 the remaining §4.4 recording guards", () => {
+  const codeOf = (res: { json(): { error?: { code?: string } } }): string | undefined =>
+    res.json().error?.code;
+  const post = (
+    app: { inject: (o: unknown) => Promise<{ statusCode: number; json(): never }> },
+    payload: Record<string, unknown>,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload,
+    });
+
+  it("refuses to record against a discharged admission (409 M10_ADMISSION_NOT_ACTIVE)", async () => {
+    const { app } = makeServer({ admissionStatus: "discharged" });
+    const res = await post(app, huv1Body());
+    expect(res.statusCode).toBe(409);
+    expect(codeOf(res)).toBe("M10_ADMISSION_NOT_ACTIVE");
+    await app.close();
+  });
+
+  it("rejects a payload RFA that disagrees with the named window (409 M10_RFA_KIND_MISMATCH)", async () => {
+    // Naming the `scheduleId` is what makes this guard reachable: the worklist hands the clinician a
+    // window, and the payload's RFA can disagree with it. Resolved by `rfa_kind` instead, the two agree
+    // by construction and the guard is tautological — which is why this test names the schedule.
+    const { app } = makeServer();
+    const res = await post(app, huv1Body({ rfaKind: "01_admission", scheduleId: SCHEDULE }));
+    expect(res.statusCode).toBe(409);
+    expect(codeOf(res)).toBe("M10_RFA_KIND_MISMATCH");
+    await app.close();
+  });
+
+  it("404s on a named schedule that is not on this admission, rather than capturing ungated", async () => {
+    const { app } = makeServer();
+    const res = await post(app, huv1Body({ scheduleId: "55555555-5555-4555-8555-999999999999" }));
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  describe("D9 — the discharge RFA's Section Q branch", () => {
+    const dischargeBody = (over: Record<string, unknown> = {}) => ({
+      rfaKind: "05_discharge",
+      targetDate: NOW,
+      authorDiscipline: "RN",
+      data: {},
+      ...over,
+    });
+
+    it("requires a discharge_reason (400 M10_REQUIRED_SECTION_MISSING)", async () => {
+      const { app } = makeServer();
+      const res = await post(app, dischargeBody());
+      expect(res.statusCode).toBe(400);
+      expect(codeOf(res)).toBe("M10_REQUIRED_SECTION_MISSING");
+      await app.close();
+    });
+
+    it("requires Section Q on a live discharge (400 M10_REQUIRED_SECTION_MISSING)", async () => {
+      const { app } = makeServer();
+      const res = await post(app, dischargeBody({ dischargeReason: "live_discharge" }));
+      expect(res.statusCode).toBe(400);
+      expect(codeOf(res)).toBe("M10_REQUIRED_SECTION_MISSING");
+      await app.close();
+    });
+
+    it("forbids Section Q on a death discharge (400 M10_FORBIDDEN_SECTION_PRESENT)", async () => {
+      const { app } = makeServer();
+      const res = await post(
+        app,
+        dischargeBody({ dischargeReason: "death", data: { Q: { participation: "yes" } } }),
+      );
+      expect(res.statusCode).toBe(400);
+      expect(codeOf(res)).toBe("M10_FORBIDDEN_SECTION_PRESENT");
+      await app.close();
+    });
+
+    it("accepts a death discharge without Section Q — on a CLOSED admission", async () => {
+      // The active-admission guard is deliberately not applied to a Discharge RFA: by the time it is
+      // captured the admission is closed by definition. This is the case that proves the exemption is
+      // real rather than an accident of the seed always being active.
+      const { app } = makeServer({ admissionStatus: "discharged" });
+      const res = await post(app, dischargeBody({ dischargeReason: "death" }));
+      expect(res.statusCode).toBe(201);
+      expect(res.json().rfaKind).toBe("05_discharge");
+      await app.close();
+    });
+  });
+});
+
+// ── #48 — "no data" is not 100% ────────────────────────────────────────────────────────────────────
+describe("M10 — #48 the HQRP compliance dashboard distinguishes no-data from a perfect score", () => {
+  it("returns null rates and the count pair when nothing has been measured", async () => {
+    // The seeded fixture has one OPEN schedule and one MISSED SFV, so no rate has a denominator: the
+    // HOPE rate counts completed+expired windows, the SFV rate counts completed+missed... which the
+    // seeded `missed` row DOES populate. Only the HOPE and submission rates are genuinely empty here.
+    // Every one of these used to fall back to 1 — a compliance officer was shown 100% on-time for an
+    // agency that had never closed a single timepoint window.
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/hope/dashboard/compliance",
+      headers: COMPLIANCE,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.hopeOnTimeRate).toBeNull();
+    expect(body.hopeOnTimeCounts).toEqual({ onTime: 0, total: 0 });
+    expect(body.submissionAcceptanceRate).not.toBe(1); // two seeded submissions, neither accepted
+    expect(body.submissionAcceptanceCounts.total).toBe(2);
     await app.close();
   });
 });
