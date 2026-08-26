@@ -322,7 +322,7 @@ export function MedicaidRbArrangements(): JSX.Element {
                 {pagedRows.map((r) => {
                   const counts = dayCounts.get(r.id);
                   return (
-                    <tr key={r.id} style={rowLine} className="wx-data-row-interactive">
+                    <tr key={r.id} style={rowLine}>
                       <td style={td}>
                         <a href={`/medicaid/billing/rb-arrangements/${r.id}`} style={linkMonoStyle}>
                           {r.nfFacilityNameSnapshot || shortId(r.nfFacilityMdmId)}

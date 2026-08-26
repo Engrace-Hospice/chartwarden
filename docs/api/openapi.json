@@ -126261,36 +126261,27 @@
                         "type": "object",
                         "required": [
                           "id",
+                          "organizationId",
                           "requestedPurpose",
                           "status",
                           "requestedAt",
                           "fulfilledAt",
+                          "heldForOversizedApproval",
+                          "heldBundleSizeBytes",
+                          "heldRecordCount",
+                          "heldAt",
                           "bundleSizeBytes",
-                          "createdAt"
+                          "bundleDownloadedAt"
                         ],
                         "properties": {
                           "id": {
                             "type": "string"
                           },
+                          "organizationId": {
+                            "type": "string"
+                          },
                           "requestedPurpose": {
-                            "anyOf": [
-                              {
-                                "const": "migration",
-                                "type": "string"
-                              },
-                              {
-                                "const": "baa_termination",
-                                "type": "string"
-                              },
-                              {
-                                "const": "compliance_audit",
-                                "type": "string"
-                              },
-                              {
-                                "const": "surveyor_request",
-                                "type": "string"
-                              }
-                            ]
+                            "type": "string"
                           },
                           "status": {
                             "anyOf": [
@@ -126331,7 +126322,20 @@
                               }
                             ]
                           },
-                          "bundleSizeBytes": {
+                          "heldForOversizedApproval": {
+                            "type": "boolean"
+                          },
+                          "heldBundleSizeBytes": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "heldRecordCount": {
                             "anyOf": [
                               {
                                 "type": "integer"
@@ -126341,9 +126345,37 @@
                               }
                             ]
                           },
-                          "createdAt": {
-                            "format": "date-time",
-                            "type": "string"
+                          "heldAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "bundleSizeBytes": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "bundleDownloadedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }

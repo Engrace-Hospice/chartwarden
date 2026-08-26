@@ -102,6 +102,10 @@ export type { ConfirmDialogProps } from "./system/confirm-dialog";
 // the Guardrail ceremonies above already compose it.
 export { Modal } from "./system/modal";
 export type { ModalProps } from "./system/modal";
+// The activatable data row (#32) — a <tr> that opens a drawer is a control, and must be reachable
+// by keyboard, not only by pointer.
+export { interactiveRowProps } from "./system/interactive-row";
+export type { InteractiveRowProps } from "./system/interactive-row";
 export { ToastProvider, useToast } from "./system/toast";
 export type { ToastContextValue, ToastOptions, ToastTone } from "./system/toast";
 

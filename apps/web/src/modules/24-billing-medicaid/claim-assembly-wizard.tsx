@@ -22,7 +22,7 @@ import {
   AdmissionLookupField,
   PatientLookupField,
   ProviderEntityLookupField,
-} from "../../shared/entity-lookups";
+} from "../../shell/entity-lookups";
 import { ELIGIBILITY_OUTCOME_TONE, humanize, kindLabel, shortId, toneOf } from "./medicaid-status";
 import { Card, Field, alertStyle, inputStyle, mutedStyle, selectStyle } from "./medicaid-ui";
 

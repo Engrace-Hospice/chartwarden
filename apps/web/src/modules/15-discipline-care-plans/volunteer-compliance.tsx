@@ -25,7 +25,7 @@ import {
 // route 19 carries a documented read-audit waiver rather than a patient-less PHI read event.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { MembershipLookupField } from "../../shared/entity-lookups";
+import { MembershipLookupField } from "../../shell/entity-lookups";
 import { type GateView, errorMessage, listGates, writeHeaders } from "./discipline-api";
 import {
   FAILING_GATE_STATUSES,

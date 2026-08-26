@@ -15,7 +15,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 06-admission | 48 | ✅ | 48/48 | apps/backend/__tests__/admission-certification.test.ts, apps/backend/__tests__/admission-discharge.test.ts, apps/backend/__tests__/admission-intake.test.ts, apps/backend/__tests__/admission-routes.test.ts |
 | 07-care-plan | 19 | ✅ | 18/19 | apps/backend/__tests__/assessment-routes.test.ts, apps/backend/__tests__/care-plan-conformance.live.test.ts, apps/backend/__tests__/care-plan-routes.test.ts, apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts |
 | 08-encounters | 31 | ✅ | 26/31 | apps/backend/__tests__/encounter-authoring.test.ts, apps/backend/__tests__/encounter-routes.test.ts |
-| 09-assessments | 18 | ✅ | 13/18 | apps/backend/__tests__/assessment-routes.test.ts |
+| 09-assessments | 18 | ✅ | 13/18 | apps/backend/__tests__/assessment-routes.test.ts, apps/backend/__tests__/m9-assessments-write.live.test.ts |
 | 10-hope | 20 | ✅ | 18/20 | apps/backend/__tests__/hope-routes.test.ts |
 | 11-orders | 28 | ✅ | 22/28 | apps/backend/__tests__/orders-routes.test.ts |
 | 12-dosespot | 31 | ✅ | 19/31 | apps/backend/__tests__/dosespot-routes.test.ts |

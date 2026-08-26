@@ -22,7 +22,7 @@ import {
 // billing-status.ts (§6.6).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { ProviderEntityLookupField } from "../../shared/entity-lookups";
+import { ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { claimStateTone, dollars, statusLabel } from "./billing-status";
 
 interface MetricsBucket {
