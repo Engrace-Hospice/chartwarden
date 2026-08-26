@@ -38,6 +38,7 @@ import {
   checkServiceDateNotFuture,
   checkVersion,
 } from "./lifecycle/validation";
+import { toVitalsView } from "./routes/service";
 import type {
   EncounterAbacFacts,
   EncounterAbacResolver,
@@ -514,6 +515,56 @@ export function createDbEncounterRouteService(
           "updateSelections matched no row (stale write)",
         );
         return { version: Number(updated.version), layer1Preview: "" };
+      });
+    },
+
+    /**
+     * #92 — read back every vitals set on one encounter. Until this existed the `vitals` table was
+     * write-only through the public API: `POST`/`PATCH .../vitals` wrote real rows and no route
+     * returned them, so a recorded blood pressure left the clinician's screen for good.
+     *
+     * Runs under `withOrgContext` like every other read here, so RLS scopes the rows by tenant even
+     * though the query filters on `encounter_id` alone. The encounter is loaded FIRST so an unknown
+     * or cross-tenant id 404s exactly as `getEncounter` does, rather than returning an empty list —
+     * an empty list and "not yours" must not be the same answer to the caller.
+     */
+    async listVitals(organizationId, encounterId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        await loadEnc(t, encounterId); // throws NotFoundError on unknown/cross-tenant (non-leaking)
+        const rows = await t
+          .select()
+          .from(VITALS)
+          .where(eq(VITALS.encounterId, encounterId))
+          .orderBy(desc(VITALS.capturedAt), desc(VITALS.id));
+        return {
+          encounterId,
+          vitals: rows.map((row) =>
+            toVitalsView(row.id, encounterId, {
+              capturedAt: row.capturedAt.toISOString(),
+              bmi: row.bmi,
+              input: {
+                bpSystolic: row.bpSystolic ?? undefined,
+                bpDiastolic: row.bpDiastolic ?? undefined,
+                heartRate: row.heartRate ?? undefined,
+                respiratoryRate: row.respiratoryRate ?? undefined,
+                temperature: row.temperature ?? undefined,
+                temperatureUnit: row.temperatureUnit ?? undefined,
+                spo2: row.spo2 ?? undefined,
+                painScore: row.painScore ?? undefined,
+                painScale: row.painScale ?? undefined,
+                weight: row.weight ?? undefined,
+                weightUnit: row.weightUnit ?? undefined,
+                height: row.height ?? undefined,
+                heightUnit: row.heightUnit ?? undefined,
+                bloodGlucose: row.bloodGlucose ?? undefined,
+                bloodGlucoseUnit: row.bloodGlucoseUnit ?? undefined,
+                clinicallyNotIndicatedFields: row.clinicallyNotIndicatedFields ?? undefined,
+                clinicallyNotIndicatedReason: row.clinicallyNotIndicatedReason ?? undefined,
+              },
+            }),
+          ),
+        };
       });
     },
 

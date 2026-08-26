@@ -288,6 +288,45 @@ export const VitalsResultResponseSchema = Type.Object({
   bmi: Type.Union([Type.String(), Type.Null()]),
 });
 
+/**
+ * Route 5b — one stored vitals set read back (#92). Nullable rather than optional on every field:
+ * the row exists and the measurement is genuinely absent, which is a different clinical statement
+ * from "this key was not sent" — a `null` spo2 on a signed encounter says nobody recorded it.
+ */
+const NullableInt = Type.Union([Type.Integer(), Type.Null()]);
+const NullableStr = Type.Union([Type.String(), Type.Null()]);
+const NullableUnit = Type.Union([lit(VITAL_UNIT), Type.Null()]);
+export const VitalsViewResponseSchema = Type.Object({
+  id: Type.String(),
+  encounterId: Type.String(),
+  capturedAt: Type.String(),
+  bpSystolic: NullableInt,
+  bpDiastolic: NullableInt,
+  heartRate: NullableInt,
+  respiratoryRate: NullableInt,
+  temperature: NullableStr,
+  temperatureUnit: NullableUnit,
+  spo2: NullableInt,
+  painScore: NullableInt,
+  painScale: Type.Union([lit(PAIN_SCALE), Type.Null()]),
+  weight: NullableStr,
+  weightUnit: NullableUnit,
+  height: NullableStr,
+  heightUnit: NullableUnit,
+  bmi: NullableStr,
+  bloodGlucose: NullableInt,
+  bloodGlucoseUnit: NullableUnit,
+  clinicallyNotIndicatedFields: Type.Union([Type.Array(Type.String()), Type.Null()]),
+  clinicallyNotIndicatedReason: NullableStr,
+  abnormalFlags: Type.Array(Type.String()),
+});
+
+/** Route 5b — the `{ encounterId, vitals }` envelope, newest capture first. */
+export const VitalsListResponseSchema = Type.Object({
+  encounterId: Type.String(),
+  vitals: Type.Array(VitalsViewResponseSchema),
+});
+
 /** Routes 6/7 — the authoritative mileage figure (D10). */
 export const MileageResultResponseSchema = Type.Object({
   mileageId: Type.String(),
@@ -379,6 +418,7 @@ type _Created = Conforms<Static<typeof CreatedEncounterResponseSchema>, ServiceC
 type _View = Conforms<Static<typeof EncounterViewResponseSchema>, ServiceEncounterView>;
 type _List = Conforms<Static<typeof EncounterListResponseSchema>, Ret<"listEncounters">>;
 type _Vitals = Conforms<Static<typeof VitalsResultResponseSchema>, ServiceVitalsResult>;
+type _VitalsList = Conforms<Static<typeof VitalsListResponseSchema>, Ret<"listVitals">>;
 type _Mileage = Conforms<Static<typeof MileageResultResponseSchema>, ServiceMileageResult>;
 type _Selections = Conforms<Static<typeof SelectionsUpdateResponseSchema>, Ret<"updateSelections">>;
 type _CarePlanLink = Conforms<Static<typeof CarePlanLinkResponseSchema>, Ret<"addCarePlanLink">>;

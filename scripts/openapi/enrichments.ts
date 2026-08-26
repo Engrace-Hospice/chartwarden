@@ -1380,6 +1380,7 @@ import {
   SignedSinceQuerySchema as M8SignedSinceQuerySchema,
   SupervisorReleaseSchema as M8SupervisorReleaseSchema,
   UpdateSelectionsSchema as M8UpdateSelectionsSchema,
+  VitalsListResponseSchema as M8VitalsListResponseSchema,
   VitalsResultResponseSchema as M8VitalsResultResponseSchema,
   VoidEncounterSchema as M8VoidEncounterSchema,
   VoidResponseSchema as M8VoidResponseSchema,
@@ -5953,6 +5954,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Capture a vitals set",
     body: M8CaptureVitalsSchema,
     response: M8VitalsResultResponseSchema,
+  },
+  "GET /api/v1/encounters/:encounterId/vitals": {
+    summary: "Read the vitals sets recorded on an encounter",
+    response: M8VitalsListResponseSchema,
   },
   "PATCH /api/v1/encounters/:encounterId/vitals/:vitalId": {
     summary: "Edit a vitals set (§7.7 If-Match)",
