@@ -150,8 +150,9 @@ const targetStr = (target: AbacTarget, field: string): string | null => {
 const hasBroadRole = (context: AbacContext): boolean =>
   BROAD_DENIAL_SCOPE_ROLES.some((r) => context.roles.includes(r));
 
+/** F-030 — `actorKind` is the stamped principal-kind attribute; `systemPrincipal` never was. */
 const isSystemPrincipal = (context: AbacContext): boolean =>
-  context.attributes.systemPrincipal === true;
+  context.attributes.actorKind === "system";
 
 const readContextOf = (context: AbacContext): M25AbacReadContext => ({
   organizationId: context.organizationId,

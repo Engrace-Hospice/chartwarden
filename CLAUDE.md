@@ -195,6 +195,41 @@ the prose docs in `docs/architecture/`.
   The resolution the four routes now use is `stepUpFreshFor` /`requestStepUpFresh`
   (`apps/backend/src/bootstrap/step-up.ts`), shared with M3's predicate so the guard form and the
   boolean form cannot drift.
+- `scripts/check-context-attributes.ts` — **request-context attribute producer gate** (F-030,
+  `bun run arch:context-attributes`, in `arch:fitness`). `request.context.attributes` is the untyped
+  bag the authenticate hook fills with server-assembled facts about the caller and that ABAC
+  predicates and route actors read back out. It is `Record<string, unknown>`, so a read of a key
+  nothing writes compiles, evaluates, and yields `undefined` — and every reader treats that as deny,
+  which makes the failure silent, permanent, and indistinguishable from working code. Four instances
+  had already been found and fixed one at a time before anyone looked for the pattern:
+  `membershipId` (7 modules' §4.x ownership predicates saw null and denied), `providerEntityIds` /
+  `locationIds` (every PE/location predicate denied unconditionally, ARCH-008/009), `stepUpRecent`
+  (15 modules — M23/M27/M37 mount `requireStepUp`, which PASSES, then refuse in the DOMAIN on the
+  always-false flag, so the guard allowed and the machine refused, F-029), and `systemPrincipal`
+  (one fact under two names: `actorKind` was stamped and checked by M15/M23's
+  `requireSystemPrincipal()`, while M23's seam predicate and M25's `/internal` guard checked a name
+  nothing wrote — those service-to-service endpoints refused every caller, a diagnosis
+  `seed-scenario-billing.ts`'s header had already written down and worked around by skipping M25).
+  `arch:abac-predicates` cannot see any of this: it proves a predicate NAME resolves, not that the
+  FACTS the predicate reads are ever produced. The gate requires every key read off the bag to be
+  declared as either `{ producer }` — and it verifies a write actually EXISTS, since a declared
+  producer that stops writing is the exact regression — or `{ blocked }`, carrying the reason and
+  what it needs (the `deviceAttestationValid` rule again: a fact whose source does not exist yet is
+  a *declared* absence, never an undeclared one). A blocked key that gains a writer fails, so an
+  entry cannot outlive its reason; a declared key nothing reads fails, so the registry cannot go
+  stale. Tests are excluded from the scan on purpose — every historical instance was invisible
+  precisely BECAUSE each suite wrote the attribute in its own fake authenticate hook, so counting
+  those as producers would make the gate agree with the bug. The scanner resolves string constants
+  **across** files (`attributes[REVIEW_FLOOR_OVERRIDE_ATTRIBUTE]` is read in M14's routes and
+  declared in its predicate file), the SCREAMING_CASE identifier-index write form (how both
+  in-request producers actually write), and whole-bag aliases (`const attrs = ctx.attributes ?? {}`,
+  which is the only way two of the unproduced keys are read at all). **13 keys are currently
+  declared blocked** and the gate prints them on every run — they are the standing finding, not a
+  passing state. The largest is `sessionClass`: M16/M31/M39 read it and default to `"staff"`, and
+  M31's portal predicates gate on it being one of `patient_portal`/`caregiver_portal`/
+  `bereaved_portal`, none of which the M1 `session_class` enum contains — so the whole portal ABAC
+  surface denies, and unblocking it is an architecture decision (extend M2's enum, or read a
+  different fact), not a stamp.
 - `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
   Every live-database / live-Redis / browser suite in `package.json` must be invoked by a job in
   `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so
