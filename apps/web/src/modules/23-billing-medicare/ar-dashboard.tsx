@@ -10,6 +10,7 @@ import {
   RightDetailPanel,
   StatusPill,
   WorkQueueLayout,
+  interactiveRowProps,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -549,7 +550,7 @@ function BillingMetricTable({
           return (
             <tr
               key={row.id}
-              onClick={() => onSelectRow(row.id)}
+              {...interactiveRowProps(() => onSelectRow(row.id), isSelected)}
               className="wx-data-row-interactive"
               style={{
                 borderBottom:
