@@ -37,6 +37,32 @@ export async function signOut(page: Page): Promise<void> {
 }
 
 /**
+ * F-023 (#56) — wait for in-flight CSS transitions/animations before scanning.
+ *
+ * A scan is only meaningful against the page a user actually sees. The app shell fades its primary
+ * navigation in on every load, and mid-transition those labels compute to `#ededec` on `#ffffff` —
+ * contrast 1.17, which axe correctly calls a `color-contrast` violation across ~32 nodes. They
+ * settle to `rgb(86, 82, 76)` (~7:1, comfortably AA) within about 300ms. WCAG does not require
+ * contrast to hold DURING a transition, so those reports were the scanner racing the paint, not a
+ * defect — but they failed two E2E tests non-deterministically and, worse, buried the one real
+ * violation in the same run under thirty-two false ones.
+ *
+ * `getAnimations()` covers CSS transitions as well as animations, so this waits on the real thing
+ * rather than sleeping a guessed interval. The `finished` promises are caught individually: an
+ * animation cancelled by a re-render rejects, and a cancelled animation is a settled one.
+ * `waitForLoadState("networkidle")` first, so an animation kicked off by late-arriving data is
+ * already in flight by the time we enumerate.
+ */
+async function waitForTransitionsToSettle(page: Page): Promise<void> {
+  await page.waitForLoadState("networkidle").catch(() => {});
+  await page.evaluate(async () => {
+    await Promise.all(
+      document.getAnimations().map((animation) => animation.finished.catch(() => undefined)),
+    );
+  });
+}
+
+/**
  * Runs an axe scan restricted to WCAG 2.1 A/AA and fails with the violated rule ids + targets.
  * `excludeSelectors` is for a REVIEWED, TRACKED, already-known gap only (mirrors
  * scripts/check-audit-exceptions.ts's exception style) — never a blanket way to silence a page;
@@ -46,6 +72,7 @@ export async function expectNoAxeViolations(
   page: Page,
   excludeSelectors: readonly string[] = [],
 ): Promise<void> {
+  await waitForTransitionsToSettle(page);
   let builder = new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]);
   for (const selector of excludeSelectors) builder = builder.exclude(selector);
   const results = await builder.analyze();

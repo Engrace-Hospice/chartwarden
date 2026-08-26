@@ -58,6 +58,7 @@ export function EntityLookupField({
   const hintId = `${inputId}-hint`;
   const errorId = `${inputId}-error`;
   const listId = `${inputId}-list`;
+  const labelId = `${inputId}-label`;
   const describedBy = error ? errorId : hint ? hintId : undefined;
   const closeTimer = useRef<number | null>(null);
   const [query, setQuery] = useState("");
@@ -145,15 +146,23 @@ export function EntityLookupField({
       className="wx-field"
       style={{ display: "flex", flexDirection: "column", gap: t.space2, color: t.onSurface }}
     >
-      <span style={{ fontSize: "0.8125rem", fontWeight: 650 }}>
+      <span id={labelId} style={{ fontSize: "0.8125rem", fontWeight: 650 }}>
         {label}
         {required ? <span aria-hidden="true"> *</span> : null}
       </span>
       <span style={shellStyle}>
         <input
           id={inputId}
+          // F-023 (#56) — the ROLE, not just the attributes. This carried `aria-expanded` and
+          // `aria-controls` on a plain textbox, which is `aria-allowed-attr` (critical) in axe and,
+          // more to the point, meaningless to a screen reader: the field announced as an ordinary
+          // text input that claimed to control an element announcing as nothing. The combobox role
+          // is what makes both attributes legal AND intelligible.
+          role="combobox"
+          aria-autocomplete="list"
           aria-expanded={open}
-          aria-controls={listId}
+          // Only while the popup exists — `aria-controls` pointing at an absent id is its own defect.
+          aria-controls={open ? listId : undefined}
           aria-invalid={Boolean(error) || undefined}
           aria-describedby={describedBy}
           required={required}
@@ -179,7 +188,11 @@ export function EntityLookupField({
           </button>
         ) : null}
         {open ? (
-          <span id={listId} style={popoverStyle}>
+          // `role="listbox"` gives `aria-controls` above something real to point at, and is the
+          // required parent for the `option`s below.
+          // biome-ignore lint/a11y/useSemanticElements: <select>/<option> cannot hold a search field's async, richly-formatted results (ARIA 1.2 combobox popup pattern)
+          // biome-ignore lint/a11y/useFocusableInteractive: the popup is not a focus target — focus stays in the combobox input and moves to the option buttons below
+          <span id={listId} role="listbox" aria-labelledby={labelId} style={popoverStyle}>
             {loading ? (
               <span style={stateStyle}>
                 <LoadingSpinner />
@@ -195,6 +208,11 @@ export function EntityLookupField({
                 <button
                   key={option.id}
                   type="button"
+                  // `aria-selected` is not valid on a `button`; it IS valid on an `option`, which is
+                  // what these have always been in everything except their role. Kept as a real
+                  // `<button>` so the pointer and keyboard behaviour is the browser's, not ours.
+                  // biome-ignore lint/a11y/useSemanticElements: an <option> element cannot carry the description markup or the click behaviour these rows have
+                  role="option"
                   aria-selected={option.id === value}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => select(option)}
