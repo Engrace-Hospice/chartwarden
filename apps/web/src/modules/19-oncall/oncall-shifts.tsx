@@ -383,7 +383,7 @@ export function OnCallShiftsScreen(): JSX.Element {
                 </thead>
                 <tbody>
                   {visibleShifts.map((shift) => (
-                    <tr key={shift.id} style={rowStyle} className="wx-data-row-interactive">
+                    <tr key={shift.id} style={rowStyle}>
                       <td style={tdStyle}>
                         <Link to={`/triage/shifts/${shift.id}`} style={callLinkStyle}>
                           {shortId(shift.id)}
