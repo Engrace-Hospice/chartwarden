@@ -39,8 +39,11 @@ export interface SessionContextRecord {
   readonly sessionClass: string;
   /** M31 portal sessions only — the account the session acts for. */
   readonly portalAccountId: string | null;
-  /** M31 portal sessions only — the one patient bound by `select-patient`; null before that. */
-  readonly portalPatientId: string | null;
+  /**
+   * The one patient this session is pinned to — a portal session after `select-patient`, a
+   * collaborator/funeral session from mint — or null on an org-scoped class (F-030).
+   */
+  readonly sessionPatientId: string | null;
 }
 
 /** Reads a session-context row by id within an org scope (M1 `session` repo in production). */
@@ -81,7 +84,7 @@ export function createSessionContextResolver(
         locationIds: row.locationIds,
         sessionClass: row.sessionClass,
         portalAccountId: row.portalAccountId,
-        portalPatientId: row.portalPatientId,
+        sessionPatientId: row.sessionPatientId,
       };
     },
     async resolveStepUpState(scope, sessionId): Promise<SessionStepUpFields | null> {

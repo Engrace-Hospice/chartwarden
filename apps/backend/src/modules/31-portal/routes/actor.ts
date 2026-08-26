@@ -11,9 +11,12 @@
 //                     §8.3.1's threat (a) is a caregiver naming another account; sourcing it from the
 //                     session makes the mismatch unrepresentable.
 //   portalPatientId — the ONE patient the session is scoped to after select-patient
-//                     (`context.attributes.portalPatientId`). §8.3.1's threat (b) is a valid session
+//                     (`context.attributes.sessionPatientId`). §8.3.1's threat (b) is a valid session
 //                     naming another patient's id in the query string; the read services take the patient
 //                     from HERE, never from `?patientId=`.
+//                     The ATTRIBUTE is class-neutral because collaborator/funeral sessions are pinned to
+//                     a patient too and M7 reads the same fact (F-030); this module's own field keeps the
+//                     portal name, because every session that reaches an M31 route is a portal session.
 //
 // Both are set by M2 when it mints a portal session (the same posture as `membershipId` / `sessionClass`);
 // until a real portal session carries them, the portal predicates fail CLOSED (403) — never fall back to a
@@ -54,7 +57,7 @@ export function actorOf(request: FastifyRequest): M31Actor {
     roles: ctx.roles ?? [],
     sessionClass: str(attrs.sessionClass) ?? "staff",
     portalAccountId: str(attrs.portalAccountId),
-    portalPatientId: str(attrs.portalPatientId),
+    portalPatientId: str(attrs.sessionPatientId),
   };
 }
 

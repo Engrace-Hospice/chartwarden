@@ -149,13 +149,21 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     // patient (F-030). M16, M19, M31 and M39 all read `sessionClass`, and M16/M19/M31 gate on it being
     // one of the portal classes — which the `session_class` enum did not even contain until migration
     // 0219, so every one of those predicates denied unconditionally and the whole portal ABAC surface
-    // with them. `portalAccountId`/`portalPatientId` come off the session's `scope` jsonb, which is the
+    // with them. `portalAccountId`/`sessionPatientId` come off the session's `scope` jsonb, which is the
     // only legitimate source: M31's `portalAccountIdOf` throws 403 rather than fall back to a request
     // parameter (§8.3.1 threat (b) is a valid session naming another patient's id in the query string).
-    // `portalPatientId` is legitimately null until `select-patient` binds it.
+    //
+    // `sessionPatientId` is ONE key rather than the three the readers used to ask for. M31 and M19's
+    // portal guards read `portalPatientId`, M19's portal-triage routes read `portalPatientId ??
+    // patientId`, and M7's `caseload_or_scope` read a `scopePatientIds` array — three names, one fact
+    // (`session.scope.patientId`), and nothing wrote any of them. It is deliberately not named for a
+    // class: M7's readers are `external_collaborator` sessions, which are pinned to a patient from the
+    // moment they are minted, so `portal…` would have become the fourth name instead of the last one.
+    // It is legitimately null on a portal session until `select-patient` binds it (M31 §2.3 / D2).
     request.context.attributes.sessionClass = actor.sessionClass;
     if (actor.portalAccountId) request.context.attributes.portalAccountId = actor.portalAccountId;
-    if (actor.portalPatientId) request.context.attributes.portalPatientId = actor.portalPatientId;
+    if (actor.sessionPatientId)
+      request.context.attributes.sessionPatientId = actor.sessionPatientId;
     request.context.attributes.stepUpRecent = await stepUpFreshFor({
       organizationId: actor.organizationId,
       sessionId: snap.sessionId,

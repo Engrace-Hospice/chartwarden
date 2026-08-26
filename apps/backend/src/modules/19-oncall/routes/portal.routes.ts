@@ -6,7 +6,7 @@
 //   1. `portal_session_consent_active` validates M39's `family_caregiver_access` consent for the SPECIFIC
 //      patient, and the predicate refuses any session class that is not a portal one — so a staff session
 //      cannot reach the lay-language projection and thereby bypass the clinical routes' caseload gate.
-//   2. THE PATIENT ID IS TAKEN FROM THE SESSION (`context.attributes.portalPatientId`), never from the
+//   2. THE PATIENT ID IS TAKEN FROM THE SESSION (`context.attributes.sessionPatientId`), never from the
 //      query string. §8.3.1's threat (b) is exactly a caregiver with a valid portal session naming another
 //      patient's id; sourcing it from the session makes the mismatch unrepresentable rather than merely
 //      refused, and §8.3.1 fixes the answer at 403 (hence `notFoundOnDeny: false` in the guard).
@@ -34,8 +34,11 @@ const NO_OFFSET = rejectOffsetPagination();
 function portalPatientIdOf(request: {
   context?: { attributes?: Record<string, unknown> };
 }): string {
-  const attrs = request.context?.attributes;
-  const value = attrs?.portalPatientId ?? attrs?.patientId;
+  // ONE name. This used to read `portalPatientId ?? patientId` — two names for the session's pinned
+  // patient, neither of which anything wrote, so the `??` chain was two undefineds and this route
+  // 403'd every portal caller (F-030). The fallback was not a safety net; it was a second way to be
+  // wrong, and it hid which name the hook was supposed to be writing.
+  const value = request.context?.attributes?.sessionPatientId;
   if (typeof value !== "string" || value.length === 0) {
     throw new ForbiddenError(
       "this portal session carries no patient anchor; the triage care log is scoped by the session, not by a request parameter (§8.3.1)",

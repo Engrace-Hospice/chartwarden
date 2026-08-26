@@ -22,7 +22,7 @@
 //        patient must carry an explicit recording consent, else the Record button is refused.
 //
 // PORTAL SESSION IS THE SUBJECT ANCHOR. The portal predicates take `portalAccountId` / `patientId` from
-// the SERVER-assembled session (`context.attributes.portalAccountId` / `.portalPatientId`), never from the
+// the SERVER-assembled session (`context.attributes.portalAccountId` / `.sessionPatientId`), never from the
 // query string — §8.3.1's threat (b) is exactly a caregiver with a valid session naming another patient's
 // id, and sourcing both ids from the session makes the mismatch unrepresentable rather than merely refused.
 // The telehealth predicates take a `telehealthVisitId` and resolve the patient from the visit row, so a

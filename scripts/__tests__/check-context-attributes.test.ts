@@ -83,10 +83,10 @@ describe("context-attribute producer gate", () => {
   });
 
   it("resolves keys read through a whole-bag alias", () => {
-    // `const attrs = ctx.attributes ?? {}` then `attrs.portalPatientId` — M31's `actorOf`. Two of
+    // `const attrs = ctx.attributes ?? {}` then `attrs.sessionPatientId` — M31's `actorOf`. Two of
     // the unproduced keys are read only this way, so without alias resolution the gate would have
     // called their registry entries unused and been wrong.
-    expect(keysRead.has("portalPatientId")).toBe(true);
+    expect(keysRead.has("sessionPatientId")).toBe(true);
     expect(keysRead.has("portalAccountId")).toBe(true);
   });
 

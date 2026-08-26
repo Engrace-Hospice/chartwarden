@@ -2,7 +2,7 @@
 //
 // The shared `requirePermission` / `requireAbac` / `requireStepUp` preHandler factories every M31 route
 // plugin composes (the M19/M20 routes/guards.ts precedent). Each §4.7 predicate resolves its subject facts
-// server-side — from the portal SESSION (`portalAccountId` / `portalPatientId`) or from the telehealth
+// server-side — from the portal SESSION (`portalAccountId` / `sessionPatientId`) or from the telehealth
 // visit's own row — never from a caller-supplied org, account or patient claim.
 //
 // THE PORTAL TARGET IS THE SESSION, NOT THE QUERY. §8.3.1's threat (b) is a caregiver with a valid session
@@ -40,7 +40,7 @@ export const ABAC_GRANT = (action: string): PreHandler =>
   requireAbac(action, "portal_grant_active_for_patient", {
     getTarget: ((r: FastifyRequest) => ({
       portalAccountId: sessionAttr(r, "portalAccountId"),
-      patientId: sessionAttr(r, "portalPatientId"),
+      patientId: sessionAttr(r, "sessionPatientId"),
     })) as never,
     notFoundOnDeny: false,
   }) as PreHandler;
@@ -59,7 +59,7 @@ export const ABAC_CAREGIVER_ATTEST = (action: string): PreHandler =>
   requireAbac(action, "portal_caregiver_is_primary_or_dpoa", {
     getTarget: ((r: FastifyRequest) => ({
       portalAccountId: sessionAttr(r, "portalAccountId"),
-      patientId: sessionAttr(r, "portalPatientId"),
+      patientId: sessionAttr(r, "sessionPatientId"),
     })) as never,
     notFoundOnDeny: false,
   }) as PreHandler;
@@ -69,7 +69,7 @@ export const ABAC_BEREAVED = (action: string): PreHandler =>
   requireAbac(action, "bereaved_portal_window_open", {
     getTarget: ((r: FastifyRequest) => ({
       portalAccountId: sessionAttr(r, "portalAccountId"),
-      patientId: sessionAttr(r, "portalPatientId"),
+      patientId: sessionAttr(r, "sessionPatientId"),
     })) as never,
     notFoundOnDeny: false,
   }) as PreHandler;
