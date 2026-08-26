@@ -123,15 +123,15 @@ export const CONTEXT_ATTRIBUTES: Readonly<Record<string, AttributeEntry>> = {
   },
   licensure: {
     blocked:
-      "M22's §4.7 high-risk-field review gate reads `licensure.type` (RN/NP/PA/MD/DO). Its comment sources it from `user.licensure.type`; no such column or seam field exists. Fails closed, so no non-RN reviews a high-risk field — but no RN does either.",
+      "M22's §4.7 `extraction_reviewer_eligible` reads `licensure.type` and compares it against {RN, NP, PA, MD, DO}; nothing writes it, so no high-risk medication/allergy/dx field can be reviewed by anyone. CORRECTED: this entry used to say no such column or seam exists. One does — M17's `membership_credential` table and the boot-registered `CredentialReader` seam (`activeCredentialsAsOf`), which is the SAME fact under a different name, already handles the status/effective/expiry logic, and is deliberately orthogonal to the RBAC role grant (a clinician can hold the `rn` role while their licence has lapsed). What genuinely blocks the wiring is the VOCABULARY: `credential_discipline` is {rn, lpn, chha, msw, chaplain, volunteer, md, np}, so PA and DO cannot be represented at all. Resolving this means deciding whether M22's set shrinks to what the platform models or the enum grows — a migration to a published enum, the `sessionClass` decision again.",
   },
   disciplines: {
     blocked:
-      "M12 and M13 read the actor's clinical disciplines, then FALL BACK to role tokens — so this one degrades rather than dies, and the fallback is why it went unnoticed. Not on `ResolvedActor`; needs a decision about whether discipline belongs on the session-assembled actor at all.",
+      "SEVEN modules read the actor's clinical disciplines — M7, M8, M9, M10, M11, M12, M13 — and every one of them then FALLS BACK to role tokens, which is why it degrades rather than dies and why it went unnoticed (this entry used to say two). The attribute arm has never once contributed; the role arm is doing all the work everywhere. Not on `ResolvedActor`. Needs a decision about whether discipline belongs on the session-assembled actor at all — and note M19's `routes/actor.ts` argues the opposite case in writing, deriving discipline FROM role keys because \"the platform has no workforce-discipline read\". Either the seven reads go (one derivation, M19's) or the fact gets produced; what cannot stay is seven dead reads sitting in front of the thing that actually answers.",
   },
   externalActorId: {
     blocked:
-      "M19's on-call predicates and route actor read the vendor/answering-service actor id for a vendor-scoped call. Nothing assembles it, so no vendor-scoped call can be recognised as one.",
+      "M19's on-call predicates and route actor read the vendor/answering-service actor id for a vendor-scoped call. Nothing assembles it, so no vendor-scoped call can be recognised as one — but unlike the rest of this list that is DECLARED rather than accidental: the M19 spec's Phase boundary ships the Hybrid and Centralized models feature-flagged-OFF in Phase 1, with only the data shape (`external_triage_vendor`, `triage_call.external_actor_id`) in the migration so a Phase-2 tenant is a config flip. Producing it needs the vendor session mint path that phase has not built, plus a `session_scope_chk` branch for the two vendor classes (migration 0219 added the classes; 0220 required no scope of them). The `deviceAttestationValid` shape, one layer up.",
   },
   isPlatformOperator: {
     blocked:
