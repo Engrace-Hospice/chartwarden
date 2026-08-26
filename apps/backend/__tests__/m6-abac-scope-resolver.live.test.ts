@@ -29,6 +29,16 @@ const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
 const MD = "55555555-5555-5555-5555-555555555555";
 const ATTENDING = "77777777-7777-7777-7777-777777777777";
+// #44 — the elected hospice this suite's setup admission elects. `draftElectionStatement` now
+// PERSISTS the election (it used to validate its fields and forward one) and fails CLOSED when the
+// org-check port is unbound, so the id has to be a real row of ORG_A's rather than a free uuid.
+const PROVIDER_ENTITY = "99999999-9999-4999-8999-999999999999";
+const DRAFT = {
+  electedProviderEntityId: PROVIDER_ENTITY,
+  electedAttendingPhysicianId: ATTENDING,
+  waiverAcknowledged: true,
+} as const;
+const SIGN = { signingPatientName: "Pat Patient", signingRole: "patient" } as const;
 
 describe.skipIf(!DB_URL)("M6 admission.scope child-resource resolvers — LIVE Postgres (GAP-011)", () => {
   let admin: Client;
@@ -83,8 +93,8 @@ describe.skipIf(!DB_URL)("M6 admission.scope child-resource resolvers — LIVE P
       { deliveryMethod: "electronic_witnessed", acknowledgedByRole: "patient" },
       USER,
     );
-    const es = await svc.draftElectionStatement(ORG_A, admissionId, periodId);
-    await svc.signElection(ORG_A, es.id, es.version, USER);
+    const es = await svc.draftElectionStatement(ORG_A, admissionId, periodId, DRAFT);
+    await svc.signElection(ORG_A, es.id, es.version, USER, SIGN);
     const cti = await svc.draftCti(
       ORG_A,
       { electionPeriodId: periodId, hospiceMedicalDirectorId: MD, attendingPhysicianId: ATTENDING, isRecert: false },
@@ -107,11 +117,26 @@ describe.skipIf(!DB_URL)("M6 admission.scope child-resource resolvers — LIVE P
       [ORG_A, ORG_B],
     );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m6gap011@x.test')`, [USER]);
+    await admin.query(
+      `INSERT INTO provider_entity (id, organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+       VALUES ($1,$2,'CCN-GAP011','GAP-011 Hospice','NPI-GAP011','enc','12-31')`,
+      [PROVIDER_ENTITY, ORG_A],
+    );
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });
-    svc = createDbAdmissionRouteService(handle.db);
+    // Bound to the REAL predicate over the seeded entity, exactly as the T3/T4 suites do. The
+    // deliberately-unbound 503 stays asserted in T3, where it is the subject rather than setup.
+    svc = createDbAdmissionRouteService(handle.db, undefined, undefined, {
+      async belongsToOrg(organizationId, providerEntityId) {
+        const { rows } = await admin.query(
+          "SELECT 1 FROM provider_entity WHERE id=$1 AND organization_id=$2",
+          [providerEntityId, organizationId],
+        );
+        return rows.length > 0;
+      },
+    });
     resolver = createDbAdmissionAbacResolver(handle.db);
   }, 120_000);
 
