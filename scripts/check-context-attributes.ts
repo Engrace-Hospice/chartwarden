@@ -121,10 +121,6 @@ export const CONTEXT_ATTRIBUTES: Readonly<Record<string, AttributeEntry>> = {
     blocked:
       "The other entry that was already done RIGHT, and the model for this whole registry: `deviceAttestationValid` (packages/auth/src/abac/registry.ts) is a REGISTERED predicate that denies and says why, rather than an unregistered name — and its comment states the contract exactly: when M2 lands the attestation surface the auth plugin starts setting DEVICE_ATTESTATION_ATTRIBUTE and the gate begins passing, with nothing at the predicate or the route changing. Listed for completeness.",
   },
-  permissions: {
-    blocked:
-      "Read by M27 and M30's owner-OR-admin predicates as the actor's resolved grant set; nothing assembles it. The fact exists — `resolveActorPermissions` (@wardenx/auth) is the documented check-don't-gate seam — but stamping the full grant set on every request has a cost worth deciding deliberately rather than by default. Fails closed: the explicit-grant arm of `abuseAllegationAccess`/`ownsQapiProject`/`ownsSraCycle` never fires.",
-  },
   licensure: {
     blocked:
       "M22's §4.7 high-risk-field review gate reads `licensure.type` (RN/NP/PA/MD/DO). Its comment sources it from `user.licensure.type`; no such column or seam field exists. Fails closed, so no non-RN reviews a high-risk field — but no RN does either.",

@@ -223,7 +223,7 @@ the prose docs in `docs/architecture/`.
   **across** files (`attributes[REVIEW_FLOOR_OVERRIDE_ATTRIBUTE]` is read in M14's routes and
   declared in its predicate file), the SCREAMING_CASE identifier-index write form (how both
   in-request producers actually write), and whole-bag aliases (`const attrs = ctx.attributes ?? {}`,
-  which is the only way two of the unproduced keys are read at all). **7 keys are currently
+  which is the only way two of the unproduced keys are read at all). **6 keys are currently
   declared blocked** and the gate prints them on every run — they are the standing finding, not a
   passing state. The largest is `sessionClass`: M16/M31/M39 read it and default to `"staff"`, and
   M31's portal predicates gate on it being one of `patient_portal`/`caregiver_portal`/
@@ -256,7 +256,15 @@ the prose docs in `docs/architecture/`.
   invitee's browser, and the email said "invited to join your organization". It now resolves from
   the INVITER's own active membership in the org they are inviting into (`findActive`, the same read
   `/auth/context` already projects the name through), which is org-scoped by construction and adds
-  no dependency. Blocked keys: **8 → 7**.
+  no dependency. Blocked keys: **8 → 7**. Then `permissions`, whose blocked entry had assumed a COST
+  decision — whether to stamp the actor's whole grant set on every request — when there was none to
+  make: `resolveActorPermissions` is the check-don't-gate seam, its doc comment names this exact case
+  ("consumers that must *check* a permission rather than gate on it") and states an assembled
+  `AbacContext` is a valid argument, and the resolver behind it is TTL-cached per (org, user) with
+  the TTL capped by the soonest grant expiry — so by the time M27/M30's predicates ask, the route's
+  own `requirePermission` preHandler has already resolved the same set and it is a cache hit. Nothing
+  is stamped; the two `actorHoldsPermission` helpers resolve through the seam. Blocked keys:
+  **7 → 6**.
 - `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
   Every live-database / live-Redis / browser suite in `package.json` must be invoked by a job in
   `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so
