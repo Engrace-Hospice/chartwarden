@@ -27,6 +27,54 @@ then requires `http://127.0.0.1:3000/ready` to pass. If an image pull, provision
 fails, it restores the previous image references and recreates those services. Database migrations are
 forward-only and are not rolled back.
 
+## Supply chain (F-040 / #100)
+
+The `release` job scans, describes and signs every image it publishes — all three addressing the
+**digest**, never the tag. `sha-<commit>` is immutable by convention and by nothing else; a registry
+will move a tag, so signing or attesting one proves nothing a minute later.
+
+| Step | Tool | Failure behaviour |
+| --- | --- | --- |
+| Vulnerability scan | Trivy | **HIGH/CRITICAL fail the release.** Only `.trivyignore.yaml` gets past it, and every entry needs a statement plus an unexpired date within 90 days (`arch:vuln-allowlist`). |
+| SBOM | syft (SPDX JSON) | Uploaded as a workflow artifact **and** attached to the image as a cosign attestation. An empty SBOM fails the build — it would answer "are we affected?" with a confident, wrong "no". |
+| Signature | cosign, keyless | Signed after the scan passes. Signing a known-vulnerable image devalues every signature the process has produced. |
+
+Scanning happens **before** signing on purpose: the signature asserts that an artefact went through this
+release process, so the process must not stamp findings it would otherwise fail on.
+
+### Verification on the VPS — `cosign` is now a prerequisite
+
+`deploy.sh` verifies both images before pulling and **pins `.env.production` to the digest cosign
+returned**, so Compose cannot re-resolve the tag to something else in between. Install it once:
+
+```sh
+curl -sSfLo /usr/local/bin/cosign   https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
+chmod +x /usr/local/bin/cosign
+cosign version
+```
+
+If `cosign` is missing, or a signature does not verify, **the deploy refuses and restores the previous
+release**. To deploy without verification, set `WARDENX_DEPLOY_ALLOW_UNVERIFIED=1` explicitly — it
+prints the fact on every deploy that uses it, because an unverified deploy must never be
+indistinguishable from a verified one in the log.
+
+What is actually checked is the **workflow identity**, not a key:
+
+| Variable | Default |
+| --- | --- |
+| `WARDENX_COSIGN_IDENTITY` | `https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main` |
+| `WARDENX_COSIGN_ISSUER` | `https://token.actions.githubusercontent.com` |
+
+A signature produced by any other workflow, repository, branch or actor fails. That property is worth
+more than usual here: `main` has no branch protection and the `production` environment has no approval
+rules (#16), so this is currently the strongest statement available about where a running image came
+from. It is **not** a substitute for #16 — someone able to edit workflows can still change what gets
+signed; it means they cannot do it invisibly, because the Rekor entry records which workflow signed
+what, and when.
+
+## Rolling back
+
 To roll back application code, run **Release and deploy** manually from the commit to restore (or add a
 dedicated rollback workflow that passes the previous immutable image tags); never replace production
-image references with `:latest`.
+image references with `:latest`. Note that `.env.production` holds a digest after a verified deploy,
+which is a stronger rollback target than a tag: it names one artefact and cannot drift.

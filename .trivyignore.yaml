@@ -1,0 +1,31 @@
+# .trivyignore.yaml — time-boxed suppressions for the release image scan (F-040 / #100).
+#
+# The release job fails on HIGH and CRITICAL findings in the published images. Some findings cannot be
+# fixed on our side today — an unpatched base-image package, or a CVE in a transitive dependency with no
+# upstream release. Those go here, and ONLY here: `trivy-action` is configured with `exit-code: 1`, so a
+# finding not listed in this file fails the release. There is no severity threshold to quietly raise.
+#
+# EVERY ENTRY MUST CARRY `expired_at` AND `statement`, and `scripts/check-vuln-allowlist.ts`
+# (`arch:vuln-allowlist`, in `arch:fitness`) fails the build otherwise. That is the whole design: an
+# allowlist without expiry is not a suppression, it is a decision to stop looking. Trivy itself stops
+# honouring an entry the day after `expired_at`, so a forgotten entry re-breaks the release rather than
+# protecting a vulnerability forever — and the gate refuses an already-expired entry so the file cannot
+# accumulate dead rows that read as active suppressions.
+#
+# `expired_at` is a DATE the finding must be re-examined by, not a guess at when upstream will patch.
+# Ninety days is the default ceiling the gate enforces; a longer one needs the gate's constant changed,
+# deliberately and in review.
+#
+# Format (Trivy's own schema — https://trivy.dev/latest/docs/configuration/filtering/):
+#
+#   vulnerabilities:
+#     - id: CVE-2026-12345
+#       # optional: paths: ["usr/local/bin/thing"]
+#       expired_at: 2026-11-24
+#       statement: >
+#         What it is, why it cannot be fixed here yet, and what removes it. Name the upstream issue.
+#
+# The file is intentionally EMPTY of suppressions right now. If the first release scan surfaces
+# something, the honest first move is to try to fix it — bump the base image, bump the dependency — and
+# only then to write an entry here explaining why that did not work.
+vulnerabilities: []
