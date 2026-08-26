@@ -167,6 +167,34 @@ the prose docs in `docs/architecture/`.
   inputs do not exist yet is expressed as a *registered* predicate that denies and says why
   (`deviceAttestationValid` in `packages/auth/src/abac/registry.ts`), never as an unregistered
   name — both refuse identically, only the first is distinguishable from a mistake.
+- `scripts/check-request-header-auth.ts` — **request-header authorization gate** (F-028,
+  `bun run arch:request-header-auth`, in `arch:fitness`). A request header is whatever the caller
+  typed; deciding an AUTHORIZATION question from one, unverified, hands the decision to the party
+  being gated. Four commit-point routes did exactly that — M14's IDG adjourn (the D13 commit point),
+  M17's self-attested visit start, and M18's retroactive correction-of-record + D6 supervisor
+  override each gated their fresh-step-up requirement on `request.headers["x-step-up"] === "fresh"`,
+  so anyone who could reach the route could satisfy the re-authentication ceremony by typing the
+  header. Eight other modules gated the same requirement correctly the whole time, through
+  `requireStepUp(opKey)` → M3's `step_up_recent` predicate → M2's `SessionContextResolver` seam.
+  Nothing caught it because every gate was self-consistent about it: the routes carried
+  request/response contracts, so `arch:openapi-coverage` counted them enriched; `openapi:check`
+  proves the contract was *regenerated*, not that it is *true*; and `client:gen` was clean because a
+  header nothing declares is simply one the client cannot send — the published API and the code
+  agreed with each other and both were wrong about what the route required. It surfaced only when
+  F-012 type-checked `scripts/` and broke a seed that had been passing the header as a typed
+  parameter. The gate requires every `request.headers[...]` read in `apps/backend/src` to name a
+  header REGISTERED as either `verified` (the server checks the value against state it holds — a
+  signature, a constant-time secret compare, a server-minted single-use token, a double-submit
+  cookie) or `not-authorization` (concurrency control, telemetry; a forged value earns a 412 or a bad
+  log line, never access). There is deliberately **no third classification** for "trusted because the
+  caller is nice" — a header that would need one is the bug. Response headers and comments are not
+  inputs and are skipped; test files are excluded (a harness legitimately drives its own fake
+  authenticate hook off headers); a name reached through a module constant is resolved to the real
+  header, and the one generic accessor whose name arrives as a parameter is declared in
+  `DYNAMIC_READERS` with the constants its callers pass, each of which must itself be registered.
+  The resolution the four routes now use is `stepUpFreshFor` /`requestStepUpFresh`
+  (`apps/backend/src/bootstrap/step-up.ts`), shared with M3's predicate so the guard form and the
+  boolean form cannot drift.
 - `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
   Every live-database / live-Redis / browser suite in `package.json` must be invoked by a job in
   `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so

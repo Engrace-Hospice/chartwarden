@@ -24,8 +24,9 @@
 //        exactly this) AND have a FRESH step-up per the platform `STEP_UP_POLICY`, resolved via M2's
 //        published `SessionContextResolver` seam + the pure `isStepUpRecent` decision — the SAME real,
 //        server-verified mechanism M3's own `step_up_recent` predicate uses (never a client-supplied
-//        header — the ADJOURN route's `x-step-up: fresh` header is a DIFFERENT, pre-existing shortcut this
-//        fix does not repeat). On allow-via-override the predicate flags
+//        header — the ADJOURN route's `x-step-up: fresh` header WAS a different, pre-existing shortcut this
+//        fix did not repeat; F-028 has since removed it, and adjourn resolves the same server-verified way).
+//        On allow-via-override the predicate flags
 //        `context.attributes[REVIEW_FLOOR_OVERRIDE_ATTRIBUTE] = true` — the SAME object `requireAbac`'s
 //        break-glass branch already mutates for the handler to read, since `AbacContext.attributes` is
 //        `request.context.attributes` by reference (not cloned) — so the route handler knows to pass

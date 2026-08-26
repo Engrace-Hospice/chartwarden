@@ -336,6 +336,7 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
 
 export * from "./seams/registry";
 export * from "./seams/providers";
+export * from "./step-up";
 export * from "./erasers/registry";
 export * from "./erasers/providers";
 export * from "./in-memory-ledger";

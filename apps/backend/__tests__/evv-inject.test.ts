@@ -13,7 +13,9 @@
 // registered into the shared ABAC registry, exactly as `buildOrderAbacPredicates` does for M11.
 import {
   createInMemoryEffectivePermissionStore,
+  createInMemorySessionContextStore,
   createPredicateRegistry,
+  createSessionContextResolver,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAbacRegistry,
@@ -23,6 +25,7 @@ import {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
   EvvRouteService,
   buildEvvAbacPredicates,
@@ -39,6 +42,13 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  // F-028 — the §2.3 correction and the D6 supervisor override used to take their step-up from
+  // `request.headers["x-step-up"]`, a string the gated caller supplies. They resolve the REAL session
+  // through M2's `SessionContextResolver` seam now, so the shim stamps a session id the way the
+  // production authenticate hook does and the seam stub decides freshness.
+  const session = request.headers["x-test-session"];
+  if (typeof session === "string" && session.length > 0)
+    request.context.attributes.sessionId = session;
 }
 
 const ORG = "org_a";
@@ -72,7 +82,43 @@ const SUPERVISOR = {
   "x-test-org": ORG,
   "x-test-roles": "clinical_supervisor",
 };
-const SUPERVISOR_STEPUP = { ...SUPERVISOR, "x-step-up": "fresh" };
+// A supervisor whose REAL session stepped up 30s ago (inside the `STEP_UP_POLICY` 300s window), and
+// one whose last step-up was a day ago. Nothing but the session distinguishes them.
+const SESSION_FRESH = "sess_fresh";
+const SESSION_STALE = "sess_stale";
+const SUPERVISOR_STEPUP = { ...SUPERVISOR, "x-test-session": SESSION_FRESH };
+const SUPERVISOR_STALE = { ...SUPERVISOR, "x-test-session": SESSION_STALE };
+
+/** Register the real `SessionContextResolver` seam over an in-memory store holding both sessions. */
+function registerStepUpSeam(): void {
+  const base = {
+    userId: "sup_1",
+    membershipId: "sup_1",
+    organizationId: ORG,
+    roles: ["clinical_supervisor"],
+    providerEntityIds: [] as string[],
+    locationIds: [] as string[],
+  };
+  registerSeam(
+    "SessionContextResolver",
+    createSessionContextResolver(
+      createInMemorySessionContextStore([
+        {
+          ...base,
+          sessionId: SESSION_FRESH,
+          lastStepUpAt: new Date(Date.now() - 30_000),
+          lastStepUpFactor: "totp",
+        },
+        {
+          ...base,
+          sessionId: SESSION_STALE,
+          lastStepUpAt: new Date(Date.now() - 86_400_000),
+          lastStepUpFactor: "totp",
+        },
+      ]).store,
+    ),
+  );
+}
 const PORTAL = { "x-test-user": "portal_1", "x-test-org": ORG, "x-test-roles": "family_caregiver" };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
 
@@ -240,11 +286,14 @@ beforeEach(() => {
   resetAuthorizationContract();
   resetRbacEngine();
   resetAbacRegistry();
+  __resetSeamsForTest();
+  registerStepUpSeam();
 });
 afterEach(() => {
   resetAuthorizationContract();
   resetRbacEngine();
   resetAbacRegistry();
+  __resetSeamsForTest();
 });
 
 describe("M18 EVV inject smoke — auth/RBAC/validation envelope", () => {
@@ -660,6 +709,63 @@ describe("§4.1 routes 23-25 — metrics, team location, portal arrival", () => 
     expect(res.statusCode).toBe(200);
     expect(res.json().visitId).toBe(VISIT_1);
     expect(res.json().arrivedAt).not.toBeNull();
+    await app.close();
+  });
+});
+
+describe("F-028 — the §2.3 / D6 step-up is server-verified, not client-asserted", () => {
+  // Both routes used to decide step-up from `request.headers["x-step-up"]`. Each case sends exactly
+  // that header — the request that USED to succeed — from a session whose real last step-up is a day
+  // old, and asserts the route now refuses. Then the same request with a fresh real session succeeds,
+  // so the tests pin the gate to the session rather than merely proving the routes deny.
+
+  it("correction-of-record: a stale session sending `x-step-up: fresh` is refused (403)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/events/00000000-0000-4000-8000-000000000000/correct",
+      headers: { ...SUPERVISOR_STALE, "x-step-up": "fresh" },
+      payload: { newEvent: checkInBody(), correctionReason: "x".repeat(60) },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("correction-of-record: a session with no step-up at all is refused, header or not", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/events/00000000-0000-4000-8000-000000000000/correct",
+      headers: { ...SUPERVISOR, "x-step-up": "fresh" }, // no `x-test-session` ⇒ no session id
+      payload: { newEvent: checkInBody(), correctionReason: "x".repeat(60) },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("supervisor override: a stale session sending `x-step-up: fresh` is refused", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/evv/missing-resolutions/${RESOLUTION_OVERRIDE}/supervisor-override`,
+      headers: { ...SUPERVISOR_STALE, "x-step-up": "fresh" },
+      payload: { reason: "x".repeat(60), stepUpAuthRefId: STEP_UP_REF },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe("EVV_SUPERVISOR_OVERRIDE_STEP_UP_REQUIRED");
+    await app.close();
+  });
+
+  it("supervisor override: the same request with a fresh real session succeeds (no header sent)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/evv/missing-resolutions/${RESOLUTION_OVERRIDE}/supervisor-override`,
+      headers: SUPERVISOR_STEPUP,
+      payload: { reason: "x".repeat(60), stepUpAuthRefId: STEP_UP_REF },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("closed_supervisor_override");
     await app.close();
   });
 });

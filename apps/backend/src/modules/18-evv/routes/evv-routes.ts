@@ -13,6 +13,7 @@
 import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { requestStepUpFresh } from "../../../bootstrap/index";
 import {
   AggregatorListQuery,
   CancelSubmissionRequest,
@@ -58,9 +59,17 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
   return { organizationId: ctx.organizationId, userId: membershipId };
 }
 
-/** The M2 step-up freshness signal (header set by the M2 step-up flow; correction + supervisor-override need it). */
-const stepUpFreshOf = (request: FastifyRequest): boolean =>
-  request.headers["x-step-up"] === "fresh";
+/**
+ * The M2 step-up freshness signal the correction-of-record (§2.3) and the D6 supervisor override need.
+ *
+ * Was `request.headers["x-step-up"] === "fresh"` — a client-supplied string, which made the step-up on a
+ * retroactive EVV correction and on a supervisor override self-asserted by the very caller being gated
+ * (F-028). Resolves the real session state through M2's `SessionContextResolver` seam now. The boolean
+ * (rather than a `requireStepUp` preHandler) is kept because the refusals belong to the service and the
+ * pure `transitionMissingResolution` machine, which carry their own reasons.
+ */
+const CORRECT_STEP_UP_OPERATION = "evv.correct_record";
+const OVERRIDE_STEP_UP_OPERATION = "evv.missing_resolution.supervisor_override";
 
 // Static permission guards (§4.6).
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -195,7 +204,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
     const { organizationId } = actorOf(request);
     parse(EventIdParams, request.params);
     const b = parse(CorrectEventRequest, request.body);
-    service.assertStepUp(stepUpFreshOf(request));
+    service.assertStepUp(await requestStepUpFresh(request, CORRECT_STEP_UP_OPERATION));
     const e = b.newEvent;
     const { userId } = actorOf(request);
     return service.recordCapture(
@@ -374,7 +383,7 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
         userId,
         id,
         b.reason,
-        stepUpFreshOf(request),
+        await requestStepUpFresh(request, OVERRIDE_STEP_UP_OPERATION),
       );
     },
   );

@@ -26,7 +26,9 @@
 // is precisely the class of bug a pure-function test can never see and only `app.inject()` surfaces.
 import {
   createInMemoryEffectivePermissionStore,
+  createInMemorySessionContextStore,
   createPredicateRegistry,
+  createSessionContextResolver,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAbacRegistry,
@@ -36,6 +38,7 @@ import {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
   buildIdgAbacPredicates,
   createInMemoryIdgBackend,
@@ -59,6 +62,13 @@ function headerAuth(request: FastifyRequest): void {
   // M14 does, so this shim also lifts a test-only `x-test-loc` header into `request.context.locationIds`.
   const loc = request.headers["x-test-loc"];
   request.context.locationIds = typeof loc === "string" && loc.length > 0 ? loc.split(",") : [];
+  // F-028 — the ADJOURN route's D13 step-up used to be `request.headers["x-step-up"] === "fresh"`, a
+  // client-supplied string this shim did not have to model at all. It now resolves the REAL session
+  // through M2's `SessionContextResolver` seam, so the shim stamps the session id the way the
+  // production authenticate hook does and the seam stub below decides freshness.
+  const session = request.headers["x-test-session"];
+  if (typeof session === "string" && session.length > 0)
+    request.context.attributes.sessionId = session;
 }
 
 const ORG = "org_a";
@@ -130,15 +140,57 @@ const NOPERM = {
   "x-test-loc": LOC,
 };
 
+// Two sessions, identical except for when they last stepped up: `SESSION_FRESH` is inside the
+// `STEP_UP_POLICY` 300s window, `SESSION_STALE` is well outside it. The ADJOURN route's D13 gate is
+// the ONLY thing that distinguishes them, which is what makes the forgery test below meaningful.
+const SESSION_FRESH = "sess_fresh";
+const SESSION_STALE = "sess_stale";
+const SUPER_FRESH = { ...SUPER, "x-test-session": SESSION_FRESH };
+const SUPER_STALE = { ...SUPER, "x-test-session": SESSION_STALE };
+
+/** Register the real `SessionContextResolver` seam over an in-memory store holding both sessions. */
+function registerStepUpSeam(): void {
+  const base = {
+    userId: "coord_1",
+    membershipId: "coord_1",
+    organizationId: ORG,
+    roles: ["idg_coordinator"],
+    providerEntityIds: [] as string[],
+    locationIds: [LOC],
+  };
+  registerSeam(
+    "SessionContextResolver",
+    createSessionContextResolver(
+      createInMemorySessionContextStore([
+        {
+          ...base,
+          sessionId: SESSION_FRESH,
+          lastStepUpAt: new Date(Date.now() - 30_000),
+          lastStepUpFactor: "totp",
+        },
+        {
+          ...base,
+          sessionId: SESSION_STALE,
+          lastStepUpAt: new Date(Date.now() - 86_400_000),
+          lastStepUpFactor: "totp",
+        },
+      ]).store,
+    ),
+  );
+}
+
 beforeEach(() => {
   resetAuthorizationContract();
   resetRbacEngine();
   resetAbacRegistry();
+  __resetSeamsForTest();
+  registerStepUpSeam();
 });
 afterEach(() => {
   resetAuthorizationContract();
   resetRbacEngine();
   resetAbacRegistry();
+  __resetSeamsForTest();
 });
 
 describe("M14-idg-inject — auth gating", () => {
@@ -421,12 +473,67 @@ describe("M14-idg-inject — live meeting: reads + attendance + packets + agenda
     const adjourn = await app.inject({
       method: "POST",
       url: `/api/v1/idg/meetings/${MEETING_LIVE}/adjourn`,
-      headers: { ...SUPER, "x-step-up": "fresh" },
+      headers: SUPER_FRESH,
       payload: {},
     });
     expect(adjourn.statusCode).toBe(200);
     expect(adjourn.json().status).toBe("adjourned");
 
+    await app.close();
+  });
+});
+
+describe("M14-idg-inject — F-028: the D13 step-up is server-verified, not client-asserted", () => {
+  const seed: readonly IdgMeetingSeed[] = [
+    {
+      id: MEETING_LIVE,
+      organizationId: ORG,
+      locationId: LOC,
+      status: "live",
+      scheduledStart: "2026-06-08T09:00:00.000Z",
+      scheduledEnd: "2026-06-08T10:00:00.000Z",
+      includedPatientIds: [PATIENT],
+    },
+  ];
+
+  it("a STALE session cannot adjourn even while sending the old `x-step-up: fresh` header", async () => {
+    const { app } = makeServer(seed);
+    // The exact request that used to WORK: the header the route read for its D13 decision, sent by a
+    // caller whose real session last stepped up a day ago. Before F-028 this returned 200 — the header
+    // WAS the check, so anyone who could reach the commit point could satisfy it by typing it.
+    const forged = await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/adjourn`,
+      headers: { ...SUPER_STALE, "x-step-up": "fresh" },
+      payload: {},
+    });
+    expect(forged.statusCode).toBe(412);
+    expect(forged.json().error.code).toBe("STEP_UP_REQUIRED");
+    await app.close();
+  });
+
+  it("a session with no step-up at all is refused, header or not", async () => {
+    const { app } = makeServer(seed);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/adjourn`,
+      headers: { ...SUPER, "x-step-up": "fresh" }, // no `x-test-session` ⇒ no session id on the context
+      payload: {},
+    });
+    expect(res.statusCode).toBe(412);
+    await app.close();
+  });
+
+  it("the SAME request with a fresh real session succeeds — the gate is the session, not the header", async () => {
+    const { app } = makeServer(seed);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/adjourn`,
+      headers: SUPER_FRESH, // no `x-step-up` header anywhere
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("adjourned");
     await app.close();
   });
 });
@@ -594,7 +701,7 @@ describe("M14-idg-inject — known limitation: server-generated sub-resource ids
     const adjourn = await app.inject({
       method: "POST",
       url: `/api/v1/idg/meetings/${MEETING_KL}/adjourn`,
-      headers: { ...SUPER, "x-step-up": "fresh" },
+      headers: SUPER_FRESH,
       payload: {},
     });
     expect(adjourn.statusCode).toBe(200);

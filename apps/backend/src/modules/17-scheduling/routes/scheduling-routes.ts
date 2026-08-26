@@ -14,6 +14,7 @@ import { type AbacTarget, type GuardRequest, requireAbac, requirePermission } fr
 import { localDateInTimeZone } from "@wardenx/shared/dates";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { requestStepUpFresh } from "../../../bootstrap/index";
 import {
   ApproveTimeOffRequest,
   AvailabilityQuerySchema,
@@ -71,9 +72,15 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
   return { organizationId: ctx.organizationId, userId: membershipId };
 }
 
-/** The M2 step-up freshness signal (header set by the M2 step-up flow; the self-attest start path needs it). */
-const stepUpFreshOf = (request: FastifyRequest): boolean =>
-  request.headers["x-step-up"] === "fresh";
+/**
+ * The M2 step-up freshness signal the self-attest (EVV-missing) start path gates on.
+ *
+ * Was `request.headers["x-step-up"] === "fresh"` — a client-supplied string, so the step-up requirement
+ * on a self-attested visit start was satisfiable by anyone who knew the header name (F-028). Resolves
+ * the real session state through M2's seam now; the boolean stays because the service, not a guard,
+ * decides what a stale step-up means for this route (a normal EVV-captured start does not need one).
+ */
+const START_STEP_UP_OPERATION = "visit.start";
 
 // Static permission guards (§4.6).
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -238,7 +245,7 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
       userId,
       visitId,
       b.evvMissingReason,
-      stepUpFreshOf(request),
+      await requestStepUpFresh(request, START_STEP_UP_OPERATION),
     );
   });
 
