@@ -30,6 +30,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import type { ModuleToken, OutboxEventEntry } from "@wardenx/types";
 import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { ActiveOrgEnumerator } from "./active-org-enumerator";
+import { safeErrorMessage } from "./redact-database-error";
 
 const OUTBOX = schema.outboxEvents;
 const RECEIPTS = schema.outboxConsumerReceipts;
@@ -528,7 +529,10 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
         });
         summary.delivered += 1;
       } catch (err) {
-        const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+        // PHI-safe: this string is PERSISTED to `outbox_event.last_error` and served by the
+        // ops-outbox route, so a Drizzle wrapper here would put the failed statement's bound
+        // parameters in a database column and an ops response (F-027 / #65).
+        const message = safeErrorMessage(err);
         if (row.attemptCount >= maxAttempts) {
           // dispatched_at nulled: the row never succeeded, and the column means SUCCESS instant.
           await finalize({
@@ -707,7 +711,10 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
         );
         summary.delivered += 1;
       } catch (err) {
-        const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+        // PHI-safe: this string is PERSISTED to `outbox_event.last_error` and served by the
+        // ops-outbox route, so a Drizzle wrapper here would put the failed statement's bound
+        // parameters in a database column and an ops response (F-027 / #65).
+        const message = safeErrorMessage(err);
         if (row.attemptCount >= maxAttempts) {
           await deps.db.execute(
             sql`SELECT report_writer_finalize_platform_outbox_dead_letter(${row.id}, ${message.slice(0, 2000)})`,
@@ -824,7 +831,9 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
         inFlight = tick()
           .catch((err) => {
             // A failing tick must not kill the relay — log and keep polling (the rows are durable).
-            log(`⚠️  outbox-dispatcher tick failed: ${err instanceof Error ? err.message : err}`);
+            // `safeErrorMessage` because a tick IS a database query: the claim/deliver statements
+            // bind the event payload, so a raw wrapper message here logs it (F-027 / #65).
+            log(`⚠️  outbox-dispatcher tick failed: ${safeErrorMessage(err)}`);
           })
           .finally(() => {
             if (running) timer = setTimeout(loop, pollIntervalMs);
