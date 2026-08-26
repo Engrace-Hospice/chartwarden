@@ -26,6 +26,7 @@
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { group, groups } from "./lib/strict";
 
 const ROOT = process.cwd();
 const DOCS_DIR = "docs/architecture";
@@ -92,7 +93,7 @@ function filenameVersion(name: string): string | null {
 function headerVersion(text: string): { version: string | null; headerBlock: string } {
   const head = text.split("\n").slice(0, 15).join("\n");
   const m = head.match(/\*\*Status:\*\*\s*\*{0,2}v(\d+\.\d+)/);
-  return { version: m ? m[1] : null, headerBlock: head };
+  return { version: m ? group(m, 1, "architecture doc header version") : null, headerBlock: head };
 }
 
 /** Strip trailing line-refs and punctuation from a cited path token. */
@@ -123,7 +124,11 @@ for (const file of docFiles) {
   const text = readFileSync(join(ROOT, DOCS_DIR, file), "utf8");
   docTexts.set(file, text);
   const idMatch = file.match(/^WARDENX_([A-Z0-9_]+?)_v\d/);
-  if (idMatch) docIndex.set(idMatch[1], { file, version: headerVersion(text).version });
+  if (idMatch)
+    docIndex.set(group(idMatch, 1, "architecture doc filename id"), {
+      file,
+      version: headerVersion(text).version,
+    });
 }
 
 const adrFiles = readdirSync(join(ROOT, ADR_DIR)).filter((f) => /^ADR-\d{4}-/.test(f));
@@ -161,8 +166,7 @@ for (const file of docFiles) {
   }
 
   let inFence = false;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  for (const [i, line] of lines.entries()) {
     const lineNo = i + 1;
 
     // Fences toggle on ``` — including inside blockquoted banners ("> ```").
@@ -175,7 +179,7 @@ for (const file of docFiles) {
     // a fenced block; bare prose slashes ("audit/auth/tenancy helper packages") are not path claims.
     const segments: string[] = inFence
       ? [line]
-      : Array.from(line.matchAll(/`([^`]+)`/g), (m) => m[1]);
+      : Array.from(line.matchAll(/`([^`]+)`/g), (m) => group(m, 1, "inline-code segment"));
     for (const segment of segments) {
       if (segment.includes("://")) continue; // URLs are not repo paths
       for (const raw of segment.matchAll(
@@ -190,7 +194,8 @@ for (const file of docFiles) {
         pathsChecked++;
         if (existsSync(join(ROOT, token))) continue;
         // Documented absence exempts — on this line, or the previous one when a sentence wraps.
-        if (ABSENCE_LINE.test(line) || (i > 0 && ABSENCE_LINE.test(lines[i - 1]))) {
+        const previous = i > 0 ? (lines[i - 1] ?? "") : "";
+        if (ABSENCE_LINE.test(line) || ABSENCE_LINE.test(previous)) {
           pathsExempt++;
           continue;
         }
@@ -205,7 +210,7 @@ for (const file of docFiles) {
     // Rule 3 — companion citations match on-disk header versions.
     if (/\*\*Companion to:\*\*/.test(line)) {
       for (const m of line.matchAll(/WARDENX_([A-Z0-9_]+)\s+v(\d+\.\d+)/g)) {
-        const [, id, cited] = m;
+        const [id, cited] = groups(m, 2, "companion citation");
         companionsChecked++;
         const target = docIndex.get(id);
         if (!target) {
@@ -229,8 +234,9 @@ for (const file of docFiles) {
     // Rule 4 — four-digit ADR citations resolve.
     for (const m of line.matchAll(/\bADR-(\d{4})\b/g)) {
       adrsChecked++;
-      if (!adrNumbers.has(m[1])) {
-        fail(file, lineNo, "ADRS", `cites ADR-${m[1]}, which has no file in ${ADR_DIR}`);
+      const cited = group(m, 1, "architecture doc ADR citation");
+      if (!adrNumbers.has(cited)) {
+        fail(file, lineNo, "ADRS", `cites ADR-${cited}, which has no file in ${ADR_DIR}`);
       }
     }
   }
@@ -242,7 +248,8 @@ for (const file of docFiles) {
   if (!stamp) {
     warnings.push(`${file}: no \`<!-- verified-against: <sha> · <date> -->\` stamp (warn-only)`);
   } else {
-    const ageDays = (Date.now() - new Date(stamp[2]).getTime()) / 86_400_000;
+    const stampedOn = group(stamp, 2, "verified-against stamp date");
+    const ageDays = (Date.now() - new Date(stampedOn).getTime()) / 86_400_000;
     if (ageDays > STAMP_WARN_DAYS) {
       warnings.push(
         `${file}: verified-against stamp is ${Math.floor(ageDays)} days old (> ${STAMP_WARN_DAYS}; warn-only)`,

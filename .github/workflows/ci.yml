@@ -39,6 +39,14 @@ jobs:
       - name: Type-check / build project graph
         run: bun run build
 
+      # EXPLICIT, not implied. Type safety was enforced only as a side effect of `bun run build`
+      # above, and `scripts/` — 71 files that decide whether the architecture gates pass, plus the
+      # file that defines every request/response contract in openapi.json — was in no tsconfig
+      # project, so `tsc -b` never compiled it (#34). It is a referenced project now, and naming the
+      # step means the coverage is visible in the log rather than inferred.
+      - name: Type-check (explicit)
+        run: bun run typecheck
+
       # Step names deliberately carry NO gate/test COUNT. "parity + 6 gates" was accurate when
       # arch:fitness chained 7 things; it now chains 17, so for ten of them the log said less had been
       # checked than actually was — and a CI log understating its own coverage is read by whoever is

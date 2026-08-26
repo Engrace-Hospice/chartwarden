@@ -50,6 +50,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
+import { firstRow } from "./lib/query-rows";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const MIGRATIONS_DIR = join(here, "..", "..", "packages", "db", "migrations");
@@ -196,7 +197,7 @@ export async function bootstrapAppRole(db: Client, opts: BootstrapAppRoleOptions
     "SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', $1::text, $2::text) AS stmt",
     [APP_ROLE, opts.appPassword],
   );
-  await db.query(rows[0].stmt);
+  await db.query(firstRow({ rows }, "migrate: statement lookup").stmt);
   // CONNECT on the database (PUBLIC has it by default, but be explicit/idempotent).
   await db.query(`GRANT CONNECT ON DATABASE ${db.database} TO ${APP_ROLE}`);
 

@@ -24,6 +24,7 @@
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { group, groups } from "./lib/strict";
 
 const ROOT = process.cwd();
 const DIR = "docs/adr";
@@ -69,7 +70,7 @@ for (const f of files) {
     fail(f, 1, "STATUS", "no parseable `**Status:**` line");
     continue;
   }
-  const word = m[1];
+  const word = group(m, 1, "ADR **Status:** line");
   statusByNumber.set(f.slice(4, 8), word);
   if (!STATUS_WORDS.has(word))
     fail(f, 1, "STATUS", `status word '${word}' not one of ${[...STATUS_WORDS].join("/")}`);
@@ -93,7 +94,7 @@ readme.split("\n").forEach((line, i) => {
     /^\|\s*\[(\d{4})\]\(([^)]+)\)\s*\|.*\|\s*\*{0,2}([A-Za-z]+)\*{0,2}[^|]*\|\s*$/,
   );
   if (!m) return;
-  const [, num, target, status] = m;
+  const [num, target, status] = groups(m, 3, "ADR README index row");
   if (rows.has(num)) fail("README.md", i + 1, "INDEX", `ADR-${num} indexed more than once`);
   rows.set(num, { line: i + 1, status, target });
   if (!existsSync(join(ROOT, DIR, target)))
@@ -129,16 +130,18 @@ let linksChecked = 0;
 for (const f of [...files, "README.md"]) {
   const abs = join(ROOT, DIR, f);
   const lines = readFileSync(abs, "utf8").split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    for (const m of lines[i].matchAll(/\bADR-(\d{4})\b/g)) {
+  for (const [i, line] of lines.entries()) {
+    for (const m of line.matchAll(/\bADR-(\d{4})\b/g)) {
       adrsChecked++;
-      if (!numberSet.has(m[1]))
-        fail(f, i + 1, "CITATIONS", `cites ADR-${m[1]}, which has no file in ${DIR}`);
+      const cited = group(m, 1, "ADR citation");
+      if (!numberSet.has(cited))
+        fail(f, i + 1, "CITATIONS", `cites ADR-${cited}, which has no file in ${DIR}`);
     }
-    for (const m of lines[i].matchAll(/\]\((\.\.?\/[^)#\s]+)(#[^)\s]*)?\)/g)) {
+    for (const m of line.matchAll(/\]\((\.\.?\/[^)#\s]+)(#[^)\s]*)?\)/g)) {
       linksChecked++;
-      if (!existsSync(resolve(dirname(abs), m[1])))
-        fail(f, i + 1, "LINKS", `relative link \`${m[1]}\` does not resolve`);
+      const href = group(m, 1, "ADR relative link");
+      if (!existsSync(resolve(dirname(abs), href)))
+        fail(f, i + 1, "LINKS", `relative link \`${href}\` does not resolve`);
     }
   }
 }

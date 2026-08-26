@@ -40,6 +40,7 @@
  */
 import { Client } from "pg";
 import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
+import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const LOCATION_MAIN_ID = "55555555-0000-4000-8000-000000000001"; // db:seed:org-structure
@@ -56,7 +57,7 @@ async function membershipIdFor(email: string): Promise<string> {
   );
   await db.end();
   if (!r.rows[0]) throw new Error(`no membership found for ${email} — run db:seed:staff first`);
-  return r.rows[0].id;
+  return firstRow(r, "seed-scenario-orders-meds-idg: id lookup").id;
 }
 
 async function wipePriorOrdersMedsIdg(patientId: string): Promise<void> {
@@ -134,7 +135,7 @@ async function seedLiveIdgMeeting(
     ],
   );
   await db.end();
-  return r.rows[0].id;
+  return firstRow(r, "seed-scenario-orders-meds-idg: id lookup").id;
 }
 
 /**
@@ -394,8 +395,13 @@ async function main(): Promise<void> {
     if (decision.error)
       throw new Error(`decision record failed: ${JSON.stringify(decision.error)}`);
 
+    // `X-Step-Up` goes through `headers`, not `params.header`: the adjourn route DOES require a
+    // fresh step-up (D13, `stepUpFreshOf(request)` in idg-routes.ts:223), but the published contract
+    // declares only the `id` path param — no enrichment anywhere declares this header, for any of
+    // the three modules that read it. The wire request is unchanged; see the follow-up issue.
     const adjourn = await rn.client.POST("/api/v1/idg/meetings/{id}/adjourn", {
-      params: { path: { id: meetingId }, header: { "X-Step-Up": "fresh" } },
+      params: { path: { id: meetingId } },
+      headers: { "X-Step-Up": "fresh" },
       body: {},
     });
     if (adjourn.error) throw new Error(`adjourn failed: ${JSON.stringify(adjourn.error)}`);

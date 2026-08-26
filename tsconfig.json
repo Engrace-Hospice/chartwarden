@@ -160,6 +160,9 @@
     },
     {
       "path": "./packages/xero-client"
+    },
+    {
+      "path": "./scripts"
     }
   ]
 }

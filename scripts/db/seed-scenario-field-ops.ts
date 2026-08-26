@@ -23,6 +23,7 @@
  */
 import { Client } from "pg";
 import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
+import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001";
@@ -40,7 +41,7 @@ async function membershipIdFor(email: string): Promise<string> {
   );
   await db.end();
   if (!r.rows[0]) throw new Error(`no membership found for ${email} — run db:seed:staff first`);
-  return r.rows[0].id;
+  return firstRow(r, "seed-scenario-field-ops: id lookup").id;
 }
 
 /**
@@ -70,7 +71,7 @@ async function seedDraftVolunteerPlan(
     [organizationId, patientId, admissionId, PROVIDER_ENTITY_ID, LOCATION_MAIN_ID],
   );
   await db.end();
-  return r.rows[0].id;
+  return firstRow(r, "seed-scenario-field-ops: id lookup").id;
 }
 
 /**
@@ -140,7 +141,7 @@ async function seedPublishedVisit(
     ],
   );
   await db.end();
-  return r.rows[0].id;
+  return firstRow(r, "seed-scenario-field-ops: id lookup").id;
 }
 
 /**
@@ -379,7 +380,6 @@ async function main(): Promise<void> {
 
     const approve = await supervisor.client.POST("/api/v1/evv/devices/{id}/approve", {
       params: { path: { id: devData.id } },
-      body: {},
     });
     if (approve.error) throw new Error(`device approve failed: ${JSON.stringify(approve.error)}`);
 
@@ -458,9 +458,13 @@ async function main(): Promise<void> {
     if (apply.error || !applyData)
       throw new Error(`apply-protocol failed: ${JSON.stringify(apply.error)}`);
 
+    // A DISCRIMINATED union, matching the route's own contract. The previous annotation was
+    // `{ kind: "text" | "bool"; value: string | boolean }`, which is a wider type that admits the
+    // invalid pairings (`kind: "text"` with a boolean) the contract rejects — so the seed could not
+    // be checked against the endpoint it drives.
     const QUESTIONS: ReadonlyArray<{
       id: string;
-      value: { kind: "text" | "bool"; value: string | boolean };
+      value: { kind: "text"; value: string } | { kind: "bool"; value: boolean };
     }> = [
       {
         id: "00000000-0019-0001-2801-000000000000",
@@ -488,7 +492,6 @@ async function main(): Promise<void> {
     const complete = await rn.client.POST("/api/v1/triage-calls/{triageCallId}/complete-protocol", {
       params: { path: { triageCallId: callData.triageCallId } },
       headers: { "If-Match": String(answerVersion) },
-      body: {},
     });
     const completeData = complete.data as unknown as { version: number } | undefined;
     if (complete.error || !completeData)

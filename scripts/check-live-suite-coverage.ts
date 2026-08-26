@@ -36,6 +36,7 @@
  *
  * Usage: `bun run arch:live-suites` (wired into `arch:fitness`).
  */
+import type { Dirent } from "node:fs";
 import { readFileSync, readdirSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -110,7 +111,10 @@ export interface LiveScript {
 export function liveFiles(root: string): string[] {
   const found: string[] = [];
   const walk = (dir: string): void => {
-    let entries: ReturnType<typeof readdirSync>;
+    // `ReturnType<typeof readdirSync>` resolves to the NO-options overload (`string[]`), so
+    // `entry.name` below did not type-check once this tree was compiled. `withFileTypes: true`
+    // returns `Dirent[]`; name it.
+    let entries: Dirent[];
     try {
       entries = readdirSync(dir, { withFileTypes: true });
     } catch {

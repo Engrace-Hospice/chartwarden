@@ -68,6 +68,7 @@
  */
 import { Client } from "pg";
 import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
+import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001"; // db:seed:org-structure
@@ -114,7 +115,7 @@ async function grantBillingScope(organizationId: string, membershipId: string): 
   await db.query(
     `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)
      ON CONFLICT DO NOTHING`,
-    [organizationId, membershipId, role.rows[0].id],
+    [organizationId, membershipId, firstRow(role, "seed-scenario-billing: role lookup").id],
   );
   await db.end();
 }
@@ -340,7 +341,6 @@ async function main(): Promise<void> {
     const validate = await admin.client.POST("/api/v1/medicaid-claims/{id}/validate", {
       params: { path: { id: claimData.id } },
       headers: { "Idempotency-Key": crypto.randomUUID(), "If-Match": String(claimData.version) },
-      body: {},
     });
     const validateData = validate.data as unknown as { version: number } | undefined;
     if (validate.error || !validateData)
@@ -389,7 +389,6 @@ async function main(): Promise<void> {
     const recompute = await admin.client.POST("/api/v1/cap/projections/{periodId}/recompute", {
       params: { path: { periodId: periodData.id } },
       headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: {},
     });
     if (recompute.error)
       throw new Error(`cap recompute failed: ${JSON.stringify(recompute.error)}`);
@@ -422,14 +421,12 @@ async function main(): Promise<void> {
     const refresh = await admin.client.POST("/api/v1/cost-reports/{id}/refresh-inputs", {
       params: { path: { id } },
       headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: {},
     });
     if (refresh.error) throw new Error(`refresh-inputs failed: ${JSON.stringify(refresh.error)}`);
 
     const allocate = await admin.client.POST("/api/v1/cost-reports/{id}/allocate", {
       params: { path: { id } },
       headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: {},
     });
     if (allocate.error) throw new Error(`allocate failed: ${JSON.stringify(allocate.error)}`);
 
@@ -452,14 +449,12 @@ async function main(): Promise<void> {
     const stats = await admin.client.POST("/api/v1/cost-reports/{id}/statistics/refresh", {
       params: { path: { id } },
       headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: {},
     });
     if (stats.error) throw new Error(`statistics refresh failed: ${JSON.stringify(stats.error)}`);
 
     const validate = await admin.client.POST("/api/v1/cost-reports/{id}/validate", {
       params: { path: { id } },
       headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: {},
     });
     if (validate.error)
       throw new Error(`validate-trigger failed: ${JSON.stringify(validate.error)}`);
