@@ -262,6 +262,9 @@ describe("every gate stays GREEN on the repo-root baseline", () => {
     expectGreen(run("bun", ["run", join(SCRIPTS, "report-openapi-coverage.ts"), "--check"], ROOT)),
   );
   baselineGate("abac-predicates", () => expectGreen(gate("check-abac-predicates.ts", ROOT)));
+  baselineGate("request-body-contract", () =>
+    expectGreen(gate("check-request-body-contract.ts", ROOT)),
+  );
   baselineGate("openapi-provenance", () => expectGreen(gate("check-openapi-provenance.ts", ROOT)));
   baselineGate("live-suites", () => expectGreen(gate("check-live-suite-coverage.ts", ROOT)));
   baselineGate("org-index coverage", () => expectGreen(gate("check-org-index-coverage.ts", ROOT)));

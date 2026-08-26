@@ -62,6 +62,7 @@ export const GATES = [
   "openapi:check",
   "arch:openapi-provenance",
   "arch:openapi-coverage",
+  "arch:request-body-contract",
   "arch:inject-coverage",
   "client:check",
 ] as const;

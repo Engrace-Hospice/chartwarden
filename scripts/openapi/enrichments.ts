@@ -30,6 +30,10 @@ import {
   ManualValidateRequest,
 } from "@wardenx/billing";
 import {
+  SystemStatusComponentBodySchema as M1SystemStatusComponentBodySchema,
+  SystemStatusResponseSchema as M1SystemStatusResponseSchema,
+} from "../../apps/backend/src/bootstrap/routes/system";
+import {
   AuthContextResponseSchema as M2AuthContextResponseSchema,
   CollaboratorConsumeRequestSchema as M2CollaboratorConsumeRequestSchema,
   CollaboratorConsumeResponseSchema as M2CollaboratorConsumeResponseSchema,
@@ -3774,7 +3778,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   // binds to come off the session, never the body.
   "POST /api/v1/devices/attestation/challenge": {
     summary: "Mint a single-use device-attestation challenge for this session (§12.4)",
-    body: Type.Object({}),
     response: Type.Object({
       challengeId: Type.String(),
       nonce: Type.String({ description: "The value the device MACs; single-use, spent on submit" }),
@@ -5986,7 +5989,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/encounters/:encounterId/finalize": {
     summary: "Finalize the encounter (Layer-3 gate preview)",
-    body: M8FinalizeEncounterSchema,
     response: M8FinalizeResponseSchema,
   },
   "POST /api/v1/encounters/:encounterId/hearthnote/enhance": {
@@ -6050,7 +6052,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/encounters/:encounterId/addenda/:addendumId/finalize": {
     summary: "Finalize an addendum",
-    body: M8FinalizeEncounterSchema,
     response: M8AddendumFinalizeResponseSchema,
   },
   "POST /api/v1/encounters/:encounterId/addenda/:addendumId/sign": {
@@ -7245,7 +7246,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/orgs/:id/invitations/:invId/resend": {
     summary: "Re-mint a pending invite's token + expiry, invalidating the prior link (TASK-030)",
-    body: M2InvitationResendRequestSchema,
     response: M2InvitationResendResponseSchema,
   },
   "GET /api/v1/invitations/:token": {
@@ -10594,52 +10594,42 @@ const M35EmptyActionBody = Type.Object({}, { additionalProperties: false });
 
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/admin/dunning/:subscriptionId/reset": {
-    body: M35EmptyActionBody,
     response: M35DunningDto,
     summary: "Reset dunning",
   },
   "POST /api/admin/dunning/:subscriptionId/skip_stage": {
-    body: M35EmptyActionBody,
     response: M35DunningDto,
     summary: "Skip dunning stage",
   },
   "POST /api/admin/plans/:id/activate": {
-    body: M35EmptyActionBody,
     response: M35PlanAdminDto,
     summary: "Activate plan",
   },
   "POST /api/admin/plans/:id/deprecate": {
-    body: M35EmptyActionBody,
     response: M35PlanAdminDto,
     summary: "Deprecate plan",
   },
   "POST /api/admin/refunds/:id/approve": {
-    body: M35EmptyActionBody,
     response: M35RefundDto,
     summary: "Approve refund",
   },
   "POST /api/admin/subscriptions/:id/cancel": {
-    body: M35EmptyActionBody,
     response: M35SubscriptionAdminResponseDto,
     summary: "Cancel immediately",
   },
   "POST /api/admin/subscriptions/:id/resume": {
-    body: M35EmptyActionBody,
     response: M35SubscriptionAdminResponseDto,
     summary: "Resume subscription (admin)",
   },
   "POST /api/v1/payment_methods/setup_intent": {
-    body: M35EmptyActionBody,
     response: M35SetupIntentResponseDto,
     summary: "Create Stripe SetupIntent",
   },
   "POST /api/v1/subscription/cancel": {
-    body: M35EmptyActionBody,
     response: M35SubscriptionResponseDto,
     summary: "Cancel at period end",
   },
   "POST /api/v1/subscription/resume": {
-    body: M35EmptyActionBody,
     response: M35SubscriptionResponseDto,
     summary: "Resume subscription",
   },
@@ -10668,17 +10658,14 @@ const M25RemittanceEmptyBodySchema = Type.Object(
 Object.assign(ROUTE_ENRICHMENTS, {
   "PATCH /api/v1/appeals/:id/ack": {
     summary: "Record the payer's receipt acknowledgement of an appeal (§4.1)",
-    body: M25RemittanceEmptyBodySchema,
     response: M25VersionedResultSchema,
   },
   "POST /api/v1/denials/:id/close": {
     summary: "Close a resolved denial case (§4.1)",
-    body: M25RemittanceEmptyBodySchema,
     response: M25VersionedResultSchema,
   },
   "PATCH /api/v1/denials/:id/start": {
     summary: "Start work on a denial case (→ in_progress, §4.1)",
-    body: M25RemittanceEmptyBodySchema,
     response: M25VersionedResultSchema,
   },
 });
@@ -10694,32 +10681,26 @@ const M31EmptyBody = Type.Object({}, { additionalProperties: false });
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/admin/portal-invitations/:id/revoke": {
     summary: "Revoke a portal invite before acceptance",
-    body: M31EmptyBody,
     response: M31AckResponse,
   },
   "POST /api/v1/portal/documents/upload-complete/:uploadId": {
     summary: "Confirm the M22 intake batch received",
-    body: M31EmptyBody,
     response: M31UploadCompleteResponse,
   },
   "POST /api/v1/portal/sessions/logout": {
     summary: "Server-side portal session close",
-    body: M31EmptyBody,
     response: M31AckResponse,
   },
   "POST /api/v1/portal/telehealth/visits/:visitId/leave": {
     summary: "Portal-side telehealth leave (idempotent)",
-    body: M31EmptyBody,
     response: M31AckResponse,
   },
   "POST /api/v1/telehealth/visits/:visitId/join": {
     summary: "Clinician-side telehealth join — mints a participant token",
-    body: M31EmptyBody,
     response: M31TelehealthJoinResponse,
   },
   "POST /api/v1/telehealth/visits/:visitId/leave": {
     summary: "Clinician-side telehealth leave",
-    body: M31EmptyBody,
     response: M31AckResponse,
   },
 });
@@ -10754,12 +10735,10 @@ const M30EmptyIncidentActionBody = Type.Object({});
 
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/quality/incidents/:incidentId/submit": {
-    body: M30EmptyIncidentActionBody,
     summary:
       "Submit a draft incident for triage (draft to submitted; reporter-owned, no body fields consumed) (Sec 4.1 R-54)",
   },
   "POST /api/v1/quality/incidents/:incidentId/close": {
-    body: M30EmptyIncidentActionBody,
     summary:
       "Close a resolved incident (resolved to closed_followup_complete; no body fields consumed) (Sec 4.1 R-59)",
   },
@@ -12484,5 +12463,21 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/ops/outbox/:id": {
     summary: "Outbox event detail — full payload + last error (operator recovery view, WX-PR-020)",
     response: OpsOutboxDetailResponse,
+  },
+});
+
+// ── M1 bootstrap system routes (#94) ──────────────────────────────────────────────────────────────────
+// `POST /api/v1/admin/system/status` reads and validates a real body and published none, so `client:gen`
+// typed that body as `never` — the generated client could not express the call. The schemas live beside
+// the route's own runtime validator so the two cannot drift.
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/system/status": {
+    summary: "Read this org's system-status components",
+    response: M1SystemStatusResponseSchema,
+  },
+  "POST /api/v1/admin/system/status": {
+    summary: "Upsert one system-status component (platform_ops only)",
+    body: M1SystemStatusComponentBodySchema,
+    response: M1SystemStatusResponseSchema,
   },
 });

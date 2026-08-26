@@ -8,6 +8,7 @@
 // `system_status` / `feature_flag` tables) so the route file imports no Drizzle schema
 // directly; the boot default is an in-memory reader (the slice has no DB wired yet), which
 // production swaps for the org-scoped, withOrgContext-wrapped DB reader.
+import { Type } from "@sinclair/typebox";
 import { requireRole, requireSession } from "@wardenx/auth";
 import { ValidationError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
@@ -34,6 +35,36 @@ export interface FeatureFlagReader {
 }
 
 const STATUS_LEVELS: readonly SystemStatusLevel[] = ["operational", "degraded", "outage"];
+
+/**
+ * The `POST /api/v1/admin/system/status` request body (#94). `parseStatusComponent` below is the
+ * runtime validator — it collects per-field detail into M1's VALIDATION_FAILED envelope, which a bare
+ * TypeBox parse would not — so this schema exists to PUBLISH the same shape, not to replace it. It was
+ * previously published as nothing at all, which made `client:gen` type the body as `never`: the one
+ * route on the platform whose payload the generated client could not express.
+ *
+ * `updatedAt` is deliberately absent: the server stamps it, and a body field the server overwrites is
+ * an invitation to send a value that will be ignored.
+ */
+export const SystemStatusComponentBodySchema = Type.Object({
+  id: Type.String({ minLength: 1, description: "Stable component key, e.g. `api` or `documents`" }),
+  status: Type.Union(STATUS_LEVELS.map((s) => Type.Literal(s))),
+  headline: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  details: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+});
+
+/** The `{ components }` envelope both status reads and the upsert return. */
+export const SystemStatusResponseSchema = Type.Object({
+  components: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      status: Type.Union(STATUS_LEVELS.map((s) => Type.Literal(s))),
+      headline: Type.Union([Type.String(), Type.Null()]),
+      details: Type.Union([Type.String(), Type.Null()]),
+      updatedAt: Type.String(),
+    }),
+  ),
+});
 
 /** The role that may mutate system status (spec §6 permissions matrix). */
 export const PLATFORM_OPS_ROLE = "platform_ops";

@@ -36,6 +36,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { extractRouteCall } from "./check-request-body-contract";
 import { ROUTE_ENRICHMENTS } from "./openapi/enrichments";
 import { type ScannedRoute, routeKey, scanRoutes } from "./openapi/scan-routes";
 
@@ -57,10 +58,42 @@ interface ModuleCoverage {
   /** routes with no enrichment entry at all — the ratcheted number */
   deficit: number;
   mutating: number;
-  /** POST/PUT/PATCH with no `body` schema — sends an undocumented payload */
+  /**
+   * POST/PUT/PATCH whose HANDLER READS a body and whose contract publishes none — the caller cannot
+   * express the payload the server requires, because `client:gen` types it `never`.
+   *
+   * This used to count every mutating route with no `body` schema, which is a different and unusable
+   * question: an action POST that takes no payload (`/claims/:id/submit`, `/plans/:id/activate`)
+   * correctly publishes none, so the number could never honestly reach 0 — and driving it down anyway
+   * made publishing `{}` the cheapest move. That is how this repo grew TypeBox schemas named
+   * `M35EmptyActionBody`, `M31EmptyBody` and `M25RemittanceEmptyBodySchema`, and 25 routes declaring
+   * `required: true` over an empty object: a contract telling every client to send `{}`. Measuring
+   * PRESENCE produced the defect; this measures AGREEMENT, which `arch:request-body-contract` enforces
+   * in both directions (the reverse — a published body no handler reads — is the more dangerous half,
+   * since it returns 200).
+   */
   mutatingNoBody: number;
   gets: number;
   getsNoResponse: number;
+}
+
+const HANDLER_READS_BODY = /\brequest\.body\b|\breq\.body\b|\brawBodyOf\s*\(/;
+const sourceCache = new Map<string, string>();
+
+/**
+ * Does this route's handler actually read the request payload? Shares `extractRouteCall` with
+ * `check-request-body-contract.ts` so the advisory number and the enforcing gate cannot disagree about
+ * what a handler does. A route whose call cannot be located is counted as NOT reading a body — the gate
+ * is what hard-fails on an unreadable handler; this report must not double-report it as a contract gap.
+ */
+function handlerReadsBody(route: ScannedRoute): boolean {
+  let source = sourceCache.get(route.file);
+  if (source === undefined) {
+    source = readFileSync(join(ROOT, route.file), "utf8");
+    sourceCache.set(route.file, source);
+  }
+  const call = extractRouteCall(source, route.method, route.path);
+  return call !== null && HANDLER_READS_BODY.test(call);
 }
 
 function collect(routes: ScannedRoute[]): ModuleCoverage[] {
@@ -84,7 +117,7 @@ function collect(routes: ScannedRoute[]): ModuleCoverage[] {
     else cov.deficit++;
     if (MUTATING.has(r.method)) {
       cov.mutating++;
-      if (!e?.body) cov.mutatingNoBody++;
+      if (!e?.body && handlerReadsBody(r)) cov.mutatingNoBody++;
     }
     if (r.method === "get") {
       cov.gets++;
@@ -182,17 +215,24 @@ function renderMarkdown(): string {
   l.push("");
   l.push(
     `**Totals:** ${totals.enriched}/${totals.routes} routes enriched (${pct(totals.enriched, totals.routes)}) · ` +
-      `**${totals.mutatingNoBody}/${totals.mutating} mutating routes carry no request-body schema** · ` +
+      `**${totals.mutatingNoBody}/${totals.mutating} mutating routes read a body they publish none for** · ` +
       `${totals.getsNoResponse}/${totals.gets} GETs carry no response schema`,
   );
   l.push("");
   l.push(
     "`Deficit` = routes with no enrichment entry; it is the ratcheted number (see " +
-      "`baseline.json`). `Mut. no body` is the sharpest signal — a POST that validates a TypeBox " +
-      "body in its handler but publishes none is a contract that lies by omission.",
+      "`baseline.json`). `Mut. unpublished body` counts a POST/PUT/PATCH whose HANDLER READS a payload " +
+      "and whose contract publishes none — `client:gen` then types that body `never`, so the generated " +
+      "client cannot express the call. It used to count every mutating route with no body schema, which " +
+      "could never honestly reach 0 (an action POST correctly publishes none) and made shipping an empty " +
+      "`{}` schema the cheapest way to move it — 25 routes did exactly that. The reverse direction — a " +
+      "published body no handler reads, which returns 200 and discards the payload — is enforced by " +
+      "`arch:request-body-contract`, not counted here.",
   );
   l.push("");
-  l.push("| Module | Routes | Enriched | Deficit | Mutating | Mut. no body | GET | GET no resp |");
+  l.push(
+    "| Module | Routes | Enriched | Deficit | Mutating | Mut. unpublished body | GET | GET no resp |",
+  );
   l.push("|---|--:|--:|--:|--:|--:|--:|--:|");
   for (const c of coverage)
     l.push(
