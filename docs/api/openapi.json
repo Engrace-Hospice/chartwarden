@@ -71828,11 +71828,49 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "modificationId"
+                    "enhanced",
+                    "reason"
                   ],
                   "properties": {
-                    "modificationId": {
-                      "type": "string"
+                    "enhanced": {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "anyOf": [
+                        {
+                          "const": "eligible",
+                          "type": "string"
+                        },
+                        {
+                          "const": "tenant_flag_off",
+                          "type": "string"
+                        },
+                        {
+                          "const": "clinician_opted_out",
+                          "type": "string"
+                        },
+                        {
+                          "const": "encounter_type_excluded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "token_budget_exceeded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "baa_not_executed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "routing_preference_blocks_cloud",
+                          "type": "string"
+                        },
+                        {
+                          "const": "kill_switch_active",
+                          "type": "string"
+                        }
+                      ]
                     }
                   }
                 }

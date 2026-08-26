@@ -634,6 +634,38 @@ describe("M8 §2.6 — the HearthNote selection tree round-trips (#114)", () => 
     expect(pinned.json().final).toBe(preview.json().final);
   });
 
+  // ── §2.6 D5 Layer-2 (#123) ───────────────────────────────────────────────────────────────────────
+
+  it("the Layer-2 enhance route answers the D5 ladder's reason, not a fabricated modification id", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/hearthnote/enhance`,
+      headers: RN,
+      payload: { style: { tone: "formal", brevity: "concise" } },
+    });
+    expect(res.statusCode).toBe(200);
+    // Was `{ modificationId: <the ENCOUNTER's own id> }` — an identifier for something else entirely.
+    expect(res.json()).toEqual({ enhanced: false, reason: "kill_switch_active" });
+    expect(res.json().modificationId).toBeUndefined();
+    expect(JSON.stringify(res.json())).not.toContain(id);
+  });
+
+  it("a per-passage decision against a modification that does not exist is a 404, not an echo", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    // Was a 200 echoing back whatever id the caller invented. Nothing writes
+    // `hearthnote_llm_modification`, so every id names nothing — and the route now says so.
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/hearthnote/modifications/2f1d4c9e-0000-4000-8000-000000000001/decisions`,
+      headers: RN,
+      payload: { decision: "accept" },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
   it("an addendum keeps its own tree, against its parent's template", async () => {
     const { app } = makeServer();
     const id = await draft(app);

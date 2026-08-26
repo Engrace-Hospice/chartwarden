@@ -404,8 +404,37 @@ export const FinalizeResponseSchema = Type.Object({
   version: Type.Integer(),
 });
 
-/** Routes 12/13 — HearthNote enhancement / per-passage modification decision. */
+/** Route 13 — per-passage modification decision. A `modId` naming no `hearthnote_llm_modification`
+ *  row is a 404, not an echo (#123). */
 export const ModificationResponseSchema = Type.Object({ modificationId: Type.String() });
+
+/** The §2.6 D5 eligibility ladder's verdicts (mirrors the `layer2_eligibility_reason` enum). */
+const LAYER2_ELIGIBILITY_REASON = [
+  "eligible",
+  "tenant_flag_off",
+  "clinician_opted_out",
+  "encounter_type_excluded",
+  "token_budget_exceeded",
+  "baa_not_executed",
+  "routing_preference_blocks_cloud",
+  "kill_switch_active",
+] as const;
+
+/**
+ * Route 12 — HearthNote Layer-2 enhancement.
+ *
+ * `enhanced` is published as the literal `false`, which is the point: the Layer-2 dispatch to M32's
+ * `narrativeEnhancement` is unbuilt and the platform `hearthnote.layer2` flag is off, so this endpoint
+ * never enhances anything today — and an integrator learns that from the contract rather than from the
+ * source. `reason` carries the first D5 gate that refused; in Phase 1 that is always `kill_switch_active`.
+ * The `enhanced: true` arm, with a real `hearthnote_llm_modification` id, is added when there is a code
+ * path that can return it. There is deliberately no id here: the route used to answer 200 with the
+ * ENCOUNTER's own id in a `modificationId` field (#123).
+ */
+export const HearthnoteEnhanceResponseSchema = Type.Object({
+  enhanced: Type.Literal(false),
+  reason: lit(LAYER2_ELIGIBILITY_REASON),
+});
 
 /** Route 14 — sign result (signed or routed to cosignature). */
 export const SignResponseSchema = Type.Object({
@@ -481,7 +510,7 @@ type _Selections = Conforms<Static<typeof SelectionsUpdateResponseSchema>, Ret<"
 type _CarePlanLink = Conforms<Static<typeof CarePlanLinkResponseSchema>, Ret<"addCarePlanLink">>;
 type _Evv = Conforms<Static<typeof EvvReconcileResponseSchema>, Ret<"documentEvvMissing">>;
 type _Finalize = Conforms<Static<typeof FinalizeResponseSchema>, Ret<"finalize">>;
-type _Enhance = Conforms<Static<typeof ModificationResponseSchema>, Ret<"enhanceHearthnote">>;
+type _Enhance = Conforms<Static<typeof HearthnoteEnhanceResponseSchema>, Ret<"enhanceHearthnote">>;
 type _ModDecision = Conforms<
   Static<typeof ModificationResponseSchema>,
   Ret<"recordModificationDecision">

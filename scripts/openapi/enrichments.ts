@@ -1373,6 +1373,7 @@ import {
   EvvReconcileSchema as M8EvvReconcileSchema,
   FinalizeEncounterSchema as M8FinalizeEncounterSchema,
   FinalizeResponseSchema as M8FinalizeResponseSchema,
+  HearthnoteEnhanceResponseSchema as M8HearthnoteEnhanceResponseSchema,
   HearthnoteEnhanceSchema as M8HearthnoteEnhanceSchema,
   LateEntryOverrideSchema as M8LateEntryOverrideSchema,
   MileageResultResponseSchema as M8MileageResultResponseSchema,
@@ -6008,7 +6009,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/encounters/:encounterId/hearthnote/enhance": {
     summary: "Invoke HearthNote Layer-2 enhancement",
     body: M8HearthnoteEnhanceSchema,
-    response: M8ModificationResponseSchema,
+    response: M8HearthnoteEnhanceResponseSchema,
   },
   "PATCH /api/v1/encounters/:encounterId/hearthnote/modifications/:modId/decisions": {
     summary: "Record a per-passage accept/edit/reject decision",

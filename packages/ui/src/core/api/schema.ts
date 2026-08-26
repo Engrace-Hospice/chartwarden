@@ -37905,7 +37905,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        modificationId: string;
+                        /** @constant */
+                        enhanced: false;
+                        reason: "eligible" | "tenant_flag_off" | "clinician_opted_out" | "encounter_type_excluded" | "token_budget_exceeded" | "baa_not_executed" | "routing_preference_blocks_cloud" | "kill_switch_active";
                     };
                 };
             };
