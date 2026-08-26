@@ -20,7 +20,7 @@ import {
 // Backed by GET/POST /api/v1/medicaid-eligibility-checks. Lantern: WorkQueueLayout + No-Line table (§6.7).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { PatientLookupField, PatientPayerLookupField } from "../../shared/entity-lookups";
+import { PatientLookupField, PatientPayerLookupField } from "../../shell/entity-lookups";
 import { ELIGIBILITY_OUTCOME_TONE, humanize, shortDate, shortId, toneOf } from "./medicaid-status";
 import {
   FilterRow,
@@ -339,7 +339,7 @@ export function MedicaidEligibilityCenter(): JSX.Element {
                 {pagedRows.map((r) => {
                   const stale = r.staleAt <= nowIso;
                   return (
-                    <tr key={r.id} style={rowLine} className="wx-data-row-interactive">
+                    <tr key={r.id} style={rowLine}>
                       <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>
                         {r.checkedAt.slice(0, 16).replace("T", " ")}
                       </td>
