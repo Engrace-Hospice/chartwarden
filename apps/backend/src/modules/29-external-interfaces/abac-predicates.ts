@@ -14,14 +14,17 @@
 //   · nppes_platform_job_caller                    — bound on POST /nppes/sync-runs (W-XI-12 platform-only).
 //   · lab_observation_patient_caseload_or_scope    — bound on the clinician lab reads + unmatched writes.
 //
-// M3's registry fails CLOSED on an UNKNOWN name (the `arch:abac-predicates` gate), so all six are registered
-// even where the Phase-1 binding denies by construction (the tenant request context carries no
-// platform-operator fact, so `nppes_platform_job_caller` denies until a platform-role caller exists) — a
-// registered-but-denying predicate stays distinguishable from a misspelled one.
+// M3's registry fails CLOSED on an UNKNOWN name (the `arch:abac-predicates` gate), so all six are
+// registered — a registered-but-denying predicate stays distinguishable from a misspelled one.
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so a re-boot (tests) guards
 // on `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  PLATFORM_OPS_ROLE_KEYS,
+  registerPredicateIdempotent,
+} from "@wardenx/auth";
 import type { Hl7ProposalOwnerModule } from "@wardenx/types";
 
 /** The §4.8 predicate names M29 OWNS (registered into M3). Single-owner across the platform registry. */
@@ -132,10 +135,21 @@ function membershipIdOf(context: AbacContext): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+/**
+ * Whether the caller carries a platform-ops role (W-XI-12). RE-DERIVED from the platform-owned role
+ * catalog (`@wardenx/auth` `PLATFORM_OPS_ROLE_KEYS`), the same single source M35's
+ * `platform_billing_scope` admits its cross-tenant `/api/admin` surface from — so the two platform-only
+ * gates in the codebase cannot drift apart on who counts as an operator.
+ *
+ * This USED to read an `isPlatformOperator` attribute, on the stated ground that "until a platform-operator
+ * caller is provisioned this reads false and the predicate denies". That ground stopped being true when
+ * ADMIN-T02 registered the six `platform_staff` templates: a platform-operator caller IS provisioned, and
+ * M35 has been gating on it the whole time. Nothing wrote the attribute, so the predicate denied every
+ * caller including the platform operators it exists to admit — one fact under two names, of which only one
+ * was ever produced (F-030).
+ */
 function isPlatformOperator(context: AbacContext): boolean {
-  // The platform NPPES sync runs under `withPlatformContext`, which a tenant HTTP session never carries.
-  // Until a platform-operator caller is provisioned this reads false and the predicate denies (W-XI-12).
-  return context.attributes?.isPlatformOperator === true;
+  return context.roles.some((r) => (PLATFORM_OPS_ROLE_KEYS as readonly string[]).includes(r));
 }
 
 // ── the predicates ───────────────────────────────────────────────────────────────────────────────────
@@ -221,7 +235,8 @@ export function buildM29AbacPredicates(
       return membershipId !== primaryApproverId;
     },
 
-    /** §4.8 — a tenant-scoped role cannot trigger a platform-shared NPPES sync (W-XI-12). */
+    /** §4.8 — a tenant-scoped role cannot trigger a platform-shared NPPES sync; a platform-ops role can
+     *  (W-XI-12). The admit-set is the platform role catalog, not a request-supplied fact. */
     nppes_platform_job_caller: async (context) => {
       return isPlatformOperator(context);
     },

@@ -129,10 +129,6 @@ export const CONTEXT_ATTRIBUTES: Readonly<Record<string, AttributeEntry>> = {
     blocked:
       "M19's on-call predicates and route actor read the vendor/answering-service actor id for a vendor-scoped call. Nothing assembles it, so no vendor-scoped call can be recognised as one — but unlike the rest of this list that is DECLARED rather than accidental: the M19 spec's Phase boundary ships the Hybrid and Centralized models feature-flagged-OFF in Phase 1, with only the data shape (`external_triage_vendor`, `triage_call.external_actor_id`) in the migration so a Phase-2 tenant is a config flip. Producing it needs the vendor session mint path that phase has not built, plus a `session_scope_chk` branch for the two vendor classes (migration 0219 added the classes; 0220 required no scope of them). The `deviceAttestationValid` shape, one layer up.",
   },
-  isPlatformOperator: {
-    blocked:
-      'M29 — and the one entry here that was already done RIGHT: the read site documents its own blocker ("Until a platform-operator caller is provisioned this reads false and the predicate denies (W-XI-12)"). Listed for completeness, not as a defect.',
-  },
 };
 
 export interface AttributeUse {
