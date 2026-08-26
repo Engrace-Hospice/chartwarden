@@ -24,6 +24,19 @@ const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
 const MD = "55555555-5555-5555-5555-555555555555";
 const ATTENDING = "77777777-7777-7777-7777-777777777777";
+/** The hospice the patient elects — #44: this id is what sites `admission.provider_entity_id`. */
+const PROVIDER_ENTITY = "88888888-8888-8888-8888-888888888888";
+const PROVIDER_ENTITY_ORG_B = "99999999-9999-9999-9999-999999999999";
+/** A SECOND org-A hospice — used to prove a draft never repoints an already-sited admission. */
+const PROVIDER_ENTITY_2 = "88888888-8888-8888-8888-888888888889";
+
+/** The §418.24 draft content every election statement in this suite elects. */
+const DRAFT = {
+  electedProviderEntityId: PROVIDER_ENTITY,
+  electedAttendingPhysicianId: ATTENDING,
+  waiverAcknowledged: true,
+} as const;
+const SIGN = { signingPatientName: "Pat Patient", signingRole: "patient" } as const;
 
 describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M6L-T03)", () => {
   let admin: Client;
@@ -80,11 +93,30 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
       [ORG_A, ORG_B],
     );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m6t3@x.test')`, [USER]);
+    // #44 — a provider entity in EACH org: the elected hospice, and one belonging to the other
+    // tenant that must never be electable from org A.
+    await admin.query(
+      `INSERT INTO provider_entity (id,organization_id,legal_name,ccn,npi,tax_id_encrypted,fiscal_year_end)
+         VALUES ($1,$2,'A Hospice','341234','1111111111','\\x00','12-31'),
+                ($3,$4,'B Hospice','341235','2222222222','\\x00','12-31'),
+                ($5,$2,'A Hospice Two','341236','3333333333','\\x00','12-31')`,
+      [PROVIDER_ENTITY, ORG_A, PROVIDER_ENTITY_ORG_B, ORG_B, PROVIDER_ENTITY_2],
+    );
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });
-    svc = createDbAdmissionRouteService(handle.db);
+    // The composition root binds this over `provider_entity` (M1's table, which M6 may not import).
+    // Here it is the real predicate against the two rows seeded above.
+    svc = createDbAdmissionRouteService(handle.db, undefined, undefined, {
+      async belongsToOrg(organizationId, providerEntityId) {
+        const { rows } = await admin.query(
+          "SELECT 1 FROM provider_entity WHERE id=$1 AND organization_id=$2",
+          [providerEntityId, organizationId],
+        );
+        return rows.length > 0;
+      },
+    });
   }, 120_000);
 
   afterAll(async () => {
@@ -94,12 +126,134 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
 
   it("election statement: draft → sign → (stale 409)", async () => {
     const { admissionId, periodId } = await admitFor(randomUUID());
-    const es = await svc.draftElectionStatement(ORG_A, admissionId, periodId);
+    const es = await svc.draftElectionStatement(ORG_A, admissionId, periodId, DRAFT);
     expect(es.state).toBe("drafted");
-    const signed = await svc.signElection(ORG_A, es.id, es.version, USER);
+    const signed = await svc.signElection(ORG_A, es.id, es.version, USER, SIGN);
     expect(signed.state).toBe("signed");
-    await expect(svc.signElection(ORG_A, es.id, 0, USER)).rejects.toMatchObject({
+    await expect(svc.signElection(ORG_A, es.id, 0, USER, SIGN)).rejects.toMatchObject({
       statusCode: 409,
+    });
+  });
+
+  // ── #44 — the election statement is a RECORD, and it sites the admission ──────────────────────
+  describe("§418.24 election-statement content (#44)", () => {
+    it("persists the elected hospice, attending and waiver instead of discarding them", async () => {
+      // The route validated seven fields and forwarded ONE. Every column below was NULL on every
+      // row ever written, because the handler passed `electionPeriodId` alone.
+      const { admissionId, periodId } = await admitFor(randomUUID());
+      const es = await svc.draftElectionStatement(ORG_A, admissionId, periodId, {
+        ...DRAFT,
+        stateAddendum: "Oregon addendum text",
+      });
+      const { rows } = await admin.query(
+        `SELECT provider_entity_id, attending_physician_id, curative_care_acknowledgment, state_addendum
+           FROM election_statement WHERE id = $1`,
+        [es.id],
+      );
+      expect(rows[0]).toMatchObject({
+        provider_entity_id: PROVIDER_ENTITY,
+        attending_physician_id: ATTENDING,
+        curative_care_acknowledgment: true,
+        state_addendum: { text: "Oregon addendum text" },
+      });
+    });
+
+    it("records a declined waiver as declined, rather than stamping true at signing", async () => {
+      // `curative_care_acknowledgment` used to be hardcoded `true` in the SIGN update while the
+      // draft's `waiverAcknowledged` was discarded — so `false` still produced an acknowledged
+      // waiver on the legal record. That is the one field it is least acceptable to fabricate.
+      const { admissionId, periodId } = await admitFor(randomUUID());
+      const es = await svc.draftElectionStatement(ORG_A, admissionId, periodId, {
+        ...DRAFT,
+        waiverAcknowledged: false,
+      });
+      await svc.signElection(ORG_A, es.id, es.version, USER, SIGN);
+      const { rows } = await admin.query(
+        "SELECT curative_care_acknowledgment FROM election_statement WHERE id = $1",
+        [es.id],
+      );
+      expect(rows[0].curative_care_acknowledgment).toBe(false);
+    });
+
+    it("records WHO signed and in what capacity", async () => {
+      // `signingPatientName`/`signingRole` were accepted and dropped: `patient_name_at_signing` was
+      // NULL and `signer_kind` kept the draft's hardcoded "patient" even for a representative.
+      const { admissionId, periodId } = await admitFor(randomUUID());
+      const es = await svc.draftElectionStatement(ORG_A, admissionId, periodId, DRAFT);
+      await svc.signElection(ORG_A, es.id, es.version, USER, {
+        signingPatientName: "Rep Representative",
+        signingRole: "legal_representative",
+      });
+      const { rows } = await admin.query(
+        "SELECT signer_kind, patient_name_at_signing FROM election_statement WHERE id = $1",
+        [es.id],
+      );
+      // The wire says `legal_representative`; the `election_signer_kind` enum says `representative`.
+      expect(rows[0]).toMatchObject({
+        signer_kind: "representative",
+        patient_name_at_signing: "Rep Representative",
+      });
+    });
+
+    it("sites admission.provider_entity_id — the fact the §4.7 seam refuses to project without", async () => {
+      // THE load-bearing assertion. `AdmissionStatusReader.getAdmissionSummary` throws
+      // `AdmissionSeamDataGapError` when this column is null, and no insert or update in the whole
+      // repository ever set it — activation writes `status`/`activatedAt` only. So the seam failed
+      // for every admission in every org, breaking M9, M10, M16 and M21.
+      const { admissionId, periodId } = await admitFor(randomUUID());
+      const before = await admin.query("SELECT provider_entity_id FROM admission WHERE id = $1", [
+        admissionId,
+      ]);
+      expect(before.rows[0].provider_entity_id).toBeNull();
+
+      await svc.draftElectionStatement(ORG_A, admissionId, periodId, DRAFT);
+
+      const after = await admin.query("SELECT provider_entity_id FROM admission WHERE id = $1", [
+        admissionId,
+      ]);
+      expect(after.rows[0].provider_entity_id).toBe(PROVIDER_ENTITY);
+    });
+
+    it("does not repoint an admission that is already sited", async () => {
+      // The siting UPDATE is guarded on `provider_entity_id IS NULL`. An admission sited by some
+      // other path must keep its serving provider entity — a later election drafted against it
+      // must not silently move where the care is billed from.
+      const { admissionId, periodId } = await admitFor(randomUUID());
+      await admin.query("UPDATE admission SET provider_entity_id = $1 WHERE id = $2", [
+        PROVIDER_ENTITY_2,
+        admissionId,
+      ]);
+      await svc.draftElectionStatement(ORG_A, admissionId, periodId, DRAFT);
+      const { rows } = await admin.query("SELECT provider_entity_id FROM admission WHERE id = $1", [
+        admissionId,
+      ]);
+      expect(rows[0].provider_entity_id).toBe(PROVIDER_ENTITY_2);
+    });
+
+    it("refuses to elect another tenant's hospice", async () => {
+      // The FKs on `election_statement.provider_entity_id` / `admission.provider_entity_id` are
+      // plain single-column references with no organization in them, and a foreign key is checked
+      // as a system operation that does not consult RLS — so nothing below the application stops a
+      // cross-tenant election. Absent and cross-tenant read identically (§6.6 existence-non-leak).
+      const { admissionId, periodId } = await admitFor(randomUUID());
+      await expect(
+        svc.draftElectionStatement(ORG_A, admissionId, periodId, {
+          ...DRAFT,
+          electedProviderEntityId: PROVIDER_ENTITY_ORG_B,
+        }),
+      ).rejects.toMatchObject({ statusCode: 404 });
+      const { rows } = await admin.query("SELECT provider_entity_id FROM admission WHERE id = $1", [
+        admissionId,
+      ]);
+      expect(rows[0].provider_entity_id).toBeNull();
+    });
+
+    it("fails CLOSED when the org-check port is unbound, rather than writing an unverified hospice", async () => {
+      const unchecked = createDbAdmissionRouteService(handle.db);
+      const { admissionId, periodId } = await admitFor(randomUUID());
+      await expect(
+        unchecked.draftElectionStatement(ORG_A, admissionId, periodId, DRAFT),
+      ).rejects.toMatchObject({ statusCode: 503 });
     });
   });
 
@@ -163,8 +317,8 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
       { deliveryMethod: "electronic_witnessed", acknowledgedByRole: "patient" },
       USER,
     );
-    const es = await svc.draftElectionStatement(ORG_A, admissionId, periodId);
-    await svc.signElection(ORG_A, es.id, es.version, USER);
+    const es = await svc.draftElectionStatement(ORG_A, admissionId, periodId, DRAFT);
+    await svc.signElection(ORG_A, es.id, es.version, USER, SIGN);
     // Second pre-existing gap, same class: R-AC-01 (intake/activation-gate.ts) requires the ATTENDING
     // physician's CTI signature for period 1, not just the hospice medical director's — this test only
     // ever signed the hospice-MD side, so activation always threw PRECONDITION_FAILED/attending_signed

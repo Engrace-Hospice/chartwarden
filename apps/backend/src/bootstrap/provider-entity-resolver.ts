@@ -15,7 +15,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 /** The structural ProviderEntityPort M30's write service binds (tx is its org-context WriteTx = DbClient). */
 export interface PrimaryProviderEntityResolver {
@@ -70,4 +70,43 @@ export function buildOrgProviderEntityLister(
         .orderBy(asc(schema.providerEntities.createdAt));
       return rows.map((r) => r.id);
     });
+}
+
+/**
+ * Confirms a provider entity belongs to an org (#44) — the M6 election-statement draft's guard.
+ *
+ * Lives here, not in M6, for the same reason `primaryProviderEntityId` does: `provider_entity` is an
+ * M1 FOUNDATION table that M6 neither owns nor may import (`arch:tables` — cross-module reads go
+ * through the owner, never its schema). M6 declares the shape it needs
+ * (`ProviderEntityOrgCheckPort`) and the composition root binds this.
+ *
+ * It exists because the FKs on `election_statement.provider_entity_id` and
+ * `admission.provider_entity_id` are plain single-column references that carry no organization —
+ * a foreign key is checked as a system operation and does not consult RLS, so nothing below the
+ * application stops one tenant from electing another tenant's hospice. While the elected id was
+ * being discarded that was moot; persisting it makes this check load-bearing.
+ *
+ * Opens its own org-context transaction so RLS scopes the read, and the `organization_id` predicate
+ * is stated explicitly anyway — the same belt-and-braces posture the seam stores use.
+ */
+export function buildProviderEntityOrgCheck(db: DbClient): {
+  belongsToOrg(organizationId: string, providerEntityId: string): Promise<boolean>;
+} {
+  return {
+    async belongsToOrg(organizationId, providerEntityId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const rows = await tx
+          .select({ id: schema.providerEntities.id })
+          .from(schema.providerEntities)
+          .where(
+            and(
+              eq(schema.providerEntities.id, providerEntityId),
+              eq(schema.providerEntities.organizationId, organizationId),
+            ),
+          )
+          .limit(1);
+        return rows.length > 0;
+      });
+    },
+  };
 }

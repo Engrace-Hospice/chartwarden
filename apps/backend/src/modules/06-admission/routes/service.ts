@@ -345,6 +345,42 @@ export interface PatientElectionCertificationView {
  * (`organizationId` is the request context, never the body). `actorUserId` is the staff member
  * capturing the action (D-AUTHZ-01: patient-side signatures are evidence on the row, not identities).
  */
+/**
+ * The §418.24 election-statement content the draft route accepts (#44).
+ *
+ * Every field here used to be validated by `ElectionStatementDraftSchema` and then dropped: the
+ * handler passed `electionPeriodId` and nothing else, so `election_statement.provider_entity_id`,
+ * `attending_physician_id`, `curative_care_acknowledgment` and `state_addendum` were NULL on every
+ * row ever written, and `admission.provider_entity_id` — which `AdmissionStatusReader` requires
+ * non-null — was never sited by ANY code path, breaking that seam for every admission in every org.
+ */
+export interface ElectionStatementDraftInput {
+  /** The hospice the patient elects (§418.24(b)) — also sites `admission.provider_entity_id`. */
+  readonly electedProviderEntityId: string;
+  /** The attending physician the patient designates; absent when they name none. */
+  readonly electedAttendingPhysicianId?: string;
+  /** The patient's acknowledgment that curative treatment for the terminal condition is waived. */
+  readonly waiverAcknowledged: boolean;
+  /** Free-text state addendum, stored under `state_addendum.text` (the column defaults to `{}`). */
+  readonly stateAddendum?: string;
+}
+
+/** Who signed the election statement, and under what name (§418.24(b)(1)). */
+/**
+ * The wire vocabulary and the column vocabulary differ: `ElectionSignSchema` says
+ * `legal_representative`, the `election_signer_kind` enum says `representative`. Mapping explicitly
+ * beats widening either one — the API contract is published and the enum is in the database.
+ */
+export const SIGNER_KIND_BY_ROLE = {
+  patient: "patient",
+  legal_representative: "representative",
+} as const satisfies Record<string, "patient" | "representative">;
+
+export interface ElectionSignInput {
+  readonly signingPatientName: string;
+  readonly signingRole: "patient" | "legal_representative";
+}
+
 export interface AdmissionRouteService {
   // Referral (routes 1–7)
   createReferral(
@@ -407,6 +443,7 @@ export interface AdmissionRouteService {
     organizationId: string,
     admissionId: string,
     electionPeriodId: string,
+    input: ElectionStatementDraftInput,
   ): Promise<MutationResult>;
   getElectionStatement(organizationId: string, id: string): Promise<SummaryRow | null>;
   signElection(
@@ -414,6 +451,7 @@ export interface AdmissionRouteService {
     id: string,
     ifVersion: number,
     actorUserId: string,
+    input: ElectionSignInput,
   ): Promise<MutationResult>;
   voidElection(
     organizationId: string,
@@ -581,6 +619,12 @@ interface Rec {
   hospiceMedicalDirectorId?: string;
   attendingPhysicianId?: string | null;
   scheduledClinicianId?: string;
+  // §418.24 election-statement content (#44) — persisted rather than discarded. `signerKind` is
+  // NOT redeclared here: Rec already carries it for the revocation facts below, and the election
+  // statement's signer uses the same "patient" | "representative" column vocabulary.
+  curativeCareAcknowledgment?: boolean;
+  stateAddendum?: Record<string, unknown>;
+  patientNameAtSigning?: string;
   // intake/wizard linkage (§7.1/§7.2) — referral idempotency + the period-1 activation bundle
   externalReferralId?: string;
   electionPeriodId?: string;
@@ -943,12 +987,18 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       return transition(rec, "active", ifVersion, "m6.admission.activated");
     },
 
-    async draftElectionStatement(organizationId, admissionId, electionPeriodId) {
+    async draftElectionStatement(organizationId, admissionId, electionPeriodId, input) {
       const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
       const rec = insert("election_statement", organizationId, "drafted", {
         admissionId: adm.id,
         patientId: adm.patientId,
         electionPeriodId,
+        // #44 — the slice mirrors the Drizzle service's persisted shape so a test written against
+        // one is meaningful against the other.
+        providerEntityId: input.electedProviderEntityId,
+        attendingPhysicianId: input.electedAttendingPhysicianId ?? null,
+        curativeCareAcknowledgment: input.waiverAcknowledged,
+        stateAddendum: input.stateAddendum === undefined ? {} : { text: input.stateAddendum },
       });
       events.push("m6.election.drafted");
       return summary(rec);
@@ -957,9 +1007,12 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const rec = get(organizationId, id, "election_statement");
       return rec ? summary(rec) : null;
     },
-    async signElection(organizationId, id, ifVersion, actorUserId) {
+    async signElection(organizationId, id, ifVersion, actorUserId, input) {
       void actorUserId;
       const rec = get(organizationId, id, "election_statement") ?? notFound(id);
+      // #44 — carry the signer's declared capacity and name, as the Drizzle service now does.
+      rec.signerKind = SIGNER_KIND_BY_ROLE[input.signingRole];
+      rec.patientNameAtSigning = input.signingPatientName;
       return transition(rec, "signed", ifVersion, "m6.election.signed");
     },
     async voidElection(organizationId, id, reason, ifVersion) {
@@ -1359,7 +1412,9 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
   ): AdmissionFacts | null => {
     if (!admissionId) return null;
     const adm = get(organizationId, admissionId, "admission");
-    return adm?.patientId ? { patientId: adm.patientId, providerEntityId: adm.providerEntityId ?? null } : null;
+    return adm?.patientId
+      ? { patientId: adm.patientId, providerEntityId: adm.providerEntityId ?? null }
+      : null;
   };
 
   const resolver: AdmissionAbacResolver = {

@@ -293,7 +293,20 @@ export function createDbAssessmentRouteService(
    * SITING half of the same seam call, which stays fail-open (an unsited row is a reporting gap, not a
    * mis-attributed record) — same fact, two consequences, deliberately.
    */
-  function assertAdmissionAnchor(anchor: ResolvedAdmissionAnchor | null, capturedAt: string): void {
+  function assertAdmissionAnchor(
+    anchor: ResolvedAdmissionAnchor | null,
+    capturedAt: string,
+    projectionGap?: string,
+  ): void {
+    // #44 — a seam that REFUSED to project is not an inactive admission, and must not say it is.
+    // Both used to arrive here as `anchor === null`, so a missing `provider_entity_id` was reported
+    // as "Patient's admission is not active" for an admission whose status was `active`. Checked
+    // first: the gap is the reason the anchor is absent, so it is the more specific truth.
+    require_(
+      projectionGap === undefined,
+      "ADMISSION_PROJECTION_GAP",
+      `The admission record is incomplete, so this capture cannot be anchored: ${projectionGap}`,
+    );
     require_(
       anchor !== null && anchor.status === "active",
       "INACTIVE_ADMISSION",
@@ -684,12 +697,12 @@ export function createDbAssessmentRouteService(
     async recordAssessment(organizationId, actorUserId, patientId, args) {
       // Seam-resolved siting + anchor facts BEFORE the write tx, in ONE seam call (the M6 store opens
       // its own request-scoped read). GAP-016: the anchor half used to be discarded.
-      const { siting, anchor } = await sitingResolver.resolveAnchor(
+      const { siting, anchor, projectionGap } = await sitingResolver.resolveAnchor(
         organizationId,
         patientId,
         args.admissionId,
       );
-      assertAdmissionAnchor(anchor, args.capturedAt);
+      assertAdmissionAnchor(anchor, args.capturedAt, projectionGap);
       await assertProxyAttribution(organizationId, patientId, args.actingAs);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
@@ -710,12 +723,12 @@ export function createDbAssessmentRouteService(
       // Resolved up front (outside the write tx). The SITING half is used only where the target row is
       // legacy-unsited; the ANCHOR half gates the amendment itself (GAP-016) — a correction is a new
       // append-only clinical row, so §10 applies to it exactly as it does to the original capture.
-      const { siting: fresh, anchor } = await sitingResolver.resolveAnchor(
-        organizationId,
-        patientId,
-        args.admissionId,
-      );
-      assertAdmissionAnchor(anchor, args.capturedAt);
+      const {
+        siting: fresh,
+        anchor,
+        projectionGap,
+      } = await sitingResolver.resolveAnchor(organizationId, patientId, args.admissionId);
+      assertAdmissionAnchor(anchor, args.capturedAt, projectionGap);
       await assertProxyAttribution(organizationId, patientId, args.actingAs);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;

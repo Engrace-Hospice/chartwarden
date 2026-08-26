@@ -26,6 +26,17 @@ const ORG_A = "11111111-1111-1111-1111-111111111111";
 const USER = "33333333-3333-3333-3333-333333333333";
 const OTHER = "44444444-4444-4444-4444-444444444444";
 const MD = "55555555-5555-5555-5555-555555555555";
+// #44 — the elected hospice + attending the setup helper's election statement names. The draft now
+// PERSISTS these (it used to validate seven fields and forward one), and the org check below refuses an
+// id that is not this org's, so both have to be real rows rather than free-floating uuids.
+const PROVIDER_ENTITY = "77777777-7777-4777-8777-777777777777";
+const ATTENDING = "88888888-8888-4888-8888-888888888888";
+const DRAFT = {
+  electedProviderEntityId: PROVIDER_ENTITY,
+  electedAttendingPhysicianId: ATTENDING,
+  waiverAcknowledged: true,
+} as const;
+const SIGN = { signingPatientName: "Pat Patient", signingRole: "patient" } as const;
 
 describe.skipIf(!DB_URL)(
   "M6 F2F/LOC/discharge/transfer write lifecycle — LIVE Postgres (M6L-T04)",
@@ -85,8 +96,8 @@ describe.skipIf(!DB_URL)(
         { deliveryMethod: "electronic_witnessed", acknowledgedByRole: "patient" },
         USER,
       );
-      const es = await svc.draftElectionStatement(ORG_A, admissionId, periodId);
-      await svc.signElection(ORG_A, es.id, es.version, USER);
+      const es = await svc.draftElectionStatement(ORG_A, admissionId, periodId, DRAFT);
+      await svc.signElection(ORG_A, es.id, es.version, USER, SIGN);
       // Second pre-existing gap found the same way: R-AC-01 (intake/activation-gate.ts) requires the
       // ATTENDING physician's CTI signature for period 1, not just the hospice medical director's — this
       // helper only ever called signCtiHospiceMd, so activation always threw ELECTION_STATEMENT_REQUIRED/
@@ -123,16 +134,36 @@ describe.skipIf(!DB_URL)(
         `INSERT INTO "user" (id,email) VALUES ($1,'m6t4a@x.test'),($2,'m6t4b@x.test'),($3,'m6t4md@x.test')`,
         [USER, OTHER, MD],
       );
+      await admin.query(
+        `INSERT INTO provider_entity (id, organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+         VALUES ($1,$2,'CCN-M6T4','M6 T4 Hospice','NPI-M6T4','enc','12-31')`,
+        [PROVIDER_ENTITY, ORG_A],
+      );
       await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({
         connectionString: appRoleUrl(DB_URL as string),
       });
       // The 3rd arg is the REAL M37 `IpuBedAssignmentProvider` seam (not a fake) — proves the confirm
       // handshake's cross-module read works end-to-end, not just that the M6 side compiles.
+      //
+      // The 4th is #44's provider-entity org check. This suite drafts election statements as SETUP for
+      // its F2F/LOC/discharge cases, and `draftElectionStatement` now fails CLOSED (503) with the port
+      // unbound rather than persisting an unverified hospice — so an unbound port turned every test in
+      // this file red. Bound to the real predicate over the rows seeded above, exactly as the sibling
+      // T3 suite does; the deliberately-unbound case is asserted there.
       svc = createDbAdmissionRouteService(
         handle.db,
         undefined,
         buildIpuSeams(handle.db).IpuBedAssignmentProvider,
+        {
+          async belongsToOrg(organizationId, providerEntityId) {
+            const { rows } = await admin.query(
+              "SELECT 1 FROM provider_entity WHERE id=$1 AND organization_id=$2",
+              [providerEntityId, organizationId],
+            );
+            return rows.length > 0;
+          },
+        },
       );
     }, 120_000);
 
