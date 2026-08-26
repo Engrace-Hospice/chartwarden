@@ -1632,7 +1632,7 @@ bun dev
 
 # Run tests
 bun run test              # unit + integration (vitest projects)
-bun run test:e2e          # Playwright — exists at e2e/, but NO ci.yml job invokes it
+bun run test:e2e          # Playwright, against a seeded local stack; CI runs it in the `e2e` job
 # NOTE: `bun test:integration` does not exist, and Testcontainers is not installed. Live-DB suites
 # are the `test:*:live` scripts, gated on WARDENX_TEST_DATABASE_URL.
 bun test:rls              # RLS isolation tests

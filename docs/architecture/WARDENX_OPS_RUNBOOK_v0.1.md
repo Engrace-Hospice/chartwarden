@@ -157,12 +157,13 @@ For every deploy, however small:
 
 - [ ] Code merged to `main` (no direct deploys from branches)
 - [ ] All CI checks green — what `ci.yml` **actually** runs: build, `arch:fitness` (read the gate chain from `package.json`, never from prose),
-      unit/integration tests, and the live-DB jobs (`rls-live`, `lifecycle-live`, the per-module
-      matrix). Note **lint is `continue-on-error: true`** — a red lint does not fail CI, so read it
-      rather than trusting the check mark.
-- [ ] ~~All CI checks green (… e2e, SBOM)~~ — **NOT BUILT.** `ci.yml` has no e2e job (a Playwright
-      suite exists at `e2e/` and is wired to `test:e2e`, but no workflow invokes it) and no SBOM
-      step. Run `bun run test:e2e` locally against a seeded stack if the change touches the UI.
+      unit/integration tests, the live-DB jobs (`rls-live`, `lifecycle-live`, the per-module
+      matrix), and the `e2e` job (a real Chromium against a migrated + seeded full stack: 18
+      critical-workflow specs and the six axe-core WCAG 2A/AA scans that are the repo's only
+      automated accessibility coverage). Note **lint is `continue-on-error: true`** — a red lint
+      does not fail CI, so read it rather than trusting the check mark.
+- [ ] ~~All CI checks green (… SBOM)~~ — **SBOM NOT BUILT.** No workflow produces one. (The e2e
+      half of this item is now real: `ci.yml` gained an `e2e` job — see the line above.)
 - [ ] ~~Container image signed with cosign~~ / ~~Image SBOM attached~~ — **STATUS: TARGET — NOT
       BUILT.** `cosign`, `syft`, `trivy` and `grype` have zero occurrences repo-wide. Nothing signs
       the image and nothing produces an SBOM. Do not tick these; they protect nothing today.

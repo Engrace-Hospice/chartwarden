@@ -70,11 +70,12 @@ const INTERACTIVE_MODES = new Set(["test:e2e:ui"]);
  * you to delete the entry, so a stale deferral cannot quietly outlive its reason.
  */
 const DEFERRED: Readonly<Record<string, string>> = {
-  "test:e2e":
-    "blocked on #39 — the 18-test Playwright suite needs a fully seeded stack, and `bun run db:reset` " +
-    "does not complete (it aborts inside db:seed:scenario-clinical). Wiring a CI job today would be " +
-    "red for a reason unrelated to the code under test. Includes 6 axe-core WCAG scans; re-check this " +
-    "entry the moment #39's residual (M9 INACTIVE_ADMISSION, M10 HOPE NOT_FOUND) closes.",
+  // Empty on purpose, and the map stays. `test:e2e` was the entry that motivated it — the 18-test
+  // Playwright suite with its six axe-core WCAG scans, unrunnable because `bun run db:reset` aborted
+  // partway (#39) and 10 of the 18 specs were red against a since-redesigned screen (#56). Both
+  // closed, the suite is 18/18, and the `e2e` job now runs it — so the entry is gone, exactly as the
+  // stale-deferral check below demands. The next suite that genuinely cannot run yet registers here
+  // rather than quietly failing to be wired.
 };
 
 export interface LiveScript {
@@ -109,7 +110,13 @@ export interface CoverageReport {
   readonly deferred: readonly string[];
 }
 
-export function run(root = ROOT): CoverageReport {
+export function run(
+  root = ROOT,
+  // Injectable so both branches of the deferral rule stay under test while DEFERRED is empty. A
+  // mechanism proven only by the entry that happens to be in it today is proven only until that
+  // entry is retired — which is precisely what just happened to `test:e2e`.
+  deferred: Readonly<Record<string, string>> = DEFERRED,
+): CoverageReport {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
     scripts: Record<string, string>;
   };
@@ -120,11 +127,11 @@ export function run(root = ROOT): CoverageReport {
   const staleDeferrals: string[] = [];
   for (const { name } of live) {
     const wired = invokedInCi(name, ci);
-    const isDeferred = name in DEFERRED;
+    const isDeferred = name in deferred;
     if (isDeferred && wired) staleDeferrals.push(name);
     else if (!isDeferred && !wired) unwired.push(name);
   }
-  return { live, unwired, staleDeferrals, deferred: Object.keys(DEFERRED).sort() };
+  return { live, unwired, staleDeferrals, deferred: Object.keys(deferred).sort() };
 }
 
 function main(): void {

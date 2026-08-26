@@ -125,7 +125,7 @@ the prose docs in `docs/architecture/`.
   (`deviceAttestationValid` in `packages/auth/src/abac/registry.ts`), never as an unregistered
   name — both refuse identically, only the first is distinguishable from a mistake.
 - `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
-  Every `test:m<N>:…:live` script in `package.json` must be invoked by a job in
+  Every live-database / live-Redis / browser suite in `package.json` must be invoked by a job in
   `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so
   with no database it reports SKIPPED rather than failed and `bun run test` stays green either
   way; a script in `package.json` looks wired but nothing distinguishes one CI runs from one
@@ -133,9 +133,20 @@ the prose docs in `docs/architecture/`.
   205 assertions over the real Drizzle write paths — unexecuted outside their authors' laptops,
   and 23 of 25 were red once run. Two CI jobs now cover them: `rls-live` (table-level policy
   proof) and `lifecycle-live` (the production route services as the NOBYPASSRLS `wardenx_app`
-  role, grouped per module). It checks `package.json` → CI, not file → `package.json`: 24
-  `*.live.test.ts` files still have no script at all, so nothing invokes them either (F-020 wired
-  the outbox dispatcher's own suite; the rest are open).
+  role, grouped per module). Detection derives from what a script **runs**, not what it is
+  **called** — a command naming a `*.live.test.ts` file or invoking `playwright` is a live suite
+  whatever its name. It used to match on the NAME, with a middle segment that allowed hyphens but
+  not colons, so `test:m6:t3:write:live` and eight others were invisible to it and six ran in no
+  job at all (F-015/#41) — GAP-086's failure mode reintroduced through the gate written to prevent
+  it. A suite that genuinely cannot run yet is a **registered** entry in `DEFERRED` carrying its
+  blocker, never an unmatched name (the `deviceAttestationValid` rule), and the gate fails the
+  moment CI starts running a deferred script so the entry cannot outlive its reason; `DEFERRED` is
+  empty today. All **92** suites run in CI, `test:e2e` included — the `e2e` job drives a real
+  Chromium over a migrated, `db:seed:all`-seeded full stack (18 critical-workflow specs + the six
+  axe-core WCAG 2A/AA scans that are the repo's only automated accessibility coverage). It still
+  checks `package.json` → CI, not file → `package.json`: 23 `*.live.test.ts` files have no script
+  at all, so nothing invokes them either (F-020 wired the outbox dispatcher's own suite; the rest
+  are open).
 - `scripts/check-outbox-bindings.ts` — **outbox binding ↔ event-catalog agreement**
   (`bun run arch:outbox-bindings`, in `arch:fitness`). Every live `OutboxConsumerBinding` must bind a
   catalogued event, must not bind one catalogued record-only (`declaredConsumers: []`), and its module

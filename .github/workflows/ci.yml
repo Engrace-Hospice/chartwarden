@@ -447,3 +447,131 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Shared fixed-window counter across two clients (real Valkey)
         run: bun run test:rate-limit-store:live
+
+  e2e:
+    # F-024 (#41, second half): the 18-test Playwright suite — and the SIX axe-core WCAG 2A/AA scans it
+    # carries, the repo's ENTIRE automated accessibility coverage — ran in no CI job. `test:e2e` was
+    # invisible to `arch:live-suites` until #41 widened its detection, and was then explicitly DEFERRED
+    # rather than wired, because the suite could not be run at all: `bun run db:reset` aborted partway
+    # through its seed chain (#39), and 10 of the 18 specs were red against selectors and a screen that
+    # had since been redesigned (#56). Both are fixed and the suite is 18/18, so the deferral is retired
+    # and this job replaces it.
+    #
+    # This is the ONLY job that exercises the product the way a person uses it: a real Chromium against
+    # the real Vite app, proxied to a real Fastify backend, over a real migrated and seeded Postgres.
+    # Every other job here proves one layer in isolation — a route service, a policy, a boot path.
+    #
+    # It doubles as the only CI coverage `bun run db:reset` has ever had. That command is the documented
+    # way to get a working local stack and it was broken for months with nothing to report it (#39); the
+    # seed chain runs here through the very `db:seed:all` script `db:reset` composes, so the two cannot
+    # drift apart.
+    name: Critical-workflow E2E + accessibility (Playwright, full stack)
+    runs-on: ubuntu-latest
+    services:
+      # `db:seed:scenario-billing` drives M27 `refresh-inputs`, which enqueues a trial-balance pull —
+      # with no queue connection that port is unbound and the step fails (docs/DEVELOPMENT.md). A
+      # `services:` block is enough here: unlike the Postgres jobs this needs no command arguments.
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_e2e
+      DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_e2e
+      REDIS_URL: redis://localhost:6379
+      BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
+      BETTER_AUTH_URL: http://localhost:3000
+      TWO_FACTOR_ENCRYPTION_KEY: Y2ktMmZhLXRlc3Qta2V5LTAxMjM0NTY3ODlhYmNkZWY=
+      # The target is the DEV stack the suite was written against (Vite dev server + its /api proxy),
+      # not a production build: `NODE_ENV=production` would demand the full production secret set and
+      # https origins, and prove nothing more about these workflows. The production-configuration boot
+      # is a different question and has its own job (`outbox-boot`).
+      NODE_ENV: development
+      PORT: "3000"
+      E2E_BASE_URL: http://localhost:5173
+      # MEASURED, not assumed. Without this the run is RED: a serial Playwright pass plus the seed
+      # chain's ~30 sign-ins all share one `ip:` bucket in SD-055's unauthenticated tier (the sign-in
+      # call is inherently pre-auth, so it has nowhere else to bucket), and the suite self-DoSes
+      # against its own rate limiter — a clean local reproduction at the shipped 30/min default gave
+      # `2 failed / 16 passed`, both failures a sign-in that never left /login, plus a 61-second
+      # retry stall inside `db:seed:staff`. Raising the LOCAL tier is the mechanism `.env.example`
+      # and `e2e/playwright.config.ts` both already document for exactly this; the shipped production
+      # default is untouched, and the limiter itself is proven by `rate-limit-store-live` and by the
+      # SD-055 unit tests, not by this job.
+      RATE_LIMIT_UNAUTHENTICATED_PER_MINUTE: "300"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+      - name: Install dependencies (frozen lockfile)
+        run: bun install --frozen-lockfile
+      # Same explicit `docker run` + raised lock limit as rls-live, and for the same reason (see that
+      # job's note): booting replays the full migration set, ~47 partitioned parents included.
+      - name: Start Postgres (pgvector image; raised lock limit)
+        run: |
+          docker run -d --name wardenx-ci-pg-e2e \
+            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_e2e \
+            -p 5432:5432 pgvector/pgvector:pg16 \
+            -c max_locks_per_transaction=4096
+          for i in $(seq 1 60); do
+            docker exec wardenx-ci-pg-e2e pg_isready -U postgres -d wardenx_e2e && exit 0
+            sleep 1
+          done
+          echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg-e2e; exit 1
+      - name: Install the Chromium build this Playwright version pins
+        run: bunx playwright install --with-deps chromium
+      - name: Migrate
+        run: bun run db:migrate
+      # Backgrounded because the suite needs the stack UP for its whole run — unlike `check:boot:platform`,
+      # which boots, asserts and kills. The log is captured to a file so a failure shows the backend's own
+      # output (see the artifact step) instead of an unexplained browser timeout.
+      - name: Boot the backend and wait for /health
+        run: |
+          mkdir -p "$RUNNER_TEMP/e2e-logs"
+          (cd apps/backend && nohup bun src/index.ts > "$RUNNER_TEMP/e2e-logs/backend.log" 2>&1 &)
+          for i in $(seq 1 120); do
+            if curl -sf http://localhost:3000/health > /dev/null; then
+              echo "backend healthy after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "backend did not answer /health within 120s" >&2
+          cat "$RUNNER_TEMP/e2e-logs/backend.log" >&2; exit 1
+      # The same fourteen steps `bun run db:reset` runs, through the same script, against this database.
+      # Most of them drive the real REST API as signed-in demo personas rather than writing rows directly, so
+      # this exercises RLS, ABAC and the state machines on the way to the fixtures the specs need.
+      - name: Seed the demo tenant (the `db:reset` chain)
+        run: bun run db:seed:all
+      - name: Start the web app and wait for it to serve
+        run: |
+          (cd apps/web && nohup bun run dev > "$RUNNER_TEMP/e2e-logs/web.log" 2>&1 &)
+          for i in $(seq 1 90); do
+            if curl -sf http://localhost:5173 > /dev/null; then
+              echo "web up after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "the web dev server did not serve within 90s" >&2
+          cat "$RUNNER_TEMP/e2e-logs/web.log" >&2; exit 1
+      # `forbidOnly` is already on under CI (playwright.config.ts), so a stray `.only` fails the job
+      # rather than silently shrinking the suite to one test — the browser-side version of the
+      # self-skip this workflow's live jobs guard against.
+      - name: 18 critical-workflow specs + 6 axe-core WCAG 2A/AA scans (real browser, real stack)
+        run: bun run test:e2e
+      - name: Upload the Playwright report, traces and stack logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-artifacts
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+            ${{ runner.temp }}/e2e-logs/
+          retention-days: 7
