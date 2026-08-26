@@ -66,9 +66,14 @@ jobs:
       - name: Dependency vulnerability audit (audit:deps)
         run: bun run audit:deps
 
-      - name: Lint (non-blocking advisory)
+      # BLOCKING as of #33. It ran `continue-on-error: true` from the day it was added, so the gate
+      # executed, failed, and was discarded on every commit — 187 diagnostics on `main`, and the two
+      # real defects buried in them (#31, a cross-tenant ops route publishing the wrong response
+      # contract; #32, four drawers unreachable by keyboard) were found by THIS check with nobody
+      # having to look. It is also the repo's only automated a11y enforcement outside the E2E axe
+      # scans. `scripts/__tests__/lint-gate.test.ts` asserts this step stays blocking.
+      - name: Lint
         run: bun run lint
-        continue-on-error: true
 
   rls-live:
     name: RLS isolation — ${{ matrix.suite.name }} (live Postgres)

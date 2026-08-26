@@ -249,10 +249,11 @@ function TopNavSearch(): JSX.Element {
     navigate("/search");
   }
   return (
-    // biome-ignore lint/a11y/useSemanticElements: role="search" on the form is the intended, widely-supported pattern.
     <form
       className="wx-topnav-search"
       onSubmit={submit}
+      // biome-ignore lint/a11y/useSemanticElements: role="search" on the form IS the intended,
+      // widely-supported pattern — there is no `<search>` element in the baseline this app targets.
       role="search"
       style={{ position: "relative" }}
     >

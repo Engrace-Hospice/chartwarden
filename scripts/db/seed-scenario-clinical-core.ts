@@ -125,124 +125,123 @@ async function main(): Promise<void> {
     });
     if (boot.error) {
       throw new Error(`care-plan bootstrap failed: ${JSON.stringify(boot.error)}`);
-    } else {
-      const bootData = boot.data as unknown as { id: string };
-      const planId = bootData.id;
+    }
+    const bootData = boot.data as unknown as { id: string };
+    const planId = bootData.id;
 
-      const problem = await rn.client.POST("/api/v1/care-plans/{planId}/problems", {
-        params: { path: { planId } },
-        body: {
-          description: "Metastatic non-small cell lung cancer with progressive functional decline.",
-          kind: "terminal",
-          source: "clinical",
-          icd10Code: "C34.90",
-        },
-      });
-      const problemData = problem.data as unknown as { id: string } | undefined;
-      if (problem.error || !problemData)
-        throw new Error(`problem create failed: ${JSON.stringify(problem.error)}`);
+    const problem = await rn.client.POST("/api/v1/care-plans/{planId}/problems", {
+      params: { path: { planId } },
+      body: {
+        description: "Metastatic non-small cell lung cancer with progressive functional decline.",
+        kind: "terminal",
+        source: "clinical",
+        icd10Code: "C34.90",
+      },
+    });
+    const problemData = problem.data as unknown as { id: string } | undefined;
+    if (problem.error || !problemData)
+      throw new Error(`problem create failed: ${JSON.stringify(problem.error)}`);
 
-      const painProblem = await rn.client.POST("/api/v1/care-plans/{planId}/problems", {
-        params: { path: { planId } },
-        body: {
-          description: "Chronic pain related to metastatic disease, poorly controlled.",
-          kind: "related",
-          source: "clinical",
-        },
-      });
-      const painProblemData = painProblem.data as unknown as { id: string } | undefined;
+    const painProblem = await rn.client.POST("/api/v1/care-plans/{planId}/problems", {
+      params: { path: { planId } },
+      body: {
+        description: "Chronic pain related to metastatic disease, poorly controlled.",
+        kind: "related",
+        source: "clinical",
+      },
+    });
+    const painProblemData = painProblem.data as unknown as { id: string } | undefined;
 
-      await rn.client.POST("/api/v1/care-plans/{planId}/goals", {
-        params: { path: { planId } },
-        body: {
-          problemId: problemData.id,
-          originalText:
-            "Patient will report pain at or below 3/10 on a 0-10 scale through end of life.",
-          source: "clinical",
-          measurableOutcome: "Pain score ≤3/10 on daily assessment.",
-        },
-      });
+    await rn.client.POST("/api/v1/care-plans/{planId}/goals", {
+      params: { path: { planId } },
+      body: {
+        problemId: problemData.id,
+        originalText:
+          "Patient will report pain at or below 3/10 on a 0-10 scale through end of life.",
+        source: "clinical",
+        measurableOutcome: "Pain score ≤3/10 on daily assessment.",
+      },
+    });
 
+    await rn.client.POST("/api/v1/care-plans/{planId}/interventions", {
+      params: { path: { planId } },
+      body: {
+        problemId: problemData.id,
+        scopeText:
+          "RN case management visits to assess symptom burden and coordinate the IDG plan of care.",
+        frequencyText: "Twice weekly",
+        frequencyValue: "2x/week",
+        discipline: "rn",
+      },
+    });
+    if (painProblemData) {
       await rn.client.POST("/api/v1/care-plans/{planId}/interventions", {
         params: { path: { planId } },
         body: {
-          problemId: problemData.id,
+          problemId: painProblemData.id,
           scopeText:
-            "RN case management visits to assess symptom burden and coordinate the IDG plan of care.",
-          frequencyText: "Twice weekly",
-          frequencyValue: "2x/week",
+            "Titrate comfort medications per physician orders; reassess pain at every visit.",
+          frequencyText: "Every visit",
+          frequencyValue: "PRN",
           discipline: "rn",
         },
       });
-      if (painProblemData) {
-        await rn.client.POST("/api/v1/care-plans/{planId}/interventions", {
-          params: { path: { planId } },
-          body: {
-            problemId: painProblemData.id,
-            scopeText:
-              "Titrate comfort medications per physician orders; reassess pain at every visit.",
-            frequencyText: "Every visit",
-            frequencyValue: "PRN",
-            discipline: "rn",
-          },
-        });
-      }
-
-      type PlanRead = {
-        versions?: Array<{ id: string; status: string; version: number }>;
-      };
-      const readDraftVersion = async (): Promise<{ id: string; version: number }> => {
-        const read = await rn.client.GET("/api/v1/patients/{patientId}/care-plan", {
-          params: { path: { patientId } },
-        });
-        const v = (read.data as unknown as PlanRead | undefined)?.versions?.find(
-          (x) => x.status === "draft" || x.status === "in_review",
-        );
-        if (!v) throw new Error("no draft/in_review care-plan version found");
-        return { id: v.id, version: v.version };
-      };
-
-      const v1 = await readDraftVersion();
-      const finalize = await rn.client.POST(
-        "/api/v1/care-plans/{planId}/versions/{versionId}/finalize",
-        {
-          params: { path: { planId, versionId: v1.id } },
-          body: {
-            ifVersion: v1.version,
-            requiredSignerSet: [
-              { role: "rn_case_manager", count: 1 },
-              { role: "hospice_physician", count: 1 },
-            ],
-          },
-        },
-      );
-      if (finalize.error)
-        throw new Error(`care-plan finalize failed: ${JSON.stringify(finalize.error)}`);
-
-      const v2 = await readDraftVersion();
-      const sign1 = await rn.client.POST(
-        "/api/v1/care-plans/{planId}/versions/{versionId}/signatures",
-        {
-          params: { path: { planId, versionId: v2.id } },
-          body: { ifVersion: v2.version, signerRole: "rn_case_manager" },
-        },
-      );
-      if (sign1.error) throw new Error(`RN care-plan sign failed: ${JSON.stringify(sign1.error)}`);
-
-      const v3 = await readDraftVersion();
-      const sign2 = await md.client.POST(
-        "/api/v1/care-plans/{planId}/versions/{versionId}/signatures",
-        {
-          params: { path: { planId, versionId: v3.id } },
-          body: { ifVersion: v3.version, signerRole: "hospice_physician" },
-        },
-      );
-      if (sign2.error) throw new Error(`MD care-plan sign failed: ${JSON.stringify(sign2.error)}`);
-
-      log.ok(
-        "Care plan: bootstrapped, 2 problems, 1 goal, 2 interventions, finalized + fully signed",
-      );
     }
+
+    type PlanRead = {
+      versions?: Array<{ id: string; status: string; version: number }>;
+    };
+    const readDraftVersion = async (): Promise<{ id: string; version: number }> => {
+      const read = await rn.client.GET("/api/v1/patients/{patientId}/care-plan", {
+        params: { path: { patientId } },
+      });
+      const v = (read.data as unknown as PlanRead | undefined)?.versions?.find(
+        (x) => x.status === "draft" || x.status === "in_review",
+      );
+      if (!v) throw new Error("no draft/in_review care-plan version found");
+      return { id: v.id, version: v.version };
+    };
+
+    const v1 = await readDraftVersion();
+    const finalize = await rn.client.POST(
+      "/api/v1/care-plans/{planId}/versions/{versionId}/finalize",
+      {
+        params: { path: { planId, versionId: v1.id } },
+        body: {
+          ifVersion: v1.version,
+          requiredSignerSet: [
+            { role: "rn_case_manager", count: 1 },
+            { role: "hospice_physician", count: 1 },
+          ],
+        },
+      },
+    );
+    if (finalize.error)
+      throw new Error(`care-plan finalize failed: ${JSON.stringify(finalize.error)}`);
+
+    const v2 = await readDraftVersion();
+    const sign1 = await rn.client.POST(
+      "/api/v1/care-plans/{planId}/versions/{versionId}/signatures",
+      {
+        params: { path: { planId, versionId: v2.id } },
+        body: { ifVersion: v2.version, signerRole: "rn_case_manager" },
+      },
+    );
+    if (sign1.error) throw new Error(`RN care-plan sign failed: ${JSON.stringify(sign1.error)}`);
+
+    const v3 = await readDraftVersion();
+    const sign2 = await md.client.POST(
+      "/api/v1/care-plans/{planId}/versions/{versionId}/signatures",
+      {
+        params: { path: { planId, versionId: v3.id } },
+        body: { ifVersion: v3.version, signerRole: "hospice_physician" },
+      },
+    );
+    if (sign2.error) throw new Error(`MD care-plan sign failed: ${JSON.stringify(sign2.error)}`);
+
+    log.ok(
+      "Care plan: bootstrapped, 2 problems, 1 goal, 2 interventions, finalized + fully signed",
+    );
   } catch (err) {
     log.fail(`M7 care plan: ${String(err)}`);
   }

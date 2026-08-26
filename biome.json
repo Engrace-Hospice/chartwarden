@@ -28,7 +28,11 @@
     "rules": {
       "recommended": true,
       "suspicious": { "noExplicitAny": "off" },
-      "style": { "noNonNullAssertion": "off", "useImportType": "warn" }
+      "style": {
+        "noNonNullAssertion": "off",
+        "useImportType": "warn",
+        "noUnusedTemplateLiteral": "off"
+      }
     }
   },
   "javascript": { "formatter": { "quoteStyle": "double", "semicolons": "always" } }

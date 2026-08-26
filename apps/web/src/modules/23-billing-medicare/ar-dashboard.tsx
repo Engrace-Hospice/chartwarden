@@ -331,6 +331,10 @@ export function ArDashboard(): JSX.Element {
         >
           {degraded ? (
             <p
+              // biome-ignore lint/a11y/useSemanticElements: the rule suggests `<output>`, which is
+              // the result of a CALCULATION inside a form (and is form-associated). This is a
+              // degraded-state announcement, and `role="status"` on ordinary flow content is the
+              // idiomatic polite live region.
               role="status"
               style={{
                 margin: 0,

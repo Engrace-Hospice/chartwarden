@@ -21,15 +21,13 @@ import type {
 import { moduleNdjsonPath, tenantExportObjectKey } from "@wardenx/saas-tenant-platform";
 import { type TarEntry, buildUstarTarball } from "./tenant-export-tar";
 
-export interface TenantExportBundlePutObject {
-  (args: {
-    readonly organizationId: string;
-    readonly objectKey: string;
-    readonly bytes: Uint8Array;
-  }): Promise<{
-    readonly sha256Hex: string;
-  }>;
-}
+export type TenantExportBundlePutObject = (args: {
+  readonly organizationId: string;
+  readonly objectKey: string;
+  readonly bytes: Uint8Array;
+}) => Promise<{
+  readonly sha256Hex: string;
+}>;
 
 /** Injected clock (seconds since epoch) — overridable for deterministic tests; defaults to real time. */
 export type NowSecondsClock = () => number;

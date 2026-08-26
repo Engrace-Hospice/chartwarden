@@ -63,10 +63,13 @@ export function NavGroup({ label, children, defaultOpen = true }: NavGroupProps)
 
   const [open, setOpen] = useState(isChildActive || defaultOpen);
 
-  // Automatically open the active group, and close it when we switch to another active group
+  // Automatically open the active group, and close it when we switch to another active group.
+  // `location.pathname` is NOT a dependency: `isChildActive` is recomputed from it on every render,
+  // so it is already the signal. Listing both only re-ran the effect on pathname changes that left
+  // the boolean alone, where `setOpen(sameValue)` is a no-op React bails out of.
   useEffect(() => {
     setOpen(isChildActive);
-  }, [location.pathname, isChildActive]);
+  }, [isChildActive]);
 
   return (
     <div
