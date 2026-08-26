@@ -3,11 +3,14 @@
 //
 // Renders the ONE error envelope (spec §4.3) for every error path: a thrown WardenXError
 // (or any subclass — ValidationError, ForbiddenError, RateLimitedError, DegradedError, …)
-// maps to its declared code + statusCode; anything else is an unexpected 500 logged in
+// maps to its declared code + statusCode; a Postgres `23505` on a constraint whose meaning is
+// registered beside its index (`businessRule()` in @wardenx/db) maps to 409 carrying that meaning;
+// anything else is an unexpected 500 logged in
 // full and returned as a generic INTERNAL_ERROR — internal details are NEVER leaked. The
 // correlationId is read off request.context (applyRequestContext) so a client can quote it
 // to support and ops can stitch the request across logs/audit/outbox.
-import { WardenXError } from "@wardenx/types";
+import { classifyDatabaseError } from "@wardenx/db";
+import { ConflictError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 
 const DOCS_BASE = "https://docs.wardenx.app/errors";
@@ -37,7 +40,20 @@ export function applyErrorHandler(app: FastifyInstance): void {
     const correlationId = request.context?.correlationId ?? "unknown";
 
     if (err instanceof WardenXError) {
-      request.log.info({ errCode: err.code, statusCode: err.statusCode }, "handled error");
+      // A 5xx WardenXError is a SERVER-side condition the platform declared on purpose — a fail-closed
+      // unbound infra port answering DEGRADED, say. It is not a caller error and it is not an
+      // unhandled fault, and it has to be readable as neither: `warn` with the full error keeps the
+      // diagnosis (which dependency, which operation) in the log, while leaving `error` /
+      // "unhandled error" to mean only what it says. A 4xx stays at `info` and carries no `err` —
+      // the caller was told.
+      if (err.statusCode >= 500) {
+        request.log.warn(
+          { err, errCode: err.code, statusCode: err.statusCode },
+          "handled server error",
+        );
+      } else {
+        request.log.info({ errCode: err.code, statusCode: err.statusCode }, "handled error");
+      }
       return reply.code(err.statusCode).send({
         error: {
           code: err.code,
@@ -45,6 +61,37 @@ export function applyErrorHandler(app: FastifyInstance): void {
           details: err.details,
           correlationId,
           documentationUrl: `${DOCS_BASE}/${err.code}`,
+        },
+      });
+    }
+
+    // A UNIQUE index that encodes a business rule somebody wrote down (F-022 / #55). Postgres reports
+    // `23505` with the constraint name, Drizzle wraps it, and nothing inspected either — so "you
+    // already have an active license for this scale type" arrived as `500 INTERNAL_ERROR / An
+    // unexpected error occurred`, and was logged as "unhandled error" beside the genuine faults.
+    // Only a constraint whose meaning is REGISTERED beside its index is mapped; anything else falls
+    // through to the 500 below unchanged, rather than being guessed at from its name.
+    //
+    // The raw error is deliberately NOT logged here: a DrizzleQueryError's message embeds the failed
+    // query AND its bound parameters, which on most tables is PHI. The constraint name is the whole
+    // of what an operator needs, and is safe on its own.
+    const businessRule = classifyDatabaseError(err);
+    if (businessRule) {
+      const conflict = new ConflictError(businessRule.meaning);
+      request.log.info(
+        {
+          errCode: conflict.code,
+          statusCode: conflict.statusCode,
+          constraint: businessRule.constraint,
+        },
+        "handled error",
+      );
+      return reply.code(conflict.statusCode).send({
+        error: {
+          code: conflict.code,
+          message: conflict.message,
+          correlationId,
+          documentationUrl: `${DOCS_BASE}/${conflict.code}`,
         },
       });
     }

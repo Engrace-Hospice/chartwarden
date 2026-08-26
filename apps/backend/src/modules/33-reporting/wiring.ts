@@ -21,6 +21,7 @@
 //     evaluator (drilldown maximal-narrows), and the tile/export SQL executor (tiles serve the
 //     forward-seam empty result). The replica-lag gate reports a healthy single-pool primary (no replica
 //     ⇒ no lag).
+import { DegradedError } from "@wardenx/types";
 import type { ConnectionOptions } from "bullmq";
 import { Queue } from "bullmq";
 import { parseExpression } from "cron-parser";
@@ -63,10 +64,26 @@ import { buildDrizzleTileSqlExecutor } from "./sql-executor";
  */
 export const M33_PLATFORM_JOB_ID = "m33.platform_ops";
 
-/** Raised by a still-unbound Phase-2C infra port (the fail-closed signal — never a silent no-op). */
-export class M33InfraPortUnbound extends Error {
-  constructor(port: string, reason: string) {
-    super(`M33 Phase-2C infra port '${port}' is not bound to a real adapter: ${reason}`);
+/**
+ * Raised by a still-unbound infra port (the fail-closed signal — never a silent no-op).
+ *
+ * A `DegradedError`, so the caller gets `503 DEGRADED` naming the missing dependency rather than the
+ * `500 INTERNAL_ERROR / "An unexpected error occurred"` a bare `Error` collapsed into (F-022 / #55).
+ * A deliberately unbound port IS the dependency-unavailable condition `DegradedError` exists for,
+ * and the M34 `M34InfraPortUnbound` precedent already took that posture. `reason` is the whole of
+ * the caller-facing message — the internal port name stays on `port`, where the log can read it and
+ * the response cannot.
+ *
+ * `component` defaults to the background queue because every current throw site is a queue producer;
+ * a future non-queue port passes its own rather than mislabelling itself.
+ */
+export class M33InfraPortUnbound extends DegradedError {
+  constructor(
+    public readonly port: string,
+    reason: string,
+    component = "background-queue",
+  ) {
+    super(component, reason);
     this.name = "M33InfraPortUnbound";
   }
 }

@@ -16,9 +16,11 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
+import Fastify from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { applyErrorHandler } from "../src/bootstrap/plugins/error-handler";
 import {
   type AssessmentWriteOutboxPort,
   M9_OUTBOX_EVENTS,
@@ -464,6 +466,48 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
       recordArgs({ actingAs: "patient_representative" }),
     );
     expect(v.actingAs).toBe("patient_representative");
+  });
+
+  it("F-022 (#55) — a second active license for the same scale is a 409 to the CALLER, not a 500", async () => {
+    // The end-to-end shape the issue reported: the REAL partial unique index raises the REAL 23505,
+    // Drizzle wraps it, and the production error handler renders the answer. Asserted at the route,
+    // because what the caller sees is the whole point — before this it was
+    // `500 INTERNAL_ERROR / "An unexpected error occurred"`, with the constraint name visible only
+    // in a log line that also said "unhandled error".
+    const license = {
+      scaleType: "braden" as never,
+      vendor: "Braden Vendor",
+      effectiveDate: "2026-01-01",
+      expiresAt: "2027-01-01",
+    };
+    await svc.createLicense(ORG_A, license);
+
+    const app = Fastify();
+    applyErrorHandler(app);
+    app.addHook("onRequest", async (request) => {
+      (request as { context?: { correlationId: string } }).context = { correlationId: "cid-live" };
+    });
+    app.post("/api/v1/admin/scales/licenses", async (_request, reply) => {
+      const created = await svc.createLicense(ORG_A, license);
+      return reply.code(201).send(created);
+    });
+
+    const res = await app.inject({ method: "POST", url: "/api/v1/admin/scales/licenses" });
+    expect(res.statusCode).toBe(409);
+    const body = res.json();
+    expect(body.error.code).toBe("CONFLICT");
+    expect(body.error.message).toMatch(/already has an active license for this scale type/i);
+    expect(body.error.correlationId).toBe("cid-live");
+    // No query text, no bound parameters, no constraint name in the response.
+    expect(JSON.stringify(body)).not.toContain("scale_license");
+    await app.close();
+
+    // And the rule itself still held: exactly one active braden license exists.
+    const { rows } = await admin.query(
+      "SELECT count(*)::int AS n FROM scale_license WHERE organization_id=$1 AND scale_type='braden' AND status='active'",
+      [ORG_A],
+    );
+    expect(rows[0].n).toBe(1);
   });
 
   it("RLS — org B cannot read or correct org A's assessment (non-leaking 404)", async () => {
