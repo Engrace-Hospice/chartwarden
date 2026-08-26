@@ -1126,6 +1126,7 @@ import {
   OnboardingTemplateViewSchema as M34OnboardingTemplateViewSchema,
   // responses
   BaaRecordViewSchema as M34PlatformBaaRecordViewSchema,
+  TenantExportJobListResponseSchema as M34PlatformTenantExportJobListResponseSchema,
   ProvisionTenantRequest as M34ProvisionTenantRequest,
   QualifyIntentAckSchema as M34QualifyIntentAckSchema,
   QualifyIntentRequest as M34QualifyIntentRequest,
@@ -1143,7 +1144,6 @@ import {
   SupportSessionListQuerySchema as M34SupportSessionListQuerySchema,
   SupportSessionListResponseSchema as M34SupportSessionListResponseSchema,
   TenantExportJobListQuerySchema as M34TenantExportJobListQuerySchema,
-  TenantExportJobListResponseSchema as M34TenantExportJobListResponseSchema,
   TenantInvitationViewSchema as M34TenantInvitationViewSchema,
   TenantJobAckSchema as M34TenantJobAckSchema,
   TenantListQuerySchema as M34TenantListQuerySchema,
@@ -9427,7 +9427,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Cross-tenant tenant-export jobs; `held=true` narrows to bundles awaiting a SEC-052 co-sign",
     query: M34TenantExportJobListQuerySchema,
-    response: M34TenantExportJobListResponseSchema,
+    response: M34PlatformTenantExportJobListResponseSchema,
   },
 
   // ── tenant export: SEC-052 oversized-hold release (GAP-097) ──
