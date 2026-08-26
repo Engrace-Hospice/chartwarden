@@ -3590,8 +3590,15 @@ export const credentialDiscipline = pgEnum("credential_discipline", [
   "msw",
   "chaplain",
   "volunteer",
+  /** PHYSICIAN — MD *or* DO. The two are the same level with the same scope, and this codebase has
+   *  always treated them as one value (`VISIT_PURPOSE_DISCIPLINES` documents its physician-intent
+   *  purposes as "MD/DO or NP" while listing `md`). `issuing_body` records which board issued it. */
   "md",
   "np",
+  /** Physician Assistant — a distinct licence BELOW MD/DO, added by 0221 (F-030). Not in any
+   *  `VISIT_PURPOSE_DISCIPLINES` list: holding the licence is not visit authority, and the Medicare
+   *  hospice face-to-face encounter is physician-or-NP only (42 CFR 418.22(a)(4)). */
+  "pa",
 ]);
 
 /** `credential_status` — GAP-093. `active` is the only status the D8 gate accepts; `suspended`/

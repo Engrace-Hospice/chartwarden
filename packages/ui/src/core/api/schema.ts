@@ -47408,7 +47408,7 @@ export interface operations {
                         id: string;
                         /** Format: uuid */
                         membershipId: string;
-                        credentialType: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                        credentialType: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pa";
                         status: "active" | "suspended" | "revoked";
                         /** Format: date */
                         effectiveAt: string;
@@ -47439,7 +47439,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    credentialType: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                    credentialType: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pa";
                     /** Format: date */
                     effectiveAt: string;
                     expiresAt?: string | null;
@@ -47459,7 +47459,7 @@ export interface operations {
                         id: string;
                         /** Format: uuid */
                         membershipId: string;
-                        credentialType: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                        credentialType: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pa";
                         status: "active" | "suspended" | "revoked";
                         /** Format: date */
                         effectiveAt: string;

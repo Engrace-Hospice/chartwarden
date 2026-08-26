@@ -9,10 +9,13 @@
 // is created (M22 `dependsOn` stays `[1, 5]`).
 //
 // `extraction_reviewer_eligible` SUBSUMES the former licensure-floor check (M22-F16/F19 / ADR-0022): the
-// RN-or-above requirement for high-risk medication/allergy/dx fields lives here, read off the actor's
-// session licensure attribute (`user.licensure.type ∈ {RN, NP, PA, MD, DO}`); the platform floor cannot be
-// loosened. Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests)
-// is idempotent via registerPredicateIdempotent.
+// RN-or-above requirement for high-risk medication/allergy/dx fields lives here; the platform floor cannot
+// be loosened. It used to read a `context.attributes.licensure.type` that nothing has ever written
+// (F-030), so it answered "no" for every reviewer and NOBODY could review a high-risk extracted
+// medication, allergy or diagnosis field — a fail-closed control that has never once opened. It now reads
+// the licence M17 actually records, through the `CredentialReader` seam (the `CaseloadProvider` pattern
+// three lines up: opaque, no dependency edge). Registration is idempotent: the shared registry is
+// single-owner / no-clear, so re-boot (tests) is idempotent via registerPredicateIdempotent.
 import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import type { DocumentRetentionClass } from "@wardenx/types";
 import { getSeam } from "../../bootstrap/index";
@@ -62,17 +65,28 @@ const SCOPE_BYPASS_ROLES = [
 const isScopeBypass = (context: AbacContext): boolean =>
   SCOPE_BYPASS_ROLES.some((r) => hasRole(context, r));
 
-/** §4.7 — the licensure types eligible to review high-risk medication/allergy/dx fields (RN-or-above). */
-const HIGH_RISK_LICENSURE = new Set(["RN", "NP", "PA", "MD", "DO"]);
+/**
+ * §4.7 — the credential kinds eligible to review high-risk medication/allergy/dx fields (RN-or-above).
+ *
+ * The §4.7 text names {RN, NP, PA, MD, DO}; these are the four `credential_discipline` values that
+ * cover them, because `md` is PHYSICIAN — MD *or* DO. The two are the same level with the same scope
+ * and the platform has always stored them as one value: `VISIT_PURPOSE_DISCIPLINES` documents its
+ * physician-intent purposes as "MD/DO or NP" while listing `md`. Splitting them to make this list
+ * read literally would have stopped four CoP-relevant visit purposes accepting osteopathic
+ * physicians — a regression bought with a distinction no consumer makes.
+ *
+ * `pa` was genuinely missing from the vocabulary until migration 0221; a physician assistant could
+ * not be recorded as licensed at all, so this arm could never have opened for one.
+ */
+const HIGH_RISK_CREDENTIALS: ReadonlySet<string> = new Set(["rn", "np", "pa", "md"]);
 
-/** Read the actor's session-assembled licensure type (M2 `user.licensure.type`), or null. */
-function licensureTypeOf(context: AbacContext): string | null {
-  const licensure = context.attributes.licensure;
-  if (licensure && typeof licensure === "object") {
-    const type = (licensure as { type?: unknown }).type;
-    if (typeof type === "string") return type;
-  }
-  return null;
+/**
+ * The acting membership, which the credential read is keyed on. Absent ⇒ deny: a session with no
+ * active membership holds no credentials to check.
+ */
+function actorMembershipId(context: AbacContext): string | null {
+  const value = context.attributes.membershipId;
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 /** Thirteen months in milliseconds — the post-discharge care-team read window (§4.7). */
@@ -88,6 +102,18 @@ export interface DocumentAbacDeps {
     userId: string;
     patientId: string;
   }) => Promise<boolean>;
+  /**
+   * The reviewer's ACTIVE clinical credentials (defaults to the boot-registered M17
+   * `CredentialReader` seam). Reached opaquely, like `CaseloadProvider` — M22 `dependsOn` stays
+   * `[1, 5]` and no `@wardenx/scheduling` import is created.
+   */
+  readonly activeCredentials?: (q: {
+    organizationId: string;
+    membershipId: string;
+    asOf: string;
+  }) => Promise<readonly { kind: string; status: string }[]>;
+  /** Clock for the credential `asOf` date (tests pin it; production uses the real one). */
+  readonly now?: () => Date;
 }
 
 /**
@@ -100,6 +126,31 @@ export function buildDocumentAbacPredicates(
 ): Record<string, (context: AbacContext, target: AbacTarget) => Promise<boolean>> {
   const { resolver } = deps;
   const isInCaseload = deps.isInCaseload ?? ((q) => getSeam("CaseloadProvider").isInCaseload(q));
+  const activeCredentials =
+    deps.activeCredentials ?? ((q) => getSeam("CredentialReader").activeCredentialsAsOf(q));
+  const now = deps.now ?? (() => new Date());
+
+  /**
+   * Does this reviewer hold an ACTIVE licence at the §4.7 floor, as of today?
+   *
+   * The seam has already applied the status / effective / expiry logic — a suspended, revoked,
+   * not-yet-effective or expired row is simply absent — so this only has to match the kind. Any
+   * failure to resolve denies: a licence check that cannot read the licences is not evidence of one.
+   */
+  const holdsHighRiskLicence = async (context: AbacContext): Promise<boolean> => {
+    const membershipId = actorMembershipId(context);
+    if (!membershipId) return false; // fail-closed
+    try {
+      const credentials = await activeCredentials({
+        organizationId: context.organizationId,
+        membershipId,
+        asOf: now().toISOString().slice(0, 10),
+      });
+      return credentials.some((c) => HIGH_RISK_CREDENTIALS.has(c.kind));
+    } catch {
+      return false;
+    }
+  };
 
   /** Caseload-or-scope over a document's patient (org-level doc readable by a scope-bypass role). §4.7. */
   const ownerOrCaseload = async (
@@ -131,8 +182,7 @@ export function buildDocumentAbacPredicates(
       // The target carries the candidate's risk level (resolved per-route); low/medium are broadly eligible.
       const risk = typeof target.riskLevel === "string" ? target.riskLevel : "low";
       if (risk !== "high") return true; // low/medium demographic + clinical fields: route RBAC suffices
-      const licensure = licensureTypeOf(context);
-      return licensure !== null && HIGH_RISK_LICENSURE.has(licensure);
+      return holdsHighRiskLicence(context);
     },
 
     // bulk-approve: deny when any candidate in scope is high-risk (returns 422 HIGH_RISK_FIELD_BULK_DENIED).
