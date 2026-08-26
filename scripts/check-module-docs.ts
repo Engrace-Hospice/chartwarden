@@ -26,6 +26,7 @@
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { group, groups } from "./lib/strict";
 
 const ROOT = process.cwd();
 const DIR = "docs/modules";
@@ -48,9 +49,9 @@ function headerVersion(text: string): string | null {
   const field = head.match(
     /\*\*(?:Spec status|Spec version|Version|Status):\*\*[^\n]*?v?(\d+\.\d+(?:\.\d+)?)/,
   );
-  if (field) return field[1];
+  if (field) return group(field, 1, "module spec header version");
   const title = head.match(/^# .*?\bv(\d+\.\d+(?:\.\d+)?)\b/m);
-  return title ? title[1] : null;
+  return title ? group(title, 1, "module spec H1 version") : null;
 }
 
 const specFiles = readdirSync(join(ROOT, DIR))
@@ -71,7 +72,7 @@ readme.split("\n").forEach((line, i) => {
     /^\|\s*M(\d{2})\s*\|[^|]*\|\s*v?([\d.]+)\s*\|\s*\[`([^`]+)`\]\(\.\/([^)]+)\)\s*\|/,
   );
   if (!m) return;
-  const [, num, version, label, target] = m;
+  const [num, version, label, target] = groups(m, 4, "module README index row");
   if (rows.has(num)) fail("README.md", i + 1, "INDEX", `module M${num} listed more than once`);
   rows.set(num, { version, file: target, line: i + 1 });
   if (label !== target)
@@ -154,12 +155,11 @@ for (const { rel, abs } of allDocs) {
     }
   }
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
+  for (const [i, line] of lines.entries()) {
     for (const m of line.matchAll(/\bADR-(\d{4})\b/g)) {
       adrsChecked++;
-      if (adrNumbers.has(m[1])) continue;
+      const cited = group(m, 1, "module spec ADR citation");
+      if (adrNumbers.has(cited)) continue;
       if (/ARCH-\d+/.test(line)) {
         adrsAuditEra++; // audit-era composite citation — historical namespace, exempt
         continue;
@@ -168,15 +168,15 @@ for (const { rel, abs } of allDocs) {
         rel,
         i + 1,
         "ADRS",
-        `cites ADR-${m[1]}, which has no file in ${ADR_DIR} (and no ARCH-nnn audit-era marker on the line)`,
+        `cites ADR-${cited}, which has no file in ${ADR_DIR} (and no ARCH-nnn audit-era marker on the line)`,
       );
     }
 
     for (const m of line.matchAll(/\]\((\.\.?\/[^)#\s]+)(#[^)\s]*)?\)/g)) {
       linksChecked++;
-      const target = resolve(dirname(abs), m[1]);
-      if (!existsSync(target))
-        fail(rel, i + 1, "LINKS", `relative link \`${m[1]}\` does not resolve`);
+      const href = group(m, 1, "module spec relative link");
+      if (!existsSync(resolve(dirname(abs), href)))
+        fail(rel, i + 1, "LINKS", `relative link \`${href}\` does not resolve`);
     }
   }
 }

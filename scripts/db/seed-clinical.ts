@@ -12,6 +12,7 @@
  * Run:     bun run db:seed:clinical
  */
 import { Client } from "pg";
+import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const ORG_SLUG = "wardenx-demo";
@@ -221,6 +222,17 @@ async function main(): Promise<void> {
   for (let i = 0; i < Math.min(ids.length, DETAIL.length); i++) {
     const pid = ids[i];
     const d = DETAIL[i];
+    // The loop bound guarantees `pid` and `d`. `a` is guaranteed only because ADDR and DETAIL happen
+    // to be the same length — an implicit coupling between two hand-maintained arrays that nothing
+    // stated until this guard. Adding a seventh patient to one and not the other now stops here with
+    // a named reason instead of writing a row of `undefined`s.
+    const a = ADDR[i];
+    if (!pid || !d || !a) {
+      throw new Error(
+        `seed-clinical: row ${i} is incomplete — patient=${!!pid} detail=${!!d} address=${!!a}. ` +
+          `DETAIL (${DETAIL.length}) and ADDR (${ADDR.length}) must stay the same length.`,
+      );
+    }
 
     // Demographics (UPDATE the patient spine)
     await db.query(
@@ -229,8 +241,7 @@ async function main(): Promise<void> {
       [pid, d.gi, d.pr, d.ms, d.race, d.eth],
     );
 
-    // Primary home address
-    const a = ADDR[i];
+    // Primary home address (`a` resolved and checked at the top of the loop)
     await db.query(
       `INSERT INTO patient_address (patient_id, organization_id, kind, line1, city, state, postal_code,
          country, is_primary, effective_from)
@@ -260,7 +271,15 @@ async function main(): Promise<void> {
       `INSERT INTO patient_caregiver (patient_id, caregiver_id, organization_id, relationship, is_primary,
          is_legal_representative, lr_authority, portal_invitation_consented, involvement_from)
        VALUES ($1,$2,$3,$4,true,$5,$6,false,$7)`,
-      [pid, cg.rows[0].id, org, d.cg.rel, d.cg.lr !== "none", d.cg.lr, today],
+      [
+        pid,
+        firstRow(cg, "seed-clinical: caregiver insert").id,
+        org,
+        d.cg.rel,
+        d.cg.lr !== "none",
+        d.cg.lr,
+        today,
+      ],
     );
     for (const e of d.ec) {
       await db.query(

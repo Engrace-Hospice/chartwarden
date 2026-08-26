@@ -20,6 +20,7 @@ import { allPermissionMirrorRows } from "@wardenx/auth";
 import { Client } from "pg";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
 import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
+import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const AUTH_URL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
@@ -149,7 +150,7 @@ async function main(): Promise<void> {
     ORG.slug,
   ]);
   if (prior.rowCount) {
-    const orgId = prior.rows[0].id;
+    const orgId = firstRow(prior, "seed: existing organization lookup").id;
     await db.query("DELETE FROM membership_role WHERE organization_id = $1", [orgId]);
     await db.query("DELETE FROM role_permission WHERE organization_id = $1", [orgId]);
     await db.query("DELETE FROM membership WHERE organization_id = $1", [orgId]);
@@ -178,7 +179,7 @@ async function main(): Promise<void> {
      VALUES ($1,$2,$3,'active') RETURNING id`,
     [ORG.slug, ORG.legal, ORG.display],
   );
-  const orgId = org.rows[0].id;
+  const orgId = firstRow(org, "seed: organization insert").id;
   console.log(`org ${ORG.slug} → ${orgId}`);
 
   const creds: Array<{ user: SeedUser; password: string; userId: string; perms: number }> = [];
@@ -195,7 +196,7 @@ async function main(): Promise<void> {
        VALUES ($1,$2,$3,$4::role_category,'organization', true, $5) RETURNING id`,
       [orgId, u.roleKey, u.roleName, u.roleCategory, `${u.roleName} (dev seed)`],
     );
-    const roleId = r.rows[0].id;
+    const roleId = firstRow(r, "seed: role upsert").id;
     roleIdByKey.set(u.roleKey, roleId);
 
     const keys = u.grantAll
@@ -220,7 +221,7 @@ async function main(): Promise<void> {
        VALUES ($1,$2,'active', now()) RETURNING id`,
       [userId, orgId],
     );
-    const membershipId = m.rows[0].id;
+    const membershipId = firstRow(m, "seed: membership upsert").id;
 
     const boundRoleKeys = [u.roleKey, ...(u.alsoRoleKeys ?? [])];
     const effectivePerms = new Set<string>();

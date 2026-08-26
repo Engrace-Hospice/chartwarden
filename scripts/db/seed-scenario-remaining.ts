@@ -71,6 +71,7 @@
  */
 import { Client } from "pg";
 import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
+import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001"; // db:seed:org-structure
@@ -87,7 +88,7 @@ async function membershipIdFor(email: string): Promise<string> {
   );
   await db.end();
   if (!r.rows[0]) throw new Error(`no membership found for ${email} — run db:seed:staff first`);
-  return r.rows[0].id;
+  return firstRow(r, "seed-scenario-remaining: id lookup").id;
 }
 
 /** GENUINE GAP (see file header): the step-up verify routes are never mounted; nudges the session row. */
@@ -123,7 +124,7 @@ async function seedBereavementPlan(
     [organizationId, patientId, admissionId, PROVIDER_ENTITY_ID, LOCATION_MAIN_ID, deathDate],
   );
   await db.end();
-  return r.rows[0].id;
+  return firstRow(r, "seed-scenario-remaining: id lookup").id;
 }
 
 /** GENUINE GAP (see file header): no route creates `mortality_review`. */
@@ -147,7 +148,7 @@ async function seedMortalityReview(
     [organizationId, PROVIDER_ENTITY_ID, patientId, admissionId, deathAtIso, target],
   );
   await db.end();
-  return r.rows[0].id;
+  return firstRow(r, "seed-scenario-remaining: id lookup").id;
 }
 
 /** GENUINE GAP (see file header): documents are structurally unreachable via API in this environment. */
@@ -177,7 +178,7 @@ async function seedDocument(
       createdByMembershipId,
     ],
   );
-  const documentId = doc.rows[0].id;
+  const documentId = firstRow(doc, "seed-scenario-remaining: document insert").id;
   const version = await db.query<{ id: string }>(
     `INSERT INTO document_version
        (organization_id, document_id, version_number, minio_object_key, mime_type, byte_size,
@@ -193,7 +194,7 @@ async function seedDocument(
     ],
   );
   await db.query(`UPDATE document SET active_version_id = $1 WHERE id = $2`, [
-    version.rows[0].id,
+    firstRow(version, "seed-scenario-remaining: document version insert").id,
     documentId,
   ]);
   await db.end();
@@ -209,7 +210,7 @@ async function levelOfCarePeriodIdFor(admissionId: string): Promise<string> {
   );
   await db.end();
   if (!r.rows[0]) throw new Error(`no open level-of-care period for admission ${admissionId}`);
-  return r.rows[0].id;
+  return firstRow(r, "seed-scenario-remaining: id lookup").id;
 }
 
 async function wipePrior(

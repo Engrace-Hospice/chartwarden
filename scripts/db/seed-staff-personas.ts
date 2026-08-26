@@ -34,8 +34,10 @@ import { randomBytes } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { allPermissionMirrorRows } from "@wardenx/auth";
 import { Client } from "pg";
+import { group } from "../lib/strict";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
 import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
+import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const AUTH_URL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
@@ -122,7 +124,7 @@ function adminPassword(): string {
   const m = line?.match(/`([^`]+)`\s*\|\s*`([^`]+)`/);
   if (!m)
     throw new Error("could not read admin password from CREDENTIALS.local.md (run db:seed first)");
-  return m[2];
+  return group(m, 2, "CREDENTIALS.local.md password cell");
 }
 
 async function signUp(email: string, password: string, name: string): Promise<string> {
@@ -281,11 +283,11 @@ async function main(): Promise<void> {
        VALUES ($1,$2,$3,'clinical_staff'::role_category,'organization', true, $4) RETURNING id`,
       [orgId, key, owner?.roleName ?? key, `${owner?.roleName ?? key} (dev seed persona)`],
     );
-    roleIdByKey.set(key, r.rows[0].id);
+    roleIdByKey.set(key, firstRow(r, `seed-staff-personas: role ${key}`).id);
     for (const permKey of clinicalKeys) {
       await db.query(
         "INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,$3)",
-        [orgId, r.rows[0].id, permKey],
+        [orgId, firstRow(r, `seed-staff-personas: role ${key}`).id, permKey],
       );
     }
   }
@@ -307,7 +309,7 @@ async function main(): Promise<void> {
        VALUES ($1,$2,'active', now(), $3, $4::jsonb) RETURNING id`,
       [userId, orgId, PROVIDER_ENTITY_ID, JSON.stringify([LOCATION_MAIN_ID])],
     );
-    const membershipId = m.rows[0].id;
+    const membershipId = firstRow(m, "seed-staff-personas: membership upsert").id;
     for (const key of p.roleKeys) {
       const roleId = roleIdByKey.get(key);
       if (!roleId) throw new Error(`role '${key}' was not created`);
@@ -329,7 +331,7 @@ async function main(): Promise<void> {
   const credsPath = SEED_CREDENTIALS_PATH;
   const existing = readFileSync(credsPath, "utf8");
   const marker = "\n## Discipline personas (bun run db:seed:staff)\n";
-  const withoutOldPersonas = existing.split(marker)[0].replace(/\n+$/, "\n");
+  const withoutOldPersonas = (existing.split(marker)[0] ?? existing).replace(/\n+$/, "\n");
   const lines = [
     withoutOldPersonas,
     marker.trimStart(),
