@@ -4,6 +4,8 @@
 // cross-module seams (M2-T07) in ./session-seam + ./auditor-session.
 export {
   createIdentityAuth,
+  resolvePasskeyOrigin,
+  resolvePasskeyRpId,
   type IdentityAuth,
   type IdentityAuthDb,
   type IdentityAuthOptions,
@@ -35,6 +37,15 @@ export {
 export { argon2idHash, argon2idVerify } from "./password-hash";
 export { loadTwoFactorKey, seal, open, isSealed } from "./two-factor-crypto";
 export { withTwoFactorEncryption, type EncryptableAdapter } from "./two-factor-adapter";
+export {
+  type StoredTotpEnrolment,
+  type TotpEnrolmentStore,
+  type TotpVerifier,
+  type TotpVerifierOptions,
+  type TotpVerifyResult,
+  createDbTotpEnrolmentStore,
+  createTotpStepUpVerifier,
+} from "./totp-verifier";
 export {
   type VendorSessionRow,
   type VendorSessionStore,

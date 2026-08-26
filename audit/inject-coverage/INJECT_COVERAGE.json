@@ -20,7 +20,8 @@
         "apps/backend/__tests__/authz-validation.test.ts",
         "apps/backend/__tests__/device-attestation-routes.test.ts",
         "apps/backend/__tests__/identity-routes.test.ts",
-        "apps/backend/__tests__/session-step-up.test.ts"
+        "apps/backend/__tests__/session-step-up.test.ts",
+        "apps/backend/__tests__/step-up-mount.test.ts"
       ],
       "directRoutesReferenced": 24
     },

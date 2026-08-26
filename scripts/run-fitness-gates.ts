@@ -30,6 +30,10 @@ import { spawnSync } from "node:child_process";
 export const GATES = [
   "arch:merge-artifacts",
   "arch:parity",
+  // Before `arch:boundaries`: that gate resolves import boundaries THROUGH the .cjs mirror, so a mirror
+  // that disagrees with the manifest makes its verdict meaningless. Better to say the mirror is wrong
+  // than to report a boundary pass derived from the wrong architecture.
+  "arch:manifest-mirror",
   "arch:boundaries",
   "arch:tables",
   "arch:tenancy",

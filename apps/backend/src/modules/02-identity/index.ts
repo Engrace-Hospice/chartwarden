@@ -64,6 +64,37 @@ export {
 } from "./step-up-ports";
 export { registerSessionStepUpRoutes } from "./routes/session-step-up";
 
+// M2 §4.4 — the PRODUCTION step-up adapters + the mount. `registerSessionStepUpRoutes` existed with
+// slice adapters and exactly one caller (its own test), so `session.last_step_up_at` was written by
+// nothing in production and every step-up gate on the platform answered "not fresh" forever.
+export {
+  createContextSessionResolver,
+  createDbMfaEnrollmentReader,
+  createDbMfaVerifier,
+  createDbSessionStepUpWriter,
+} from "./step-up-adapters-db";
+
+/**
+ * Mount the step-up routes with the production adapters.
+ *
+ * The challenge + lockout store is a per-process Map with TTL/window eviction rather than Valkey. Both
+ * halves fail CLOSED across replicas — a challenge minted on one instance cannot be spent on another
+ * (the caller retries), and the consecutive-failure counter is per-instance, so a distributed attacker
+ * gets the threshold per replica rather than once. That second half is a real weakening and is why it
+ * is registered as an in-memory binding at the composition root rather than left for someone to find.
+ * Moving it to Valkey is a store swap behind `StepUpChallengeStore`.
+ */
+export function mountSessionStepUpRoutes(app: FastifyInstance, db: DbClient): void {
+  _registerSessionStepUpRoutes(app, {
+    sessions: _contextSessionResolver(),
+    writer: _dbSessionStepUpWriter(db),
+    enrollment: _dbMfaEnrollmentReader(db),
+    verifier: _dbMfaVerifier(db),
+    challenges: createInMemoryStepUpChallengeStore(),
+    audit: db,
+  });
+}
+
 // ADR-0023 D2 / SecHardening §12.2/§12.4 — the device-attestation surface. Exported AND mounted from the
 // composition root below: an unmounted write path would leave `device_attestation` a table nothing can
 // ever put a row in, which is the same shape as the dead attribute this closes (F-030).
@@ -201,7 +232,15 @@ import {
 import { createDbMembershipRepository as _dbMemberships } from "./membership-repository";
 import { registerDeviceAttestationRoutes as _registerDeviceAttestationRoutes } from "./routes/device-attestation";
 import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
+import { registerSessionStepUpRoutes as _registerSessionStepUpRoutes } from "./routes/session-step-up";
 import { createDbSessionWriter as _dbSessionWriter } from "./session-writer-db";
+import {
+  createContextSessionResolver as _contextSessionResolver,
+  createDbMfaEnrollmentReader as _dbMfaEnrollmentReader,
+  createDbMfaVerifier as _dbMfaVerifier,
+  createDbSessionStepUpWriter as _dbSessionStepUpWriter,
+} from "./step-up-adapters-db";
+import { createInMemoryStepUpChallengeStore } from "./step-up-ports";
 
 /**
  * Mount the M2 identity REST routes on a server (composition root, via buildServer's
