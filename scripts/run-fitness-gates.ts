@@ -47,6 +47,7 @@ export const GATES = [
   "arch:interactive-rows",
   "arch:abac-predicates",
   "arch:live-suites",
+  "arch:outbox-bindings",
   "arch:org-indexes",
   "arch:audit-denylist-sync",
   "arch:audit-exceptions",
