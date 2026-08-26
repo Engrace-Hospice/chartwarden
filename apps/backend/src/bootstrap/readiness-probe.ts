@@ -14,6 +14,7 @@
 // forward-reference). Omitting a check reports "ok": no configured dependency means nothing to be
 // unready about (mirrors today's boot posture — a slice/test boot with no DB/Redis still serves).
 import type { ReadinessChecks, ReadinessProbe } from "./routes/health";
+import { safeErrorMessage } from "./redact-database-error";
 
 export interface ReadinessProbeDeps {
   /** Cheap DB reachability probe, e.g. a `SELECT 1`; omitted when no DB is configured. */
@@ -70,9 +71,9 @@ async function checkReachable(
     await withTimeout(probe(), timeoutMs, name);
     return "ok";
   } catch (err) {
-    log(
-      `⚠️  readiness probe: ${name} unreachable — ${err instanceof Error ? err.message : String(err)}`,
-    );
+    // A probe runs a real query, so its failure can be a database error carrying bound
+    // parameters. `safeErrorMessage` keeps the SQLSTATE/constraint and drops the values (F-027).
+    log(`⚠️  readiness probe: ${name} unreachable — ${safeErrorMessage(err)}`);
     return "fail";
   }
 }
@@ -92,9 +93,7 @@ async function checkOutboxDepth(
     }
     return "ok";
   } catch (err) {
-    log(
-      `⚠️  readiness probe: outbox depth check failed — ${err instanceof Error ? err.message : String(err)}`,
-    );
+    log(`⚠️  readiness probe: outbox depth check failed — ${safeErrorMessage(err)}`);
     return "fail";
   }
 }
