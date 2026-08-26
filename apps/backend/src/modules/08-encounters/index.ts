@@ -11,7 +11,7 @@ import {
   createDbEncounterAbacResolver,
   createDbEncounterRouteService,
 } from "./encounters-route-service-db";
-import type { HearthnoteFreeTextCipher } from "./hearthnote-crypto";
+import type { HearthnoteCiphers } from "./hearthnote-crypto";
 import { registerEncounterRoutes as _registerM8Routes } from "./routes/encounters-routes";
 
 /**
@@ -26,10 +26,10 @@ export function mountEncounterRoutes(
   app: FastifyInstance,
   db: DbClient,
   outbox?: EncounterWriteOutboxPort,
-  freeTextCipher?: HearthnoteFreeTextCipher,
+  ciphers?: HearthnoteCiphers,
 ): void {
   _registerM8Abac({ resolver: createDbEncounterAbacResolver(db) });
-  _registerM8Routes(app, { service: createDbEncounterRouteService(db, outbox, freeTextCipher) });
+  _registerM8Routes(app, { service: createDbEncounterRouteService(db, outbox, ciphers) });
 }
 
 export * from "./lifecycle/index";
@@ -55,11 +55,16 @@ export {
   createDbEncounterAbacResolver,
   createDbEncounterRouteService,
 } from "./encounters-route-service-db";
-// §3.6 — the tenant-DEK envelope over `hearthnote_selection.free_text_cipher` (#114).
+// The tenant-DEK envelopes: §3.6 over `hearthnote_selection.free_text_cipher` (#114) and §2.6 over
+// `hearthnote_assembled_output.layer1_cipher` / `final_cipher` (#122).
 export {
   type EncounterTenantKeyProvider,
+  type HearthnoteCiphers,
+  type HearthnoteEnvelopeCipher,
   type HearthnoteFreeTextCipher,
+  createHearthnoteCiphers,
   createHearthnoteFreeTextCipher,
+  createHearthnoteNarrativeCipher,
 } from "./hearthnote-crypto";
 export {
   type CreateEncounterArgs,

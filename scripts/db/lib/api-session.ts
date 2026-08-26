@@ -191,6 +191,15 @@ export class ScenarioLog {
     this.failed++;
     console.log(`  ✗ ${msg}`);
   }
+  /**
+   * A step that could not run because a PLATFORM capability is unbound — not because the seed is wrong.
+   * Counted as skipped, so `db:seed:all` stays green, and printed distinctly so the output says which
+   * capability and which issue rather than looking like a seeding bug. Use only for a named, filed gap.
+   */
+  blocked(msg: string): void {
+    this.skipped++;
+    console.log(`  ⊘ ${msg}`);
+  }
   summary(): void {
     console.log(
       `\n✓ ${this.label}: ${this.created} created, ${this.skipped} skipped (already present), ${this.failed} failed.`,

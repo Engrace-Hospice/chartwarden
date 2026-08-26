@@ -90722,7 +90722,8 @@
                   "type": "object",
                   "required": [
                     "encounterId",
-                    "final"
+                    "final",
+                    "pinned"
                   ],
                   "properties": {
                     "encounterId": {
@@ -90730,6 +90731,9 @@
                     },
                     "final": {
                       "type": "string"
+                    },
+                    "pinned": {
+                      "type": "boolean"
                     }
                   }
                 }

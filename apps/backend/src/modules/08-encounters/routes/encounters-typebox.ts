@@ -464,6 +464,8 @@ export const BillableResponseSchema = Type.Object({
 export const RenderPayloadResponseSchema = Type.Object({
   encounterId: Type.String(),
   final: Type.String(),
+  /** True when `final` is the narrative pinned at finalize; false when it is a live re-assembly (#122). */
+  pinned: Type.Boolean(),
 });
 
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).

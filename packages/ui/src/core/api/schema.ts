@@ -43362,6 +43362,7 @@ export interface operations {
                     "application/json": {
                         encounterId: string;
                         final: string;
+                        pinned: boolean;
                     };
                 };
             };

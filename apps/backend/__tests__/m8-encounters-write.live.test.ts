@@ -24,10 +24,12 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 import { registerSeam } from "../src/bootstrap/seams/registry";
 import { createCareTeamProvider } from "../src/modules/05-patient/seams/care-team-provider";
 import { createDrizzleCareTeamStore } from "../src/modules/05-patient/seams/drizzle-stores";
+import { createDrizzleEncounterEraseStore } from "../src/modules/08-encounters/erasers/encounter-eraser";
 import {
   type EncounterWriteOutboxPort,
   M8_OUTBOX_EVENTS,
   createDbEncounterRouteService,
+  createHearthnoteCiphers,
 } from "../src/modules/08-encounters/index";
 import { requiredSectionSelections } from "./_hearthnote-fixtures";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
@@ -61,20 +63,27 @@ const TREE = {
     },
   ],
 };
-/** A deterministic stand-in for the tenant-DEK envelope: reversible, and never the plaintext. */
-const FAKE_CIPHER = {
-  async seal(_org: string, plaintext: string) {
-    return `sealed:${Buffer.from(plaintext, "utf8").toString("base64url")}`;
+/**
+ * The REAL AES-256-GCM envelopes over a fixed test DEK — not a reversible stand-in. The production key
+ * provider resolves through M34's key ring (a deny-stub until #105); everything above it, including the
+ * per-column AAD binding this suite relies on, is the shipping code.
+ */
+const TEST_DEK = { version: "test-v1", key: Buffer.alloc(32, 7) };
+const CIPHERS = createHearthnoteCiphers({
+  async dekForOrg() {
+    return TEST_DEK;
   },
-  async open(_org: string, envelope: string) {
-    return Buffer.from(envelope.replace(/^sealed:/, ""), "base64url").toString("utf8");
+  async dekForOrgVersion(_org: string, version: string) {
+    return { version, key: TEST_DEK.key };
   },
-};
+});
 
 describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T02)", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbEncounterRouteService>;
+  /** The same service with NO DEK envelope bound — the §3.6 / §2.6 refusal paths. */
+  let noCipherSvc: ReturnType<typeof createDbEncounterRouteService>;
   /** What the faked M7 reader answers (see the seam registration in beforeAll). */
   let carePlanOverdue: unknown = null;
   /** The RN case manager's membership id — what a cosignature must route to (#124). */
@@ -220,7 +229,10 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const outbox: EncounterWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m8" }),
     };
-    svc = createDbEncounterRouteService(handle.db, outbox);
+    // Cipher-bound, as production is: the composition root always constructs the envelopes (only the KEY
+    // resolve is deny-stubbed). `noCipherSvc` is the same service with none, for the §3.6 refusal cases.
+    svc = createDbEncounterRouteService(handle.db, outbox, CIPHERS);
+    noCipherSvc = createDbEncounterRouteService(handle.db, outbox);
   }, 120_000);
 
   afterAll(async () => {
@@ -425,6 +437,148 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     expect(await eventsFor(id)).toContain("m8.encounter.addendum_signed");
   });
 
+  // ── §2.6 the assembled-output pin (#122) ────────────────────────────────────────────────────────
+  //
+  // `hearthnote_assembled_output` had never been written by anything but the eraser. The §2.3 machine has
+  // emitted `{ kind: "persist_assembled_output" }` at every finalize since M8-T04 and no service performed
+  // it, so the "byte-identical" narrative was reassembled from the selection tree on every read.
+
+  it("§2.6 — finalize PINS the assembled narrative, sealed, and never in the clear", async () => {
+    // `draft()` documents every REQUIRED section with `nv.cv.stable`, whose phrase is the string this
+    // test looks for in (and never in) the sealed columns.
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+
+    const out = await admin.query(
+      `SELECT kind, encounter_id, addendum_id, layer1_cipher, layer2_cipher, final_cipher,
+              layer2_eligibility, layer2_involved_at_finalize, assembly_template_key, vocab_version_id
+         FROM hearthnote_assembled_output WHERE encounter_id=$1`,
+      [id],
+    );
+    expect(out.rowCount).toBe(1);
+    const row = out.rows[0];
+    expect(row.kind).toBe("primary_finalize");
+    expect(row.addendum_id).toBeNull();
+    expect(row.assembly_template_key).toBe("routine_visit:rn");
+    // D5's finalize-time reification, from the module's own eligibility ladder: the platform
+    // `hearthnote.layer2` flag is OFF in Phase 1, so the ladder's outermost gate is the answer.
+    expect(row.layer2_eligibility).toBe("kill_switch_active");
+    expect(row.layer2_involved_at_finalize).toBe(false);
+    expect(row.layer2_cipher).toBeNull(); // the layer2_consistency CHECK, satisfied by derivation
+    // The narrative is PHI: neither cipher column may contain it.
+    expect(row.layer1_cipher).not.toContain("cardiovascularly stable");
+    expect(row.final_cipher).not.toContain("cardiovascularly stable");
+    expect(row.final_cipher.startsWith("v1.")).toBe(true);
+    // The D11 pin the encounter claims and the version the note was assembled under are ONE value.
+    const enc = await admin.query("SELECT vocab_version_id FROM encounter WHERE id=$1", [id]);
+    expect(row.vocab_version_id).toBe(enc.rows[0].vocab_version_id);
+  });
+
+  it("§2.6 — the pinned bytes survive a change to the tree they were assembled from", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    const atFinalize = await svc.renderPayload(ORG_A, id);
+    expect(atFinalize.pinned).toBe(true);
+    expect(atFinalize.final).toContain("cardiovascularly stable");
+
+    // Rewrite the inputs underneath the signed note — the shape of a `@wardenx/narrative-vocab` release
+    // that edits a shipped phrase, or of the `${patient}` slot resolving for the first time. Done in SQL
+    // because the service itself refuses to edit a finalized encounter (§2.7), which is exactly why the
+    // recompute-at-read behaviour was invisible: nothing a CLINICIAN can do changes the tree afterwards.
+    await admin.query(
+      `UPDATE hearthnote_selection
+          SET selections = jsonb_set(selections, '{sections,0,entries,0,code}', '"nv.resp.unlabored"')
+        WHERE encounter_id=$1`,
+      [id],
+    );
+    // The tree really did change — the selections read reflects it, so the two answers now diverge.
+    const tree = await svc.getSelections(ORG_A, id);
+    expect(tree.layer1Preview).not.toBe(atFinalize.final);
+
+    const afterEdit = await svc.renderPayload(ORG_A, id);
+    expect(afterEdit.final).toBe(atFinalize.final);
+    expect(afterEdit.pinned).toBe(true);
+  });
+
+  it("§2.6 — a draft renders as an UNPINNED preview, distinguishably", async () => {
+    const id = await draft("routine_visit", "rn");
+    const preview = await svc.renderPayload(ORG_A, id);
+    expect(preview.pinned).toBe(false);
+    expect(preview.final).toContain("cardiovascularly stable");
+    expect(
+      (await admin.query("SELECT 1 FROM hearthnote_assembled_output WHERE encounter_id=$1", [id]))
+        .rowCount,
+    ).toBe(0);
+  });
+
+  it("§2.6 — an addendum finalize pins its OWN output against the parent's template", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    const a = await svc.createAddendum(ORG_A, id);
+    await svc.updateAddendumSelections(ORG_A, id, a.id, TREE);
+    await svc.finalizeAddendum(ORG_A, id, a.id);
+
+    const out = await admin.query(
+      `SELECT kind, encounter_id, assembly_template_key, vocab_version_id
+         FROM hearthnote_assembled_output WHERE addendum_id=$1`,
+      [a.id],
+    );
+    expect(out.rowCount).toBe(1);
+    expect(out.rows[0].kind).toBe("addendum_finalize");
+    expect(out.rows[0].encounter_id).toBeNull(); // the parent_xor CHECK
+    // An addendum to an RN routine visit is written against the RN routine-visit template, so it is
+    // pinned against that template and the PARENT's pinned vocabulary version.
+    expect(out.rows[0].assembly_template_key).toBe("routine_visit:rn");
+    const enc = await admin.query("SELECT vocab_version_id FROM encounter WHERE id=$1", [id]);
+    expect(out.rows[0].vocab_version_id).toBe(enc.rows[0].vocab_version_id);
+  });
+
+  it("§2.6 — with no DEK bound, finalize REFUSES and leaves the encounter in draft", async () => {
+    const id = await draft("routine_visit", "rn");
+    // The assembled narrative is prose by construction and its columns are NOT NULL, so unlike the
+    // selection tree there is no codes-in-the-clear half to write without a key. This is the whole
+    // blast radius of #122 until #105 binds the KEK adapter, made executable rather than asserted.
+    await expect(noCipherSvc.finalize(ORG_A, id, SERVICE_DATE as never)).rejects.toMatchObject({
+      statusCode: 503,
+      code: "HEARTHNOTE_CIPHER_UNBOUND",
+    });
+    expect((await svc.getEncounter(ORG_A, id)).status).toBe("draft");
+    expect(
+      (await admin.query("SELECT 1 FROM hearthnote_assembled_output WHERE encounter_id=$1", [id]))
+        .rowCount,
+    ).toBe(0);
+  });
+
+  it("§3.6 — the crypto-shred now has something to shred: an erased note's ciphers go empty", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    // The eraser has always handled `hearthnote_assembled_output` — it ran against a table that had never
+    // held a row. This is the first time the §3.6 DEK-first shred has had one. Only the shred is driven
+    // here: the delete half runs as `wardenx_destruction` (0157), and this suite's connection is the
+    // NOBYPASSRLS `wardenx_app` role, which holds DELETE on no M8 table by design (append-only).
+    const store = createDrizzleEncounterEraseStore(handle.db);
+    await store.cryptoEraseHearthnote(ORG_A, PATIENT);
+    const out = await admin.query(
+      "SELECT layer1_cipher, final_cipher FROM hearthnote_assembled_output WHERE encounter_id=$1",
+      [id],
+    );
+    expect(out.rowCount).toBe(1);
+    expect(out.rows[0].layer1_cipher).toBe("");
+    expect(out.rows[0].final_cipher).toBe("");
+    // And the render refuses rather than serving an empty note as if it were the record.
+    await expect(svc.renderPayload(ORG_A, id)).rejects.toBeTruthy();
+  });
+
+  it("§3.6 — the two envelopes are bound to their columns: a blob cannot be moved between them", async () => {
+    const sealed = await CIPHERS.freeText.seal(ORG_A, "Family to call if pain escalates.");
+    // Same key, same scheme, different AAD — so a free-text envelope written into `final_cipher` fails
+    // to open rather than decrypting into the wrong column, and vice versa.
+    await expect(CIPHERS.narrative.open(ORG_A, sealed)).rejects.toThrow();
+    // And the org is in the AAD too: another tenant's key ring cannot open this one's note.
+    await expect(CIPHERS.freeText.open(ORG_B, sealed)).rejects.toThrow();
+  });
+
   it("§7.7 optimistic concurrency — a stale updateSelections is 412, a fresh one bumps the version", async () => {
     const id = await draft("routine_visit", "rn", { document: false });
     await expect(svc.updateSelections(ORG_A, id, 99, EMPTY_TREE)).rejects.toMatchObject({
@@ -564,7 +718,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   it("§3.6 — free text is REFUSED with no cipher bound, and nothing is written", async () => {
     const id = await draft("routine_visit", "rn", { document: false });
     await expect(
-      svc.updateSelections(ORG_A, id, 0, {
+      noCipherSvc.updateSelections(ORG_A, id, 0, {
         sections: [{ sectionId: "plan", entries: [], freeText: "Family to call overnight." }],
       }),
     ).rejects.toMatchObject({ statusCode: 503, code: "HEARTHNOTE_CIPHER_UNBOUND" });
@@ -577,10 +731,9 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   });
 
   it("§3.6 — with a cipher bound, the prose round-trips and is NEVER stored in the clear", async () => {
-    const cipherSvc = createDbEncounterRouteService(handle.db, undefined, FAKE_CIPHER);
     const id = await draft("routine_visit", "rn", { document: false });
     const prose = "Family to call if pain escalates overnight.";
-    const written = await cipherSvc.updateSelections(ORG_A, id, 0, {
+    const written = await svc.updateSelections(ORG_A, id, 0, {
       sections: [{ sectionId: "plan", entries: [], freeText: prose }],
     });
     expect(written.layer1Preview).toContain(prose);
@@ -594,7 +747,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     // And it is not hiding in the structured column either — the split is the §3.6 minimization rule.
     expect(JSON.stringify(rows.rows[0].selections)).not.toContain(prose);
 
-    const read = await cipherSvc.getSelections(ORG_A, id);
+    const read = await svc.getSelections(ORG_A, id);
     expect(read.sections[0]?.freeText).toBe(prose);
   });
 
