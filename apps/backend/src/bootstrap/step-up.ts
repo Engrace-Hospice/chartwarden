@@ -22,7 +22,7 @@
 // (rather than a boolean to hand a domain machine) mounts `requireStepUp(opKey)` as a preHandler,
 // which fails closed the same way but as a 403.
 import { isStepUpRecent } from "@wardenx/auth";
-import { STEP_UP_POLICY } from "@wardenx/types";
+import { STEP_UP_POLICY, type SessionContextResolver } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import { getSeam } from "./seams/registry";
 
@@ -49,6 +49,13 @@ export async function stepUpFreshFor(
     readonly organizationId: string | null | undefined;
     readonly sessionId: string | null | undefined;
     readonly operationKey?: string;
+    /**
+     * The M2 resolver to use. Defaults to the registered seam, which is how a route or a predicate
+     * reaches it. The authenticate hook passes its OWN injected resolver instead — it is constructed
+     * with one (`deps.getResolver`) and must not acquire a second, differently-wired path to the
+     * same fact.
+     */
+    readonly resolver?: SessionContextResolver;
   },
   now: () => number = () => Date.now(),
 ): Promise<boolean> {
@@ -57,7 +64,7 @@ export async function stepUpFreshFor(
   const scope = { orgId: organizationId };
   const operationKey = input.operationKey ?? STEP_UP_FLOOR_KEY;
   try {
-    const resolver = getSeam("SessionContextResolver");
+    const resolver = input.resolver ?? getSeam("SessionContextResolver");
     const [state, policy] = await Promise.all([
       resolver.resolveStepUpState(scope, sessionId),
       resolver.resolveStepUpPolicy(scope, operationKey),

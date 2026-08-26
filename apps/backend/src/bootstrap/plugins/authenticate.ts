@@ -8,6 +8,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { OrgScope, SessionContextResolver } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
+import { stepUpFreshFor } from "../step-up";
 
 /** Matches the bootstrap `AuthenticateHook` shape without importing it (avoids an index↔plugin cycle). */
 type AuthenticateHook = (request: FastifyRequest) => Promise<void> | void;
@@ -123,5 +124,31 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     // standing in for.
     request.context.providerEntityIds = [...actor.providerEntityIds];
     request.context.locationIds = [...actor.locationIds];
+    // Stamp the STEP-UP freshness fact (F-029). Fifteen modules lift
+    // `context.attributes.stepUpRecent` off the context into their route actor, and their doc
+    // comments assert this hook sets it — nothing ever did, so every one of them read `false` for
+    // every request. The same defect as `membershipId` and the PE/location scopes above, in the same
+    // hook, one line further down.
+    //
+    // It fails CLOSED, so this was never exposure — but four routes are worse off than "a control
+    // that never fires": M37's IRC cap override and restraint apply, M23's claim submit/replace/void
+    // and M27's cost-report submit all mount `requireStepUp(...)`, which PASSES (that path is real),
+    // and then hand the always-false flag to a service or a pure machine that refuses. The guard
+    // allowed and the domain refused, for every caller, always. No test saw it: the live suites build
+    // the actor directly with `stepUpRecent: true` and every inject suite stubs the attribute in its
+    // own fake authenticate hook, so the production assembly was the one path nothing exercised.
+    //
+    // This is the FLOOR answer. The policy is tightenable per operation
+    // (`tenant_step_up_policy_override`, §4.3.2 D9) and this hook does not know which operation the
+    // request is for, so the attribute carries the platform-floor decision only — which is exactly
+    // what all fifteen readers already assume it is. `requireStepUp(opKey)` remains the
+    // per-operation form and resolves the tightened policy itself; the two agree except where a
+    // tenant has tightened, where the guard is the stricter of the two. Never read this attribute as
+    // authoritative for a tightened operation.
+    request.context.attributes.stepUpRecent = await stepUpFreshFor({
+      organizationId: actor.organizationId,
+      sessionId: snap.sessionId,
+      resolver: deps.getResolver(),
+    });
   };
 }
