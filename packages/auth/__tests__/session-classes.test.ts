@@ -9,22 +9,84 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  PORTAL_SESSION_CLASSES,
   SESSION_CLASSES,
   SESSION_CLASS_DESCRIPTORS,
   TERMINAL_SESSION_STATES,
+  VENDOR_SESSION_CLASSES,
   assertSessionScope,
   canTransitionSession,
+  isPortalSessionClass,
   isSessionScopeValid,
+  isVendorSessionClass,
   sessionAllowsConcurrent,
   sessionClassDescriptor,
   sessionPinnedPatientId,
 } from "../src/identity/session-classes";
 
 describe("M2-T03 session class taxonomy", () => {
-  it("declares exactly the four classes (M2 spec §2.2.4)", () => {
+  it("declares the four §2.2.4 classes plus the portal + vendor classes the predicates gate on", () => {
+    // The original four are M2 spec §2.2.4. The other five were added by migration 0219 (F-030):
+    // M16/M19/M31's ABAC predicates had ALWAYS compared `session_class` against them, and the enum
+    // had never contained any of them — so those predicates denied unconditionally, and the whole
+    // M31 portal surface with them. This assertion is the reason a sixth cannot be added silently.
     expect([...SESSION_CLASSES].sort()).toEqual(
-      ["auditor", "external_collaborator", "funeral_home", "staff"].sort(),
+      [
+        "auditor",
+        "bereaved_portal",
+        "caregiver_portal",
+        "external_collaborator",
+        "external_triage_operator",
+        "external_triage_vendor",
+        "funeral_home",
+        "patient_portal",
+        "staff",
+      ].sort(),
     );
+  });
+
+  it("every portal / vendor class named by a predicate is a real enum value", () => {
+    // The point of the whole fix: the vocabulary the predicates gate on and the vocabulary a session
+    // can actually carry are now the same list, because they ARE the same list.
+    for (const cls of PORTAL_SESSION_CLASSES) expect(SESSION_CLASSES).toContain(cls);
+    for (const cls of VENDOR_SESSION_CLASSES) expect(SESSION_CLASSES).toContain(cls);
+    expect(isPortalSessionClass("caregiver_portal")).toBe(true);
+    expect(isPortalSessionClass("staff")).toBe(false);
+    // An absent class must not read as a portal session — the readers default it to `staff`.
+    expect(isPortalSessionClass(undefined)).toBe(false);
+    expect(isPortalSessionClass(null)).toBe(false);
+    expect(isVendorSessionClass("external_triage_operator")).toBe(true);
+    expect(isVendorSessionClass("patient_portal")).toBe(false);
+  });
+
+  it("a portal session requires its ACCOUNT, not its patient (the mint-then-select flow)", () => {
+    // `session_scope_chk` requires `scope.portalAccountId` and NOT `scope.patientId`, because a portal
+    // session legitimately exists between mint and select-patient (M31 §2.3 / D2). Requiring the
+    // patient here would make that flow unrepresentable.
+    for (const cls of PORTAL_SESSION_CLASSES) {
+      expect(isSessionScopeValid({ sessionClass: cls, scope: { portalAccountId: "acct-1" } })).toBe(
+        true,
+      );
+      expect(isSessionScopeValid({ sessionClass: cls, scope: { patientId: "pt-1" } })).toBe(false);
+      expect(isSessionScopeValid({ sessionClass: cls, scope: null })).toBe(false);
+      // Bound later — and then readable, unlike collaborator/funeral where it is required up front.
+      expect(
+        sessionPinnedPatientId({
+          sessionClass: cls,
+          scope: { portalAccountId: "acct-1", patientId: "pt-1" },
+        }),
+      ).toBe("pt-1");
+      expect(sessionPinnedPatientId({ sessionClass: cls, scope: { portalAccountId: "a" } })).toBe(
+        null,
+      );
+    }
+  });
+
+  it("a vendor session is org-scoped — no patient, no account, like staff", () => {
+    for (const cls of VENDOR_SESSION_CLASSES) {
+      expect(isSessionScopeValid({ sessionClass: cls, scope: null })).toBe(true);
+      expect(sessionClassDescriptor(cls).scopeKind).toBe("organization");
+    }
   });
 
   it("has a descriptor for every class", () => {

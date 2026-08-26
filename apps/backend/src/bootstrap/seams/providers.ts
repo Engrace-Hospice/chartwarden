@@ -97,6 +97,7 @@ import type {
   PatientReader,
   PlanCatalogReader,
   PortalDocumentReader,
+  PortalSessionBinder,
   PortalTriageReader,
   PortalVisitReader,
   ProtocolSuggestionProvider,
@@ -337,6 +338,15 @@ export const sessionContextResolverDenyStub: SessionContextResolver = {
   },
   resolveStepUpPolicy() {
     throw new NotImplementedError("SessionContextResolver");
+  },
+};
+
+export const portalSessionBinderDenyStub: PortalSessionBinder = {
+  async bindPortalSession() {
+    throw new NotImplementedError("PortalSessionBinder");
+  },
+  async bindPortalPatient() {
+    throw new NotImplementedError("PortalSessionBinder");
   },
 };
 

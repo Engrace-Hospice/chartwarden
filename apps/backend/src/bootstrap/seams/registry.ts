@@ -127,6 +127,7 @@ import {
   patientReaderDenyStub,
   planCatalogReaderDenyStub,
   portalDocumentReaderDenyStub,
+  portalSessionBinderDenyStub,
   portalTriageReaderDenyStub,
   portalVisitReaderDenyStub,
   protocolSuggestionProviderDenyStub,
@@ -295,6 +296,16 @@ export const REQUIRED_SEAMS = [
     ownerModule: 2,
     phi: false,
     denyStub: auditorSessionMinterDenyStub,
+  },
+  // M2 (portal session class + scope) — M31 hands the account/patient binding here; M2 owns the
+  // `session` row. Not PHI itself (it writes ids onto a session), but it is the fact every `portal.*`
+  // ABAC predicate gates on, so the deny-stub THROWS rather than silently no-opping: a deployment
+  // without the real binder must fail the bind loudly, not mint a portal session that authorizes nothing.
+  {
+    key: "PortalSessionBinder",
+    ownerModule: 2,
+    phi: false,
+    denyStub: portalSessionBinderDenyStub,
   },
   // M2 (org creation) — the per-tenant `organization` create/attach surface M34's `tenant.provision`
   // worker consumes (§7.1 step 3). Owned by M2 (it owns the `organization` table); not PHI (org metadata).

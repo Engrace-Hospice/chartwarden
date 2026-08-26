@@ -29,7 +29,11 @@ export const sessions = pgTable(
     userAgent: text("user_agent"),
     // M2-T03 additional fields (M2 spec §3.6).
     sessionClass: sessionClass("session_class").notNull().default("staff"),
-    scope: jsonb("scope"), // { patientId?: string } for external_collaborator / funeral_home
+    // `{ patientId }` for external_collaborator / funeral_home; `{ portalAccountId, patientId? }` for the
+    // three M31 portal classes — `patientId` arrives only when `select-patient` binds the session's one
+    // patient (§2.3 / D2), so it is absent on a freshly minted portal session. Shape enforced per class
+    // by `session_scope_chk`.
+    scope: jsonb("scope"),
     engagementStart: timestamp("engagement_start", { withTimezone: true }),
     engagementEnd: timestamp("engagement_end", { withTimezone: true }),
     screenLockedAt: timestamp("screen_locked_at", { withTimezone: true }),
@@ -49,8 +53,12 @@ export const sessions = pgTable(
     // carry scope.patientId; auditor sessions must carry both engagement bounds.
     scopeChk: check(
       "session_scope_chk",
-      sql`(${t.sessionClass} IN ('external_collaborator','funeral_home') AND ${t.scope} ? 'patientId')
+      // COALESCE, not a bare `?`: `NULL ? 'k'` is NULL, and a CHECK PASSES on NULL — so without it the
+      // scope requirements do not bind on a row whose `scope` is absent (migration 0220).
+      sql`(${t.sessionClass} IN ('external_collaborator','funeral_home') AND COALESCE(${t.scope}, '{}'::jsonb) ? 'patientId')
         OR (${t.sessionClass} = 'auditor' AND ${t.engagementStart} IS NOT NULL AND ${t.engagementEnd} IS NOT NULL)
+        OR (${t.sessionClass} IN ('patient_portal','caregiver_portal','bereaved_portal') AND COALESCE(${t.scope}, '{}'::jsonb) ? 'portalAccountId')
+        OR (${t.sessionClass} IN ('external_triage_vendor','external_triage_operator'))
         OR (${t.sessionClass} = 'staff')`,
     ),
     // Step-up paired-write invariant (D8): both NULL or both set.

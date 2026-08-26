@@ -47,6 +47,13 @@ export {
   createInMemorySessionContextStore,
 } from "./session-seam";
 export {
+  PortalSessionBindError,
+  type PortalSessionRow,
+  type PortalSessionStore,
+  createPortalSessionBinder,
+  createInMemoryPortalSessionStore,
+} from "./portal-session-binder";
+export {
   type CredentialOutcome,
   type CredentialThrottle,
   type CredentialThrottlePolicy,
@@ -89,4 +96,8 @@ export {
   assertSessionScope,
   sessionPinnedPatientId,
   sessionAllowsConcurrent,
+  PORTAL_SESSION_CLASSES,
+  VENDOR_SESSION_CLASSES,
+  isPortalSessionClass,
+  isVendorSessionClass,
 } from "./session-classes";

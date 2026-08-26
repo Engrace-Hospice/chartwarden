@@ -228,8 +228,18 @@ the prose docs in `docs/architecture/`.
   passing state. The largest is `sessionClass`: M16/M31/M39 read it and default to `"staff"`, and
   M31's portal predicates gate on it being one of `patient_portal`/`caregiver_portal`/
   `bereaved_portal`, none of which the M1 `session_class` enum contains — so the whole portal ABAC
-  surface denies, and unblocking it is an architecture decision (extend M2's enum, or read a
-  different fact), not a stamp.
+  surface denies. **Resolved (2026-08-26):** migration 0219 extends `session_class` with the three
+  portal classes + M19's two vendor classes, 0220 teaches `session_scope_chk` what scope each
+  requires, and M2 publishes a `PortalSessionBinder` seam so M31 can hand it the account/patient
+  binding its `select-patient` route always claimed to. Blocked keys: **13 → 10**. Writing 0220
+  against a real database also surfaced a **pre-existing** hole in the same constraint: `scope ?
+  'patientId'` on a NULL `scope` is NULL, `NULL OR false` is NULL, and a CHECK **passes** on NULL —
+  so the collaborator/funeral branch never bound on a row with no scope, and a one-time magic-link
+  session whose whole purpose is to be pinned to ONE patient could be written unpinned. The
+  app-layer mirror (`isSessionScopeValid`) never had the hole, so the defense-in-depth layer was the
+  strict one and the DB floor was the loose one — which is why nothing going through the auth layer
+  ever hit it. Both are proven by `session_scope_chk (F-030) — live` in `auth.live.test.ts`, which
+  is that constraint's only executable coverage.
 - `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
   Every live-database / live-Redis / browser suite in `package.json` must be invoked by a job in
   `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so

@@ -11,7 +11,7 @@
 // resolver ({@link resolvePortalAccessConsent}) produces that fact via the real seam, FAIL-CLOSED on any
 // error / missing seam / not-allowed (§8.2 — a consent read that throws must refuse, never disclose). The
 // route binding (wrapping every handler) lands in M31-T07; T03 ships the reusable gate.
-import type { PortalAccessGrantKind } from "@wardenx/types";
+import type { PortalAccessGrantKind, PortalSessionClass } from "@wardenx/types";
 import { getSeam } from "../../../bootstrap/index";
 import { requirePortal } from "./errors";
 
@@ -48,10 +48,22 @@ export function consentTypeForGrantKind(kind: PortalAccessGrantKind): string {
   return GRANT_KIND_CONSENT_TYPE[kind];
 }
 
-/** The session class M39 records for a portal-access evaluation (§8.1 — patient-self vs delegated). */
+/**
+ * The session class a grant mints (§8.1 — patient-self vs delegated vs bereaved).
+ *
+ * Three classes, because the RELATIONSHIP is a durable fact of the grant rather than of the session:
+ * `patient_self` is the patient's own portal, any other kind is a delegate's, and a grant flipped into
+ * `bereaved_mode` (M16, post-death) is the bereavement surface. All three are `session_class` values as
+ * of migration 0219 — before it none of them were, so the predicates that gate on them could not pass.
+ *
+ * `bereavedMode` is optional so the two-argument M39 call sites (which only distinguish patient-self
+ * from delegated for a consent-evaluation record) are unchanged.
+ */
 export function portalSessionClass(
   kind: PortalAccessGrantKind,
-): "patient_portal" | "caregiver_portal" {
+  bereavedMode = false,
+): PortalSessionClass {
+  if (bereavedMode) return "bereaved_portal";
   return kind === "patient_self" ? "patient_portal" : "caregiver_portal";
 }
 

@@ -30,7 +30,12 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards on
 // `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  PORTAL_SESSION_CLASSES as AUTH_PORTAL_SESSION_CLASSES,
+  type AbacContext,
+  type AbacTarget,
+  registerPredicateIdempotent,
+} from "@wardenx/auth";
 import { isClosedPlanStatus } from "@wardenx/bereavement";
 import type { BereavementPlanStatus, MembershipId } from "@wardenx/types";
 
@@ -105,8 +110,9 @@ export function disciplineForRoleKeys(roleKeys: readonly string[]): string | nul
   return volunteer;
 }
 
-/** M2 session classes that are a bereaved family member's own portal session (§4.8 `portal_self_service`). */
-const PORTAL_SESSION_CLASSES = ["caregiver_portal", "patient_portal", "bereaved_portal"] as const;
+/** M2 session classes that are a bereaved family member's own portal session (§4.8 `portal_self_service`).
+ *  The canonical list (@wardenx/auth), not a local copy — see the F-030 note in M31's predicates. */
+const PORTAL_SESSION_CLASSES = AUTH_PORTAL_SESSION_CLASSES;
 
 /** The plan facts `bereavement_window` decides over (loaded org-scoped, never read off the request). */
 export interface BereavementPlanAbacFacts {

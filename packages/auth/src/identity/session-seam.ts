@@ -35,6 +35,12 @@ export interface SessionContextRecord {
   readonly locationIds: readonly string[];
   readonly lastStepUpAt: Date | null;
   readonly lastStepUpFactor: StepUpFactor | null;
+  /** The §2.2.4 session class. `"staff"` when the store has nothing better (F-030). */
+  readonly sessionClass: string;
+  /** M31 portal sessions only — the account the session acts for. */
+  readonly portalAccountId: string | null;
+  /** M31 portal sessions only — the one patient bound by `select-patient`; null before that. */
+  readonly portalPatientId: string | null;
 }
 
 /** Reads a session-context row by id within an org scope (M1 `session` repo in production). */
@@ -73,6 +79,9 @@ export function createSessionContextResolver(
         roles: row.roles,
         providerEntityIds: row.providerEntityIds,
         locationIds: row.locationIds,
+        sessionClass: row.sessionClass,
+        portalAccountId: row.portalAccountId,
+        portalPatientId: row.portalPatientId,
       };
     },
     async resolveStepUpState(scope, sessionId): Promise<SessionStepUpFields | null> {

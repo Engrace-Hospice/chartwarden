@@ -24,6 +24,14 @@ export interface SessionRow {
   readonly activeOrganizationId: string | null;
   readonly lastStepUpAt: Date | null;
   readonly lastStepUpFactor: string | null;
+  /**
+   * The §2.2.4 class. Read here because M16/M19/M31's ABAC predicates gate on it and nothing ever
+   * carried it off the row — so those predicates saw an absent value, defaulted it to `staff`, and
+   * denied unconditionally (F-030). Nullable in the type only: the column is NOT NULL DEFAULT 'staff'.
+   */
+  readonly sessionClass: string | null;
+  /** `{ patientId }` for collaborator/funeral; `{ portalAccountId, patientId? }` for the portal classes. */
+  readonly scope: unknown;
 }
 
 /** Pure: map a `session` row to a context record, merging optional M3 actor enrichment. Pre-org
@@ -44,7 +52,17 @@ export function toSessionContextRecord(
     locationIds: enrichment?.locationIds ?? [],
     lastStepUpAt: row.lastStepUpAt ?? null,
     lastStepUpFactor: (row.lastStepUpFactor as StepUpFactor | null) ?? null,
+    sessionClass: row.sessionClass ?? "staff", // column is NOT NULL DEFAULT 'staff'
+    portalAccountId: scopeString(row.scope, "portalAccountId"),
+    portalPatientId: scopeString(row.scope, "patientId"),
   };
+}
+
+/** One string field out of the `scope` jsonb, or null. Never throws on a malformed/absent value. */
+function scopeString(scope: unknown, key: "portalAccountId" | "patientId"): string | null {
+  if (typeof scope !== "object" || scope === null) return null;
+  const value = (scope as Record<string, unknown>)[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 /**
@@ -64,6 +82,8 @@ export function createDbSessionContextStore(
           activeOrganizationId: schema.sessions.activeOrganizationId,
           lastStepUpAt: schema.sessions.lastStepUpAt,
           lastStepUpFactor: schema.sessions.lastStepUpFactor,
+          sessionClass: schema.sessions.sessionClass,
+          scope: schema.sessions.scope,
         })
         .from(schema.sessions)
         .where(eq(schema.sessions.id, sessionId))
