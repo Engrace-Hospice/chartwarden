@@ -45,6 +45,25 @@ All four are green on a clean checkout, and CI (`.github/workflows/ci.yml`) runs
 | `bun run test` | Vitest self-tests. |
 | `bun run lint` / `lint:fix` | Biome (advisory; not in the blocking gate path). |
 
+### Local demo data (`bun run db:reset`)
+
+`db:reset` recreates the container, migrates, and runs fourteen seed steps as one `&&` chain. Two
+prerequisites are not enforced by the chain itself and each one aborts it partway:
+
+- **The backend must already be running** (`bun run dev:backend`). Only the first few steps talk to
+  Postgres directly; the rest drive the real REST API as signed-in demo users, precisely so RLS,
+  ABAC and the state machines are exercised rather than bypassed.
+- **`REDIS_URL` must be set for that backend.** `db:seed:scenario-billing` reaches M27's
+  `refresh-inputs`, which enqueues a trial-balance pull; with no queue connection the port is
+  unbound and the step fails.
+
+Roles matter in the seeds because they matter in the product. `db:seed:staff` creates ten discipline
+personas (`CREDENTIALS.local.md`), and the scenario seeds sign in as whichever one is actually
+entitled to each action — the physician signs the §418.22(c) certifications, the RN case manager
+holds the caseload, the administrator does intake and activation. A seed that signs everything as
+the administrator does not work, and should not: `cti.is_hospice_md` is an attribute gate, and no
+number of permission keys satisfies it.
+
 The fitness gates are **armed-but-inert**: they pass with no source and begin enforcing
 automatically as a module's schema/seams/events land.
 

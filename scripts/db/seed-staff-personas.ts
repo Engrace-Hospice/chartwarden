@@ -100,6 +100,60 @@ async function signUp(email: string, password: string, name: string): Promise<st
   return body.user.id;
 }
 
+/**
+ * F-014 (#39) — the demo caseload's primary RN.
+ *
+ * `caseload_or_scope` (the predicate behind M7's care plans, M8's encounters and their siblings) is
+ * satisfied by an org-wide role, a session scope attribute, or an OPEN `patient_assignment` row for
+ * the calling user. `seed-clinical.ts` anchors that row to `casey@wardenx.local` because at its point
+ * in the chain no persona exists yet — but every scenario seed acts as `rita@wardenx.local`, who had
+ * no assignment. The denial then arrived as `NOT_FOUND`, because those routes use
+ * `{ notFoundOnDeny: true }` (the §6.6 existence-non-leak convention), so four seed steps reported a
+ * missing resource for a patient that was verifiably there.
+ *
+ * Re-anchoring HERE rather than only in `seed-clinical.ts` is what makes it order-independent:
+ * `db:reset` runs `db:seed:clinical` (step 4) before `db:seed:staff` (step 8), so rita does not exist
+ * when the assignment is first written, and this script deletes and re-creates her user row anyway —
+ * an assignment written earlier would point at a user id that no longer exists.
+ */
+const RN_CASE_MANAGER_EMAIL = "rita@wardenx.local";
+
+async function anchorDemoCaseload(
+  db: Client,
+  orgId: string,
+  rnUserId: string | undefined,
+): Promise<void> {
+  if (!rnUserId) return;
+  const patients = await db.query<{ id: string }>(
+    "SELECT id FROM patient WHERE organization_id = $1",
+    [orgId],
+  );
+  if (patients.rowCount === 0) {
+    console.log(
+      "  · no demo patients yet — caseload anchoring skipped (re-run db:seed:staff after db:seed:clinical)",
+    );
+    return;
+  }
+  // `patient_assignment_primary_rn_unique` allows exactly one open primary_rn per patient, so the
+  // prior anchor has to go before this one lands. Scoped to primary_rn: the attending_clinician rows
+  // seed-clinical.ts writes are a different question and are left alone.
+  await db.query(
+    `DELETE FROM patient_assignment
+      WHERE organization_id = $1 AND role = 'primary_rn' AND patient_id = ANY($2)`,
+    [orgId, patients.rows.map((r) => r.id)],
+  );
+  for (const { id } of patients.rows) {
+    await db.query(
+      `INSERT INTO patient_assignment (patient_id, organization_id, clinician_user_id, role, assigned_at)
+       VALUES ($1,$2,$3,'primary_rn', CURRENT_DATE)`,
+      [id, orgId, rnUserId],
+    );
+  }
+  console.log(
+    `  ✓ demo caseload anchored: ${RN_CASE_MANAGER_EMAIL} is primary RN for ${patients.rowCount} patient(s)`,
+  );
+}
+
 async function main(): Promise<void> {
   if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
   const db = new Client({ connectionString: ADMIN_URL });
@@ -153,6 +207,11 @@ async function main(): Promise<void> {
     for (const t of ["session", "account", "two_factor", "passkey"]) {
       await db.query(`DELETE FROM ${t} WHERE user_id = ANY($1)`, [priorIds]).catch(() => {});
     }
+    // F-014 (#39) — `patient_assignment.clinician_user_id` REFERENCES "user" ON DELETE RESTRICT
+    // (migration 0020). Once this script started anchoring the demo caseload (below), a re-run would
+    // have been blocked by that constraint on its own previous output. Dropping the assignments here
+    // is safe precisely because the anchoring step at the end re-creates them from scratch.
+    await db.query("DELETE FROM patient_assignment WHERE clinician_user_id = ANY($1)", [priorIds]);
     await db.query('DELETE FROM "user" WHERE id = ANY($1)', [priorIds]);
   }
   // Drop any prior persona-owned roles too (role.key is unique per org — a re-run must not collide).
@@ -170,6 +229,7 @@ async function main(): Promise<void> {
 
   // --- Create one role per distinct role-key token (shared across personas if two happen to list
   // the same key — none do today, but this mirrors seed.ts's role-centric-not-user-centric pattern). ---
+  const userIdByEmail = new Map<string, string>();
   const roleIdByKey = new Map<string, string>();
   for (const key of priorRoleKeys) {
     const owner = PERSONAS.find((p) => p.roleKeys[0] === key) ?? PERSONAS.find((p) => p.roleKeys.includes(key));
@@ -215,7 +275,10 @@ async function main(): Promise<void> {
     }
     creds.push({ persona: p, password });
     console.log(`  ✓ ${p.email} (${p.roleKeys.join("+")}, ${clinicalKeys.length} perms per role)`);
+    userIdByEmail.set(p.email, userId);
   }
+
+  await anchorDemoCaseload(db, orgId, userIdByEmail.get(RN_CASE_MANAGER_EMAIL));
 
   await db.end();
 

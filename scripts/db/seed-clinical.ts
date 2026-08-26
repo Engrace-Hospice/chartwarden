@@ -152,13 +152,18 @@ async function main(): Promise<void> {
     `SELECT email, id FROM "user"
       WHERE email IN ('admin@wardenx.local','casey@wardenx.local','rita@wardenx.local')`,
   );
-  // The caseload RN must be the SAME identity the scenario seeds act as. `caseload_or_scope`
-  // (M7 §6, and the ~nine other modules that bind the name) is satisfied by an OPEN
-  // `patient_assignment` row for the CALLING user — so a caseload anchored to one clinician while
-  // seed-scenario-clinical-core.ts signs in as another denies every M7/M8/M9/M10 write, and
-  // `notFoundOnDeny: true` reports it as NOT_FOUND rather than a denial. Rita is the RN Case
-  // Manager persona every scenario seed uses; `casey@` (the base demo Clinician) stays the
-  // fallback so this script still works standalone, before db:seed:staff has run.
+  // F-014 (#39) — the caseload anchor decides who `caseload_or_scope` lets through, and every
+  // scenario seed acts as the RN Case Manager persona. `caseload_or_scope` (M7 §6, and the ~nine
+  // other modules that bind the name) is satisfied by an OPEN `patient_assignment` row for the
+  // CALLING user, so a caseload anchored to one clinician while seed-scenario-clinical-core.ts
+  // signs in as another denies every M7/M8/M9/M10 write — and `notFoundOnDeny: true` reports it as
+  // NOT_FOUND rather than a denial.
+  //
+  // Prefer rita when she exists; fall back to `casey@wardenx.local` (the base demo Clinician) when
+  // she does not, so this script still works standalone at its `db:reset` position (step 4), which
+  // is BEFORE `db:seed:staff` creates the personas at step 8. In that ordering the fallback is what
+  // runs, and `db:seed:staff` re-anchors afterwards (`anchorDemoCaseload`, seed-staff-personas.ts)
+  // — which is also why it must, since that script drops and re-creates rita's user row on every run.
   const personaRn = users.rows.find((u) => u.email === "rita@wardenx.local")?.id;
   const baseRn = users.rows.find((u) => u.email === "casey@wardenx.local")?.id;
   const rn = personaRn ?? baseRn;
