@@ -36,8 +36,8 @@
  *
  * Usage: `bun run arch:live-suites` (wired into `arch:fitness`).
  */
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // `import.meta.dir` is a Bun extension and is undefined under vitest's node runner, which imports
@@ -50,6 +50,29 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
  * rather than the script name is the whole point — see the header.
  */
 const LIVE_COMMAND = /\.live\.test\.ts|-live\.test\.ts|\bplaywright\b/;
+
+/**
+ * The FILE half of the same shape (#59). `LIVE_COMMAND` above answers "does every live script have a
+ * CI runner"; this answers "does every live suite FILE have a script at all". They are different
+ * questions and only the first was ever asked, so a file that no script names was run by nothing —
+ * not CI, not a hook, not `bun run test` (which never sets the live env vars). Twenty-nine files sat
+ * there, 111 tests, several of them the only live proof of a seam `CLAUDE.md` cites by filename. One
+ * of the twenty-nine — `m6-abac-scope-resolver` — was RED, broken for the length of a branch by a
+ * fail-closed guard added in another module, with no gate anywhere able to say so.
+ */
+const LIVE_FILE = /(\.live|-live)\.test\.ts$/;
+
+/** Where suites live. Anything outside these trees is not a test tree. */
+const SUITE_ROOTS = ["apps", "packages", "scripts", "e2e"] as const;
+
+const SKIP_DIRS = new Set(["node_modules", "dist", "build", ".git", "coverage", ".turbo"]);
+
+/**
+ * Files that match {@link LIVE_FILE} but are deliberately not their own suite. Empty today, and kept
+ * for the same reason as DEFERRED: an exclusion must be a name on a list somebody can read, never a
+ * file that quietly fails to be found.
+ */
+const NOT_A_SUITE_FILE: ReadonlySet<string> = new Set<string>();
 
 /**
  * Interactive developer modes, never a CI job: `playwright --ui` opens a GUI and blocks forever.
@@ -83,6 +106,37 @@ export interface LiveScript {
   readonly command: string;
 }
 
+/** Every `*.live.test.ts` / `*-live.test.ts` file under {@link SUITE_ROOTS}, repo-relative, sorted. */
+export function liveFiles(root: string): string[] {
+  const found: string[] = [];
+  const walk = (dir: string): void => {
+    let entries: ReturnType<typeof readdirSync>;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return; // a root that does not exist in this checkout is not an error
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (!SKIP_DIRS.has(entry.name)) walk(join(dir, entry.name));
+      } else if (LIVE_FILE.test(entry.name) && !NOT_A_SUITE_FILE.has(entry.name)) {
+        found.push(relative(root, join(dir, entry.name)));
+      }
+    }
+  };
+  for (const suiteRoot of SUITE_ROOTS) walk(join(root, suiteRoot));
+  return found.sort();
+}
+
+/**
+ * Is this suite file named by any script command? Matched on the BASENAME: a command may reference
+ * the file through any relative path, and two suites never share a basename in this repo.
+ */
+export function namedByAScript(file: string, commands: readonly string[]): boolean {
+  const name = basename(file);
+  return commands.some((command) => command.includes(name));
+}
+
 /** Every live/E2E script in package.json, interactive modes excluded. */
 export function liveScripts(scripts: Record<string, string>): LiveScript[] {
   return Object.entries(scripts)
@@ -108,6 +162,10 @@ export interface CoverageReport {
   /** Deferred suites that ARE wired now — the deferral is stale and must be deleted. */
   readonly staleDeferrals: readonly string[];
   readonly deferred: readonly string[];
+  /** Every live suite FILE found on disk. */
+  readonly files: readonly string[];
+  /** Suite files no package.json script names — run by nothing at all (#59). */
+  readonly unscripted: readonly string[];
 }
 
 export function run(
@@ -123,6 +181,10 @@ export function run(
   const ci = readFileSync(join(root, ".github", "workflows", "ci.yml"), "utf8");
   const live = liveScripts(pkg.scripts);
 
+  const commands = Object.values(pkg.scripts);
+  const files = liveFiles(root);
+  const unscripted = files.filter((file) => !namedByAScript(file, commands));
+
   const unwired: string[] = [];
   const staleDeferrals: string[] = [];
   for (const { name } of live) {
@@ -131,11 +193,18 @@ export function run(
     if (isDeferred && wired) staleDeferrals.push(name);
     else if (!isDeferred && !wired) unwired.push(name);
   }
-  return { live, unwired, staleDeferrals, deferred: Object.keys(deferred).sort() };
+  return {
+    live,
+    unwired,
+    staleDeferrals,
+    deferred: Object.keys(deferred).sort(),
+    files,
+    unscripted,
+  };
 }
 
 function main(): void {
-  const { live, unwired, staleDeferrals, deferred } = run();
+  const { live, unwired, staleDeferrals, deferred, files, unscripted } = run();
 
   // Guard on the guard: if the detection above ever stops matching, this gate would pass vacuously
   // on an empty set — the very outcome it exists to prevent. The corpus is ~90 live scripts; a
@@ -145,6 +214,28 @@ function main(): void {
       `FAIL check-live-suite-coverage: only ${live.length} live script(s) detected in package.json.
 That is far below the known corpus (~90) — LIVE_COMMAND has almost certainly stopped matching.
 Refusing to report success on a set this small; fix the matcher.`,
+    );
+    process.exit(1);
+  }
+
+  // The same guard for the file half: an empty walk would make the check below vacuous.
+  if (files.length < 80) {
+    console.error(
+      `FAIL check-live-suite-coverage: only ${files.length} live suite FILE(s) found on disk.
+That is far below the known corpus (~120) — the walk or LIVE_FILE has stopped matching.
+Refusing to report success on a set this small; fix the matcher.`,
+    );
+    process.exit(1);
+  }
+
+  if (unscripted.length > 0) {
+    console.error(
+      `FAIL check-live-suite-coverage: ${unscripted.length} live suite FILE(s) are named by NO package.json script.
+Nothing runs them — not CI, not a git hook, and not \`bun run test\` (which never sets the live env vars),
+so they report green by never running:
+${unscripted.map((f) => `  - ${f}`).join("\n")}
+Give each a \`test:…:live\` script and add it to a ci.yml matrix row, or — if it is not a suite of its
+own — name it in NOT_A_SUITE_FILE in this file, so the exclusion is on the record.`,
     );
     process.exit(1);
   }
@@ -174,7 +265,8 @@ or — if it genuinely cannot run yet — add it to DEFERRED in this file WITH t
       ? `; ${deferred.length} explicitly deferred (${deferred.join(", ")}) — see DEFERRED in ${"scripts/check-live-suite-coverage.ts"}`
       : "";
   console.log(
-    `OK live-suite-coverage: all ${live.length - deferred.length} live suite(s) are wired into a ci.yml job${suffix}`,
+    `OK live-suite-coverage: all ${live.length - deferred.length} live suite(s) are wired into a ci.yml job${suffix}; ` +
+      `all ${files.length} suite file(s) are named by a script`,
   );
 }
 

@@ -184,16 +184,20 @@ the prose docs in `docs/architecture/`.
   it. A suite that genuinely cannot run yet is a **registered** entry in `DEFERRED` carrying its
   blocker, never an unmatched name (the `deviceAttestationValid` rule), and the gate fails the
   moment CI starts running a deferred script so the entry cannot outlive its reason; `DEFERRED` is
-  empty today. All **93** suites run in CI, `test:e2e` included — the `e2e` job drives a real
+  empty today. All **122** suites run in CI, `test:e2e` included — the `e2e` job drives a real
   Chromium over a migrated, `db:seed:all`-seeded full stack (18 critical-workflow specs + the six
-  axe-core WCAG 2A/AA scans that are the repo's only automated accessibility coverage). It still
-  checks `package.json` → CI, not file → `package.json`, which is a **second blind spot of the same
-  size**: 22 `*.live.test.ts` files have no script at all, so nothing invokes them either. All 23
-  were run by hand during F-024 and 22 passed; the one that did not — `m6-abac-scope-resolver`
-  (GAP-011), green on `main` and red on the F-017 stack once that branch's fail-closed
-  provider-entity check landed — now has a script and a `lifecycle-live` runner. That is the whole
-  argument for closing the blind spot: the file→script direction is where a real regression was
-  hiding, and it took a manual sweep to find it.
+  axe-core WCAG 2A/AA scans that are the repo's only automated accessibility coverage). The gate
+  now checks **both directions** (F-025/#59): script → CI, and **file → script**. The second was
+  never asked, so 29 suite files (112 tests) were named by no script and therefore run by nothing —
+  not CI, not a hook, not `bun run test`, which never sets the live env vars. Several were the only
+  live proof of a seam this document cites by filename (`m26-cost-report-cap-seam`,
+  `m27-validation-context`, `m25-835-ingestion`, `m31-portal-eraser`). Twenty-eight passed when run;
+  the one that did not — `m6-abac-scope-resolver` (GAP-011), green on `main` and red on the F-017
+  stack once that branch's fail-closed provider-entity check landed — is why this is a gate and not
+  a note. All 29 now have `test:…:live` scripts and `lifecycle-live` runners, and that job gained a
+  Valkey service because four of them gate on `WARDENX_TEST_REDIS_URL` too and would otherwise have
+  reported SKIPPED. Exclusions on either side are **named** — `DEFERRED` and `NOT_A_SUITE_FILE` —
+  never a file or script that quietly fails to be found.
 - `scripts/check-outbox-bindings.ts` — **outbox binding ↔ event-catalog agreement**
   (`bun run arch:outbox-bindings`, in `arch:fitness`). Every live `OutboxConsumerBinding` must bind a
   catalogued event, must not bind one catalogued record-only (`declaredConsumers: []`), and its module

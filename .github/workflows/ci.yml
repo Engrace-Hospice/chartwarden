@@ -186,7 +186,12 @@ jobs:
                 "test:m6:read:live test:m6:write:live test:m6:t3:write:live test:m6:t4:write:live
                 test:m6:t5:write:live test:m6:abac-scope:live",
             }
-          - { name: "M7 Care Plan", scripts: "test:m7:read:live test:m7:write:live" }
+          - {
+              name: "M7 Care Plan",
+              scripts:
+                "test:m7:read:live test:m7:write:live test:m7:conformance:live
+                test:m7:consent-wiring:live",
+            }
           - { name: "M8 Encounters", scripts: "test:m8:read:live test:m8:write:live" }
           - { name: "M9 Assessments", scripts: "test:m9:read:live test:m9:write:live" }
           - { name: "M10 HOPE", scripts: "test:m10:read:live test:m10:write:live" }
@@ -196,18 +201,44 @@ jobs:
               name: "M13 eMAR",
               scripts: "test:m13:read:live test:m13:write:live test:m13:rn-case-manager:live",
             }
-          - { name: "M14 IDG", scripts: "test:m14:read:live test:m14:write:live" }
-          - { name: "M17 Scheduling", scripts: "test:m17:read:live test:m17:write:live" }
+          - {
+              name: "M14 IDG",
+              scripts:
+                "test:m14:read:live test:m14:write:live test:m14:clinical-event-consumers:live",
+            }
+          - {
+              name: "M17 Scheduling",
+              scripts:
+                "test:m17:read:live test:m17:write:live test:m17:visit-create-abac:live
+                test:m17:membership-credential:live",
+            }
           - { name: "M18 EVV", scripts: "test:m18:read:live test:m18:write:live" }
-          - { name: "M22 Documents", scripts: "test:m22:read:live test:m22:write:live" }
-          - { name: "M23 remittance feedback", scripts: "test:m23:remittance-feedback:live" }
-          - { name: "M24 NF facility snapshot", scripts: "test:m24:nf-facility-snapshot:live" }
+          - {
+              name: "M22 Documents",
+              scripts:
+                "test:m22:read:live test:m22:write:live test:m22:document-seam-store:live",
+            }
+          - {
+              name: "M23 Billing-Medicare",
+              scripts:
+                "test:m23:remittance-feedback:live test:m23:billed-days-seam:live
+                test:m23:claim-submit-worker:live test:m23:claim-match-seam:live",
+            }
+          - {
+              name: "M24 Billing-Medicaid",
+              scripts: "test:m24:nf-facility-snapshot:live test:m24:claim-line-assembly:live",
+            }
           - { name: "M29 NPPES platform sync", scripts: "test:m29:nppes-sync:live" }
           - { name: "M29 unmatched-lab review", scripts: "test:m29:unmatched-lab-review:live" }
           # GAP-043: M27's approver gate over M2's real `membership_elevated_approval` designation —
           # the conjunct that was hardcoded false in the production resolver, blocking every cost-report
           # approve/submit/reopen in every tenant.
-          - { name: "M27 elevated approval", scripts: "test:m27:elevated-approval:live" }
+          - {
+              name: "M27 Cost Report",
+              scripts:
+                "test:m27:elevated-approval:live test:m27:allocation-input:live
+                test:m27:validation-context:live test:m27:workflow-slice:live",
+            }
           # GAP-060: M40's §7.6 merge approve/reject + provisional promotion against the REAL
           # DB-backed service — the audit's finding was that no test ever exercised it.
           - { name: "M40 governance writes", scripts: "test:m40:governance:live" }
@@ -230,7 +261,12 @@ jobs:
           # (`tenant_export.list_platform` had zero route registrations) and the M36 alert the hold port
           # promised in its doc comment and never emitted. Held-ness is derived from the newest ledger
           # event, so this suite is what keeps that derivation agreeing with the release route's.
-          - { name: "M34 oversized-hold discovery", scripts: "test:m34:hold-discovery:live" }
+          - {
+              name: "M34 SaaS Platform",
+              scripts:
+                "test:m34:hold-discovery:live test:m34:dsar-export:live test:m34:tenant-export:live
+                test:m34:tenant-export-approval:live",
+            }
           - { name: "M37 IPU", scripts: "test:m37:write:live" }
           - { name: "M37 privacy gates", scripts: "test:m37:privacy-gates:live" }
           # AC-01: the §7.4 break-glass co-signature as a real TWO-PERSON control. `cosign` matched on
@@ -255,7 +291,31 @@ jobs:
           # GAP-079: M4's §2.5 read-audit EMISSION over the M26 Cap + M39 Consent read surfaces —
           # proves the events land in the partitioned audit_event table carrying the patient id the
           # §164.528 accounting query joins on, as the NOBYPASSRLS app role.
-          - { name: "M4 read-audit", scripts: "test:m4:read-audit:live" }
+          - {
+              name: "M4 Audit",
+              scripts: "test:m4:read-audit:live test:m4:compliance-routes:live",
+            }
+          # F-025 (#59): five modules had no `lifecycle-live` row at all, so their suites had nowhere
+          # to be added even once they had a script. Each of these is the only LIVE proof of the path
+          # it names — the M5 §7.8 death cascade, the M25 835 receive→post pipeline, the M26→M27 cap
+          # seam CLAUDE.md cites by filename, M31's right-to-erasure eraser, M36's real AlertEmitter.
+          - { name: "M5 Patient death cascade", scripts: "test:m5:death-cascade:live" }
+          - {
+              name: "M25 Remittance",
+              scripts: "test:m25:835-ingestion:live test:m25:interim-payments-seam:live",
+            }
+          - { name: "M26 Cap Management", scripts: "test:m26:cost-report-cap-seam:live" }
+          - {
+              name: "M30 HQRP & Quality",
+              scripts:
+                "test:m30:scheduled-jobs:live test:m30:cost-report-filing-measure:live",
+            }
+          - {
+              name: "M31 Portal & Telehealth",
+              scripts: "test:m31:portal-eraser:live test:m31:care-team-sync:live",
+            }
+          - { name: "M36 Messaging alerts", scripts: "test:m36:alert-emitter:live" }
+          - { name: "M39 Consent", scripts: "test:m39:consent-lifecycle:live" }
           # GAP-023/024/038: M22's §4.11 render handshake end-to-end — a real signed order/med order
           # through the real outbox dispatcher into real `document`/`document_version` rows. Nothing in
           # this chain was executed before: the consumer did not exist and neither emitter fired.
@@ -267,9 +327,28 @@ jobs:
           # GAP-051: the M33 PDF/XLSX export → M22 render → back-ref chain end-to-end. Nothing in it
           # ran before: the export outbox was unbound, M22 consumed the request event nowhere, and the
           # request carried a SQL string M22 could never have executed.
-          - { name: "M33 export render", scripts: "test:m33:export-render:live" }
+          - {
+              name: "M33 export render",
+              scripts: "test:m33:export-render:live test:m33:scheduled-jobs:live",
+            }
+    services:
+      # F-025 (#59): four of the newly-wired suites gate on `WARDENX_TEST_REDIS_URL` as well as the
+      # database — `test:m30:scheduled-jobs:live`, `test:m33:scheduled-jobs:live`,
+      # `test:m27:workflow-slice:live` and `test:m30:cost-report-filing-measure:live` all drive a real
+      # BullMQ queue. `describe.skipIf(!DB_URL || !REDIS_URL)` means a job without this service would
+      # run them and report SKIPPED, which is precisely the silence this job exists to end.
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
     env:
       WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
+      WARDENX_TEST_REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
       - name: Install Bun
@@ -297,6 +376,7 @@ jobs:
       - name: ${{ matrix.suite.name }} — production write/read lifecycle over real Postgres + RLS
         run: |
           test -n "$WARDENX_TEST_DATABASE_URL" || { echo "WARDENX_TEST_DATABASE_URL unset — the suites would silently skip" >&2; exit 1; }
+          test -n "$WARDENX_TEST_REDIS_URL" || { echo "WARDENX_TEST_REDIS_URL unset — the four BullMQ suites would silently skip" >&2; exit 1; }
           for script in ${{ matrix.suite.scripts }}; do
             echo "::group::$script"
             bun run "$script"
@@ -380,6 +460,11 @@ jobs:
             sleep 1
           done
           echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg; exit 1
+      # F-025 (#59): `packages/db/__tests__/client.live.test.ts` (AUTH-T01 / ADR-0033) had no script
+      # and no runner. Its own header names this lane — "the dedicated auth/live CI lane that runs
+      # this end-to-end lands at AUTH-T06" — so it goes here rather than into a Postgres matrix row.
+      - name: createDbClient opens a real pooled connection (AUTH-T01)
+        run: bun run test:db:client:live
       - name: Better Auth sign-up/sign-in over the reconciled schema (real Postgres)
         run: bun run test:auth:live
 

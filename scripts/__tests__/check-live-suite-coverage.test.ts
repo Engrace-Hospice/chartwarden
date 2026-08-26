@@ -4,8 +4,15 @@
 // not colons. `test:m6:t3:write:live` has two middle segments, so it never matched: 24 tests / 97
 // assertions over M6's write lifecycles had no CI runner, and neither did the 18-test Playwright
 // suite with the repo's only axe-core WCAG scans. These tests pin the shapes that hole was made of.
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { invokedInCi, liveScripts, run } from "../check-live-suite-coverage";
+import {
+  invokedInCi,
+  liveFiles,
+  liveScripts,
+  namedByAScript,
+  run,
+} from "../check-live-suite-coverage";
 
 const names = (scripts: Record<string, string>) => liveScripts(scripts).map((s) => s.name);
 
@@ -130,5 +137,50 @@ describe("the deferral rule itself", () => {
     // gate must refuse — a suite would look excused while it was running and passing all along.
     const stale = run(undefined, { "test:e2e": "a reason that stopped being true" });
     expect(stale.staleDeferrals).toEqual(["test:e2e"]);
+  });
+});
+
+describe("the FILE direction — does every suite have a script at all (#59)", () => {
+  const report = run();
+
+  it("finds the suite files on disk, so the check below is not vacuous", () => {
+    // If the walk breaks, `unscripted` is empty and every assertion here passes over nothing —
+    // the identical failure mode the script-side guard exists for, one direction over.
+    expect(report.files.length).toBeGreaterThan(100);
+  });
+
+  it("has a package.json script for every live suite file", () => {
+    // 29 files had none. Nothing ran them: not CI, not a git hook, and not `bun run test`, which
+    // never sets WARDENX_TEST_DATABASE_URL — so `skipIf` reported them SKIPPED, never failed.
+    expect(report.unscripted).toEqual([]);
+  });
+
+  it("has a script for the suite that was actually RED while unscripted", () => {
+    // m6-abac-scope-resolver (GAP-011) was green on `main` and red on the F-017 stack, broken by a
+    // fail-closed guard added in another module. It is the reason this direction is a gate and not
+    // a note: 28 of the 29 passing proved nothing about the 29th.
+    expect(report.unscripted).not.toContain(
+      "apps/backend/__tests__/m6-abac-scope-resolver.live.test.ts",
+    );
+  });
+
+  it("matches BOTH suffixes the command matcher already accepts", () => {
+    // `.live.test.ts` and `-live.test.ts` are both in use (7 files use the hyphen form). A walk that
+    // saw only one would silently under-report — which is exactly how the first count of this
+    // finding came out at 22 instead of 29.
+    const names = liveFiles(join(import.meta.dirname, "..", "..")).map((f) => f.split("/").pop());
+    expect(names).toContain("m25-835-ingestion.live.test.ts");
+    expect(names).toContain("gap-096-alert-emitter-live.test.ts");
+  });
+
+  it("matches a command that names the file through any relative path", () => {
+    const file = "apps/backend/__tests__/m25-835-ingestion.live.test.ts";
+    expect(
+      namedByAScript(file, ["vitest run apps/backend/__tests__/m25-835-ingestion.live.test.ts"]),
+    ).toBe(true);
+    expect(namedByAScript(file, ["vitest run ./m25-835-ingestion.live.test.ts"])).toBe(true);
+    expect(namedByAScript(file, ["vitest run apps/backend/__tests__/m25-remit.live.test.ts"])).toBe(
+      false,
+    );
   });
 });
