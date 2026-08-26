@@ -155,6 +155,7 @@
     "arch:status-matrix": "bun run scripts/report-implementation-status.ts --check",
     "arch:ui-parity": "bun run scripts/report-ui-parity.ts --check",
     "arch:frame-fidelity": "bun run scripts/report-frame-fidelity.ts --check",
+    "arch:interactive-rows": "bun run scripts/check-interactive-rows.ts",
     "arch:design-tokens": "bun run scripts/check-design-tokens.ts",
     "arch:abac-predicates": "bun run scripts/check-abac-predicates.ts",
     "arch:live-suites": "bun run scripts/check-live-suite-coverage.ts",

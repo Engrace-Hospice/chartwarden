@@ -270,7 +270,7 @@ export function CapPeriods(): JSX.Element {
               </thead>
               <tbody>
                 {pagedPeriods.map((p) => (
-                  <tr key={p.id} style={rowStyle} className="wx-data-row-interactive">
+                  <tr key={p.id} style={rowStyle}>
                     <td style={tdCodeStyle}>{p.capYear}</td>
                     <td style={tdCodeStyle}>{p.ccn}</td>
                     <td style={cellStyle}>

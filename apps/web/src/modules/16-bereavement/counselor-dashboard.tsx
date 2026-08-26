@@ -21,6 +21,7 @@ import {
   RightDetailPanel,
   StatusPill,
   WorkQueueLayout,
+  interactiveRowProps,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -489,7 +490,7 @@ function PlanTable({
           return (
             <tr
               key={p.planId}
-              onClick={() => onSelectPlan(p.planId)}
+              {...interactiveRowProps(() => onSelectPlan(p.planId), isSelected, true)}
               className="wx-data-row-interactive"
               style={{
                 borderBottom:

@@ -339,7 +339,7 @@ export function MedicaidEligibilityCenter(): JSX.Element {
                 {pagedRows.map((r) => {
                   const stale = r.staleAt <= nowIso;
                   return (
-                    <tr key={r.id} style={rowLine} className="wx-data-row-interactive">
+                    <tr key={r.id} style={rowLine}>
                       <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>
                         {r.checkedAt.slice(0, 16).replace("T", " ")}
                       </td>

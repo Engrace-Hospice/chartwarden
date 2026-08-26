@@ -44,6 +44,7 @@ export const GATES = [
   "arch:ui-parity",
   "arch:frame-fidelity",
   "arch:design-tokens",
+  "arch:interactive-rows",
   "arch:abac-predicates",
   "arch:live-suites",
   "arch:org-indexes",
