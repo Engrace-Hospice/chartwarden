@@ -346,10 +346,7 @@ export function CapDashboard(): JSX.Element {
                     </thead>
                     <tbody>
                       {pagedPatients.map((p, idx) => (
-                        <tr
-                          key={p.patientId ?? `patient-${idx}`}
-                          style={rowStyle}
-                        >
+                        <tr key={p.patientId ?? `patient-${idx}`} style={rowStyle}>
                           <td style={tdCodeStyle}>{p.patientId?.slice(0, 8) ?? "—"}</td>
                           <td style={cellStyle}>
                             <StatusPill

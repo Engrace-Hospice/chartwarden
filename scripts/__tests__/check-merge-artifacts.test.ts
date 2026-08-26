@@ -1,3 +1,4 @@
+import { join } from "node:path";
 /**
  * The unresolved-merge-artifact gate.
  *
@@ -8,7 +9,6 @@
  */
 import { describe, expect, it } from "vitest";
 import { findMergeArtifacts } from "../check-merge-artifacts";
-import { join } from "node:path";
 
 const FIXTURE = join(__dirname, "../__fixtures__/merge-artifacts");
 const REPO_ROOT = join(__dirname, "../..");

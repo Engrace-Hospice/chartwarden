@@ -41,7 +41,10 @@ function isScreenModule(value: unknown): value is ScreenRegistryModule<AdminScre
 // adminSystemScreens/adminAuthScreens live in ../src/shell (not ../src/modules), the same as
 // apps/web's systemScreens — outside the glob's reach, so they're seeded explicitly (mirrors
 // apps/web/src/shell/screens-smoke.dom.test.tsx).
-const discoveredModules: ScreenRegistryModule<AdminScreen>[] = [adminSystemScreens, adminAuthScreens];
+const discoveredModules: ScreenRegistryModule<AdminScreen>[] = [
+  adminSystemScreens,
+  adminAuthScreens,
+];
 for (const fileExports of Object.values(moduleFiles)) {
   for (const value of Object.values(fileExports)) {
     if (isScreenModule(value)) discoveredModules.push(value);

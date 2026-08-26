@@ -419,11 +419,10 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
         [ORG_A],
       )
     ).rows[0].id as string;
-    await admin.query(`INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)`, [
-      ORG_A,
-      member2Of[ORG_A],
-      roleId,
-    ]);
+    await admin.query(
+      `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)`,
+      [ORG_A, member2Of[ORG_A], roleId],
+    );
 
     const facts = await svc.loadWitnessFacts(ORG_A, USER2);
     expect(facts).toMatchObject({
@@ -452,7 +451,10 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
     ).rows[0].id as string;
 
     const facts = await svc.loadWitnessFacts(ORG_A, suspendedUser);
-    expect(facts).toMatchObject({ witnessMembershipId: suspendedMember, witnessMembershipActive: false });
+    expect(facts).toMatchObject({
+      witnessMembershipId: suspendedMember,
+      witnessMembershipActive: false,
+    });
   });
 
   it("RLS: org B cannot void or read org A's administration (404 under the wardenx_app policy)", async () => {

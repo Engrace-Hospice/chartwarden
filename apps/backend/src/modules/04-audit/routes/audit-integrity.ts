@@ -75,18 +75,22 @@ export function registerAuditIntegrityRoutes(
 ): void {
   const now = deps.now ?? (() => new Date());
 
-  app.get("/api/v1/audit/integrity/report", { preHandler: [integrityPermission] }, async (request) => {
-    actorOf(request);
-    const grants = await readAuditEventGrants(deps.db);
-    const violations = verifyAppendOnly(grants, {
-      appRoles: [APP_ROLE],
-      auditTables: [AUDIT_TABLE],
-    });
-    return {
-      appendOnly: {
-        grantsVerified: violations.length === 0,
-        lastChecked: now().toISOString(),
-      },
-    };
-  });
+  app.get(
+    "/api/v1/audit/integrity/report",
+    { preHandler: [integrityPermission] },
+    async (request) => {
+      actorOf(request);
+      const grants = await readAuditEventGrants(deps.db);
+      const violations = verifyAppendOnly(grants, {
+        appRoles: [APP_ROLE],
+        auditTables: [AUDIT_TABLE],
+      });
+      return {
+        appendOnly: {
+          grantsVerified: violations.length === 0,
+          lastChecked: now().toISOString(),
+        },
+      };
+    },
+  );
 }

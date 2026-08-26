@@ -14,7 +14,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import type { PatientIdentity } from "@wardenx/types";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { OutboxPublishPort } from "../../../bootstrap/outbox-persister";
-import { PRIMARY_RN_ASSIGNMENT_ROLE, type CareTeamStore } from "./care-team-provider";
+import { type CareTeamStore, PRIMARY_RN_ASSIGNMENT_ROLE } from "./care-team-provider";
 import type { CaseloadStore } from "./caseload-provider";
 import type { PatientMutatorStore } from "./patient-mutator";
 import type { PatientReaderStore } from "./patient-reader";

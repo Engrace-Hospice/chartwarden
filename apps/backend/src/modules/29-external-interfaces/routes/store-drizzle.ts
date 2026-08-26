@@ -39,14 +39,13 @@ import { throwReviewRefusal } from "./store";
 import type {
   CredentialSummary,
   FeedDetail,
-  M29BindPatientResolver,
-  UnmatchedReviewResult,
   FeedHealthAggregate,
   FeedHealthView,
   InboundMessageView,
   LabObservationDetail,
   LabObservationSummary,
   ListenerStatusView,
+  M29BindPatientResolver,
   M29Store,
   NppesProviderView,
   OutboundMessageView,
@@ -54,6 +53,7 @@ import type {
   ProposalDetail,
   SyncRunView,
   UnmatchedLabView,
+  UnmatchedReviewResult,
 } from "./store";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];

@@ -43,7 +43,10 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Files that must be allowed to contain marker text, because they document or test it. */
 const EXEMPT = new Set(["scripts/check-merge-artifacts.ts"]);
-const EXEMPT_PREFIX = ["scripts/__fixtures__/merge-artifacts/", "scripts/__tests__/check-merge-artifacts"];
+const EXEMPT_PREFIX = [
+  "scripts/__fixtures__/merge-artifacts/",
+  "scripts/__tests__/check-merge-artifacts",
+];
 
 /**
  * `<<<<<<< ` / `>>>>>>> ` must start a line and be followed by a branch label; `=======` is required

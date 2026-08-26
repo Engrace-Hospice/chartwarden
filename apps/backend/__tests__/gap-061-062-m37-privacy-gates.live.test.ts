@@ -216,11 +216,9 @@ describe.skipIf(!DB_URL)("M37 privacy gates — LIVE Postgres (GAP-061 + GAP-062
     await blocker.query("SELECT id FROM ipu_room WHERE id = $1 FOR UPDATE", [roomId]);
 
     let settled = false;
-    const assign = svc
-      .assignBed(actor, adm.id, { bedId: bedIds[0]! })
-      .finally(() => {
-        settled = true;
-      });
+    const assign = svc.assignBed(actor, adm.id, { bedId: bedIds[0]! }).finally(() => {
+      settled = true;
+    });
 
     // Give it well past the time an unblocked assign needs (they complete in single-digit ms above).
     await new Promise((r) => setTimeout(r, 1_500));

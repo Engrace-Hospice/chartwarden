@@ -526,39 +526,40 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     return reply.code(201).send(grant);
   });
 
-  app.delete(
-    "/api/v1/orgs/:id/members/:mId/elevated-approvals/:kind",
-    async (request, reply) => {
-      await requirePermission("member.manage")(request);
-      const service = requireElevatedApprovals();
-      const { id: orgId, mId, kind } = request.params as {
-        id: string;
-        mId: string;
-        kind: string;
-      };
-      await targetMembership(request, orgId, mId);
-      const actor = await resolveActor(deps, request);
-      const revokedReason = readString(request.body, "revokedReason");
-      if (revokedReason.trim().length < 10) {
-        throw new ValidationError("revokedReason too short", [
-          {
-            field: "revokedReason",
-            code: "TOO_SHORT",
-            message: "revokedReason must be at least 10 characters (the CHECK constraint agrees)",
-          },
-        ]);
-      }
-      if (!actor.membershipId) throw new UnauthorizedError();
-      const revoked = await service.revoke({
-        organizationId: orgId,
-        membershipId: mId,
-        kind,
-        revokedByMembershipId: actor.membershipId,
-        revokedReason,
-      });
-      return reply.code(200).send(revoked);
-    },
-  );
+  app.delete("/api/v1/orgs/:id/members/:mId/elevated-approvals/:kind", async (request, reply) => {
+    await requirePermission("member.manage")(request);
+    const service = requireElevatedApprovals();
+    const {
+      id: orgId,
+      mId,
+      kind,
+    } = request.params as {
+      id: string;
+      mId: string;
+      kind: string;
+    };
+    await targetMembership(request, orgId, mId);
+    const actor = await resolveActor(deps, request);
+    const revokedReason = readString(request.body, "revokedReason");
+    if (revokedReason.trim().length < 10) {
+      throw new ValidationError("revokedReason too short", [
+        {
+          field: "revokedReason",
+          code: "TOO_SHORT",
+          message: "revokedReason must be at least 10 characters (the CHECK constraint agrees)",
+        },
+      ]);
+    }
+    if (!actor.membershipId) throw new UnauthorizedError();
+    const revoked = await service.revoke({
+      organizationId: orgId,
+      membershipId: mId,
+      kind,
+      revokedByMembershipId: actor.membershipId,
+      revokedReason,
+    });
+    return reply.code(200).send(revoked);
+  });
 
   app.post("/api/v1/users/:id/deactivate", async (request, reply) => {
     // §4.7: org_admin (own org) or platform_ops (any) hold `user.deactivate`; the resolver

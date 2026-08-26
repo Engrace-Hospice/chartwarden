@@ -59,7 +59,11 @@ export const M9_ABAC_PREDICATES = [
 const COSIGN_ELIGIBLE_DISCIPLINES = ["rn", "rn_case_manager", "clinical_supervisor"] as const;
 
 /** Roles that read/scope any patient's assessments without caseload (mirrors M7/M8's `caseload_or_scope`). */
-const ORG_WIDE_SCOPE_ROLES = ["medical_director", "compliance_officer", "survey_coordinator"] as const;
+const ORG_WIDE_SCOPE_ROLES = [
+  "medical_director",
+  "compliance_officer",
+  "survey_coordinator",
+] as const;
 
 const hasRole = (context: AbacContext, role: string): boolean => context.roles.includes(role);
 const targetStr = (target: AbacTarget, field: string): string | null => {
@@ -116,7 +120,11 @@ export function buildAssessmentAbacPredicates(
   const caseloadOrScopeFor = async (context: AbacContext, patientId: string): Promise<boolean> => {
     if (ORG_WIDE_SCOPE_ROLES.some((r) => hasRole(context, r))) return true;
     if (!context.userId) return false;
-    return isInCaseload({ organizationId: context.organizationId, userId: context.userId, patientId });
+    return isInCaseload({
+      organizationId: context.organizationId,
+      userId: context.userId,
+      patientId,
+    });
   };
 
   return {

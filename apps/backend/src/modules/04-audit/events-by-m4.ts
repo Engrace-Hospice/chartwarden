@@ -35,7 +35,8 @@ export const M4_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m4.legal_hold.released",
     moduleOwner: "m4",
-    description: "A legal hold was released (§10.6, M04-F03); `matched` mirrors the apply-time count.",
+    description:
+      "A legal hold was released (§10.6, M04-F03); `matched` mirrors the apply-time count.",
     payloadSchema: HoldEventPayload,
     declaredConsumers: [],
     isOutboxOnly: true,

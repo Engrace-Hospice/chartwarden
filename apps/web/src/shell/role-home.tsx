@@ -74,7 +74,13 @@ interface DashboardState {
   readonly failed: string[];
 }
 
-const EMPTY_STATE: DashboardState = { kpis: [], attention: [], today: [], activity: [], failed: [] };
+const EMPTY_STATE: DashboardState = {
+  kpis: [],
+  attention: [],
+  today: [],
+  activity: [],
+  failed: [],
+};
 
 const toneColor: Record<Tone, string> = {
   neutral: t.onSurfaceVariant,
@@ -530,7 +536,10 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
   },
 ];
 
-function mergeContributions(results: readonly Contribution[], failed: readonly string[]): DashboardState {
+function mergeContributions(
+  results: readonly Contribution[],
+  failed: readonly string[],
+): DashboardState {
   return {
     kpis: results.flatMap((x) => [...(x.kpis ?? [])]).slice(0, 5),
     attention: results
@@ -721,7 +730,9 @@ export function RoleHome({ screens }: { screens: WebScreenDescriptor[] }): JSX.E
             ))}
           </div>
         ) : (
-          <p style={mutedStyle}>No recent activity feed is available for your current permissions.</p>
+          <p style={mutedStyle}>
+            No recent activity feed is available for your current permissions.
+          </p>
         )}
       </section>
     </div>
@@ -806,7 +817,9 @@ function ActivityRow({ item }: { item: ActivityItem }): JSX.Element {
         <span style={rowTitleStyle}>{item.title}</span>
         {item.detail ? <span style={rowMetaStyle}>{item.detail}</span> : null}
       </span>
-      {item.timestamp ? <span style={mutedSmallStyle}>{formatRelative(item.timestamp)}</span> : null}
+      {item.timestamp ? (
+        <span style={mutedSmallStyle}>{formatRelative(item.timestamp)}</span>
+      ) : null}
     </Link>
   );
 }

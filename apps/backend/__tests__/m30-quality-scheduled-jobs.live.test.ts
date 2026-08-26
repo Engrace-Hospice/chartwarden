@@ -410,7 +410,9 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
           return await job.waitUntilFinished(queueEvents, 20_000);
         } catch (err) {
           const reloaded = await q.getJob(job.id!);
-          throw new Error(`job did not complete cleanly: ${reloaded?.failedReason}`, { cause: err });
+          throw new Error(`job did not complete cleanly: ${reloaded?.failedReason}`, {
+            cause: err,
+          });
         }
       }
 

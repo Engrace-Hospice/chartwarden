@@ -72,7 +72,8 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m19.triage_call.red_flag_hit",
     moduleOwner: "m19",
-    description: "A protocol question answer matched a D5 red-flag predicate, opening a mandatory escalation.",
+    description:
+      "A protocol question answer matched a D5 red-flag predicate, opening a mandatory escalation.",
     payloadSchema: Type.Object({
       ...callEventBase,
       questionId: id,
@@ -84,7 +85,8 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m19.triage_call.escalation_recorded",
     moduleOwner: "m19",
-    description: "A D7 escalation tier was recorded against a triage call (manual or protocol-mandatory).",
+    description:
+      "A D7 escalation tier was recorded against a triage call (manual or protocol-mandatory).",
     payloadSchema: Type.Object({
       ...callEventBase,
       escalationId: id,
@@ -151,7 +153,8 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m19.triage_call.care_plan_change_indicated",
     moduleOwner: "m19",
-    description: "A disposition indicated a care-plan-relevant change (rides alongside gip_admission_proposed).",
+    description:
+      "A disposition indicated a care-plan-relevant change (rides alongside gip_admission_proposed).",
     payloadSchema: Type.Object({
       ...callEventBase,
       patientId: nullableId,

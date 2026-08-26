@@ -3,10 +3,10 @@
 // binary (the same trust boundary this repo already accepts for its live-Postgres tests) to list and
 // extract the archive and assert the recovered files match byte-for-byte.
 import { execFileSync } from "node:child_process";
-import { gzipSync } from "node:zlib";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { buildUstarTarball } from "./tenant-export-tar";
 
@@ -32,7 +32,10 @@ describe("buildUstarTarball", () => {
 
   it("is extractable by the real system tar binary with exact content round-tripping", () => {
     const entries = [
-      { path: "manifest.json", content: Buffer.from(JSON.stringify({ bundleId: "job-1" }), "utf8") },
+      {
+        path: "manifest.json",
+        content: Buffer.from(JSON.stringify({ bundleId: "job-1" }), "utf8"),
+      },
       // deliberately not a multiple of 512 bytes, to exercise the padding path for real
       { path: "modules/m5/patient.ndjson", content: Buffer.from("row-1\nrow-2\nrow-3\n", "utf8") },
       { path: "modules/m6/admission.ndjson", content: Buffer.alloc(600, 0x41) }, // spans >1 block

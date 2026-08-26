@@ -26,7 +26,7 @@
  * Run:     bun run db:seed:scenario-clinical
  */
 import { Client } from "pg";
-import { findPatientIdByLastName, ScenarioLog, signIn } from "./lib/api-session";
+import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const today = (): string => new Date().toISOString().slice(0, 10);
@@ -49,10 +49,13 @@ async function wipePriorCarePlan(patientId: string): Promise<void> {
     );
     const versionIds = versions.rows.map((r) => r.id);
     if (versionIds.length) {
-      await db.query("DELETE FROM care_plan_idg_decision_application WHERE care_plan_version_id = ANY($1)", [
+      await db.query(
+        "DELETE FROM care_plan_idg_decision_application WHERE care_plan_version_id = ANY($1)",
+        [versionIds],
+      );
+      await db.query("DELETE FROM care_plan_signature WHERE care_plan_version_id = ANY($1)", [
         versionIds,
       ]);
-      await db.query("DELETE FROM care_plan_signature WHERE care_plan_version_id = ANY($1)", [versionIds]);
     }
     await db.query("DELETE FROM intervention WHERE care_plan_id = ANY($1)", [planIds]);
     await db.query("DELETE FROM goal WHERE care_plan_id = ANY($1)", [planIds]);
@@ -75,7 +78,13 @@ async function wipePriorEncountersAssessmentsHope(patientId: string): Promise<vo
   ]);
   const encIds = encs.rows.map((r) => r.id);
   if (encIds.length) {
-    for (const t of ["vitals", "mileage", "encounter_addendum", "encounter_care_plan_link", "encounter_signature"]) {
+    for (const t of [
+      "vitals",
+      "mileage",
+      "encounter_addendum",
+      "encounter_care_plan_link",
+      "encounter_signature",
+    ]) {
       await db.query(`DELETE FROM ${t} WHERE encounter_id = ANY($1)`, [encIds]);
     }
     await db.query("DELETE FROM encounter WHERE id = ANY($1)", [encIds]);
@@ -99,9 +108,10 @@ async function main(): Promise<void> {
   const cert = await rn.client.GET("/api/v1/patients/{patientId}/election-certification", {
     params: { path: { patientId } },
   });
-  const admissionId = (cert.data as unknown as { admission?: { id?: string } } | undefined)?.admission
-    ?.id;
-  if (!admissionId) throw new Error("Whitfield has no admission — run db:seed:scenario-admissions first");
+  const admissionId = (cert.data as unknown as { admission?: { id?: string } } | undefined)
+    ?.admission?.id;
+  if (!admissionId)
+    throw new Error("Whitfield has no admission — run db:seed:scenario-admissions first");
 
   console.log("wiping any prior encounters/assessments/HOPE for a clean re-run...");
   await wipePriorEncountersAssessmentsHope(patientId);
@@ -129,7 +139,8 @@ async function main(): Promise<void> {
         },
       });
       const problemData = problem.data as unknown as { id: string } | undefined;
-      if (problem.error || !problemData) throw new Error(`problem create failed: ${JSON.stringify(problem.error)}`);
+      if (problem.error || !problemData)
+        throw new Error(`problem create failed: ${JSON.stringify(problem.error)}`);
 
       const painProblem = await rn.client.POST("/api/v1/care-plans/{planId}/problems", {
         params: { path: { planId } },
@@ -145,7 +156,8 @@ async function main(): Promise<void> {
         params: { path: { planId } },
         body: {
           problemId: problemData.id,
-          originalText: "Patient will report pain at or below 3/10 on a 0-10 scale through end of life.",
+          originalText:
+            "Patient will report pain at or below 3/10 on a 0-10 scale through end of life.",
           source: "clinical",
           measurableOutcome: "Pain score ≤3/10 on daily assessment.",
         },
@@ -155,7 +167,8 @@ async function main(): Promise<void> {
         params: { path: { planId } },
         body: {
           problemId: problemData.id,
-          scopeText: "RN case management visits to assess symptom burden and coordinate the IDG plan of care.",
+          scopeText:
+            "RN case management visits to assess symptom burden and coordinate the IDG plan of care.",
           frequencyText: "Twice weekly",
           frequencyValue: "2x/week",
           discipline: "rn",
@@ -166,7 +179,8 @@ async function main(): Promise<void> {
           params: { path: { planId } },
           body: {
             problemId: painProblemData.id,
-            scopeText: "Titrate comfort medications per physician orders; reassess pain at every visit.",
+            scopeText:
+              "Titrate comfort medications per physician orders; reassess pain at every visit.",
             frequencyText: "Every visit",
             frequencyValue: "PRN",
             discipline: "rn",
@@ -189,33 +203,45 @@ async function main(): Promise<void> {
       };
 
       const v1 = await readDraftVersion();
-      const finalize = await rn.client.POST("/api/v1/care-plans/{planId}/versions/{versionId}/finalize", {
-        params: { path: { planId, versionId: v1.id } },
-        body: {
-          ifVersion: v1.version,
-          requiredSignerSet: [
-            { role: "rn_case_manager", count: 1 },
-            { role: "hospice_physician", count: 1 },
-          ],
+      const finalize = await rn.client.POST(
+        "/api/v1/care-plans/{planId}/versions/{versionId}/finalize",
+        {
+          params: { path: { planId, versionId: v1.id } },
+          body: {
+            ifVersion: v1.version,
+            requiredSignerSet: [
+              { role: "rn_case_manager", count: 1 },
+              { role: "hospice_physician", count: 1 },
+            ],
+          },
         },
-      });
-      if (finalize.error) throw new Error(`care-plan finalize failed: ${JSON.stringify(finalize.error)}`);
+      );
+      if (finalize.error)
+        throw new Error(`care-plan finalize failed: ${JSON.stringify(finalize.error)}`);
 
       const v2 = await readDraftVersion();
-      const sign1 = await rn.client.POST("/api/v1/care-plans/{planId}/versions/{versionId}/signatures", {
-        params: { path: { planId, versionId: v2.id } },
-        body: { ifVersion: v2.version, signerRole: "rn_case_manager" },
-      });
+      const sign1 = await rn.client.POST(
+        "/api/v1/care-plans/{planId}/versions/{versionId}/signatures",
+        {
+          params: { path: { planId, versionId: v2.id } },
+          body: { ifVersion: v2.version, signerRole: "rn_case_manager" },
+        },
+      );
       if (sign1.error) throw new Error(`RN care-plan sign failed: ${JSON.stringify(sign1.error)}`);
 
       const v3 = await readDraftVersion();
-      const sign2 = await md.client.POST("/api/v1/care-plans/{planId}/versions/{versionId}/signatures", {
-        params: { path: { planId, versionId: v3.id } },
-        body: { ifVersion: v3.version, signerRole: "hospice_physician" },
-      });
+      const sign2 = await md.client.POST(
+        "/api/v1/care-plans/{planId}/versions/{versionId}/signatures",
+        {
+          params: { path: { planId, versionId: v3.id } },
+          body: { ifVersion: v3.version, signerRole: "hospice_physician" },
+        },
+      );
       if (sign2.error) throw new Error(`MD care-plan sign failed: ${JSON.stringify(sign2.error)}`);
 
-      log.ok("Care plan: bootstrapped, 2 problems, 1 goal, 2 interventions, finalized + fully signed");
+      log.ok(
+        "Care plan: bootstrapped, 2 problems, 1 goal, 2 interventions, finalized + fully signed",
+      );
     }
   } catch (err) {
     log.fail(`M7 care plan: ${String(err)}`);
@@ -233,7 +259,8 @@ async function main(): Promise<void> {
       },
     });
     const encData = enc.data as unknown as { id: string } | undefined;
-    if (enc.error || !encData) throw new Error(`encounter create failed: ${JSON.stringify(enc.error)}`);
+    if (enc.error || !encData)
+      throw new Error(`encounter create failed: ${JSON.stringify(enc.error)}`);
 
     await rn.client.POST("/api/v1/encounters/{encounterId}/vitals", {
       params: { path: { encounterId: encData.id } },
@@ -360,7 +387,8 @@ async function main(): Promise<void> {
       },
     });
     const hopeData = hope.data as unknown as { id: string } | undefined;
-    if (hope.error || !hopeData) throw new Error(`HOPE timepoint create failed: ${JSON.stringify(hope.error)}`);
+    if (hope.error || !hopeData)
+      throw new Error(`HOPE timepoint create failed: ${JSON.stringify(hope.error)}`);
 
     const sign = await rn.client.POST("/api/v1/hope/assessments/{id}/sign", {
       params: { path: { id: hopeData.id } },

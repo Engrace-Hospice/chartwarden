@@ -98,98 +98,98 @@ export function PaymentMethods(): JSX.Element {
 
   return (
     <>
-    <WorkQueueLayout
-      header={
-        <PageHeader
-          title="Payment methods"
-          breadcrumb="Billing"
-          actions={
-            // Card entry needs the Stripe Payment Element to mint a payment-method id, and the
-            // outbound Stripe integration is not wired yet: there is no Stripe SDK dependency, and
-            // `POST /api/v1/payment_methods/setup_intent` answers `{clientSecret: null,
-            // status: "pending"}` because the stripe-dispatcher worker that would provision it is
-            // deferred. Wiring this button would replace a dead control with a spinner that never
-            // resolves, so it states the blocker instead (#27).
-            <Button
-              type="button"
-              tone="primary"
-              disabled
-              title="Card entry requires the Stripe payment element, which is not enabled yet. Contact support to add a card."
-            >
-              Add card
-            </Button>
-          }
-        >
-          <div style={headerDescriptionStyle}>
-            Manage saved cards for subscription renewal, dunning recovery, and future invoices.
-          </div>
-        </PageHeader>
-      }
-      filters={
-        <div style={toolbarStyle}>
-          <div style={toolbarCopyStyle}>
-            <Glyph name="shield" size={16} />
-            {/* A `title` on a DISABLED button is unreachable by keyboard and unread by screen
+      <WorkQueueLayout
+        header={
+          <PageHeader
+            title="Payment methods"
+            breadcrumb="Billing"
+            actions={
+              // Card entry needs the Stripe Payment Element to mint a payment-method id, and the
+              // outbound Stripe integration is not wired yet: there is no Stripe SDK dependency, and
+              // `POST /api/v1/payment_methods/setup_intent` answers `{clientSecret: null,
+              // status: "pending"}` because the stripe-dispatcher worker that would provision it is
+              // deferred. Wiring this button would replace a dead control with a spinner that never
+              // resolves, so it states the blocker instead (#27).
+              <Button
+                type="button"
+                tone="primary"
+                disabled
+                title="Card entry requires the Stripe payment element, which is not enabled yet. Contact support to add a card."
+              >
+                Add card
+              </Button>
+            }
+          >
+            <div style={headerDescriptionStyle}>
+              Manage saved cards for subscription renewal, dunning recovery, and future invoices.
+            </div>
+          </PageHeader>
+        }
+        filters={
+          <div style={toolbarStyle}>
+            <div style={toolbarCopyStyle}>
+              <Glyph name="shield" size={16} />
+              {/* A `title` on a DISABLED button is unreachable by keyboard and unread by screen
                 readers (a disabled control takes no focus), so the blocker is also stated here in
                 the visible copy. The previous wording described card entry as if it worked. */}
-            <span>
-              Card entry is handled by the Stripe payment element, so raw card data stays off
-              WardenX. Adding a card is not enabled yet — contact support to add or replace one.
-              Existing cards can still be set as default or detached below.
-            </span>
+              <span>
+                Card entry is handled by the Stripe payment element, so raw card data stays off
+                WardenX. Adding a card is not enabled yet — contact support to add or replace one.
+                Existing cards can still be set as default or detached below.
+              </span>
+            </div>
           </div>
-        </div>
-      }
-      table={
-        methods.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState
-              title="No payment methods"
-              description="Add a card to keep your subscription active."
-            />
-          </div>
-        ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr style={tableHeadRowStyle}>
-                  <th style={{ ...thStyle, width: "38%" }}>Payment method</th>
-                  <th style={{ ...thStyle, width: "18%" }}>Kind</th>
-                  <th style={{ ...thStyle, width: "18%" }}>Expires</th>
-                  <th style={{ ...thStyle, width: "14%" }}>Status</th>
-                  <th style={{ ...thStyle, width: "12%", textAlign: "right" }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {methods.map((m) => (
-                  <MethodRow
-                    key={m.id}
-                    method={m}
-                    busy={busyId === m.id}
-                    onSetDefault={() => void setDefault(m)}
-                    onDetach={() => setConfirmDetach(m)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      }
-    />
-    <ConfirmDialog
-      open={confirmDetach !== null}
-      title="Detach this card?"
-      description={
-        confirmDetach?.isDefault
-          ? `${cardLabel(confirmDetach)} is the DEFAULT payment method. Detaching it leaves the subscription with no card for renewal and dunning recovery until another is set as default.`
-          : `${confirmDetach ? cardLabel(confirmDetach) : "This card"} will no longer be available for subscription renewal or dunning recovery.`
-      }
-      tone="danger"
-      confirmLabel="Detach card"
-      pending={busyId !== null && busyId === confirmDetach?.id}
-      onConfirm={() => void performDetach()}
-      onCancel={() => setConfirmDetach(null)}
-    />
+        }
+        table={
+          methods.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title="No payment methods"
+                description="Add a card to keep your subscription active."
+              />
+            </div>
+          ) : (
+            <div style={tableWrapStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={tableHeadRowStyle}>
+                    <th style={{ ...thStyle, width: "38%" }}>Payment method</th>
+                    <th style={{ ...thStyle, width: "18%" }}>Kind</th>
+                    <th style={{ ...thStyle, width: "18%" }}>Expires</th>
+                    <th style={{ ...thStyle, width: "14%" }}>Status</th>
+                    <th style={{ ...thStyle, width: "12%", textAlign: "right" }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {methods.map((m) => (
+                    <MethodRow
+                      key={m.id}
+                      method={m}
+                      busy={busyId === m.id}
+                      onSetDefault={() => void setDefault(m)}
+                      onDetach={() => setConfirmDetach(m)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        }
+      />
+      <ConfirmDialog
+        open={confirmDetach !== null}
+        title="Detach this card?"
+        description={
+          confirmDetach?.isDefault
+            ? `${cardLabel(confirmDetach)} is the DEFAULT payment method. Detaching it leaves the subscription with no card for renewal and dunning recovery until another is set as default.`
+            : `${confirmDetach ? cardLabel(confirmDetach) : "This card"} will no longer be available for subscription renewal or dunning recovery.`
+        }
+        tone="danger"
+        confirmLabel="Detach card"
+        pending={busyId !== null && busyId === confirmDetach?.id}
+        onConfirm={() => void performDetach()}
+        onCancel={() => setConfirmDetach(null)}
+      />
     </>
   );
 }

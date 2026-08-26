@@ -17,7 +17,7 @@
 // injects the Drizzle-backed one (every statement inside `withOrgContext`, so RLS scopes by app.org_id).
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, type ElevatedApprovalReader } from "@wardenx/types";
+import { ConflictError, type ElevatedApprovalReader, NotFoundError } from "@wardenx/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { getSeam, registerSeam } from "../../bootstrap/index";
 
@@ -121,7 +121,8 @@ export function createElevatedApprovalService(
       const row = await store.revoke(input);
       // 404 rather than a no-op 200: "there was nothing to revoke" and "the authority is now gone" are
       // different answers, and an admin acting on a stale list must be told which one happened.
-      if (!row) throw new NotFoundError(`live '${input.kind}' elevated approval`, input.membershipId);
+      if (!row)
+        throw new NotFoundError(`live '${input.kind}' elevated approval`, input.membershipId);
       return row;
     },
   };
@@ -147,8 +148,7 @@ export function createDrizzleElevatedApprovalStore(db: DbClient): ElevatedApprov
     organizationId: string,
     userId: string,
     fn: (tx: DbClient) => Promise<T>,
-  ): Promise<T> =>
-    withOrgContext(db, { organizationId, userId }, fn as never) as Promise<T>;
+  ): Promise<T> => withOrgContext(db, { organizationId, userId }, fn as never) as Promise<T>;
 
   return {
     async hasLiveGrant(organizationId, membershipId, kind) {
@@ -264,8 +264,7 @@ export function createInMemoryElevatedApprovalStore(seed: readonly SeedElevatedA
 
   const liveOf = (o: string, m: string, k: string) =>
     rows.find(
-      (r) =>
-        r.organizationId === o && r.membershipId === m && r.approvalKind === k && !r.revokedAt,
+      (r) => r.organizationId === o && r.membershipId === m && r.approvalKind === k && !r.revokedAt,
     );
 
   return {

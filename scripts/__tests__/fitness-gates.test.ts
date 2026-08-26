@@ -52,8 +52,7 @@ function run(
 const gate = (script: string, cwd: string) => run("bun", ["run", join(SCRIPTS, script)], cwd);
 const boundaries = (paths: string[], cwd: string) =>
   run(DEPCRUISE, [...paths, "--config", CFG], cwd);
-const expectGreen = async (result: Promise<CommandResult>) =>
-  expect((await result).status).toBe(0);
+const expectGreen = async (result: Promise<CommandResult>) => expect((await result).status).toBe(0);
 const baselineGate = (name: string, fn: () => void | Promise<void>) =>
   it(name, fn, BASELINE_GATE_TIMEOUT_MS);
 
@@ -239,7 +238,10 @@ describe("each gate goes RED on its planted violation", () => {
   });
 
   it("client:check — schema.ts stale relative to openapi.json", async () => {
-    const r = await clientCheck(join(FIX, "client-check"), "/tmp/wardenx-client-schema-fixture-red.ts");
+    const r = await clientCheck(
+      join(FIX, "client-check"),
+      "/tmp/wardenx-client-schema-fixture-red.ts",
+    );
     expect(r.status).not.toBe(0);
     expect(r.out).toMatch(/FAIL/);
     expect(r.out).toMatch(/out of date/);
@@ -248,7 +250,8 @@ describe("each gate goes RED on its planted violation", () => {
 
 describe("every gate stays GREEN on the repo-root baseline", () => {
   baselineGate("scaffold-parity", () =>
-    expectGreen(run("bun", ["run", join(SCRIPTS, "scaffold-from-manifest.ts"), "--check"], ROOT)));
+    expectGreen(run("bun", ["run", join(SCRIPTS, "scaffold-from-manifest.ts"), "--check"], ROOT)),
+  );
   baselineGate("table-ownership", () => expectGreen(gate("check-table-ownership.ts", ROOT)));
   baselineGate("tenancy", () => expectGreen(gate("check-tenancy.ts", ROOT)));
   baselineGate("ddl-legality", () => expectGreen(gate("check-ddl-legality.ts", ROOT)));
@@ -256,7 +259,8 @@ describe("every gate stays GREEN on the repo-root baseline", () => {
   baselineGate("ui-screens", () => expectGreen(gate("check-ui-screens.ts", ROOT)));
   baselineGate("boundaries", () => expectGreen(boundaries(["apps", "packages"], ROOT)));
   baselineGate("openapi-coverage", () =>
-    expectGreen(run("bun", ["run", join(SCRIPTS, "report-openapi-coverage.ts"), "--check"], ROOT)));
+    expectGreen(run("bun", ["run", join(SCRIPTS, "report-openapi-coverage.ts"), "--check"], ROOT)),
+  );
   baselineGate("abac-predicates", () => expectGreen(gate("check-abac-predicates.ts", ROOT)));
   baselineGate("openapi-provenance", () => expectGreen(gate("check-openapi-provenance.ts", ROOT)));
   baselineGate("live-suites", () => expectGreen(gate("check-live-suite-coverage.ts", ROOT)));
@@ -266,7 +270,9 @@ describe("every gate stays GREEN on the repo-root baseline", () => {
   baselineGate("migration-numbering", () => expectGreen(migrationNumberingGate()));
   baselineGate("merge-artifacts", () => expectGreen(gate("check-merge-artifacts.ts", ROOT)));
   baselineGate("ui-parity", () =>
-    expectGreen(run("bun", ["run", join(SCRIPTS, "report-ui-parity.ts"), "--check"], ROOT)));
+    expectGreen(run("bun", ["run", join(SCRIPTS, "report-ui-parity.ts"), "--check"], ROOT)),
+  );
   baselineGate("client:check", () =>
-    expectGreen(clientCheck(ROOT, "/tmp/wardenx-client-schema-fixture-green.ts")));
+    expectGreen(clientCheck(ROOT, "/tmp/wardenx-client-schema-fixture-green.ts")),
+  );
 });

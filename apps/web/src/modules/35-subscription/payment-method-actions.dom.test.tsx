@@ -35,8 +35,10 @@ let calls: string[] = [];
 // openapi-fetch calls `fetch(new Request(url, init))` — the method rides on the Request, NOT on a
 // separate `init`, so reading `init.method` alone records every call as a GET.
 function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string; method: string } {
-  if (typeof input === "string") return { url: input, method: (init?.method ?? "GET").toUpperCase() };
-  if (input instanceof URL) return { url: input.toString(), method: (init?.method ?? "GET").toUpperCase() };
+  if (typeof input === "string")
+    return { url: input, method: (init?.method ?? "GET").toUpperCase() };
+  if (input instanceof URL)
+    return { url: input.toString(), method: (init?.method ?? "GET").toUpperCase() };
   return { url: input.url, method: (init?.method ?? input.method ?? "GET").toUpperCase() };
 }
 
@@ -155,7 +157,9 @@ describe("#27 — payment-method action controls are wired", () => {
 
     // The user must be told. A 403 that produces no visible change is indistinguishable from the
     // dead-button behaviour this fix removes.
-    await waitFor(() => expect(screen.getByText(/Could not set that card as the default/i)).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByText(/Could not set that card as the default/i)).toBeTruthy(),
+    );
     // ...and the table is still there: the failure must not blank the screen.
     expect(screen.getByText(/Visa \.\.\.\.4242/)).toBeTruthy();
   });

@@ -51,9 +51,12 @@ let calls: Recorded[] = [];
  *  it is cloned and awaited rather than read off the object. */
 async function record(input: RequestInfo | URL, init?: RequestInit): Promise<Recorded> {
   const isRequest = typeof input === "object" && input !== null && "url" in input;
-  const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+  const url =
+    typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
   const method = (
-    init?.method ?? (isRequest ? (input as Request).method : "GET") ?? "GET"
+    init?.method ??
+    (isRequest ? (input as Request).method : "GET") ??
+    "GET"
   ).toUpperCase();
   let raw: string | null = null;
   if (typeof init?.body === "string") raw = init.body;
@@ -82,7 +85,12 @@ function makeFetch(shredStatus: number) {
     if (call.path.endsWith("/shred") && shredStatus >= 400) {
       return Promise.resolve(
         new Response(
-          JSON.stringify({ error: { code: "VALIDATION_FAILED", message: "destruction certificate is not approved" } }),
+          JSON.stringify({
+            error: {
+              code: "VALIDATION_FAILED",
+              message: "destruction certificate is not approved",
+            },
+          }),
           { status: shredStatus, headers: { "content-type": "application/json" } },
         ),
       );
@@ -120,7 +128,8 @@ async function openCeremonyAndAffirm(): Promise<void> {
   });
 }
 
-const shredPosts = (): Recorded[] => calls.filter((c) => c.path.endsWith("/shred") && c.method === "POST");
+const shredPosts = (): Recorded[] =>
+  calls.filter((c) => c.path.endsWith("/shred") && c.method === "POST");
 
 beforeEach(() => {
   calls = [];
@@ -189,7 +198,9 @@ describe("#29 — the tenant cryptographic shred", () => {
     fireEvent.click(screen.getByRole("button", { name: /Shred tenant key/i }));
 
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
-    expect(screen.getByRole("alert").textContent ?? "").toMatch(/destruction certificate is not approved/i);
+    expect(screen.getByRole("alert").textContent ?? "").toMatch(
+      /destruction certificate is not approved/i,
+    );
     // The ceremony must still be on screen — closing it is the false confirmation.
     expect(screen.getByRole("button", { name: /Shred tenant key/i })).toBeTruthy();
   });

@@ -196,7 +196,8 @@ export function transitionAdmission(
       // exist, and unconditionally including it here made `payload_schema_violation` unavoidable for
       // every revocation/transfer (there is no discharge_event id the caller could ever supply). Only
       // "real" discharge reasons (the DischargeReason-derived types) get this effect.
-      const isRealDischarge = event.dischargeType !== "revocation" && event.dischargeType !== "transfer";
+      const isRealDischarge =
+        event.dischargeType !== "revocation" && event.dischargeType !== "transfer";
       const effects: AdmissionTransition["effects"] = [
         { kind: "end_level_of_care" },
         {
@@ -214,7 +215,8 @@ export function transitionAdmission(
           ? ([
               {
                 kind: "outbox",
-                event: event.dischargeType === "death" ? "m6.discharge.death" : "m6.discharge.created",
+                event:
+                  event.dischargeType === "death" ? "m6.discharge.death" : "m6.discharge.created",
               },
             ] as AdmissionTransition["effects"])
           : []),

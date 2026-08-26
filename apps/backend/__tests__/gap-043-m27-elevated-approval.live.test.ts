@@ -245,10 +245,9 @@ describe.skipIf(!DB_URL)("GAP-043 M27 elevated-approval approver gate — LIVE P
     // The org-scope override satisfies the SCOPE conjunct only. Widening WHICH providers you may act on
     // is not the same as being an authorized signatory, and collapsing the two would delete the control.
     expect(
-      await predicate?.(
-        ctx(ORG_A, USER_EDITOR, { permissions: [EDIT_ANY_PROVIDER_PERMISSION] }),
-        { costReportId: reportOf[ORG_A] ?? "" },
-      ),
+      await predicate?.(ctx(ORG_A, USER_EDITOR, { permissions: [EDIT_ANY_PROVIDER_PERMISSION] }), {
+        costReportId: reportOf[ORG_A] ?? "",
+      }),
     ).toBe(false);
   });
 
@@ -283,8 +282,8 @@ describe.skipIf(!DB_URL)("GAP-043 M27 elevated-approval approver gate — LIVE P
   it("the editor gate is unaffected — it never keyed on the designation", async () => {
     const predicate = predicates.cost_report_editor_for_provider;
     // An in-scope editor could always edit; GAP-043 was only ever about the approver plane.
-    expect(await predicate?.(ctx(ORG_A, USER_EDITOR), { costReportId: reportOf[ORG_A] ?? "" })).toBe(
-      true,
-    );
+    expect(
+      await predicate?.(ctx(ORG_A, USER_EDITOR), { costReportId: reportOf[ORG_A] ?? "" }),
+    ).toBe(true);
   });
 });

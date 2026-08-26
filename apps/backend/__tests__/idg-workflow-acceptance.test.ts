@@ -1,3 +1,10 @@
+import {
+  createInMemorySessionContextStore,
+  createSessionContextResolver,
+  resetAuthorizationContract,
+  resetEffectivePermissionResolver,
+  setEffectivePermissionResolver,
+} from "@wardenx/auth";
 // apps/backend/__tests__/idg-workflow-acceptance.test.ts — M14-T08 the §9 workflow-acceptance suite (the
 // FINAL M14 task). One scenario per the §7 plan-named IDG workflows — W-SCH-01 (schedule materialisation),
 // W-PKT-01 (pre-meeting packet build), W-DEC-01 (quorate decision recording), W-DEC-02 (non-quorate decision
@@ -27,13 +34,6 @@ import {
   planCarryForward,
   transitionActionItem,
 } from "@wardenx/idg";
-import {
-  createInMemorySessionContextStore,
-  createSessionContextResolver,
-  resetAuthorizationContract,
-  resetEffectivePermissionResolver,
-  setEffectivePermissionResolver,
-} from "@wardenx/auth";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
@@ -492,7 +492,10 @@ describe("GAP-091 — per_patient_review_floor_clear's audited idg.override_revi
   }
 
   /** Session-context-derived, so the predicate's real M2-seam read (never a client header) is exercised. */
-  function seedSession(lastStepUpAt: Date | null, factor: "webauthn" | "totp" | "sms" | null): void {
+  function seedSession(
+    lastStepUpAt: Date | null,
+    factor: "webauthn" | "totp" | "sms" | null,
+  ): void {
     const { store } = createInMemorySessionContextStore([
       {
         sessionId: SESSION,

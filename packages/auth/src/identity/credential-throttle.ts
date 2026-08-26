@@ -112,11 +112,7 @@ export interface CredentialThrottle {
  */
 export class CredentialThrottleError extends WardenXError {
   constructor(readonly retryAfterSeconds: number) {
-    super(
-      "TOO_MANY_FAILED_ATTEMPTS",
-      "too many failed sign-in attempts — try again later",
-      429,
-    );
+    super("TOO_MANY_FAILED_ATTEMPTS", "too many failed sign-in attempts — try again later", 429);
     this.name = "CredentialThrottleError";
   }
 }

@@ -62,7 +62,8 @@ export async function reviewClockPatientsForOrg(
     }
     if (
       r.lastIdgReviewedAt &&
-      (!existing.lastIdgReviewedAt || new Date(r.lastIdgReviewedAt) > new Date(existing.lastIdgReviewedAt))
+      (!existing.lastIdgReviewedAt ||
+        new Date(r.lastIdgReviewedAt) > new Date(existing.lastIdgReviewedAt))
     ) {
       existing.lastIdgReviewedAt = r.lastIdgReviewedAt;
     }

@@ -77,7 +77,12 @@ function makeServer() {
       orgId: ORG,
       userId: MD_ID,
       grants: [
-        { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["cti.sign_hospice_md"] },
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: ["cti.sign_hospice_md"],
+        },
       ],
     },
     {

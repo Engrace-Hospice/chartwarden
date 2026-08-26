@@ -49,11 +49,22 @@ const ABSENCE_LINE =
  */
 const PATH_ALLOWLIST: Record<string, ReadonlyArray<{ token: string; reason: string }>> = {
   "ARCHITECTURE_25_15_FITNESS.md": [
-    { token: "packages/foundation", reason: "cited because it is BANNED (ADR-0005) — must never exist" },
+    {
+      token: "packages/foundation",
+      reason: "cited because it is BANNED (ADR-0005) — must never exist",
+    },
   ],
   "WARDENX_ARCHITECTURE_v0_11.md": [
-    { token: "packages/saas", reason: "divergence-banner mapping row: 'this document says' cell deliberately cites the dead name" },
-    { token: "apps/mobile", reason: "historical changelog rows + §4 heading; superseded by ADR-0035 (Capacitor wrap of apps/web, no separate app)" },
+    {
+      token: "packages/saas",
+      reason:
+        "divergence-banner mapping row: 'this document says' cell deliberately cites the dead name",
+    },
+    {
+      token: "apps/mobile",
+      reason:
+        "historical changelog rows + §4 heading; superseded by ADR-0035 (Capacitor wrap of apps/web, no separate app)",
+    },
   ],
 };
 
@@ -133,7 +144,12 @@ for (const file of docFiles) {
   if (fnVersion) {
     const { version: hdrVersion, headerBlock } = headerVersion(text);
     if (!hdrVersion) {
-      fail(file, 1, "VERSION", `filename carries v${fnVersion} but no parseable \`**Status:** vX.Y\` header found`);
+      fail(
+        file,
+        1,
+        "VERSION",
+        `filename carries v${fnVersion} but no parseable \`**Status:** vX.Y\` header found`,
+      );
     } else if (hdrVersion !== fnVersion && !/FILENAME still reads/i.test(headerBlock)) {
       fail(
         file,
@@ -162,7 +178,9 @@ for (const file of docFiles) {
       : Array.from(line.matchAll(/`([^`]+)`/g), (m) => m[1]);
     for (const segment of segments) {
       if (segment.includes("://")) continue; // URLs are not repo paths
-      for (const raw of segment.matchAll(/[A-Za-z0-9_.\-]+(?:\/[A-Za-z0-9_.\-]+)+(?::[\d,\-–]+)?/g)) {
+      for (const raw of segment.matchAll(
+        /[A-Za-z0-9_.\-]+(?:\/[A-Za-z0-9_.\-]+)+(?::[\d,\-–]+)?/g,
+      )) {
         const matched = raw[0];
         const nextChar = segment[(raw.index ?? 0) + matched.length] ?? "";
         // A token truncated by a glob/brace/placeholder is not a checkable claim.
@@ -191,7 +209,12 @@ for (const file of docFiles) {
         companionsChecked++;
         const target = docIndex.get(id);
         if (!target) {
-          fail(file, lineNo, "COMPANIONS", `cites companion WARDENX_${id} v${cited}, but no such doc exists in ${DOCS_DIR}`);
+          fail(
+            file,
+            lineNo,
+            "COMPANIONS",
+            `cites companion WARDENX_${id} v${cited}, but no such doc exists in ${DOCS_DIR}`,
+          );
         } else if (target.version !== null && target.version !== cited) {
           fail(
             file,
@@ -213,13 +236,17 @@ for (const file of docFiles) {
   }
 
   // AG-02 — warn-only verification stamp.
-  const stamp = text.match(/<!--\s*verified-against:\s*([0-9a-f]{7,40})\s*·\s*(\d{4}-\d{2}-\d{2})\s*-->/);
+  const stamp = text.match(
+    /<!--\s*verified-against:\s*([0-9a-f]{7,40})\s*·\s*(\d{4}-\d{2}-\d{2})\s*-->/,
+  );
   if (!stamp) {
     warnings.push(`${file}: no \`<!-- verified-against: <sha> · <date> -->\` stamp (warn-only)`);
   } else {
     const ageDays = (Date.now() - new Date(stamp[2]).getTime()) / 86_400_000;
     if (ageDays > STAMP_WARN_DAYS) {
-      warnings.push(`${file}: verified-against stamp is ${Math.floor(ageDays)} days old (> ${STAMP_WARN_DAYS}; warn-only)`);
+      warnings.push(
+        `${file}: verified-against stamp is ${Math.floor(ageDays)} days old (> ${STAMP_WARN_DAYS}; warn-only)`,
+      );
     }
   }
 }

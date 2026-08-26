@@ -35,63 +35,59 @@ const toDate = (d: string): Date => new Date(`${d}T00:00:00.000Z`);
 export function createLevelOfCarePeriodReader(db: DbClient): LevelOfCarePeriodReader {
   return {
     chcOrGipCoverageCounts(organizationId, period) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: SYSTEM_USER_ID },
-        async (tx) => {
-          const t = tx as unknown as DbClient;
-          const periods = await t
-            .select({
-              admissionId: EP.admissionId,
-              effectiveAt: EP.effectiveAt,
-              actualEndAt: EP.actualEndAt,
-              scheduledEndAt: EP.scheduledEndAt,
-            })
-            .from(EP)
-            .where(
-              and(
-                eq(EP.organizationId, organizationId),
-                gte(EP.effectiveAt, period.from),
-                lt(EP.effectiveAt, period.to),
-              ),
-            );
-          if (periods.length === 0) return { numerator: 0, denominator: 0 };
+      return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const periods = await t
+          .select({
+            admissionId: EP.admissionId,
+            effectiveAt: EP.effectiveAt,
+            actualEndAt: EP.actualEndAt,
+            scheduledEndAt: EP.scheduledEndAt,
+          })
+          .from(EP)
+          .where(
+            and(
+              eq(EP.organizationId, organizationId),
+              gte(EP.effectiveAt, period.from),
+              lt(EP.effectiveAt, period.to),
+            ),
+          );
+        if (periods.length === 0) return { numerator: 0, denominator: 0 };
 
-          const admissionIds = [...new Set(periods.map((p) => p.admissionId))];
-          const locRows = await t
-            .select({
-              admissionId: LOC.admissionId,
-              effectiveAt: LOC.effectiveAt,
-              endedAt: LOC.endedAt,
-            })
-            .from(LOC)
-            .where(
-              and(
-                eq(LOC.organizationId, organizationId),
-                inArray(LOC.admissionId, admissionIds),
-                inArray(LOC.levelOfCare, CHC_OR_GIP_LEVELS),
-              ),
-            );
+        const admissionIds = [...new Set(periods.map((p) => p.admissionId))];
+        const locRows = await t
+          .select({
+            admissionId: LOC.admissionId,
+            effectiveAt: LOC.effectiveAt,
+            endedAt: LOC.endedAt,
+          })
+          .from(LOC)
+          .where(
+            and(
+              eq(LOC.organizationId, organizationId),
+              inArray(LOC.admissionId, admissionIds),
+              inArray(LOC.levelOfCare, CHC_OR_GIP_LEVELS),
+            ),
+          );
 
-          let numerator = 0;
-          for (const p of periods) {
-            // `effectiveAt`/`actualEndAt`/`scheduledEndAt` are `date` columns (string); a still-open period
-            // (no actualEndAt, no scheduledEndAt) has no upper bound — treat it as open-ended, not "already over".
-            if (p.effectiveAt === null) continue; // defensive: a period always carries an effectiveAt in practice
-            const periodStart = toDate(p.effectiveAt);
-            const endSource = p.actualEndAt ?? p.scheduledEndAt;
-            const periodEnd = endSource === null ? null : toDate(endSource);
-            const hasChcOrGipDay = locRows.some((loc) => {
-              if (loc.admissionId !== p.admissionId) return false;
-              const startsBeforePeriodEnds = periodEnd === null || loc.effectiveAt < periodEnd;
-              const endsAfterPeriodStarts = loc.endedAt === null || loc.endedAt > periodStart;
-              return startsBeforePeriodEnds && endsAfterPeriodStarts;
-            });
-            if (hasChcOrGipDay) numerator += 1;
-          }
-          return { numerator, denominator: periods.length };
-        },
-      );
+        let numerator = 0;
+        for (const p of periods) {
+          // `effectiveAt`/`actualEndAt`/`scheduledEndAt` are `date` columns (string); a still-open period
+          // (no actualEndAt, no scheduledEndAt) has no upper bound — treat it as open-ended, not "already over".
+          if (p.effectiveAt === null) continue; // defensive: a period always carries an effectiveAt in practice
+          const periodStart = toDate(p.effectiveAt);
+          const endSource = p.actualEndAt ?? p.scheduledEndAt;
+          const periodEnd = endSource === null ? null : toDate(endSource);
+          const hasChcOrGipDay = locRows.some((loc) => {
+            if (loc.admissionId !== p.admissionId) return false;
+            const startsBeforePeriodEnds = periodEnd === null || loc.effectiveAt < periodEnd;
+            const endsAfterPeriodStarts = loc.endedAt === null || loc.endedAt > periodStart;
+            return startsBeforePeriodEnds && endsAfterPeriodStarts;
+          });
+          if (hasChcOrGipDay) numerator += 1;
+        }
+        return { numerator, denominator: periods.length };
+      });
     },
   };
 }

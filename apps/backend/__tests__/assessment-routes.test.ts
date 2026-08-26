@@ -22,11 +22,6 @@ import {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
-import {
-  buildAssessmentAbacPredicates,
-  createInMemoryAssessmentBackend,
-  registerAssessmentRoutes,
-} from "../src/modules/09-assessments/index";
 // GAP-015: M9's routes bind the SHARED `caseload_or_scope` predicate (M7-owned) by name for the 9 routes
 // that already carry `patientId`; a fresh per-test registry (the GAP-011 pattern, see below) needs it
 // registered too, or every one of those routes would fail-closed-deny in this file. `caseload_or_scope`'s
@@ -35,6 +30,11 @@ import {
 // module's own codePaths, not `__tests__`; `clinical-consumer-contracts.test.ts` already cross-imports
 // M7+M8 the same way).
 import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/abac-predicates";
+import {
+  buildAssessmentAbacPredicates,
+  createInMemoryAssessmentBackend,
+  registerAssessmentRoutes,
+} from "../src/modules/09-assessments/index";
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
@@ -651,10 +651,7 @@ describe("GAP-015 — caseload scoping", () => {
     });
     expect(denied.statusCode).toBe(404);
 
-    const inside = makeServer(
-      {},
-      { isInCaseload: async ({ patientId }) => patientId === PATIENT },
-    );
+    const inside = makeServer({}, { isInCaseload: async ({ patientId }) => patientId === PATIENT });
     const allowed = await inside.app.inject({
       method: "POST",
       url: `/api/v1/patients/${PATIENT}/assessments`,
@@ -684,10 +681,7 @@ describe("GAP-015 — caseload scoping", () => {
     });
     expect(denied.statusCode).toBe(404);
 
-    const inside = makeServer(
-      {},
-      { isInCaseload: async ({ patientId }) => patientId === PATIENT },
-    );
+    const inside = makeServer({}, { isInCaseload: async ({ patientId }) => patientId === PATIENT });
     const allowed = await inside.app.inject({
       method: "POST",
       url: `/api/v1/assessments/${PPS_BY_LPN}/cosignatures`,
@@ -707,10 +701,7 @@ describe("GAP-015 — caseload scoping", () => {
     });
     expect(denied.statusCode).toBe(404);
 
-    const inside = makeServer(
-      {},
-      { isInCaseload: async ({ patientId }) => patientId === PATIENT },
-    );
+    const inside = makeServer({}, { isInCaseload: async ({ patientId }) => patientId === PATIENT });
     const allowed = await inside.app.inject({
       method: "POST",
       url: `/api/v1/significant-changes/${CHANGE_OPEN}/acknowledge`,

@@ -54,11 +54,11 @@ import {
   type M29AbacResolver,
   type M29Store,
   M29_PERMISSION_KEY_LIST,
+  type NppesSyncTriggerPort,
   buildM29AbacPredicates,
   createInMemoryM29Store,
   denyStubM29AbacResolver,
   mountM29Routes,
-  type NppesSyncTriggerPort,
 } from "../src/modules/29-external-interfaces/index";
 
 // ── header-auth shim (the M11/M19/M28 precedent) ─────────────────────────────────────────────────────

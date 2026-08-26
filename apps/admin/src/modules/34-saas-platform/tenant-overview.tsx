@@ -262,7 +262,9 @@ export function TenantOverview(): JSX.Element {
           if (shredBusy) return;
           // A mismatched name used to fall through to nothing at all — the same silent no-op this
           // fix exists to remove. Say so instead.
-          if ((typed ?? "").trim().toLowerCase() !== tenant.legalBusinessName.trim().toLowerCase()) {
+          if (
+            (typed ?? "").trim().toLowerCase() !== tenant.legalBusinessName.trim().toLowerCase()
+          ) {
             setShredError("The typed name does not match the tenant's legal business name.");
             return;
           }

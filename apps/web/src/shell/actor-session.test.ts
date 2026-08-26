@@ -97,7 +97,6 @@ describe("FB-T15 canSeeScreen — role-scoped nav/tile gating", () => {
     const noPerms: Session = { userId: "u", organizationId: "org_a" };
     expect(canSeeScreen({ requiredPermission: "audit.read" }, noPerms)).toBe(false);
   });
-
 });
 
 describe("guardChromedRoute — chromed-route session guard (audit #6)", () => {

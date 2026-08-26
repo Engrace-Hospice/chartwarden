@@ -336,7 +336,11 @@ describe.skipIf(!DB_URL)(
     // reach the policy. Migration 0216 adds the org predicate as a conjunct on both sides.
     describe("F-005 (#21) — notification preferences are tenant-scoped", () => {
       /** The real request envelope: withOrgContext sets BOTH GUCs (app.user_id for M4 attribution). */
-      async function withOrgAndUser<T>(org: string, user: string, fn: () => Promise<T>): Promise<T> {
+      async function withOrgAndUser<T>(
+        org: string,
+        user: string,
+        fn: () => Promise<T>,
+      ): Promise<T> {
         await db.query("SET ROLE wardenx_app");
         await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
         await db.query("SELECT set_config('app.user_id', $1, false)", [user]);
@@ -368,9 +372,10 @@ describe.skipIf(!DB_URL)(
 
       it("an org-B session cannot READ the caller's own org-A row", async () => {
         const seen = await withOrgAndUser(ORG_B, USER, () =>
-          db.query("SELECT count(*)::int AS n FROM user_notification_preferences WHERE organization_id=$1", [
-            ORG_A,
-          ]),
+          db.query(
+            "SELECT count(*)::int AS n FROM user_notification_preferences WHERE organization_id=$1",
+            [ORG_A],
+          ),
         );
         expect(seen.rows[0].n).toBe(0);
       });
@@ -418,15 +423,16 @@ describe.skipIf(!DB_URL)(
           [USER, ORG_B],
         );
         const read = await withOrgAndUser(ORG_B, USER, () =>
-          db.query("SELECT routing_map FROM user_notification_preferences WHERE organization_id=$1", [
-            ORG_B,
-          ]),
+          db.query(
+            "SELECT routing_map FROM user_notification_preferences WHERE organization_id=$1",
+            [ORG_B],
+          ),
         );
         expect(read.rows[0].routing_map).toEqual({ channel: "sms" });
 
         const upd = await withOrgAndUser(ORG_B, USER, () =>
           db.query(
-            "UPDATE user_notification_preferences SET routing_map='{\"channel\":\"push\"}'::jsonb WHERE organization_id=$1",
+            'UPDATE user_notification_preferences SET routing_map=\'{"channel":"push"}\'::jsonb WHERE organization_id=$1',
             [ORG_B],
           ),
         );

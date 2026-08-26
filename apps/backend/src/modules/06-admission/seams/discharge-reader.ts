@@ -48,40 +48,36 @@ function daysSinceAdmission(admissionAt: Date, effectiveAt: string): number {
 export function createDischargeReader(db: DbClient): DischargeReader {
   return {
     liveDischargeTimingCounts(organizationId, period) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: SYSTEM_USER_ID },
-        async (tx) => {
-          const rows = await (tx as unknown as DbClient)
-            .select({
-              dischargeType: DE.dischargeType,
-              effectiveAt: DE.effectiveAt,
-              admissionAt: ADM.admissionAt,
-            })
-            .from(DE)
-            .innerJoin(ADM, eq(DE.admissionId, ADM.id))
-            .where(
-              and(
-                eq(DE.organizationId, organizationId),
-                gte(DE.effectiveAt, period.from),
-                lt(DE.effectiveAt, period.to),
-              ),
-            );
+      return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+        const rows = await (tx as unknown as DbClient)
+          .select({
+            dischargeType: DE.dischargeType,
+            effectiveAt: DE.effectiveAt,
+            admissionAt: ADM.admissionAt,
+          })
+          .from(DE)
+          .innerJoin(ADM, eq(DE.admissionId, ADM.id))
+          .where(
+            and(
+              eq(DE.organizationId, organizationId),
+              gte(DE.effectiveAt, period.from),
+              lt(DE.effectiveAt, period.to),
+            ),
+          );
 
-          let earlyLiveDischarges = 0;
-          let lateLiveDischarges = 0;
-          for (const r of rows) {
-            if (r.dischargeType === "death") continue;
-            // A discharge with no recorded admission timestamp cannot be day-classified — excluded from
-            // BOTH early/late counts (never guessed), but still counted in `totalDischarges` below.
-            if (r.admissionAt === null) continue;
-            const days = daysSinceAdmission(r.admissionAt, r.effectiveAt);
-            if (days <= EARLY_LIVE_DISCHARGE_DAY_CUTOFF) earlyLiveDischarges += 1;
-            else if (days >= LATE_LIVE_DISCHARGE_DAY_CUTOFF) lateLiveDischarges += 1;
-          }
-          return { totalDischarges: rows.length, earlyLiveDischarges, lateLiveDischarges };
-        },
-      );
+        let earlyLiveDischarges = 0;
+        let lateLiveDischarges = 0;
+        for (const r of rows) {
+          if (r.dischargeType === "death") continue;
+          // A discharge with no recorded admission timestamp cannot be day-classified — excluded from
+          // BOTH early/late counts (never guessed), but still counted in `totalDischarges` below.
+          if (r.admissionAt === null) continue;
+          const days = daysSinceAdmission(r.admissionAt, r.effectiveAt);
+          if (days <= EARLY_LIVE_DISCHARGE_DAY_CUTOFF) earlyLiveDischarges += 1;
+          else if (days >= LATE_LIVE_DISCHARGE_DAY_CUTOFF) lateLiveDischarges += 1;
+        }
+        return { totalDischarges: rows.length, earlyLiveDischarges, lateLiveDischarges };
+      });
     },
   };
 }

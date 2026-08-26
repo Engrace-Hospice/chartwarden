@@ -41,8 +41,16 @@ const item = (o: Partial<UnmatchedLabQueueItem> = {}): UnmatchedLabQueueItem => 
   values: o.values ?? [value()],
 });
 
-const bindCmd = { patient: { patientId: PATIENT, providerEntityId: AGENCY }, decidedByMembershipId: REVIEWER, now: NOW };
-const discardCmd = { reason: "sending lab typo'd the MRN; belongs to another agency", decidedByMembershipId: REVIEWER, now: NOW };
+const bindCmd = {
+  patient: { patientId: PATIENT, providerEntityId: AGENCY },
+  decidedByMembershipId: REVIEWER,
+  now: NOW,
+};
+const discardCmd = {
+  reason: "sending lab typo'd the MRN; belongs to another agency",
+  decidedByMembershipId: REVIEWER,
+  now: NOW,
+};
 
 describe("planUnmatchedBind (§4.2 manual bind)", () => {
   it("materializes the deferred lab_observation parent under the RESERVED id", () => {
@@ -72,7 +80,10 @@ describe("planUnmatchedBind (§4.2 manual bind)", () => {
     const later = new Date("2026-08-01T06:45:00.000Z");
     const plan = planUnmatchedBind(
       item({
-        values: [value({ obxSetId: 2, receivedAt: later }), value({ obxSetId: 1, receivedAt: INGESTED })],
+        values: [
+          value({ obxSetId: 2, receivedAt: later }),
+          value({ obxSetId: 1, receivedAt: INGESTED }),
+        ],
       }),
       bindCmd,
     );
@@ -138,7 +149,10 @@ describe("planUnmatchedBind (§4.2 manual bind)", () => {
   });
 
   it("flips the link to `manual` and stamps the reviewer + optional note", () => {
-    const plan = planUnmatchedBind(item(), { ...bindCmd, note: "  confirmed with the sending lab  " });
+    const plan = planUnmatchedBind(item(), {
+      ...bindCmd,
+      note: "  confirmed with the sending lab  ",
+    });
     if (plan.kind !== "bind") throw new Error("expected bind");
     expect(plan.linkPatch).toMatchObject({
       matchMethod: "manual",

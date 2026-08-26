@@ -116,7 +116,8 @@ describe.skipIf(!DB_URL)("GAP-044 M29 unmatched-lab review — LIVE Postgres", (
   }
 
   const linkRow = async (n: number) =>
-    (await admin.query("SELECT * FROM lab_observation_inbound_link WHERE id=$1", [LINK(n)])).rows[0];
+    (await admin.query("SELECT * FROM lab_observation_inbound_link WHERE id=$1", [LINK(n)]))
+      .rows[0];
   const observationRow = async (n: number) =>
     (await admin.query("SELECT * FROM lab_observation WHERE id=$1", [OBS(n)])).rows[0];
   const events = async (eventType: string) =>
@@ -152,7 +153,9 @@ describe.skipIf(!DB_URL)("GAP-044 M29 unmatched-lab review — LIVE Postgres", (
     // The write-audit trigger stamps `app.user_id` as the actor and audit_event FKs it to `user` — the
     // reviewer's membership id is what the store puts there, so it needs a row (GAP-079's actor-vs-
     // membership id split bites here every time).
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m29-reviewer@x.test')`, [REVIEWER]);
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m29-reviewer@x.test')`, [
+      REVIEWER,
+    ]);
     await admin.query(
       `INSERT INTO provider_entity (id,organization_id,legal_name,ccn,npi,tax_id_encrypted,fiscal_year_end)
        VALUES ($1,$2,'PE','123456','1234567893','enc','12-31')`,

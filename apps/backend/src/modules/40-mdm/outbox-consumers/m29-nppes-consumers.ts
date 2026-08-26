@@ -1,3 +1,4 @@
+import type { DbClient } from "@wardenx/db";
 // apps/backend/src/modules/40-mdm/outbox-consumers/m29-nppes-consumers.ts — M40-T09's M29 NPPES-sync
 // outbox consumers (M40 spec §4.7, §7.11–7.12). LIVE as of GAP-099.
 //
@@ -27,7 +28,6 @@ import type {
   ProviderSyncedDecision,
 } from "@wardenx/mdm";
 import { handleProviderDeactivated, handleProviderSynced } from "@wardenx/mdm";
-import type { DbClient } from "@wardenx/db";
 import type {
   PlatformDispatchableOutboxEvent,
   PlatformOutboxConsumerBinding,
@@ -70,7 +70,9 @@ export const M29_CONSUMERS_DEFERRED = false;
  */
 export function createM29NppesConsumerHandlers(ports: NppesConsumerPorts): {
   onProviderSynced(payload: M29ProviderSyncedPayload): Promise<ProviderSyncedDecision>;
-  onProviderDeactivated(payload: M29ProviderDeactivatedPayload): Promise<ProviderDeactivatedOutcome>;
+  onProviderDeactivated(
+    payload: M29ProviderDeactivatedPayload,
+  ): Promise<ProviderDeactivatedOutcome>;
 } {
   return {
     onProviderSynced: (payload) => handleProviderSynced(payload, ports),

@@ -102,10 +102,15 @@ export function registerLabRoutes(app: FastifyInstance, deps: LabRouteDeps): voi
       const actor = writeActorOf(request);
       const { observationId } = request.params as { observationId: string };
       const body = parse(AttachPatientBody, request.body);
-      return store.bindUnmatchedObservation(actor.organizationId, actor.membershipId, observationId, {
-        patientId: body.patientId,
-        ...(body.note === undefined ? {} : { note: body.note }),
-      });
+      return store.bindUnmatchedObservation(
+        actor.organizationId,
+        actor.membershipId,
+        observationId,
+        {
+          patientId: body.patientId,
+          ...(body.note === undefined ? {} : { note: body.note }),
+        },
+      );
     },
   );
 

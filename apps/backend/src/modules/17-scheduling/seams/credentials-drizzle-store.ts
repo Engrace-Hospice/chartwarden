@@ -11,8 +11,8 @@
 // no acting membership); grant/revoke pass the REAL caller membership id as the audit actor.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import { NotFoundError } from "@wardenx/types";
+import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import type { CredentialRecord, CredentialStore } from "./credentials";
 
 const MC = schema.membershipCredentials;
@@ -42,41 +42,33 @@ function toRecord(row: Row): CredentialRecord {
 export function createDrizzleCredentialStore(db: DbClient): CredentialStore {
   return {
     async activeAsOf(organizationId, membershipId, asOf) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: SEAM_SYSTEM_USER_ID },
-        async (tx) => {
-          const rows = await tx
-            .select()
-            .from(MC)
-            .where(
-              and(
-                eq(MC.organizationId, organizationId),
-                eq(MC.membershipId, membershipId),
-                eq(MC.status, "active"),
-                isNull(MC.revokedAt),
-                lte(MC.effectiveAt, asOf),
-                or(isNull(MC.expiresAt), gte(MC.expiresAt, asOf)),
-              ),
-            );
-          return rows.map((r) => ({ kind: r.credentialType, status: r.status }));
-        },
-      );
+      return withOrgContext(db, { organizationId, userId: SEAM_SYSTEM_USER_ID }, async (tx) => {
+        const rows = await tx
+          .select()
+          .from(MC)
+          .where(
+            and(
+              eq(MC.organizationId, organizationId),
+              eq(MC.membershipId, membershipId),
+              eq(MC.status, "active"),
+              isNull(MC.revokedAt),
+              lte(MC.effectiveAt, asOf),
+              or(isNull(MC.expiresAt), gte(MC.expiresAt, asOf)),
+            ),
+          );
+        return rows.map((r) => ({ kind: r.credentialType, status: r.status }));
+      });
     },
 
     async listForMembership(organizationId, membershipId) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: SEAM_SYSTEM_USER_ID },
-        async (tx) => {
-          const rows = await tx
-            .select()
-            .from(MC)
-            .where(and(eq(MC.organizationId, organizationId), eq(MC.membershipId, membershipId)))
-            .orderBy(desc(MC.createdAt));
-          return rows.map(toRecord);
-        },
-      );
+      return withOrgContext(db, { organizationId, userId: SEAM_SYSTEM_USER_ID }, async (tx) => {
+        const rows = await tx
+          .select()
+          .from(MC)
+          .where(and(eq(MC.organizationId, organizationId), eq(MC.membershipId, membershipId)))
+          .orderBy(desc(MC.createdAt));
+        return rows.map(toRecord);
+      });
     },
 
     async grant(organizationId, input) {
@@ -123,7 +115,8 @@ export function createDrizzleCredentialStore(db: DbClient): CredentialStore {
               ),
             )
             .returning({ id: MC.id });
-          if (updated.length === 0) throw new NotFoundError("membership credential", input.credentialId);
+          if (updated.length === 0)
+            throw new NotFoundError("membership credential", input.credentialId);
         },
       );
     },

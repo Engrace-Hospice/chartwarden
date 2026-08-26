@@ -151,8 +151,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
 
     // Narrowed to the ONE measure under test, using the REAL production registration (the calculator from
     // `buildMeasureRegistry()`), so nothing else competes for the queue.
-    const registrations = () =>
-      new Map([[MEASURE, buildMeasureRegistry().get(MEASURE)!]]);
+    const registrations = () => new Map([[MEASURE, buildMeasureRegistry().get(MEASURE)!]]);
 
     const deps = () =>
       buildM30WorkerDeps({
@@ -191,7 +190,9 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
           return await job.waitUntilFinished(queueEvents, 20_000);
         } catch (err) {
           const reloaded = await q.getJob(job.id!);
-          throw new Error(`job did not complete cleanly: ${reloaded?.failedReason}`, { cause: err });
+          throw new Error(`job did not complete cleanly: ${reloaded?.failedReason}`, {
+            cause: err,
+          });
         }
       } finally {
         await q.close();

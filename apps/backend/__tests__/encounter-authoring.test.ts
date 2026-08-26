@@ -39,7 +39,10 @@ import {
 /** GAP-014 — see encounter-routes.test.ts's identical helper for why this reimplements step_up_recent
  *  inline over a fresh per-test registry instead of `registerAuthorizationAbacPredicates()` (which
  *  writes into the shared singleton a fresh registry bypasses). */
-function stepUpRecentPredicate(context: { organizationId: string; attributes: Record<string, unknown> }) {
+function stepUpRecentPredicate(context: {
+  organizationId: string;
+  attributes: Record<string, unknown>;
+}) {
   const sessionId =
     typeof context.attributes.sessionId === "string" ? context.attributes.sessionId : null;
   if (!sessionId || !context.organizationId) return Promise.resolve(false);
