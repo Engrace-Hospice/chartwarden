@@ -23,7 +23,7 @@ import type { GateItem, GateStatus } from "@wardenx/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { PatientLookupField, ProviderEntityLookupField } from "../../shared/entity-lookups";
+import { PatientLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { dollars, statusLabel, tobLabel } from "./billing-status";
 import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-workflow";
 

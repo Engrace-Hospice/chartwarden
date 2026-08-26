@@ -22,7 +22,7 @@ import {
 // emits no billing schemas, so reads are cast and the query/mutation inits go through `as never`.
 import { useCallback, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { PatientLookupField, ProviderEntityLookupField } from "../../shared/entity-lookups";
+import { PatientLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
 import {
   eligibilityOutcomeTone,
   eligibilityStalenessLabel,
