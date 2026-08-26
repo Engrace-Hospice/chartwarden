@@ -43,10 +43,22 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
-  const lic = request.headers["x-test-licensure"];
-  if (typeof lic === "string" && lic.length > 0)
-    request.context.attributes.licensure = { type: lic };
+  // No `x-test-licensure` here any more. It stamped `context.attributes.licensure`, which nothing in
+  // production has ever written (F-030) — so the §4.7 high-risk-field gate answered "no" for every
+  // reviewer, and the case below asserting an RN may decide passed only because this shim supplied
+  // the licence itself. The licence now comes from M17's `CredentialReader`, seeded in CREDENTIALS.
 }
+
+/**
+ * Active clinical credentials per membership — the shape M17's `CredentialReader` seam returns
+ * (suspended / revoked / expired rows are already filtered out by the seam, so anything here is live).
+ * The header shim sets `membershipId` = `x-test-user`, so these are keyed by user id.
+ */
+const CREDENTIALS: Record<string, readonly { kind: string; status: string }[]> = {
+  rn_1: [{ kind: "rn", status: "active" }],
+  pa_1: [{ kind: "pa", status: "active" }],
+  // `aide_1` deliberately absent — an unlicensed reviewer holds no row at all.
+};
 
 const ORG = "org_a";
 const ORG_B = "org_b";
@@ -57,6 +69,21 @@ const VERSION = "d0000000-0000-4000-8000-000000000001";
 const BATCH = "b0000000-0000-4000-8000-0000000000aa";
 const PATIENT = "11111111-1111-4111-8111-111111111111";
 const PATIENT_OFF = "22222222-2222-4222-8222-222222222222";
+
+/** Everything an intake reviewer needs at the RBAC layer, shared by the three reviewer personas so a
+ *  403 in the §4.7 cases below can only ever come from the LICENSURE predicate (F-030). */
+const REVIEWER_PERMISSIONS = [
+  "documents.upload",
+  "documents.read",
+  "documents.read_phi_content",
+  "documents.edit_metadata",
+  "intake.upload",
+  "intake.read",
+  "intake.confirm_classification",
+  "intake.review",
+  "intake.discard_batch",
+  "documents.read_templates",
+];
 
 const PERMISSION_SEED = [
   {
@@ -74,6 +101,9 @@ const PERMISSION_SEED = [
       "documents.read_templates",
     ],
   },
+  // Same RBAC grants as rn_1; the difference is the CREDENTIAL each holds (see CREDENTIALS).
+  { userId: "pa_1", permissions: REVIEWER_PERMISSIONS },
+  { userId: "aide_1", permissions: REVIEWER_PERMISSIONS },
   { userId: "viewer_1", permissions: ["documents.read_templates"] },
   { userId: "platform_1", permissions: ["documents.publish_template"] },
   { userId: "orgadmin_1", permissions: ["documents.manage_overlay", "documents.read_templates"] },
@@ -98,9 +128,10 @@ const sharedObjectResolver: SignedUrlObjectResolver = {
   },
 };
 
-// In-memory caseload: a user holding the `rn` role covers PATIENT but NOT PATIENT_OFF (no real M5 seam).
+// In-memory caseload: the three reviewer personas cover PATIENT but NOT PATIENT_OFF (no real M5 seam).
+const REVIEWERS = ["rn_1", "pa_1", "aide_1"];
 const isInCaseload = async (q: { userId: string; patientId: string }): Promise<boolean> =>
-  q.userId === "rn_1" && q.patientId === PATIENT;
+  REVIEWERS.includes(q.userId) && q.patientId === PATIENT;
 
 function makeServer(service: DocumentRouteService = sharedBackend.service) {
   const grantStore = createInMemoryEffectivePermissionStore(
@@ -117,7 +148,11 @@ function makeServer(service: DocumentRouteService = sharedBackend.service) {
   registerEffectivePermissionResolver(grantStore.store);
   registerAbacRegistry();
   // Idempotent (single-owner): registered against the shared backend's resolver + caseload stub.
-  registerDocumentAbacPredicates({ resolver: sharedBackend.abacResolver, isInCaseload });
+  registerDocumentAbacPredicates({
+    resolver: sharedBackend.abacResolver,
+    isInCaseload,
+    activeCredentials: async ({ membershipId }) => CREDENTIALS[membershipId] ?? [],
+  });
 
   const signedUrl = createSignedUrlService({
     storage: {
@@ -136,12 +171,11 @@ function makeServer(service: DocumentRouteService = sharedBackend.service) {
   return { app };
 }
 
-const RN = {
-  "x-test-user": "rn_1",
-  "x-test-org": ORG,
-  "x-test-roles": "rn",
-  "x-test-licensure": "RN",
-};
+const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" };
+/** A physician assistant — a licence the platform could not represent at all before 0221 (F-030). */
+const PA = { "x-test-user": "pa_1", "x-test-org": ORG, "x-test-roles": "rn" };
+/** Same grants, same caseload, NO credential row: the one thing that differs is the licence. */
+const AIDE = { "x-test-user": "aide_1", "x-test-org": ORG, "x-test-roles": "aide" };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
 const PLATFORM = {
   "x-test-user": "platform_1",
@@ -294,19 +328,18 @@ describe("M22-T07 — §4.7 extraction_reviewer_eligible (per-candidate decision
     const review = await app.inject({
       method: "POST",
       url: `/api/v1/intake/uploads/${BATCH}/review`,
-      headers: { ...RN, "idempotency-key": "rv-1" },
+      headers: { ...AIDE, "idempotency-key": "rv-1" },
       payload: {},
     });
     const reviewId = review.json().id as string;
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/intake/reviews/${reviewId}/decisions?riskLevel=high`,
-      headers: {
-        "x-test-user": "rn_1",
-        "x-test-org": ORG,
-        "x-test-roles": "aide",
-        "idempotency-key": "dc-1",
-      },
+      // A DIFFERENT PERSON holding no credential row — and holding the SAME `intake.review` grant as
+      // the RN, so this 403 can only be the licensure predicate. It used to be `rn_1` sending a
+      // different `x-test-roles` header with the licensure header omitted; a licence belongs to a
+      // membership, not to a request header, so that is no longer a way to be unlicensed.
+      headers: { ...AIDE, "idempotency-key": "dc-1" },
       payload: { candidateId: PATIENT, decision: "approve", sourceViewConfirmed: true },
     });
     expect(res.statusCode).toBe(403);
@@ -329,6 +362,28 @@ describe("M22-T07 — §4.7 extraction_reviewer_eligible (per-candidate decision
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().decisionId).toMatch(/^a0000000-/);
+  });
+
+  it("a PA-licensed reviewer may decide a high-risk candidate (201) — 0221's new credential value", async () => {
+    // §4.7 names {RN, NP, PA, MD, DO}. `pa` was not in `credential_discipline` at all until migration
+    // 0221, so a physician assistant could not be recorded as licensed — this arm could never have
+    // opened for one even after the read was fixed. (`md` covers MD *and* DO: same level, one value,
+    // which is what `VISIT_PURPOSE_DISCIPLINES` has always meant by "MD/DO or NP".)
+    const { app } = makeServer();
+    const review = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/uploads/${BATCH}/review`,
+      headers: { ...PA, "idempotency-key": "rv-3" },
+      payload: {},
+    });
+    const reviewId = review.json().id as string;
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/intake/reviews/${reviewId}/decisions?riskLevel=high`,
+      headers: { ...PA, "idempotency-key": "dc-3" },
+      payload: { candidateId: PATIENT, decision: "approve", sourceViewConfirmed: true },
+    });
+    expect(res.statusCode).toBe(201);
   });
 });
 

@@ -53,10 +53,10 @@ describe("context-attribute producer gate", () => {
   it("catches a blocked key that gains a writer, so an entry cannot outlive its reason", () => {
     const withWrite = {
       reads: scan.reads,
-      writes: [...scan.writes, { file: "apps/backend/src/x.ts", line: 1, key: "licensure" }],
+      writes: [...scan.writes, { file: "apps/backend/src/x.ts", line: 1, key: "disciplines" }],
     };
     expect(findViolations(withWrite)).toContainEqual(
-      expect.objectContaining({ kind: "blocker-stale", key: "licensure" }),
+      expect.objectContaining({ kind: "blocker-stale", key: "disciplines" }),
     );
   });
 

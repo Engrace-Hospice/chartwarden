@@ -223,7 +223,7 @@ the prose docs in `docs/architecture/`.
   **across** files (`attributes[REVIEW_FLOOR_OVERRIDE_ATTRIBUTE]` is read in M14's routes and
   declared in its predicate file), the SCREAMING_CASE identifier-index write form (how both
   in-request producers actually write), and whole-bag aliases (`const attrs = ctx.attributes ?? {}`,
-  which is the only way two of the unproduced keys are read at all). **5 keys are currently
+  which is the only way two of the unproduced keys are read at all). **4 keys are currently
   declared blocked** and the gate prints them on every run — they are the standing finding, not a
   passing state. The largest is `sessionClass`: M16/M31/M39 read it and default to `"staff"`, and
   M31's portal predicates gate on it being one of `patient_portal`/`caregiver_portal`/
@@ -276,7 +276,19 @@ the prose docs in `docs/architecture/`.
   check-don't-gate key like `cost_report.edit_any_provider`) and resolved through the same seam, and
   it is deliberately assigned to NO default role template — who reads unmasked PHI by default is a
   tenant policy decision, and choosing one here would have granted it silently on every existing org.
-  Blocked keys: **6 → 5**.
+  Blocked keys: **6 → 5**. Then `licensure`, the third entry in a row whose stated blocker was wrong:
+  it said no column or seam existed for the clinical licence M22's §4.7 high-risk-field review gate
+  needs. M17's `membership_credential` + the `CredentialReader` seam are that fact under another
+  name, already applying the status/effective/expiry logic and deliberately orthogonal to the RBAC
+  role grant (a clinician can hold the `rn` ROLE while the LICENCE has lapsed). Only the vocabulary
+  was short, and only by one value: **`md` already means PHYSICIAN — MD *or* DO**, which
+  `VISIT_PURPOSE_DISCIPLINES` has documented as "MD/DO or NP" all along, so giving DO its own enum
+  value would have stopped four CoP-relevant visit purposes (`f2f`/`recert`/`loc_change`/
+  `pronouncement`) accepting osteopathic physicians — a regression bought with a distinction no
+  consumer makes. `pa` was genuinely absent (a physician assistant could not be recorded as licensed
+  at all) and migration 0221 adds it, in NO `VISIT_PURPOSE_DISCIPLINES` list: holding a licence is
+  not visit authority, and the Medicare hospice face-to-face encounter is physician-or-NP only
+  (42 CFR 418.22(a)(4)). Blocked keys: **5 → 4**.
 - `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
   Every live-database / live-Redis / browser suite in `package.json` must be invoked by a job in
   `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so

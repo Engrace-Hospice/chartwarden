@@ -104644,6 +104644,10 @@
                           {
                             "const": "np",
                             "type": "string"
+                          },
+                          {
+                            "const": "pa",
+                            "type": "string"
                           }
                         ]
                       },
@@ -104809,6 +104813,10 @@
                         {
                           "const": "np",
                           "type": "string"
+                        },
+                        {
+                          "const": "pa",
+                          "type": "string"
                         }
                       ]
                     },
@@ -104937,6 +104945,10 @@
                       },
                       {
                         "const": "np",
+                        "type": "string"
+                      },
+                      {
+                        "const": "pa",
                         "type": "string"
                       }
                     ]

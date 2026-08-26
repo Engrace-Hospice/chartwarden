@@ -104,8 +104,9 @@ const CREDENTIAL_DISCIPLINE = Type.Union([
   Type.Literal("msw"),
   Type.Literal("chaplain"),
   Type.Literal("volunteer"),
-  Type.Literal("md"),
+  Type.Literal("md"), // PHYSICIAN — MD or DO (same level, one value)
   Type.Literal("np"),
+  Type.Literal("pa"), // F-030 — a distinct licence below MD/DO; in no visit-purpose list
 ]);
 const CREDENTIAL_STATUS = Type.Union([
   Type.Literal("active"),
