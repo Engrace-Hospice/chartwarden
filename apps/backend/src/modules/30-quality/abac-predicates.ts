@@ -42,7 +42,12 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards
 // on `abacRegistry.has` (the M33 `registerM33AbacPredicates` / M34 precedent). Never fails open.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  registerPredicateIdempotent,
+  resolveActorPermissions,
+} from "@wardenx/auth";
 import { schema } from "@wardenx/db";
 import type { QualityDb } from "@wardenx/quality";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -443,14 +448,28 @@ function readContextOf(context: AbacContext): M30AbacReadContext {
 }
 
 /**
- * Read whether the actor holds a permission grant, from the SERVER-assembled `context.attributes.
- * permissions` list (the route layer binds the resolved grant set; never client input). Absent → false
- * (fail-closed). Used by the owner-OR-admin predicates (`ownsQapiProject`/`ownsSraCycle`) and
- * `abuseAllegationAccess`'s explicit-grant arm.
+ * Does the actor hold this permission grant?
+ *
+ * Resolved through `resolveActorPermissions` — the SAME registered resolver `requirePermission`
+ * gates on, whose own doc comment names this exact case: "for consumers that must *check* a
+ * permission rather than gate on it (e.g. an ABAC predicate that allows a broader scope only when
+ * the actor holds a dedicated key)", and states that an assembled `AbacContext` is a valid
+ * argument.
+ *
+ * It used to read a `context.attributes.permissions` list instead, described as bound by the route
+ * layer. No route layer bound it and nothing ever wrote that key, so this returned `false` for
+ * every caller and every key (F-030). Fail-closed, so never exposure — but the explicit-grant arms of `incidentVisibility`, `abuseAllegationAccess`,
+ * `ownsQapiProject` and `ownsSraCycle` could not fire,
+ * for anyone, ever.
+ *
+ * There was no cost question to settle here, which is what the blocked-key entry assumed. Nothing
+ * needs stamping on every request: the resolver is TTL-cached per (org, user) with the TTL capped
+ * by the soonest grant expiry, and every guarded route has already resolved the same set through
+ * its own `requirePermission` preHandler — so by the time a predicate asks, it is a cache hit.
+ * With no resolver registered the set is empty and this denies.
  */
-function actorHoldsPermission(context: AbacContext, key: string): boolean {
-  const granted = context.attributes.permissions;
-  return Array.isArray(granted) && granted.includes(key);
+async function actorHoldsPermission(context: AbacContext, key: string): Promise<boolean> {
+  return (await resolveActorPermissions(context)).has(key);
 }
 
 /**
@@ -483,8 +502,8 @@ export function buildM30AbacPredicates(
       const incident = await resolver.loadIncident(readContextOf(context), incidentId);
       if (!incident) return false; // absent / cross-tenant
       const isAbuse = incident.kind === INCIDENT_KIND_ABUSE;
-      if (!isAbuse && actorHoldsPermission(context, "incident.read")) return true; // (a)
-      if (isAbuse && actorHoldsPermission(context, "incident.abuse_review")) return true; // (b)
+      if (!isAbuse && (await actorHoldsPermission(context, "incident.read"))) return true; // (a)
+      if (isAbuse && (await actorHoldsPermission(context, "incident.abuse_review"))) return true; // (b)
       // (c) actor is the reporter or the assignee.
       const membershipId = actorMembershipId(context);
       if (!membershipId) return false;
@@ -522,7 +541,7 @@ export function buildM30AbacPredicates(
     abuseAllegationAccess: async (context) => {
       if (hasRole(context, ROLE_COMPLIANCE_OFFICER)) return true;
       if (hasRole(context, ROLE_ADMINISTRATOR)) return true;
-      return actorHoldsPermission(context, "incident.abuse_review");
+      return await actorHoldsPermission(context, "incident.abuse_review");
     },
 
     // role QAPI Coordinator OR Compliance Officer AND `actor.membership ≠ incident.assignedToMembershipId`
@@ -551,7 +570,7 @@ export function buildM30AbacPredicates(
       if (!project) return false;
       const membershipId = actorMembershipId(context);
       if (membershipId && membershipId === project.ownerMembershipId) return true;
-      return actorHoldsPermission(context, "qapi.admin");
+      return await actorHoldsPermission(context, "qapi.admin");
     },
 
     // Two-actor: caller ∈ {QAPI Coordinator, Medical Director} AND the second co-signer holds the OTHER
@@ -583,7 +602,7 @@ export function buildM30AbacPredicates(
       if (!cycle) return false;
       const membershipId = actorMembershipId(context);
       if (membershipId && membershipId === cycle.ownerMembershipId) return true;
-      return actorHoldsPermission(context, "sra.admin");
+      return await actorHoldsPermission(context, "sra.admin");
     },
 
     // Two-actor: caller Security Officer + second co-signer Compliance Officer (or vice versa), distinct

@@ -18,9 +18,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AbacContext, AbacTarget } from "@wardenx/auth";
-import { abacRegistry } from "@wardenx/auth";
+import { abacRegistry, resetRbacEngine, setEffectivePermissionResolver } from "@wardenx/auth";
 import { M30_PERMISSIONS } from "@wardenx/quality";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
 import {
   type IncidentAbacFacts,
@@ -136,21 +136,47 @@ function resolverWith(seed: {
   };
 }
 
-/** Assemble a server-side AbacContext (membershipId + permissions ride on `attributes`, never client input). */
+/**
+ * Grants per test actor, resolved through the SAME `EffectivePermissionResolver` seam production
+ * uses — keyed by `userId`, which is what the real resolver keys on (org + user).
+ *
+ * These used to ride on `context.attributes.permissions`, which nothing in production has ever
+ * written (F-030): the predicates' explicit-grant arms returned false for every caller and every
+ * key, and these cases passed only because the suite supplied the fact itself. `actorHoldsPermission`
+ * now resolves through `resolveActorPermissions` — the documented check-don't-gate seam, whose own
+ * doc comment names this exact case — so a test actor's grants are registered the way a real
+ * actor's are, and an actor nobody registered holds nothing.
+ */
+const GRANTS = new Map<string, ReadonlySet<string>>();
+
+beforeEach(() => {
+  GRANTS.clear();
+  setEffectivePermissionResolver((c) => GRANTS.get(c.userId) ?? new Set<string>());
+});
+afterEach(() => {
+  resetRbacEngine();
+});
+
+/** Assemble a server-side AbacContext (membershipId on `attributes`; grants through the M3 seam). */
 function ctx(opts: {
   roles?: readonly string[];
   membershipId?: string | null;
   permissions?: readonly string[];
 }): AbacContext {
+  // A distinct user per grant set, so registration is order-independent: two contexts built in one
+  // expression cannot overwrite each other's grants the way a single global set would.
+  const userId = opts.permissions?.length
+    ? `user-${[...opts.permissions].sort().join("+")}`
+    : "user-1";
+  GRANTS.set(userId, new Set(opts.permissions ?? []));
   return {
     organizationId: ORG,
-    userId: "user-1",
+    userId,
     roles: opts.roles ?? [],
     providerEntityIds: [],
     locationIds: [],
     attributes: {
       ...(opts.membershipId != null ? { membershipId: opts.membershipId } : {}),
-      ...(opts.permissions ? { permissions: opts.permissions } : {}),
     },
   };
 }

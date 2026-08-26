@@ -37,7 +37,12 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards
 // on `abacRegistry.has` (the M30 `registerM30AbacPredicates` precedent). Never fails open.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  registerPredicateIdempotent,
+  resolveActorPermissions,
+} from "@wardenx/auth";
 import type { CostReportDb, CostReportState } from "@wardenx/cost-report";
 import { schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -246,13 +251,28 @@ function readContextOf(context: AbacContext): M27AbacReadContext {
 }
 
 /**
- * Read whether the actor holds a permission grant, from the SERVER-assembled `context.attributes.
- * permissions` list (the route layer binds the resolved grant set; never client input). Absent → false
- * (fail-closed). Used by the editor/approver org-scope override (`cost_report.edit_any_provider`).
+ * Does the actor hold this permission grant?
+ *
+ * Resolved through `resolveActorPermissions` — the SAME registered resolver `requirePermission`
+ * gates on, whose own doc comment names this exact case: "for consumers that must *check* a
+ * permission rather than gate on it (e.g. an ABAC predicate that allows a broader scope only when
+ * the actor holds a dedicated key)", and states that an assembled `AbacContext` is a valid
+ * argument.
+ *
+ * It used to read a `context.attributes.permissions` list instead, described as bound by the route
+ * layer. No route layer bound it and nothing ever wrote that key, so this returned `false` for
+ * every caller and every key (F-030). Fail-closed, so never exposure — but the editor/approver org-scope override
+ * (`cost_report.edit_any_provider`) could not fire,
+ * for anyone, ever.
+ *
+ * There was no cost question to settle here, which is what the blocked-key entry assumed. Nothing
+ * needs stamping on every request: the resolver is TTL-cached per (org, user) with the TTL capped
+ * by the soonest grant expiry, and every guarded route has already resolved the same set through
+ * its own `requirePermission` preHandler — so by the time a predicate asks, it is a cache hit.
+ * With no resolver registered the set is empty and this denies.
  */
-function actorHoldsPermission(context: AbacContext, key: string): boolean {
-  const granted = context.attributes.permissions;
-  return Array.isArray(granted) && granted.includes(key);
+async function actorHoldsPermission(context: AbacContext, key: string): Promise<boolean> {
+  return (await resolveActorPermissions(context)).has(key);
 }
 
 /**
@@ -317,7 +337,7 @@ export function buildM27AbacPredicates(
     // The actor's membership is scoped to the report's ProviderEntity, OR the actor holds the
     // encompassing-org `cost_report.edit_any_provider` grant. §4.7. Guards every edit surface.
     cost_report_editor_for_provider: async (context, target) => {
-      if (actorHoldsPermission(context, EDIT_ANY_PROVIDER_PERMISSION)) return true; // org-scope override
+      if (await actorHoldsPermission(context, EDIT_ANY_PROVIDER_PERMISSION)) return true; // org-scope override
       const providerEntityId = await resolveProviderEntityId(resolver, context, target);
       if (!providerEntityId) return false; // fail-closed (no resolvable provider)
       return membershipInProviderScope(resolver, context, providerEntityId);
@@ -329,7 +349,7 @@ export function buildM27AbacPredicates(
       const providerEntityId = await resolveProviderEntityId(resolver, context, target);
       if (!providerEntityId) return false; // fail-closed
       const inScope =
-        actorHoldsPermission(context, EDIT_ANY_PROVIDER_PERMISSION) ||
+        (await actorHoldsPermission(context, EDIT_ANY_PROVIDER_PERMISSION)) ||
         (await membershipInProviderScope(resolver, context, providerEntityId));
       if (!inScope) return false;
       const membershipId = actorMembershipId(context);
