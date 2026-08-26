@@ -28,6 +28,7 @@ import { spawnSync } from "node:child_process";
  * the generated-artifact freshness checks.
  */
 export const GATES = [
+  "arch:merge-artifacts",
   "arch:parity",
   "arch:boundaries",
   "arch:tables",

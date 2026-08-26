@@ -264,6 +264,7 @@ describe("every gate stays GREEN on the repo-root baseline", () => {
   baselineGate("design-tokens", () => expectGreen(gate("check-design-tokens.ts", ROOT)));
   baselineGate("interactive-rows", () => expectGreen(gate("check-interactive-rows.ts", ROOT)));
   baselineGate("migration-numbering", () => expectGreen(migrationNumberingGate()));
+  baselineGate("merge-artifacts", () => expectGreen(gate("check-merge-artifacts.ts", ROOT)));
   baselineGate("ui-parity", () =>
     expectGreen(run("bun", ["run", join(SCRIPTS, "report-ui-parity.ts"), "--check"], ROOT)));
   baselineGate("client:check", () =>
