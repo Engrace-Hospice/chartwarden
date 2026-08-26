@@ -133,7 +133,24 @@ the prose docs in `docs/architecture/`.
   205 assertions over the real Drizzle write paths — unexecuted outside their authors' laptops,
   and 23 of 25 were red once run. Two CI jobs now cover them: `rls-live` (table-level policy
   proof) and `lifecycle-live` (the production route services as the NOBYPASSRLS `wardenx_app`
-  role, grouped per module).
+  role, grouped per module). It checks `package.json` → CI, not file → `package.json`: 24
+  `*.live.test.ts` files still have no script at all, so nothing invokes them either (F-020 wired
+  the outbox dispatcher's own suite; the rest are open).
+- `scripts/check-outbox-bindings.ts` — **outbox binding ↔ event-catalog agreement**
+  (`bun run arch:outbox-bindings`, in `arch:fitness`). Every live `OutboxConsumerBinding` must bind a
+  catalogued event, must not bind one catalogued record-only (`declaredConsumers: []`), and its module
+  must be named in that event's `declaredConsumers`. The dispatcher asserts exactly this already — by
+  THROWING before `server.listen()` — but it is only constructed when `DATABASE_PLATFORM_URL` is set,
+  so no test, local run or CI job ever reached the check. Two mismatches accumulated in two modules
+  (`m23.claim.submission_failed` omitted M23's own retry consumer; `m25.edi.835_received` was
+  catalogued record-only while M25 bound it live), and the only symptom was a backend that refused to
+  start in the documented production configuration (F-020, issue #49). Unlike the other static gates
+  this one EVALUATES rather than parses: it imports each consumer module and calls its
+  `build…Consumer` factory with an absorbing stub, so the six different indirections the bindings use
+  to express their event lists resolve to their real values. A binding file that yields no binding is
+  an error, never a skip. The runtime half is the `outbox-boot` CI job
+  (`bun run check:boot:platform`), which boots the backend with a real provisioned platform login and
+  proves the relay starts.
 - `scripts/check-architecture-docs.ts` — **architecture-corpus freshness gate**
   (`bun run arch:architecture-docs`, in `arch:fitness` since 2026-08-14). The authority rule makes
   `docs/architecture/` binding, yet it was the only ungated documentation body and drifted for two
