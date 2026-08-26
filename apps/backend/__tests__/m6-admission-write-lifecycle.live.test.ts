@@ -394,7 +394,7 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
 
     it("migration 0216 backfills the unambiguous rows and leaves the rest, idempotently", async () => {
       const BACKFILL_SQL = readFileSync(
-        join(MIGRATIONS_DIR, "0216_admission_location_backfill.sql"),
+        join(MIGRATIONS_DIR, "0218_admission_location_backfill.sql"),
         "utf8",
       );
       const one = await seedActivatable(ORG_A, PE_ONE); // resolvable

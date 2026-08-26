@@ -758,7 +758,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   // ── #45 — migration 0215, the repair of rows the defect already wrote ─────────────────────────────
   describe("#45 — migration 0215 repairs rows already written", () => {
     const REPAIR_SQL = readFileSync(
-      join(MIGRATIONS_DIR, "0215_m10_hope_patient_id_repair.sql"),
+      join(MIGRATIONS_DIR, "0217_m10_hope_patient_id_repair.sql"),
       "utf8",
     );
     /** Seed a real `admission` row (its patient_id is the truth the repair reads). */
