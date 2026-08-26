@@ -223,7 +223,7 @@ the prose docs in `docs/architecture/`.
   **across** files (`attributes[REVIEW_FLOOR_OVERRIDE_ATTRIBUTE]` is read in M14's routes and
   declared in its predicate file), the SCREAMING_CASE identifier-index write form (how both
   in-request producers actually write), and whole-bag aliases (`const attrs = ctx.attributes ?? {}`,
-  which is the only way two of the unproduced keys are read at all). **8 keys are currently
+  which is the only way two of the unproduced keys are read at all). **7 keys are currently
   declared blocked** and the gate prints them on every run — they are the standing finding, not a
   passing state. The largest is `sessionClass`: M16/M31/M39 read it and default to `"staff"`, and
   M31's portal predicates gate on it being one of `patient_portal`/`caregiver_portal`/
@@ -249,7 +249,14 @@ the prose docs in `docs/architecture/`.
   would have become the fourth rather than the last. It resolves through `sessionPinnedPatientId`,
   so the CLASS decides and a staff session carrying a stray `scope.patientId` pins nothing (reading
   the jsonb key directly, as the store did, would have widened the one predicate whose job is to
-  narrow). Blocked keys: **10 → 8**.
+  narrow). Blocked keys: **10 → 8**. Then `organizationName`, the one entry that was never an
+  authorization control: M2's invitation routes read it and fell back to the literal `Organization`,
+  so with nothing writing it the fallback was not a fallback but the only branch — every invitation
+  row stored that string, the pre-auth `GET /invitations/:token` preview served it back to the
+  invitee's browser, and the email said "invited to join your organization". It now resolves from
+  the INVITER's own active membership in the org they are inviting into (`findActive`, the same read
+  `/auth/context` already projects the name through), which is org-scoped by construction and adds
+  no dependency. Blocked keys: **8 → 7**.
 - `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
   Every live-database / live-Redis / browser suite in `package.json` must be invoked by a job in
   `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so

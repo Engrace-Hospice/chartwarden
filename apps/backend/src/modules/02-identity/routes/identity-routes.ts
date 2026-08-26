@@ -86,6 +86,32 @@ async function resolveActor(deps: IdentityRouteDeps, request: FastifyRequest): P
   return actor;
 }
 
+/**
+ * The org's display name, for the invitation the invitee actually reads (TASK-030).
+ *
+ * Both invitation routes used to take this from `request.context.attributes.organizationName` and
+ * fall back to the literal `"Organization"`. Nothing has ever written that attribute (F-030), so the
+ * fallback was not a fallback — it was the only branch. Every WardenX invitation row was stored with
+ * the name `Organization`, the pre-auth `GET /invitations/:token` preview served that back to the
+ * invitee's browser, and the email said "You've been invited to join your organization".
+ *
+ * Resolved instead from the INVITER's own active membership in the org they are inviting into. They
+ * necessarily have one: `member.invite` was granted in this org and `assertOrgMatch` has already
+ * bound the route's `:id` to the session's org. That makes the lookup org-scoped by construction —
+ * no cross-tenant read, and no new dependency; the same `findActive` the `/auth/context` projection
+ * already reads the name through.
+ */
+async function organizationNameFor(
+  deps: IdentityRouteDeps,
+  userId: string,
+  organizationId: string,
+): Promise<string | undefined> {
+  const membership = await deps.memberships.findActive(userId, organizationId);
+  // Undefined rather than a placeholder: the callers decide what an unresolvable name means, and
+  // neither of them may fail a durably-recorded invite over a display string.
+  return membership?.organizationName || undefined;
+}
+
 /** Build the audit context for an identity event from the request + scope. */
 function auditContextFor(
   request: FastifyRequest,
@@ -158,7 +184,7 @@ function assertOrgMatch(request: FastifyRequest, pathOrgId: string): void {
  */
 async function deliverInvite(
   deps: IdentityRouteDeps,
-  organizationNameAttr: unknown,
+  organizationName: string | undefined,
   email: string,
   token: string,
 ): Promise<string | undefined> {
@@ -166,8 +192,7 @@ async function deliverInvite(
     ? `${deps.webAppBaseUrl.replace(/\/$/, "")}/invite/${token}`
     : undefined;
   if (deps.emailTransport && inviteUrl) {
-    const orgName =
-      typeof organizationNameAttr === "string" ? organizationNameAttr : "your organization";
+    const orgName = organizationName ?? "your organization";
     try {
       await deps.emailTransport.send({
         to: email,
@@ -248,10 +273,10 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
 
     if (await deps.invitations.pendingExists(orgId, email)) throw pendingInviteExists();
 
-    const orgName = request.context.attributes.organizationName;
+    const orgName = await organizationNameFor(deps, actor.userId, orgId);
     const created = await deps.invitations.create({
       organizationId: orgId,
-      organizationName: typeof orgName === "string" ? orgName : "Organization",
+      organizationName: orgName ?? "Organization",
       email,
       proposedRoleKeys,
       defaultLocationIds: proposedDefaultLocationIds,
@@ -299,7 +324,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       auditContextFor(request, { organizationId: orgId, userId: actor.userId }),
       { invitationId: invId, organizationId: orgId, email: target.email },
     );
-    const orgName = request.context.attributes.organizationName;
+    const orgName = await organizationNameFor(deps, actor.userId, orgId);
     const inviteUrl = await deliverInvite(deps, orgName, target.email, reminted.token);
     return reply.code(200).send({
       invitationId: reminted.invitationId,

@@ -141,10 +141,6 @@ export const CONTEXT_ATTRIBUTES: Readonly<Record<string, AttributeEntry>> = {
     blocked:
       "M32's PHI-masking check reads this OR the `phi.full_read` role token; the role arm works, so the attribute arm is the dead half. Its comment says M2 assembles the two differently depending on whether the grant came from a role template or a per-session elevation — the per-session elevation path is the one that was never built. Fails SAFE (masked), so this is the least urgent.",
   },
-  organizationName: {
-    blocked:
-      "M2's invitation routes read it for the org name embedded in the invitation, falling back to the literal `Organization`. Cosmetic rather than authorization — but it is the string a real invited user sees in a real email, and today every WardenX invitation says `Organization`. The name is on the `organization` row the hook already has an id for.",
-  },
   isPlatformOperator: {
     blocked:
       'M29 — and the one entry here that was already done RIGHT: the read site documents its own blocker ("Until a platform-operator caller is provisioned this reads false and the predicate denies (W-XI-12)"). Listed for completeness, not as a defect.',
