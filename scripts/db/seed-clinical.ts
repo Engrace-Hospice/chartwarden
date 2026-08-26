@@ -149,9 +149,19 @@ async function main(): Promise<void> {
   if (!org) throw new Error("demo org not found — run db:seed first");
 
   const users = await db.query<{ email: string; id: string }>(
-    `SELECT email, id FROM "user" WHERE email IN ('admin@wardenx.local','casey@wardenx.local')`,
+    `SELECT email, id FROM "user"
+      WHERE email IN ('admin@wardenx.local','casey@wardenx.local','rita@wardenx.local')`,
   );
-  const rn = users.rows.find((u) => u.email === "casey@wardenx.local")?.id; // primary RN = clinician
+  // F-014 (#39) — the caseload anchor decides who `caseload_or_scope` lets through, and every
+  // scenario seed acts as the RN Case Manager persona. Prefer her when she exists; fall back to
+  // `casey@wardenx.local` when she does not, so this script still works standalone at its `db:reset`
+  // position (step 4), which is BEFORE `db:seed:staff` creates the personas at step 8. In that
+  // ordering the fallback is what runs, and `db:seed:staff` re-anchors afterwards
+  // (`anchorDemoCaseload`, seed-staff-personas.ts) — which is also why it must, since that script
+  // drops and re-creates rita's user row on every run.
+  const rn =
+    users.rows.find((u) => u.email === "rita@wardenx.local")?.id ??
+    users.rows.find((u) => u.email === "casey@wardenx.local")?.id;
   const md = users.rows.find((u) => u.email === "admin@wardenx.local")?.id; // attending = admin
   if (!rn || !md) throw new Error("demo users not found — run db:seed first");
 
