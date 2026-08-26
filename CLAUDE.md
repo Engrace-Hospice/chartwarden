@@ -147,6 +147,18 @@ the prose docs in `docs/architecture/`.
   Duplicates are a hard error naming **every** claimant (the fix is a rename, and which file to
   rename is the reader's judgement); **gaps are reported, never fatal**, because a branch that
   leaves 0215 for a sibling PR and takes 0216 is doing the right thing.
+- `scripts/check-merge-artifacts.ts` — **unresolved-merge-artifact gate** (`bun run
+  arch:merge-artifacts`, first in `arch:fitness`). A conflicted file that is `git add`-ed without
+  being resolved commits its CONFLICT MARKERS: `add` marks a path resolved whatever is in it, so the
+  markers land in the tree and the merge commit looks ordinary. Source files are safe by accident —
+  `tsc` will not parse `<<<<<<< HEAD` — but the load-bearing NON-source files have no reader in the
+  build. That is how a half-resolved `.github/workflows/ci.yml` sat on `main` across seven merges:
+  GitHub parses that file, not the toolchain, and `arch:live-suites` reads it as TEXT (it greps for
+  script names), so it found every job name and stayed green while the workflow was syntactically
+  dead. A broken workflow does not fail a build, it fails to RUN one. The gate scans every
+  `git ls-files` path — YAML, JSON, Markdown and SQL included — for a line-initial `<<<<<<< ` /
+  `>>>>>>> `, or a whole-line `=======` (matched exactly, since seven equals signs are also a
+  Markdown setext heading; a real conflict always brings a `<<<<<<<` with it).
 - `scripts/check-abac-predicates.ts` — **ABAC named-predicate resolution** (`bun run arch:abac-predicates`). Every `requireAbac(_, "<name>")` — including through each module's
   local `guards.ts` factory — must name a predicate some module declares. M3's registry fails
   closed on an unknown name, so a typo'd or never-registered name is a permanently dead endpoint
