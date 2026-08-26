@@ -175,11 +175,16 @@ jobs:
           # colons in the middle segment, and `t3:write` is two segments), so 24 tests / 97 assertions
           # over the election-CTI, discharge/F2F/LOC and compliance-window write lifecycles had no
           # runner. They pass; the gap was the runner, not the code.
+          # `test:m6:abac-scope:live` (GAP-011) is here for a reason worth reading: it is the ONE
+          # of the 23 `*.live.test.ts` files with no package.json script that turned out to be RED.
+          # Green on `main`, red on this stack — F-017's new fail-closed provider-entity org check
+          # broke its setup helper, and with no script and no job, nothing said so for a whole
+          # branch. The other 22 pass and stay unwired for now; this one earned a runner.
           - {
               name: "M6 Admission",
               scripts:
                 "test:m6:read:live test:m6:write:live test:m6:t3:write:live test:m6:t4:write:live
-                test:m6:t5:write:live",
+                test:m6:t5:write:live test:m6:abac-scope:live",
             }
           - { name: "M7 Care Plan", scripts: "test:m7:read:live test:m7:write:live" }
           - { name: "M8 Encounters", scripts: "test:m8:read:live test:m8:write:live" }
