@@ -44,8 +44,12 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
-  const orgName = request.headers["x-test-orgname"];
-  if (typeof orgName === "string") request.context.attributes.organizationName = orgName;
+  // No `x-test-orgname` here any more. This shim used to stamp
+  // `context.attributes.organizationName`, which is the ONLY reason the invitation cases below
+  // asserted a real org name: nothing in production ever wrote that attribute, so every WardenX
+  // invitation was stored — and previewed to the invitee — as the literal `Organization` (F-030).
+  // The suite writing the fact it was testing for is the exact shape `arch:context-attributes`
+  // excludes test files to avoid blessing.
 }
 
 function membership(over: Partial<MembershipRecord> & { membershipId: string }): MembershipRecord {
@@ -59,6 +63,21 @@ function membership(over: Partial<MembershipRecord> & { membershipId: string }):
     ...over,
   };
 }
+
+/**
+ * The inviting admin's OWN membership in `org_a`, seeded by DEFAULT.
+ *
+ * Not optional in reality: `member.invite` is a grant held IN an org, so an admin who can reach
+ * these routes necessarily has an active membership there — and since F-030 that membership is
+ * where the invitation's org name comes from.
+ */
+const ADMIN_MEMBERSHIP = membership({
+  membershipId: "m_admin",
+  userId: "admin_1",
+  organizationId: "org_a",
+  organizationName: "Engrace",
+  isAdmin: true,
+});
 
 interface CapturingEmailTransport {
   send(email: { to: string; subject: string; text: string }): Promise<void>;
@@ -82,7 +101,7 @@ function makeServer(
     webAppBaseUrl?: string;
   } = {},
 ) {
-  const memberships = createInMemoryMembershipRepository(opts.seed ?? []);
+  const memberships = createInMemoryMembershipRepository(opts.seed ?? [ADMIN_MEMBERSHIP]);
   const sessions = createInMemorySessionWriter();
   const invitations = createInMemoryInvitationStore();
   const collaborators = createInMemoryCollaboratorLinkStore();
@@ -280,7 +299,7 @@ describe("M2-T06 identity route inventory", () => {
       const res = await app.inject({
         method: "POST",
         url: "/api/v1/orgs/org_a/invitations",
-        headers: { ...ADMIN, "x-test-orgname": "Engrace" },
+        headers: ADMIN,
         payload: {
           email: "rn@example.com",
           proposedRoleKeys: ["clinical_rn"],
@@ -339,7 +358,7 @@ describe("M2-T06 identity route inventory", () => {
       await app.inject({
         method: "POST",
         url: "/api/v1/orgs/org_a/invitations",
-        headers: { ...ADMIN, "x-test-orgname": "Engrace" },
+        headers: ADMIN,
         payload: { email: "new@example.com", proposedDefaultLocationIds: ["loc_9"] },
       });
       const token = invitations.tokenFor("new@example.com");
@@ -366,6 +385,112 @@ describe("M2-T06 identity route inventory", () => {
   });
 
   describe("TASK-030 invite delivery + roster + resend + peek", () => {
+    // ── F-030 · the invitation carries the org's REAL name ──────────────────────────────────────
+    //
+    // Both invitation routes read `context.attributes.organizationName` and fell back to the literal
+    // `"Organization"`. Nothing has ever written that attribute, so the fallback was not a fallback —
+    // it was the only branch. Every invitation row was stored as `Organization`, the pre-auth peek
+    // served that back to the invitee's browser, and the email read "invited to join your
+    // organization". The name now comes from the INVITER's own active membership in the org they are
+    // inviting into, which is org-scoped by construction and needs no new dependency.
+
+    it("stores and previews the org's real display name, from the inviter's own membership", async () => {
+      const transport = capturingEmailTransport();
+      const { app, invitations } = makeServer({
+        seed: [
+          membership({
+            membershipId: "m_admin",
+            userId: "admin_1",
+            organizationId: "org_a",
+            organizationName: "Maple Hospice",
+            isAdmin: true,
+          }),
+        ],
+        emailTransport: transport,
+        webAppBaseUrl: "https://app.wardenx.example",
+      });
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "named@example.com" },
+      });
+
+      const peek = await app.inject({
+        method: "GET",
+        url: `/api/v1/invitations/${invitations.tokenFor("named@example.com")}`,
+      });
+      expect(peek.json().organizationName).toBe("Maple Hospice");
+      expect(transport.sent[0]!.text).toContain("Maple Hospice");
+      // The literal that used to be the only possible value.
+      expect(peek.json().organizationName).not.toBe("Organization");
+      await app.close();
+    });
+
+    it("resend carries the same real name (it read the same dead attribute)", async () => {
+      const transport = capturingEmailTransport();
+      const { app } = makeServer({
+        seed: [
+          membership({
+            membershipId: "m_admin",
+            userId: "admin_1",
+            organizationId: "org_a",
+            organizationName: "Maple Hospice",
+            isAdmin: true,
+          }),
+        ],
+        emailTransport: transport,
+        webAppBaseUrl: "https://app.wardenx.example",
+      });
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "again@example.com" },
+      });
+      const roster = await app.inject({
+        method: "GET",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+      });
+      const invId = (
+        roster.json().invitations as Array<{ invitationId: string; email: string }>
+      ).find((i) => i.email === "again@example.com")!.invitationId;
+      await app.inject({
+        method: "POST",
+        url: `/api/v1/orgs/org_a/invitations/${invId}/resend`,
+        headers: ADMIN,
+      });
+      expect(transport.sent).toHaveLength(2);
+      expect(transport.sent[1]!.text).toContain("Maple Hospice");
+      await app.close();
+    });
+
+    it("an unresolvable name degrades to the placeholder rather than failing the invite", async () => {
+      // Unreachable through the guards (the inviter holds `member.invite` IN this org), but an
+      // invitation that is already durably recorded must never 500 over a display string.
+      const transport = capturingEmailTransport();
+      const { app, invitations } = makeServer({
+        seed: [], // no membership for admin_1
+        emailTransport: transport,
+        webAppBaseUrl: "https://app.wardenx.example",
+      });
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "nameless@example.com" },
+      });
+      expect(res.statusCode).toBe(201);
+      const peek = await app.inject({
+        method: "GET",
+        url: `/api/v1/invitations/${invitations.tokenFor("nameless@example.com")}`,
+      });
+      expect(peek.json().organizationName).toBe("Organization");
+      expect(transport.sent[0]!.text).toContain("your organization");
+      await app.close();
+    });
+
     it("with webAppBaseUrl configured: create returns inviteUrl + emails it via the transport", async () => {
       const transport = capturingEmailTransport();
       const { app } = makeServer({
@@ -499,7 +624,7 @@ describe("M2-T06 identity route inventory", () => {
       await app.inject({
         method: "POST",
         url: "/api/v1/orgs/org_a/invitations",
-        headers: { ...ADMIN, "x-test-orgname": "Engrace" },
+        headers: ADMIN,
         payload: { email: "peek@example.com" },
       });
       const token = invitations.tokenFor("peek@example.com");
