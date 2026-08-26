@@ -85,13 +85,26 @@ const m1Schema = {
  * production too; this is the defense-in-depth twin at the point of use (mirrors the `session-step-up`
  * route's `resolveWebauthnRpId`).
  */
-function resolvePasskeyRpId(): string {
+/**
+ * The WebAuthn relying-party id passkeys are ENROLLED under.
+ *
+ * Exported because step-up VERIFICATION has to use the identical value: @simplewebauthn checks the
+ * asserted RP id hash against the expected one, so a step-up that resolved its own would refuse every
+ * passkey this instance ever enrolled — and would do it as "assertion invalid", which reads as an
+ * attack rather than as a misconfiguration.
+ */
+export function resolvePasskeyRpId(): string {
   const configured = process.env.PASSKEY_RP_ID;
   if (configured) return configured;
   if (process.env.NODE_ENV === "production") {
     throw new Error("PASSKEY_RP_ID is required in production");
   }
   return "localhost";
+}
+
+/** The origin passkeys are enrolled under — same argument as {@link resolvePasskeyRpId}. */
+export function resolvePasskeyOrigin(): string {
+  return process.env.BETTER_AUTH_URL ?? "http://localhost:5173";
 }
 
 /**
@@ -197,7 +210,7 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
       passkey({
         rpName: "WardenX",
         rpID: resolvePasskeyRpId(),
-        origin: process.env.BETTER_AUTH_URL ?? "http://localhost:5173",
+        origin: resolvePasskeyOrigin(),
         // Field-map: Better Auth's `credentialID` → M1's drizzle property `credentialId` (the other
         // passkey fields — publicKey/deviceType/backedUp/transports/counter/aaguid — already match the
         // M1 bindings). The WebAuthn ceremony is browser-only, so this is e2e- (not CI-) verified.

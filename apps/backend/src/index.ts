@@ -111,6 +111,7 @@ import {
   createDrizzleIdentityEraserStore,
   mountDeviceAttestationRoutes,
   mountIdentityRoutes,
+  mountSessionStepUpRoutes,
   registerIdentityErasers,
   registerIdentitySeams,
 } from "./modules/02-identity/index";
@@ -2522,6 +2523,18 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // puts rows in `device_attestation`, which is what lets the authenticate hook stamp
           // `attributes.deviceAttestation`, which is what M3's `device_attestation_valid` predicate has
           // been denying on for want of a producer since it was written (F-030).
+          // M2 §4.4 — the step-up routes (initiate + verify). This is the ONLY production path that
+          // writes `session.last_step_up_at`: the routes existed with slice adapters and one caller
+          // (their own test), and `onLoginMfaCompleted` — the other writer — is exported and called by
+          // nobody, so the column was populated by nothing and every step-up gate on the platform
+          // answered "not fresh" for every caller, forever. Fail-closed, and therefore invisible.
+          mountSessionStepUpRoutes(app, dbHandle.db);
+          noteInMemoryBinding({
+            kind: "route-dep",
+            label:
+              "M2 mountSessionStepUpRoutes — the step-up challenge AND consecutive-failure store is a per-process Map, so the lockout threshold is per-replica rather than per-session",
+            task: "move the challenge + lockout store to Valkey behind StepUpChallengeStore",
+          });
           mountDeviceAttestationRoutes(app, dbHandle.db);
           noteInMemoryBinding({
             kind: "route-dep",

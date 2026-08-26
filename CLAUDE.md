@@ -147,6 +147,24 @@ the prose docs in `docs/architecture/`.
   Duplicates are a hard error naming **every** claimant (the fix is a rename, and which file to
   rename is the reader's judgement); **gaps are reported, never fatal**, because a branch that
   leaves 0215 for a sibling PR and takes 0216 is doing the right thing.
+- `scripts/check-manifest-mirror.ts` — **manifest-mirror agreement gate** (`bun run arch:manifest-mirror`,
+  in `arch:fitness`, ordered BEFORE `arch:boundaries`). The manifest exists twice: `module-manifest.ts` is
+  what every fitness script imports, and `module-manifest.cjs` is the CommonJS mirror
+  `.dependency-cruiser.cjs` requires, because a dependency-cruiser config is plain CJS with no TypeScript
+  in the loop. The `.cjs` began as `tsc`'s emit of the `.ts` — the `Object.defineProperty(exports,
+  "__esModule", …)` preamble is the giveaway — but its header prose was later condensed by hand, so it is
+  no longer byte-reproducible from a transpile and regenerating it would delete writing someone did
+  deliberately. Nothing kept the two in agreement after that: every table added to a module since had to
+  be written into both files from memory, and two were not — `membership_elevated_approval` (0204) and
+  `device_attestation` (0222), the first for the whole of its life. That drift changed no behaviour,
+  because dependency-cruiser reads only `codePaths`/`dependsOn` and `ownedTables` is consumed by
+  `check-table-ownership.ts` off the `.ts`. **That is the problem, not the mitigation**: a mirror that can
+  be wrong in a way nothing notices will eventually be wrong in a way something does, and a missing
+  `codePaths`/`dependsOn` entry silently RELAXES an import boundary — the one failure the boundary gate
+  exists to prevent and the one shape it cannot detect in itself. The gate compares the DATA (the files
+  may and should differ in prose) plus the two FUNCTIONS dependency-cruiser actually calls,
+  `allowedImportPaths`/`allowedTables`, evaluated for every module id: agreeing on every input while
+  disagreeing on the resolved output would be the worst possible pass.
 - `scripts/check-merge-artifacts.ts` — **unresolved-merge-artifact gate** (`bun run
   arch:merge-artifacts`, first in `arch:fitness`). A conflicted file that is `git add`-ed without
   being resolved commits its CONFLICT MARKERS: `add` marks a path resolved whatever is in it, so the
@@ -358,6 +376,31 @@ effect and unexpired, and RN coverage is attested (D13 / CoP 418.64(b)). It does
 The fact resolves through `sessionExternalActorId`, so the CLASS decides and a staff session carrying a
 stray `scope.externalActorId` stamps nothing — M19's own predicate header names that exact risk. Blocked
 keys: **1 → 0**. **The F-030 registry is now fully produced: 12 keys, 12 producers, 0 blocked.**
+
+**The step-up FACT had the same defect one layer down (2026-08-26).** F-029 fixed
+`attributes.stepUpRecent` so the fact reaches the fifteen modules that read it, and `stepUpFreshFor`
+resolves it correctly from `session.last_step_up_at` — a column **nothing in production ever wrote**.
+`registerSessionStepUpRoutes` shipped with slice adapters and exactly one caller (its own test), and
+`onLoginMfaCompleted`, the only other writer, was exported and called by nobody. The routes even appeared
+in the published OpenAPI contract, because `scan-routes.ts` reads SOURCE and cannot tell a mounted route
+from an unmounted one. So every step-up gate on the platform answered "not fresh" for every caller,
+forever — fail-closed and therefore invisible, and worse than inert on the four write paths (M23 claim
+submit/replace/void, M27 cost-report submit, M37 IRC cap override + restraint apply) whose guard PASSES
+and whose domain then refuses on the flag. The routes are now mounted with production adapters:
+`createContextSessionResolver` (server-assembled, never the body), the D8 paired-write over `session`, an
+enrolment reader that requires `two_factor.verified` (Better Auth writes that row at the START of
+enrolment, so treating it as enrolled would offer a challenge against a secret the user may never have
+scanned — three failures from the lockout that terminates their session), and a real `MfaVerifier`. The
+WebAuthn half already existed and was wired to nothing; the TOTP half did not exist at all, and
+`totp-verifier.ts` now unwraps BOTH encryption layers over the secret — Better Auth's own
+`symmetricEncrypt` envelope and the repo's ADR-0034 at-rest seal over it — composing the vendor's
+published primitives rather than reimplementing them, and refusing rather than throwing on every failure
+so the route's contract can turn a false into the 401 the lockout counter is built on. `resolvePasskeyRpId`
+/`resolvePasskeyOrigin` are now shared with enrolment, because a step-up that resolved its own RP identity
+would refuse every passkey this instance ever issued and report it as "assertion invalid". **Known gap
+left open:** a route can still be in the published contract and mounted by nothing — the reachability
+analysis a gate would need is a call graph from the composition root, and the obvious cheap proxy
+(is the registrar referenced anywhere?) would NOT have caught this one, since M2's index re-exported it.
 - `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
   Every live-database / live-Redis / browser suite in `package.json` must be invoked by a job in
   `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so

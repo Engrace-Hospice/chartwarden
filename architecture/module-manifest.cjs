@@ -155,6 +155,8 @@ exports.MODULES = [
       "passkey",
       "organization_invitation",
       "tenant_step_up_policy_override",
+      "membership_elevated_approval",
+      "device_attestation",
     ],
   },
   {
