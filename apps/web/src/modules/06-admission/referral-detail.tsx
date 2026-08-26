@@ -23,7 +23,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { MdmEntityLookupField, PatientLookupField } from "../../shared/entity-lookups";
+import { MdmEntityLookupField, PatientLookupField } from "../../shell/entity-lookups";
 import { REFERRAL_TONE, stateLabel } from "./admission-status";
 import { authFailureRedirect } from "./write-workflow";
 

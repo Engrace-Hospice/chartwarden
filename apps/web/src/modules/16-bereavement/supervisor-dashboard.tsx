@@ -19,6 +19,7 @@ import {
   RightDetailPanel,
   StatusPill,
   WorkQueueLayout,
+  interactiveRowProps,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -442,7 +443,7 @@ function MetricTable({
           return (
             <tr
               key={row.id}
-              onClick={() => onSelectMetric(row.id)}
+              {...interactiveRowProps(() => onSelectMetric(row.id), isSelected)}
               className="wx-data-row-interactive"
               style={{
                 borderBottom:

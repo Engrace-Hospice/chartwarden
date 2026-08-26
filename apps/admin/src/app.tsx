@@ -6,6 +6,7 @@ import {
   CorrelationIdProvider,
   ErrorBoundary,
   LoadingSpinner,
+  ToastProvider,
   t,
 } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
@@ -149,7 +150,13 @@ export function AdminApp({
       <CorrelationIdProvider value={correlationId}>
         <ApiClientProvider client={client}>
           <ActorSessionProvider initial={session}>
-            <RouterProvider router={router} />
+            {/* The admin console had no ToastProvider, so `useToast()` — the house pattern for
+                transient feedback, and the only one apps/web screens use — THREW and took the whole
+                screen down with it (caught by the admin screen-smoke test, #29). Mounted here at the
+                composition root, exactly as apps/web/src/shell/app.tsx does. */}
+            <ToastProvider>
+              <RouterProvider router={router} />
+            </ToastProvider>
           </ActorSessionProvider>
         </ApiClientProvider>
       </CorrelationIdProvider>

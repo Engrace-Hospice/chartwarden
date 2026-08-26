@@ -52780,14 +52780,18 @@ export interface operations {
                     "application/json": {
                         items: {
                             id: string;
-                            requestedPurpose: "migration" | "baa_termination" | "compliance_audit" | "surveyor_request";
+                            organizationId: string;
+                            requestedPurpose: string;
                             status: "requested" | "generating" | "fulfilled" | "expired" | "cancelled";
                             /** Format: date-time */
                             requestedAt: string;
                             fulfilledAt: string | null;
-                            bundleSizeBytes: number | null;
-                            /** Format: date-time */
-                            createdAt: string;
+                            heldForOversizedApproval: boolean;
+                            heldBundleSizeBytes: string | null;
+                            heldRecordCount: number | null;
+                            heldAt: string | null;
+                            bundleSizeBytes: string | null;
+                            bundleDownloadedAt: string | null;
                         }[];
                         nextCursor: string | null;
                         hasMore: boolean;

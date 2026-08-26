@@ -304,7 +304,10 @@ const popoverStyle: CSSProperties = {
   border: `1px solid ${t.outlineVariant}`,
   borderRadius: t.radiusMd,
   background: t.surface,
-  boxShadow: "0 1rem 2.5rem rgba(15, 23, 42, 0.18)",
+  // The dropdown is a floating overlay, same elevation class as the toast and the modal — so it
+  // takes the same Lantern token they do (`--shadow-float`) instead of a hardcoded slate rgba,
+  // which did not react to the theme and read as a light-mode shadow in dark mode.
+  boxShadow: t.shadowFloat,
 };
 
 const optionStyle: CSSProperties = {

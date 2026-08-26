@@ -140,22 +140,49 @@ export function createDbMembershipRepository(
 
     listForUser: async (userId) => {
       // Pre-org-bind (/auth/memberships): the user's memberships ACROSS orgs — there is no single org
-      // to scope to. `withUserContext` sets no org GUC: the M1 pre-org RLS policies explicitly
-      // permit only rows whose user_id matches app.user_id, which is enough for the picker and no more.
-      const rows = await withUserContext(
-        db,
-        { userId },
-        async (tx) =>
-          (await tx
-            .select(MEMBERSHIP_COLUMNS)
-            .from(schema.memberships)
-            .innerJoin(
-              schema.organizations,
-              eq(schema.organizations.id, schema.memberships.organizationId),
-            )
-            .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
-            .where(eq(schema.memberships.userId, userId))) as MembershipDbRow[],
-      );
+      // to scope to. This used to run a plain Drizzle join under two PERMISSIVE `app.user_id` RLS
+      // policies (migrations 0213/0214). Those policies could not stay narrow: PostgreSQL UNIONs every
+      // permissive policy for a role, and `withOrgContext` sets `app.user_id` on ordinary requests too
+      // for M4 audit attribution, so they widened EVERY org-scoped session into a cross-org read of
+      // this user's memberships (F-001, #15 — reproduced live). Migration 0215 drops them and moves the
+      // read behind `membership_pre_org_picker`, the ADR-0010 D2/D3-compliant SECURITY DEFINER pattern
+      // migrations 0193/0194 already use: scope is the function's single argument, not a session GUC,
+      // so nothing about it is reachable from an org-scoped request.
+      //
+      // `withUserContext` is kept so M4 audit attribution still stamps the acting user; the picker
+      // itself no longer depends on the `app.user_id` GUC for visibility.
+      const rows = await withUserContext(db, { userId }, async (tx) => {
+        // db.execute() is a raw query, so Drizzle applies no column-type deserialization and no
+        // camelCase aliasing — the row comes back snake_cased, with timestamptz as a string (the same
+        // gotcha documented in 36-messaging/alert-emitter-drizzle.ts `preferencesFor`). `toIso` below
+        // already accepts `Date | string`, so lastLoginAt needs no special-casing here.
+        const result = await tx.execute<{
+          membership_id: string;
+          user_id: string;
+          organization_id: string;
+          organization_name: string;
+          status: MembershipStatus;
+          default_location_ids: unknown;
+          display_name: string | null;
+          email: string;
+          account_status: AccountStatus;
+          last_login_at: string | null;
+        }>(sql`SELECT * FROM membership_pre_org_picker(${userId}::uuid)`);
+        return result.rows.map(
+          (r): MembershipDbRow => ({
+            membershipId: r.membership_id,
+            userId: r.user_id,
+            organizationId: r.organization_id,
+            organizationName: r.organization_name,
+            status: r.status,
+            defaultLocationIds: r.default_location_ids,
+            displayName: r.display_name,
+            email: r.email,
+            accountStatus: r.account_status,
+            lastLoginAt: r.last_login_at,
+          }),
+        );
+      });
       // Admin status is per-org; resolve each org's admin set once.
       const orgIds = [...new Set(rows.map((r) => r.organizationId))];
       const adminByOrg = new Map<string, ReadonlySet<string>>();

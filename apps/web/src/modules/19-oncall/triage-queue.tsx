@@ -315,7 +315,7 @@ export function TriageQueueScreen(): JSX.Element {
               </thead>
               <tbody>
                 {visibleCalls.map((call) => (
-                  <tr key={call.id} style={rowStyle} className="wx-data-row-interactive">
+                  <tr key={call.id} style={rowStyle}>
                     <td style={tdStyle}>
                       <Link to={`/triage/calls/${call.id}`} style={callLinkStyle}>
                         {shortId(call.id)}

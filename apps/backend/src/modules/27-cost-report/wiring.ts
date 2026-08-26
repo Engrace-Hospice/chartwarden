@@ -1,4 +1,5 @@
 import { registerPlatformJob } from "@wardenx/tenancy";
+import { DegradedError } from "@wardenx/types";
 // apps/backend/src/modules/27-cost-report/wiring.ts — M27 composition glue (WX-PR-013: the launch-defined
 // cost-report workflow slice). Mirrors the M25/M30/M33/M34 wiring.ts precedent: the platform-tenancy
 // registration for the §4.8 cron fan-out, PLUS the real `RecomputeEnqueuePort` BullMQ producer the
@@ -45,10 +46,26 @@ export function wireM27Tenancy(): void {
   registerPlatformJob(M27_PLATFORM_JOB_ID);
 }
 
-/** Raised when `enqueue()` is called with no Valkey connection configured — never a silent no-op. */
-export class M27InfraPortUnbound extends Error {
-  constructor(port: string, reason: string) {
-    super(`M27 infra port '${port}' is not bound to a real adapter: ${reason}`);
+/**
+ * Raised by a still-unbound Phase-2D infra port (the fail-closed signal — never a silent no-op).
+ *
+ * A `DegradedError`, so the caller gets `503 DEGRADED` naming the missing dependency rather than the
+ * `500 INTERNAL_ERROR / "An unexpected error occurred"` a bare `Error` collapsed into (F-022 / #55).
+ * A deliberately unbound port IS the dependency-unavailable condition `DegradedError` exists for,
+ * and the M34 `M34InfraPortUnbound` precedent already took that posture. `reason` is the whole of
+ * the caller-facing message — the internal port name stays on `port`, where the log can read it and
+ * the response cannot.
+ *
+ * `component` defaults to the background queue because every current throw site is a queue producer;
+ * a future non-queue port passes its own rather than mislabelling itself.
+ */
+export class M27InfraPortUnbound extends DegradedError {
+  constructor(
+    public readonly port: string,
+    reason: string,
+    component = "background-queue",
+  ) {
+    super(component, reason);
     this.name = "M27InfraPortUnbound";
   }
 }
