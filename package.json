@@ -143,6 +143,7 @@
     "arch:tables": "bun run scripts/check-table-ownership.ts",
     "arch:tenancy": "bun run scripts/check-tenancy.ts",
     "arch:ddl": "bun run scripts/check-ddl-legality.ts",
+    "arch:migration-numbering": "bun run scripts/check-migration-numbering.ts",
     "arch:graph": "depcruise apps packages --config architecture/.dependency-cruiser.cjs --output-type dot | dot -T svg > docs/architecture-graph.svg",
     "arch:gaps": "bun run scripts/check-fitness-gaps.ts",
     "arch:ai-governance": "bun run scripts/check-ai-governance.ts",

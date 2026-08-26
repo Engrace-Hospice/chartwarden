@@ -134,6 +134,19 @@ the prose docs in `docs/architecture/`.
   `m1-rls-isolation.live.test.ts` is the catalog-side complement and runs in `rls-live`. A policy
   created through dynamic SQL inside a `DO` block is the known limit, and the plain text scan still
   sees the session variables inside it.
+- `scripts/check-migration-numbering.ts` — **migration ordinal uniqueness** (F-026,
+  `bun run arch:migration-numbering`, in `arch:fitness`). The four-digit prefix in
+  `packages/db/migrations/NNNN_name.sql` IS the migration's position in the apply order, and
+  `scripts/db/migrate.ts` applies files in plain lexicographic `.sort()` order — yet nothing
+  enforced that two files do not claim the same number. With a duplicate, which one runs first is
+  decided by the rest of the filename (`0216_admission_…` before `0216_m36_…` because "a" < "m"),
+  a coin flip nobody chose; two independent migrations survive it, a backfill and the migration
+  adding the column it backfills do not. It is a WHEN on a branch-per-change workflow: every branch
+  picks "the next number" against `main`, so two opened the same afternoon pick the same one — four
+  audit branches had already collided in pairs on 0215 and 0216 with every gate green on all four.
+  Duplicates are a hard error naming **every** claimant (the fix is a rename, and which file to
+  rename is the reader's judgement); **gaps are reported, never fatal**, because a branch that
+  leaves 0215 for a sibling PR and takes 0216 is doing the right thing.
 - `scripts/check-abac-predicates.ts` — **ABAC named-predicate resolution** (`bun run arch:abac-predicates`). Every `requireAbac(_, "<name>")` — including through each module's
   local `guards.ts` factory — must name a predicate some module declares. M3's registry fails
   closed on an unknown name, so a typo'd or never-registered name is a permanently dead endpoint

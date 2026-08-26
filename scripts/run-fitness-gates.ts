@@ -33,6 +33,7 @@ export const GATES = [
   "arch:tables",
   "arch:tenancy",
   "arch:ddl",
+  "arch:migration-numbering",
   "arch:gaps",
   "arch:ai-governance",
   "arch:architecture-docs",
