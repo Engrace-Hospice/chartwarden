@@ -367,7 +367,9 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(AdmissionActivateSchema, request.body);
-      return service.activateAdmission(organizationId, idOf(request), body.ifVersion);
+      return service.activateAdmission(organizationId, idOf(request), body.ifVersion, {
+        locationId: body.locationId,
+      });
     },
   );
 

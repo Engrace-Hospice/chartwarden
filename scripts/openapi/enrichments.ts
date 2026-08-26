@@ -3772,6 +3772,44 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
       nextCursor: Type.Union([Type.String(), Type.Null()]),
     }),
   },
+  // M1 Foundation (#50) — the service-location directory the admission activation ceremony picks from.
+  // `location` had no route at all before this, which is half of why `admission.location_id` was never
+  // written: there was no way for a human to name one.
+  "GET /api/v1/locations": {
+    summary: "Search service locations for selector controls (cursor-paginated, non-PHI)",
+    query: Type.Object({
+      providerEntityId: Type.Optional(
+        Type.String({
+          description:
+            "Narrow to one provider entity's locations — what an admission may legally be sited at",
+        }),
+      ),
+      status: Type.Optional(
+        Type.String({
+          description: "Filter by location status (`active` for sites accepting patients)",
+        }),
+      ),
+      q: Type.Optional(Type.String({ description: "Case-insensitive search over name and city" })),
+      cursor: Type.Optional(
+        Type.String({ description: "Offset cursor returned by the previous page" }),
+      ),
+      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+    }),
+    response: Type.Object({
+      items: Type.Array(
+        Type.Object({
+          id: Type.String(),
+          providerEntityId: Type.String(),
+          name: Type.String(),
+          city: Type.String(),
+          state: Type.String(),
+          timezone: Type.String(),
+          status: Type.String(),
+        }),
+      ),
+      nextCursor: Type.Union([Type.String(), Type.Null()]),
+    }),
+  },
   // M5 Patient
   "GET /api/v1/patients": {
     summary: "Patient census / list (cursor-paginated, §4.2)",
