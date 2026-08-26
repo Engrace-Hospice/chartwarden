@@ -9,6 +9,12 @@ on:
     branches:
       - develop
       - main
+
+  # Callable as a reusable workflow so `deploy.yml` can require THIS ENTIRE workflow — every job
+  # below, live-DB suites included — before it publishes an image or touches the production VPS
+  # (#16). Expressing the deploy gate as a call rather than a copy of `build-and-verify` means the
+  # two can never drift: whatever CI checks on a PR is exactly what a release must satisfy.
+  workflow_call:
 # Phase 0 gate (PHASE_0_SCAFFOLD_PLAN.md PR-0.6): every PR must install from the committed
 # lockfile, build the project-reference graph, pass all six fitness gates + scaffold parity,
 # and pass the Vitest fitness-gate self-test (which proves each gate goes red on a violation).
@@ -276,6 +282,12 @@ jobs:
           # store/seam make a tightening bind at evaluation time, and it DERIVES its boundary cases
           # from `STEP_UP_POLICY` so the TS floor and the SQL floor cannot drift apart in silence.
           - { name: "M2 step-up override", scripts: "test:m2:step-up-override:live" }
+          # F-001 (#15): the sign-in org picker. Migrations 0213/0214 served it with two PERMISSIVE
+          # `app.user_id` policies, which PostgreSQL UNIONs into EVERY org-scoped session — a
+          # cross-org read on every authenticated request. 0215 replaces them with a SECURITY DEFINER
+          # function; this drives `listForUser` (which had no live coverage) through the production
+          # repository as wardenx_app, so the hand-written raw-query row mapping is proven too.
+          - { name: "M2 pre-org membership picker", scripts: "test:m2:pre-org-picker:live" }
           # GAP-079: M4's §2.5 read-audit EMISSION over the M26 Cap + M39 Consent read surfaces —
           # proves the events land in the partitioned audit_event table carrying the patient id the
           # §164.528 accounting query joins on, as the NOBYPASSRLS app role.

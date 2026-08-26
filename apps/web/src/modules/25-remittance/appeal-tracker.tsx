@@ -295,7 +295,7 @@ export function AppealTracker(): JSX.Element {
               </thead>
               <tbody>
                 {pagedRows.map((r) => (
-                  <tr key={r.id} style={rowStyle} className="wx-data-row-interactive">
+                  <tr key={r.id} style={rowStyle}>
                     <td style={cellStyle}>{TIER_LABEL[r.tier] ?? humanize(r.tier)}</td>
                     <td style={cellStyle}>
                       <StatusPill

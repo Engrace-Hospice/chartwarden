@@ -309,7 +309,7 @@ export function RemittanceWorklist(): JSX.Element {
                     </thead>
                     <tbody>
                       {pagedAdvices.map((a) => (
-                        <tr key={a.id} style={rowStyle} className="wx-data-row-interactive">
+                        <tr key={a.id} style={rowStyle}>
                           <td style={tdDateStyle}>{new Date(a.receivedAt).toLocaleDateString()}</td>
                           <td style={cellStyle}>{humanize(a.payerKind)}</td>
                           <td style={cellStyle}>{humanize(a.paymentMethod)}</td>
@@ -378,7 +378,7 @@ export function RemittanceWorklist(): JSX.Element {
                     </thead>
                     <tbody>
                       {pagedBacklog.map((l) => (
-                        <tr key={l.id} style={rowStyle} className="wx-data-row-interactive">
+                        <tr key={l.id} style={rowStyle}>
                           <td style={tdDateStyle}>{new Date(l.receivedAt).toLocaleDateString()}</td>
                           <td style={tdNumStyle}>{money(l.clp03TotalChargeAmount)}</td>
                           <td style={tdNumStyle}>{money(l.clp04TotalPaymentAmount)}</td>
