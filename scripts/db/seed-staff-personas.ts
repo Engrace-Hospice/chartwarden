@@ -155,10 +155,10 @@ async function signUp(email: string, password: string, name: string): Promise<st
  * `{ notFoundOnDeny: true }` (the §6.6 existence-non-leak convention), so four seed steps reported a
  * missing resource for a patient that was verifiably there.
  *
- * Re-anchoring HERE rather than only in `seed-clinical.ts` is what makes it order-independent:
- * `db:reset` runs `db:seed:clinical` (step 4) before `db:seed:staff` (step 8), so rita does not exist
- * when the assignment is first written, and this script deletes and re-creates her user row anyway —
- * an assignment written earlier would point at a user id that no longer exists.
+ * Re-anchoring HERE rather than only in `seed-clinical.ts` is what makes it order-independent. The
+ * chain runs this script immediately BEFORE `db:seed:clinical` (#39 moved it there so rita exists by
+ * then), but this script deletes and re-creates her user row on every run — so an assignment written
+ * against a previous run's rita would point at a user id that no longer exists, whatever the order.
  */
 const RN_CASE_MANAGER_EMAIL = "rita@wardenx.local";
 
