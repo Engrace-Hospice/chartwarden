@@ -29,10 +29,24 @@
 // Exceptions are REGISTERED, never inferred (the `deviceAttestationValid` rule): an entry carries its
 // reason, and the gate FAILS when a registered route stops violating, so an entry cannot outlive it.
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { ROUTE_ENRICHMENTS } from "./openapi/enrichments";
 import { type ScannedRoute, routeKey, scanRoutes } from "./openapi/scan-routes";
 
 const CHECK_ONLY = !process.argv.includes("--list");
+
+/**
+ * Test-only scan root, honored by `check-design-tokens.ts` and `check-migration-numbering.ts` for the same
+ * reason and unset in every real invocation (`arch:fitness` never sets it).
+ *
+ * It does two things here. It roots the scan at the planted-violation fixture — and it tells the gate the
+ * scan is PARTIAL. A fixture tree holds one route file, so it sees none of the registered routes below and
+ * every registry entry would read as stale: the fixture would go red without the planted route in it,
+ * which is precisely the failure the `openapi-coverage` self-test warns about ("must fail on the RATCHET,
+ * not merely on report staleness"). Staleness is asserted by the unit tests over `checkRoutes` instead,
+ * where the registry can be varied directly.
+ */
+const FIXTURE_ROOT = process.env.WARDENX_FITNESS_ROOT;
 
 /** Methods that can carry a request payload. GET/DELETE bodies are not a thing this codebase uses. */
 const BODY_METHODS = new Set(["post", "put", "patch"]);
@@ -265,10 +279,11 @@ export function checkRoutes(
 }
 
 function main(): void {
-  const routes = scanRoutes();
+  const root = FIXTURE_ROOT ?? process.cwd();
+  const routes = scanRoutes(root);
   const cache = new Map<string, string>();
   const readFile = (f: string): string => {
-    if (!cache.has(f)) cache.set(f, readFileSync(f, "utf8"));
+    if (!cache.has(f)) cache.set(f, readFileSync(join(root, f), "utf8"));
     return cache.get(f) as string;
   };
   const { violations, registered, staleEntries } = checkRoutes(routes, readFile, (key) =>
@@ -289,7 +304,7 @@ function main(): void {
   for (const v of violations.sort((a, b) => a.key.localeCompare(b.key))) {
     problems.push(`  ✗ ${v.key}\n      ${v.detail}\n      ${v.file}`);
   }
-  for (const key of staleEntries.sort()) {
+  for (const key of (FIXTURE_ROOT ? [] : staleEntries).sort()) {
     problems.push(
       `  ✗ ${key}\n      registered as a known disagreement, but the route no longer disagrees — delete the entry (an exception must not outlive its reason)`,
     );
