@@ -83,7 +83,7 @@ export function registerHallucinationRoutes(
     "/api/v1/ai/hallucination-reports",
     { preHandler: [P("ai.hallucination.report"), ABAC_IN_ORG("ai.hallucination.report")] },
     async (request, reply) => {
-      const actor = writeActorOf(request);
+      const actor = await writeActorOf(request);
       const body = parse(FileHallucinationReportBody, request.body);
       if (cipher === null) cipherUnbound();
       const reporterNarrativeCipher = await cipher.encrypt(
@@ -116,7 +116,7 @@ export function registerHallucinationRoutes(
     "/api/v1/ai/hallucination-reports",
     { preHandler: [P("ai.hallucination.triage"), ABAC_SAFETY_OWNER("ai.hallucination.triage")] },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = await actorOf(request);
       const query = parseQuery(HallucinationQueueQuery, request.query);
       return {
         reports: await listAiHallucinationReports(safety, actor.organizationId, {
@@ -135,7 +135,7 @@ export function registerHallucinationRoutes(
     "/api/v1/ai/hallucination-reports/:reportId/triage",
     { preHandler: [P("ai.hallucination.triage"), ABAC_SAFETY_OWNER("ai.hallucination.triage")] },
     async (request) => {
-      const actor = writeActorOf(request);
+      const actor = await writeActorOf(request);
       const { reportId } = parse(ReportIdParams, request.params);
       const body = parse(TriageHallucinationReportBody, request.body);
       return triageAiHallucinationReport(safety, actor.organizationId, reportId, {

@@ -357,6 +357,27 @@ export const M5_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "none",
   },
+  /**
+   * Unmasked PHI in a compliance projection — today only M32's §164.528 disclosure ledger (R16/R17),
+   * where it unlocks the patient identity and the free-text error on an `ai_invocation` row.
+   *
+   * A CHECK-don't-gate key, like `cost_report.edit_any_provider`: no route gates on it (R16's route
+   * key is `ai.invocation.read`); the projection consults it and masks when it is absent. It was
+   * never in this catalog, so it could not be granted to anyone — and M32 asked for it as a ROLE
+   * token (`context.roles.includes("phi.full_read")`, a `resource.action` key checked against a list
+   * of role keys like `compliance_officer`) and as an unwritten context attribute. Both arms were
+   * dead, so R16/R17 masked every caller including the compliance officer the ledger exists for
+   * (F-030).
+   *
+   * Deliberately assigned to NO default role template: who reads unmasked PHI by default is a
+   * tenant policy decision, and inventing one here would grant it silently on every existing org.
+   */
+  "phi.full_read": {
+    resource: "phi",
+    action: "full_read",
+    category: "compliance",
+    abac: "none",
+  },
   "phi.read_ssn": {
     resource: "phi",
     action: "read_ssn",
