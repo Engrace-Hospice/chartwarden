@@ -280,6 +280,11 @@ jobs:
                 "test:m34:hold-discovery:live test:m34:dsar-export:live test:m34:tenant-export:live
                 test:m34:tenant-export-approval:live",
             }
+          # F-045 (#105): the per-tenant DEK chain, which four modules' encryption surfaces terminated at
+          # and which had never once run. Its own runner because it DROPs and re-CREATEs the cluster roles
+          # and then relies on `wardenx_app` being refused a grant — a suite sharing a runner with one that
+          # re-grants anything would make that assertion pass or fail for the wrong reason.
+          - { name: "M34 tenant key provider", scripts: "test:m34:tenant-key-provider:live" }
           - { name: "M37 IPU", scripts: "test:m37:write:live" }
           - { name: "M37 privacy gates", scripts: "test:m37:privacy-gates:live" }
           # AC-01: the §7.4 break-glass co-signature as a real TWO-PERSON control. `cosign` matched on

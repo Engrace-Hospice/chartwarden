@@ -102,6 +102,7 @@
     "test:m1:platform-outbox:live": "vitest run apps/backend/__tests__/gap-099-platform-outbox-delivery.live.test.ts",
     "test:m1:outbox-dispatcher:live": "vitest run apps/backend/__tests__/outbox-dispatcher.live.test.ts",
     "test:m38:admin:live": "vitest run apps/backend/__tests__/gap-063-terminology-admin.live.test.ts",
+    "test:m34:tenant-key-provider:live": "vitest run apps/backend/__tests__/m34-tenant-key-provider.live.test.ts",
     "test:m34:hold-discovery:live": "vitest run apps/backend/__tests__/gap-098-oversized-hold-discovery.live.test.ts",
     "test:m29:unmatched-lab-review:live": "vitest run apps/backend/__tests__/gap-044-m29-unmatched-lab-review.live.test.ts",
     "test:m37:write:live": "vitest run apps/backend/__tests__/m37-ipu-write.live.test.ts",

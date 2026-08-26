@@ -81,6 +81,7 @@ import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
 import { registerProviderEntityLookupRoutes } from "./bootstrap/routes/provider-entities";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
+import { createPlatformKekAdapter, loadPlatformKekRing } from "./bootstrap/tenant-kek";
 
 /** The @wardenx/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
@@ -734,6 +735,13 @@ export function wireModuleSeams(
     sessionContextStore?: SessionContextStore;
     db?: DbClient;
     organizationDb?: DbClient;
+    /**
+     * The PLATFORM-pooled client (`DATABASE_PLATFORM_URL`). Distinct from `organizationDb` even though
+     * the composition root happens to pass the same handle to both: this one is here because M34's D5
+     * key provider needs a credential that may SELECT `tenant_key_ring`, which migration 0052 §5 revokes
+     * from `wardenx_app` (#105). Absent ⇒ the key provider refuses with a stated reason.
+     */
+    platformDb?: DbClient;
     /** The catalog-validating tx outbox publisher (TASK-002) — the M5 PatientMutator's §4.6
      * `m5.patient.updated` emit rides it. Absent on slice/test boots (mutator stays in-memory). */
     outboxPublisher?: OutboxPublishPort;
@@ -1395,10 +1403,19 @@ export function wireModuleSeams(
   if (deps.db) {
     const gatewayConfig = m34ProvisionGatewayConfigFromEnv(process.env);
     const gateway = gatewayConfig ? createM34ProvisionGateway(gatewayConfig) : null;
+    // #105 — the platform KEK. Preferred over the gateway's `/dek/unwrap` because a KEK held by this
+    // process is a key this deployment actually has, where the provision gateway is an HTTP service that
+    // is unspecified and undeployed (#115): the whole per-tenant DEK chain hung off a call to nothing.
+    // A KMS/HSM deployment replaces this one binding and nothing else (ADR-0045; the port is unchanged).
+    const platformKek = loadPlatformKekRing(process.env);
+    const kek = platformKek ? createPlatformKekAdapter(platformKek) : null;
     registerLiveM34Seams({
       db: deps.db,
       auditBypass: m34PlatformBypassAuditor,
-      kekUnwrap: gateway?.kekUnwrap,
+      kekUnwrap: kek ?? gateway?.kekUnwrap,
+      // NOT `deps.db`: migration 0052 §5 revokes wardenx_app's SELECT on tenant_key_ring, so the request
+      // path's credential cannot read a wrapped DEK at all. The platform login holds the grant.
+      keyRingDb: deps.platformDb,
     });
   } else {
     bootstrapModule34(SLICE_MODULE_34_SEAM_DEPS);
@@ -1470,10 +1487,9 @@ export const m34PlatformBypassAuditor: PlatformBypassAuditor<DbClient> = async (
  * slice/local boot, so a resolve is a programming error, not a silent fail-open. This satisfies the mandatory
  * D5 registration without handing out a real key.
  *
- * TODO(Phase 2D — TenantKeyProvider adapter): replace with M34's key-ring service backed by the real KEK/KMS
- * (the §3.3 tenant-key-destruction-log + per-tenant DEK wrap/unwrap). It is the ONLY seam that hard-fails boot;
- * the lifecycle/onboarding/support providers + the M35 subscription-entitlement reader bind their real adapters
- * in the same phase (until then they fail-closed via their typed resolvers).
+ * This is the DB-LESS boot only. The db-present path binds the real key-ring provider over the platform KEK
+ * (`registerLiveM34Seams` above, #105 / ADR-0045); a comment in M27 spent a while citing THIS stub as the
+ * reason the per-tenant DEK was unavailable in production, which sent readers to the wrong branch entirely.
  */
 const SLICE_MODULE_34_SEAM_DEPS: BootstrapModule34Deps = {
   tenantKeyProvider: {
@@ -1981,6 +1997,15 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const m34ProvisionGateway = m34ProvisionConfig
     ? createM34ProvisionGateway(m34ProvisionConfig)
     : null;
+  // #105 — the same platform KEK the D5 seam resolves DEKs through (bound in wireModuleSeams above),
+  // rebuilt here for the WRAP half: `tenant.provision` mints a tenant's first DEK and `tenant.dek_rotate`
+  // mints its successors. Wrap and unwrap MUST come from the same adapter — a DEK wrapped by the gateway
+  // and unwrapped by this process (or the reverse) is a key nobody can open. Falls back to the gateway
+  // when no KEK is configured, so a KMS-fronted deployment keeps working unchanged.
+  const m34PlatformKekRing = loadPlatformKekRing(process.env);
+  const m34KeyMaterial = m34PlatformKekRing
+    ? createPlatformKekAdapter(m34PlatformKekRing)
+    : m34ProvisionGateway?.keyMaterial;
   const m34ProvisionQueue =
     queueConnection && platformDbHandle && m34ProvisionGateway
       ? buildM34ProvisionQueue(queueConnection)
@@ -3125,6 +3150,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           : undefined,
         db: dbHandle?.db,
         organizationDb: platformDbHandle?.db,
+        platformDb: platformDbHandle?.db,
         outboxPublisher: txOutboxPublisher,
       }),
     registerModuleErasers: () =>
@@ -3341,11 +3367,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         provision: {
           auditBypass: m34PlatformBypassAuditor,
           ...m34ProvisionGateway,
+          // AFTER the spread: the platform KEK wins over the gateway's `/dek/wrap` (see m34KeyMaterial).
+          ...(m34KeyMaterial ? { keyMaterial: m34KeyMaterial } : {}),
           outbox: m34OutboxPublisher,
         },
         keyLifecycle: {
           auditBypass: m34PlatformBypassAuditor,
-          keyMaterial: m34ProvisionGateway.keyMaterial,
+          keyMaterial: m34KeyMaterial ?? m34ProvisionGateway.keyMaterial,
           storage: m34ProvisionGateway.destructionStorage,
           outbox: m34OutboxPublisher,
           async destroyTenantKeyRing(input) {

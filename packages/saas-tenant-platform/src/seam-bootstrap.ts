@@ -202,9 +202,13 @@ export function bootstrapModule34(deps: BootstrapModule34Deps): void {
   // `dsar_export_job.bundle_document_id` per the M22 §1.1 handshake) and the onboarding-step outbox
   // consumers once the consumer-dispatch binding lands. No-op today; the wiring site is explicit here.
 
-  // TODO(M4 destruction-cert): register the `saas_tenant_platform_class` eraseFn into M4's
-  // destruction-cert callback registry (spec §4.6 `registerEraser('saas_tenant_platform_class', …)`).
-  // Deferred to the eraser phase — the eraseFn (DEK-first cryptographic shred) is not built yet.
+  // The `saas_tenant_platform_class` eraseFn is NOT registered here, and deliberately so. It lands
+  // through the composition root's `registerSaasTenantPlatformErasers(...)` hook
+  // (`apps/backend/src/modules/34-saas-tenant-platform/erasers/saas-tenant-platform-eraser.ts`), the
+  // same INJECTED-registerEraser shape every other module uses — this package cannot import M1's
+  // bootstrap registry, and the eraser needs the PLATFORM credential its cross-tenant deletes run on,
+  // which only the composition root holds. A TODO here claimed for a while that the eraseFn "is not
+  // built yet"; it was, and #105 was filed off this comment rather than off the wiring.
 }
 
 /**

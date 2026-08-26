@@ -141,6 +141,29 @@ const REQUIREMENTS: readonly Requirement[] = [
     key: "TRUSTED_PROXY_CIDRS",
   },
   {
+    // #105 — the platform KEK that wraps every tenant's DEK (`bootstrap/tenant-kek.ts`, ADR-0045). The
+    // root of M34's §3.5 key envelope: unset, `dekForOrg` refuses for every org, and with it every
+    // consumer of per-tenant encryption — M8's signed HearthNote narrative, M27's raw payload ciphers,
+    // M29's stored HL7 payloads, M31's portal contact ciphers, M39's consent notes. Shaped
+    // `<kekId>:<base64 32 bytes>` rather than a bare key because the id is stored beside every wrapped
+    // DEK (`tenant_key_ring.current_dek_kek_id`) and is what makes a KEK rotation resolvable.
+    key: "M34_TENANT_KEK",
+    rule: (v) => {
+      const sep = v.indexOf(":");
+      if (sep <= 0) return "must be '<kekId>:<base64 32-byte key>'";
+      if (!/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(v.slice(0, sep))) {
+        return "kekId must be 1-64 chars of [A-Za-z0-9._-]";
+      }
+      try {
+        return Buffer.from(v.slice(sep + 1), "base64").length === 32
+          ? null
+          : "key must decode to 32 base64 bytes";
+      } catch {
+        return "key must be valid base64";
+      }
+    },
+  },
+  {
     // TASK-013/ARCH-008 — the shared secret an internal (non-interactive) caller presents to
     // authenticate as a system principal (`bootstrap/plugins/authenticate.ts`), the only way
     // `requireSystemPrincipal()`-gated routes (M23 #39/#40, M15's `/internal/...` seams) become
