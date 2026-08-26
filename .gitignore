@@ -32,13 +32,14 @@ CREDENTIALS.local.md
 # committed lockfile on a clean checkout). Do NOT ignore it.
 
 # Generated build artifact — the implementation-repo starter, regenerable from the
-# manifest/docs via the scaffold step (not corpus content). Specific name, not *.zip,
-# so the authored WARDENX_UI_SCREEN_SPECS_v5.zip spec artifact stays tracked.
+# manifest/docs via the scaffold step (not corpus content).
 wardenx-impl-starter.zip
 
 # Generated bundles — regenerable from the spec sources in docs/modules/ (module specs +
-# module-29-tasks/). Specific names, not *.zip, so the authored, tracked spec artifacts
-# WARDENX_UI_SCREEN_SPECS_v5.zip and WARDENX_PROJECT_STARTER.zip stay in git.
+# module-29-tasks/). Named individually rather than globbed as *.zip because these entries
+# predate the removal of the two zips that used to be the reason for the distinction
+# (WARDENX_PROJECT_STARTER.zip, WARDENX_UI_SCREEN_SPECS_v5.zip); the corpus itself lives in
+# docs/, and nothing in the repo is generated FROM a zip.
 WARDENX_MODULES_01-10.zip
 WARDENX_MODULES_11-20.zip
 WARDENX_MODULES_21-30.zip
