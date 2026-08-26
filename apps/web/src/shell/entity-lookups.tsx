@@ -8,7 +8,7 @@ import type {
 } from "@wardenx/ui";
 import type { JSX, ReactNode } from "react";
 import { useCallback } from "react";
-import { useSession } from "../shell/session";
+import { useSession } from "./session";
 
 type LookupProps = Omit<EntityLookupFieldProps, "loadOptions">;
 type MdmKind =

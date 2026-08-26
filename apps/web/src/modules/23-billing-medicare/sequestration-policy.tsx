@@ -22,7 +22,7 @@ import {
 // billing-status.ts, CSS-var tokens only. openapi emits no billing schemas → reads cast, inits `as never`.
 import { useCallback, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { ProviderEntityLookupField } from "../../shared/entity-lookups";
+import { ProviderEntityLookupField } from "../../shell/entity-lookups";
 
 interface SequestrationPolicyView {
   policyId: string;
