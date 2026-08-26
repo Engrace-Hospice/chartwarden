@@ -145,6 +145,17 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     // per-operation form and resolves the tightened policy itself; the two agree except where a
     // tenant has tightened, where the guard is the stricter of the two. Never read this attribute as
     // authoritative for a tightened operation.
+    // Stamp the SESSION CLASS and, for the three M31 portal classes, the portal account + bound
+    // patient (F-030). M16, M19, M31 and M39 all read `sessionClass`, and M16/M19/M31 gate on it being
+    // one of the portal classes — which the `session_class` enum did not even contain until migration
+    // 0219, so every one of those predicates denied unconditionally and the whole portal ABAC surface
+    // with them. `portalAccountId`/`portalPatientId` come off the session's `scope` jsonb, which is the
+    // only legitimate source: M31's `portalAccountIdOf` throws 403 rather than fall back to a request
+    // parameter (§8.3.1 threat (b) is a valid session naming another patient's id in the query string).
+    // `portalPatientId` is legitimately null until `select-patient` binds it.
+    request.context.attributes.sessionClass = actor.sessionClass;
+    if (actor.portalAccountId) request.context.attributes.portalAccountId = actor.portalAccountId;
+    if (actor.portalPatientId) request.context.attributes.portalPatientId = actor.portalPatientId;
     request.context.attributes.stepUpRecent = await stepUpFreshFor({
       organizationId: actor.organizationId,
       sessionId: snap.sessionId,

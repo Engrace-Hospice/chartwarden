@@ -1,6 +1,6 @@
 // @wardenx/auth · identity — Session classes + lifecycle (M2-T03; M2 spec §2.2.4, §3.6).
 //
-// The `session` table (M1-owned) is the SAME row shape for all four classes; the class
+// The `session` table (M1-owned) is the SAME row shape for every class; the class
 // drives timeout policy, scope, and allowed operations. This module is the canonical
 // taxonomy + lifecycle state machine + scoping predicates. The Better Auth config
 // (./auth) carries these as session additionalFields; their at-rest columns + CHECK
@@ -12,7 +12,7 @@
 // and the scope-shape predicate that mirrors the DB `session_scope_chk` CHECK.
 import { schema } from "@wardenx/db";
 
-/** The four session classes (single source: the M1-owned `session_class` pgEnum). */
+/** Every session class (single source: the M1-owned `session_class` pgEnum). */
 export const SESSION_CLASSES = schema.sessionClass.enumValues;
 export type SessionClass = (typeof SESSION_CLASSES)[number];
 
@@ -62,7 +62,12 @@ export function canTransitionSession(
 }
 
 /** What a class's session is pinned to (drives authorization scope in M3). */
-export type SessionScopeKind = "organization" | "patient" | "deceased_patient";
+export type SessionScopeKind =
+  | "organization"
+  | "patient"
+  | "deceased_patient"
+  /** M31 portal — pinned to a portal ACCOUNT; the one patient is bound within it by select-patient. */
+  | "portal_account";
 
 /** Concurrency rule per class (M2 spec §2.2.4 "Concurrency" column). */
 export type SessionConcurrency = "allowed" | "one_active_per_link" | "none";
@@ -77,6 +82,14 @@ export interface SessionClassDescriptor {
   readonly requiresEngagementWindow: boolean;
   /** collaborator / funeral sessions require `scope.patientId`. */
   readonly requiresPatientScope: boolean;
+  /**
+   * The three M31 portal classes require `scope.portalAccountId`.
+   *
+   * Deliberately NOT `requiresPatientScope`: a portal session exists before `select-patient` binds its
+   * one patient (M31 §2.3 / D2), so the patient is optional at mint and the account is not. Mirrors the
+   * `session_scope_chk` branch migration 0220 adds.
+   */
+  readonly requiresPortalAccount: boolean;
   /** Concurrency policy. */
   readonly concurrency: SessionConcurrency;
   /** Whether the UI screen-lock lifecycle applies (staff / auditor). */
@@ -85,6 +98,7 @@ export interface SessionClassDescriptor {
 
 export const SESSION_CLASS_DESCRIPTORS: Record<SessionClass, SessionClassDescriptor> = {
   staff: {
+    requiresPortalAccount: false,
     scopeKind: "organization",
     readOnly: false,
     requiresEngagementWindow: false,
@@ -93,6 +107,7 @@ export const SESSION_CLASS_DESCRIPTORS: Record<SessionClass, SessionClassDescrip
     screenLockApplies: true,
   },
   auditor: {
+    requiresPortalAccount: false,
     scopeKind: "organization",
     readOnly: true,
     requiresEngagementWindow: true,
@@ -101,6 +116,7 @@ export const SESSION_CLASS_DESCRIPTORS: Record<SessionClass, SessionClassDescrip
     screenLockApplies: true,
   },
   external_collaborator: {
+    requiresPortalAccount: false,
     scopeKind: "patient",
     readOnly: false,
     requiresEngagementWindow: false,
@@ -109,6 +125,7 @@ export const SESSION_CLASS_DESCRIPTORS: Record<SessionClass, SessionClassDescrip
     screenLockApplies: false,
   },
   funeral_home: {
+    requiresPortalAccount: false,
     scopeKind: "deceased_patient",
     readOnly: false,
     requiresEngagementWindow: false,
@@ -116,7 +133,86 @@ export const SESSION_CLASS_DESCRIPTORS: Record<SessionClass, SessionClassDescrip
     concurrency: "one_active_per_link",
     screenLockApplies: false,
   },
+
+  // ── M31 portal (§2.2.1, §6.4, §8.1) ─────────────────────────────────────────────────────────────
+  // Three classes rather than one, matching what M16/M19/M31's predicates have always compared
+  // against. The distinction is the RELATIONSHIP, which is a durable fact of the grant, not of the
+  // session: `patient_self` mints `patient_portal`, any delegated grant mints `caregiver_portal`, and
+  // a grant in `bereaved_mode` mints `bereaved_portal`. All three share one policy — the timeouts are
+  // `PORTAL_SESSION_POLICY_FLOOR` (M31's own evaluator), not the staff screen-lock lifecycle.
+  patient_portal: {
+    requiresPortalAccount: true,
+    scopeKind: "portal_account",
+    readOnly: false, // portal users write: messages, amendment requests, caregiver-attested doses
+    requiresEngagementWindow: false,
+    requiresPatientScope: false, // bound later by select-patient, not at mint
+    concurrency: "allowed",
+    screenLockApplies: false,
+  },
+  caregiver_portal: {
+    requiresPortalAccount: true,
+    scopeKind: "portal_account",
+    readOnly: false,
+    requiresEngagementWindow: false,
+    requiresPatientScope: false,
+    concurrency: "allowed",
+    screenLockApplies: false,
+  },
+  bereaved_portal: {
+    requiresPortalAccount: true,
+    scopeKind: "portal_account",
+    readOnly: false,
+    requiresEngagementWindow: false,
+    requiresPatientScope: false,
+    concurrency: "allowed",
+    screenLockApplies: false,
+  },
+
+  // ── M19 external triage vendor (§4.1 row 36) ────────────────────────────────────────────────────
+  // An answering service acting for the agency after hours. Org-scoped, not patient-scoped: the
+  // vendor sees the on-call surface, and per-call patient access is gated by M19's own predicates.
+  external_triage_vendor: {
+    requiresPortalAccount: false,
+    scopeKind: "organization",
+    readOnly: false, // they log triage calls
+    requiresEngagementWindow: false,
+    requiresPatientScope: false,
+    concurrency: "allowed", // one vendor, many operators
+    screenLockApplies: false,
+  },
+  external_triage_operator: {
+    requiresPortalAccount: false,
+    scopeKind: "organization",
+    readOnly: false,
+    requiresEngagementWindow: false,
+    requiresPatientScope: false,
+    concurrency: "allowed",
+    screenLockApplies: false,
+  },
 };
+
+/** The three M31 portal classes — the set M16/M19/M31's `portal.*` predicates gate on. */
+export const PORTAL_SESSION_CLASSES = [
+  "patient_portal",
+  "caregiver_portal",
+  "bereaved_portal",
+] as const satisfies readonly SessionClass[];
+
+/** The two M19 answering-service classes. */
+export const VENDOR_SESSION_CLASSES = [
+  "external_triage_vendor",
+  "external_triage_operator",
+] as const satisfies readonly SessionClass[];
+
+/** Is this class one of the three M31 portal classes? Accepts any string (an absent class is not). */
+export function isPortalSessionClass(cls: string | null | undefined): boolean {
+  return (PORTAL_SESSION_CLASSES as readonly string[]).includes(cls ?? "");
+}
+
+/** Is this class one of the two M19 answering-service classes? */
+export function isVendorSessionClass(cls: string | null | undefined): boolean {
+  return (VENDOR_SESSION_CLASSES as readonly string[]).includes(cls ?? "");
+}
 
 /** Descriptor lookup. */
 export function sessionClassDescriptor(cls: SessionClass): SessionClassDescriptor {
@@ -126,7 +222,7 @@ export function sessionClassDescriptor(cls: SessionClass): SessionClassDescripto
 /** The class-specific scope fields carried on a session (mirrors the §3.6 columns). */
 export interface SessionScopeFields {
   readonly sessionClass: SessionClass;
-  readonly scope?: { patientId?: string } | null;
+  readonly scope?: { patientId?: string; portalAccountId?: string } | null;
   readonly engagementStart?: Date | string | null;
   readonly engagementEnd?: Date | string | null;
 }
@@ -145,7 +241,10 @@ export function isSessionScopeValid(fields: SessionScopeFields): boolean {
   if (desc.requiresEngagementWindow) {
     return engagementStart != null && engagementEnd != null;
   }
-  return true; // staff
+  if (desc.requiresPortalAccount) {
+    return typeof scope?.portalAccountId === "string" && scope.portalAccountId.length > 0;
+  }
+  return true; // staff, vendor
 }
 
 /** Throwing variant for the write path. */
@@ -163,6 +262,9 @@ export function assertSessionScope(fields: SessionScopeFields): void {
  */
 export function sessionPinnedPatientId(fields: SessionScopeFields): string | null {
   const desc = SESSION_CLASS_DESCRIPTORS[fields.sessionClass];
+  // A portal session is pinned too, once `select-patient` has bound it — but unlike collaborator /
+  // funeral it is legitimately unpinned before that, so it reads the same field WITHOUT requiring it.
+  if (desc.requiresPortalAccount) return fields.scope?.patientId ?? null;
   return desc.requiresPatientScope ? (fields.scope?.patientId ?? null) : null;
 }
 

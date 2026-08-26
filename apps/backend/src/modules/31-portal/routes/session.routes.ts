@@ -53,6 +53,22 @@ export function registerPortalSessionRoutes(app: FastifyInstance, deps: PortalRo
       if (!grant) {
         throw new ForbiddenError("no active grant for this account and patient (§8.3.1)");
       }
+      // Hand the binding to M2 (F-030). This route's header has always said it does; it did not, and
+      // there was no M2 surface to hand it to — so `scope.patientId` was never written, the hook had
+      // nothing to stamp as `portalPatientId`, and every §4.7 predicate that reads the session's bound
+      // patient denied. The value written is the REQUEST BODY's patientId, which is legitimate here and
+      // only here: the grant above has just been proven active for (this account, this patient), and
+      // §8.3.1 threat (b) is about a LATER request naming a different patient — which now reads the
+      // bound value off the session instead.
+      const sessionId = request.context?.attributes?.sessionId;
+      if (typeof sessionId === "string" && sessionId.length > 0) {
+        await getSeam("PortalSessionBinder").bindPortalPatient({
+          scope: { orgId: actor.organizationId },
+          sessionId,
+          patientId,
+        });
+      }
+
       let displayName = "your family member";
       try {
         const identity = await (getSeam("PatientReader") as unknown as PatientReaderArm).findById({

@@ -39,7 +39,13 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards on
 // `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  PORTAL_SESSION_CLASSES as AUTH_PORTAL_SESSION_CLASSES,
+  VENDOR_SESSION_CLASSES as AUTH_VENDOR_SESSION_CLASSES,
+  type AbacContext,
+  type AbacTarget,
+  registerPredicateIdempotent,
+} from "@wardenx/auth";
 import type { MembershipId, OncallShiftDiscipline, TriageEscalationTier } from "@wardenx/types";
 import { getSeam } from "../../bootstrap/index";
 import type { TriageActorDiscipline } from "./lifecycle/protocol";
@@ -182,17 +188,11 @@ export function triageDisciplineForRoleKeys(
 }
 
 /** M2 session classes that are an external triage VENDOR operator's session (ADR-0026 / §8.3.1). */
-export const VENDOR_SESSION_CLASSES = [
-  "external_triage_vendor",
-  "external_triage_operator",
-] as const;
+/** The canonical list (@wardenx/auth), not a local copy — see the F-030 note in M31's predicates. */
+export const VENDOR_SESSION_CLASSES = AUTH_VENDOR_SESSION_CLASSES;
 
-/** M2 session classes that are a patient/caregiver PORTAL session (§4.1 row 36). */
-export const PORTAL_SESSION_CLASSES = [
-  "patient_portal",
-  "caregiver_portal",
-  "bereaved_portal",
-] as const;
+/** M2 session classes that are a patient/caregiver PORTAL session (§4.1 row 36). Canonical list. */
+export const PORTAL_SESSION_CLASSES = AUTH_PORTAL_SESSION_CLASSES;
 
 // ── the facts the six predicates decide over ─────────────────────────────────────────────────────────
 

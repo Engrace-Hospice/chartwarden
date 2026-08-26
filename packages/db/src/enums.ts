@@ -92,6 +92,15 @@ export const sessionClass = pgEnum("session_class", [
   "auditor", // magic-link + 2FA within an engagement window; read-only, no concurrency
   "external_collaborator", // one-time 30-min magic-link; scoped to one patient
   "funeral_home", // magic-link issued at/after death; scoped to one deceased patient
+  // The five classes M16/M19/M31's ABAC predicates have always compared against (migration 0219).
+  // They were absent for as long as those predicates have existed, so every one of them denied
+  // unconditionally — indistinguishable from a correct refusal, because the readers default an absent
+  // class to `staff` and then deny that too.
+  "patient_portal", // M31 — the patient's own portal session (grant kind `patient_self`)
+  "caregiver_portal", // M31 — a family caregiver / DPOA acting for the patient
+  "bereaved_portal", // M31/M16 — the post-death bereavement surface (grant `bereaved_mode`)
+  "external_triage_vendor", // M19 — an answering-service organization's session
+  "external_triage_operator", // M19 — one operator within that vendor
 ]);
 
 export const invitationStatus = pgEnum("invitation_status", [

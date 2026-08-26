@@ -87,6 +87,18 @@ export const CONTEXT_ATTRIBUTES: Readonly<Record<string, AttributeEntry>> = {
     producer:
       "M17 scheduling routes — stamped per request from the org's configured IANA zone before the visit-window predicates read it.",
   },
+  sessionClass: {
+    producer:
+      "authenticate hook — `ResolvedActor.sessionClass`, off the M1 `session.session_class` column. The three M31 portal classes and the two M19 vendor classes were added to that enum by migration 0219; before it they could not be the value of any real session, so every predicate gating on them denied unconditionally (F-030).",
+  },
+  portalAccountId: {
+    producer:
+      "authenticate hook — the portal account off the session's `scope` jsonb, written at mint by M2's `PortalSessionMinter`. Null on every non-portal class. Never falls back to a request parameter (§8.3.1).",
+  },
+  portalPatientId: {
+    producer:
+      "authenticate hook — the one patient `select-patient` bound, off the session's `scope` jsonb. Legitimately null between mint and select-patient (M31 §2.3 / D2), which is why the CHECK requires the ACCOUNT and not the patient.",
+  },
 
   breakGlassEventId: {
     producer:
@@ -101,10 +113,6 @@ export const CONTEXT_ATTRIBUTES: Readonly<Record<string, AttributeEntry>> = {
   deviceAttestation: {
     blocked:
       "The other entry that was already done RIGHT, and the model for this whole registry: `deviceAttestationValid` (packages/auth/src/abac/registry.ts) is a REGISTERED predicate that denies and says why, rather than an unregistered name — and its comment states the contract exactly: when M2 lands the attestation surface the auth plugin starts setting DEVICE_ATTESTATION_ATTRIBUTE and the gate begins passing, with nothing at the predicate or the route changing. Listed for completeness.",
-  },
-  sessionClass: {
-    blocked:
-      "BLOCKED ON A SCHEMA DECISION, and the largest of these. Read by M16, M31 and M39, each defaulting to \"staff\" when absent — so a non-staff session is currently judged as staff. M31's portal predicates gate on it being one of `patient_portal`/`caregiver_portal`/`bereaved_portal`, and the M1 `session_class` enum contains none of those (its four values are staff/auditor/external_collaborator/funeral_home). So this cannot be stamped from the session table as it stands: either M2's enum gains the three portal classes (migration + spec change) or the portal predicates read a different fact. Until then the whole M31 portal ABAC surface denies. Needs an architecture decision, not a stamp.",
   },
   permissions: {
     blocked:
@@ -125,13 +133,6 @@ export const CONTEXT_ATTRIBUTES: Readonly<Record<string, AttributeEntry>> = {
   externalActorId: {
     blocked:
       "M19's on-call predicates and route actor read the vendor/answering-service actor id for a vendor-scoped call. Nothing assembles it, so no vendor-scoped call can be recognised as one.",
-  },
-  portalAccountId: {
-    blocked:
-      "M31's portal predicates read the acting portal account. Blocked behind `sessionClass`: the predicates that would use it deny before reaching it, because `isPortalSession` is already false.",
-  },
-  portalPatientId: {
-    blocked: "As `portalAccountId` — the patient a portal session is scoped to.",
   },
   phiFullRead: {
     blocked:

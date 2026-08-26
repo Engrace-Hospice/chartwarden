@@ -175,6 +175,7 @@ export type SeamName =
   | "ConsentEvaluator" // M39 — disclosure/redaction gate
   | "SessionContextResolver" // M2 — authenticated, org-scoped request context (actor + step-up state)
   | "AuditorSessionMinter" // M2 — mint a time-boxed auditor magic-link session (M3 calls it)
+  | "PortalSessionBinder" // M2 — stamp class + scope on an M31 portal session (M31 calls it)
   | "TenantOrgCreationProvider" // M2 — create/attach the per-tenant org M34's provision worker needs (§7.1)
   | "OrganizationReader" // M2 — resolve org display metadata by id (M35 admin lists label cross-tenant rows)
   | "TerminologyProvider" // M38 — version-aware code/value-set resolution (every clinical/billing module)
@@ -587,6 +588,18 @@ export interface ResolvedActor {
   readonly roles: readonly string[];
   readonly providerEntityIds: readonly string[];
   readonly locationIds: readonly string[];
+  /**
+   * The §2.2.4 session class (`staff` / `auditor` / `external_collaborator` / `funeral_home` / the
+   * three M31 portal classes / the two M19 vendor classes). Carried here because M16/M19/M31's ABAC
+   * predicates gate on it and nothing produced it — every one of them denied unconditionally (F-030).
+   * Typed as `string` rather than the enum union so this leaf stays decoupled from M2's internals,
+   * the same reasoning `ConsentSessionClass` gives.
+   */
+  readonly sessionClass: string;
+  /** M31 portal sessions — the portal account the session acts for; null on every other class. */
+  readonly portalAccountId: string | null;
+  /** M31 portal sessions — the one patient `select-patient` bound; null before that, and on staff. */
+  readonly portalPatientId: string | null;
 }
 
 /** The membership + active role keys for an actor in one org (the actor-context fields M3 owns). */
@@ -680,6 +693,46 @@ export interface AuditorSessionMinter {
   }): Promise<{ magicLinkToken: string }>;
 }
 
+/** The three M31 portal session classes, as the minter names them. */
+export type PortalSessionClass = "patient_portal" | "caregiver_portal" | "bereaved_portal";
+
+/**
+ * M2 — stamps the class + scope onto an M31 portal session (M31 §2.3 / D2; F-030).
+ *
+ * Named `Binder`, not `Minter`, on purpose: M31 already publishes a `PortalSessionMinter`
+ * (packages/types/src/portal.ts) for M28's SMART user-launch, which is a different surface owned by a
+ * different module. This one does not create a session — it writes the class and scope onto a session
+ * M2 already authenticated.
+ *
+ * M31 owns the portal ACCOUNT and the access GRANT; M2 owns the `session` row, so the class and the
+ * scope are written here. Split from `AuditorSessionMinter` because the shapes differ: an auditor
+ * session is minted whole from an engagement window, whereas a portal session is minted BEFORE its
+ * patient is known and bound to one later by `select-patient` — which is exactly why
+ * `session_scope_chk` requires the account on a portal session and not the patient.
+ *
+ * Both operations are org-scoped and fail closed: a session id that is not in `scope.orgId`, or is not
+ * a portal session, is refused rather than silently rescoped. `bindPatient` is the only writer of
+ * `scope.patientId` on a portal session — the value never comes from a request parameter (§8.3.1).
+ */
+export interface PortalSessionBinder {
+  /** Stamp an authenticated session as a portal session for one account. Returns the class written. */
+  bindPortalSession(input: {
+    scope: OrgScope;
+    sessionId: string;
+    portalAccountId: string;
+    sessionClass: PortalSessionClass;
+  }): Promise<{ sessionClass: PortalSessionClass }>;
+  /**
+   * Bind the session's ONE patient (§2.3 / D2). The caller must have already proven an active grant
+   * for (account, patient); this writes the binding the request context is then assembled from.
+   */
+  bindPortalPatient(input: {
+    scope: OrgScope;
+    sessionId: string;
+    patientId: string;
+  }): Promise<void>;
+}
+
 /** The intent M34's `tenant.provision` worker hands M2 to create / attach the per-tenant organization
  *  (M34 §2.5 r2 / §7.1 step 3). PHI-free — every field is resolved by the platform-ops route that
  *  enqueued the provision job. `organizationId` is the org spine the §7.1 step-1 route pre-creates in
@@ -769,6 +822,7 @@ export interface SeamContracts {
   ConsentEvaluator: unknown;
   SessionContextResolver: SessionContextResolver;
   AuditorSessionMinter: AuditorSessionMinter;
+  PortalSessionBinder: PortalSessionBinder;
   // M2 — LEAF-TYPED: M34's provision worker (CONSUMER) and M2 (PRODUCER) can't import each other's
   // package, so the contract lives here. M2 registers the real Drizzle-backed provider over the deny-stub.
   TenantOrgCreationProvider: TenantOrgCreationProvider;

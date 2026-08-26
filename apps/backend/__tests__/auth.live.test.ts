@@ -989,3 +989,148 @@ describe.skipIf(!DB_URL)(
     });
   },
 );
+
+// ── F-030: `session_scope_chk` against a real database ────────────────────────────────────────────
+//
+// Two findings, both surfaced by EXECUTING this constraint rather than reading it:
+//
+//  1. The five classes M16/M19/M31's ABAC predicates gate on were not in the `session_class` enum, so
+//     no session could ever carry one and every one of those predicates denied unconditionally.
+//     Migration 0219 adds them; 0220 teaches the CHECK what scope each requires.
+//
+//  2. A PRE-EXISTING hole in the same constraint: `scope ? 'patientId'` on a NULL `scope` is NULL, not
+//     false, and **a CHECK constraint passes when its expression is NULL**. So the collaborator/funeral
+//     branch never bound on a row with no scope at all — an `external_collaborator` session, a one-time
+//     magic link whose entire purpose is to be pinned to ONE patient, could be written unpinned. The
+//     app-layer mirror (`isSessionScopeValid`) never had the hole, which is why nothing going through
+//     the auth layer ever hit it, and why the DB floor being the LOOSER of the two went unnoticed.
+//
+// This suite is the constraint's only executable proof: `arch:tenancy` and the schema gates read
+// migrations as text, and every unit-level test of session scope goes through the app-layer mirror.
+describe.skipIf(!DB_URL)("session_scope_chk (F-030) — live", () => {
+  const client = () => new Client({ connectionString: DB_URL });
+  const USER = "11111111-1111-4111-8111-0000000f0300";
+
+  /** Try one INSERT; resolve to null on success or the constraint name on refusal. */
+  async function insertSession(
+    db: InstanceType<typeof Client>,
+    id: string,
+    sessionClass: string,
+    scope: string | null,
+  ): Promise<string | null> {
+    try {
+      await db.query(
+        `INSERT INTO session(id,user_id,token,expires_at,session_class,scope)
+         VALUES ($1,$2,$3, now() + interval '1 hour', $4::session_class, $5::jsonb)`,
+        [id, USER, `tok-${id}`, sessionClass, scope],
+      );
+      return null;
+    } catch (err) {
+      return (err as { constraint?: string }).constraint ?? "unknown";
+    }
+  }
+
+  beforeAll(async () => {
+    const db = client();
+    await db.connect();
+    await db.query(
+      `INSERT INTO "user"(id,name,email,email_verified) VALUES ($1,'F030','f030@wardenx.local',true)
+       ON CONFLICT (id) DO NOTHING`,
+      [USER],
+    );
+    await db.query("DELETE FROM session WHERE user_id = $1", [USER]);
+    await db.end();
+  });
+
+  afterAll(async () => {
+    const db = client();
+    await db.connect();
+    await db.query("DELETE FROM session WHERE user_id = $1", [USER]);
+    await db.query('DELETE FROM "user" WHERE id = $1', [USER]);
+    await db.end();
+  });
+
+  it("the enum carries all nine classes, in the order the migrations added them", async () => {
+    const db = client();
+    await db.connect();
+    const { rows } = await db.query<{ labels: string }>(
+      `SELECT string_agg(enumlabel, ',' ORDER BY enumsortorder) AS labels
+         FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = 'session_class'`,
+    );
+    await db.end();
+    expect(rows[0]?.labels).toBe(
+      "staff,auditor,external_collaborator,funeral_home," +
+        "patient_portal,caregiver_portal,bereaved_portal," +
+        "external_triage_vendor,external_triage_operator",
+    );
+  });
+
+  it("refuses a portal session with no portal account", async () => {
+    const db = client();
+    await db.connect();
+    // The mint-then-select flow means the PATIENT is optional; the ACCOUNT never is.
+    expect(await insertSession(db, "f030-a", "caregiver_portal", null)).toBe("session_scope_chk");
+    expect(await insertSession(db, "f030-b", "patient_portal", '{"patientId":"pt-1"}')).toBe(
+      "session_scope_chk",
+    );
+    await db.end();
+  });
+
+  it("accepts a portal session with an account and NO patient — the state between mint and select", async () => {
+    const db = client();
+    await db.connect();
+    expect(
+      await insertSession(db, "f030-c", "caregiver_portal", '{"portalAccountId":"acct-1"}'),
+    ).toBeNull();
+    await db.end();
+  });
+
+  it("merges the patient onto the scope without dropping the account (the binder's write)", async () => {
+    const db = client();
+    await db.connect();
+    // `||` is a right-biased jsonb merge. A REPLACING write would drop `portalAccountId`, and the
+    // session would 403 on its very next request — the binder's two operations write different keys.
+    await db.query(
+      `UPDATE session SET scope = COALESCE(scope,'{}'::jsonb) || '{"patientId":"pt-9"}'::jsonb
+        WHERE id = 'f030-c'`,
+    );
+    const { rows } = await db.query<{ scope: Record<string, string> }>(
+      "SELECT scope FROM session WHERE id = 'f030-c'",
+    );
+    await db.end();
+    expect(rows[0]?.scope).toEqual({ portalAccountId: "acct-1", patientId: "pt-9" });
+  });
+
+  it("accepts the two vendor classes with no scope, like staff", async () => {
+    const db = client();
+    await db.connect();
+    expect(await insertSession(db, "f030-d", "external_triage_vendor", null)).toBeNull();
+    expect(await insertSession(db, "f030-e", "external_triage_operator", null)).toBeNull();
+    expect(await insertSession(db, "f030-f", "staff", null)).toBeNull();
+    await db.end();
+  });
+
+  it("refuses an UNSCOPED collaborator / funeral session — the pre-existing NULL hole", async () => {
+    // This is the case that passed before 0220. `NULL ? 'patientId'` is NULL, the other branches are
+    // false, `NULL OR false` is NULL, and a CHECK passes on NULL — so the one-patient pin that is the
+    // entire point of these two classes was never enforced at the database.
+    const db = client();
+    await db.connect();
+    expect(await insertSession(db, "f030-g", "external_collaborator", null)).toBe(
+      "session_scope_chk",
+    );
+    expect(await insertSession(db, "f030-h", "funeral_home", null)).toBe("session_scope_chk");
+    // Still accepted WITH the pin, so the fix tightened exactly the NULL case and nothing else.
+    expect(
+      await insertSession(db, "f030-i", "external_collaborator", '{"patientId":"pt-2"}'),
+    ).toBeNull();
+    await db.end();
+  });
+
+  it("still refuses an auditor session with no engagement window (branch untouched)", async () => {
+    const db = client();
+    await db.connect();
+    expect(await insertSession(db, "f030-j", "auditor", null)).toBe("session_scope_chk");
+    await db.end();
+  });
+});
