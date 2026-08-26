@@ -84,11 +84,23 @@ type ResolveAdmissionPatient = (
 ) => Promise<{ patientId: string } | null>;
 
 function makeServer(
-  options: { isInCaseload?: IsInCaseload; resolveAdmissionPatient?: ResolveAdmissionPatient } = {},
+  options: {
+    isInCaseload?: IsInCaseload;
+    resolveAdmissionPatient?: ResolveAdmissionPatient;
+    /** #48 — the M6 admission status the §2.3 active-admission guard turns on (default `active`). */
+    admissionStatus?: string;
+  } = {},
 ) {
   const backend = createInMemoryHopeBackend({
     now: () => NOW,
     timeZone: "America/New_York",
+    // #45 — the M6 `AdmissionStatusReader` stand-in. `recordTimepoint` resolves the subject of the
+    // record here instead of writing the `admissionId` into `patient_id`; an admission absent from this
+    // map is a projection gap and the record is refused.
+    admissionPatients: { [ADMISSION]: PATIENT },
+    ...(options.admissionStatus
+      ? { admissionStatuses: { [ADMISSION]: options.admissionStatus } }
+      : {}),
     schedules: [
       {
         id: SCHEDULE,
@@ -605,5 +617,317 @@ describe("M10-T06 — §4.9.1 out-of-band PHI strip", () => {
     expect(oob.body).not.toContain("Jane");
     expect(oob.body).not.toContain("02_huv1");
     expect(oob.ctaUrl).toBe("https://app/wardenx/hope/123");
+  });
+});
+
+// ── #45 — the subject of a HOPE record ─────────────────────────────────────────────────────────────
+//
+// `hope_assessment.patient_id` used to fall back to the `admissionId` whenever no open
+// `hope_timepoint_schedule` row existed for (admission, RFA). The column carries no FK — the corpus
+// keeps foreign keys inside the owning module — so nothing rejected it, and the row named a subject
+// that does not exist. Every route that scopes on the ASSESSMENT (sign, correct, get) then resolved
+// its caseload check against that non-patient id and 404'd for the clinicians who perform the
+// assessment, while the org-wide scope roles sailed through by skipping the caseload check entirely.
+//
+// The existing tests above never caught it because they all record `02_huv1`, and `makeServer` seeds an
+// open `02_huv1` schedule. Production seeds none: no code anywhere inserts a `hope_timepoint_schedule`
+// row, so the fallback was not the edge case — it was the only path.
+describe("M10 — #45 the recorded timepoint's patient comes from the admission", () => {
+  /** `01_admission` has no seeded schedule, so this is the path that used to fabricate the subject. */
+  const unscheduledBody = () => huv1Body({ rfaKind: "01_admission" });
+
+  it("stores the admission's patient — not the admission id — when no schedule row exists", async () => {
+    const { app, backend } = makeServer();
+    const rec = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: unscheduledBody(),
+    });
+    expect(rec.statusCode).toBe(201);
+    expect(rec.json().patientId).toBe(PATIENT);
+    expect(rec.json().patientId).not.toBe(ADMISSION);
+    // The §4.7 ABAC resolver is the surface `hope.scope` reads on every assessment-scoped route.
+    const facts = await backend.loadAssessment(ORG, rec.json().id as string);
+    expect(facts?.patientId).toBe(PATIENT);
+    await app.close();
+  });
+
+  it("an RN on the patient's caseload can then sign it (this returned 404)", async () => {
+    // Caseload membership is the real predicate, resolved against the STORED patient id. With an
+    // admission id stored, no assignment can ever match and `notFoundOnDeny` renders the denial as 404.
+    const { app } = makeServer({ isInCaseload: async ({ patientId }) => patientId === PATIENT });
+    const rec = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: unscheduledBody(),
+    });
+    expect(rec.statusCode).toBe(201);
+    const signed = await app.inject({
+      method: "POST",
+      url: `/api/v1/hope/assessments/${rec.json().id}/sign`,
+      headers: RN,
+      payload: { attestationConfirmed: true },
+    });
+    expect(signed.statusCode).toBe(200);
+    expect(signed.json().status).toBe("signed");
+    await app.close();
+  });
+
+  it("uses the admission's patient even when a schedule row carries one too", async () => {
+    // Two unenforced copies of `patient_id` is what let a third value slip in behind them; the
+    // admission is the only authority, so it is asked on every record, not only on a schedule miss.
+    const { app } = makeServer();
+    const rec = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: huv1Body(), // 02_huv1 — the seeded open schedule
+    });
+    expect(rec.statusCode).toBe(201);
+    expect(rec.json().patientId).toBe(PATIENT);
+    await app.close();
+  });
+
+  it("refuses with 422 M10_ADMISSION_PROJECTION_GAP when the admission cannot be projected", async () => {
+    // The ABAC guard is deliberately made permissive here: the write path must refuse on its own, not
+    // because something upstream happened to deny first. `UNKNOWN_ADMISSION` is absent from the slice's
+    // admission→patient map, which is how the seam reports "I cannot tell you whose admission this is".
+    const UNKNOWN_ADMISSION = "33333333-3333-4333-8333-999999999999";
+    const { app } = makeServer({
+      resolveAdmissionPatient: async () => ({ patientId: PATIENT }),
+    });
+    const rec = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${UNKNOWN_ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: unscheduledBody(),
+    });
+    expect(rec.statusCode).toBe(422);
+    expect(rec.json().error?.code ?? rec.json().code).toBe("M10_ADMISSION_PROJECTION_GAP");
+    await app.close();
+  });
+});
+
+// ── #48 — the §4.4 recording gate ─────────────────────────────────────────────────────────────────
+//
+// Every guard exercised below is a `@wardenx/hope` function that shipped in M10-T03 with a unit test
+// and ZERO production callers:
+//
+//   assertAdmissionActiveAtTarget   M10_ADMISSION_NOT_ACTIVE          0 callers in apps/backend/src
+//   assertRfaMatchesSchedule        M10_RFA_KIND_MISMATCH             0
+//   assertCaptureAllowed            M10_TIMEPOINT_NOT_OPEN / _EXPIRED / LATE_REASON_REQUIRED|INVALID  0
+//   assertSectionQForDischarge      M10_REQUIRED_SECTION_MISSING / _FORBIDDEN_SECTION_PRESENT         0
+//
+// Each §4.4 code therefore looked enforced and was not. The seeded `02_huv1` window is
+// [2026-06-06, 2026-06-20] with a late deadline of 2026-06-27, and NOW (2026-06-08) sits inside it,
+// which is why every pre-existing record test above passes the gate without noticing it.
+describe("M10 — #48 the §4.4 capture-window gate", () => {
+  const codeOf = (res: { json(): { error?: { code?: string } } }): string | undefined =>
+    res.json().error?.code;
+  const record = async (
+    app: { inject: (o: unknown) => Promise<{ statusCode: number; json(): never }> },
+    over: Record<string, unknown>,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: huv1Body(over),
+    });
+
+  it("rejects a capture before the window opens (409 M10_TIMEPOINT_NOT_OPEN)", async () => {
+    const { app } = makeServer();
+    const res = await record(app, { targetDate: "2026-06-01T12:00:00.000Z" });
+    expect(res.statusCode).toBe(409);
+    expect(codeOf(res)).toBe("M10_TIMEPOINT_NOT_OPEN");
+    await app.close();
+  });
+
+  it("requires a typed late reason inside the grace span (400 M10_LATE_REASON_REQUIRED)", async () => {
+    const { app } = makeServer();
+    const res = await record(app, { targetDate: "2026-06-23T12:00:00.000Z" });
+    expect(res.statusCode).toBe(400);
+    expect(codeOf(res)).toBe("M10_LATE_REASON_REQUIRED");
+    await app.close();
+  });
+
+  it("rejects a late reason outside the CMS codelist at the route boundary (422)", async () => {
+    // Stated precisely because it differs from the §4.4 table: the route's TypeBox enumerates the
+    // closed codelist, so an off-list value is refused as VALIDATION_FAILED (422) BEFORE the domain
+    // guard runs. `M10_LATE_REASON_INVALID` (400) is therefore not reachable over HTTP — it remains the
+    // floor for a caller that reaches the service directly (a job, a script, another module).
+    // The boundary refusal is the tighter of the two, so it is kept rather than loosened to expose the
+    // domain code.
+    const { app } = makeServer();
+    const res = await record(app, {
+      targetDate: "2026-06-23T12:00:00.000Z",
+      lateCompletionReasonCode: "because_i_forgot",
+    });
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("accepts a late capture with a valid reason and marks it wasLate", async () => {
+    const { app } = makeServer();
+    const res = await record(app, {
+      targetDate: "2026-06-23T12:00:00.000Z",
+      lateCompletionReasonCode: "hospitalization",
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().wasLate).toBe(true);
+    await app.close();
+  });
+
+  it("rejects a capture past the late deadline (409 M10_TIMEPOINT_EXPIRED)", async () => {
+    const { app } = makeServer();
+    const res = await record(app, {
+      targetDate: "2026-07-01T12:00:00.000Z",
+      lateCompletionReasonCode: "pto",
+    });
+    expect(res.statusCode).toBe(409);
+    expect(codeOf(res)).toBe("M10_TIMEPOINT_EXPIRED");
+    await app.close();
+  });
+
+  it("an admin override extends the hard cutoff but still demands the late reason", async () => {
+    const { app } = makeServer();
+    const withoutReason = await record(app, {
+      targetDate: "2026-07-01T12:00:00.000Z",
+      adminOverride: true,
+    });
+    expect(withoutReason.statusCode).toBe(400);
+    expect(codeOf(withoutReason)).toBe("M10_LATE_REASON_REQUIRED");
+
+    const withReason = await record(app, {
+      targetDate: "2026-07-01T12:00:00.000Z",
+      adminOverride: true,
+      lateCompletionReasonCode: "admin_override",
+    });
+    expect(withReason.statusCode).toBe(201);
+    expect(withReason.json().wasLate).toBe(true);
+    await app.close();
+  });
+
+  it("in-window capture is not late and ignores a late reason it did not need", async () => {
+    const { app } = makeServer();
+    const res = await record(app, { lateCompletionReasonCode: "pto" });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().wasLate).toBe(false);
+    await app.close();
+  });
+});
+
+describe("M10 — #48 the remaining §4.4 recording guards", () => {
+  const codeOf = (res: { json(): { error?: { code?: string } } }): string | undefined =>
+    res.json().error?.code;
+  const post = (
+    app: { inject: (o: unknown) => Promise<{ statusCode: number; json(): never }> },
+    payload: Record<string, unknown>,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload,
+    });
+
+  it("refuses to record against a discharged admission (409 M10_ADMISSION_NOT_ACTIVE)", async () => {
+    const { app } = makeServer({ admissionStatus: "discharged" });
+    const res = await post(app, huv1Body());
+    expect(res.statusCode).toBe(409);
+    expect(codeOf(res)).toBe("M10_ADMISSION_NOT_ACTIVE");
+    await app.close();
+  });
+
+  it("rejects a payload RFA that disagrees with the named window (409 M10_RFA_KIND_MISMATCH)", async () => {
+    // Naming the `scheduleId` is what makes this guard reachable: the worklist hands the clinician a
+    // window, and the payload's RFA can disagree with it. Resolved by `rfa_kind` instead, the two agree
+    // by construction and the guard is tautological — which is why this test names the schedule.
+    const { app } = makeServer();
+    const res = await post(app, huv1Body({ rfaKind: "01_admission", scheduleId: SCHEDULE }));
+    expect(res.statusCode).toBe(409);
+    expect(codeOf(res)).toBe("M10_RFA_KIND_MISMATCH");
+    await app.close();
+  });
+
+  it("404s on a named schedule that is not on this admission, rather than capturing ungated", async () => {
+    const { app } = makeServer();
+    const res = await post(app, huv1Body({ scheduleId: "55555555-5555-4555-8555-999999999999" }));
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  describe("D9 — the discharge RFA's Section Q branch", () => {
+    const dischargeBody = (over: Record<string, unknown> = {}) => ({
+      rfaKind: "05_discharge",
+      targetDate: NOW,
+      authorDiscipline: "RN",
+      data: {},
+      ...over,
+    });
+
+    it("requires a discharge_reason (400 M10_REQUIRED_SECTION_MISSING)", async () => {
+      const { app } = makeServer();
+      const res = await post(app, dischargeBody());
+      expect(res.statusCode).toBe(400);
+      expect(codeOf(res)).toBe("M10_REQUIRED_SECTION_MISSING");
+      await app.close();
+    });
+
+    it("requires Section Q on a live discharge (400 M10_REQUIRED_SECTION_MISSING)", async () => {
+      const { app } = makeServer();
+      const res = await post(app, dischargeBody({ dischargeReason: "live_discharge" }));
+      expect(res.statusCode).toBe(400);
+      expect(codeOf(res)).toBe("M10_REQUIRED_SECTION_MISSING");
+      await app.close();
+    });
+
+    it("forbids Section Q on a death discharge (400 M10_FORBIDDEN_SECTION_PRESENT)", async () => {
+      const { app } = makeServer();
+      const res = await post(
+        app,
+        dischargeBody({ dischargeReason: "death", data: { Q: { participation: "yes" } } }),
+      );
+      expect(res.statusCode).toBe(400);
+      expect(codeOf(res)).toBe("M10_FORBIDDEN_SECTION_PRESENT");
+      await app.close();
+    });
+
+    it("accepts a death discharge without Section Q — on a CLOSED admission", async () => {
+      // The active-admission guard is deliberately not applied to a Discharge RFA: by the time it is
+      // captured the admission is closed by definition. This is the case that proves the exemption is
+      // real rather than an accident of the seed always being active.
+      const { app } = makeServer({ admissionStatus: "discharged" });
+      const res = await post(app, dischargeBody({ dischargeReason: "death" }));
+      expect(res.statusCode).toBe(201);
+      expect(res.json().rfaKind).toBe("05_discharge");
+      await app.close();
+    });
+  });
+});
+
+// ── #48 — "no data" is not 100% ────────────────────────────────────────────────────────────────────
+describe("M10 — #48 the HQRP compliance dashboard distinguishes no-data from a perfect score", () => {
+  it("returns null rates and the count pair when nothing has been measured", async () => {
+    // The seeded fixture has one OPEN schedule and one MISSED SFV, so no rate has a denominator: the
+    // HOPE rate counts completed+expired windows, the SFV rate counts completed+missed... which the
+    // seeded `missed` row DOES populate. Only the HOPE and submission rates are genuinely empty here.
+    // Every one of these used to fall back to 1 — a compliance officer was shown 100% on-time for an
+    // agency that had never closed a single timepoint window.
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/hope/dashboard/compliance",
+      headers: COMPLIANCE,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.hopeOnTimeRate).toBeNull();
+    expect(body.hopeOnTimeCounts).toEqual({ onTime: 0, total: 0 });
+    expect(body.submissionAcceptanceRate).not.toBe(1); // two seeded submissions, neither accepted
+    expect(body.submissionAcceptanceCounts.total).toBe(2);
+    await app.close();
   });
 });

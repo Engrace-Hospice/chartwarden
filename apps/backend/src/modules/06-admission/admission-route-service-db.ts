@@ -16,7 +16,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
 import type { LevelOfCare } from "@wardenx/types";
-import { type AnyColumn, type SQL, and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { type AnyColumn, type SQL, and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { decideRecertSign } from "./certification/recert";
 import { computeWrittenCertDeadline } from "./certification/window-math";
 import { resolveForCauseDischarge } from "./discharge/for-cause";
@@ -40,6 +40,7 @@ import {
   InvalidReferralStateError,
   ReferralNotTriagedError,
   ResourceNotFoundError,
+  SIGNER_KIND_BY_ROLE,
   VersionMismatchError,
 } from "./routes/service";
 import type {
@@ -88,6 +89,43 @@ const NOOP_OUTBOX: AdmissionWriteOutboxPort = { async publish() {} };
  * closed with a precise 503 rather than silently trusting an unverified bed (matches the M24 composition-
  * root reader posture — degrade with a message, never fake success).
  */
+/**
+ * Confirms a provider entity belongs to THIS org (#44). `provider_entity` is an M1 FOUNDATION table
+ * that M6 does not own and must not import (`arch:tables`: cross-module reads go through the owner's
+ * service, never its schema), so the check is injected from the composition root.
+ *
+ * It is needed because the FK on `election_statement.provider_entity_id` / `admission.provider_entity_id`
+ * is a plain single-column reference with no organization in it — nothing at the database level stops
+ * one tenant from electing another tenant's hospice. While the field was being discarded that was
+ * moot; persisting it makes the check load-bearing.
+ *
+ * Optional, and an absent binding fails the draft route CLOSED with a precise 503 rather than writing
+ * an unverified provider entity — the same posture as {@link IpuBedAssignmentReaderPort} below.
+ */
+export interface ProviderEntityOrgCheckPort {
+  belongsToOrg(organizationId: string, providerEntityId: string): Promise<boolean>;
+}
+
+/**
+ * Lists the ACTIVE service locations under a provider entity (#50) — how activation sites an admission.
+ *
+ * Same reasoning as {@link ProviderEntityOrgCheckPort}: `location` is an M1 FOUNDATION table M6 does not
+ * own and must not import, so the composition root binds it.
+ *
+ * `admission.location_id` was never written by ANY code path — no route accepted a location, no
+ * transition assigned one, nothing backfilled it. It is the second half of the #44 siting gap, and it
+ * kept every admission unsited at the location level: M10 refuses to create a HOPE timepoint schedule
+ * (`hope_timepoint_schedule.location_id` is NOT NULL), M10's D8 compensating validation finding cannot
+ * be written for the same reason, and every M9 capture is recorded with a null location.
+ *
+ * Optional. An absent binding leaves the admission unsited rather than blocking activation: the
+ * admission is ALREADY unsited today, and turning a data gap into an availability outage would be the
+ * wrong trade — the downstream modules already refuse loudly on their own behalf.
+ */
+export interface ProviderEntityLocationPort {
+  activeLocationsFor(organizationId: string, providerEntityId: string): Promise<readonly string[]>;
+}
+
 export interface IpuBedAssignmentReaderPort {
   activeBedAssignmentForLevelOfCarePeriod(
     organizationId: string,
@@ -193,8 +231,62 @@ export function createDbAdmissionRouteService(
   db: DbClient,
   outbox: AdmissionWriteOutboxPort = NOOP_OUTBOX,
   ipuBedAssignmentReader?: IpuBedAssignmentReaderPort,
+  providerEntityOrgCheck?: ProviderEntityOrgCheckPort,
+  providerEntityLocations?: ProviderEntityLocationPort,
 ): AdmissionRouteService {
   const now = () => new Date();
+
+  /**
+   * #50 — the service location this activation sites the admission at.
+   *
+   * The rule, in the order it fails:
+   *   · no elected provider entity yet → `null`. Nothing to scope a location to, and the admission is
+   *     already unsited at the PE level (#44's transfer-in residue); blocking activation on that
+   *     pre-existing gap would convert missing data into an outage.
+   *   · no location port bound → `null`, same reasoning.
+   *   · the caller NAMED a location → it must be one of the PE's active locations, else 422. A name
+   *     that does not belong is refused rather than silently replaced by a derived one.
+   *   · the PE has EXACTLY ONE active location → derive it. This is not a default: with one candidate
+   *     there is no choice to make, so asking a human to confirm it produces a click, not a decision.
+   *   · the PE has MORE THAN ONE, and none was named → 422. There is no defensible pick (`location`
+   *     carries no primary flag), and guessing would put a federal capture window and its timezone at
+   *     the wrong site.
+   *   · the PE has ZERO active locations → 422, naming that as the cause. Distinct from "choose one".
+   */
+  async function resolveActivationLocation(
+    organizationId: string,
+    providerEntityId: string | null,
+    requested: string | null,
+  ): Promise<string | null> {
+    if (!providerEntityId || !providerEntityLocations) return null;
+    const active = await providerEntityLocations.activeLocationsFor(
+      organizationId,
+      providerEntityId,
+    );
+    if (requested) {
+      if (!active.includes(requested)) {
+        throw new WardenXError(
+          "M6_LOCATION_NOT_UNDER_PROVIDER_ENTITY",
+          `location ${requested} is not an active location of the admission's elected provider entity`,
+          422,
+        );
+      }
+      return requested;
+    }
+    if (active.length === 1) return active[0] as string;
+    if (active.length === 0) {
+      throw new WardenXError(
+        "M6_LOCATION_REQUIRED",
+        "the elected provider entity has no active location, so this admission cannot be sited; activate a location first",
+        422,
+      );
+    }
+    throw new WardenXError(
+      "M6_LOCATION_REQUIRED",
+      `the elected provider entity has ${active.length} active locations; name the one this admission is served from (locationId)`,
+      422,
+    );
+  }
 
   /** Optimistic lock: a stale `ifVersion` is a 409 VERSION_MISMATCH (matches the in-memory slice). */
   function assertVersion(id: string, current: number, expected: number): void {
@@ -300,14 +392,20 @@ export function createDbAdmissionRouteService(
   async function loadAdm(
     tx: DbClient,
     id: string,
-  ): Promise<{ status: AdmissionState; version: number }> {
+  ): Promise<{ status: AdmissionState; version: number; providerEntityId: string | null }> {
     const [r] = await tx
-      .select({ status: ADM.status, version: ADM.version })
+      // `providerEntityId` joined the projection for #50: activation scopes the location it sites the
+      // admission at to the ELECTED provider entity, so it has to be read on the same row it guards.
+      .select({ status: ADM.status, version: ADM.version, providerEntityId: ADM.providerEntityId })
       .from(ADM)
       .where(eq(ADM.id, id))
       .limit(1);
     if (!r) throw new ResourceNotFoundError(id);
-    return { status: r.status as AdmissionState, version: Number(r.version) };
+    return {
+      status: r.status as AdmissionState,
+      version: Number(r.version),
+      providerEntityId: r.providerEntityId ?? null,
+    };
   }
 
   /** An UPDATE guarded by `WHERE id=? AND version=?` returned nothing → distinguish 404 vs stale-409. */
@@ -607,7 +705,13 @@ export function createDbAdmissionRouteService(
     async getAdmission(organizationId, id): Promise<AdmissionDetail | null> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [adm] = await tx
-          .select({ id: ADM.id, status: ADM.status, version: ADM.version })
+          .select({
+            id: ADM.id,
+            status: ADM.status,
+            version: ADM.version,
+            providerEntityId: ADM.providerEntityId,
+            locationId: ADM.locationId,
+          })
           .from(ADM)
           .where(eq(ADM.id, id))
           .limit(1);
@@ -648,7 +752,14 @@ export function createDbAdmissionRouteService(
           ctiHospiceMdSigned,
           ctiAttendingSigned,
         });
-        return { id: adm.id, state: adm.status, version: Number(adm.version), activationGate };
+        return {
+          id: adm.id,
+          state: adm.status,
+          version: Number(adm.version),
+          activationGate,
+          providerEntityId: adm.providerEntityId ?? null,
+          locationId: adm.locationId ?? null,
+        };
       });
     },
     async getPatientElectionCertification(
@@ -1200,7 +1311,7 @@ export function createDbAdmissionRouteService(
         },
       );
     },
-    async activateAdmission(organizationId, id, ifVersion): Promise<MutationResult> {
+    async activateAdmission(organizationId, id, ifVersion, input): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const cur = await loadAdm(tx, id);
         assertVersion(id, cur.version, ifVersion);
@@ -1224,10 +1335,26 @@ export function createDbAdmissionRouteService(
           at: new Date().toISOString().slice(0, 10),
         } satisfies AdmissionEvent);
         const activatedAt = now();
+        // #50 — activation is where the admission is sited at a LOCATION. It has to be here rather than
+        // at intake: the location must belong to the ELECTED provider entity, and that is only known
+        // once the §418.24 statement has been drafted (#44 sites `provider_entity_id` from it). Resolved
+        // before the UPDATE so a refusal leaves the admission un-activated rather than half-sited.
+        const locationId = await resolveActivationLocation(
+          organizationId,
+          cur.providerEntityId ?? null,
+          input?.locationId ?? null,
+        );
         const r = firstOrThrow(
           await tx
             .update(ADM)
-            .set({ status: t.to, activatedAt, version: sql`${ADM.version} + 1` })
+            .set({
+              status: t.to,
+              activatedAt,
+              // Only ever SET, never cleared: a null resolution means "could not be determined", and
+              // overwriting a previously sited admission with null would lose a fact.
+              ...(locationId ? { locationId } : {}),
+              version: sql`${ADM.version} + 1`,
+            })
             .where(and(eq(ADM.id, id), eq(ADM.version, ifVersion)))
             .returning({
               id: ADM.id,
@@ -1276,6 +1403,7 @@ export function createDbAdmissionRouteService(
       organizationId,
       admissionId,
       electionPeriodId,
+      input,
     ): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [adm] = await tx
@@ -1285,11 +1413,34 @@ export function createDbAdmissionRouteService(
           .limit(1);
         if (!adm) throw new ResourceNotFoundError(admissionId);
         const [period] = await tx
-          .select({ sequence: EP.sequenceNumber, effectiveAt: EP.effectiveAt, scheduledEndAt: EP.scheduledEndAt })
+          .select({
+            sequence: EP.sequenceNumber,
+            effectiveAt: EP.effectiveAt,
+            scheduledEndAt: EP.scheduledEndAt,
+          })
           .from(EP)
           .where(eq(EP.id, electionPeriodId))
           .limit(1);
         if (!period) throw new ResourceNotFoundError(electionPeriodId);
+        // The elected hospice must belong to THIS org before it is written to two tables — the FK
+        // carries no organization, so nothing below the app stops a cross-tenant election.
+        if (!providerEntityOrgCheck) {
+          throw new WardenXError(
+            "PROVIDER_ENTITY_CHECK_UNBOUND",
+            "cannot verify the elected provider entity belongs to this organization; refusing to " +
+              "draft an election statement against an unverified hospice",
+            503,
+          );
+        }
+        if (
+          !(await providerEntityOrgCheck.belongsToOrg(
+            organizationId,
+            input.electedProviderEntityId,
+          ))
+        ) {
+          // Absent and cross-tenant read identically, per the §6.6 existence-non-leak convention.
+          throw new ResourceNotFoundError(input.electedProviderEntityId);
+        }
         const es = firstOrThrow(
           await tx
             .insert(ES)
@@ -1297,11 +1448,36 @@ export function createDbAdmissionRouteService(
               organizationId,
               electionPeriodId,
               patientId: adm.patientId,
+              // Draft-time intent. `signerKind` is re-stated from the SIGN request (§418.24(b)(1)
+              // lets a legal representative sign) — it is NOT NULL, so the draft seeds the common
+              // case and signElection corrects it from what the signer actually declared.
               signerKind: "patient",
+              providerEntityId: input.electedProviderEntityId,
+              attendingPhysicianId: input.electedAttendingPhysicianId ?? null,
+              curativeCareAcknowledgment: input.waiverAcknowledged,
+              // The column is jsonb NOT NULL DEFAULT '{}', so the addendum is stored as an object
+              // field rather than a bare scalar — `{}` stays the honest "no addendum" value.
+              ...(input.stateAddendum === undefined
+                ? {}
+                : { stateAddendum: { text: input.stateAddendum } }),
             })
             .returning({ id: ES.id, status: ES.status, version: ES.version }),
           "election statement insert returned no row",
         );
+        // §4.7 SITING — the reason this route is load-bearing well beyond its own table.
+        // `AdmissionStatusReader.getAdmissionSummary` THROWS `AdmissionSeamDataGapError` when
+        // `admission.provider_entity_id` is null (seams/drizzle-store.ts `summaryOf`), and no insert
+        // or update in this file ever set it — activation writes `status`/`activatedAt` only. So the
+        // seam failed for every admission ever created, and each of its five consumers degraded:
+        // M9 assessments (reported as INACTIVE_ADMISSION), M10 HOPE, M16 bereavement, M21 supplies
+        // (M21_SERVING_LOCATION_UNRESOLVED), plus the M14/M30 queue readers the DTO is written for.
+        // The elected hospice IS the admission's serving provider entity, and this is the first
+        // point in the lifecycle where the API supplies one — no other request schema accepts it.
+        // Idempotent by design: re-drafting after a void must not repoint a sited admission.
+        await tx
+          .update(ADM)
+          .set({ providerEntityId: input.electedProviderEntityId, updatedAt: now() })
+          .where(and(eq(ADM.id, admissionId), isNull(ADM.providerEntityId)));
         await outbox.publish(tx, {
           eventName: "m6.election.drafted",
           payload: {
@@ -1319,7 +1495,7 @@ export function createDbAdmissionRouteService(
         return { id: es.id, state: es.status, version: Number(es.version) };
       });
     },
-    async signElection(organizationId, id, ifVersion, actorUserId): Promise<MutationResult> {
+    async signElection(organizationId, id, ifVersion, actorUserId, input): Promise<MutationResult> {
       void actorUserId;
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cur] = await tx
@@ -1338,7 +1514,16 @@ export function createDbAdmissionRouteService(
             status: "signed",
             signedAt,
             signatureMethod: "electronic_witnessed",
-            curativeCareAcknowledgment: true,
+            // #44 — who signed, under what name, and in what capacity (§418.24(b)(1)). These came in
+            // on the request and were discarded: the handler forwarded `ifVersion` alone, so
+            // `patient_name_at_signing` was NULL on every row and `signer_kind` kept the draft's
+            // hardcoded "patient" even when a legal representative signed.
+            signerKind: SIGNER_KIND_BY_ROLE[input.signingRole],
+            patientNameAtSigning: input.signingPatientName,
+            // `curative_care_acknowledgment` is NOT set here any more. It used to be hardcoded
+            // `true` at signing, which recorded a waiver the caller may never have given — the
+            // draft's `waiverAcknowledged` was discarded, so `false` still produced `true`. The
+            // draft now persists what the caller actually sent, and signing must not overwrite it.
             version: sql`${ES.version} + 1`,
             updatedAt: now(),
           })
@@ -1569,7 +1754,11 @@ export function createDbAdmissionRouteService(
           eventName: "m6.cti.signed",
           // Same payload-schema-drift bug — `electionPeriodId`/`signedAt` are required (confirmed live:
           // this exact call 500'd with `payload_schema_violation` on every attempt before this fix).
-          payload: { ctiId: id, electionPeriodId: cti.epId, signedAt: attendingSignedAt.toISOString() },
+          payload: {
+            ctiId: id,
+            electionPeriodId: cti.epId,
+            signedAt: attendingSignedAt.toISOString(),
+          },
           organizationId,
           aggregateKind: "certification_of_terminal_illness",
           aggregateId: id,
@@ -2500,7 +2689,11 @@ export function createDbAdmissionRouteService(
           eventName: "m6.compliance.window.closed",
           // `closedAt`/`closedVia` are required and were previously omitted. This route is the
           // direct-close path (no override reason involved), hence `closedVia: "manual"`.
-          payload: { complianceWindowId: id, closedAt: closedAt.toISOString(), closedVia: "manual" },
+          payload: {
+            complianceWindowId: id,
+            closedAt: closedAt.toISOString(),
+            closedVia: "manual",
+          },
           organizationId,
           aggregateKind: "compliance_window",
           aggregateId: id,

@@ -40,9 +40,11 @@ export { createLevelOfCarePeriodReader } from "./level-of-care-period-reader";
 export { createAdmissionOnsetReader } from "./admission-onset-reader";
 export {
   type ActiveAdmissionDraftContext,
+  type AdmissionSchedulingContext,
   AdmissionSeamDataGapError,
   activeAdmissionDraftContextForPatient,
   admissionIsActiveForOrg,
+  admissionSchedulingContextForOrg,
   createDrizzleAdmissionReaderStore,
 } from "./drizzle-store";
 export {

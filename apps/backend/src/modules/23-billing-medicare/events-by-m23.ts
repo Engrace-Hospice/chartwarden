@@ -115,7 +115,12 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The submission worker reported a MAC-portal upload failure; the retry worker picks it up.",
     payloadSchema: Type.Object({ claimId: id, submissionId: id, attemptIndex: int, reason: str }),
-    declaredConsumers: ["m33"],
+    // F-020 (#49) — `m23` is on this list because M23 CONSUMES ITS OWN EVENT: the description's
+    // "the retry worker picks it up" is `m23.submission-request-enqueue`
+    // (outbox-consumers/submit-requests.ts), which binds this name and enqueues `claim.submit.retry`.
+    // The list said `["m33"]`, so the dispatcher threw at boot — the backend did not start in any
+    // deployment with `DATABASE_PLATFORM_URL` set, and the retry it names never ran in any other.
+    declaredConsumers: ["m23", "m33"],
     isOutboxOnly: true,
   },
   {

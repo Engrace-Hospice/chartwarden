@@ -367,7 +367,9 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(AdmissionActivateSchema, request.body);
-      return service.activateAdmission(organizationId, idOf(request), body.ifVersion);
+      return service.activateAdmission(organizationId, idOf(request), body.ifVersion, {
+        locationId: body.locationId,
+      });
     },
   );
 
@@ -382,6 +384,14 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
         organizationId,
         idOf(request),
         body.electionPeriodId,
+        {
+          electedProviderEntityId: body.electedProviderEntityId,
+          ...(body.electedAttendingPhysicianId
+            ? { electedAttendingPhysicianId: body.electedAttendingPhysicianId }
+            : {}),
+          waiverAcknowledged: body.waiverAcknowledged,
+          ...(body.stateAddendum === undefined ? {} : { stateAddendum: body.stateAddendum }),
+        },
       );
       return reply.code(201).send(res);
     },
@@ -406,7 +416,10 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(ElectionSignSchema, request.body);
-      return service.signElection(organizationId, idOf(request), body.ifVersion, userId);
+      return service.signElection(organizationId, idOf(request), body.ifVersion, userId, {
+        signingPatientName: body.signingPatientName,
+        signingRole: body.signingRole,
+      });
     },
   );
 

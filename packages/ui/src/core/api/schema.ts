@@ -10069,6 +10069,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search service locations for selector controls (cursor-paginated, non-PHI) */
+        get: operations["getApiV1Locations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/map-view": {
         parameters: {
             query?: never;
@@ -23527,6 +23544,10 @@ export interface operations {
                     /** Format: uuid */
                     sourceEncounterId?: string;
                     dischargeReason?: "death" | "revocation" | "transfer_to_hospice" | "live_discharge";
+                    lateCompletionReasonCode?: "pto" | "hospitalization" | "family_meeting_deferral" | "refused" | "missed" | "pandemic_cohort" | "admin_override" | "other";
+                    adminOverride?: boolean;
+                    /** Format: uuid */
+                    scheduleId?: string;
                     data: {
                         J?: {
                             J2051?: {
@@ -23603,6 +23624,8 @@ export interface operations {
                             ready: boolean;
                             missing: ("election_signed" | "nor_acknowledged" | "cti_signed" | "attending_signed")[];
                         };
+                        providerEntityId: string | null;
+                        locationId: string | null;
                     };
                 };
             };
@@ -23654,6 +23677,8 @@ export interface operations {
             content: {
                 "application/json": {
                     ifVersion: number;
+                    /** Format: uuid */
+                    locationId?: string;
                 };
             };
         };
@@ -40465,9 +40490,21 @@ export interface operations {
                 content: {
                     "application/json": {
                         providerEntityId: string | null;
-                        hopeOnTimeRate: number;
-                        sfvOnTimeRate: number;
-                        submissionAcceptanceRate: number;
+                        hopeOnTimeRate: number | null;
+                        hopeOnTimeCounts: {
+                            onTime: number;
+                            total: number;
+                        };
+                        sfvOnTimeRate: number | null;
+                        sfvOnTimeCounts: {
+                            onTime: number;
+                            total: number;
+                        };
+                        submissionAcceptanceRate: number | null;
+                        submissionAcceptanceCounts: {
+                            accepted: number;
+                            total: number;
+                        };
                     };
                 };
             };
@@ -45049,6 +45086,45 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Locations: {
+        parameters: {
+            query?: {
+                providerEntityId?: string;
+                status?: string;
+                q?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            providerEntityId: string;
+                            name: string;
+                            city: string;
+                            state: string;
+                            timezone: string;
+                            status: string;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -52704,14 +52780,18 @@ export interface operations {
                     "application/json": {
                         items: {
                             id: string;
-                            requestedPurpose: "migration" | "baa_termination" | "compliance_audit" | "surveyor_request";
+                            organizationId: string;
+                            requestedPurpose: string;
                             status: "requested" | "generating" | "fulfilled" | "expired" | "cancelled";
                             /** Format: date-time */
                             requestedAt: string;
                             fulfilledAt: string | null;
-                            bundleSizeBytes: number | null;
-                            /** Format: date-time */
-                            createdAt: string;
+                            heldForOversizedApproval: boolean;
+                            heldBundleSizeBytes: string | null;
+                            heldRecordCount: number | null;
+                            heldAt: string | null;
+                            bundleSizeBytes: string | null;
+                            bundleDownloadedAt: string | null;
                         }[];
                         nextCursor: string | null;
                         hasMore: boolean;

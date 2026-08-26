@@ -289,7 +289,7 @@ export function CapEvents(): JSX.Element {
               </thead>
               <tbody>
                 {pagedEvents.map((e) => (
-                  <tr key={e.id} style={rowStyle} className="wx-data-row-interactive">
+                  <tr key={e.id} style={rowStyle}>
                     <td style={cellStyle}>{humanize(e.scope)}</td>
                     <td style={tdCodeStyle}>{e.patientId?.slice(0, 8) ?? "—"}</td>
                     <td style={cellStyle}>

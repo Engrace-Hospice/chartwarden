@@ -99,7 +99,8 @@
       "routes": 18,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/assessment-routes.test.ts"
+        "apps/backend/__tests__/assessment-routes.test.ts",
+        "apps/backend/__tests__/m9-assessments-write.live.test.ts"
       ],
       "directRoutesReferenced": 13
     },

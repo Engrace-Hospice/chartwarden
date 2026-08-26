@@ -34,7 +34,7 @@ All four are green on a clean checkout, and CI (`.github/workflows/ci.yml`) runs
 | `bun run arch:parity` | `scaffold --check` — fails on tree↔manifest drift or orphan packages. |
 | `bun run arch:boundaries` | dependency-cruiser: module import boundaries, leaves, vendor-adapter + helper-table rules. |
 | `bun run arch:tables` | table ownership — no cross-module schema access. |
-| `bun run arch:tenancy` | three-column rule, canonical `app.org_id`, no dangerous RLS shapes. |
+| `bun run arch:tenancy` | three-column rule, canonical `app.org_id`, no dangerous RLS shapes. RLS policy predicates are judged on the migrations' **net effect** (replayed in apply order), and the rule's audit/key-ring exemptions are scoped to a single statement — never a policy body. |
 | `bun run arch:ddl` | PostgreSQL DDL legality (partition keys, CHECK subqueries, duplicate enums). |
 | `bun run arch:gaps` | event-catalog `mN.` naming, seam-registry completeness, PHI RLS/audit presence. |
 | `bun run docs:ui` | UI screen-spec corpus consistency. |
@@ -44,6 +44,31 @@ All four are green on a clean checkout, and CI (`.github/workflows/ci.yml`) runs
 | `bun run arch:fitness` | all of the above (parity + every fitness gate, including the report freshness checks). |
 | `bun run test` | Vitest self-tests. |
 | `bun run lint` / `lint:fix` | Biome (advisory; not in the blocking gate path). |
+
+### Local demo data (`bun run db:reset`)
+
+`db:reset` recreates the container, migrates, and runs the fourteen seed steps — which live in
+`db:seed:all`, their own script, so CI's `e2e` job seeds through exactly the chain `db:reset` runs
+rather than a copy of it that can drift. Two prerequisites are not enforced by the chain itself and
+each one aborts it partway:
+
+- **The backend must already be running** (`bun run dev:backend`). Only the first few steps talk to
+  Postgres directly; the rest drive the real REST API as signed-in demo users, precisely so RLS,
+  ABAC and the state machines are exercised rather than bypassed.
+- **`REDIS_URL` must be set for that backend.** `db:seed:scenario-billing` reaches M27's
+  `refresh-inputs`, which enqueues a trial-balance pull; with no queue connection the port is
+  unbound and the step fails.
+
+CI runs all of this: the `e2e` job migrates, boots the backend, runs `db:seed:all` and drives the
+18-spec Playwright suite against it, so a break in the demo-data path is now reported rather than
+found by the next person who tries to bring the stack up.
+
+Roles matter in the seeds because they matter in the product. `db:seed:staff` creates ten discipline
+personas (`CREDENTIALS.local.md`), and the scenario seeds sign in as whichever one is actually
+entitled to each action — the physician signs the §418.22(c) certifications, the RN case manager
+holds the caseload, the administrator does intake and activation. A seed that signs everything as
+the administrator does not work, and should not: `cti.is_hospice_md` is an attribute gate, and no
+number of permission keys satisfies it.
 
 The fitness gates are **armed-but-inert**: they pass with no source and begin enforcing
 automatically as a module's schema/seams/events land.

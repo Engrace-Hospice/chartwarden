@@ -40,7 +40,12 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       minioObjectKey: str,
       fileSha256: str,
     }),
-    declaredConsumers: [],
+    // F-020 (#49) — NOT record-only: `m25.parse-and-post` (outbox-consumers/live-binding.ts) binds
+    // this event live and drives the parse + transactional-post + denial-seed half of the pipeline.
+    // M25 is its own consumer here (the self-pull posture the file header describes — no other module
+    // produces an 835 receipt). Catalogued `[]`, the dispatcher would have marked every 835 dispatched
+    // WITHOUT delivering it, so it fails boot instead; either way nothing ever parsed an 835.
+    declaredConsumers: ["m25"],
     isOutboxOnly: true,
   },
   {

@@ -8,13 +8,20 @@
 // Tier-2 — no external dependency blocks the write path). Every state transition records the §2.4 outbox
 // event the relay publishes (drainable for tests).
 import {
+  type CaptureDecision,
+  HopeStateError,
   type J2051SymptomReading,
+  assertAdmissionActiveAtTarget,
+  assertCaptureAllowed,
+  assertRfaMatchesSchedule,
+  assertSectionQForDischarge,
   evaluateJ2051Trigger,
   planSfvCompletion,
   planSfvCreation,
   require_,
 } from "@wardenx/hope";
 import type {
+  HopeDischargeReason,
   HopeRfaKind,
   HopeScheduleGeneratedBy,
   HopeScheduleStatus,
@@ -85,11 +92,25 @@ export interface HopeSubmissionView {
   readonly transmittedAt: string | null;
   readonly acceptedAt: string | null;
 }
+/**
+ * The §7 HQRP compliance posture.
+ *
+ * #48 — every rate is NULLABLE and ships beside the count pair it was computed from. They used to be
+ * plain numbers that fell back to `1` on an empty denominator, so an agency with no closed timepoint
+ * windows at all — which was EVERY agency, because nothing ever wrote a `hope_timepoint_schedule` row —
+ * was shown a perfect on-time rate on the screen it would use to decide it did not need to act. "No
+ * data" is not "100%", and it is the compliance officer's call which one they are looking at. Exposing
+ * the counts beside the rate follows the M15 `supervisoryOnTimeCounts` precedent (a pre-divided rate
+ * cannot be suppressed for small N, because the denominator is gone by the time anyone sees it).
+ */
 export interface HopeComplianceView {
   readonly providerEntityId: string | null;
-  readonly hopeOnTimeRate: number;
-  readonly sfvOnTimeRate: number;
-  readonly submissionAcceptanceRate: number;
+  readonly hopeOnTimeRate: number | null;
+  readonly hopeOnTimeCounts: { readonly onTime: number; readonly total: number };
+  readonly sfvOnTimeRate: number | null;
+  readonly sfvOnTimeCounts: { readonly onTime: number; readonly total: number };
+  readonly submissionAcceptanceRate: number | null;
+  readonly submissionAcceptanceCounts: { readonly accepted: number; readonly total: number };
 }
 
 export interface RecordTimepointArgs {
@@ -99,6 +120,22 @@ export interface RecordTimepointArgs {
   readonly data: Record<string, unknown>;
   readonly sourceEncounterId?: string;
   readonly dischargeReason?: string;
+  /**
+   * #48 / D12 — the CMS-aligned reason a capture landed in the late-grace span (window close → late
+   * deadline). Required there and rejected as `M10_LATE_REASON_REQUIRED` / `M10_LATE_REASON_INVALID`;
+   * ignored on an in-window capture. Previously absent from the contract entirely, which is why the
+   * whole late-completion branch was unreachable.
+   */
+  readonly lateCompletionReasonCode?: string;
+  /** #48 / D2 — an admin extending the hard cutoff for a past-deadline capture. Still demands a typed
+   * late reason; it moves the deadline, it does not waive the accounting. */
+  readonly adminOverride?: boolean;
+  /**
+   * #48 — the `hope_timepoint_schedule` window this capture completes, as handed to the clinician by the
+   * timepoint worklist. Naming it is what makes `M10_RFA_KIND_MISMATCH` reachable: the payload's RFA and
+   * the window that was clicked can disagree. Omitted, the window is resolved by `rfa_kind` instead.
+   */
+  readonly scheduleId?: string;
 }
 export interface RecordSfvArgs {
   readonly triggeringAssessmentId: string;
@@ -244,10 +281,31 @@ export interface HopeRouteSeed {
   readonly now?: () => string;
   /** Injected M9 `LatestAssessmentProvider` seam for the D8 PPS/ESAS-r snapshot (absent ⇒ snapshot skipped). */
   readonly latestAssessments?: LatestAssessmentProvider;
+  /**
+   * #45 — admissionId → patientId, the M6 `AdmissionStatusReader` seam the DB backend resolves the
+   * subject of a recorded timepoint through. The slice takes a plain map because it stands in for the
+   * whole seam. An admission absent from it is a projection gap: `recordTimepoint` REFUSES rather than
+   * inventing a subject (which is what this backend used to do — it wrote the `admissionId`).
+   */
+  readonly admissionPatients?: Readonly<Record<string, string>>;
+  /**
+   * #48 — admissionId → M6 admission status, the fact the §2.3 active-admission guard turns on.
+   * Defaults to `active` for any admission in {@link admissionPatients}, so a seed that does not care
+   * about the guard is unaffected and one that does states the closed status explicitly.
+   */
+  readonly admissionStatuses?: Readonly<Record<string, string>>;
 }
 
 /** The §D8 scales snapshotted at HOPE sign (PPS + ESAS-r) — read from M9's `LatestAssessmentProvider`. */
 const SNAPSHOT_SCALES = ["pps", "esas_r"] as const;
+
+/**
+ * #48 — a rate over an empty denominator is NOT 1. `null` means "no data"; the caller renders that
+ * distinctly from a perfect score. Shared by both M10 backends so the slice and Drizzle paths cannot
+ * drift on the one behaviour a compliance officer reads off the screen.
+ */
+export const rateOf = (numerator: number, denominator: number): number | null =>
+  denominator === 0 ? null : numerator / denominator;
 
 let idCounter = 0x10a00000;
 function nextId(): string {
@@ -281,6 +339,20 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
   const submissions = new Map<string, SubmissionRecord>();
   const events: RecordedHopeEvent[] = [];
   const latest = seed.latestAssessments;
+  const admissionPatients = seed.admissionPatients ?? {};
+  const admissionStatuses = seed.admissionStatuses ?? {};
+  const statusOfAdmission = (admissionId: string): string =>
+    admissionStatuses[admissionId] ?? "active";
+  /** #45 — the subject of a HOPE record, never guessed. Mirrors the DB backend's `admissionPatient`. */
+  const patientOfAdmission = (admissionId: string): string => {
+    const patientId = admissionPatients[admissionId];
+    if (!patientId)
+      throw new HopeStateError(
+        "M10_ADMISSION_PROJECTION_GAP",
+        `Admission ${admissionId} could not be projected by the M6 status seam, so the subject of this HOPE record is unknown`,
+      );
+    return patientId;
+  };
 
   for (const s of seed.assessments ?? [])
     assessments.set(s.id, {
@@ -413,18 +485,60 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
     },
 
     async recordTimepoint(organizationId, userId, admissionId, args) {
-      const sched = [...schedules.values()].find(
+      const patientId = patientOfAdmission(admissionId);
+      // #48 — the §4.4 recording gate, mirroring the Drizzle backend exactly (see its `recordTimepoint`
+      // for why each of these guards had zero callers until now).
+      if (args.rfaKind !== "05_discharge") {
+        assertAdmissionActiveAtTarget(statusOfAdmission(admissionId) === "active");
+      } else {
+        require_(
+          args.dischargeReason != null && args.dischargeReason !== "",
+          "M10_REQUIRED_SECTION_MISSING",
+          "rfa_kind '05_discharge' requires a discharge_reason (D9 decides Section Q from it).",
+        );
+        assertSectionQForDischarge(
+          args.dischargeReason as HopeDischargeReason,
+          Object.hasOwn(args.data, "Q") && args.data.Q != null,
+        );
+      }
+      // ANY status, `open` first — an EXPIRED window must not read as an unscheduled one. A named
+      // `scheduleId` selects the row directly, which is the branch that makes the RFA-mismatch guard real.
+      const candidates = [...schedules.values()].filter(
         (s) =>
           s.organizationId === organizationId &&
           s.admissionId === admissionId &&
-          s.rfaKind === args.rfaKind &&
-          s.status === "open",
+          (args.scheduleId ? s.id === args.scheduleId : s.rfaKind === args.rfaKind),
       );
+      const sched = candidates.find((s) => s.status === "open") ?? candidates[0];
+      if (args.scheduleId && !sched) {
+        throw new NotFoundError(
+          `HOPE schedule ${args.scheduleId} not found on admission ${admissionId}`,
+        );
+      }
+      let capture: CaptureDecision = { wasLate: false, lateReasonCode: null };
+      if (sched) {
+        assertRfaMatchesSchedule(args.rfaKind, {
+          rfaKind: sched.rfaKind,
+          generatedBy: sched.generatedBy,
+        });
+        capture = assertCaptureAllowed(
+          args.targetDate,
+          {
+            windowOpensAt: sched.windowOpensAt,
+            windowClosesAt: sched.windowClosesAt,
+            lateDeadlineAt: sched.lateDeadlineAt,
+          },
+          {
+            lateReasonCode: args.lateCompletionReasonCode ?? null,
+            adminOverride: args.adminOverride === true,
+          },
+        );
+      }
       const id = nextId();
       const rec: AssessmentRecord = {
         id,
         organizationId,
-        patientId: sched?.patientId ?? admissionId,
+        patientId,
         admissionId,
         rfaKind: args.rfaKind,
         status: "draft",
@@ -432,7 +546,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         authorDiscipline: args.authorDiscipline,
         j2051MaxSeverity: null,
         j2051TriggerFired: false,
-        wasLate: false,
+        wasLate: capture.wasLate,
         signedAt: null,
         signedBy: null,
         correctsAssessmentId: null,
@@ -739,9 +853,12 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       ).length;
       return {
         providerEntityId: providerEntityId ?? null,
-        hopeOnTimeRate: denom === 0 ? 1 : completed / denom,
-        sfvOnTimeRate: sfvDenom === 0 ? 1 : sfvOnTime / sfvDenom,
-        submissionAcceptanceRate: subs.length === 0 ? 1 : accepted / subs.length,
+        hopeOnTimeRate: rateOf(completed, denom),
+        hopeOnTimeCounts: { onTime: completed, total: denom },
+        sfvOnTimeRate: rateOf(sfvOnTime, sfvDenom),
+        sfvOnTimeCounts: { onTime: sfvOnTime, total: sfvDenom },
+        submissionAcceptanceRate: rateOf(accepted, subs.length),
+        submissionAcceptanceCounts: { accepted, total: subs.length },
       };
     },
     async regenerateSchedules(organizationId, admissionId) {

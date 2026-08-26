@@ -1126,6 +1126,7 @@ import {
   OnboardingTemplateViewSchema as M34OnboardingTemplateViewSchema,
   // responses
   BaaRecordViewSchema as M34PlatformBaaRecordViewSchema,
+  TenantExportJobListResponseSchema as M34PlatformTenantExportJobListResponseSchema,
   ProvisionTenantRequest as M34ProvisionTenantRequest,
   QualifyIntentAckSchema as M34QualifyIntentAckSchema,
   QualifyIntentRequest as M34QualifyIntentRequest,
@@ -1143,7 +1144,6 @@ import {
   SupportSessionListQuerySchema as M34SupportSessionListQuerySchema,
   SupportSessionListResponseSchema as M34SupportSessionListResponseSchema,
   TenantExportJobListQuerySchema as M34TenantExportJobListQuerySchema,
-  TenantExportJobListResponseSchema as M34TenantExportJobListResponseSchema,
   TenantInvitationViewSchema as M34TenantInvitationViewSchema,
   TenantJobAckSchema as M34TenantJobAckSchema,
   TenantListQuerySchema as M34TenantListQuerySchema,
@@ -3766,6 +3766,44 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
           doingBusinessAs: Type.Union([Type.String(), Type.Null()]),
           ccn: Type.Union([Type.String(), Type.Null()]),
           npi: Type.Union([Type.String(), Type.Null()]),
+          status: Type.String(),
+        }),
+      ),
+      nextCursor: Type.Union([Type.String(), Type.Null()]),
+    }),
+  },
+  // M1 Foundation (#50) — the service-location directory the admission activation ceremony picks from.
+  // `location` had no route at all before this, which is half of why `admission.location_id` was never
+  // written: there was no way for a human to name one.
+  "GET /api/v1/locations": {
+    summary: "Search service locations for selector controls (cursor-paginated, non-PHI)",
+    query: Type.Object({
+      providerEntityId: Type.Optional(
+        Type.String({
+          description:
+            "Narrow to one provider entity's locations — what an admission may legally be sited at",
+        }),
+      ),
+      status: Type.Optional(
+        Type.String({
+          description: "Filter by location status (`active` for sites accepting patients)",
+        }),
+      ),
+      q: Type.Optional(Type.String({ description: "Case-insensitive search over name and city" })),
+      cursor: Type.Optional(
+        Type.String({ description: "Offset cursor returned by the previous page" }),
+      ),
+      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+    }),
+    response: Type.Object({
+      items: Type.Array(
+        Type.Object({
+          id: Type.String(),
+          providerEntityId: Type.String(),
+          name: Type.String(),
+          city: Type.String(),
+          state: Type.String(),
+          timezone: Type.String(),
           status: Type.String(),
         }),
       ),
@@ -9427,7 +9465,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Cross-tenant tenant-export jobs; `held=true` narrows to bundles awaiting a SEC-052 co-sign",
     query: M34TenantExportJobListQuerySchema,
-    response: M34TenantExportJobListResponseSchema,
+    response: M34PlatformTenantExportJobListResponseSchema,
   },
 
   // ── tenant export: SEC-052 oversized-hold release (GAP-097) ──

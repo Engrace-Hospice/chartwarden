@@ -16,17 +16,30 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 
+interface RateCounts {
+  onTime?: number;
+  accepted?: number;
+  total: number;
+}
+
 interface Compliance {
   providerEntityId: string | null;
-  hopeOnTimeRate: number;
-  sfvOnTimeRate: number;
-  submissionAcceptanceRate: number;
+  // #48 — nullable: `null` is "no data", which is NOT a perfect score. These used to be plain numbers
+  // that the server defaulted to 1 on an empty denominator, so an agency with no closed timepoint
+  // windows was shown 100% on-time on the screen it would use to decide it did not need to act.
+  hopeOnTimeRate: number | null;
+  hopeOnTimeCounts: RateCounts;
+  sfvOnTimeRate: number | null;
+  sfvOnTimeCounts: RateCounts;
+  submissionAcceptanceRate: number | null;
+  submissionAcceptanceCounts: RateCounts;
 }
 
 interface MetricRow {
   key: string;
   label: string;
-  value: number;
+  value: number | null;
+  counts: RateCounts;
   target: number;
   detail: string;
 }
@@ -64,6 +77,7 @@ export function HqrpComplianceDashboard(): JSX.Element {
               key: "hope_on_time",
               label: "HOPE on-time",
               value: row.hopeOnTimeRate,
+              counts: row.hopeOnTimeCounts,
               target: 0.9,
               detail: "Assessments completed inside the compliance window",
             },
@@ -71,6 +85,7 @@ export function HqrpComplianceDashboard(): JSX.Element {
               key: "sfv_on_time",
               label: "SFV on-time",
               value: row.sfvOnTimeRate,
+              counts: row.sfvOnTimeCounts,
               target: 0.9,
               detail: "Symptom follow-up visits completed on time",
             },
@@ -78,13 +93,16 @@ export function HqrpComplianceDashboard(): JSX.Element {
               key: "submission_acceptance",
               label: "Submission acceptance",
               value: row.submissionAcceptanceRate,
+              counts: row.submissionAcceptanceCounts,
               target: 0.95,
               detail: "Submitted batches accepted without rejection",
             },
             {
               key: "late_completion",
               label: "Late completion",
-              value: 1 - row.hopeOnTimeRate,
+              // Derived, so it inherits "no data" rather than reading 0% off an absent on-time rate.
+              value: row.hopeOnTimeRate === null ? null : 1 - row.hopeOnTimeRate,
+              counts: row.hopeOnTimeCounts,
               target: 0.1,
               detail: "Inverse of the HOPE on-time rate",
             },
@@ -176,7 +194,14 @@ export function HqrpComplianceDashboard(): JSX.Element {
               <tbody>
                 {metrics.map((m) => {
                   const lateMetric = m.key === "late_completion";
-                  const passing = lateMetric ? m.value <= m.target : m.value >= m.target;
+                  // #48 — no denominator means there is nothing to be on track OR at risk about. Saying
+                  // "On Track" over zero observations is the failure this screen was built to prevent.
+                  const passing =
+                    m.value === null
+                      ? null
+                      : lateMetric
+                        ? m.value <= m.target
+                        : m.value >= m.target;
                   return (
                     <tr key={m.key} style={rowStyle}>
                       <td style={tdStyle}>
@@ -184,14 +209,15 @@ export function HqrpComplianceDashboard(): JSX.Element {
                       </td>
                       <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
                         {pct(m.value)}
+                        <span style={countsStyle}>{countsLabel(m.counts)}</span>
                       </td>
                       <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
                         {lateMetric ? `<= ${pct(m.target)}` : `>= ${pct(m.target)}`}
                       </td>
                       <td style={tdStyle}>
                         <StatusPill
-                          label={passing ? "On Track" : "At Risk"}
-                          tone={passing ? "success" : "warning"}
+                          label={passing === null ? "No Data" : passing ? "On Track" : "At Risk"}
+                          tone={passing === null ? "neutral" : passing ? "success" : "warning"}
                         />
                       </td>
                       <td style={tdStyle}>{m.detail}</td>
@@ -211,6 +237,13 @@ export function HqrpComplianceDashboard(): JSX.Element {
 function pct(rate: number | null | undefined): string {
   if (rate == null) return "—";
   return `${Math.round(rate * 100)}%`;
+}
+
+/** The count pair behind a rate, so a reader can see a 100% built on two observations for what it is. */
+function countsLabel(counts: RateCounts | undefined): string {
+  if (!counts) return "";
+  const numerator = counts.onTime ?? counts.accepted ?? 0;
+  return counts.total === 0 ? " no observations" : ` ${numerator} of ${counts.total}`;
 }
 
 function toneForRate(
@@ -324,6 +357,12 @@ const tdStyle = {
 const primaryTextStyle = {
   fontWeight: 600,
   color: "var(--color-on-surface)",
+};
+
+const countsStyle = {
+  marginLeft: "0.4rem",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
 };
 
 const codeStyle = {

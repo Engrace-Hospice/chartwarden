@@ -10,6 +10,8 @@ import { registerAdmissionAbacPredicates as _registerM6Abac } from "./abac-predi
 import {
   type AdmissionWriteOutboxPort,
   type IpuBedAssignmentReaderPort,
+  type ProviderEntityLocationPort,
+  type ProviderEntityOrgCheckPort,
   createDbAdmissionAbacResolver,
   createDbAdmissionRouteService,
 } from "./admission-route-service-db";
@@ -29,10 +31,18 @@ export function mountAdmissionRoutes(
   db: DbClient,
   outbox?: AdmissionWriteOutboxPort,
   ipuBedAssignmentReader?: IpuBedAssignmentReaderPort,
+  providerEntityOrgCheck?: ProviderEntityOrgCheckPort,
+  providerEntityLocations?: ProviderEntityLocationPort,
 ): void {
   _registerM6Abac({ resolver: createDbAdmissionAbacResolver(db) });
   _registerM6Routes(app, {
-    service: createDbAdmissionRouteService(db, outbox, ipuBedAssignmentReader),
+    service: createDbAdmissionRouteService(
+      db,
+      outbox,
+      ipuBedAssignmentReader,
+      providerEntityOrgCheck,
+      providerEntityLocations,
+    ),
   });
 }
 
@@ -44,10 +54,12 @@ export {
   type AdmissionReaderSeed,
   type ElectionPeriodRecord,
   type ActiveAdmissionDraftContext,
+  type AdmissionSchedulingContext,
   AdmissionNotFoundError,
   AdmissionSeamDataGapError,
   activeAdmissionDraftContextForPatient,
   admissionIsActiveForOrg,
+  admissionSchedulingContextForOrg,
   createDrizzleAdmissionReaderStore,
   createInMemoryAdmissionReaderStore,
   createElectionPeriodReader,

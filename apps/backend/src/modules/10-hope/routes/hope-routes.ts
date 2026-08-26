@@ -211,6 +211,9 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
         data: body.data,
         sourceEncounterId: body.sourceEncounterId,
         dischargeReason: body.dischargeReason,
+        lateCompletionReasonCode: body.lateCompletionReasonCode,
+        adminOverride: body.adminOverride,
+        scheduleId: body.scheduleId,
       });
       return reply.code(201).send(res);
     },

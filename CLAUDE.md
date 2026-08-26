@@ -111,11 +111,54 @@ the prose docs in `docs/architecture/`.
 - `architecture/module-manifest.ts` (+ `.cjs`) — single source of truth for each module's
   `codePaths`, `dependsOn`, and `ownedTables` (460 tables across 40 modules).
 - `architecture/.dependency-cruiser.cjs` — import-boundary rules.
-- `scripts/check-table-ownership.ts`, `check-tenancy.ts`, `check-ddl-legality.ts`,
+- `scripts/check-table-ownership.ts`, `check-ddl-legality.ts`,
   `check-fitness-gaps.ts` (event-catalog `mN.` convention, seam-registry completeness, PHI
   RLS/audit-trigger presence — armed-inert until app source lands), `check-ui-screens.ts` —
   enforced via `package.json` scripts (`bun run arch:fitness`; UI-corpus check also standalone
   as `bun run docs:ui`).
+- `scripts/check-tenancy.ts` — **tenancy & RLS invariants** (`bun run arch:tenancy`, in
+  `arch:fitness`): the three-column rule, the canonical `app.org_id` session variable, and the
+  dangerous policy shapes ADR-0010 D3 bans. Its Rule 2 exemptions — M4 audit attribution, the M34
+  key-ring SECURITY DEFINER GUCs — are scoped to the **statement** they were written for and never
+  reach a policy predicate. They used to be tested against the whole FILE, and the repo's own
+  convention puts a module's RLS policies in the same migration as its audit triggers
+  (`*_rls_audit_triggers.sql`), so one `INSERT INTO audit_event` exempted every `app.user_id` in the
+  file — policy bodies included. That is how `user_notif_pref_self` (#21: an org-unscoped `FOR ALL`
+  policy on an org-scoped table, a confirmed cross-tenant read AND write) sat green in `0017` while
+  the gate reported only the two migrations that happened not to contain a trigger. Policy
+  predicates are now judged on the migrations' **net effect** — the files replayed in apply order,
+  so a violation a later migration drops and replaces stops counting, which is what lets a
+  remediated policy go green without the offending text ever leaving its original file. Deliberately
+  a static replay and not a `pg_policies` read: `arch:fitness` runs where there is no database (the
+  same reason the live suites are `skipIf`-guarded), so a catalog-reading gate would skip in CI —
+  `m1-rls-isolation.live.test.ts` is the catalog-side complement and runs in `rls-live`. A policy
+  created through dynamic SQL inside a `DO` block is the known limit, and the plain text scan still
+  sees the session variables inside it.
+- `scripts/check-migration-numbering.ts` — **migration ordinal uniqueness** (F-026,
+  `bun run arch:migration-numbering`, in `arch:fitness`). The four-digit prefix in
+  `packages/db/migrations/NNNN_name.sql` IS the migration's position in the apply order, and
+  `scripts/db/migrate.ts` applies files in plain lexicographic `.sort()` order — yet nothing
+  enforced that two files do not claim the same number. With a duplicate, which one runs first is
+  decided by the rest of the filename (`0216_admission_…` before `0216_m36_…` because "a" < "m"),
+  a coin flip nobody chose; two independent migrations survive it, a backfill and the migration
+  adding the column it backfills do not. It is a WHEN on a branch-per-change workflow: every branch
+  picks "the next number" against `main`, so two opened the same afternoon pick the same one — four
+  audit branches had already collided in pairs on 0215 and 0216 with every gate green on all four.
+  Duplicates are a hard error naming **every** claimant (the fix is a rename, and which file to
+  rename is the reader's judgement); **gaps are reported, never fatal**, because a branch that
+  leaves 0215 for a sibling PR and takes 0216 is doing the right thing.
+- `scripts/check-merge-artifacts.ts` — **unresolved-merge-artifact gate** (`bun run
+  arch:merge-artifacts`, first in `arch:fitness`). A conflicted file that is `git add`-ed without
+  being resolved commits its CONFLICT MARKERS: `add` marks a path resolved whatever is in it, so the
+  markers land in the tree and the merge commit looks ordinary. Source files are safe by accident —
+  `tsc` will not parse `<<<<<<< HEAD` — but the load-bearing NON-source files have no reader in the
+  build. That is how a half-resolved `.github/workflows/ci.yml` sat on `main` across seven merges:
+  GitHub parses that file, not the toolchain, and `arch:live-suites` reads it as TEXT (it greps for
+  script names), so it found every job name and stayed green while the workflow was syntactically
+  dead. A broken workflow does not fail a build, it fails to RUN one. The gate scans every
+  `git ls-files` path — YAML, JSON, Markdown and SQL included — for a line-initial `<<<<<<< ` /
+  `>>>>>>> `, or a whole-line `=======` (matched exactly, since seven equals signs are also a
+  Markdown setext heading; a real conflict always brings a `<<<<<<<` with it).
 - `scripts/check-abac-predicates.ts` — **ABAC named-predicate resolution** (`bun run arch:abac-predicates`). Every `requireAbac(_, "<name>")` — including through each module's
   local `guards.ts` factory — must name a predicate some module declares. M3's registry fails
   closed on an unknown name, so a typo'd or never-registered name is a permanently dead endpoint
@@ -125,7 +168,7 @@ the prose docs in `docs/architecture/`.
   (`deviceAttestationValid` in `packages/auth/src/abac/registry.ts`), never as an unregistered
   name — both refuse identically, only the first is distinguishable from a mistake.
 - `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
-  Every `test:m<N>:…:live` script in `package.json` must be invoked by a job in
+  Every live-database / live-Redis / browser suite in `package.json` must be invoked by a job in
   `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so
   with no database it reports SKIPPED rather than failed and `bun run test` stays green either
   way; a script in `package.json` looks wired but nothing distinguishes one CI runs from one
@@ -133,7 +176,43 @@ the prose docs in `docs/architecture/`.
   205 assertions over the real Drizzle write paths — unexecuted outside their authors' laptops,
   and 23 of 25 were red once run. Two CI jobs now cover them: `rls-live` (table-level policy
   proof) and `lifecycle-live` (the production route services as the NOBYPASSRLS `wardenx_app`
-  role, grouped per module).
+  role, grouped per module). Detection derives from what a script **runs**, not what it is
+  **called** — a command naming a `*.live.test.ts` file or invoking `playwright` is a live suite
+  whatever its name. It used to match on the NAME, with a middle segment that allowed hyphens but
+  not colons, so `test:m6:t3:write:live` and eight others were invisible to it and six ran in no
+  job at all (F-015/#41) — GAP-086's failure mode reintroduced through the gate written to prevent
+  it. A suite that genuinely cannot run yet is a **registered** entry in `DEFERRED` carrying its
+  blocker, never an unmatched name (the `deviceAttestationValid` rule), and the gate fails the
+  moment CI starts running a deferred script so the entry cannot outlive its reason; `DEFERRED` is
+  empty today. All **122** suites run in CI, `test:e2e` included — the `e2e` job drives a real
+  Chromium over a migrated, `db:seed:all`-seeded full stack (18 critical-workflow specs + the six
+  axe-core WCAG 2A/AA scans that are the repo's only automated accessibility coverage). The gate
+  now checks **both directions** (F-025/#59): script → CI, and **file → script**. The second was
+  never asked, so 29 suite files (112 tests) were named by no script and therefore run by nothing —
+  not CI, not a hook, not `bun run test`, which never sets the live env vars. Several were the only
+  live proof of a seam this document cites by filename (`m26-cost-report-cap-seam`,
+  `m27-validation-context`, `m25-835-ingestion`, `m31-portal-eraser`). Twenty-eight passed when run;
+  the one that did not — `m6-abac-scope-resolver` (GAP-011), green on `main` and red on the F-017
+  stack once that branch's fail-closed provider-entity check landed — is why this is a gate and not
+  a note. All 29 now have `test:…:live` scripts and `lifecycle-live` runners, and that job gained a
+  Valkey service because four of them gate on `WARDENX_TEST_REDIS_URL` too and would otherwise have
+  reported SKIPPED. Exclusions on either side are **named** — `DEFERRED` and `NOT_A_SUITE_FILE` —
+  never a file or script that quietly fails to be found.
+- `scripts/check-outbox-bindings.ts` — **outbox binding ↔ event-catalog agreement**
+  (`bun run arch:outbox-bindings`, in `arch:fitness`). Every live `OutboxConsumerBinding` must bind a
+  catalogued event, must not bind one catalogued record-only (`declaredConsumers: []`), and its module
+  must be named in that event's `declaredConsumers`. The dispatcher asserts exactly this already — by
+  THROWING before `server.listen()` — but it is only constructed when `DATABASE_PLATFORM_URL` is set,
+  so no test, local run or CI job ever reached the check. Two mismatches accumulated in two modules
+  (`m23.claim.submission_failed` omitted M23's own retry consumer; `m25.edi.835_received` was
+  catalogued record-only while M25 bound it live), and the only symptom was a backend that refused to
+  start in the documented production configuration (F-020, issue #49). Unlike the other static gates
+  this one EVALUATES rather than parses: it imports each consumer module and calls its
+  `build…Consumer` factory with an absorbing stub, so the six different indirections the bindings use
+  to express their event lists resolve to their real values. A binding file that yields no binding is
+  an error, never a skip. The runtime half is the `outbox-boot` CI job
+  (`bun run check:boot:platform`), which boots the backend with a real provisioned platform login and
+  proves the relay starts.
 - `scripts/check-architecture-docs.ts` — **architecture-corpus freshness gate**
   (`bun run arch:architecture-docs`, in `arch:fitness` since 2026-08-14). The authority rule makes
   `docs/architecture/` binding, yet it was the only ungated documentation body and drifted for two

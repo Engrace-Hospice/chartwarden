@@ -74,8 +74,11 @@ import {
 import {
   buildOrgProviderEntityLister,
   buildPrimaryProviderEntityResolver,
+  buildProviderEntityLocationLister,
+  buildProviderEntityOrgCheck,
 } from "./bootstrap/provider-entity-resolver";
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
+import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
 import { registerProviderEntityLookupRoutes } from "./bootstrap/routes/provider-entities";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 
@@ -143,6 +146,7 @@ import {
   M6_OUTBOX_EVENTS,
   activeAdmissionDraftContextForPatient,
   admissionIsActiveForOrg,
+  admissionSchedulingContextForOrg,
   buildM6ProposalAcceptedConsumer,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
@@ -198,6 +202,7 @@ import {
 import {
   M10_OUTBOX_EVENTS,
   M10_PLATFORM_JOB_ID,
+  buildM10AdmissionSchedulingConsumer,
   buildM10WorkerDeps,
   createDrizzleHopeEraseStore,
   mountHopeRoutes,
@@ -2514,7 +2519,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           mountAuditRoutes(app, dbHandle.db, { outbox: m4OutboxPublisher }); // M4 — audit-log search + GAP-003 compliance surface
           mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table
           registerProviderEntityLookupRoutes(app, dbHandle.db); // M1 — provider-entity selector lookup for UX surfaces
-          mountAdmissionRoutes(app, dbHandle.db, m6OutboxPublisher, m6IpuBedAssignmentReader); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
+          registerLocationLookupRoutes(app, dbHandle.db); // M1 (#50) — location selector for the admission activation ceremony
+          mountAdmissionRoutes(
+            app,
+            dbHandle.db,
+            m6OutboxPublisher,
+            m6IpuBedAssignmentReader,
+            // #44 — lets the election-statement draft verify the elected hospice is THIS org's before
+            // it persists the id onto two tables whose FKs carry no organization.
+            buildProviderEntityOrgCheck(dbHandle.db),
+            // #50 — lets activation SITE the admission at a service location. `admission.location_id`
+            // was never written by any code path, so every admission was unsited at the location level
+            // and M10 refused to create its NOT NULL-sited HOPE timepoint windows.
+            { activeLocationsFor: buildProviderEntityLocationLister(dbHandle.db) },
+          ); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
           // Clinical core (M7–M14, M17, M18, M22) — reads mounted over the real Drizzle route services under
           // RLS, replacing the retired in-memory scaffold. Writes fail-closed 501 until each module's write
           // lifecycle lands. See each module's `*-route-service-db.ts`.
@@ -4017,6 +4035,22 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // DeathDischargeReader seam and flips patient.status='deceased' + emits
           // m5.patient.deceased (seeds M16 bereavement / M23 final claim / M28 FHIR / M36 IDG alert).
           buildM5DeathCascadeConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
+          // M10 §2.2.1 (#48) — the HOPE timepoint-schedule write path. `hope_timepoint_schedule` is the
+          // window ledger the CMS capture gate, the `hope-window-watchdog` cron, the late-deadline math,
+          // the timepoint worklist and the on-time compliance rate are all built on, and NOTHING in the
+          // repo ever inserted a row into it: the pure planners and the `m10.hope.timepoint_scheduled`
+          // catalog entry both shipped, the consumer end never did. Activation materializes Admission /
+          // HUV1 / HUV2; discharge materializes the 7-day Discharge RFA (D9).
+          buildM10AdmissionSchedulingConsumer({
+            db: dbHandle.db,
+            outbox: m10OutboxPublisher,
+            // The relay is not a request, so M6's §4.7 seam (which pins the tenant from the ambient
+            // request scope) cannot answer here — every delivery would dead-letter with "no ambient
+            // request context". Bound to M6's org-explicit reader instead, the same shape
+            // `activeAdmissionDraftContextForPatient` / `admissionIsActiveForOrg` already take above.
+            resolveSiting: (organizationId, admissionId) =>
+              admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
+          }),
           // M6 §4.8.3 — the LIVE admission-event applier (task-15): resolves facts + executes
           // through the Drizzle gateway (external death / HL7 withdrawal / compliance windows),
           // records refusals durably + emits m6.applier.refused. Second consumer on the event so
