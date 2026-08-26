@@ -160,10 +160,14 @@ async function main(): Promise<void> {
   // NOT_FOUND rather than a denial.
   //
   // Prefer rita when she exists; fall back to `casey@wardenx.local` (the base demo Clinician) when
-  // she does not, so this script still works standalone at its `db:reset` position (step 4), which
-  // is BEFORE `db:seed:staff` creates the personas at step 8. In that ordering the fallback is what
-  // runs, and `db:seed:staff` re-anchors afterwards (`anchorDemoCaseload`, seed-staff-personas.ts)
-  // — which is also why it must, since that script drops and re-creates rita's user row on every run.
+  // she does not. In the `db:seed:all` chain `db:seed:staff` runs immediately BEFORE this script
+  // (#39 moved it there precisely so rita exists by now), so the persona branch is the one that
+  // runs and the caseload is anchored to her in one pass. The fallback is what keeps this script
+  // working when it is run STANDALONE against a tenant that has no personas yet.
+  //
+  // `db:seed:staff` also re-anchors on its own (`anchorDemoCaseload`, seed-staff-personas.ts), which
+  // it must regardless of order: it drops and re-creates rita's user row on every run, so a caseload
+  // anchored to a previous run's rita would point at a user id that no longer exists.
   const personaRn = users.rows.find((u) => u.email === "rita@wardenx.local")?.id;
   const baseRn = users.rows.find((u) => u.email === "casey@wardenx.local")?.id;
   const rn = personaRn ?? baseRn;

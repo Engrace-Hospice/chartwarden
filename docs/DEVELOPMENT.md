@@ -47,8 +47,10 @@ All four are green on a clean checkout, and CI (`.github/workflows/ci.yml`) runs
 
 ### Local demo data (`bun run db:reset`)
 
-`db:reset` recreates the container, migrates, and runs fourteen seed steps as one `&&` chain. Two
-prerequisites are not enforced by the chain itself and each one aborts it partway:
+`db:reset` recreates the container, migrates, and runs the fourteen seed steps — which live in
+`db:seed:all`, their own script, so CI's `e2e` job seeds through exactly the chain `db:reset` runs
+rather than a copy of it that can drift. Two prerequisites are not enforced by the chain itself and
+each one aborts it partway:
 
 - **The backend must already be running** (`bun run dev:backend`). Only the first few steps talk to
   Postgres directly; the rest drive the real REST API as signed-in demo users, precisely so RLS,
@@ -56,6 +58,10 @@ prerequisites are not enforced by the chain itself and each one aborts it partwa
 - **`REDIS_URL` must be set for that backend.** `db:seed:scenario-billing` reaches M27's
   `refresh-inputs`, which enqueues a trial-balance pull; with no queue connection the port is
   unbound and the step fails.
+
+CI runs all of this: the `e2e` job migrates, boots the backend, runs `db:seed:all` and drives the
+18-spec Playwright suite against it, so a break in the demo-data path is now reported rather than
+found by the next person who tries to bring the stack up.
 
 Roles matter in the seeds because they matter in the product. `db:seed:staff` creates ten discipline
 personas (`CREDENTIALS.local.md`), and the scenario seeds sign in as whichever one is actually

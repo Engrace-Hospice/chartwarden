@@ -97,8 +97,38 @@ describe("the repo baseline", () => {
     expect(report.deferred).not.toContain("test:rate-limit-store:live");
   });
 
-  it("keeps the browser suite visible as a deferral rather than silently unmatched", () => {
-    // The point of #41: an unrunnable suite must be distinguishable from a forgotten one.
-    expect(report.deferred).toContain("test:e2e");
+  it("runs the browser suite — six axe-core WCAG scans included", () => {
+    // #41 wired the deferral so an unrunnable suite stayed distinguishable from a forgotten one;
+    // #56 and #39 made it runnable and this is the other half: it must now be RUN, not registered.
+    expect(report.unwired).not.toContain("test:e2e");
+    expect(report.deferred).not.toContain("test:e2e");
+  });
+
+  it("defers nothing today, and says so out loud", () => {
+    // Not a formality. A deferral that outlives its blocker is a live suite nothing runs wearing a
+    // reason that has stopped being true — the same silence the gate exists to break, one level up.
+    expect(report.deferred).toEqual([]);
+  });
+});
+
+describe("the deferral rule itself", () => {
+  // DEFERRED is empty now that `test:e2e` is wired, so the repo baseline can no longer exercise
+  // either branch. These do, against the real package.json/ci.yml with an injected map.
+  it("excuses an unwired suite only while an entry explains it", () => {
+    const unwiredName = "test:__not_in_ci__:live";
+    const withEntry = run(undefined, { [unwiredName]: "blocked on a fictional issue" });
+    expect(withEntry.deferred).toEqual([unwiredName]);
+    // The name is fictional, so it is in neither package.json nor ci.yml: the map is consulted only
+    // for scripts that exist, which is why it cannot be used to excuse something into existence.
+    // Asserted on THIS name rather than on an empty list, so the case stays about the deferral rule
+    // instead of doubling as a second baseline check that fails for an unrelated reason.
+    expect(withEntry.unwired).not.toContain(unwiredName);
+  });
+
+  it("reports a deferral as STALE once CI runs the script", () => {
+    // `test:e2e` is invoked by the `e2e` job now, so deferring it is exactly the obsolete entry the
+    // gate must refuse — a suite would look excused while it was running and passing all along.
+    const stale = run(undefined, { "test:e2e": "a reason that stopped being true" });
+    expect(stale.staleDeferrals).toEqual(["test:e2e"]);
   });
 });
