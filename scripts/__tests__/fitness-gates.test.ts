@@ -66,6 +66,13 @@ const designTokensGate = (fixtureRoot: string) =>
     WARDENX_FITNESS_ROOT: fixtureRoot,
   });
 
+// check-migration-numbering.ts self-roots the same way and for the same reason, so it uses the same
+// override rather than a cwd swap.
+const migrationNumberingGate = (fixtureRoot?: string) =>
+  run("bun", ["run", join(SCRIPTS, "check-migration-numbering.ts")], ROOT, {
+    WARDENX_FITNESS_ROOT: fixtureRoot,
+  });
+
 // client:check (package.json) is a raw shell pipeline, not a standalone script file, so it needs
 // its own runner rather than gate(). The openapi-typescript binary is invoked by absolute path
 // (not through `bun run`, which would resolve node_modules/.bin against the wrong tree) and the
@@ -88,6 +95,43 @@ describe("each gate goes RED on its planted violation", () => {
     expect(r.out).toMatch(/missing-organization_id/);
   });
 
+  // F-006 (#22) — the exemption hole that hid a P0. Rule 2's audit/key-ring exemptions used to be
+  // tested against the whole FILE, and the repo's own convention puts a module's RLS policies in the
+  // same migration as its audit triggers (`*_rls_audit_triggers.sql`), so ONE `INSERT INTO
+  // audit_event` exempted every `app.user_id` in the file — policy predicates included. That is how
+  // `user_notif_pref_self` (#21, cross-tenant read AND write) sat green in `0017`.
+  //
+  // Run against the pre-change gate this fixture is red for the WRONG reason: it misses the
+  // violation in `0001` and flags the correctly-remediated policy in `0002`. Blind where it matters,
+  // noisy where it does not — so the assertions below are about WHICH policy is named, never about
+  // the exit code alone.
+  it("tenancy — an app.user_id policy hiding in a file that also has an audit trigger", async () => {
+    const r = await gate("check-tenancy.ts", join(FIX, "tenancy-audit-exemption"));
+    expect(r.status).not.toBe(0);
+    expect(r.out).toMatch(/rls-policy-not-org-scoped/);
+    expect(r.out).toMatch(/fixture_note_self/);
+    // The exemption must be SCOPED, not deleted: the audit trigger's own attribution GUCs are not
+    // RLS predicates (M04 §3.3) and must stay silent.
+    expect(r.out).not.toMatch(/rls-session-variable/);
+    // A user key as a CONJUNCT beside the org predicate is the remediated shape, not a hole.
+    expect(r.out).not.toMatch(/fixture_ok_self/);
+    // And a violation a later migration DROPs and replaces is remediated — a text-only gate that
+    // cannot see that can never go green again after a correct fix.
+    expect(r.out).not.toMatch(/fixture_superseded_self/);
+  });
+
+  it("tenancy — a dynamic-SQL policy must not inherit the audit exemption either", async () => {
+    // `survivingPolicies()` cannot follow a policy built inside a DO block — its documented limit,
+    // and five real migrations build policies that way. The limit must stay a limit on TRACKING:
+    // if the audit exemption were reachable inside such a statement, the `INSERT INTO audit_event`
+    // above the policy string would exempt the `app.user_id` inside it, which is #22 one nesting
+    // level down. Both occurrences are reported — the blunt, safe direction.
+    const r = await gate("check-tenancy.ts", join(FIX, "tenancy-dynamic-policy"));
+    expect(r.status).not.toBe(0);
+    expect(r.out.match(/rls-session-variable/g) ?? []).toHaveLength(2);
+    expect(r.out).toMatch(/app\.user_id/);
+  });
+
   it("table-ownership — cross-module schema access", async () => {
     const r = await gate("check-table-ownership.ts", join(FIX, "table-ownership"));
     expect(r.status).not.toBe(0);
@@ -102,6 +146,19 @@ describe("each gate goes RED on its planted violation", () => {
     const r = await gate("check-ddl-legality.ts", join(FIX, "ddl"));
     expect(r.status).not.toBe(0);
     expect(r.out).toMatch(/duplicate-enum/);
+  });
+
+  it("migration-numbering — two migrations claiming one ordinal", async () => {
+    // The real failure this gate was written for: two branches opened the same afternoon each took
+    // "the next number" against main, and `migrate.ts` sorts filenames — so which one applies first
+    // was decided by "a" < "m", not by anyone's intent. Every other gate was green on both.
+    const r = await migrationNumberingGate(join(FIX, "migration-numbering"));
+    expect(r.status).not.toBe(0);
+    expect(r.out).toMatch(/claimed twice/);
+    // Both claimants must be named — the fix is a rename, and which one to rename is the reader's
+    // judgement about which landed second.
+    expect(r.out).toMatch(/0002_admission_location_backfill\.sql/);
+    expect(r.out).toMatch(/0002_m36_notification_preferences_org_scope\.sql/);
   });
 
   it("fitness-gaps — event name without mN. prefix", async () => {
@@ -201,8 +258,11 @@ describe("every gate stays GREEN on the repo-root baseline", () => {
   baselineGate("openapi-coverage", () =>
     expectGreen(run("bun", ["run", join(SCRIPTS, "report-openapi-coverage.ts"), "--check"], ROOT)));
   baselineGate("abac-predicates", () => expectGreen(gate("check-abac-predicates.ts", ROOT)));
+  baselineGate("live-suites", () => expectGreen(gate("check-live-suite-coverage.ts", ROOT)));
   baselineGate("org-index coverage", () => expectGreen(gate("check-org-index-coverage.ts", ROOT)));
   baselineGate("design-tokens", () => expectGreen(gate("check-design-tokens.ts", ROOT)));
+  baselineGate("interactive-rows", () => expectGreen(gate("check-interactive-rows.ts", ROOT)));
+  baselineGate("migration-numbering", () => expectGreen(migrationNumberingGate()));
   baselineGate("ui-parity", () =>
     expectGreen(run("bun", ["run", join(SCRIPTS, "report-ui-parity.ts"), "--check"], ROOT)));
   baselineGate("client:check", () =>

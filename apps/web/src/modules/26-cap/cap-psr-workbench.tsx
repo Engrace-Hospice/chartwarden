@@ -363,7 +363,7 @@ export function CapPsrWorkbench(): JSX.Element {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr style={rowStyle} className="wx-data-row-interactive">
+                    <tr style={rowStyle}>
                       <td style={cellStyle}>{humanize(psrImport.macRegion)}</td>
                       <td style={cellStyle}>
                         {shortDate(psrImport.psrPeriodFrom)} – {shortDate(psrImport.psrPeriodTo)}
@@ -431,7 +431,7 @@ export function CapPsrWorkbench(): JSX.Element {
                     </thead>
                     <tbody>
                       {pagedVariances.map((v) => (
-                        <tr key={v.id} style={rowStyle} className="wx-data-row-interactive">
+                        <tr key={v.id} style={rowStyle}>
                           <td style={cellStyle}>{humanize(v.scope)}</td>
                           <td style={tdCodeStyle}>{v.patientId?.slice(0, 8) ?? "—"}</td>
                           <td style={numStyle}>{money(v.m26AccrualCents)}</td>

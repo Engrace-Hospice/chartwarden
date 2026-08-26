@@ -362,7 +362,7 @@ export function MedicaidRuleConfig(): JSX.Element {
                   const states = r.platformDefault?.applicableStates ?? [];
                   const pending = pendingKey === r.ruleKey;
                   return (
-                    <tr key={r.ruleKey} style={rowLine} className="wx-data-row-interactive">
+                    <tr key={r.ruleKey} style={rowLine}>
                       <td style={tdMono}>
                         <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
                           {r.ruleKey}
