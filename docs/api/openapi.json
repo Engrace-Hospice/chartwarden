@@ -110187,6 +110187,88 @@
         }
       }
     },
+    "/api/v1/oncall/vendor-sessions/bind": {
+      "post": {
+        "operationId": "postApiV1OncallVendorsessionsBind",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Bind this session to an external triage vendor (D3 hybrid/centralized)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sessionClass",
+                    "externalActorId"
+                  ],
+                  "properties": {
+                    "sessionClass": {
+                      "anyOf": [
+                        {
+                          "const": "external_triage_vendor",
+                          "type": "string"
+                        },
+                        {
+                          "const": "external_triage_operator",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "externalActorId": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "externalActorId",
+                  "sessionClass"
+                ],
+                "properties": {
+                  "externalActorId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "sessionClass": {
+                    "anyOf": [
+                      {
+                        "const": "external_triage_vendor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "external_triage_operator",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ops/outbox": {
       "get": {
         "operationId": "getApiV1OpsOutbox",

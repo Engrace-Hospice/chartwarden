@@ -1,4 +1,9 @@
-import type { PortalSessionRow, PortalSessionStore } from "@wardenx/auth";
+import type {
+  PortalSessionRow,
+  PortalSessionStore,
+  VendorSessionRow,
+  VendorSessionStore,
+} from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 // apps/backend/src/modules/02-identity/portal-session-store.ts — the live `session`-row write surface
 // behind M2's `PortalSessionBinder` seam (F-030 / #75).
@@ -12,6 +17,11 @@ import { type DbClient, schema } from "@wardenx/db";
 // `scope` is jsonb and is MERGED rather than replaced (`COALESCE(scope,'{}') || patch`), because the
 // two binder operations write different keys at different times: the account at mint, the patient at
 // `select-patient`. A replacing write would silently drop whichever key it was not carrying.
+//
+// The M19 vendor binder (F-030) needs the identical two statements against the identical column, so it
+// shares this implementation behind its own typed façade rather than a second copy. The interfaces stay
+// separate because their `scope` shapes and their class unions are genuinely different — collapsing
+// them into one `Record<string, string>` would let a portal binder write a vendor key.
 import type { OrgScope } from "@wardenx/types";
 import { and, eq, sql } from "drizzle-orm";
 
@@ -52,6 +62,44 @@ export function createDrizzlePortalSessionStore(db: DbClient): PortalSessionStor
           scope: patch,
           updatedAt: new Date(),
         })
+        .where(
+          and(
+            eq(schema.sessions.id, sessionId),
+            eq(schema.sessions.activeOrganizationId, scope.orgId),
+          ),
+        );
+    },
+  };
+}
+
+/**
+ * The same two statements, typed for M2's `VendorSessionBinder` (F-030 / #75).
+ *
+ * Not a second implementation: the read and the write are byte-identical to the portal store's, over the
+ * same column of the same table. Only the CONTRACT differs — a vendor session's scope key is
+ * `externalActorId` and its class union is M19's two, and keeping those distinct at the type level is
+ * what stops one binder from writing the other's key.
+ */
+export function createDrizzleVendorSessionStore(db: DbClient): VendorSessionStore {
+  const inner = createDrizzlePortalSessionStore(db);
+  return {
+    async read(scope: OrgScope, sessionId: string): Promise<VendorSessionRow | null> {
+      const row = await inner.read(scope, sessionId);
+      if (!row) return null;
+      return {
+        organizationId: row.organizationId,
+        sessionClass: row.sessionClass,
+        scope: (row.scope as VendorSessionRow["scope"]) ?? null,
+      };
+    },
+    async write(scope, sessionId, update) {
+      await inner.write(scope, sessionId, { scopePatch: update.scopePatch });
+      // The class is written through the portal store's optional field, which accepts only the portal
+      // union — so it goes in its own statement rather than being cast past the type that exists to
+      // keep the two vocabularies apart.
+      await db
+        .update(schema.sessions)
+        .set({ sessionClass: update.sessionClass, updatedAt: new Date() })
         .where(
           and(
             eq(schema.sessions.id, sessionId),

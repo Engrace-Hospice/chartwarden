@@ -38,6 +38,8 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
       // is what `device_attestation_valid` must read as deny. Every browser session is this case.
       deviceAttestation: null,
       sessionPatientId: null,
+      // F-030 — the vendor a session acts for, null on every class but M19's two.
+      externalActorId: null,
     });
   });
 

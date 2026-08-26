@@ -67,7 +67,10 @@ export type SessionScopeKind =
   | "patient"
   | "deceased_patient"
   /** M31 portal — pinned to a portal ACCOUNT; the one patient is bound within it by select-patient. */
-  | "portal_account";
+  | "portal_account"
+  /** M19 answering service — pinned to an `external_triage_vendor`. Was `organization`, which read as
+   *  "unscoped within the org" and is how the vendor came to be required nowhere (F-030). */
+  | "external_vendor";
 
 /** Concurrency rule per class (M2 spec §2.2.4 "Concurrency" column). */
 export type SessionConcurrency = "allowed" | "one_active_per_link" | "none";
@@ -90,6 +93,17 @@ export interface SessionClassDescriptor {
    * `session_scope_chk` branch migration 0220 adds.
    */
   readonly requiresPortalAccount: boolean;
+  /**
+   * The two M19 answering-service classes require `scope.externalActorId` — the `external_triage_vendor`
+   * row the session acts for.
+   *
+   * This IS the authorization subject for `external_triage_actor`: the predicate compares the shift's
+   * vendor against the session's, so a vendor session with no vendor on it is not a weaker session, it
+   * is one the predicate can never admit. The class used to require nothing (0220's branch, matching
+   * `staff`) on the reasoning that a vendor session is org-scoped rather than patient-scoped — true, and
+   * beside the point: it is VENDOR-scoped, and nothing carried the vendor.
+   */
+  readonly requiresExternalActor: boolean;
   /** Concurrency policy. */
   readonly concurrency: SessionConcurrency;
   /** Whether the UI screen-lock lifecycle applies (staff / auditor). */
@@ -99,6 +113,7 @@ export interface SessionClassDescriptor {
 export const SESSION_CLASS_DESCRIPTORS: Record<SessionClass, SessionClassDescriptor> = {
   staff: {
     requiresPortalAccount: false,
+    requiresExternalActor: false,
     scopeKind: "organization",
     readOnly: false,
     requiresEngagementWindow: false,
@@ -108,6 +123,7 @@ export const SESSION_CLASS_DESCRIPTORS: Record<SessionClass, SessionClassDescrip
   },
   auditor: {
     requiresPortalAccount: false,
+    requiresExternalActor: false,
     scopeKind: "organization",
     readOnly: true,
     requiresEngagementWindow: true,
@@ -117,6 +133,7 @@ export const SESSION_CLASS_DESCRIPTORS: Record<SessionClass, SessionClassDescrip
   },
   external_collaborator: {
     requiresPortalAccount: false,
+    requiresExternalActor: false,
     scopeKind: "patient",
     readOnly: false,
     requiresEngagementWindow: false,
@@ -126,6 +143,7 @@ export const SESSION_CLASS_DESCRIPTORS: Record<SessionClass, SessionClassDescrip
   },
   funeral_home: {
     requiresPortalAccount: false,
+    requiresExternalActor: false,
     scopeKind: "deceased_patient",
     readOnly: false,
     requiresEngagementWindow: false,
@@ -142,6 +160,7 @@ export const SESSION_CLASS_DESCRIPTORS: Record<SessionClass, SessionClassDescrip
   // `PORTAL_SESSION_POLICY_FLOOR` (M31's own evaluator), not the staff screen-lock lifecycle.
   patient_portal: {
     requiresPortalAccount: true,
+    requiresExternalActor: false,
     scopeKind: "portal_account",
     readOnly: false, // portal users write: messages, amendment requests, caregiver-attested doses
     requiresEngagementWindow: false,
@@ -151,6 +170,7 @@ export const SESSION_CLASS_DESCRIPTORS: Record<SessionClass, SessionClassDescrip
   },
   caregiver_portal: {
     requiresPortalAccount: true,
+    requiresExternalActor: false,
     scopeKind: "portal_account",
     readOnly: false,
     requiresEngagementWindow: false,
@@ -160,6 +180,7 @@ export const SESSION_CLASS_DESCRIPTORS: Record<SessionClass, SessionClassDescrip
   },
   bereaved_portal: {
     requiresPortalAccount: true,
+    requiresExternalActor: false,
     scopeKind: "portal_account",
     readOnly: false,
     requiresEngagementWindow: false,
@@ -169,11 +190,16 @@ export const SESSION_CLASS_DESCRIPTORS: Record<SessionClass, SessionClassDescrip
   },
 
   // ── M19 external triage vendor (§4.1 row 36) ────────────────────────────────────────────────────
-  // An answering service acting for the agency after hours. Org-scoped, not patient-scoped: the
-  // vendor sees the on-call surface, and per-call patient access is gated by M19's own predicates.
+  // An answering service acting for the agency after hours. VENDOR-scoped: the session names the
+  // `external_triage_vendor` it acts for, and `external_triage_actor` compares that against the shift's.
+  // These used to be `organization` with no scope requirement, on the reasoning that a vendor session is
+  // not PATIENT-scoped — true, and it does not follow that it is unscoped within the org. That reading
+  // is how the vendor came to be required nowhere and written by nothing (F-030). Per-call patient
+  // access is still gated by M19's own predicates on top.
   external_triage_vendor: {
     requiresPortalAccount: false,
-    scopeKind: "organization",
+    requiresExternalActor: true,
+    scopeKind: "external_vendor",
     readOnly: false, // they log triage calls
     requiresEngagementWindow: false,
     requiresPatientScope: false,
@@ -182,7 +208,8 @@ export const SESSION_CLASS_DESCRIPTORS: Record<SessionClass, SessionClassDescrip
   },
   external_triage_operator: {
     requiresPortalAccount: false,
-    scopeKind: "organization",
+    requiresExternalActor: true,
+    scopeKind: "external_vendor",
     readOnly: false,
     requiresEngagementWindow: false,
     requiresPatientScope: false,
@@ -222,7 +249,12 @@ export function sessionClassDescriptor(cls: SessionClass): SessionClassDescripto
 /** The class-specific scope fields carried on a session (mirrors the §3.6 columns). */
 export interface SessionScopeFields {
   readonly sessionClass: SessionClass;
-  readonly scope?: { patientId?: string; portalAccountId?: string } | null;
+  readonly scope?: {
+    patientId?: string;
+    portalAccountId?: string;
+    /** The `external_triage_vendor` row an M19 answering-service session acts for. */
+    externalActorId?: string;
+  } | null;
   readonly engagementStart?: Date | string | null;
   readonly engagementEnd?: Date | string | null;
 }
@@ -244,7 +276,10 @@ export function isSessionScopeValid(fields: SessionScopeFields): boolean {
   if (desc.requiresPortalAccount) {
     return typeof scope?.portalAccountId === "string" && scope.portalAccountId.length > 0;
   }
-  return true; // staff, vendor
+  if (desc.requiresExternalActor) {
+    return typeof scope?.externalActorId === "string" && scope.externalActorId.length > 0;
+  }
+  return true; // staff
 }
 
 /** Throwing variant for the write path. */
@@ -266,6 +301,24 @@ export function sessionPinnedPatientId(fields: SessionScopeFields): string | nul
   // funeral it is legitimately unpinned before that, so it reads the same field WITHOUT requiring it.
   if (desc.requiresPortalAccount) return fields.scope?.patientId ?? null;
   return desc.requiresPatientScope ? (fields.scope?.patientId ?? null) : null;
+}
+
+/**
+ * The `external_triage_vendor` row a session acts for, or null on every class that is not one of M19's
+ * two answering-service classes.
+ *
+ * Class-gated for the same reason `sessionPinnedPatientId` is: `scope` is jsonb, so a staff session that
+ * somehow carries an `externalActorId` must still read null. What makes a session a vendor session is
+ * its CLASS, not the presence of a key — and this key is the authorization subject of
+ * `external_triage_actor`, so reading it straight off the column would let any session that acquired the
+ * key reach a vendor-scoped call. M19's own predicate header names exactly that risk: folding the vendor
+ * arm into the owner predicate "would let any staff session that happened to carry an `externalActorId`
+ * attribute reach a vendor-scoped call".
+ */
+export function sessionExternalActorId(fields: SessionScopeFields): string | null {
+  return SESSION_CLASS_DESCRIPTORS[fields.sessionClass].requiresExternalActor
+    ? (fields.scope?.externalActorId ?? null)
+    : null;
 }
 
 /** Whether a class permits concurrent sessions (auditor: never). */

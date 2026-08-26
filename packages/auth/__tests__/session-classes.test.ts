@@ -82,10 +82,19 @@ describe("M2-T03 session class taxonomy", () => {
     }
   });
 
-  it("a vendor session is org-scoped — no patient, no account, like staff", () => {
+  it("a vendor session is VENDOR-scoped — it must name the vendor it acts for (F-030)", () => {
+    // This used to assert the opposite ("org-scoped, no patient, no account, like staff"), which is how
+    // migration 0220 came to require nothing of these classes. Not being PATIENT-scoped does not make a
+    // session unscoped within the org: the vendor id IS the authorization subject
+    // `external_triage_actor` compares against, so a vendor session without one is not a wider session,
+    // it is one that predicate can never admit.
     for (const cls of VENDOR_SESSION_CLASSES) {
-      expect(isSessionScopeValid({ sessionClass: cls, scope: null })).toBe(true);
-      expect(sessionClassDescriptor(cls).scopeKind).toBe("organization");
+      expect(isSessionScopeValid({ sessionClass: cls, scope: null })).toBe(false);
+      expect(isSessionScopeValid({ sessionClass: cls, scope: {} })).toBe(false);
+      expect(isSessionScopeValid({ sessionClass: cls, scope: { externalActorId: "v1" } })).toBe(
+        true,
+      );
+      expect(sessionClassDescriptor(cls).scopeKind).toBe("external_vendor");
     }
   });
 

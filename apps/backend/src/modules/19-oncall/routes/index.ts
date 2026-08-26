@@ -91,10 +91,17 @@ export {
 } from "./guards";
 
 import type { M19ReadService } from "./read-service";
+import type { VendorSessionBindReader } from "./vendor-sessions.routes";
 import type { M19WriteService } from "./write-service";
 
 /** The two services every M19 route plugin composes over (bound to Drizzle at the composition root). */
 export interface M19RouteServices {
   readonly readService: M19ReadService;
   readonly writeService: M19WriteService;
+  /**
+   * F-030 — the vendor-session bind gate's narrow read. OPTIONAL: without it the bind route does not
+   * mount at all, which is the honest posture for a deployment that has not wired the Drizzle reader
+   * (the M25 `ingestService` precedent — absent, never a deny-stub 501 pretending the feature is there).
+   */
+  readonly vendorSessionBindReader?: VendorSessionBindReader;
 }

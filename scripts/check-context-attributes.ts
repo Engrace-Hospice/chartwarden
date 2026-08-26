@@ -121,10 +121,9 @@ export const CONTEXT_ATTRIBUTES: Readonly<Record<string, AttributeEntry>> = {
       "authenticate hook — `ResolvedActor.deviceAttestation`, resolved from M2's `device_attestation` row through the session's `device_attestation_id` pointer and RE-CHECKED there (`liveDeviceAttestation`: verdict, revocation, expiry), so a stale or dangling pointer yields null and the gate denies. Written only when a LIVE attestation stands behind the session. This entry was blocked until ADR-0023 D2 was adjudicated in M2's favour — the ADR offered exactly two exits, a real `ownedTables` edit or deletion from the consuming specs, and the surface had two consumers (M3's predicate; M18's `evv_device.m2_device_attestation_id`, a logical FK to a table that did not exist).",
   },
 
-  // ── blocked: read by real authorization logic, produced by nothing ──────────────────────────────
   externalActorId: {
-    blocked:
-      "M19's on-call predicates and route actor read the vendor/answering-service actor id for a vendor-scoped call. Nothing assembles it, so no vendor-scoped call can be recognised as one — but unlike the rest of this list that is DECLARED rather than accidental: the M19 spec's Phase boundary ships the Hybrid and Centralized models feature-flagged-OFF in Phase 1, with only the data shape (`external_triage_vendor`, `triage_call.external_actor_id`) in the migration so a Phase-2 tenant is a config flip. Producing it needs the vendor session mint path that phase has not built, plus a `session_scope_chk` branch for the two vendor classes (migration 0219 added the classes; 0220 required no scope of them). The `deviceAttestationValid` shape, one layer up.",
+    producer:
+      "authenticate hook — `ResolvedActor.externalActorId`, the `external_triage_vendor` row an M19 answering-service session acts for, resolved through `sessionExternalActorId` so the CLASS decides and a staff session carrying a stray `scope.externalActorId` stamps nothing (it is the authorization SUBJECT of `external_triage_actor`, so any other route to it would reach a vendor-scoped triage call). Written at mint by M2's `VendorSessionBinder`, which M19's vendor-binding route calls; migration 0223 makes `scope.externalActorId` a `session_scope_chk` requirement of both vendor classes, so a vendor session with no vendor cannot be written at all.",
   },
 };
 
@@ -264,13 +263,22 @@ export interface Violation {
   readonly detail: string;
 }
 
-export function findViolations(scan: ScanResult): Violation[] {
+/**
+ * `registry` is injectable so the gate's OWN rules stay testable independently of what the registry
+ * currently holds. Every blocked-key test used to name a real blocked entry, which broke twice as this
+ * work retired them and then went vacuous when the last one was fixed — a rule that can only be proven
+ * while it is being violated is not a rule anyone can rely on.
+ */
+export function findViolations(
+  scan: ScanResult,
+  registry: Record<string, AttributeEntry> = CONTEXT_ATTRIBUTES,
+): Violation[] {
   const readKeys = new Set(scan.reads.map((r) => r.key));
   const writeKeys = new Set(scan.writes.map((w) => w.key));
   const out: Violation[] = [];
 
   for (const key of [...readKeys].sort()) {
-    const entry = CONTEXT_ATTRIBUTES[key];
+    const entry = registry[key];
     if (!entry) {
       const where = scan.reads.filter((r) => r.key === key).slice(0, 3);
       out.push({
@@ -287,6 +295,12 @@ export function findViolations(scan: ScanResult): Violation[] {
         detail: `declares a producer (“${entry.producer.slice(0, 70)}…”) but nothing in source writes it`,
       });
     }
+  }
+
+  // Over the REGISTRY, not over the read keys. A blocked entry that gains a writer is stale whether or
+  // not anything currently reads it — and the read-keyed loop above could not see the case where the
+  // producer landed before the reader did, which is exactly the order these fixes tend to arrive in.
+  for (const [key, entry] of Object.entries(registry)) {
     if (entry.blocked && writeKeys.has(key)) {
       const where = scan.writes.filter((w) => w.key === key).slice(0, 2);
       out.push({
@@ -297,7 +311,7 @@ export function findViolations(scan: ScanResult): Violation[] {
     }
   }
 
-  for (const key of Object.keys(CONTEXT_ATTRIBUTES)) {
+  for (const key of Object.keys(registry)) {
     if (!readKeys.has(key) && !writeKeys.has(key)) {
       out.push({ kind: "registry-unused", key, detail: "declared but nothing reads or writes it" });
     }
@@ -315,8 +329,11 @@ if (import.meta.main) {
     console.log(
       `✓ context-attributes: ${scan.reads.length} read(s) over ${Object.keys(CONTEXT_ATTRIBUTES).length} declared key(s) — ${produced} produced, ${blocked.length} declared-blocked`,
     );
-    // Blocked keys are a standing finding, not a passing state — print them every run so the count
-    // is visible in CI output rather than only to whoever opens this file.
+    // Blocked keys are a standing finding, not a passing state — print them every run so the count is
+    // visible in CI output rather than only to whoever opens this file. The list is EMPTY as of #89:
+    // every key read off the attributes bag now has a producer. A future key whose source genuinely
+    // does not exist yet still belongs here rather than undeclared (the `deviceAttestationValid` rule),
+    // so this stays.
     for (const [key] of blocked) console.log(`    · blocked: ${key}`);
     process.exit(0);
   }

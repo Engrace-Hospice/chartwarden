@@ -317,6 +317,7 @@ import {
   buildDrizzleM19WriteService,
   buildDrizzleOncallAbacResolver,
   buildDrizzleOncallSeamStore,
+  buildDrizzleVendorSessionBindReader,
   createDrizzleTriageEraseStore,
   denyStubOncallAbacResolver,
   mountM19Routes,
@@ -2956,6 +2957,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             writeService: buildDrizzleM19WriteService(dbHandle.db, m19ReadService, {
               outbox: m19OutboxPublisher,
             }),
+            // F-030 — the vendor-session bind gate's read. Mounting this is what makes
+            // `attributes.externalActorId` producible: without a bound session, M19's
+            // `external_triage_actor` compares the shift's vendor against nothing, which is how that
+            // predicate came to refuse every caller.
+            vendorSessionBindReader: buildDrizzleVendorSessionBindReader(dbHandle.db),
           });
           // M20 (Field Safety) — mount the §4.1 route plugins over the Drizzle READ + WRITE services.
           // Every read opens its own withOrgContext (RLS scopes each statement to app.org_id); every

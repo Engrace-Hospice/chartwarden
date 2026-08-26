@@ -126,6 +126,7 @@ import type {
   TriageCallProvider,
   TriageCallReader,
   UsageMeteringIngest,
+  VendorSessionBinder,
   VisitAssignmentReader,
   VisitMetricsProvider,
   VisitReader,
@@ -347,6 +348,12 @@ export const portalSessionBinderDenyStub: PortalSessionBinder = {
   },
   async bindPortalPatient() {
     throw new NotImplementedError("PortalSessionBinder");
+  },
+};
+
+export const vendorSessionBinderDenyStub: VendorSessionBinder = {
+  async bindVendorSession() {
+    throw new NotImplementedError("VendorSessionBinder");
   },
 };
 

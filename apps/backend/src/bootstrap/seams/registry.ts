@@ -160,6 +160,7 @@ import {
   triageCallProviderDenyStub,
   triageCallReaderDenyStub,
   usageMeteringIngestDenyStub,
+  vendorSessionBinderDenyStub,
   visitAssignmentReaderDenyStub,
   visitMetricsProviderDenyStub,
   visitReaderDenyStub,
@@ -306,6 +307,17 @@ export const REQUIRED_SEAMS = [
     ownerModule: 2,
     phi: false,
     denyStub: portalSessionBinderDenyStub,
+  },
+  // M2 (M19 vendor session class + scope) — the `PortalSessionBinder` argument one module over: M19
+  // hands the vendor binding here; M2 owns the `session` row. The deny-stub THROWS for the same reason
+  // — a deployment without the real binder must fail the bind loudly rather than mint a vendor session
+  // with no vendor on it, which `external_triage_actor` can never admit and which would look exactly
+  // like the F-030 absence this closes.
+  {
+    key: "VendorSessionBinder",
+    ownerModule: 2,
+    phi: false,
+    denyStub: vendorSessionBinderDenyStub,
   },
   // M2 (org creation) — the per-tenant `organization` create/attach surface M34's `tenant.provision`
   // worker consumes (§7.1 step 3). Owned by M2 (it owns the `organization` table); not PHI (org metadata).

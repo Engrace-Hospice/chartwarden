@@ -3746,6 +3746,27 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
       lastStepUpFactor: StepUpFactorSchema,
     }),
   },
+  // M19 (F-030) — bind a session to an `external_triage_vendor` (D3 Hybrid/Centralized). The session id
+  // is deliberately absent from the body: it is server-assembled, so a caller cannot bind someone
+  // else's session. Only the vendor and the class are the caller's to choose, and both are checked
+  // against the org's own vendor row and on-call policy before the binding is written.
+  "POST /api/v1/oncall/vendor-sessions/bind": {
+    summary: "Bind this session to an external triage vendor (D3 hybrid/centralized)",
+    body: Type.Object({
+      externalActorId: Type.String({ format: "uuid" }),
+      sessionClass: Type.Union([
+        Type.Literal("external_triage_vendor"),
+        Type.Literal("external_triage_operator"),
+      ]),
+    }),
+    response: Type.Object({
+      sessionClass: Type.Union([
+        Type.Literal("external_triage_vendor"),
+        Type.Literal("external_triage_operator"),
+      ]),
+      externalActorId: Type.String({ format: "uuid" }),
+    }),
+  },
   // M2 (ADR-0023 D2 / SecHardening §12.2/§12.4) — device attestation. The `nonce` in the challenge
   // response and the `assertion` in the submit body are the two halves of one MAC: the server mints the
   // nonce, the device MACs it together with everything it claims about itself, and the server recomputes.

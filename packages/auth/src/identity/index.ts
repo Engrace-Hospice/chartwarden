@@ -36,6 +36,13 @@ export { argon2idHash, argon2idVerify } from "./password-hash";
 export { loadTwoFactorKey, seal, open, isSealed } from "./two-factor-crypto";
 export { withTwoFactorEncryption, type EncryptableAdapter } from "./two-factor-adapter";
 export {
+  type VendorSessionRow,
+  type VendorSessionStore,
+  VendorSessionBindError,
+  createInMemoryVendorSessionStore,
+  createVendorSessionBinder,
+} from "./vendor-session-binder";
+export {
   createDbSessionContextStore,
   liveDeviceAttestation,
   toSessionContextRecord,
@@ -96,6 +103,7 @@ export {
   type SessionScopeFields,
   isSessionScopeValid,
   assertSessionScope,
+  sessionExternalActorId,
   sessionPinnedPatientId,
   sessionAllowsConcurrent,
   PORTAL_SESSION_CLASSES,

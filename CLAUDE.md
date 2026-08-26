@@ -342,7 +342,22 @@ itself, where an UNREPORTED requirement counts as unmet. The two hardware provid
 Integrity) report `unavailable` rather than denying, and an unconfigured deployment answers 501, so "this
 deployment does not do device enrolment" never looks like "this fleet is compromised". This un-closes M33's
 `report.drilldown.bulk_export`, which had been refused to every caller since it was written. Blocked keys:
-**2 → 1**.
+**2 → 1**. Then `externalActorId`, the last one — M19's `external_triage_actor` compares the SHIFT's
+vendor against the SESSION's, and nothing ever wrote the session's, so the comparison ran against
+`undefined` and no vendor-scoped call could be recognised as one. It survived because it LOOKED like the
+phase plan: M19 ships the Hybrid/Centralized models feature-flagged-OFF in Phase 1 and promises a Phase-2
+tenant is "a configuration flip + vendor-adapter package install, not a schema change" — a promise that
+did not hold, since both would have landed on a session layer that cannot express a vendor. Migration 0223
+makes `scope.externalActorId` a `session_scope_chk` requirement of both vendor classes (0220 had given
+them none, reasoning they are org-scoped rather than patient-scoped — true, and it does not follow that
+they are unscoped WITHIN the org; the descriptor's `scopeKind` is now `external_vendor` rather than
+`organization`, which is the reading that produced the gap); M2 publishes a `VendorSessionBinder` seam,
+the `PortalSessionBinder` shape one module over; and M19 gains a bind route that checks four separate
+things first — the vendor is in this org, the tenant's D3 model is actually outsourced, the BAA is in
+effect and unexpired, and RN coverage is attested (D13 / CoP 418.64(b)). It does NOT turn the models on.
+The fact resolves through `sessionExternalActorId`, so the CLASS decides and a staff session carrying a
+stray `scope.externalActorId` stamps nothing — M19's own predicate header names that exact risk. Blocked
+keys: **1 → 0**. **The F-030 registry is now fully produced: 12 keys, 12 producers, 0 blocked.**
 - `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
   Every live-database / live-Redis / browser suite in `package.json` must be invoked by a job in
   `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so

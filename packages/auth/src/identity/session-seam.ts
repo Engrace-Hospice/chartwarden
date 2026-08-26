@@ -51,6 +51,8 @@ export interface SessionContextRecord {
    * should say, and what the gate must read as deny.
    */
   readonly deviceAttestation?: { readonly valid: boolean; readonly verifiedAt?: string } | null;
+  /** The vendor an M19 answering-service session acts for; null on every other class (F-030). */
+  readonly externalActorId?: string | null;
 }
 
 /** Reads a session-context row by id within an org scope (M1 `session` repo in production). */
@@ -93,6 +95,7 @@ export function createSessionContextResolver(
         portalAccountId: row.portalAccountId,
         sessionPatientId: row.sessionPatientId,
         deviceAttestation: row.deviceAttestation ?? null,
+        externalActorId: row.externalActorId ?? null,
       };
     },
     async resolveStepUpState(scope, sessionId): Promise<SessionStepUpFields | null> {
