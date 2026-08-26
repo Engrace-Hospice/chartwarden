@@ -55,10 +55,20 @@ All four are green on a clean checkout, and CI (`.github/workflows/ci.yml`) runs
 
 ### Local demo data (`bun run db:reset`)
 
-`db:reset` recreates the container, migrates, and runs the fourteen seed steps — which live in
-`db:seed:all`, their own script, so CI's `e2e` job seeds through exactly the chain `db:reset` runs
-rather than a copy of it that can drift. Two prerequisites are not enforced by the chain itself and
-each one aborts it partway:
+`bun run db:reset` is `docker compose down -v` → `docker compose up -d postgres redis minio` →
+`db:wait --expect-empty` → `db:migrate` → `db:seed:all`. **Compose is the only local provisioning
+path** (F-016 / #43): there used to be a second one, a standalone `wardenx-postgres` container on
+port 5440, and `db:reset` straddled both — it destroyed the 5440 volume and then migrated and seeded
+the 5432 compose database, which was never reset. `db:wait --expect-empty` now asserts the database
+really is empty before migrations replay, so that class of mismatch fails loudly instead of silently
+seeding on top of existing data.
+
+`cp .env.example .env` is sufficient; the full onboarding runbook is
+[`docs/START_PROJECT.md`](./START_PROJECT.md).
+
+The fourteen seed steps live in `db:seed:all`, their own script, so CI's `e2e` job seeds through
+exactly the chain `db:reset` runs rather than a copy of it that can drift. Two prerequisites are not
+enforced by the chain itself and each one aborts it partway:
 
 - **The backend must already be running** (`bun run dev:backend`). Only the first few steps talk to
   Postgres directly; the rest drive the real REST API as signed-in demo users, precisely so RLS,

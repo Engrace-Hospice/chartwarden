@@ -70,9 +70,11 @@ describe("scripts/ is type-checked", () => {
     })
       .split("\n")
       .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"));
-    const optedOut = tracked.filter((f) =>
-      readFileSync(join(REPO_ROOT, f), "utf8").includes("@ts-nocheck"),
-    );
+    const optedOut = tracked
+      // This file names the directive in order to forbid it, so it matches itself. Same
+      // self-exemption the merge-artifact gate needs, and for the same reason.
+      .filter((f) => f !== "scripts/__tests__/typecheck-coverage.test.ts")
+      .filter((f) => readFileSync(join(REPO_ROOT, f), "utf8").includes("@ts-nocheck"));
     expect(optedOut).toEqual([]);
   });
 });

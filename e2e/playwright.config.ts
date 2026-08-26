@@ -2,7 +2,7 @@
 //
 // Deliberately does NOT start its own webServer: the target is the full local stack (Postgres +
 // Valkey + Fastify backend + Vite web), which this repo already documents how to bring up
-// (docs/DEVELOPMENT.md / `bun run db:reset && bun run dev`) — reimplementing that orchestration
+// (docs/START_PROJECT.md / `bun run db:reset && bun run dev`) — reimplementing that orchestration
 // here would duplicate it and drift. Run `bun run test:e2e` against an already-running stack, same
 // expectation as the `*.live.test.ts` vitest suites (rls-isolation, m6-write, etc.) have for a live
 // Postgres — except this suite is NOT part of the default `bun run test` (it needs a live browser +
