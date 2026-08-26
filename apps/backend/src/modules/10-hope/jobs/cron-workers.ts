@@ -44,8 +44,8 @@ import {
  * write-audit triggers `NULLIF(...)` to NULL. A cron transition has no acting user.
  *
  * #48 — this was the synthetic uuid `00000000-0000-0000-0000-000000000010`, which has no `user` row.
- * `audit_event.actor_user_id` is a nullable column with an FK to `user`, so the trigger's
- * `NULLIF(current_setting('app.user_id', true), '')::uuid` passed the sentinel straight through and
+ * `audit_event.actor_user_id` is a nullable column with an FK to `user`, and the trigger NULLIFs only
+ * the EMPTY string before casting to uuid — so the sentinel passed straight through and
  * every transition died on `audit_event_actor_user_id_user_id_fk`. NEITHER watchdog could complete a
  * single status change. `hope-window-watchdog` never showed it because the table it reads was always
  * empty (nothing wrote `hope_timepoint_schedule` at all); `sfv-watchdog` reads rows that DO exist, so
