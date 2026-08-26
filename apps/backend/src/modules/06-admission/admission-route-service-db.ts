@@ -16,7 +16,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
 import type { LevelOfCare } from "@wardenx/types";
-import { type AnyColumn, type SQL, and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { type AnyColumn, type SQL, and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { decideRecertSign } from "./certification/recert";
 import { computeWrittenCertDeadline } from "./certification/window-math";
 import { resolveForCauseDischarge } from "./discharge/for-cause";
@@ -40,6 +40,7 @@ import {
   InvalidReferralStateError,
   ReferralNotTriagedError,
   ResourceNotFoundError,
+  SIGNER_KIND_BY_ROLE,
   VersionMismatchError,
 } from "./routes/service";
 import type {
@@ -88,6 +89,23 @@ const NOOP_OUTBOX: AdmissionWriteOutboxPort = { async publish() {} };
  * closed with a precise 503 rather than silently trusting an unverified bed (matches the M24 composition-
  * root reader posture — degrade with a message, never fake success).
  */
+/**
+ * Confirms a provider entity belongs to THIS org (#44). `provider_entity` is an M1 FOUNDATION table
+ * that M6 does not own and must not import (`arch:tables`: cross-module reads go through the owner's
+ * service, never its schema), so the check is injected from the composition root.
+ *
+ * It is needed because the FK on `election_statement.provider_entity_id` / `admission.provider_entity_id`
+ * is a plain single-column reference with no organization in it — nothing at the database level stops
+ * one tenant from electing another tenant's hospice. While the field was being discarded that was
+ * moot; persisting it makes the check load-bearing.
+ *
+ * Optional, and an absent binding fails the draft route CLOSED with a precise 503 rather than writing
+ * an unverified provider entity — the same posture as {@link IpuBedAssignmentReaderPort} below.
+ */
+export interface ProviderEntityOrgCheckPort {
+  belongsToOrg(organizationId: string, providerEntityId: string): Promise<boolean>;
+}
+
 export interface IpuBedAssignmentReaderPort {
   activeBedAssignmentForLevelOfCarePeriod(
     organizationId: string,
@@ -193,6 +211,7 @@ export function createDbAdmissionRouteService(
   db: DbClient,
   outbox: AdmissionWriteOutboxPort = NOOP_OUTBOX,
   ipuBedAssignmentReader?: IpuBedAssignmentReaderPort,
+  providerEntityOrgCheck?: ProviderEntityOrgCheckPort,
 ): AdmissionRouteService {
   const now = () => new Date();
 
@@ -1276,6 +1295,7 @@ export function createDbAdmissionRouteService(
       organizationId,
       admissionId,
       electionPeriodId,
+      input,
     ): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [adm] = await tx
@@ -1285,11 +1305,34 @@ export function createDbAdmissionRouteService(
           .limit(1);
         if (!adm) throw new ResourceNotFoundError(admissionId);
         const [period] = await tx
-          .select({ sequence: EP.sequenceNumber, effectiveAt: EP.effectiveAt, scheduledEndAt: EP.scheduledEndAt })
+          .select({
+            sequence: EP.sequenceNumber,
+            effectiveAt: EP.effectiveAt,
+            scheduledEndAt: EP.scheduledEndAt,
+          })
           .from(EP)
           .where(eq(EP.id, electionPeriodId))
           .limit(1);
         if (!period) throw new ResourceNotFoundError(electionPeriodId);
+        // The elected hospice must belong to THIS org before it is written to two tables — the FK
+        // carries no organization, so nothing below the app stops a cross-tenant election.
+        if (!providerEntityOrgCheck) {
+          throw new WardenXError(
+            "PROVIDER_ENTITY_CHECK_UNBOUND",
+            "cannot verify the elected provider entity belongs to this organization; refusing to " +
+              "draft an election statement against an unverified hospice",
+            503,
+          );
+        }
+        if (
+          !(await providerEntityOrgCheck.belongsToOrg(
+            organizationId,
+            input.electedProviderEntityId,
+          ))
+        ) {
+          // Absent and cross-tenant read identically, per the §6.6 existence-non-leak convention.
+          throw new ResourceNotFoundError(input.electedProviderEntityId);
+        }
         const es = firstOrThrow(
           await tx
             .insert(ES)
@@ -1297,11 +1340,36 @@ export function createDbAdmissionRouteService(
               organizationId,
               electionPeriodId,
               patientId: adm.patientId,
+              // Draft-time intent. `signerKind` is re-stated from the SIGN request (§418.24(b)(1)
+              // lets a legal representative sign) — it is NOT NULL, so the draft seeds the common
+              // case and signElection corrects it from what the signer actually declared.
               signerKind: "patient",
+              providerEntityId: input.electedProviderEntityId,
+              attendingPhysicianId: input.electedAttendingPhysicianId ?? null,
+              curativeCareAcknowledgment: input.waiverAcknowledged,
+              // The column is jsonb NOT NULL DEFAULT '{}', so the addendum is stored as an object
+              // field rather than a bare scalar — `{}` stays the honest "no addendum" value.
+              ...(input.stateAddendum === undefined
+                ? {}
+                : { stateAddendum: { text: input.stateAddendum } }),
             })
             .returning({ id: ES.id, status: ES.status, version: ES.version }),
           "election statement insert returned no row",
         );
+        // §4.7 SITING — the reason this route is load-bearing well beyond its own table.
+        // `AdmissionStatusReader.getAdmissionSummary` THROWS `AdmissionSeamDataGapError` when
+        // `admission.provider_entity_id` is null (seams/drizzle-store.ts `summaryOf`), and no insert
+        // or update in this file ever set it — activation writes `status`/`activatedAt` only. So the
+        // seam failed for every admission ever created, and each of its five consumers degraded:
+        // M9 assessments (reported as INACTIVE_ADMISSION), M10 HOPE, M16 bereavement, M21 supplies
+        // (M21_SERVING_LOCATION_UNRESOLVED), plus the M14/M30 queue readers the DTO is written for.
+        // The elected hospice IS the admission's serving provider entity, and this is the first
+        // point in the lifecycle where the API supplies one — no other request schema accepts it.
+        // Idempotent by design: re-drafting after a void must not repoint a sited admission.
+        await tx
+          .update(ADM)
+          .set({ providerEntityId: input.electedProviderEntityId, updatedAt: now() })
+          .where(and(eq(ADM.id, admissionId), isNull(ADM.providerEntityId)));
         await outbox.publish(tx, {
           eventName: "m6.election.drafted",
           payload: {
@@ -1319,7 +1387,7 @@ export function createDbAdmissionRouteService(
         return { id: es.id, state: es.status, version: Number(es.version) };
       });
     },
-    async signElection(organizationId, id, ifVersion, actorUserId): Promise<MutationResult> {
+    async signElection(organizationId, id, ifVersion, actorUserId, input): Promise<MutationResult> {
       void actorUserId;
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cur] = await tx
@@ -1338,7 +1406,16 @@ export function createDbAdmissionRouteService(
             status: "signed",
             signedAt,
             signatureMethod: "electronic_witnessed",
-            curativeCareAcknowledgment: true,
+            // #44 — who signed, under what name, and in what capacity (§418.24(b)(1)). These came in
+            // on the request and were discarded: the handler forwarded `ifVersion` alone, so
+            // `patient_name_at_signing` was NULL on every row and `signer_kind` kept the draft's
+            // hardcoded "patient" even when a legal representative signed.
+            signerKind: SIGNER_KIND_BY_ROLE[input.signingRole],
+            patientNameAtSigning: input.signingPatientName,
+            // `curative_care_acknowledgment` is NOT set here any more. It used to be hardcoded
+            // `true` at signing, which recorded a waiver the caller may never have given — the
+            // draft's `waiverAcknowledged` was discarded, so `false` still produced `true`. The
+            // draft now persists what the caller actually sent, and signing must not overwrite it.
             version: sql`${ES.version} + 1`,
             updatedAt: now(),
           })
@@ -1569,7 +1646,11 @@ export function createDbAdmissionRouteService(
           eventName: "m6.cti.signed",
           // Same payload-schema-drift bug — `electionPeriodId`/`signedAt` are required (confirmed live:
           // this exact call 500'd with `payload_schema_violation` on every attempt before this fix).
-          payload: { ctiId: id, electionPeriodId: cti.epId, signedAt: attendingSignedAt.toISOString() },
+          payload: {
+            ctiId: id,
+            electionPeriodId: cti.epId,
+            signedAt: attendingSignedAt.toISOString(),
+          },
           organizationId,
           aggregateKind: "certification_of_terminal_illness",
           aggregateId: id,
@@ -2500,7 +2581,11 @@ export function createDbAdmissionRouteService(
           eventName: "m6.compliance.window.closed",
           // `closedAt`/`closedVia` are required and were previously omitted. This route is the
           // direct-close path (no override reason involved), hence `closedVia: "manual"`.
-          payload: { complianceWindowId: id, closedAt: closedAt.toISOString(), closedVia: "manual" },
+          payload: {
+            complianceWindowId: id,
+            closedAt: closedAt.toISOString(),
+            closedVia: "manual",
+          },
           organizationId,
           aggregateKind: "compliance_window",
           aggregateId: id,

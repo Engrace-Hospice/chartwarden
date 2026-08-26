@@ -135,3 +135,73 @@ describe("M9 SUD chart-read redaction (GAP-017 — the M39 ConsentEvaluator reac
     await expect(sudRedactionRequiredViaSeam(ORG, PATIENT)).resolves.toBe(true);
   });
 });
+
+// ── #44 — a projection GAP must stay distinguishable from an absent admission ────────────────────
+//
+// Both used to arrive at the §10 gate as `anchor: null`, so a missing `provider_entity_id` was
+// reported to the caller as "Patient's admission is not active" — for an admission whose status was
+// verifiably `active`. That told a clinician something false about the chart and hid the real cause
+// from whoever had to repair it. The siting half stays fail-OPEN either way; only the gate cares.
+describe("#44 — projection gap vs absent admission", () => {
+  afterEach(() => __resetSeamsForTest());
+
+  function seamThrowing(error: unknown): void {
+    registerSeam("AdmissionStatusReader", {
+      getAdmissionSummary: () => Promise.reject(error),
+    } as never);
+  }
+
+  /** The shape M6's store throws; matched structurally by `name` (M9 may not import M6 internals). */
+  function dataGap(message: string): Error {
+    const e = new Error(message);
+    e.name = "AdmissionSeamDataGapError";
+    return e;
+  }
+
+  it("surfaces the seam's own refusal message when it declines to project", async () => {
+    seamThrowing(
+      dataGap(
+        "M6 seam projection gap: admission 'adm-1' is missing required fact(s): provider_entity_id",
+      ),
+    );
+    const got = await createSeamAssessmentSitingResolver().resolveAnchor(ORG, PATIENT, ADMISSION);
+    expect(got.anchor).toBeNull();
+    expect(got.projectionGap).toContain("provider_entity_id");
+  });
+
+  it("reports NO gap when the admission is simply unknown", async () => {
+    // An ordinary not-found throw is not a data gap: nothing is wrong with a record that is absent.
+    seamThrowing(new Error("admission adm-1 not found"));
+    const got = await createSeamAssessmentSitingResolver().resolveAnchor(ORG, PATIENT, ADMISSION);
+    expect(got.anchor).toBeNull();
+    expect(got.projectionGap).toBeUndefined();
+  });
+
+  it("reports NO gap for a cross-tenant admission", async () => {
+    // The seam answered fine; the row just belongs to someone else. Reporting that as a gap would
+    // leak that the admission exists at all (§6.6 existence-non-leak).
+    registerSeam("AdmissionStatusReader", {
+      getAdmissionSummary: () => Promise.resolve(summary({ organizationId: "org-b" })),
+    } as never);
+    const got = await createSeamAssessmentSitingResolver().resolveAnchor(ORG, PATIENT, ADMISSION);
+    expect(got.anchor).toBeNull();
+    expect(got.projectionGap).toBeUndefined();
+  });
+
+  it("keeps the siting half fail-open on a gap — an unsited row is a reporting gap, not a block", async () => {
+    seamThrowing(
+      dataGap("M6 seam projection gap: admission 'adm-1' is missing required fact(s): x"),
+    );
+    const resolver = createSeamAssessmentSitingResolver();
+    expect(await resolver.resolve(ORG, PATIENT, ADMISSION)).toEqual(UNSITED_CAPTURE);
+  });
+
+  it("carries no gap on the happy path", async () => {
+    registerSeam("AdmissionStatusReader", {
+      getAdmissionSummary: () => Promise.resolve(summary()),
+    } as never);
+    const got = await createSeamAssessmentSitingResolver().resolveAnchor(ORG, PATIENT, ADMISSION);
+    expect(got.projectionGap).toBeUndefined();
+    expect(got.anchor).toMatchObject({ status: "active" });
+  });
+});
