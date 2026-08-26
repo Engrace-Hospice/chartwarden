@@ -51,6 +51,17 @@ interface SummaryRow {
 }
 interface AdmissionDetailView extends SummaryRow {
   activationGate: { ready: boolean; missing: string[] };
+  // #50 — tenancy metadata that scopes the activation ceremony's service-location picker.
+  providerEntityId?: string | null;
+  locationId?: string | null;
+}
+
+/** A service location the admission may be sited at (M1 `/api/v1/locations`, non-PHI directory). */
+interface LocationOption {
+  id: string;
+  name: string;
+  city: string;
+  state: string;
 }
 
 // §5.2.5 — the four activation preconditions, in checklist order; the server's `missing[]` codes drive
@@ -75,6 +86,14 @@ export function AdmissionDetail(): JSX.Element {
   const [ceremony, setCeremony] = useState<"activate" | "nor" | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // #50 — the service location this admission is served from. `admission.location_id` was never written
+  // by any code path, so every admission was unsited and M10 refused to create its HOPE timepoint
+  // windows (`hope_timepoint_schedule.location_id` is NOT NULL). The server DERIVES the location when
+  // the elected provider entity has exactly one active site and REQUIRES one when it has several, so
+  // this picker only appears in the case where a human genuinely has to choose.
+  const [locations, setLocations] = useState<LocationOption[]>([]);
+  const [locationId, setLocationId] = useState("");
 
   const [formVersionId, setFormVersionId] = useState("");
   const [deliveryMethod, setDeliveryMethod] = useState<NorMethod>("electronic_witnessed");
@@ -127,6 +146,10 @@ export function AdmissionDetail(): JSX.Element {
       if (status === 412)
         setActionError("This admission changed since you opened it — reload to retry.");
       else if (status === 403) setActionError("You do not have permission for this action.");
+      else if (status === 422 && code === "M6_LOCATION_REQUIRED")
+        setActionError("Choose the service location this admission is served from.");
+      else if (status === 422 && code === "M6_LOCATION_NOT_UNDER_PROVIDER_ENTITY")
+        setActionError("That location does not belong to this admission's hospice.");
       else if (status === 422) setActionError("Validation failed — check the values you entered.");
       else setActionError(fallback);
       return false;
@@ -134,13 +157,42 @@ export function AdmissionDetail(): JSX.Element {
     [navigate],
   );
 
+  // Loaded when the ceremony opens, scoped to the ELECTED provider entity — the only locations this
+  // admission may legally be sited at. A failure here is left silent: the picker simply does not appear,
+  // and the server's own 422 is what tells the user a location is needed. Better a missing convenience
+  // than a blocked activation for an org where one location is the obvious answer.
+  useEffect(() => {
+    if (ceremony !== "activate" || !admission?.providerEntityId) return;
+    let cancelled = false;
+    void (async () => {
+      const { data } = await client.GET("/api/v1/locations", {
+        params: {
+          query: { providerEntityId: admission.providerEntityId as string, status: "active" },
+        },
+      });
+      if (cancelled) return;
+      const items = (data as { items?: LocationOption[] } | undefined)?.items ?? [];
+      setLocations(items);
+      // One candidate is not a choice — the server derives it, so the picker stays hidden.
+      setLocationId(items.length === 1 ? (items[0]?.id ?? "") : "");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ceremony, admission?.providerEntityId, client]);
+
   const activate = useCallback(async () => {
     if (!id || !admission) return;
+    // Mirrors the server rule so the user is told before the round-trip, never instead of it.
+    if (locations.length > 1 && !locationId) {
+      setActionError("Choose the service location this admission is served from.");
+      return;
+    }
     setBusy(true);
     setActionError(null);
     const { error: err, response } = await client.POST("/api/v1/admissions/{id}/activate", {
       params: { path: { id } },
-      body: { ifVersion: admission.version },
+      body: { ifVersion: admission.version, ...(locationId ? { locationId } : {}) },
     });
     if (err) {
       branchError(response?.status, err?.error?.code, "Activation failed.");
@@ -149,7 +201,7 @@ export function AdmissionDetail(): JSX.Element {
     setBusy(false);
     closeCeremony();
     void load();
-  }, [id, admission, client, branchError, closeCeremony, load]);
+  }, [id, admission, client, branchError, closeCeremony, load, locations.length, locationId]);
 
   const acknowledgeNor = useCallback(async () => {
     if (!id) return;
@@ -341,6 +393,29 @@ export function AdmissionDetail(): JSX.Element {
               All four R-AC-01 preconditions are satisfied — activating opens active-period billing
               and compliance tracking for this admission.
             </span>
+            {locations.length > 1 ? (
+              <>
+                <label htmlFor="activate-location" style={fieldLabel}>
+                  Service location
+                </label>
+                <select
+                  id="activate-location"
+                  value={locationId}
+                  onChange={(ev) => setLocationId(ev.target.value)}
+                >
+                  <option value="">Select a location…</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name} — {l.city}, {l.state}
+                    </option>
+                  ))}
+                </select>
+                <span style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
+                  This hospice has several active sites. The location is stamped on the admission
+                  and anchors its HOPE timepoint windows, so it cannot be guessed.
+                </span>
+              </>
+            ) : null}
             {actionError ? (
               <p role="alert" aria-live="assertive" style={alertStyle}>
                 {actionError}

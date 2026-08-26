@@ -10069,6 +10069,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search service locations for selector controls (cursor-paginated, non-PHI) */
+        get: operations["getApiV1Locations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/map-view": {
         parameters: {
             query?: never;
@@ -23607,6 +23624,8 @@ export interface operations {
                             ready: boolean;
                             missing: ("election_signed" | "nor_acknowledged" | "cti_signed" | "attending_signed")[];
                         };
+                        providerEntityId: string | null;
+                        locationId: string | null;
                     };
                 };
             };
@@ -23658,6 +23677,8 @@ export interface operations {
             content: {
                 "application/json": {
                     ifVersion: number;
+                    /** Format: uuid */
+                    locationId?: string;
                 };
             };
         };
@@ -45065,6 +45086,45 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Locations: {
+        parameters: {
+            query?: {
+                providerEntityId?: string;
+                status?: string;
+                q?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            providerEntityId: string;
+                            name: string;
+                            city: string;
+                            state: string;
+                            timezone: string;
+                            status: string;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

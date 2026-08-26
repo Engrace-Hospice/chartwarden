@@ -232,9 +232,24 @@ async function admitAndActivate(
   });
   const admVersion =
     (certAfter.data as { admission?: { version?: number } } | undefined)?.admission?.version ?? 1;
+  // #50 — activation SITES the admission at a service location. The demo hospice has two active sites
+  // (Main Office + Inpatient Unit, db:seed:org-structure), so the server refuses to guess and requires
+  // one to be named. Resolved through the real M1 directory route rather than hardcoding the seeded id,
+  // so this exercises the same lookup the activation ceremony's picker uses.
+  const locations = await session.client.GET("/api/v1/locations", {
+    params: { query: { providerEntityId: PROVIDER_ENTITY_ID, status: "active" } },
+  });
+  const locationId = (
+    locations.data as { items?: Array<{ id: string; name: string }> } | undefined
+  )?.items?.find((l) => l.name.includes("Main Office"))?.id;
+  if (!locationId) {
+    throw new Error(
+      `no active Main Office location under ${PROVIDER_ENTITY_ID} — run db:seed:org-structure first`,
+    );
+  }
   const activate = await session.client.POST("/api/v1/admissions/{id}/activate", {
     params: { path: { id: admissionId } },
-    body: { ifVersion: admVersion },
+    body: { ifVersion: admVersion, locationId },
   });
   if (activate.error) throw new Error(`activate failed: ${JSON.stringify(activate.error)}`);
 

@@ -106,6 +106,26 @@ export interface ProviderEntityOrgCheckPort {
   belongsToOrg(organizationId: string, providerEntityId: string): Promise<boolean>;
 }
 
+/**
+ * Lists the ACTIVE service locations under a provider entity (#50) — how activation sites an admission.
+ *
+ * Same reasoning as {@link ProviderEntityOrgCheckPort}: `location` is an M1 FOUNDATION table M6 does not
+ * own and must not import, so the composition root binds it.
+ *
+ * `admission.location_id` was never written by ANY code path — no route accepted a location, no
+ * transition assigned one, nothing backfilled it. It is the second half of the #44 siting gap, and it
+ * kept every admission unsited at the location level: M10 refuses to create a HOPE timepoint schedule
+ * (`hope_timepoint_schedule.location_id` is NOT NULL), M10's D8 compensating validation finding cannot
+ * be written for the same reason, and every M9 capture is recorded with a null location.
+ *
+ * Optional. An absent binding leaves the admission unsited rather than blocking activation: the
+ * admission is ALREADY unsited today, and turning a data gap into an availability outage would be the
+ * wrong trade — the downstream modules already refuse loudly on their own behalf.
+ */
+export interface ProviderEntityLocationPort {
+  activeLocationsFor(organizationId: string, providerEntityId: string): Promise<readonly string[]>;
+}
+
 export interface IpuBedAssignmentReaderPort {
   activeBedAssignmentForLevelOfCarePeriod(
     organizationId: string,
@@ -212,8 +232,61 @@ export function createDbAdmissionRouteService(
   outbox: AdmissionWriteOutboxPort = NOOP_OUTBOX,
   ipuBedAssignmentReader?: IpuBedAssignmentReaderPort,
   providerEntityOrgCheck?: ProviderEntityOrgCheckPort,
+  providerEntityLocations?: ProviderEntityLocationPort,
 ): AdmissionRouteService {
   const now = () => new Date();
+
+  /**
+   * #50 — the service location this activation sites the admission at.
+   *
+   * The rule, in the order it fails:
+   *   · no elected provider entity yet → `null`. Nothing to scope a location to, and the admission is
+   *     already unsited at the PE level (#44's transfer-in residue); blocking activation on that
+   *     pre-existing gap would convert missing data into an outage.
+   *   · no location port bound → `null`, same reasoning.
+   *   · the caller NAMED a location → it must be one of the PE's active locations, else 422. A name
+   *     that does not belong is refused rather than silently replaced by a derived one.
+   *   · the PE has EXACTLY ONE active location → derive it. This is not a default: with one candidate
+   *     there is no choice to make, so asking a human to confirm it produces a click, not a decision.
+   *   · the PE has MORE THAN ONE, and none was named → 422. There is no defensible pick (`location`
+   *     carries no primary flag), and guessing would put a federal capture window and its timezone at
+   *     the wrong site.
+   *   · the PE has ZERO active locations → 422, naming that as the cause. Distinct from "choose one".
+   */
+  async function resolveActivationLocation(
+    organizationId: string,
+    providerEntityId: string | null,
+    requested: string | null,
+  ): Promise<string | null> {
+    if (!providerEntityId || !providerEntityLocations) return null;
+    const active = await providerEntityLocations.activeLocationsFor(
+      organizationId,
+      providerEntityId,
+    );
+    if (requested) {
+      if (!active.includes(requested)) {
+        throw new WardenXError(
+          "M6_LOCATION_NOT_UNDER_PROVIDER_ENTITY",
+          `location ${requested} is not an active location of the admission's elected provider entity`,
+          422,
+        );
+      }
+      return requested;
+    }
+    if (active.length === 1) return active[0] as string;
+    if (active.length === 0) {
+      throw new WardenXError(
+        "M6_LOCATION_REQUIRED",
+        "the elected provider entity has no active location, so this admission cannot be sited; activate a location first",
+        422,
+      );
+    }
+    throw new WardenXError(
+      "M6_LOCATION_REQUIRED",
+      `the elected provider entity has ${active.length} active locations; name the one this admission is served from (locationId)`,
+      422,
+    );
+  }
 
   /** Optimistic lock: a stale `ifVersion` is a 409 VERSION_MISMATCH (matches the in-memory slice). */
   function assertVersion(id: string, current: number, expected: number): void {
@@ -319,14 +392,20 @@ export function createDbAdmissionRouteService(
   async function loadAdm(
     tx: DbClient,
     id: string,
-  ): Promise<{ status: AdmissionState; version: number }> {
+  ): Promise<{ status: AdmissionState; version: number; providerEntityId: string | null }> {
     const [r] = await tx
-      .select({ status: ADM.status, version: ADM.version })
+      // `providerEntityId` joined the projection for #50: activation scopes the location it sites the
+      // admission at to the ELECTED provider entity, so it has to be read on the same row it guards.
+      .select({ status: ADM.status, version: ADM.version, providerEntityId: ADM.providerEntityId })
       .from(ADM)
       .where(eq(ADM.id, id))
       .limit(1);
     if (!r) throw new ResourceNotFoundError(id);
-    return { status: r.status as AdmissionState, version: Number(r.version) };
+    return {
+      status: r.status as AdmissionState,
+      version: Number(r.version),
+      providerEntityId: r.providerEntityId ?? null,
+    };
   }
 
   /** An UPDATE guarded by `WHERE id=? AND version=?` returned nothing → distinguish 404 vs stale-409. */
@@ -626,7 +705,13 @@ export function createDbAdmissionRouteService(
     async getAdmission(organizationId, id): Promise<AdmissionDetail | null> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [adm] = await tx
-          .select({ id: ADM.id, status: ADM.status, version: ADM.version })
+          .select({
+            id: ADM.id,
+            status: ADM.status,
+            version: ADM.version,
+            providerEntityId: ADM.providerEntityId,
+            locationId: ADM.locationId,
+          })
           .from(ADM)
           .where(eq(ADM.id, id))
           .limit(1);
@@ -667,7 +752,14 @@ export function createDbAdmissionRouteService(
           ctiHospiceMdSigned,
           ctiAttendingSigned,
         });
-        return { id: adm.id, state: adm.status, version: Number(adm.version), activationGate };
+        return {
+          id: adm.id,
+          state: adm.status,
+          version: Number(adm.version),
+          activationGate,
+          providerEntityId: adm.providerEntityId ?? null,
+          locationId: adm.locationId ?? null,
+        };
       });
     },
     async getPatientElectionCertification(
@@ -1219,7 +1311,7 @@ export function createDbAdmissionRouteService(
         },
       );
     },
-    async activateAdmission(organizationId, id, ifVersion): Promise<MutationResult> {
+    async activateAdmission(organizationId, id, ifVersion, input): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const cur = await loadAdm(tx, id);
         assertVersion(id, cur.version, ifVersion);
@@ -1243,10 +1335,26 @@ export function createDbAdmissionRouteService(
           at: new Date().toISOString().slice(0, 10),
         } satisfies AdmissionEvent);
         const activatedAt = now();
+        // #50 — activation is where the admission is sited at a LOCATION. It has to be here rather than
+        // at intake: the location must belong to the ELECTED provider entity, and that is only known
+        // once the §418.24 statement has been drafted (#44 sites `provider_entity_id` from it). Resolved
+        // before the UPDATE so a refusal leaves the admission un-activated rather than half-sited.
+        const locationId = await resolveActivationLocation(
+          organizationId,
+          cur.providerEntityId ?? null,
+          input?.locationId ?? null,
+        );
         const r = firstOrThrow(
           await tx
             .update(ADM)
-            .set({ status: t.to, activatedAt, version: sql`${ADM.version} + 1` })
+            .set({
+              status: t.to,
+              activatedAt,
+              // Only ever SET, never cleared: a null resolution means "could not be determined", and
+              // overwriting a previously sited admission with null would lose a fact.
+              ...(locationId ? { locationId } : {}),
+              version: sql`${ADM.version} + 1`,
+            })
             .where(and(eq(ADM.id, id), eq(ADM.version, ifVersion)))
             .returning({
               id: ADM.id,

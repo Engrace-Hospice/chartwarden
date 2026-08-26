@@ -74,9 +74,11 @@ import {
 import {
   buildOrgProviderEntityLister,
   buildPrimaryProviderEntityResolver,
+  buildProviderEntityLocationLister,
   buildProviderEntityOrgCheck,
 } from "./bootstrap/provider-entity-resolver";
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
+import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
 import { registerProviderEntityLookupRoutes } from "./bootstrap/routes/provider-entities";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 
@@ -2517,6 +2519,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           mountAuditRoutes(app, dbHandle.db, { outbox: m4OutboxPublisher }); // M4 — audit-log search + GAP-003 compliance surface
           mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table
           registerProviderEntityLookupRoutes(app, dbHandle.db); // M1 — provider-entity selector lookup for UX surfaces
+          registerLocationLookupRoutes(app, dbHandle.db); // M1 (#50) — location selector for the admission activation ceremony
           mountAdmissionRoutes(
             app,
             dbHandle.db,
@@ -2525,6 +2528,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             // #44 — lets the election-statement draft verify the elected hospice is THIS org's before
             // it persists the id onto two tables whose FKs carry no organization.
             buildProviderEntityOrgCheck(dbHandle.db),
+            // #50 — lets activation SITE the admission at a service location. `admission.location_id`
+            // was never written by any code path, so every admission was unsited at the location level
+            // and M10 refused to create its NOT NULL-sited HOPE timepoint windows.
+            { activeLocationsFor: buildProviderEntityLocationLister(dbHandle.db) },
           ); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
           // Clinical core (M7–M14, M17, M18, M22) — reads mounted over the real Drizzle route services under
           // RLS, replacing the retired in-memory scaffold. Writes fail-closed 501 until each module's write

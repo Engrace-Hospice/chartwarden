@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildProviderEntityLocationLister } from "../src/bootstrap/provider-entity-resolver";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -220,6 +221,204 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
     expect(held.state).toBe("on_hold");
     const resumed = await svc.resumeAdmission(ORG_A, admissionId, held.version);
     expect(resumed.state).toBe("active");
+  });
+
+  // ── #50 — activation SITES the admission at a service location ──────────────────────────────────
+  //
+  // `admission.location_id` was never written by ANY code path: no route accepted a location, no
+  // transition assigned one, nothing backfilled it. Every admission in every org carried NULL, which is
+  // the second half of the #44 siting gap. M10 refuses to create a HOPE timepoint schedule for an
+  // unsited admission (`hope_timepoint_schedule.location_id` is NOT NULL), so no capture window existed.
+  describe("#50 — activation sites the admission at a location", () => {
+    // A service WITH the M1 location port bound, exactly as the composition root binds it. The suite's
+    // main `svc` deliberately leaves it unbound (the port is optional), which is what keeps every test
+    // above unaffected.
+    let sited: ReturnType<typeof createDbAdmissionRouteService>;
+    const PE_ONE = "aa000000-0000-4000-8000-000000000001"; // one active location
+    const PE_MANY = "aa000000-0000-4000-8000-000000000002"; // two active locations
+    const PE_NONE = "aa000000-0000-4000-8000-000000000003"; // one location, not active
+    const PE_ORG_B = "aa000000-0000-4000-8000-000000000004"; // another tenant's
+    const locOf: Record<string, string[]> = {};
+    let admSeq = 0x66000000;
+    const nextPatient = (): string => {
+      admSeq += 1;
+      return `66000000-0000-4000-8000-${admSeq.toString(16).padStart(12, "0")}`;
+    };
+
+    async function seedProviderEntity(org: string, id: string, tag: string): Promise<void> {
+      await admin.query(
+        `INSERT INTO provider_entity (id, organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+         VALUES ($1,$2,$3,$4,$5,'enc','12-31') ON CONFLICT (id) DO NOTHING`,
+        [id, org, `CCN-${tag}`, `PE ${tag}`, `NPI-${tag}`],
+      );
+    }
+    async function seedLocation(pe: string, name: string, status: string): Promise<string> {
+      const id = (
+        await admin.query(
+          `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone, status)
+           VALUES ($1,$2,'1 St','Town','OR','97000','America/Los_Angeles',$3) RETURNING id`,
+          [pe, name, status],
+        )
+      ).rows[0].id as string;
+      const bucket = locOf[pe] ?? [];
+      bucket.push(id);
+      locOf[pe] = bucket;
+      return id;
+    }
+
+    /**
+     * An admission parked at `notice_of_rights_acknowledged` with the whole R-AC-01 gate satisfied,
+     * seeded as superuser. The full referral ceremony is exercised by the test above; repeating it per
+     * case would test the ceremony, not the siting.
+     */
+    async function seedActivatable(org: string, providerEntityId: string | null): Promise<string> {
+      const patientId = nextPatient();
+      const admissionId = (
+        await admin.query(
+          `INSERT INTO admission (organization_id, patient_id, provider_entity_id, admitted_by_physician_id,
+             status, admission_at)
+           VALUES ($1,$2,$3,$4,'notice_of_rights_acknowledged', now()) RETURNING id`,
+          [org, patientId, providerEntityId, PHYSICIAN],
+        )
+      ).rows[0].id as string;
+      const periodId = (
+        await admin.query(
+          `INSERT INTO election_period (organization_id, admission_id, sequence_number, period_kind)
+           VALUES ($1,$2,1,'ninety_day') RETURNING id`,
+          [org, admissionId],
+        )
+      ).rows[0].id as string;
+      await admin.query(
+        `INSERT INTO election_statement (organization_id, election_period_id, patient_id, signer_kind,
+           patient_name_at_signing, hospice_name_at_signing, curative_care_acknowledgment, signed_at, signature_method)
+         VALUES ($1,$2,$3,'patient','Sited, Sam','A Hospice',true, now()::date, 'electronic_witnessed')`,
+        [org, periodId, patientId],
+      );
+      await admin.query(
+        `INSERT INTO certification_of_terminal_illness (organization_id, election_period_id, hospice_md_id,
+           attending_md_id, terminal_diagnosis_icd10, narrative, period_start, period_end,
+           hospice_md_signed_at, attending_md_signed_at)
+         VALUES ($1,$2,$3,$3,'C34.90','Terminal', now()::date, now()::date + 90, now(), now())`,
+        [org, periodId, PHYSICIAN],
+      );
+      await admin.query(
+        `INSERT INTO notice_of_rights_acknowledgment (organization_id, admission_id, patient_id,
+           signer_kind, acknowledged_at, acknowledgment_method)
+         VALUES ($1,$2,$3,'patient', now()::date, 'electronic_witnessed')`,
+        [org, admissionId, patientId],
+      );
+      return admissionId;
+    }
+
+    const locationOf = async (admissionId: string): Promise<string | null> =>
+      (await admin.query("SELECT location_id FROM admission WHERE id=$1", [admissionId])).rows[0]
+        .location_id as string | null;
+    const statusOf = async (admissionId: string): Promise<string> =>
+      (await admin.query("SELECT status FROM admission WHERE id=$1", [admissionId])).rows[0]
+        .status as string;
+
+    beforeAll(async () => {
+      await seedProviderEntity(ORG_A, PE_ONE, "ONE");
+      await seedProviderEntity(ORG_A, PE_MANY, "MANY");
+      await seedProviderEntity(ORG_A, PE_NONE, "NONE");
+      await seedProviderEntity(ORG_B, PE_ORG_B, "ORGB");
+      await seedLocation(PE_ONE, "Sole Office", "active");
+      await seedLocation(PE_MANY, "Main Office", "active");
+      await seedLocation(PE_MANY, "Inpatient Unit", "active");
+      await seedLocation(PE_NONE, "Not Open Yet", "created");
+      await seedLocation(PE_ORG_B, "Other Tenant", "active");
+      sited = createDbAdmissionRouteService(handle.db, undefined, undefined, undefined, {
+        activeLocationsFor: buildProviderEntityLocationLister(handle.db),
+      });
+    });
+
+    it("derives the location when the elected provider entity has exactly one active site", async () => {
+      const id = await seedActivatable(ORG_A, PE_ONE);
+      const res = await sited.activateAdmission(ORG_A, id, 0);
+      expect(res.state).toBe("active");
+      expect(await locationOf(id)).toBe(locOf[PE_ONE]?.[0]);
+    });
+
+    it("refuses (422) when the provider entity has several, and leaves the admission un-activated", async () => {
+      // `location` carries no primary flag, so there is no defensible pick. Guessing would put a
+      // federal capture window — and the timezone its deadlines are computed in — at the wrong site.
+      const id = await seedActivatable(ORG_A, PE_MANY);
+      await expect(sited.activateAdmission(ORG_A, id, 0)).rejects.toMatchObject({
+        code: "M6_LOCATION_REQUIRED",
+        statusCode: 422,
+      });
+      expect(await statusOf(id)).toBe("notice_of_rights_acknowledged");
+      expect(await locationOf(id)).toBeNull();
+    });
+
+    it("accepts an explicitly named location under that provider entity", async () => {
+      const id = await seedActivatable(ORG_A, PE_MANY);
+      const chosen = locOf[PE_MANY]?.[1] as string;
+      const res = await sited.activateAdmission(ORG_A, id, 0, { locationId: chosen });
+      expect(res.state).toBe("active");
+      expect(await locationOf(id)).toBe(chosen);
+    });
+
+    it("refuses a location belonging to a DIFFERENT provider entity", async () => {
+      const id = await seedActivatable(ORG_A, PE_MANY);
+      await expect(
+        sited.activateAdmission(ORG_A, id, 0, { locationId: locOf[PE_ONE]?.[0] as string }),
+      ).rejects.toMatchObject({ code: "M6_LOCATION_NOT_UNDER_PROVIDER_ENTITY", statusCode: 422 });
+      expect(await statusOf(id)).toBe("notice_of_rights_acknowledged");
+    });
+
+    it("refuses another tenant's location identically — absent and cross-tenant do not differ", async () => {
+      const id = await seedActivatable(ORG_A, PE_MANY);
+      await expect(
+        sited.activateAdmission(ORG_A, id, 0, { locationId: locOf[PE_ORG_B]?.[0] as string }),
+      ).rejects.toMatchObject({ code: "M6_LOCATION_NOT_UNDER_PROVIDER_ENTITY", statusCode: 422 });
+    });
+
+    it("refuses when the provider entity's only site is not yet active, and says so", async () => {
+      const id = await seedActivatable(ORG_A, PE_NONE);
+      await expect(sited.activateAdmission(ORG_A, id, 0)).rejects.toMatchObject({
+        code: "M6_LOCATION_REQUIRED",
+        statusCode: 422,
+      });
+      await expect(sited.activateAdmission(ORG_A, id, 0)).rejects.toThrow(/no active location/);
+    });
+
+    it("still activates an admission with NO elected provider entity, unsited", async () => {
+      // #44's transfer-in residue. Blocking activation on a pre-existing data gap would turn missing
+      // data into an outage; the downstream modules already refuse loudly on their own behalf.
+      const id = await seedActivatable(ORG_A, null);
+      const res = await sited.activateAdmission(ORG_A, id, 0);
+      expect(res.state).toBe("active");
+      expect(await locationOf(id)).toBeNull();
+    });
+
+    it("migration 0216 backfills the unambiguous rows and leaves the rest, idempotently", async () => {
+      const BACKFILL_SQL = readFileSync(
+        join(MIGRATIONS_DIR, "0216_admission_location_backfill.sql"),
+        "utf8",
+      );
+      const one = await seedActivatable(ORG_A, PE_ONE); // resolvable
+      const many = await seedActivatable(ORG_A, PE_MANY); // ambiguous — must be left
+      const none = await seedActivatable(ORG_A, PE_NONE); // no active site — must be left
+      const noPe = await seedActivatable(ORG_A, null); // nothing to scope to — must be left
+
+      await admin.query(BACKFILL_SQL);
+      expect(await locationOf(one)).toBe(locOf[PE_ONE]?.[0]);
+      expect(await locationOf(many)).toBeNull();
+      expect(await locationOf(none)).toBeNull();
+      expect(await locationOf(noPe)).toBeNull();
+
+      // Re-running touches nothing: a sited row no longer matches `location_id IS NULL`.
+      const before = (
+        await admin.query("SELECT location_id, updated_at FROM admission WHERE id=$1", [one])
+      ).rows[0];
+      await admin.query(BACKFILL_SQL);
+      const after = (
+        await admin.query("SELECT location_id, updated_at FROM admission WHERE id=$1", [one])
+      ).rows[0];
+      expect(after.location_id).toBe(before.location_id);
+      expect(after.updated_at).toEqual(before.updated_at);
+    });
   });
 
   it("RLS: org B cannot triage org A's referral through the service (cross-tenant → 404)", async () => {

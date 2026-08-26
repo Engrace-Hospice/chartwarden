@@ -278,6 +278,15 @@ export interface SummaryRow {
 /** The admission aggregate (route 10) — summary + the R-AC-01 activation gate (§7.2 / §5.2.5). */
 export interface AdmissionDetail extends SummaryRow {
   readonly activationGate: ActivationGate;
+  /**
+   * #50 — the ELECTED provider entity (null until the §418.24 statement is drafted). Tenancy metadata,
+   * not PHI. Exposed so the activation ceremony can scope its service-location picker to the locations
+   * this admission may legally be sited at — without it the UI would have to offer every location in
+   * the org and let the server reject the wrong ones after the fact.
+   */
+  readonly providerEntityId: string | null;
+  /** #50 — the service location, once activation has sited the admission. */
+  readonly locationId: string | null;
 }
 
 /**
@@ -437,7 +446,14 @@ export interface AdmissionRouteService {
     ifVersion: number,
   ): Promise<MutationResult>;
   resumeAdmission(organizationId: string, id: string, ifVersion: number): Promise<MutationResult>;
-  activateAdmission(organizationId: string, id: string, ifVersion: number): Promise<MutationResult>;
+  activateAdmission(
+    organizationId: string,
+    id: string,
+    ifVersion: number,
+    /** #50 — the service location this admission is served from. Required only when the elected
+     * provider entity has more than one active location; derived when it has exactly one. */
+    input?: { readonly locationId?: string },
+  ): Promise<MutationResult>;
   // Election (routes 15–21)
   draftElectionStatement(
     organizationId: string,
@@ -678,6 +694,13 @@ export interface AdmissionBackendSeed {
   readonly now?: () => Date;
   /** Org timezone (M2 `organization.timezone`; D8) — drives the D4 deadline + F2F window math. */
   readonly orgTimeZone?: string;
+  /**
+   * #50 — providerEntityId → its ACTIVE service locations, standing in for the M1 location directory
+   * the Drizzle backend reads through an injected port. Activation sites the admission from this:
+   * exactly one candidate is derived, more than one must be named, none is a refusal. A provider entity
+   * absent from the map yields no candidates.
+   */
+  readonly providerEntityLocations?: Readonly<Record<string, readonly string[]>>;
 }
 
 /**
@@ -714,6 +737,45 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
   }
   const now = seed.now ?? (() => new Date("2026-06-20T00:00:00Z"));
   const orgTimeZone = seed.orgTimeZone ?? DEFAULT_ORG_TIME_ZONE;
+  const providerEntityLocations = seed.providerEntityLocations;
+  /**
+   * #50 — the slice's copy of the Drizzle backend's activation-siting rule. Kept a mirror rather than a
+   * shared helper because the two read their candidates from different places (a seeded map vs. an
+   * injected M1 port) and the RULE is what has to stay identical, not the lookup.
+   *
+   * With no map seeded at all the whole rule is inert (`null`), so every existing slice test that
+   * activates an admission is unaffected — the behaviour only turns on for a seed that opts in.
+   */
+  const resolveSliceActivationLocation = (
+    providerEntityId: string | null,
+    requested: string | undefined,
+  ): string | null => {
+    if (!providerEntityId || !providerEntityLocations) return null;
+    const active = providerEntityLocations[providerEntityId] ?? [];
+    if (requested) {
+      if (!active.includes(requested)) {
+        throw new WardenXError(
+          "M6_LOCATION_NOT_UNDER_PROVIDER_ENTITY",
+          `location ${requested} is not an active location of the admission's elected provider entity`,
+          422,
+        );
+      }
+      return requested;
+    }
+    if (active.length === 1) return active[0] as string;
+    if (active.length === 0) {
+      throw new WardenXError(
+        "M6_LOCATION_REQUIRED",
+        "the elected provider entity has no active location, so this admission cannot be sited; activate a location first",
+        422,
+      );
+    }
+    throw new WardenXError(
+      "M6_LOCATION_REQUIRED",
+      `the elected provider entity has ${active.length} active locations; name the one this admission is served from (locationId)`,
+      422,
+    );
+  };
   let seq = 0;
   // Mint uuid-shaped synthetic ids so a created id round-trips through a uuid-validated request body
   // (e.g. the wizard posts a server-created electionPeriodId back on the CTI draft, §7.2). The id is
@@ -881,7 +943,14 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     },
     async getAdmission(organizationId, id) {
       const rec = get(organizationId, id, "admission");
-      return rec ? { ...summary(rec), activationGate: gateFor(rec) } : null;
+      return rec
+        ? {
+            ...summary(rec),
+            activationGate: gateFor(rec),
+            providerEntityId: rec.providerEntityId ?? null,
+            locationId: rec.locationId ?? null,
+          }
+        : null;
     },
     async getPatientElectionCertification(organizationId, patientId) {
       // Newest admission for the patient (ids are monotonic in insert order → last is newest).
@@ -979,11 +1048,15 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const rec = get(organizationId, id, "admission") ?? notFound(id);
       return transition(rec, "active", ifVersion, "m6.admission.resumed");
     },
-    async activateAdmission(organizationId, id, ifVersion) {
+    async activateAdmission(organizationId, id, ifVersion, input) {
       const rec = get(organizationId, id, "admission") ?? notFound(id);
       // R-AC-01 (§7.2 W-AD-05): the gate is server-truth; a stale UI checklist cannot bypass it.
       const gate = gateFor(rec);
       if (!gate.ready) throw new ActivationPreconditionError(gate.missing);
+      // #50 — the slice mirrors the Drizzle backend's siting rule over its seeded location map so the
+      // route tests exercise the same refusals (see `resolveActivationLocation` there for the order).
+      const sited = resolveSliceActivationLocation(rec.providerEntityId ?? null, input?.locationId);
+      if (sited) rec.locationId = sited;
       return transition(rec, "active", ifVersion, "m6.admission.activated");
     },
 

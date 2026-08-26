@@ -10,6 +10,7 @@ import { registerAdmissionAbacPredicates as _registerM6Abac } from "./abac-predi
 import {
   type AdmissionWriteOutboxPort,
   type IpuBedAssignmentReaderPort,
+  type ProviderEntityLocationPort,
   type ProviderEntityOrgCheckPort,
   createDbAdmissionAbacResolver,
   createDbAdmissionRouteService,
@@ -31,6 +32,7 @@ export function mountAdmissionRoutes(
   outbox?: AdmissionWriteOutboxPort,
   ipuBedAssignmentReader?: IpuBedAssignmentReaderPort,
   providerEntityOrgCheck?: ProviderEntityOrgCheckPort,
+  providerEntityLocations?: ProviderEntityLocationPort,
 ): void {
   _registerM6Abac({ resolver: createDbAdmissionAbacResolver(db) });
   _registerM6Routes(app, {
@@ -39,6 +41,7 @@ export function mountAdmissionRoutes(
       outbox,
       ipuBedAssignmentReader,
       providerEntityOrgCheck,
+      providerEntityLocations,
     ),
   });
 }
