@@ -288,7 +288,19 @@ the prose docs in `docs/architecture/`.
   consumer makes. `pa` was genuinely absent (a physician assistant could not be recorded as licensed
   at all) and migration 0221 adds it, in NO `VISIT_PURPOSE_DISCIPLINES` list: holding a licence is
   not visit authority, and the Medicare hospice face-to-face encounter is physician-or-NP only
-  (42 CFR 418.22(a)(4)). Blocked keys: **5 → 4**.
+  (42 CFR 418.22(a)(4)). Blocked keys: **5 → 4**. Then `isPlatformOperator`, the fourth entry running
+whose recorded blocker had expired: it quoted M29's own read site ("Until a platform-operator caller is
+provisioned this reads false and the predicate denies (W-XI-12)") and filed it as correct-by-design. A
+platform-operator caller HAS been provisioned since ADMIN-T02 registered the six `platform_staff`
+templates, and M35's `platform_billing_scope` has gated its whole cross-tenant `/api/admin` surface on
+exactly that role set the entire time — so M29's `nppes_platform_job_caller` was asking the same question
+under a second name, and refusing the platform operators it exists to admit. It now re-derives from
+`PLATFORM_OPS_ROLE_KEYS`, the same single source M35 re-derives from, so the codebase's two platform-only
+gates cannot drift on who counts as an operator. Both tests that covered it supplied the attribute
+themselves — the unit test set `isPlatformOperator: true` on the context and the inject suite stamped it
+off an `x-test-platform-operator` header — so each demonstrated the shim, not the gate; the allow arms are
+now real catalog roles, and the inject suite's platform session differs from its tenant session by that
+role alone, so the 403→202 flip can only be the predicate. Blocked keys: **4 → 3**.
 - `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
   Every live-database / live-Redis / browser suite in `package.json` must be invoked by a job in
   `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so

@@ -1,6 +1,6 @@
 // apps/backend/src/modules/29-external-interfaces/__tests__/m29-abac.test.ts — M29-T08 §4.8 predicate tests.
 import type { AbacContext, AbacTarget } from "@wardenx/auth";
-import { createPredicateRegistry } from "@wardenx/auth";
+import { PLATFORM_OPS_ROLE_KEYS, createPredicateRegistry } from "@wardenx/auth";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -160,15 +160,37 @@ describe("external_feed_compliance_co_approver_distinct", () => {
 });
 
 describe("nppes_platform_job_caller", () => {
-  it("denies a tenant session and allows a platform-operator context", async () => {
+  // This used to assert the allow arm by putting `isPlatformOperator: true` on the context ITSELF — a
+  // fact no producer in the repo ever wrote, so the test proved the predicate reads the attribute and
+  // nothing about whether any real caller can satisfy it. Every arm below is now driven by a role the
+  // platform catalog actually issues (F-030).
+  it("denies a tenant session that carries no platform role", async () => {
     const p = build({}).nppes_platform_job_caller;
     expect(await p(ctx(), {} as AbacTarget)).toBe(false);
-    expect(
-      await p(
-        ctx({ attributes: { membershipId: "m1", isPlatformOperator: true } }),
-        {} as AbacTarget,
-      ),
-    ).toBe(true);
+    expect(await p(ctx({ roles: ["org_admin", "compliance_officer"] }), {} as AbacTarget)).toBe(
+      false,
+    );
+  });
+
+  it("admits every role in the platform-ops catalog", async () => {
+    const p = build({}).nppes_platform_job_caller;
+    expect(PLATFORM_OPS_ROLE_KEYS.length).toBeGreaterThan(0);
+    for (const role of PLATFORM_OPS_ROLE_KEYS) {
+      expect(await p(ctx({ roles: [role] }), {} as AbacTarget)).toBe(true);
+    }
+  });
+
+  it("admits EXACTLY the platform catalog — the admit-set is derived, not a second copy of the list", async () => {
+    // M35's `platform_billing_scope` gates its cross-tenant admin surface off the same
+    // `PLATFORM_OPS_ROLE_KEYS`. Asserting membership in both directions here (and there) is what keeps the
+    // two platform-only gates from drifting on who counts as an operator, without either module importing
+    // the other. A role the catalog drops must stop admitting; one it adds must start.
+    const p = build({}).nppes_platform_job_caller;
+    const admitted: string[] = [];
+    for (const role of [...PLATFORM_OPS_ROLE_KEYS, "org_admin", "medical_director", "rn"]) {
+      if (await p(ctx({ roles: [role] }), {} as AbacTarget)) admitted.push(role);
+    }
+    expect(admitted.sort()).toEqual([...PLATFORM_OPS_ROLE_KEYS].sort());
   });
 });
 
