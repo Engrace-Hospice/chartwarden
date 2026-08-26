@@ -163,7 +163,7 @@
     "arch:audit-exceptions": "bun run scripts/check-audit-exceptions.ts",
     "arch:openapi-coverage": "bun run scripts/report-openapi-coverage.ts --check",
     "arch:inject-coverage": "bun run scripts/report-inject-coverage.ts --check",
-    "arch:fitness": "bun run arch:parity && bun run arch:boundaries && bun run arch:tables && bun run arch:tenancy && bun run arch:ddl && bun run arch:gaps && bun run arch:ai-governance && bun run arch:architecture-docs && bun run arch:module-docs && bun run arch:adr-docs && bun run arch:plan-integrity && bun run arch:status-matrix && bun run arch:ui-parity && bun run arch:frame-fidelity && bun run arch:design-tokens && bun run arch:abac-predicates && bun run arch:live-suites && bun run arch:org-indexes && bun run arch:audit-denylist-sync && bun run arch:audit-exceptions && bun run docs:ui && bun run openapi:check && bun run arch:openapi-coverage && bun run arch:inject-coverage && bun run client:check",
+    "arch:fitness": "bun run scripts/run-fitness-gates.ts",
     "status:matrix": "bun run scripts/report-implementation-status.ts",
     "ui:parity": "bun run scripts/report-ui-parity.ts",
     "frame:fidelity": "bun run scripts/report-frame-fidelity.ts",
