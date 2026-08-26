@@ -12,10 +12,11 @@ platform services M36/M38/M39/M40. The generated **implementation-status matrix*
 (`bun run status:matrix` → `audit/implementation-status/IMPLEMENTATION_STATUS.md`) is the per-module
 truth — currently **🟢 40 · 🟡 0 · ⚪ 0** (the module set is complete; the last three placeholders —
 M29, M35, and M37 — are now merged). Every module is enrichment-complete (matrix `Enriched`
-full-ratio ✅, corpus 1219/1226 routes carry request/response contracts —
-`audit/openapi-coverage/OPENAPI_COVERAGE.md` is the generated, authoritative count; re-check there
-before citing a number here, since this line is hand-maintained prose and the generated report is
-not). The `Live` column (cross-tenant RLS proof) is also full-ratio ✅ across all 40 modules,
+full-ratio ✅; for the corpus-wide enriched-route count read
+`audit/openapi-coverage/OPENAPI_COVERAGE.md`, which is generated and authoritative. **No number is
+restated here on purpose** — the figure this line used to carry sat two sweeps stale and an external
+audit repeated it back as a finding, which is exactly what a hand-maintained mirror of a generated
+number does). The `Live` column (cross-tenant RLS proof) is also full-ratio ✅ across all 40 modules,
 including the three newest — **M29 (11/11), M35 (21/21), M37 (26/26)** — whose live-RLS suites
 completed in the Phase 0-2 remediation pass. **M30 is merged (PR #106)**: 18 frozen
 `quality/` tables + migrations 0062–0068; the `@wardenx/quality` domain core + `@wardenx/cahps-vendors`;
@@ -31,16 +32,24 @@ forward-seam binds for the CMS-1984-14 cap calc (`CapAccrualReader` et al.) and 
 M30 (`CostReportFilingStatusReader`) are **live and tested**, not deny-stubs (`m30-forward-seam-binds.test.ts`,
 `m26-cost-report-cap-seam.live.test.ts`, `m27-validation-context.live.test.ts`) — this un-suppresses the CoP
 418.310 failure-to-file indicator and half of HCI 5/6/7's inputs. **`hci_composite`'s real remaining blocker
-is DATA, not wiring**: 9 of its 10 indicators need M6/M8 aggregate seams
-(per-election-period LOC-days, discharge timing, cross-setting transition sequences, per-day
-skilled-nursing minutes) that were never built — only `hci_indicator_10` computes. All 10 of the
+is DATA, not wiring**: **6 of its 10** indicators (`02`/`05`/`06`/`07`/`08`/`09`) need M6/M8
+aggregate seams (per-election-period LOC-days, cross-setting transition sequences, per-day
+skilled-nursing minutes) that were never built. **Four are bound and computing** — `hci_indicator_01`
+(`resolveHciIndicator01Input`, the LOC-period reader), `03` and `04`
+(`resolveHciLiveDischargeTimingInput`), and `10` — see the `resolveInput` switch in
+`apps/backend/src/modules/30-quality/jobs/m30-jobs.ts`, which is the one authority on what is bound;
+this line has already been stale once (#102/#107) and will be again if it is read instead of it. All 10 of the
 remaining operational measures are now bound, including `bereavement_coverage_rate` (M16) and the two
 that needed an M15 producer-side fix first — `volunteer_compliance_gate_rate` /
 `supervisory_visit_on_time` used to return a pre-divided rate (no denominator, so CMS small-N suppression
 couldn't apply); M15's `DisciplineComplianceProvider` now exposes the count pair beside each rate method
 (`supervisoryOnTimeCounts`/`volunteerGateComplianceCounts`), the same store round-trip, no new query.
-`opioid_on_admission_rate` remains genuinely blocked — it needs an M38 RxCUI→therapeutic-class capability
-that doesn't exist yet.
+`opioid_on_admission_rate` is **bound and computing** (`resolveOpioidOnAdmissionInput`): it walks M6's
+admission-onset census, calls M12's existing per-admission medication-order read, and classifies inside
+the admission's med-rec window. It needs **no** M38 capability — classification is by drug NAME, a
+deliberate choice `isOpioidDrugName`'s own header argues for over RxCUI. This entry previously read
+"genuinely blocked … needs an M38 RxCUI→therapeutic-class capability"; that was true before the measure
+was bound and was still being cited as a launch blocker afterwards (#102).
 
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104, see
 [`audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md`](./audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md)):
@@ -503,9 +512,10 @@ analysis a gate would need is a call graph from the composition root, and the ob
   ship their contracts), and when it **falls** the baseline must be re-tightened
   (`bun run openapi:coverage --update`) so progress is locked in. A module absent from the
   baseline has an implied floor of **0** — a brand-new module's first unenriched route fails.
-  The 2026-08-01 sweep retro-enriched the corpus from **478 unenriched → 6** (currently **1219/1226
-  enriched**; only bootstrap's health/infra routes remain unenriched) and re-tightened the baseline — the gate
-  never *required* that backfill, but the progress is now locked in. Writes
+  The 2026-08-01 sweep retro-enriched the corpus from **478 unenriched → 6** (only bootstrap's
+  health/infra routes remain unenriched; the current ratio is in the generated report, not here) and
+  re-tightened the baseline — the gate never *required* that backfill, but the progress is now
+  locked in. Writes
   `audit/openapi-coverage/OPENAPI_COVERAGE.md` (+ `.json`).
   `client:check` (generated typed client ↔ openapi.json) is now in `arch:fitness` too.
 - `scripts/report-ui-parity.ts` — **UI implementation-parity report**: bridges the documented

@@ -1191,7 +1191,11 @@ export function buildM27WorkerDeps(deps: {
 //     write-service-drizzle.ts were not touched).
 // Still genuinely unbound (out of this slice's scope — see docs/audits/.../14-task-backlog.md WX-PR-013):
 //   • the M1 per-tenant DEK envelope-encrypt (`deps.dek`) — no platform-wide live KMS-backed provider exists
-//     yet anywhere (M34's `TenantKeyProvider` is a hard always-throw slice deny-stub); needed only for the
+//     yet anywhere. NB the blocker is `kekUnwrap`, NOT the key provider: M34 binds a REAL
+//     `buildKeyProvider` on the production path (seam-registration.ts) and only the SLICE boot uses a
+//     deny-stub — nothing in the tree implements the `KekUnwrapPort` it unwraps through, and the
+//     composition root passes it optionally (index.ts, `gateway?.kekUnwrap`), so it silently falls back
+//     to the unbound port (#105). Needed only for the
 //     live Xero/Gusto pull path (this slice's proven path — manual trial-balance/wage-data import — never
 //     sets `raw_payload_cipher`, so it does not need DEK). A real (non-KMS) template exists at M24's
 //     `credential-crypto.ts` if a future pass wants to unblock the live-pull path specifically.
