@@ -60,6 +60,39 @@ async function membershipIdFor(email: string): Promise<string> {
   return firstRow(r, "seed-scenario-orders-meds-idg: id lookup").id;
 }
 
+/**
+ * Mark the persona's newest session as having just completed a TOTP step-up (D13 / §4.2.1).
+ *
+ * The IDG adjourn route requires a FRESH step-up. It used to accept `X-Step-Up: fresh` — a header the
+ * caller sent — so this script satisfied D13 by typing it. F-028 removed that: the route now resolves
+ * the real session through M2's `SessionContextResolver`, so a client-side string cannot satisfy it,
+ * and nothing should be able to. A seed cannot drive the real WebAuthn/TOTP ceremony, so it writes the
+ * session fact directly — the SAME documented DB-direct shortcut this script already uses for the
+ * meeting and packet rows. The difference from the old header matters: the SERVER still verifies, on
+ * real session state, against the real policy. The seed sets up the fact; it does not assert it.
+ *
+ * `session_replication_role = replica` suppresses the M4 audit triggers, as everywhere else here.
+ */
+async function grantFreshStepUp(email: string): Promise<void> {
+  if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
+  const db = new Client({ connectionString: ADMIN_URL });
+  await db.connect();
+  await db.query("SET session_replication_role = replica");
+  // Both columns together — `session_step_up_paired_write` (D8) CHECKs that they are both set or both null.
+  const r = await db.query(
+    `UPDATE session SET last_step_up_at = now(), last_step_up_factor = 'totp'
+       WHERE id = (
+         SELECT s.id FROM session s JOIN "user" u ON u.id = s.user_id
+          WHERE u.email = $1 AND s.expires_at > now()
+          ORDER BY s.created_at DESC LIMIT 1
+       )`,
+    [email],
+  );
+  await db.end();
+  if (!r.rowCount)
+    throw new Error(`no live session for ${email} — sign-in must precede the step-up`);
+}
+
 async function wipePriorOrdersMedsIdg(patientId: string): Promise<void> {
   if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
   const db = new Client({ connectionString: ADMIN_URL });
@@ -395,13 +428,13 @@ async function main(): Promise<void> {
     if (decision.error)
       throw new Error(`decision record failed: ${JSON.stringify(decision.error)}`);
 
-    // `X-Step-Up` goes through `headers`, not `params.header`: the adjourn route DOES require a
-    // fresh step-up (D13, `stepUpFreshOf(request)` in idg-routes.ts:223), but the published contract
-    // declares only the `id` path param — no enrichment anywhere declares this header, for any of
-    // the three modules that read it. The wire request is unchanged; see the follow-up issue.
+    // The adjourn route is the D13 commit point and requires a fresh step-up, resolved server-side
+    // from the RN's real session (F-028 — it used to read an `X-Step-Up: fresh` request header, which
+    // this caller simply asserted). Stamp the session fact, then make an ordinary call: no
+    // step-up-specific header goes on the wire at all, which is the point.
+    await grantFreshStepUp("rita@wardenx.local");
     const adjourn = await rn.client.POST("/api/v1/idg/meetings/{id}/adjourn", {
       params: { path: { id: meetingId } },
-      headers: { "X-Step-Up": "fresh" },
       body: {},
     });
     if (adjourn.error) throw new Error(`adjourn failed: ${JSON.stringify(adjourn.error)}`);

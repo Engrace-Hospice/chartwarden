@@ -15,6 +15,7 @@ import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
 import type { IdgActionItemStatus, IdgAttendanceStatus } from "@wardenx/types";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { requestStepUpFresh } from "../../../bootstrap/index";
 import { REVIEW_FLOOR_OVERRIDE_ATTRIBUTE } from "../abac-predicates";
 import {
   ActionItemListQuerySchema,
@@ -102,11 +103,18 @@ const ABAC_REVIEW_FLOOR = requireAbac("idg.schedule", "per_patient_review_floor_
 const reviewFloorOverrideOf = (request: FastifyRequest): boolean =>
   request.context?.attributes[REVIEW_FLOOR_OVERRIDE_ATTRIBUTE] === true;
 
-/** The fresh step-up assertion the ADJOURN route requires (§2.2 D13). The header is set by the M2 step-up flow;
- * the in-mem slice treats its presence as the fresh-step-up signal (the pure machine raises STEP_UP_REQUIRED
- * when absent). */
-const stepUpFreshOf = (request: FastifyRequest): boolean =>
-  request.headers["x-step-up"] === "fresh";
+/**
+ * The fresh step-up assertion the ADJOURN route requires (§2.2 D13).
+ *
+ * This used to read `request.headers["x-step-up"] === "fresh"` — a CLIENT-SUPPLIED string, so any caller
+ * who could reach the commit point could satisfy D13 by typing the header (F-028). It now resolves the
+ * REAL session state through M2's `SessionContextResolver` seam, the same server-verified mechanism M3's
+ * `step_up_recent` predicate uses and the one this module's own §4.7 predicate already called "the SAME
+ * real, server-verified mechanism ... never a client-supplied header". The boolean (rather than a
+ * `requireStepUp` preHandler) is kept because the pure `transitionMeeting` machine raises its own
+ * `STEP_UP_REQUIRED` for it — a preHandler would move the refusal off the state machine that owns it.
+ */
+const ADJOURN_STEP_UP_OPERATION = "idg.meeting.adjourn";
 
 export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): void {
   const { service } = deps;
@@ -220,7 +228,12 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       parse(AdjournMeetingRequest, request.body);
-      return service.adjournMeeting(organizationId, userId, id, stepUpFreshOf(request));
+      return service.adjournMeeting(
+        organizationId,
+        userId,
+        id,
+        await requestStepUpFresh(request, ADJOURN_STEP_UP_OPERATION),
+      );
     },
   );
 
