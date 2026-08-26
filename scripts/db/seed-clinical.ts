@@ -153,17 +153,23 @@ async function main(): Promise<void> {
       WHERE email IN ('admin@wardenx.local','casey@wardenx.local','rita@wardenx.local')`,
   );
   // F-014 (#39) — the caseload anchor decides who `caseload_or_scope` lets through, and every
-  // scenario seed acts as the RN Case Manager persona. Prefer her when she exists; fall back to
-  // `casey@wardenx.local` when she does not, so this script still works standalone at its `db:reset`
-  // position (step 4), which is BEFORE `db:seed:staff` creates the personas at step 8. In that
-  // ordering the fallback is what runs, and `db:seed:staff` re-anchors afterwards
-  // (`anchorDemoCaseload`, seed-staff-personas.ts) — which is also why it must, since that script
-  // drops and re-creates rita's user row on every run.
-  const rn =
-    users.rows.find((u) => u.email === "rita@wardenx.local")?.id ??
-    users.rows.find((u) => u.email === "casey@wardenx.local")?.id;
+  // scenario seed acts as the RN Case Manager persona. `caseload_or_scope` (M7 §6, and the ~nine
+  // other modules that bind the name) is satisfied by an OPEN `patient_assignment` row for the
+  // CALLING user, so a caseload anchored to one clinician while seed-scenario-clinical-core.ts
+  // signs in as another denies every M7/M8/M9/M10 write — and `notFoundOnDeny: true` reports it as
+  // NOT_FOUND rather than a denial.
+  //
+  // Prefer rita when she exists; fall back to `casey@wardenx.local` (the base demo Clinician) when
+  // she does not, so this script still works standalone at its `db:reset` position (step 4), which
+  // is BEFORE `db:seed:staff` creates the personas at step 8. In that ordering the fallback is what
+  // runs, and `db:seed:staff` re-anchors afterwards (`anchorDemoCaseload`, seed-staff-personas.ts)
+  // — which is also why it must, since that script drops and re-creates rita's user row on every run.
+  const personaRn = users.rows.find((u) => u.email === "rita@wardenx.local")?.id;
+  const baseRn = users.rows.find((u) => u.email === "casey@wardenx.local")?.id;
+  const rn = personaRn ?? baseRn;
   const md = users.rows.find((u) => u.email === "admin@wardenx.local")?.id; // attending = admin
   if (!rn || !md) throw new Error("demo users not found — run db:seed first");
+  const rnEmail = personaRn ? "rita@wardenx.local" : "casey@wardenx.local";
 
   const pats = await db.query<{ id: string }>(
     "SELECT id FROM patient WHERE organization_id = $1 ORDER BY legal_last_name",
@@ -289,7 +295,7 @@ async function main(): Promise<void> {
   await db.end();
   console.log(
     `✓ clinical seed: enriched ${n} patients (demographics, MBI, care team, payers; ` +
-      `${DETAIL.filter((d) => d.flags.length).length} with a privacy flag). Caseload RN = casey@wardenx.local.`,
+      `${DETAIL.filter((d) => d.flags.length).length} with a privacy flag). Caseload RN = ${rnEmail}.`,
   );
 }
 

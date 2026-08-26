@@ -279,7 +279,7 @@ export function MedicaidOverrideAudit(): JSX.Element {
               </thead>
               <tbody>
                 {pagedRows.map((o) => (
-                  <tr key={o.id} style={rowLine} className="wx-data-row-interactive">
+                  <tr key={o.id} style={rowLine}>
                     <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>
                       {o.at.slice(0, 16).replace("T", " ")}
                     </td>
