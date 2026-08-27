@@ -57,13 +57,61 @@ const J2051Entry = Type.Object({
   severity: J2051_SEVERITY,
   otherSymptomLabel: Type.Optional(Type.String({ maxLength: 100 })),
 });
-/** The per-section `data` payload. Section J's J2051 entries are typed (the trigger reads them); other
- * sections are carried opaquely and narrowed by the server-side per-section validators (§4.3). */
+/** A CMS Yes/No screening item. Typed as a union rather than a bare boolean because the payload the
+ * mobile client and the recording modal produce is form data — `projectHopeSections` accepts all three
+ * spellings, and the contract enumerates them so a client can see which ones are meant. */
+const YesNo = Type.Union([Type.Boolean(), Type.Literal("yes"), Type.Literal("no")]);
+
+/** §4.3 Section-J screening item (J2030 pain / J2050 shortness of breath): the Yes/No screen plus the
+ * characteristics the §86 cross-field rule requires whenever the screen is Yes. `characteristics` is
+ * deliberately open — CMS captures a different item set per symptom and the rule only asks whether
+ * ANYTHING was documented. */
+const JScreeningItem = Type.Object(
+  {
+    screened: Type.Optional(YesNo),
+    characteristics: Type.Optional(Type.Unknown()),
+  },
+  { additionalProperties: true },
+);
+
+/**
+ * The per-section `data` payload. Four sections are typed — the ones the CMS pre-submission rule set
+ * reads (F-057): Section I's primary diagnosis, Section J's J2030/J2050/J2051 items, and Section N's
+ * opioid / bowel-regimen triple. Every other section stays opaque and is narrowed by the server-side
+ * per-section validators (§4.3).
+ *
+ * They are typed HERE, and not only in `@wardenx/hope`'s projection, because the emitted OpenAPI is
+ * what the generated client can express: a field the contract does not declare is one no caller can
+ * send (F-031's M11 finding, one module over). The projection stays TOLERANT of anything — these types
+ * describe the intended payload, they are not a second validation layer.
+ */
 const HopeData = Type.Object(
   {
+    I: Type.Optional(
+      Type.Object(
+        {
+          primaryDiagnosisIcd10: Type.Optional(Type.String({ maxLength: 16 })),
+        },
+        { additionalProperties: true },
+      ),
+    ),
     J: Type.Optional(
       Type.Object(
-        { J2051: Type.Optional(Type.Object({ entries: Type.Array(J2051Entry, { maxItems: 8 }) })) },
+        {
+          J2030: Type.Optional(JScreeningItem),
+          J2050: Type.Optional(JScreeningItem),
+          J2051: Type.Optional(Type.Object({ entries: Type.Array(J2051Entry, { maxItems: 8 }) })),
+        },
+        { additionalProperties: true },
+      ),
+    ),
+    N: Type.Optional(
+      Type.Object(
+        {
+          opioidPrescribed: Type.Optional(YesNo),
+          scheduledBowelRegimen: Type.Optional(YesNo),
+          bowelRegimenContraindication: Type.Optional(Type.String({ maxLength: 500 })),
+        },
         { additionalProperties: true },
       ),
     ),

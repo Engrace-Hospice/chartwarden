@@ -34,6 +34,13 @@ export const HOPE_VALIDATION_RULES = {
   ENVELOPE_CCN_MISMATCH: "cms_hope_v1_envelope_ccn",
   /** iQIES envelope: patient MBI ≠ M5's election-time snapshot. */
   ENVELOPE_MBI_MISMATCH: "cms_hope_v1_envelope_mbi",
+  /**
+   * A value-set membership rule could not be evaluated because M38 holds no membership for that set in
+   * this deployment (F-057). Advisory by construction: the rule it stands in for may be an `error`, but
+   * "we could not check" is never itself a submission blocker — it is the record that the check did not
+   * run, so an absent Section-I value set is visible to compliance instead of silently passing.
+   */
+  VALUE_SET_UNAVAILABLE: "cms_hope_v1_value_set_unavailable",
 } as const;
 
 /** A CMS HOPE pre-submission rule id (`hope_validation_finding.rule_id`). */

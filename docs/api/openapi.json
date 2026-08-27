@@ -17141,7 +17141,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK",
             "content": {
               "application/json": {
@@ -17376,10 +17376,64 @@
                     "additionalProperties": true,
                     "type": "object",
                     "properties": {
+                      "I": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "properties": {
+                          "primaryDiagnosisIcd10": {
+                            "maxLength": 16,
+                            "type": "string"
+                          }
+                        }
+                      },
                       "J": {
                         "additionalProperties": true,
                         "type": "object",
                         "properties": {
+                          "J2030": {
+                            "additionalProperties": true,
+                            "type": "object",
+                            "properties": {
+                              "screened": {
+                                "anyOf": [
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "const": "yes",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "no",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "characteristics": {}
+                            }
+                          },
+                          "J2050": {
+                            "additionalProperties": true,
+                            "type": "object",
+                            "properties": {
+                              "screened": {
+                                "anyOf": [
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "const": "yes",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "no",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "characteristics": {}
+                            }
+                          },
                           "J2051": {
                             "type": "object",
                             "required": [
@@ -17431,6 +17485,46 @@
                             }
                           }
                         }
+                      },
+                      "N": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "properties": {
+                          "opioidPrescribed": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "const": "yes",
+                                "type": "string"
+                              },
+                              {
+                                "const": "no",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "scheduledBowelRegimen": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "const": "yes",
+                                "type": "string"
+                              },
+                              {
+                                "const": "no",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "bowelRegimenContraindication": {
+                            "maxLength": 500,
+                            "type": "string"
+                          }
+                        }
                       }
                     }
                   }
@@ -17459,7 +17553,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK",
             "content": {
               "application/json": {
@@ -17777,10 +17871,64 @@
                     "additionalProperties": true,
                     "type": "object",
                     "properties": {
+                      "I": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "properties": {
+                          "primaryDiagnosisIcd10": {
+                            "maxLength": 16,
+                            "type": "string"
+                          }
+                        }
+                      },
                       "J": {
                         "additionalProperties": true,
                         "type": "object",
                         "properties": {
+                          "J2030": {
+                            "additionalProperties": true,
+                            "type": "object",
+                            "properties": {
+                              "screened": {
+                                "anyOf": [
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "const": "yes",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "no",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "characteristics": {}
+                            }
+                          },
+                          "J2050": {
+                            "additionalProperties": true,
+                            "type": "object",
+                            "properties": {
+                              "screened": {
+                                "anyOf": [
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "const": "yes",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "no",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "characteristics": {}
+                            }
+                          },
                           "J2051": {
                             "type": "object",
                             "required": [
@@ -17830,6 +17978,46 @@
                                 }
                               }
                             }
+                          }
+                        }
+                      },
+                      "N": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "properties": {
+                          "opioidPrescribed": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "const": "yes",
+                                "type": "string"
+                              },
+                              {
+                                "const": "no",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "scheduledBowelRegimen": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "const": "yes",
+                                "type": "string"
+                              },
+                              {
+                                "const": "no",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "bowelRegimenContraindication": {
+                            "maxLength": 500,
+                            "type": "string"
                           }
                         }
                       }
@@ -83593,10 +83781,64 @@
                     "additionalProperties": true,
                     "type": "object",
                     "properties": {
+                      "I": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "properties": {
+                          "primaryDiagnosisIcd10": {
+                            "maxLength": 16,
+                            "type": "string"
+                          }
+                        }
+                      },
                       "J": {
                         "additionalProperties": true,
                         "type": "object",
                         "properties": {
+                          "J2030": {
+                            "additionalProperties": true,
+                            "type": "object",
+                            "properties": {
+                              "screened": {
+                                "anyOf": [
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "const": "yes",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "no",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "characteristics": {}
+                            }
+                          },
+                          "J2050": {
+                            "additionalProperties": true,
+                            "type": "object",
+                            "properties": {
+                              "screened": {
+                                "anyOf": [
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "const": "yes",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "no",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "characteristics": {}
+                            }
+                          },
                           "J2051": {
                             "type": "object",
                             "required": [
@@ -83648,6 +83890,46 @@
                             }
                           }
                         }
+                      },
+                      "N": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "properties": {
+                          "opioidPrescribed": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "const": "yes",
+                                "type": "string"
+                              },
+                              {
+                                "const": "no",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "scheduledBowelRegimen": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "const": "yes",
+                                "type": "string"
+                              },
+                              {
+                                "const": "no",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "bowelRegimenContraindication": {
+                            "maxLength": 500,
+                            "type": "string"
+                          }
+                        }
                       }
                     }
                   }
@@ -83676,7 +83958,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK",
             "content": {
               "application/json": {
@@ -83908,10 +84190,64 @@
                     "additionalProperties": true,
                     "type": "object",
                     "properties": {
+                      "I": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "properties": {
+                          "primaryDiagnosisIcd10": {
+                            "maxLength": 16,
+                            "type": "string"
+                          }
+                        }
+                      },
                       "J": {
                         "additionalProperties": true,
                         "type": "object",
                         "properties": {
+                          "J2030": {
+                            "additionalProperties": true,
+                            "type": "object",
+                            "properties": {
+                              "screened": {
+                                "anyOf": [
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "const": "yes",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "no",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "characteristics": {}
+                            }
+                          },
+                          "J2050": {
+                            "additionalProperties": true,
+                            "type": "object",
+                            "properties": {
+                              "screened": {
+                                "anyOf": [
+                                  {
+                                    "type": "boolean"
+                                  },
+                                  {
+                                    "const": "yes",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "no",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "characteristics": {}
+                            }
+                          },
                           "J2051": {
                             "type": "object",
                             "required": [
@@ -83961,6 +84297,46 @@
                                 }
                               }
                             }
+                          }
+                        }
+                      },
+                      "N": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "properties": {
+                          "opioidPrescribed": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "const": "yes",
+                                "type": "string"
+                              },
+                              {
+                                "const": "no",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "scheduledBowelRegimen": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "const": "yes",
+                                "type": "string"
+                              },
+                              {
+                                "const": "no",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "bowelRegimenContraindication": {
+                            "maxLength": 500,
+                            "type": "string"
                           }
                         }
                       }
@@ -84220,7 +84596,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "202": {
             "description": "OK",
             "content": {
               "application/json": {
@@ -85514,7 +85890,7 @@
         "summary": "Force-assemble a submission outside the cron cadence",
         "parameters": [],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK",
             "content": {
               "application/json": {

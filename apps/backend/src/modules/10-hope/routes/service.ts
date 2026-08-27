@@ -9,7 +9,9 @@
 // event the relay publishes (drainable for tests).
 import {
   type CaptureDecision,
+  HOPE_VALIDATION_RULES,
   HopeStateError,
+  type HopeValidationFindingDescriptor,
   type J2051SymptomReading,
   assertAdmissionActiveAtTarget,
   assertCaptureAllowed,
@@ -33,6 +35,7 @@ import type {
 } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
 import type { HopeAbacResolver, HopeAssessmentAbacFacts } from "../abac-predicates";
+import { runHopeAssessmentValidation } from "../validation/run-validation";
 
 // ── §2.4 outbox events the service records (the relay wraps them in the M1 envelope) ───────────────────
 export interface RecordedHopeEvent {
@@ -227,6 +230,11 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 interface AssessmentRecord extends Mutable<HopeAssessmentView> {
   organizationId: string;
   data: Record<string, unknown>;
+  /** F-057 — kept because the D9 Section-Q rules read it at validation time. Not on the view: the wire
+   * shape is unchanged, and `recordTimepoint` already takes it. */
+  dischargeReason: string | null;
+  /** F-057 — the CMS pre-submission findings persisted at sign, mirroring `hope_validation_finding`. */
+  findings: HopeValidationFindingDescriptor[];
 }
 interface ScheduleRecord extends Mutable<HopeScheduleView> {
   organizationId: string;
@@ -306,6 +314,10 @@ const SNAPSHOT_SCALES = ["pps", "esas_r"] as const;
  */
 export const rateOf = (numerator: number, denominator: number): number | null =>
   denominator === 0 ? null : numerator / denominator;
+
+/** F-057 — the rule ids the CMS engine produces; `getValidation` recomputes these and merges every
+ * OTHER stored finding (which has no other source). Mirrors the Drizzle backend exactly. */
+const CMS_RULE_IDS: ReadonlySet<string> = new Set(Object.values(HOPE_VALIDATION_RULES));
 
 let idCounter = 0x10a00000;
 function nextId(): string {
@@ -447,6 +459,28 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
     return r;
   };
 
+  /** F-057 — the sibling SIGNED target dates the cross-RFA temporal rules compare against (HUV1 after
+   * Admission, HUV2 after HUV1). Mirrors the Drizzle backend's `siblingTargetDates`. */
+  function siblingTargetDates(
+    organizationId: string,
+    admissionId: string,
+  ): { admissionTargetDate: string | null; huv1TargetDate: string | null } {
+    const earliest = (kind: HopeRfaKind): string | null => {
+      const dates = [...assessments.values()]
+        .filter(
+          (a) =>
+            a.organizationId === organizationId &&
+            a.admissionId === admissionId &&
+            a.rfaKind === kind &&
+            a.status === "signed",
+        )
+        .map((a) => a.targetDate)
+        .sort();
+      return dates[0] ?? null;
+    };
+    return { admissionTargetDate: earliest("01_admission"), huv1TargetDate: earliest("02_huv1") };
+  }
+
   async function snapshotFor(patientId: string): Promise<Record<string, number | null> | null> {
     if (!latest) return null; // §7.13 — snapshot skipped when M9 is unavailable (no inline external block).
     const rows = await latest.latestBatch(
@@ -554,6 +588,8 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         snapshot: null,
         version: 1,
         data: args.data,
+        dischargeReason: args.dischargeReason ?? null,
+        findings: [],
       };
       assessments.set(id, rec);
       return viewA(rec);
@@ -580,6 +616,8 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         admissionId,
         rfaKind: "04_sfv",
         status: "signed",
+        dischargeReason: null,
+        findings: [],
         targetDate: args.targetDate,
         authorDiscipline: args.authorDiscipline,
         j2051MaxSeverity: null,
@@ -637,6 +675,17 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       r.j2051MaxSeverity = verdict.maxSeverity;
       r.j2051TriggerFired = verdict.triggerFired;
       r.snapshot = await snapshotFor(r.patientId); // D8 / §7.13
+      // F-057 — the CMS pre-submission rule set, mirroring the Drizzle backend so the slice and the
+      // production path cannot disagree about what a signed assessment reports.
+      r.findings = [
+        ...(await runHopeAssessmentValidation({
+          rfaKind: r.rfaKind,
+          dischargeReason: (r.dischargeReason as HopeDischargeReason | null) ?? null,
+          data: r.data,
+          targetDate: new Date(r.targetDate),
+          ...siblingTargetDates(organizationId, r.admissionId),
+        })),
+      ];
       r.version += 1;
       // Complete the matching schedule (idempotent — only an open schedule transitions).
       const sched = [...schedules.values()].find(
@@ -728,6 +777,8 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         admissionId: original.admissionId,
         rfaKind: original.rfaKind,
         status: "signed",
+        dischargeReason: original.dischargeReason,
+        findings: [],
         targetDate: args.targetDate,
         authorDiscipline: args.authorDiscipline,
         j2051MaxSeverity: original.j2051MaxSeverity,
@@ -781,10 +832,36 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       return viewF(findSfv(organizationId, id));
     },
     async getValidation(organizationId, id) {
-      findA(organizationId, id);
-      // The pre-submission validation engine (M10-T04) binds over the per-section payload at assemble time;
-      // the on-demand route returns the row's stored findings (none in the in-mem slice).
-      return { assessmentId: id, findings: [] };
+      // F-057 — §4.1 route 14 is "run ON-DEMAND for the row". This used to return a hardcoded empty list
+      // (and the Drizzle backend a SELECT over a table only the D8 warning ever wrote to), so every
+      // assessment in the product reported a clean pre-submission bill of health that had never been
+      // computed. Recomputed rather than read back: a DRAFT has no persisted findings and a draft is
+      // exactly when the clinician can still act on them.
+      const r = findA(organizationId, id);
+      const computed = await runHopeAssessmentValidation({
+        rfaKind: r.rfaKind,
+        dischargeReason: (r.dischargeReason as HopeDischargeReason | null) ?? null,
+        data: r.data,
+        targetDate: new Date(r.targetDate),
+        ...siblingTargetDates(organizationId, r.admissionId),
+      });
+      return {
+        assessmentId: id,
+        findings: [
+          ...computed.map((f) => ({
+            ruleId: f.ruleId as string,
+            severity: String(f.severity),
+            message: f.message,
+          })),
+          ...r.findings
+            .filter((f) => !CMS_RULE_IDS.has(f.ruleId))
+            .map((f) => ({
+              ruleId: f.ruleId as string,
+              severity: String(f.severity),
+              message: f.message,
+            })),
+        ],
+      };
     },
 
     async listSubmissions(organizationId, providerEntityId) {

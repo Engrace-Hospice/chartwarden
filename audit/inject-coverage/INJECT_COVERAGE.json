@@ -111,6 +111,7 @@
       "routes": 20,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/hope-presubmission-validation.test.ts",
         "apps/backend/__tests__/hope-routes.test.ts"
       ],
       "directRoutesReferenced": 18
