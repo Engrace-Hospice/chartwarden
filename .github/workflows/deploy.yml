@@ -124,6 +124,14 @@ jobs:
         run: |
           test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER"
           port="${DEPLOY_PORT:-22}"
-          scp -P "$port" deploy/production/deploy.sh "$DEPLOY_USER@$DEPLOY_HOST:/opt/wardenx/deploy.sh"
+          # F-038/#98 — compose.yml and smoke.sh ride along with deploy.sh. compose.yml because the
+          # worker and web healthchecks the smoke test waits on live in it, and a server still holding
+          # the old copy would report those services healthy the instant they start — exactly the blind
+          # spot this change closes. Both are uploaded before deploy.sh runs, never after.
+          scp -P "$port" \
+            deploy/production/deploy.sh \
+            deploy/production/smoke.sh \
+            deploy/production/compose.yml \
+            "$DEPLOY_USER@$DEPLOY_HOST:/opt/wardenx/"
           ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "chmod 700 /opt/wardenx/deploy.sh && /opt/wardenx/deploy.sh '$BACKEND_IMAGE' '$WEB_IMAGE'"
+            "chmod 700 /opt/wardenx/deploy.sh /opt/wardenx/smoke.sh && /opt/wardenx/deploy.sh '$BACKEND_IMAGE' '$WEB_IMAGE'"
