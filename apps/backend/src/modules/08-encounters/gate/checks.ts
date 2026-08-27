@@ -131,7 +131,7 @@ export const GATE_CHECKS: Readonly<Record<GateCheckId, GateCheck>> = {
     state: {
       kind: "elsewhere",
       where:
-        "`transitionEncounter`'s own `require_(event.eligibleCosignerExists, 'NO_ELIGIBLE_COSIGNER')`. NOTE: the production service still hands that guard a literal `true` — the same defect as this gate's, on a different fact, filed as #124 rather than folded in here.",
+        "`transitionEncounter`'s own `require_(event.eligibleCosignerExists, 'NO_ELIGIBLE_COSIGNER')`, resolved from M5's `CareTeamProvider.primaryRnMembershipId` — the patient's RN case manager as an active membership, which §2.4 D3 also names as the routed cosigner, so the existence question and the routing question have ONE answer (#124). It used to be a literal `true`, and the request routed to the LPN who signed it.",
     },
   },
   f2f_attested: {

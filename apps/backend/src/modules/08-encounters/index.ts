@@ -72,6 +72,7 @@ export {
   type EncounterView,
   type MileageResult,
   type VitalsResult,
+  SLICE_DEFAULT_COSIGNER_MEMBERSHIP_ID,
   createInMemoryEncounterBackend,
 } from "./routes/service";
 export {

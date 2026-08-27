@@ -22,6 +22,8 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { registerSeam } from "../src/bootstrap/seams/registry";
+import { createCareTeamProvider } from "../src/modules/05-patient/seams/care-team-provider";
+import { createDrizzleCareTeamStore } from "../src/modules/05-patient/seams/drizzle-stores";
 import {
   type EncounterWriteOutboxPort,
   M8_OUTBOX_EVENTS,
@@ -43,6 +45,9 @@ const ADMISSION = "55555555-5555-5555-5555-555555555555";
 const SERVICE_DATE = "2026-01-15";
 // `encounter_signature.session_id` is a uuid column — session ids in this system are uuids.
 const SESSION_A = "66666666-6666-6666-6666-666666666666";
+/** The patient's RN case manager (#124): a DIFFERENT user from the signer, with their own membership —
+ *  so "routed to the case manager" and "routed to whoever signed" cannot look the same. */
+const USER_RN_CM = "88888888-8888-8888-8888-888888888888";
 /** A session id the store never seeds — `resolveStepUpState` resolves it to `null` (never fresh). */
 const STALE_SESSION = "77777777-7777-7777-7777-777777777777";
 
@@ -72,6 +77,8 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   let svc: ReturnType<typeof createDbEncounterRouteService>;
   /** What the faked M7 reader answers (see the seam registration in beforeAll). */
   let carePlanOverdue: unknown = null;
+  /** The RN case manager's membership id — what a cosignature must route to (#124). */
+  let CASE_MANAGER_MEMBERSHIP_ID: string;
   const membershipOf: Record<string, string> = {};
   /** The real caller signing (§3.3/D13) — `resolveSignatureProvenance` resolves SESSION_A's step-up
    *  through the SessionContextResolver seam registered in beforeAll (fresh, webauthn). */
@@ -166,6 +173,32 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       },
     ]);
     registerSeam("SessionContextResolver", createSessionContextResolver(sessions.store));
+    // §2.4 D3 / §2.6 check 10 (#124) — the cosignature routes to the patient's RN case manager, which
+    // M5's CareTeamProvider answers off `patient_assignment` + `membership`. Bound to the REAL M5
+    // Drizzle store over the same database, not a fake: the whole point of the fix is that M8 stopped
+    // inventing this answer, so a fake here would put the invention back one layer out.
+    //
+    // That needs a real `patient` row — the rest of this suite gets away with a literal `patient_id`
+    // because `encounter.patient_id` carries no FK, but `patient_assignment.patient_id` does.
+    await admin.query(
+      `INSERT INTO patient (id, organization_id, provider_entity_id, location_id, mrn,
+                            legal_first_name, legal_last_name, dob, sex_assigned_at_birth, status)
+       VALUES ($1,$2,$3,$4,'MRN-M8W','Test','Patient','1950-01-01','F','active')`,
+      [PATIENT, ORG_A, SITING_A.providerEntityId, SITING_A.locationId],
+    );
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m8cm@x.test')`, [USER_RN_CM]);
+    CASE_MANAGER_MEMBERSHIP_ID = (
+      await admin.query(
+        `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+        [USER_RN_CM, ORG_A],
+      )
+    ).rows[0].id as string;
+    await admin.query(
+      `INSERT INTO patient_assignment (patient_id, organization_id, provider_entity_id, location_id,
+                                       clinician_user_id, role, assigned_at)
+       VALUES ($1,$2,$3,$4,$5,'primary_rn',CURRENT_DATE)`,
+      [PATIENT, ORG_A, SITING_A.providerEntityId, SITING_A.locationId, USER_RN_CM],
+    );
     // §2.6 check 6 (#121) — the gate consults M7's CarePlanReader at finalize and sign. In production
     // the composition root binds M7's real reader; here a fake stands in, because M7's Drizzle store
     // reads under the CALLER'S ambient request context and this suite drives the service directly with
@@ -180,6 +213,9 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });
+    // Registered after the app-role client exists — the M5 store reads `patient_assignment` under RLS as
+    // `wardenx_app`, the same role M8's own writes run as.
+    registerSeam("CareTeamProvider", createCareTeamProvider(createDrizzleCareTeamStore(handle.db)));
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M8_OUTBOX_EVENTS]));
     const outbox: EncounterWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m8" }),
@@ -311,6 +347,16 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     expect(await eventsFor(id)).toContain("m8.encounter.signed");
     const cr = signed.cosignatureRequestId as string;
     expect(await eventsFor(cr)).toContain("m8.encounter.cosignature_routed");
+    // §2.4 — "routed to the assigned RN case manager". It used to route to `signedByMembershipId`, so
+    // the LPN who signed the note owned its cosignature queue entry and its 12h/24h/48h escalations
+    // (#124). Asserted against the ROW, and against the signer specifically, so a stand-in that happened
+    // to be non-null could not satisfy it.
+    const routed = await admin.query(
+      "SELECT routed_to_membership_id FROM cosignature_request WHERE id=$1",
+      [cr],
+    );
+    expect(routed.rows[0].routed_to_membership_id).toBe(CASE_MANAGER_MEMBERSHIP_ID);
+    expect(routed.rows[0].routed_to_membership_id).not.toBe(ACTOR_A.membershipId);
     // The cosignature queue surfaces it; the RN acknowledges then cosigns.
     const queue = await svc.cosignatureQueue(ORG_A);
     expect(queue.encounters.some((e) => e.id === id)).toBe(true);
@@ -653,6 +699,84 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     });
     const rows = await admin.query("SELECT status FROM encounter_addendum WHERE id=$1", [a.id]);
     expect(rows.rows[0].status).toBe("draft");
+  });
+
+  // ── §2.6 check 10 / §2.4 D3 — the cosigner-exists guard (#124) ────────────────────────────────────
+
+  it("§2.6 check 10 — an LPN note refuses to sign when the patient has no RN case manager", async () => {
+    const id = await draft("routine_visit", "lpn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    await admin.query(
+      "UPDATE patient_assignment SET unassigned_at = CURRENT_DATE WHERE patient_id=$1 AND role='primary_rn'",
+      [PATIENT],
+    );
+    try {
+      await expect(
+        svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never }),
+      ).rejects.toMatchObject({ statusCode: 422, code: "NO_ELIGIBLE_COSIGNER" });
+      // A refused sign writes NOTHING: the row is still finalized, there is no CoP 418.104(c)
+      // signature row, and no cosignature_request routed at nobody.
+      const enc = await admin.query("SELECT status FROM encounter WHERE id=$1", [id]);
+      expect(enc.rows[0].status).toBe("finalized");
+      expect(
+        (await admin.query("SELECT 1 FROM encounter_signature WHERE encounter_id=$1", [id]))
+          .rowCount,
+      ).toBe(0);
+      expect(
+        (await admin.query("SELECT 1 FROM cosignature_request WHERE encounter_id=$1", [id]))
+          .rowCount,
+      ).toBe(0);
+      expect(await eventsFor(id)).not.toContain("m8.encounter.signed");
+    } finally {
+      await admin.query(
+        "UPDATE patient_assignment SET unassigned_at = NULL WHERE patient_id=$1 AND role='primary_rn'",
+        [PATIENT],
+      );
+    }
+    // Re-assigned, the SAME encounter signs — so the refusal was the missing case manager, not the note.
+    expect((await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never })).status).toBe(
+      "cosign_pending",
+    );
+  });
+
+  it("§2.6 check 10 — a case manager whose MEMBERSHIP has lapsed is not an eligible cosigner", async () => {
+    const id = await draft("routine_visit", "lpn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    // The assignment stays open; only the membership goes. An RN who has left the agency cannot
+    // cosign, and routing to their stale membership id would send the duty to nobody.
+    await admin.query("UPDATE membership SET status='revoked' WHERE id=$1", [
+      CASE_MANAGER_MEMBERSHIP_ID,
+    ]);
+    try {
+      await expect(
+        svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never }),
+      ).rejects.toMatchObject({ statusCode: 422, code: "NO_ELIGIBLE_COSIGNER" });
+    } finally {
+      await admin.query("UPDATE membership SET status='active' WHERE id=$1", [
+        CASE_MANAGER_MEMBERSHIP_ID,
+      ]);
+    }
+  });
+
+  it("§2.6 check 10 — an RN note never asks the question: no case manager, still signs", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    await admin.query(
+      "UPDATE patient_assignment SET unassigned_at = CURRENT_DATE WHERE patient_id=$1 AND role='primary_rn'",
+      [PATIENT],
+    );
+    try {
+      // Only lpn/chha route a cosignature (§2.3), so the guard must not become a new way for an RN
+      // note to fail — the discipline decides, not the assignment roster.
+      expect((await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never })).status).toBe(
+        "signed",
+      );
+    } finally {
+      await admin.query(
+        "UPDATE patient_assignment SET unassigned_at = NULL WHERE patient_id=$1 AND role='primary_rn'",
+        [PATIENT],
+      );
+    }
   });
 
   it("RLS — org B cannot read or write org A's encounter (non-leaking 404)", async () => {

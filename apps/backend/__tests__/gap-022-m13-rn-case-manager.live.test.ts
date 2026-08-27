@@ -226,6 +226,57 @@ describe.skipIf(!DB_URL)("GAP-022 M13 RN case-manager review gate — LIVE Postg
     ).toBeNull();
   });
 
+  // ── the membership half (#124) — what M8 routes a cosignature to ─────────────────────────────────
+
+  it("resolves the case manager's ACTIVE membership id, not their user id", async () => {
+    const careTeam = createCareTeamProvider(createDrizzleCareTeamStore(handle.db));
+    const membershipId = await careTeam.primaryRnMembershipId({
+      organizationId: ORG_A,
+      patientId: PATIENT_A,
+    });
+    expect(membershipId).toBe(memberOf[`${ORG_A}:${USER_RN}`]);
+    // Different id spaces, both real: `patient_assignment` stores the USER, `cosignature_request`
+    // references the MEMBERSHIP. A test that only asserted non-null would pass on either.
+    expect(membershipId).not.toBe(USER_RN);
+  });
+
+  it("answers null when the case manager's membership is no longer active", async () => {
+    const careTeam = createCareTeamProvider(createDrizzleCareTeamStore(handle.db));
+    await admin.query(
+      "UPDATE membership SET status='revoked' WHERE user_id=$1 AND organization_id=$2",
+      [USER_RN, ORG_A],
+    );
+    try {
+      // The ASSIGNMENT is still open — the user-id half still answers, so this is specifically the
+      // membership rule and not the assignment being gone.
+      expect(await careTeam.primaryRnUserId({ organizationId: ORG_A, patientId: PATIENT_A })).toBe(
+        USER_RN,
+      );
+      expect(
+        await careTeam.primaryRnMembershipId({ organizationId: ORG_A, patientId: PATIENT_A }),
+      ).toBeNull();
+    } finally {
+      await admin.query(
+        "UPDATE membership SET status='active' WHERE user_id=$1 AND organization_id=$2",
+        [USER_RN, ORG_A],
+      );
+    }
+  });
+
+  it("answers null for an unassigned patient and across tenants", async () => {
+    const careTeam = createCareTeamProvider(createDrizzleCareTeamStore(handle.db));
+    expect(
+      await careTeam.primaryRnMembershipId({
+        organizationId: ORG_A,
+        patientId: PATIENT_UNASSIGNED,
+      }),
+    ).toBeNull();
+    // ORG_B's patient HAS a case manager; asking as ORG_A must still be null.
+    expect(
+      await careTeam.primaryRnMembershipId({ organizationId: ORG_A, patientId: PATIENT_B }),
+    ).toBeNull();
+  });
+
   it("does not resolve another tenant's case manager (RLS + the org predicate)", async () => {
     const careTeam = createCareTeamProvider(createDrizzleCareTeamStore(handle.db));
     // Asking ORG_A for ORG_B's patient must be empty even though the assignment row exists.

@@ -5,7 +5,10 @@
 // late-entry / cosignature machines have their own suites — this asserts the WORKFLOW outcomes (state
 // transitions, cosignature routing/escalation/release, late-entry tiers, addenda, concurrency).
 import { describe, expect, it } from "vitest";
-import { createInMemoryEncounterBackend } from "../src/modules/08-encounters/index";
+import {
+  SLICE_DEFAULT_COSIGNER_MEMBERSHIP_ID,
+  createInMemoryEncounterBackend,
+} from "../src/modules/08-encounters/index";
 import { ADDENDUM_SELECTIONS, requiredSectionSelections } from "./_hearthnote-fixtures";
 
 const ORG = "org_a";
@@ -22,8 +25,12 @@ const ACTOR = { membershipId: "actor_1", sessionId: "sess_1" };
  * template section, which is what the §2.6 Layer-3 gate (#121) asks of a note before it may finalize.
  * Pass `document: false` for a scenario whose subject is the gate itself.
  */
-async function draft(discipline: "rn" | "lpn", document = true) {
-  const backend = createInMemoryEncounterBackend();
+async function draft(
+  discipline: "rn" | "lpn",
+  document = true,
+  seed: Parameters<typeof createInMemoryEncounterBackend>[0] = {},
+) {
+  const backend = createInMemoryEncounterBackend(seed);
   const created = await backend.service.createDraft(ORG, `${discipline}_1`, {
     patientId: PATIENT,
     admissionId: ADMISSION,
@@ -54,11 +61,14 @@ describe("M8-T12 §7 workflow acceptance", () => {
   });
 
   it("§7.2 — LPN routine visit routes a cosignature: sign → cosign_pending → ack → RN signs → cosigned", async () => {
-    const { svc, id } = await draft("lpn");
+    const { backend, svc, id } = await draft("lpn");
     await svc.finalize(ORG, id, PAST);
     const signed = await svc.sign(ORG, id, ACTOR, { at: PAST });
     expect(signed.status).toBe("cosign_pending");
     expect((await svc.getCosignature(ORG, id)).status).toBe("routed");
+    // §2.4 — routed to the patient's RN case manager, NOT to the LPN who just signed it (#124).
+    expect(backend.inspect.cosignerOf(id)).toBe(SLICE_DEFAULT_COSIGNER_MEMBERSHIP_ID);
+    expect(backend.inspect.cosignerOf(id)).not.toBe(ACTOR.membershipId);
     expect((await svc.cosignAcknowledge(ORG, id, PAST)).status).toBe("acknowledged");
     const cos = await svc.cosignSign(ORG, id, ACTOR, { isQualifiedRn: true, at: PAST });
     expect(cos.status).toBe("cosigned");
@@ -140,6 +150,34 @@ describe("M8-T12 §7 workflow acceptance", () => {
     expect(new Set(details.map((d) => d.code))).toEqual(new Set(["MISSING_SECTION"]));
     // ... and the row is still a draft: a failed preview is the transition not happening (§2.3).
     expect((await svc.getEncounter(ORG, id)).status).toBe("draft");
+  });
+
+  it("§2.6 check 10 — an LPN note does not sign when the patient has no RN case manager", async () => {
+    const { svc, id } = await draft("lpn", true, { primaryRnMembershipId: () => null });
+    await svc.finalize(ORG, id, PAST);
+    await expect(svc.sign(ORG, id, ACTOR, { at: PAST })).rejects.toMatchObject({
+      code: "NO_ELIGIBLE_COSIGNER",
+      statusCode: 422,
+    });
+    expect((await svc.getEncounter(ORG, id)).status).toBe("finalized");
+  });
+
+  it("§2.6 check 10 — a note may not route its cosignature to its own author", async () => {
+    // The case manager resolves to the signing membership itself. `patient_assignment.role='primary_rn'`
+    // makes this near-impossible in practice, which is exactly why it is asserted rather than assumed.
+    const { svc, id } = await draft("lpn", true, {
+      primaryRnMembershipId: () => ACTOR.membershipId,
+    });
+    await svc.finalize(ORG, id, PAST);
+    await expect(svc.sign(ORG, id, ACTOR, { at: PAST })).rejects.toMatchObject({
+      code: "NO_ELIGIBLE_COSIGNER",
+    });
+  });
+
+  it("§2.6 check 10 — an RN note signs with no case manager at all (only LPN/CHHA route)", async () => {
+    const { svc, id } = await draft("rn", true, { primaryRnMembershipId: () => null });
+    await svc.finalize(ORG, id, PAST);
+    expect((await svc.sign(ORG, id, ACTOR, { at: PAST })).status).toBe("signed");
   });
 
   it("§2.6 — an addendum with nothing in it does not sign", async () => {
