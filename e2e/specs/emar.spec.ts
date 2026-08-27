@@ -35,6 +35,12 @@ test.describe("eMAR", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
 
+    // F-058 — the picker names a real DRUG. Before it, the seeded order stopped at `signed`: nothing in
+    // the platform activated an order, so every administrable-order read was empty for every patient and
+    // this control degraded to a typed-in medication-order uuid.
+    await expect(dialog.getByLabel("Medication")).toBeVisible();
+    await expect(dialog.getByLabel("Medication")).toContainText(/Morphine/i);
+
     // The commit is refused until every right is confirmed — the checklist gates the dialog.
     const commit = dialog.getByRole("button", { name: "Record administration" });
     await expect(commit).toBeDisabled();

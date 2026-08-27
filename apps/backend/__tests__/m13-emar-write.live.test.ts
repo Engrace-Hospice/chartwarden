@@ -37,6 +37,8 @@ const USER2 = "3b3b3b3b-3b3b-4b3b-8b3b-3b3b3b3b3b3b";
 const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";
 const MED_ORDER = "66666666-6666-6666-6666-666666666666";
+/** An order M12's D6 verdict refuses — resolvable, but discontinued (F-058). */
+const BLOCKED_MED_ORDER = "6b6b6b6b-6b6b-4b6b-8b6b-6b6b6b6b6b6b";
 
 describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", () => {
   let admin: Client;
@@ -198,6 +200,19 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
     // shape: an unknown order resolves to null and the write refuses.
     const medicationOrder: EmarMedicationOrderPort = {
       async administrationIdentity({ medicationOrderId }) {
+        // F-058 — the §2.9 D6 verdict is ARMED now, so the stub answers it. A discontinued order is a
+        // resolvable order that must NOT be administered: the difference between "unknown" (refused for
+        // not knowing the patient) and "known and not administrable" (refused on M12's verdict).
+        if (medicationOrderId === BLOCKED_MED_ORDER)
+          return {
+            patientId: PATIENT,
+            admissionId: ADMISSION,
+            drugName: "Morphine Sulfate Oral Solution",
+            route: "oral",
+            ivContinuousPolicy: null,
+            allowAdministration: false,
+            blockedReasons: ["discontinued"],
+          };
         if (medicationOrderId !== MED_ORDER) return null;
         return {
           patientId: PATIENT,
@@ -207,6 +222,8 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
           // §2.11 D11 — this order authorises titration between 1 and 10 mg/hr. An order that stated no
           // bounds would authorise NO rate change; the last IV test below proves that arm.
           ivContinuousPolicy: { minRate: 1, maxRate: 10 },
+          allowAdministration: true,
+          blockedReasons: [],
         };
       },
     };
@@ -339,6 +356,29 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
         recordArgs({ medicationOrderId: "77777777-7777-4777-8777-777777777777" }),
       ),
     ).rejects.toMatchObject({ statusCode: 422 });
+  });
+
+  it("F-058: the §2.9 D6 gate refuses an order M12 says is not administrable", async () => {
+    // Threaded but unarmed for exactly one release: only `status = "active"` cleared M12's verdict and
+    // nothing in the platform activated an order, so arming it then would have refused every
+    // administration the system could produce. With the producer fixed the verdict finally separates
+    // "ready to give" from "discontinued / replaced / never signed".
+    await expect(
+      svc.recordAdministration(
+        ORG_A,
+        memberOf[ORG_A],
+        recordArgs({ medicationOrderId: BLOCKED_MED_ORDER }),
+      ),
+    ).rejects.toMatchObject({ code: "ADMINISTRATION_BLOCKED" });
+    // A scheduled dose is no exemption — the dose was materialized from this same order.
+    const sched = await seedScheduledDose(ORG_A);
+    await expect(
+      svc.recordAdministration(
+        ORG_A,
+        memberOf[ORG_A],
+        recordArgs({ medicationOrderId: BLOCKED_MED_ORDER, scheduledDoseId: sched }),
+      ),
+    ).rejects.toMatchObject({ code: "ADMINISTRATION_BLOCKED" });
   });
 
   it("F-031/#134: an IV session is minted, its graph enforced, and its rate bounded", async () => {

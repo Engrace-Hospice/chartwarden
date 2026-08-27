@@ -48,6 +48,8 @@ export function mountEmarRoutes(
           drugName: ctx.order.drugName,
           route: ctx.order.route,
           ivContinuousPolicy: policy ? { minRate: policy.minRate, maxRate: policy.maxRate } : null,
+          allowAdministration: ctx.allowAdministration,
+          blockedReasons: ctx.blockedReasons,
         };
       },
     }),

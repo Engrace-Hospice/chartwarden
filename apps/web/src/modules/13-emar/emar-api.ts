@@ -90,23 +90,20 @@ export type ActiveMedicationOrder = Ok<operations["getApiV1Medicationorders"]>["
 export type MedicationOrderStatus = ActiveMedicationOrder["status"];
 
 /**
- * The order statuses that are TERMINALLY not administrable — the order's own vocabulary saying it is
- * finished, void, or never valid. Excluded from the eMAR picker because offering them would be offering
- * a dose that cannot be given, not because this file is making a clinical judgement.
+ * The order statuses the eMAR may record an administration against — M12's `ADMINISTRABLE_STATUSES`,
+ * mirrored so the picker offers only doses that can actually be given.
  *
- * Deliberately NOT excluded: everything else, `signed` above all. M12's own `blockedReasonsFor` treats
- * anything other than `active` as blocked, and nothing in this platform ever ACTIVATES an order — the
- * transition runs through DoseSpot transmission + ack, which is stubbed, so every order in a seeded or
- * production database sits at `signed`. Mirroring the `not_active` half of that rule here would empty
- * the picker for every patient and make the eMAR unusable, while mirroring the terminal half costs
- * nothing. The SERVER remains the authority: M13's D6 order-context gate is where "may this be
- * administered" is answered once it is armed (see emar-route-service-db.ts compromise (3)).
+ * `active` is the obvious one. `verbal_pending` is here because M12 §2.3 says a verbal order "is active
+ * for clinical execution during this window" and "M13 eMAR may record administrations" — the 2 AM
+ * verbal-order workflow, which is the case the whole module names as its reason to exist.
+ *
+ * This mirror is a DISPLAY decision only; M13's §2.9 D6 gate is the enforcement and it reads M12's own
+ * verdict per order. It is a copy rather than an import because `apps/web` modules do not compile
+ * against the backend. Until F-058 this list had to be an EXCLUSION list — everything but the terminal
+ * statuses — because nothing in the platform ever activated an order and an inclusion list would have
+ * emptied the picker for every patient alive.
  */
-const TERMINAL_ORDER_STATUSES: readonly MedicationOrderStatus[] = [
-  "discontinued",
-  "completed",
-  "expired_unsigned",
-];
+const ADMINISTRABLE_ORDER_STATUSES: readonly MedicationOrderStatus[] = ["active", "verbal_pending"];
 
 /** The §2.1 administration mode discriminator (single dose + the five IV-continuous segment kinds). */
 export type AdministrationMode = ReqBody<operations["postApiV1Administrations"]>["mode"];
@@ -188,9 +185,9 @@ export async function getAdministration(
   return { administration: res.data, error: null };
 }
 
-/** M12 — the patient's medication orders, minus the terminally dead ones (see
- *  {@link TERMINAL_ORDER_STATUSES}). A caller without `prescribing.read` gets an error here and the
- *  screens degrade to the order id rather than fabricating a drug name. */
+/** M12 — the patient's administrable medication orders (see {@link ADMINISTRABLE_ORDER_STATUSES}). A
+ *  caller without `prescribing.read` gets an error here and the screens degrade to the order id rather
+ *  than fabricating a drug name. */
 export async function listPatientMedicationOrders(
   client: ApiClient,
   patientId: string,
@@ -200,7 +197,7 @@ export async function listPatientMedicationOrders(
   });
   if (res.error) return { orders: [], error: res.error };
   return {
-    orders: (res.data?.orders ?? []).filter((o) => !TERMINAL_ORDER_STATUSES.includes(o.status)),
+    orders: (res.data?.orders ?? []).filter((o) => ADMINISTRABLE_ORDER_STATUSES.includes(o.status)),
     error: null,
   };
 }
