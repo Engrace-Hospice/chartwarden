@@ -78,6 +78,8 @@ export interface HopeScheduleView {
 export interface HopeSfvView {
   readonly id: string;
   readonly patientId: string;
+  /** The admission the follow-up belongs to — the key `POST …/hope/sfv` is addressed by (#91). */
+  readonly admissionId: string;
   readonly triggeringAssessmentId: string;
   readonly status: HopeSfvStatus;
   readonly triggeredAt: string;
@@ -276,6 +278,7 @@ export interface HopeRouteSeed {
       id: string;
       organizationId: string;
       patientId: string;
+      admissionId: string;
       triggeringAssessmentId: string;
       dueAt: string;
     }
@@ -725,6 +728,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
           id: sfvId,
           organizationId,
           patientId: r.patientId,
+          admissionId: r.admissionId,
           triggeringAssessmentId: id,
           status: "open",
           triggeredAt: descriptor.triggeredAt,

@@ -150,6 +150,7 @@ function makeServer(
         id: SFV_SEEDED,
         organizationId: ORG,
         patientId: PATIENT,
+        admissionId: ADMISSION,
         triggeringAssessmentId: SIGNED_A,
         status: "missed",
         triggeredAt: "2026-06-02T10:00:00.000Z",

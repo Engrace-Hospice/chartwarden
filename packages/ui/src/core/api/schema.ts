@@ -23775,7 +23775,7 @@ export interface operations {
                             };
                             J2051?: {
                                 entries: {
-                                    symptomCode: string;
+                                    symptomCode: "pain" | "shortness_of_breath" | "anxiety" | "agitation" | "nausea_vomiting" | "constipation" | "restlessness" | "other";
                                     severity: "none" | "mild" | "moderate" | "severe";
                                     otherSymptomLabel?: string;
                                 }[];
@@ -23873,7 +23873,7 @@ export interface operations {
                             };
                             J2051?: {
                                 entries: {
-                                    symptomCode: string;
+                                    symptomCode: "pain" | "shortness_of_breath" | "anxiety" | "agitation" | "nausea_vomiting" | "constipation" | "restlessness" | "other";
                                     severity: "none" | "mild" | "moderate" | "severe";
                                     otherSymptomLabel?: string;
                                 }[];
@@ -40859,7 +40859,7 @@ export interface operations {
                             };
                             J2051?: {
                                 entries: {
-                                    symptomCode: string;
+                                    symptomCode: "pain" | "shortness_of_breath" | "anxiety" | "agitation" | "nausea_vomiting" | "constipation" | "restlessness" | "other";
                                     severity: "none" | "mild" | "moderate" | "severe";
                                     otherSymptomLabel?: string;
                                 }[];
@@ -40950,7 +40950,7 @@ export interface operations {
                             };
                             J2051?: {
                                 entries: {
-                                    symptomCode: string;
+                                    symptomCode: "pain" | "shortness_of_breath" | "anxiety" | "agitation" | "nausea_vomiting" | "constipation" | "restlessness" | "other";
                                     severity: "none" | "mild" | "moderate" | "severe";
                                     otherSymptomLabel?: string;
                                 }[];
@@ -41295,6 +41295,7 @@ export interface operations {
                         sfvs: {
                             id: string;
                             patientId: string;
+                            admissionId: string;
                             triggeringAssessmentId: string;
                             status: "open" | "completed" | "overdue" | "missed";
                             triggeredAt: string;
@@ -41328,6 +41329,7 @@ export interface operations {
                     "application/json": {
                         id: string;
                         patientId: string;
+                        admissionId: string;
                         triggeringAssessmentId: string;
                         status: "open" | "completed" | "overdue" | "missed";
                         triggeredAt: string;

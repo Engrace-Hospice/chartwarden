@@ -165,6 +165,7 @@ const toScheduleView = (r: ScheduleRow): HopeScheduleView => ({
 const toSfvView = (r: SfvRow): HopeSfvView => ({
   id: r.id,
   patientId: r.patientId,
+  admissionId: r.admissionId,
   triggeringAssessmentId: r.triggeringAssessmentId,
   status: r.status as HopeSfvView["status"],
   triggeredAt: r.triggeredAt.toISOString(),

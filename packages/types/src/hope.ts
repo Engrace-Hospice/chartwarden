@@ -320,6 +320,34 @@ export interface HopeSubmissionProvider {
  */
 export const HOPE_J2051_PAIN_SYMPTOM_CODE = "pain";
 
+/**
+ * §2.1 — the CMS J2051 symptom-impact roster. The instrument scores per-symptom severity across exactly
+ * these eight, and `otherSymptomLabel` exists on the entry shape precisely BECAUSE the list is closed:
+ * an open code list would have no need of a free-text label for `other`.
+ *
+ * Lives in the leaf so the route boundary and the recording UI resolve the same vocabulary. Until this
+ * constant, `j2051.ts`'s header called `symptomCode` "the closed CMS list at the route boundary" while
+ * the boundary typed it `Type.String({ maxLength: 64 })` — so the list was closed in prose only, and any
+ * client-side symptom picker would have been an invention rather than the contract.
+ */
+export const HOPE_J2051_SYMPTOM_CODES = [
+  "pain",
+  "shortness_of_breath",
+  "anxiety",
+  "agitation",
+  "nausea_vomiting",
+  "constipation",
+  "restlessness",
+  "other",
+] as const;
+
+/** One CMS J2051 symptom-impact item code (§2.1). */
+export type HopeJ2051SymptomCode = (typeof HOPE_J2051_SYMPTOM_CODES)[number];
+
+/** The pain discriminator is a member of the roster — a compile error if the two ever diverge. */
+const _PAIN_IS_IN_ROSTER: HopeJ2051SymptomCode = HOPE_J2051_PAIN_SYMPTOM_CODE;
+void _PAIN_IS_IN_ROSTER;
+
 /** The inclusive-from / exclusive-to reporting window an org-rollup method aggregates over (ISO-8601). */
 export interface HopeRollupPeriod {
   readonly from: IsoInstant;
