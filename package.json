@@ -150,6 +150,7 @@
     "arch:ddl": "bun run scripts/check-ddl-legality.ts",
     "arch:migration-numbering": "bun run scripts/check-migration-numbering.ts",
     "arch:merge-artifacts": "bun run scripts/check-merge-artifacts.ts",
+    "arch:vuln-allowlist": "bun run scripts/check-vuln-allowlist.ts",
     "arch:manifest-mirror": "bun run scripts/check-manifest-mirror.ts",
     "arch:request-header-auth": "bun run scripts/check-request-header-auth.ts",
     "arch:context-attributes": "bun run scripts/check-context-attributes.ts",

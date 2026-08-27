@@ -166,11 +166,18 @@ For every deploy, however small:
       asserts it stays that way, so the check mark can be trusted. This bullet previously said
       `continue-on-error: true`; that was true until #33 and told operators to distrust the repo's
       main automated a11y control.
-- [ ] ~~All CI checks green (… SBOM)~~ — **SBOM NOT BUILT.** No workflow produces one. (The e2e
-      half of this item is now real: `ci.yml` gained an `e2e` job — see the line above.)
-- [ ] ~~Container image signed with cosign~~ / ~~Image SBOM attached~~ — **STATUS: TARGET — NOT
-      BUILT.** `cosign`, `syft`, `trivy` and `grype` have zero occurrences repo-wide. Nothing signs
-      the image and nothing produces an SBOM. Do not tick these; they protect nothing today.
+- [ ] SBOM produced — `deploy.yml`'s `release` job runs `syft` over each published image (SPDX JSON),
+      uploads both as workflow artifacts (90-day retention) and attaches them to the images as cosign
+      attestations. The attestation is the copy that matters: an SBOM that lives only in an Actions run
+      expires with the run and cannot be fetched from the host running the image.
+- [ ] Image vulnerability scan green — Trivy scans both images and **HIGH/CRITICAL fail the release**.
+      The only way past is an entry in `.trivyignore.yaml`, which must carry a statement and an
+      unexpired date within 90 days (`arch:vuln-allowlist`, in `arch:fitness`). There is no severity
+      threshold to turn down.
+- [ ] Container images signed with cosign — keyless (Fulcio/Rekor), over the **digest**, with the
+      release job verifying its own signatures before the deploy job runs. `deploy.sh` verifies again on
+      the VPS against a pinned workflow identity and pins `.env.production` to the verified digest.
+      (F-040/#100.)
 - [ ] Migration files reviewed (if present): forward-only? two-phase pattern if breaking?
 - [ ] Feature flags: any new flags? Default values set? Documented in `docs/feature-flags/`? (**directory does not exist** — flags are currently documented only in the M34 admin surface and the seed)
 - [ ] Customer-facing change? If so, customer communication drafted
@@ -186,12 +193,26 @@ For every deploy, however small:
 gh run list --workflow=ci.yml --status=success --limit=1
 # Verify the SHA you intend to deploy
 
-# 2. Verify image signature and SBOM
-#    STATUS: TARGET — NOT BUILT. There is no signing step and no SBOM, so there is nothing to
-#    verify; a `cosign verify` here fails on a missing signature, it does not prove provenance.
-#    Until image signing exists, the provenance you actually have is the digest: confirm the tag
-#    you are about to deploy resolves to the digest built by the run you checked in step 1.
-docker buildx imagetools inspect ghcr.io/<owner>/wardenx:sha-<sha> --format '{{.Manifest.Digest}}'
+# 2. Verify image signature and SBOM (F-040/#100 — real, not aspirational)
+#    The identity is the assertion: not "signed by someone with a key" but "built by THIS repo's
+#    deploy.yml on this ref, per GitHub's OIDC issuer". A signature from any other workflow, repo,
+#    branch or actor fails here — which is what makes this worth running while `main` still has no
+#    branch protection (#16).
+cosign verify ghcr.io/engrace-hospice/wardenx:sha-<sha> \
+  --certificate-identity \
+    "https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+#    The SBOM travels with the image as an attestation:
+cosign verify-attestation --type spdxjson ghcr.io/engrace-hospice/wardenx:sha-<sha> \
+  --certificate-identity \
+    "https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  | jq -r '.payload | @base64d | fromjson | .predicate.name'
+
+#    `deploy.sh` does the same verification automatically and then pins `.env.production` to the
+#    digest cosign returned, so the pull cannot resolve the tag to anything else. Run the above by
+#    hand only when deploying outside the workflow, or when answering "what is actually running?".
 
 # 3. Pull image to all app VMs (parallel; doesn't impact running traffic)
 #    NOTE the real image name is ghcr.io/<repository_owner>/wardenx (deploy.yml's metadata-action),
