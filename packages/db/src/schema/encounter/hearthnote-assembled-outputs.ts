@@ -38,7 +38,9 @@ export const hearthnoteAssembledOutputs = pgTable(
     layer2InvolvedAtFinalize: boolean("layer2_involved_at_finalize").notNull().default(false),
 
     assemblyTemplateKey: text("assembly_template_key").notNull(),
-    vocabVersionId: uuid("vocab_version_id").notNull(), // pinned per D11
+    // Pinned per D11 — the parent's own pin, resolved once per finalize so the version the bytes were
+    // assembled under cannot drift from the version the encounter claims (ADR-0046).
+    vocabVersionId: uuid("vocab_version_id").notNull(),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

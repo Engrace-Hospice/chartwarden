@@ -145,13 +145,21 @@ export const GATE_CHECKS: Readonly<Record<GateCheckId, GateCheck>> = {
   },
   vocab_version_pin: {
     ordinal: 12,
-    spec: "the vocabulary version pin is recorded and still the active M38 version (D11)",
+    spec: "the vocabulary version pin is recorded and still the active corpus version (D11)",
     state: {
-      kind: "deferred",
-      blocker:
-        "the pin is written as VOCAB_VERSION_SENTINEL — one constant uuid, the same for every encounter — because `encounter.vocab_version_id` is a uuid FK to M38's code_system_version and the corpus version is a string ('narrative-vocab@2026.06.0'). Comparing the sentinel to the active version would compare a placeholder to a real id and refuse every signature; comparing it to itself would pass unconditionally, which is the defect this gate was fixed from.",
-      needs:
-        "#128 — a real M38 vocabulary version row for the narrative corpus to pin to, and a TerminologyReader seam to resolve the active one",
+      kind: "elsewhere",
+      where:
+        "BOTH halves are enforced, and neither belongs here (#128). *Recorded*: the DB CHECK " +
+        "`encounter_vocab_pinned_when_finalized` makes `vocab_version_id` NOT NULL for every non-draft " +
+        "row, so presence is a database invariant rather than something a gate could be talked out of " +
+        "— and the gate runs as a PREVIEW at finalize, before the pin for that very transition is " +
+        "written, so evaluating presence here would refuse every first finalize. *Still active*: " +
+        "`checkVocabVersion` in the finalize path, which compares the corpus recorded on the draft's " +
+        "`hearthnote_selection.template_version` against the running build's release and raises §2.7's " +
+        "409 VOCAB_VERSION_MISMATCH. That function had existed since M8-T04 and was called by nothing. " +
+        "The pin itself is no longer a sentinel: `@wardenx/narrative-vocab`'s release registry resolves " +
+        "a real, decodable uuid per corpus version (see `releases.ts` for why the pin is the CORPUS " +
+        "release and not an M38 `code_system_version` row — architecture §10.5.2 over spec §2.7).",
     },
   },
 } as const;

@@ -17,7 +17,7 @@ import {
   templateKey as hearthnoteTemplateKey,
   resolveTemplate,
 } from "@wardenx/hearthnote";
-import { VOCAB_VERSION } from "@wardenx/narrative-vocab";
+import { VOCAB_VERSION, activeNarrativeVocabRelease } from "@wardenx/narrative-vocab";
 import type {
   EncounterDiscipline,
   EncounterStatus,
@@ -51,6 +51,7 @@ import {
   checkParentNotVoided,
   checkServiceDateNotFuture,
   checkVersion,
+  checkVocabVersion,
 } from "../lifecycle/validation";
 
 /** The real caller signing an encounter/cosignature/addendum (§3.3/D13) — the acting membership +
@@ -492,6 +493,14 @@ interface EncounterRecord {
   selections: readonly SelectionSectionInput[];
   /** The narrative pinned at finalize (#122) — undefined while the encounter is still a draft. */
   pinnedNarrative?: string;
+  /**
+   * The corpus release the stored selections were AUTHORED against — the slice's stand-in for
+   * `hearthnote_selection.template_version`, restamped on every selections PATCH exactly as the Drizzle
+   * upsert restamps that column. Undefined until the clinician saves a tree (#128).
+   */
+  selectionsVocabVersion?: string;
+  /** The D11 vocabulary pin written at finalize (#128) — a real corpus-release uuid, never a sentinel. */
+  vocabVersionId?: string;
   /** The membership the D3 cosignature routed to, once one has (#124); null before sign / when none. */
   cosignerMembershipId?: string | null;
   vitals: Map<string, { capturedAt: string; bmi: string | null; input: VitalsInput }>;
@@ -603,6 +612,8 @@ export interface EncounterBackendInspect {
   vitalsCount(encounterId: string): number;
   /** The membership the D3 cosignature routed to, or null (§2.4 — the assigned RN case manager, #124). */
   cosignerOf(encounterId: string): string | null;
+  /** The D11 corpus-release uuid pinned at finalize, or null while still a draft (#128). */
+  vocabPinOf(encounterId: string): string | null;
 }
 
 export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
@@ -749,6 +760,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         input.sections,
       );
       r.selections = input.sections;
+      r.selectionsVocabVersion = VOCAB_VERSION;
       r.version += 1;
       return { version: r.version, layer1Preview };
     },
@@ -847,8 +859,20 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         gatePreviewPassed: gate(r, "finalize"),
         at,
       });
+      // §2.7 D11 (#128) — the same guard the Drizzle service runs, over the same fact: a draft whose
+      // selections were authored against an older corpus than this build ships cannot be finalized,
+      // because the phrases it selected may no longer render identically. Kept in BOTH implementations
+      // deliberately; a rule enforced in only one of them is a rule the slice's tests cannot pin.
+      const pin = activeNarrativeVocabRelease(VOCAB_VERSION);
+      if (r.selectionsVocabVersion !== undefined) {
+        checkVocabVersion({
+          pinnedVersionId: r.selectionsVocabVersion,
+          activeVersionId: pin.version,
+        });
+      }
       r.status = t.to;
       r.version += 1;
+      r.vocabVersionId ??= pin.id; // set at FIRST finalize, immutable thereafter (D11)
       // The `persist_assembled_output` effect (#122). The slice holds no DEK and no table, so the pin is
       // the assembled string on the record — but it is a PIN: nothing reassembles it afterwards, so a
       // later edit to the selection tree cannot change what this encounter says.
@@ -1147,6 +1171,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     mileageOf: (encounterId) => byId.get(encounterId)?.mileage ?? null,
     vitalsCount: (encounterId) => byId.get(encounterId)?.vitals.size ?? 0,
     cosignerOf: (encounterId) => byId.get(encounterId)?.cosignerMembershipId ?? null,
+    vocabPinOf: (encounterId) => byId.get(encounterId)?.vocabVersionId ?? null,
   };
 
   return { service, resolver, inspect };
