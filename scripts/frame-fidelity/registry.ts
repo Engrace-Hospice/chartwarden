@@ -138,12 +138,12 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
       "TASK-031, real step-up + 412/403 handling), and — since #92 — the vitals strip, bound to the real " +
       "GET /encounters/:id/vitals (newest set, per-cell units, abnormal tone from the server's own " +
       "flags; an em dash now means 'nobody recorded it', not 'the API can't say'). Honest " +
-      "placeholders — the SOAP sections render '—' because the note body is written NOWHERE: PATCH " +
-      ".../selections bumps the version and discards its body, and the three hearthnote_* tables are " +
-      "touched by no code but the eraser (never a fabricated note); EVV/visit join (M17/M18) isn't on " +
-      "the DTO; the footer's Save-draft is the one unbuilt write path (#91). This note used to say " +
-      "Sign-note was unbuilt too — it is not, and an external audit repeated that back as a release " +
-      "blocker (#107).",
+      "placeholders — the SOAP sections still render '—', but the reason has changed: since #114 the " +
+      "note body IS persisted (PATCH .../selections writes hearthnote_selection and reads back " +
+      "assembled), and this SCREEN is simply not bound to that read yet — never a fabricated note; " +
+      "EVV/visit join (M17/M18) isn't on the DTO; the footer's Save-draft is the one unbuilt write " +
+      "path (#91). This note used to say Sign-note was unbuilt too — it is not, and an external audit " +
+      "repeated that back as a release blocker (#107).",
   },
   {
     screenId: "assessment.timeline",

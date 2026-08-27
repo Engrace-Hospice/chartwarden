@@ -308,6 +308,22 @@ export interface SigStructuredDto {
   };
   readonly asNeeded: boolean;
   readonly asNeededReasonCode?: string;
+  /**
+   * §2.11 D11 — the titration bounds a CONTINUOUS INFUSION order authorises, read by M13's
+   * `assertIvRateBounds` before it commits an `iv_continuous_rate_change`. @wardenx/emar's IV core has
+   * always named this path (`sigStructured.ivContinuousPolicy.[minRate, maxRate]`) and the DTO never
+   * carried it, so the bounds check had no inputs and no caller.
+   *
+   * ABSENT means the order does not authorise titration, not that titration is unbounded: an order with
+   * no stated bounds refuses a rate change (`IV_RATE_OUT_OF_RANGE`) and the prescriber must amend the
+   * order to widen them. Fail-closed is the only safe reading — an infusion rate nobody bounded is a
+   * rate nobody prescribed.
+   */
+  readonly ivContinuousPolicy?: {
+    readonly minRate: number;
+    readonly maxRate: number;
+    readonly rateUnit?: string;
+  };
 }
 
 // ── §2.10 D17 owned-seam read DTOs (read-only projections; never Drizzle rows) ────────────────────────

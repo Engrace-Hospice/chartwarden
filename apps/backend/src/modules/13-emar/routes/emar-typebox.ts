@@ -14,6 +14,7 @@ import type {
   AdministrationPolicyView as ServiceAdministrationPolicyView,
   AdministrationView as ServiceAdministrationView,
   DeploymentView as ServiceDeploymentView,
+  EmarRouteService as ServiceEmarRouteService,
   IvSessionView as ServiceIvSessionView,
   MissedDoseView as ServiceMissedDoseView,
   ReconciliationDecisionView as ServiceReconciliationDecisionView,
@@ -73,6 +74,9 @@ export const RecordAdministrationRequest = Type.Object({
   scheduledDoseId: Type.Optional(Type.String({ format: "uuid" })),
   comfortKitDeploymentId: Type.Optional(Type.String({ format: "uuid" })),
   encounterId: Type.Optional(Type.String({ format: "uuid" })),
+  /** §2.11 D11 — REQUIRED for `rate_change`/`pause`/`resume`/`stop` (they continue a session); REFUSED
+   *  for `iv_continuous_start`, which mints one and returns it on the recorded row. */
+  ivSessionId: Type.Optional(Type.String({ format: "uuid" })),
   data: Type.Unknown(),
   prn: Type.Optional(
     Type.Object({
@@ -165,6 +169,15 @@ export const UpdateDecisionRequest = Type.Object({
     Type.Literal("document_only"),
   ]),
   decisionNotes: Type.Optional(Type.String({ maxLength: 1000 })),
+  /**
+   * §2.8 D17 — the M12 draft this decision produced ("send to prescriber"). The column
+   * `medication_reconciliation_decision.resulting_medication_order_id` has existed since M13-T02 and
+   * nothing ever wrote it, so a reconciliation that CREATED an order kept no link to it and the
+   * worksheet could not show which lines had been actioned. Written here rather than through a new
+   * route: linking IS an update to the decision, and the M12 draft itself is minted by the caller
+   * against M12's own `POST /api/v1/medication-orders` — M13 does not write another module's table.
+   */
+  resultingMedicationOrderId: Type.Optional(Type.String({ format: "uuid" })),
 });
 export const AddCaregiverReportedLineRequest = Type.Object({
   drugName: Type.String({ minLength: 1, maxLength: 200 }),
@@ -325,6 +338,8 @@ const ReconciliationDecisionViewSchema = Type.Object({
   lineKind: Type.String(),
   sourceId: Type.String(),
   decision: RECONCILIATION_DECISION_KIND,
+  /** The M12 draft this decision produced, once one has been sent to the prescriber. */
+  resultingMedicationOrderId: Nullable(Type.String()),
 });
 export const WorksheetViewSchema = Type.Object({
   id: Type.String(),
@@ -348,13 +363,40 @@ export const DeploymentListResponseSchema = Type.Array(DeploymentViewSchema);
 export const IvSessionViewSchema = Type.Object({
   sessionId: Type.String(),
   medicationOrderId: Type.String(),
-  segments: Type.Array(Type.Object({ kind: ADMINISTRATION_MODE, recordedAt: Type.String() })),
+  startedAt: Type.String(),
+  endedAt: Nullable(Type.String()),
+  /** §2.11 — the derived session state, so a client can offer only the segments the graph accepts next. */
+  state: lit(["none", "running", "paused", "stopped"] as const),
+  segments: Type.Array(
+    Type.Object({
+      kind: ADMINISTRATION_MODE,
+      recordedAt: Type.String(),
+      rate: Nullable(Type.Number()),
+      rateUnit: Nullable(Type.String()),
+    }),
+  ),
 });
 
 export const AdministrationPolicyViewSchema = Type.Object({
   graceWindowMinutes: Type.Integer(),
   prnMinimumIntervalMinutes: Type.Integer(),
   emarPdfOnCommit: Type.Boolean(),
+});
+
+/** The §2.6 D7 witness-attestation token the mint route returns. The token is a SERVER-MINTED, single-use
+ * bearer credential (check-request-header-auth.ts classifies `x-witness-attestation` as `verified` on that
+ * basis) with a 60-second life, so the administering clinician's device has to receive it out of band and
+ * spend it immediately — publishing the shape is what lets a client show the witness what to relay and how
+ * long they have, instead of a caller guessing at an undeclared body. */
+export const WitnessTokenResponseSchema = Type.Object({
+  token: Type.String(),
+  expiresInSeconds: Type.Integer(),
+});
+
+/** §2.10 D18 — the offline-queue drain receipt: how many rows committed, and each committed row. */
+export const OfflineSyncResponseSchema = Type.Object({
+  synced: Type.Integer(),
+  results: Type.Array(AdministrationViewSchema),
 });
 
 // ── compile-time pins: what each schema PUBLISHES (`T`) must be assignable to what the service RETURNS (`V`),
@@ -379,6 +421,14 @@ type _IvSessionView = Conforms<Static<typeof IvSessionViewSchema>, ServiceIvSess
 type _AdministrationPolicyView = Conforms<
   Static<typeof AdministrationPolicyViewSchema>,
   ServiceAdministrationPolicyView
+>;
+type _WitnessTokenResponse = Conforms<
+  Static<typeof WitnessTokenResponseSchema>,
+  Awaited<ReturnType<ServiceEmarRouteService["mintWitnessToken"]>>
+>;
+type _OfflineSyncResponse = Conforms<
+  Static<typeof OfflineSyncResponseSchema>,
+  Awaited<ReturnType<ServiceEmarRouteService["offlineSync"]>>
 >;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */

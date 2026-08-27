@@ -17,8 +17,31 @@
  */
 @import "tailwindcss";
 
-/* WardenX Lantern tokens → Tailwind theme vars (light). Dark values under `.dark`. */
-@theme {
+/* WardenX Lantern tokens → Tailwind theme vars (light). Dark values under `.dark`.
+ *
+ * `static` is load-bearing (F-031). Tailwind v4 emits an `@theme` variable only when a UTILITY CLASS
+ * references it, and this design system is consumed almost entirely through inline `var()` from
+ * `packages/ui/src/web/theme/tokens.ts` — a source Tailwind's scanner cannot see. Ten of the 49 tokens
+ * declared in this file therefore never reached the browser at all: `--color-accent-tint`,
+ * `--color-brand`, `--color-line`, `--color-on-emphasis`, `--color-primary-dim`,
+ * `--color-success-pill-fg`, `--color-surface-high`, `--color-surface-highest`, `--radius-2xl` and
+ * `--shadow-ambient` all resolved to the EMPTY STRING, so every `color: var(--color-on-emphasis)` fell
+ * back to the inherited colour instead.
+ *
+ * The failure is invisible by construction: `var()` with no fallback silently inherits, so the page
+ * still renders, just in the wrong colour. It is also LIGHT-MODE ONLY — the `.dark` block below is a
+ * plain CSS rule, which Tailwind emits verbatim, so dark mode has had the correct values all along and
+ * light mode has not. That asymmetry is why it survived review: the token is right there in the file,
+ * and it is right there in the built stylesheet too (`bun run build` emits it), so only a computed
+ * style read in a real browser shows the difference.
+ *
+ * WX-PR-022 is the concrete casualty. It added `--color-success-pill-fg` precisely because a `success`
+ * StatusPill's label at `--color-success` fails WCAG AA on its own tint; that fix has never applied in
+ * light mode, and the E2E axe scan on the eMAR measured the live result at 4.42:1 against a 4.5:1
+ * requirement. The `--space-*` scale below hit this identical gotcha and was fixed by moving to a plain
+ * `:root`; `static` is the same fix without duplicating every value out of the gate's source of truth
+ * (`arch:design-tokens` reads the tokens from this `@theme` block). */
+@theme static {
   /* Brand — twilight indigo */
   --color-primary: #3b45a8;
   --color-primary-strong: #2b338a;

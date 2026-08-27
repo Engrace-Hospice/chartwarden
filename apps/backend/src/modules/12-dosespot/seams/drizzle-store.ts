@@ -158,6 +158,21 @@ function sigStructuredOf(data: unknown, rowRoute: string): SigStructuredDto {
   }
   const asNeededReasonCode = str(src.asNeededReasonCode);
 
+  // §2.11 D11 titration bounds. Copied only when BOTH ends are real numbers and the window is not
+  // inverted: a half-written policy is not a narrower policy, it is an unusable one, and M13 refuses a
+  // rate change against an absent policy rather than inventing an open end.
+  const policySrc =
+    typeof src.ivContinuousPolicy === "object" && src.ivContinuousPolicy !== null
+      ? (src.ivContinuousPolicy as Record<string, unknown>)
+      : undefined;
+  const minRate = num(policySrc?.minRate);
+  const maxRate = num(policySrc?.maxRate);
+  const policyRateUnit = str(policySrc?.rateUnit);
+  const ivContinuousPolicy =
+    minRate !== undefined && maxRate !== undefined && minRate <= maxRate
+      ? { minRate, maxRate, ...(policyRateUnit !== undefined ? { rateUnit: policyRateUnit } : {}) }
+      : undefined;
+
   return {
     doseQuantity: num(src.doseQuantity) ?? 0,
     doseUnit: str(src.doseUnit) ?? "",
@@ -166,6 +181,7 @@ function sigStructuredOf(data: unknown, rowRoute: string): SigStructuredDto {
     asNeeded: typeof src.asNeeded === "boolean" ? src.asNeeded : false,
     ...(duration !== undefined ? { duration } : {}),
     ...(asNeededReasonCode !== undefined ? { asNeededReasonCode } : {}),
+    ...(ivContinuousPolicy !== undefined ? { ivContinuousPolicy } : {}),
   };
 }
 

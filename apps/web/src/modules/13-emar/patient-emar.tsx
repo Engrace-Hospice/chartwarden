@@ -1,4 +1,6 @@
 import {
+  Button,
+  ConfirmDialog,
   EmptyState,
   Glyph,
   LoadingSpinner,
@@ -15,38 +17,53 @@ import {
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Patient Workspace + MAR Grid".
 // Matched to the P1 Pencil frame (wardenx-P1-clinical.pen `ANbhv`): a Patient Workspace (banner + module
 // rail) over the Medication Administration Record GRID (one row per medication order, one column per dose
-// time, each cell the dose's §2.2 status) | a right "Administer" rail (five-rights scaffold) | a recent-
-// administrations strip. The SERVER owns the §2.2 lifecycle, §2.5 late-entry tier, and §7.2 SUD read gate
-// (SUD rows skipped without a Part 2 release — never a frontend hide). Reads GET /api/v1/scheduled-doses?
-// patient + /api/v1/administrations?patient (+ the patient summary for the banner). Honest gaps: the dose
-// rows carry the medication ORDER id, not the drug/dose text the frame shows (no fabricated drug name); the
-// single-dose / PRN / witness administration WRITE paths aren't built, so the Administer panel's Record
-// action is an inert scaffold naming the write path.
+// time, each cell the dose's §2.2 status) | a right "Administer" rail | a recent-administrations strip. The
+// SERVER owns the §2.2 lifecycle, §2.5 late-entry tier, and §7.2 SUD read gate (SUD rows skipped without a
+// Part 2 release — never a frontend hide).
+//
+// F-031 — the Administer panel's Record action used to be a DISABLED button naming the write path it would
+// one day call. It calls it now: single-dose / PRN / controlled-substance-with-witness / refusal, plus the
+// §2.5 intentional hold on a scheduled cell. An eMAR that renders a dose grid and cannot record a dose is
+// not an incomplete screen, it is a hazard — a clinician can reasonably read it as a working MAR.
+//
+// TWO THINGS THIS SCREEN NOW SAYS OUT LOUD, BECAUSE BOTH WERE INVISIBLE BEFORE.
+//
+//   • The grid is empty for every patient, and that is not a data problem. `scheduled_dose` rows are
+//     materialized by the `m12.medication_order.active` -> `m13.materialize-schedule` consumer, which is
+//     DECLARED and UNBOUND (scripts/outbox-deferred-consumers.ts). Nothing writes that table in
+//     production. So the Administer panel is driven by the patient's ACTIVE MEDICATION ORDERS — a grid
+//     cell, when there is one, only pre-selects. Hanging the whole write surface off a cell click would
+//     have been a control wired to a table that never has rows.
+//   • The grid names the DRUG. It used to print a truncated medication-order UUID, because M13's dose DTO
+//     carries only the order id; the names come from M12's `/patients/{id}/medications/active`, joined
+//     here. A caller without `prescribing.read` still sees the id — degraded, never fabricated.
+//
+// A third thing, found while running the E2E: nothing in the platform ACTIVATES a medication order
+// either (the transition runs through DoseSpot transmission + ack, which is stubbed), so every order in a
+// seeded or production database sits at `signed`. The picker therefore reads
+// `GET /api/v1/medication-orders?patientId=` and drops only the terminally dead statuses, rather than
+// `/medications/active`, which filters `status = 'active'` and returns an empty list for every patient
+// alive. It labels each option with its lifecycle status so the clinician can see what they are giving
+// against; see TERMINAL_ORDER_STATUSES in emar-api.ts.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
+import { type AdministerIntent, AdministerModal } from "./administer-modal";
+import {
+  type ActiveMedicationOrder,
+  type AdministrationView,
+  type ScheduledDoseView,
+  errorMessage,
+  intentionalHold,
+  listAdministrations,
+  listPatientMedicationOrders,
+  listScheduledDoses,
+} from "./emar-api";
 import { ADMIN_STATUS_TONE, DOSE_TONE, lateEntryTone, stateLabel } from "./emar-status";
+import { IvSegmentModal } from "./iv-segment-modal";
+import { WitnessAttestModal } from "./witness-attest-modal";
 
-interface ScheduledDoseRow {
-  id: string;
-  patientId: string;
-  medicationOrderId: string;
-  dueAt: string;
-  status: string;
-}
-interface AdministrationRow {
-  id: string;
-  patientId: string;
-  medicationOrderId: string;
-  mode: string;
-  status: string;
-  actorKind: string;
-  administeredAt: string;
-  lateEntryTier: string;
-  isControlledSubstance: boolean;
-  requiresRnReview: boolean;
-}
 interface PatientSummary {
   mrn: string;
   lastName: string;
@@ -57,33 +74,35 @@ interface PatientSummary {
 
 const ts = (v: string): string => v.slice(0, 16).replace("T", " ");
 const slotOf = (iso: string): string => iso.slice(11, 16); // HH:MM
-const FIVE_RIGHTS = [
-  "Right patient",
-  "Right drug",
-  "Right dose",
-  "Right route",
-  "Right time",
-] as const;
 
 export function PatientEmar(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const { patientId } = useParams<{ patientId: string }>();
-  const [doses, setDoses] = useState<ScheduledDoseRow[]>([]);
-  const [admins, setAdmins] = useState<AdministrationRow[]>([]);
+  const [doses, setDoses] = useState<ScheduledDoseView[]>([]);
+  const [admins, setAdmins] = useState<AdministrationView[]>([]);
+  const [orders, setOrders] = useState<ActiveMedicationOrder[]>([]);
+  const [ordersUnavailable, setOrdersUnavailable] = useState(false);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [selectedDoseId, setSelectedDoseId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [ceremony, setCeremony] = useState<AdministerIntent | null>(null);
+  const [witnessOpen, setWitnessOpen] = useState(false);
+  const [ivStartOrderId, setIvStartOrderId] = useState<string | null>(null);
+  const [holdDoseId, setHoldDoseId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!patientId) return;
     setLoading(true);
     setError(null);
-    const [d, a, p] = await Promise.all([
-      client.GET("/api/v1/scheduled-doses", { params: { query: { patient: patientId } } }),
-      client.GET("/api/v1/administrations", { params: { query: { patient: patientId } } }),
+    const [d, a, p, m] = await Promise.all([
+      listScheduledDoses(client, { patient: patientId }),
+      listAdministrations(client, { patient: patientId }),
       client.GET("/api/v1/patients/{id}", { params: { path: { id: patientId } } }),
+      listPatientMedicationOrders(client, patientId),
     ]);
     if (p.data) setPatient(p.data as PatientSummary);
     if (d.error || a.error) {
@@ -91,14 +110,47 @@ export function PatientEmar(): JSX.Element {
       setLoading(false);
       return;
     }
-    setDoses((d.data ?? []) as ScheduledDoseRow[]);
-    setAdmins((a.data ?? []) as AdministrationRow[]);
+    setDoses(d.doses);
+    setAdmins(a.administrations);
+    // A caller without `prescribing.read` still gets the eMAR; they just get order ids instead of drug
+    // names, and the picker degrades to a typed id. The read is never a precondition for recording.
+    setOrders(m.orders);
+    setOrdersUnavailable(m.error !== null);
     setLoading(false);
   }, [client, patientId]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** §2.5 — hold a scheduled dose deliberately, so the miss detector records a decision, not a lapse. */
+  const holdDose = useCallback(async () => {
+    if (!holdDoseId) return;
+    setBusy(true);
+    setActionError(null);
+    const { error: err } = await intentionalHold(client, holdDoseId, {});
+    setBusy(false);
+    setHoldDoseId(null);
+    if (err) {
+      setActionError(errorMessage(err, "The hold could not be recorded."));
+      return;
+    }
+    void load();
+  }, [client, holdDoseId, load]);
+
+  /** The DRUG for a medication order id, from M12. Falls back to the truncated id — the pre-F-031 display —
+   *  rather than inventing a name for an order this caller cannot read. */
+  const drugLabel = useCallback(
+    (medicationOrderId: string): string => {
+      const order = orders.find((o) => o.id === medicationOrderId);
+      return order ? `${order.drugName} ${order.strength}` : medicationOrderId.slice(0, 10);
+    },
+    [orders],
+  );
+
+  /** The D7 ceremony only has meaning for a controlled substance — the witness action stays hidden
+   *  otherwise rather than offering an attestation the route would refuse. */
+  const controlledOrders = useMemo(() => orders.filter((o) => o.isControlledSubstance), [orders]);
 
   // The MAR grid: rows = distinct medication orders, columns = distinct dose times, cells = the dose.
   const grid = useMemo(() => {
@@ -159,7 +211,7 @@ export function PatientEmar(): JSX.Element {
           ) : grid.meds.length === 0 ? (
             <EmptyState
               title="No doses scheduled"
-              description="No scheduled doses in this window."
+              description="No scheduled doses in this window. Doses are materialized from active medication orders by a background consumer that is not yet wired, so this grid stays empty — record against the medication order in the Administer panel."
             />
           ) : (
             <section style={{ ...cardSurface, padding: "1rem 1.25rem", overflowX: "auto" }}>
@@ -181,11 +233,10 @@ export function PatientEmar(): JSX.Element {
                         style={{
                           ...gridCell,
                           textAlign: "left",
-                          fontFamily: t.fontMono,
                           color: t.onSurface,
                         }}
                       >
-                        {med.slice(0, 10)}
+                        {drugLabel(med)}
                       </td>
                       {grid.slots.map((s) => {
                         const dose = grid.at(med, s);
@@ -232,15 +283,21 @@ export function PatientEmar(): JSX.Element {
                   <button
                     key={a.id}
                     type="button"
-                    onClick={() => navigate(`/patients/${patientId}/administrations/${a.id}`)}
+                    onClick={() =>
+                      navigate(
+                        a.ivSessionId
+                          ? `/patients/${patientId}/iv-sessions/${a.ivSessionId}`
+                          : `/patients/${patientId}/administrations/${a.id}`,
+                      )
+                    }
                     style={{ ...adminRow, borderTop: i === 0 ? "none" : ghostBorder }}
                   >
-                    <span
-                      className="tabular-nums"
-                      style={{ flex: 1, minWidth: 0, textAlign: "left", color: t.onSurface }}
-                    >
-                      {ts(a.administeredAt)}
-                      <span style={dateMeta}> · {stateLabel(a.mode)}</span>
+                    <span style={{ flex: 1, minWidth: 0, textAlign: "left", color: t.onSurface }}>
+                      <span className="tabular-nums">{ts(a.administeredAt)}</span>
+                      <span style={dateMeta}>
+                        {" · "}
+                        {drugLabel(a.medicationOrderId)} · {stateLabel(a.mode)}
+                      </span>
                     </span>
                     <StatusPill
                       label={stateLabel(a.status)}
@@ -262,70 +319,118 @@ export function PatientEmar(): JSX.Element {
           ) : null}
         </div>
 
-        {/* Right rail — Administer (five-rights scaffold) */}
+        {/* Right rail — Administer. Driven by the ACTIVE ORDERS, not by a grid selection: nothing
+            materializes scheduled doses in production, so a cell is a shortcut, never the entry point. */}
         <aside style={rightRail}>
           <div style={{ ...cardSurface, padding: "1.125rem" }}>
             <h2 style={railTitle}>Administer</h2>
+
             {selectedDose ? (
-              <>
-                <dl style={detailGrid}>
-                  <dt style={dt}>Order</dt>
-                  <dd style={{ ...dd, fontFamily: t.fontMono }}>
-                    {selectedDose.medicationOrderId.slice(0, 10)}
-                  </dd>
-                  <dt style={dt}>Due</dt>
-                  <dd style={{ ...dd }} className="tabular-nums">
-                    {ts(selectedDose.dueAt)}
-                  </dd>
-                  <dt style={dt}>Status</dt>
-                  <dd style={dd}>
-                    <StatusPill
-                      label={stateLabel(selectedDose.status)}
-                      tone={DOSE_TONE[selectedDose.status] ?? "neutral"}
-                    />
-                  </dd>
-                </dl>
-                <span style={{ ...sectionTitle, display: "block", marginTop: "0.875rem" }}>
-                  Five rights
-                </span>
-                <ul
-                  style={{
-                    listStyle: "none",
-                    padding: 0,
-                    margin: "0.4rem 0 0",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "0.3rem",
-                  }}
-                >
-                  {FIVE_RIGHTS.map((r) => (
-                    <li
-                      key={r}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.4rem",
-                        fontSize: "0.82rem",
-                        color: t.onSurfaceVariant,
-                      }}
-                    >
-                      <Glyph name="check-circle" size={14} /> {r}
-                    </li>
-                  ))}
-                </ul>
-                <button type="button" disabled style={recordBtn}>
-                  Record administration
-                </button>
-                <p style={meta}>
-                  Recording a dose (single-dose / PRN / witness, with the barcode + five-rights
-                  ceremony) arrives with the M13 administration write path.
-                </p>
-              </>
+              <dl style={detailGrid}>
+                <dt style={dt}>Selected dose</dt>
+                <dd style={dd}>{drugLabel(selectedDose.medicationOrderId)}</dd>
+                <dt style={dt}>Due</dt>
+                <dd style={{ ...dd }} className="tabular-nums">
+                  {ts(selectedDose.dueAt)}
+                </dd>
+                <dt style={dt}>Status</dt>
+                <dd style={dd}>
+                  <StatusPill
+                    label={stateLabel(selectedDose.status)}
+                    tone={DOSE_TONE[selectedDose.status] ?? "neutral"}
+                  />
+                </dd>
+              </dl>
             ) : (
-              <p style={meta}>Select a dose in the grid to verify the five rights and record it.</p>
+              <p style={meta}>
+                Records against one of this patient&rsquo;s active medication orders. Select a dose
+                in the grid to pre-fill it.
+              </p>
             )}
+
+            <div style={railActions}>
+              <Button tone="primary" onClick={() => setCeremony("administer")}>
+                Record administration
+              </Button>
+              <Button tone="secondary" onClick={() => setCeremony("refuse")}>
+                Record refusal
+              </Button>
+              {selectedDose && selectedDose.status === "pending" ? (
+                <Button tone="tertiary" onClick={() => setHoldDoseId(selectedDose.id)}>
+                  Hold this dose
+                </Button>
+              ) : null}
+              {orders.length > 0 ? (
+                <Button
+                  tone="tertiary"
+                  onClick={() =>
+                    setIvStartOrderId(selectedDose?.medicationOrderId ?? orders[0]!.id)
+                  }
+                >
+                  Start IV infusion
+                </Button>
+              ) : null}
+              {controlledOrders.length > 0 ? (
+                <Button tone="tertiary" onClick={() => setWitnessOpen(true)}>
+                  Witness a controlled substance
+                </Button>
+              ) : null}
+            </div>
+
+            {actionError ? (
+              <p role="alert" style={{ ...meta, color: t.error }}>
+                {actionError}
+              </p>
+            ) : null}
           </div>
         </aside>
+
+        <AdministerModal
+          open={ceremony !== null}
+          intent={ceremony ?? "administer"}
+          patientId={patientId ?? ""}
+          orders={orders}
+          ordersUnavailable={ordersUnavailable}
+          {...(selectedDose ? { initialOrderId: selectedDose.medicationOrderId } : {})}
+          {...(selectedDose ? { scheduledDoseId: selectedDose.id } : {})}
+          onClose={() => setCeremony(null)}
+          onRecorded={() => {
+            setCeremony(null);
+            setSelectedDoseId(null);
+            void load();
+          }}
+        />
+        {ivStartOrderId ? (
+          // §2.11 — starting an infusion MINTS the session, so the ceremony hands back its id and this
+          // screen follows it: the segment sequence lives on the session surface, not in the MAR grid.
+          <IvSegmentModal
+            open
+            mode="iv_continuous_start"
+            medicationOrderId={ivStartOrderId}
+            medClass={orders.find((o) => o.id === ivStartOrderId)?.medClass ?? "standard"}
+            onClose={() => setIvStartOrderId(null)}
+            onRecorded={(sessionId) => {
+              setIvStartOrderId(null);
+              if (sessionId) navigate(`/patients/${patientId}/iv-sessions/${sessionId}`);
+              else void load();
+            }}
+          />
+        ) : null}
+        <WitnessAttestModal
+          open={witnessOpen}
+          patientId={patientId ?? ""}
+          orders={controlledOrders}
+          onClose={() => setWitnessOpen(false)}
+        />
+        <ConfirmDialog
+          open={holdDoseId !== null}
+          title="Hold this dose?"
+          description="Recorded as an intentional hold before the grace window closes, so the dose reads as a clinical decision rather than a miss."
+          confirmLabel="Record hold"
+          pending={busy}
+          onConfirm={() => void holdDose()}
+          onCancel={() => setHoldDoseId(null)}
+        />
       </div>
     </PatientWorkspaceLayout>
   );
@@ -407,17 +512,11 @@ const detailGrid: CSSProperties = {
 };
 const dt: CSSProperties = { fontWeight: 600, color: t.onSurfaceVariant };
 const dd: CSSProperties = { margin: 0, color: t.onSurface };
-const recordBtn: CSSProperties = {
+const railActions: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.4rem",
   marginTop: "1rem",
-  width: "100%",
-  padding: "0.55rem 1rem",
-  borderRadius: "9999px",
-  background: t.surfaceContainer,
-  color: t.muted,
-  fontSize: "0.8125rem",
-  fontWeight: 600,
-  border: "none",
-  cursor: "not-allowed",
 };
 const meta: CSSProperties = {
   fontSize: "0.78rem",

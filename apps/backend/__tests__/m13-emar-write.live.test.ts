@@ -20,6 +20,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import {
+  type EmarMedicationOrderPort,
   type EmarWriteOutboxPort,
   createDbEmarBackend,
 } from "../src/modules/13-emar/emar-route-service-db";
@@ -191,7 +192,25 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
     const outbox: EmarWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m13" }),
     };
-    svc = createDbEmarBackend(handle.db, outbox);
+    // F-031 — the M12 identity reader the production mount binds over
+    // `MedicationOrderProvider.getAdministrationContext`. Stands in for M12 here (this is M13's suite, and
+    // M12's own provider is proven in dosespot-seams.test.ts) but answers the SAME question with the same
+    // shape: an unknown order resolves to null and the write refuses.
+    const medicationOrder: EmarMedicationOrderPort = {
+      async administrationIdentity({ medicationOrderId }) {
+        if (medicationOrderId !== MED_ORDER) return null;
+        return {
+          patientId: PATIENT,
+          admissionId: ADMISSION,
+          drugName: "Morphine Sulfate Oral Solution",
+          route: "oral",
+          // §2.11 D11 — this order authorises titration between 1 and 10 mg/hr. An order that stated no
+          // bounds would authorise NO rate change; the last IV test below proves that arm.
+          ivContinuousPolicy: { minRate: 1, maxRate: 10 },
+        };
+      },
+    };
+    svc = createDbEmarBackend(handle.db, outbox, undefined, () => medicationOrder);
   }, 120_000);
 
   afterAll(async () => {
@@ -273,6 +292,219 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
       [view.id],
     );
     expect(rows[0].n).toBe(1);
+  });
+
+  it("F-031: an ad-hoc administration is filed under the ORDER's patient, not a sentinel", async () => {
+    // Before F-031 this row landed on patient_id 00000000-…-aa. Nothing in production materializes a
+    // `scheduled_dose` (the m12.medication_order.active -> m13.materialize-schedule consumer is declared and
+    // unbound), so this branch was not an edge case — it was every administration the platform could record,
+    // and every one of them was absent from the patient's own eMAR.
+    const view = await svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs());
+    expect(view.patientId).toBe(PATIENT);
+    const { rows } = await admin.query(
+      "SELECT patient_id, admission_id, drug_name_snapshot FROM administration_record WHERE id=$1",
+      [view.id],
+    );
+    expect(rows[0].patient_id).toBe(PATIENT);
+    expect(rows[0].admission_id).toBe(ADMISSION);
+    // The MAR must say what was given, not "" — the order can be corrected or discontinued afterwards.
+    expect(rows[0].drug_name_snapshot).toBe("Morphine Sulfate Oral Solution");
+    const listed = await svc.listAdministrations(ORG_A, { patient: PATIENT });
+    expect(listed.map((r) => r.id)).toContain(view.id);
+  });
+
+  it("F-031: an ad-hoc CONTROLLED-SUBSTANCE administration can now be witnessed", async () => {
+    // The D7 verifier binds the token's scope to the patient the service RESOLVED. While that was the
+    // sentinel and the witness minted against the real patient, no token could ever match — the
+    // controlled-substance path refused every caller, including a correctly-witnessed one.
+    const { token } = await svc.mintWitnessToken(ORG_A, member2Of[ORG_A], {
+      patientId: PATIENT,
+      medicationOrderId: MED_ORDER,
+      administeringClinicianMembershipId: memberOf[ORG_A],
+    });
+    const view = await svc.recordAdministration(
+      ORG_A,
+      memberOf[ORG_A],
+      recordArgs({ medClass: "controlled_substance", witnessToken: token }),
+    );
+    expect(view.status).toBe("committed");
+    expect(view.witnessMembershipId).toBe(member2Of[ORG_A]);
+  });
+
+  it("F-031: an administration naming no dose and an unresolvable order is REFUSED, not sentinel-filed", async () => {
+    await expect(
+      svc.recordAdministration(
+        ORG_A,
+        memberOf[ORG_A],
+        recordArgs({ medicationOrderId: "77777777-7777-4777-8777-777777777777" }),
+      ),
+    ).rejects.toMatchObject({ statusCode: 422 });
+  });
+
+  it("F-031/#134: an IV session is minted, its graph enforced, and its rate bounded", async () => {
+    // Nothing in the codebase wrote `iv_session_id` before this: the production path never set it, the
+    // in-memory slice hard-coded it null, and `assertIvSegmentLegal`/`checkIvRateBounds` — real and
+    // unit-tested in @wardenx/emar — were called by no one.
+    const start = await svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+      ...recordArgs({ mode: "iv_continuous_start" }),
+      data: { infusionRate: 4, rateUnit: "mg/hr", infusionDilution: "morphine 1mg/mL in NS" },
+    });
+    expect(start.ivSessionId).not.toBeNull();
+    const session = start.ivSessionId as string;
+
+    // A `resume` on a RUNNING session is not legal — the graph, not the client, decides.
+    await expect(
+      svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+        ...recordArgs({ mode: "iv_continuous_resume", ivSessionId: session }),
+        data: {},
+      }),
+    ).rejects.toMatchObject({ code: "ILLEGAL_IV_SESSION_TRANSITION" });
+
+    // A titration outside the order's [1, 10] bounds is refused with the bounds echoed.
+    await expect(
+      svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+        ...recordArgs({ mode: "iv_continuous_rate_change", ivSessionId: session }),
+        data: { previousRate: 4, newRate: 40, titrationReason: "pain uncontrolled" },
+      }),
+    ).rejects.toMatchObject({ code: "IV_RATE_OUT_OF_RANGE" });
+
+    // In bounds: committed, and the rate is READABLE off the row (the `data` body is persisted now).
+    const titrate = await svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+      ...recordArgs({ mode: "iv_continuous_rate_change", ivSessionId: session }),
+      data: { previousRate: 4, newRate: 6, titrationReason: "pain uncontrolled" },
+    });
+    expect(titrate.ivSessionId).toBe(session);
+
+    await svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+      ...recordArgs({ mode: "iv_continuous_pause", ivSessionId: session }),
+      data: { pauseReason: "line infiltrated" },
+    });
+    const view = await svc.getIvSession(ORG_A, session);
+    expect(view.state).toBe("paused");
+    expect(view.segments.map((s) => s.kind)).toEqual([
+      "iv_continuous_start",
+      "iv_continuous_rate_change",
+      "iv_continuous_pause",
+    ]);
+    expect(view.segments[1]?.rate).toBe(6);
+    expect(view.endedAt).toBeNull();
+
+    await svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+      ...recordArgs({ mode: "iv_continuous_resume", ivSessionId: session }),
+      data: {},
+    });
+    const stopped = await svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+      ...recordArgs({ mode: "iv_continuous_stop", ivSessionId: session }),
+      data: { stopReason: "comfort achieved" },
+    });
+    expect(stopped.ivSessionId).toBe(session);
+    const closed = await svc.getIvSession(ORG_A, session);
+    expect(closed.state).toBe("stopped");
+    expect(closed.endedAt).not.toBeNull();
+
+    // `stopped` is terminal.
+    await expect(
+      svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+        ...recordArgs({ mode: "iv_continuous_resume", ivSessionId: session }),
+        data: {},
+      }),
+    ).rejects.toMatchObject({ code: "ILLEGAL_IV_SESSION_TRANSITION" });
+  });
+
+  it("F-031/#134: two segments sharing a clinical instant order by when they were RECORDED", async () => {
+    // A clinician enters `administered_at` from a datetime-local control, which has MINUTE resolution, so
+    // a start and the titration seconds later carry the IDENTICAL instant. With only `id` to break the
+    // tie the derived state was a random uuid comparison, and `composeIvSession` could refuse a perfectly
+    // good session for "not beginning with a start". Both segments are written at the same instant here
+    // deliberately.
+    const sameInstant = new Date().toISOString();
+    const start = await svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+      ...recordArgs({ mode: "iv_continuous_start", administeredAt: sameInstant }),
+      data: { infusionRate: 2, rateUnit: "mg/hr" },
+    });
+    const session = start.ivSessionId as string;
+    await svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+      ...recordArgs({
+        mode: "iv_continuous_rate_change",
+        ivSessionId: session,
+        administeredAt: sameInstant,
+      }),
+      data: { previousRate: 2, newRate: 5, titrationReason: "breakthrough pain" },
+    });
+    const view = await svc.getIvSession(ORG_A, session);
+    expect(view.segments.map((x) => x.kind)).toEqual([
+      "iv_continuous_start",
+      "iv_continuous_rate_change",
+    ]);
+    expect(view.state).toBe("running");
+  });
+
+  it("F-031/#134: a start may not name a session and a continuation must", async () => {
+    await expect(
+      svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+        ...recordArgs({ mode: "iv_continuous_start", ivSessionId: PATIENT }),
+        data: { infusionRate: 2 },
+      }),
+    ).rejects.toMatchObject({ statusCode: 422 });
+    await expect(
+      svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+        ...recordArgs({ mode: "iv_continuous_pause" }),
+        data: { pauseReason: "x" },
+      }),
+    ).rejects.toMatchObject({ statusCode: 422 });
+  });
+
+  it("F-031/#134: a controlled infusion is witnessed at start/titrate/stop but NOT at pause", async () => {
+    // `planIvSegment`'s rule is narrower than "controlled": pause and resume change no dose, so demanding
+    // a second clinician to stop a running pump would be the wrong gate at the wrong moment.
+    const mint = async () =>
+      (
+        await svc.mintWitnessToken(ORG_A, member2Of[ORG_A], {
+          patientId: PATIENT,
+          medicationOrderId: MED_ORDER,
+          administeringClinicianMembershipId: memberOf[ORG_A],
+        })
+      ).token;
+    const start = await svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+      ...recordArgs({ medClass: "controlled_substance", mode: "iv_continuous_start" }),
+      data: { infusionRate: 3, infusionDilution: "1mg/mL" },
+      witnessToken: await mint(),
+    });
+    expect(start.witnessMembershipId).toBe(member2Of[ORG_A]);
+    const session = start.ivSessionId as string;
+
+    // No token, and none needed.
+    const paused = await svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+      ...recordArgs({
+        medClass: "controlled_substance",
+        mode: "iv_continuous_pause",
+        ivSessionId: session,
+      }),
+      data: { pauseReason: "patient to bathroom" },
+    });
+    expect(paused.witnessMembershipId).toBeNull();
+
+    await svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+      ...recordArgs({
+        medClass: "controlled_substance",
+        mode: "iv_continuous_resume",
+        ivSessionId: session,
+      }),
+      data: {},
+    });
+    // A controlled stop DOES need one, and a stop with drug left in the bag announces the wastage — an
+    // event catalogued since M13-T08 with no emitter until now.
+    const stop = await svc.recordAdministration(ORG_A, memberOf[ORG_A], {
+      ...recordArgs({
+        medClass: "controlled_substance",
+        mode: "iv_continuous_stop",
+        ivSessionId: session,
+      }),
+      data: { stopReason: "death", wastageAmount: 12, wastageReason: "remainder destroyed" },
+      witnessToken: await mint(),
+    });
+    const events = await eventsFor(stop.id);
+    expect(events).toContain("m13.administration.controlled_wasted");
   });
 
   it("caregiver-attested capture → pending_caregiver_review; acknowledge → committed; dispute flags", async () => {
@@ -378,6 +610,31 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
     const events = await eventsFor(ws);
     expect(events).toContain("m13.reconciliation.completed");
     expect(events).toContain("m13.reconciliation.document_requested");
+  });
+
+  it("F-031: a decision links the M12 draft it produced (send to prescriber)", async () => {
+    const ws = await seedWorksheet(ORG_A, 1);
+    const recorded = await svc.recordDecision(ORG_A, memberOf[ORG_A], ws, {
+      lineKind: "caregiver_reported",
+      sourceId: "home-med-1",
+      decision: "new_order",
+    });
+    const line = recorded.decisions[0]!;
+    expect(line.resultingMedicationOrderId).toBeNull();
+    const draftId = "88888888-8888-4888-8888-888888888888";
+    const linked = await svc.updateDecision(
+      ORG_A,
+      memberOf[ORG_A],
+      ws,
+      line.lineId,
+      "new_order",
+      draftId,
+    );
+    expect(linked.decisions[0]?.resultingMedicationOrderId).toBe(draftId);
+    // Changing the decision kind afterwards must not silently drop a link to an order a prescriber may
+    // already have signed.
+    const rekinded = await svc.updateDecision(ORG_A, memberOf[ORG_A], ws, line.lineId, "hold");
+    expect(rekinded.decisions[0]?.resultingMedicationOrderId).toBe(draftId);
   });
 
   it("finalizeReconciliation with no decisions → RECONCILIATION_INCOMPLETE (422); voidWorksheet voids", async () => {
