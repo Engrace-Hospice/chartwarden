@@ -570,6 +570,60 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     await expect(svc.renderPayload(ORG_A, id)).rejects.toBeTruthy();
   });
 
+  // ── §2.6 D5 Layer-2 (#123) ───────────────────────────────────────────────────────────────────────
+
+  it("§2.6 D5 — enhance answers the ladder's reason, and the same reason the pinned row records", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    const out = await svc.enhanceHearthnote(ORG_A, id);
+    expect(out).toEqual({ enhanced: false, reason: "kill_switch_active" });
+    // The route and `hearthnote_assembled_output.layer2_eligibility` resolve through the SAME ladder,
+    // so they cannot say different things about why Layer 2 did not run for this encounter.
+    const row = await admin.query(
+      "SELECT layer2_eligibility FROM hearthnote_assembled_output WHERE encounter_id=$1",
+      [id],
+    );
+    expect(row.rows[0].layer2_eligibility).toBe(out.reason);
+  });
+
+  it("§2.6 D5 — the decision route's 404 is a real absence: a REAL modification row gets a 200", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    const outputId = (
+      await admin.query("SELECT id FROM hearthnote_assembled_output WHERE encounter_id=$1", [id])
+    ).rows[0].id as string;
+
+    // An id that names nothing → 404. On its own this is unfalsifiable — a hard-coded refusal looks
+    // identical — so the row below is what makes it a real read.
+    await expect(
+      svc.recordModificationDecision(ORG_A, id, "2f1d4c9e-0000-4000-8000-000000000001"),
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    // Nothing in the product writes `hearthnote_llm_modification` (the Layer-2 dispatch is unbuilt), so
+    // this suite writes one directly — the only way to prove the lookup resolves rather than refuses.
+    const modId = (
+      await admin.query(
+        `INSERT INTO hearthnote_llm_modification
+           (organization_id, provider_entity_id, location_id, assembled_output_id,
+            prompt_template_key, prompt_template_version, model_id,
+            tokens_input, tokens_output, latency_ms, diff_json, called_by_membership_id)
+         VALUES ($1,$2,$3,$4,'hearthnote.enhance','v1','claude-test',0,0,0,'[]'::jsonb,$5)
+         RETURNING id`,
+        [ORG_A, SITING_A.providerEntityId, SITING_A.locationId, outputId, membershipOf[ORG_A]],
+      )
+    ).rows[0].id as string;
+    expect(await svc.recordModificationDecision(ORG_A, id, modId)).toEqual({
+      modificationId: modId,
+    });
+
+    // And it is scoped to its own encounter: the same real modification, asked for under a DIFFERENT
+    // encounter, is not found. The route used to echo any id back under any encounter.
+    const other = await draft("routine_visit", "rn");
+    await expect(svc.recordModificationDecision(ORG_A, other, modId)).rejects.toMatchObject({
+      statusCode: 404,
+    });
+  });
+
   it("§3.6 — the two envelopes are bound to their columns: a blob cannot be moved between them", async () => {
     const sealed = await CIPHERS.freeText.seal(ORG_A, "Family to call if pain escalates.");
     // Same key, same scheme, different AAD — so a free-text envelope written into `final_cipher` fails

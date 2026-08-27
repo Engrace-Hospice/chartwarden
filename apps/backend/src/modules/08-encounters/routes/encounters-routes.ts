@@ -380,7 +380,11 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
   );
 
-  // 12 — invoke HearthNote Layer-2 enhancement.
+  // 12 — invoke HearthNote Layer-2 enhancement. Answers the §2.6 D5 ladder's verdict, not a fabricated
+  // modification id (#123). 200 is the spec's own status for this route, and the right one: Layer 2
+  // being off is a steady state, not a fault — every call in Phase 1 returns it, and a normal outcome
+  // expressed as an HTTP error would pollute error rates and client retry logic for a feature that is
+  // simply switched off. The refusal is in the BODY, where a UI can render it.
   app.post(
     "/api/v1/encounters/:encounterId/hearthnote/enhance",
     { preHandler: [FINALIZE] },

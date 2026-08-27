@@ -23,7 +23,6 @@ import { isStepUpRecent } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import {
   DEFAULT_HEARTHNOTE_FLAGS,
-  type Layer2TenantEligibility,
   enhanceNarrative,
   templateKey as hearthnoteTemplateKey,
 } from "@wardenx/hearthnote";
@@ -49,6 +48,7 @@ import {
   runEncounterComplianceGate,
 } from "./gate/index";
 import type { HearthnoteCiphers } from "./hearthnote-crypto";
+import { LAYER2_TENANT_FACTS_UNBOUND, resolveLayer2Eligibility } from "./layer2";
 import { transitionAddendum } from "./lifecycle/addendum";
 import { requiresCosignature, transitionEncounter } from "./lifecycle/encounter";
 import { EncounterStateError } from "./lifecycle/errors";
@@ -78,6 +78,7 @@ const MILEAGE = schema.mileage;
 const SIG = schema.encounterSignatures;
 const SEL = schema.hearthnoteSelections;
 const OUT = schema.hearthnoteAssembledOutputs;
+const LLM = schema.hearthnoteLlmModifications;
 
 // ── The stored selection tree (#114 write path, #121 gate input) ──────────────────────────────────────
 //
@@ -105,28 +106,6 @@ function gateSections(selections: unknown): GateSectionSelection[] {
     hasFreeText: s.hasFreeText === true,
   }));
 }
-
-// ── §2.6 Layer-2 eligibility at finalize (D5) ────────────────────────────────────────────────────────
-//
-// D5 reifies the three-flag-AND verdict on `hearthnote_assembled_output.layer2_eligibility`, "evaluated at
-// finalize-time". The ladder that computes it is not new code — `@wardenx/hearthnote`'s
-// `evaluateLayer2Eligibility` has shipped it, pure and tested, since M8-T05, with the platform
-// `hearthnote.layer2` flag as the OUTERMOST gate. That flag is OFF platform-wide in Phase 1
-// (`DEFAULT_HEARTHNOTE_FLAGS`), so the ladder short-circuits on its first line and returns
-// `kill_switch_active` without reading any per-tenant fact.
-//
-// The per-tenant facts below are therefore never consulted today, and are set to the DENY value of each:
-// binding real ones means building the M2 tenant flag, the per-clinician opt-out and the per-encounter-type
-// opt-in set, which is #123's work. Writing them fail-closed rather than omitting them means that if the
-// platform flag is ever flipped on before those readers exist, the verdict degrades to `tenant_flag_off` —
-// the next-truest statement — instead of silently reporting `eligible` for a path that cannot run.
-const LAYER2_TENANT_FACTS_UNBOUND: Layer2TenantEligibility = {
-  tenantEnabled: false,
-  clinicianOptedOut: true,
-  encounterTypeOptedIn: false,
-  baaExecuted: false,
-  tokenBudgetAvailable: false,
-} as const;
 
 // ── §3.3/D13 signature provenance (CoP 418.104(c), 21 CFR Part 11 principles) ─────────────────────────
 //
@@ -1250,16 +1229,40 @@ export function createDbEncounterRouteService(
       });
     },
 
-    // ── HearthNote Layer-2 (§2.6 D5 — no Layer-2 in this slice; ids only, no provenance row) ───────────
+    // ── HearthNote Layer-2 (§2.6 D5) ──────────────────────────────────────────────────────────────────
+    //
+    // Was: return `r.id` — the ENCOUNTER's own id — as a `modificationId`, and echo back whatever id the
+    // decision route was handed. Nothing wrote `hearthnote_llm_modification`, so a caller invoked
+    // enhancement, received an id that identified something else, recorded a per-passage decision against
+    // it, and got a 200 both times. Nothing happened, twice, successfully (#123).
     async enhanceHearthnote(organizationId, encounterId) {
       const r = await loadRow(organizationId, encounterId);
       if (!r) throw new NotFoundError("encounter");
-      return { modificationId: r.id };
+      // The D5 ladder is the answer, and it is the SAME resolution `finalize` reifies on the assembled
+      // output — so the row and the route cannot disagree about why Layer 2 did not run.
+      return { enhanced: false, reason: resolveLayer2Eligibility() };
     },
     async recordModificationDecision(organizationId, encounterId, modId) {
-      const r = await loadRow(organizationId, encounterId);
-      if (!r) throw new NotFoundError("encounter");
-      return { modificationId: modId };
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        await loadEnc(t, encounterId); // non-leaking 404 for the parent first
+        // A real read, org-scoped, RLS-backstopped. `hearthnote_llm_modification` is written by nothing
+        // today (the Layer-2 dispatch is unbuilt), so in practice this always 404s — but it 404s because
+        // the row is ABSENT, not because the route decided to. The live suite inserts one and gets a 200,
+        // which is what distinguishes this from a hard-coded refusal.
+        const [row] = await t
+          .select({ id: LLM.id })
+          .from(LLM)
+          .innerJoin(OUT, eq(OUT.id, LLM.assembledOutputId))
+          .where(and(eq(LLM.id, modId), eq(OUT.encounterId, encounterId)))
+          .limit(1);
+        if (!row) throw new NotFoundError("hearthnote_llm_modification");
+        // The DECISION itself is not recorded yet, and cannot be from this contract: the column is
+        // `per_passage_decisions` and `ModificationDecisionSchema` carries no passage id. Passage
+        // identity is created by the Layer-1↔Layer-2 diff, so there is nothing to key a decision to
+        // until the dispatch that produces that diff exists (#123's remaining half).
+        return { modificationId: row.id };
+      });
     },
 
     // ── Sign (§2.3 — the LOCKED clinical-record trigger; §7.4 D1 F2F dual-write + LPN/CHHA cosign) ──────

@@ -41,6 +41,7 @@ import {
   runAddendumComplianceGate,
   runEncounterComplianceGate,
 } from "../gate/index";
+import { type Layer2EnhanceOutcome, resolveLayer2Eligibility } from "../layer2";
 import { type AddendumState, transitionAddendum } from "../lifecycle/addendum";
 import { requiresCosignature, transitionEncounter } from "../lifecycle/encounter";
 import { EncounterStateError } from "../lifecycle/errors";
@@ -361,10 +362,9 @@ export interface EncounterRouteService {
     encounterId: string,
     at: LocalDate,
   ): Promise<{ status: "finalized"; version: number }>;
-  enhanceHearthnote(
-    organizationId: string,
-    encounterId: string,
-  ): Promise<{ modificationId: string }>;
+  /** §2.6 D5 — invoke Layer-2. Returns the ladder's verdict; see {@link Layer2EnhanceOutcome} for why
+   *  there is no `enhanced: true` arm to return yet (#123). */
+  enhanceHearthnote(organizationId: string, encounterId: string): Promise<Layer2EnhanceOutcome>;
   recordModificationDecision(
     organizationId: string,
     encounterId: string,
@@ -862,13 +862,17 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       return { status: "finalized", version: r.version };
     },
 
+    // §2.6 D5 (#123). Was a minted id and an echo — neither identified a `hearthnote_llm_modification`,
+    // because nothing writes one. The slice models the same refusal the production service does.
     async enhanceHearthnote(organizationId, encounterId) {
       load(organizationId, encounterId);
-      return { modificationId: subId() };
+      return { enhanced: false, reason: resolveLayer2Eligibility() };
     },
     async recordModificationDecision(organizationId, encounterId, modId) {
       load(organizationId, encounterId);
-      return { modificationId: modId };
+      // The slice holds no modification rows (nothing produces one), so every id names nothing.
+      void modId;
+      throw new NotFoundError("hearthnote_llm_modification");
     },
 
     async sign(organizationId, encounterId, actor, args) {
