@@ -17,6 +17,7 @@ import type {
   MileagePayrollRow,
   PatientId,
   SignedEncounterDigest,
+  SkilledNursingDayTotal,
 } from "@wardenx/types";
 
 /**
@@ -72,6 +73,15 @@ export interface EncounterReaderStore {
     organizationId: string,
     window: { from: string; to: string },
   ): Promise<{ numerator: number; denominator: number }>;
+  /**
+   * ORG-LEVEL skilled-nursing (`rn`/`lpn`) delivery per (admission, service date) over a `yyyy-mm-dd`
+   * window — the M8 half of HCI indicators 2, 8 and 9. Day totals rather than a reduction, because the
+   * three indicators reduce these days differently and each needs M6's spans to intersect them with.
+   */
+  skilledNursingDayTotalsForOrg(
+    organizationId: string,
+    window: { from: string; to: string },
+  ): Promise<ReadonlyArray<SkilledNursingDayTotal>>;
 }
 
 // ── in-memory slice store ─────────────────────────────────────────────────────────────────────────
@@ -140,6 +150,11 @@ export function createInMemoryEncounterReaderStore(seed: EncounterReaderSeed = {
        *  M30's kernel SUPPRESSES rather than scoring as zero late entries. */
       async lateEntryCountsForOrg() {
         return { numerator: 0, denominator: 0 };
+      },
+      /** Slice default: the in-memory facts carry no service dates or durations, so no day totals. The
+       *  HCI indicators built on this SUPPRESS on an empty day set rather than scoring a perfect zero. */
+      async skilledNursingDayTotalsForOrg() {
+        return [];
       },
     },
   };

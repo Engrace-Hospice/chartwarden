@@ -326,7 +326,7 @@ jobs:
           - {
               name: "M30 HQRP & Quality",
               scripts:
-                "test:m30:scheduled-jobs:live test:m30:cost-report-filing-measure:live",
+                "test:m30:scheduled-jobs:live test:m30:cost-report-filing-measure:live test:m30:hci-inputs:live",
             }
           - {
               name: "M31 Portal & Telehealth",

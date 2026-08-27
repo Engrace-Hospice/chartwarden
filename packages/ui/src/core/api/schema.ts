@@ -55743,6 +55743,7 @@ export interface operations {
                                 rate: number | null;
                                 thresholdMet: boolean | null;
                                 bandColor: "green" | "yellow" | "red" | "insufficient_n";
+                                unavailableReason: string | null;
                                 computedAt: string;
                                 computeVersion: string;
                                 snapshotContentHash: string;
@@ -55796,6 +55797,7 @@ export interface operations {
                             rate: number | null;
                             thresholdMet: boolean | null;
                             bandColor: "green" | "yellow" | "red" | "insufficient_n";
+                            unavailableReason: string | null;
                             computedAt: string;
                             computeVersion: string;
                             snapshotContentHash: string;

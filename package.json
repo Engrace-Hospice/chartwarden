@@ -215,6 +215,7 @@
     "test:m27:validation-context:live": "vitest run apps/backend/__tests__/m27-validation-context.live.test.ts",
     "test:m27:workflow-slice:live": "vitest run apps/backend/__tests__/m27-cost-report-workflow-slice.live.test.ts",
     "test:m30:cost-report-filing-measure:live": "vitest run apps/backend/__tests__/gap-065-cost-report-filing-measure.live.test.ts",
+    "test:m30:hci-inputs:live": "vitest run apps/backend/__tests__/m30-hci-indicator-inputs.live.test.ts",
     "test:m30:scheduled-jobs:live": "vitest run apps/backend/__tests__/m30-quality-scheduled-jobs.live.test.ts",
     "test:m31:care-team-sync:live": "vitest run apps/backend/__tests__/gap-059-care-team-sync-live.test.ts",
     "test:m31:portal-eraser:live": "vitest run apps/backend/__tests__/m31-portal-eraser.live.test.ts",
