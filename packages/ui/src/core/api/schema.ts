@@ -7222,7 +7222,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Read the vitals sets recorded on an encounter */
+        get: operations["getApiV1EncountersByEncounterIdVitals"];
         put?: never;
         /** Capture a vitals set */
         post: operations["postApiV1EncountersByEncounterIdVitals"];
@@ -15244,7 +15245,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read one dashboard (share-scope visibility gate) */
+        /** Read one dashboard: summary + its tile manifest (share-scope visibility gate) */
         get: operations["getApiV1ReportingDashboardsByDashboardId"];
         put?: never;
         post?: never;
@@ -38090,6 +38091,56 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1EncountersByEncounterIdVitals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        encounterId: string;
+                        vitals: {
+                            id: string;
+                            encounterId: string;
+                            capturedAt: string;
+                            bpSystolic: number | null;
+                            bpDiastolic: number | null;
+                            heartRate: number | null;
+                            respiratoryRate: number | null;
+                            temperature: string | null;
+                            temperatureUnit: ("mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l") | null;
+                            spo2: number | null;
+                            painScore: number | null;
+                            painScale: ("nrs_0_10" | "flacc" | "painad" | "verbal_descriptor") | null;
+                            weight: string | null;
+                            weightUnit: ("mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l") | null;
+                            height: string | null;
+                            heightUnit: ("mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l") | null;
+                            bmi: string | null;
+                            bloodGlucose: number | null;
+                            bloodGlucoseUnit: ("mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l") | null;
+                            clinicallyNotIndicatedFields: string[] | null;
+                            clinicallyNotIndicatedReason: string | null;
+                            abnormalFlags: string[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1EncountersByEncounterIdVitals: {
         parameters: {
             query?: never;
@@ -55630,6 +55681,7 @@ export interface operations {
                                 rate: number | null;
                                 thresholdMet: boolean | null;
                                 bandColor: "green" | "yellow" | "red" | "insufficient_n";
+                                unavailableReason: string | null;
                                 computedAt: string;
                                 computeVersion: string;
                                 snapshotContentHash: string;
@@ -55683,6 +55735,7 @@ export interface operations {
                             rate: number | null;
                             thresholdMet: boolean | null;
                             bandColor: "green" | "yellow" | "red" | "insufficient_n";
+                            unavailableReason: string | null;
                             computedAt: string;
                             computeVersion: string;
                             snapshotContentHash: string;
@@ -58668,6 +58721,11 @@ export interface operations {
                         tileCount: number;
                         shareScope: "private" | "role" | "org";
                         isOrgDefault: boolean;
+                        tiles: {
+                            tileKey: string;
+                            displayName: string;
+                            kind: string;
+                        }[];
                     };
                 };
             };

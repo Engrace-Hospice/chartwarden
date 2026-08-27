@@ -72310,6 +72310,493 @@
       }
     },
     "/api/v1/encounters/{encounterId}/vitals": {
+      "get": {
+        "operationId": "getApiV1EncountersByEncounterIdVitals",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Read the vitals sets recorded on an encounter",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "encounterId",
+                    "vitals"
+                  ],
+                  "properties": {
+                    "encounterId": {
+                      "type": "string"
+                    },
+                    "vitals": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "encounterId",
+                          "capturedAt",
+                          "bpSystolic",
+                          "bpDiastolic",
+                          "heartRate",
+                          "respiratoryRate",
+                          "temperature",
+                          "temperatureUnit",
+                          "spo2",
+                          "painScore",
+                          "painScale",
+                          "weight",
+                          "weightUnit",
+                          "height",
+                          "heightUnit",
+                          "bmi",
+                          "bloodGlucose",
+                          "bloodGlucoseUnit",
+                          "clinicallyNotIndicatedFields",
+                          "clinicallyNotIndicatedReason",
+                          "abnormalFlags"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "encounterId": {
+                            "type": "string"
+                          },
+                          "capturedAt": {
+                            "type": "string"
+                          },
+                          "bpSystolic": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "bpDiastolic": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "heartRate": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "respiratoryRate": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "temperature": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "temperatureUnit": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "mmHg",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "bpm",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "breaths_per_min",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "c",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "f",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "percent_o2",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "kg",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "lb",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "cm",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "in",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "mg_dl",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "mmol_l",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "spo2": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "painScore": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "painScale": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "nrs_0_10",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "flacc",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "painad",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "verbal_descriptor",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "weight": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "weightUnit": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "mmHg",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "bpm",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "breaths_per_min",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "c",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "f",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "percent_o2",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "kg",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "lb",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "cm",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "in",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "mg_dl",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "mmol_l",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "height": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "heightUnit": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "mmHg",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "bpm",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "breaths_per_min",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "c",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "f",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "percent_o2",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "kg",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "lb",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "cm",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "in",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "mg_dl",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "mmol_l",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "bmi": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "bloodGlucose": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "bloodGlucoseUnit": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "mmHg",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "bpm",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "breaths_per_min",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "c",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "f",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "percent_o2",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "kg",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "lb",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "cm",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "in",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "mg_dl",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "mmol_l",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "clinicallyNotIndicatedFields": {
+                            "anyOf": [
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "clinicallyNotIndicatedReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "abnormalFlags": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "post": {
         "operationId": "postApiV1EncountersByEncounterIdVitals",
         "tags": [
@@ -133835,6 +134322,7 @@
                                   "rate",
                                   "thresholdMet",
                                   "bandColor",
+                                  "unavailableReason",
                                   "computedAt",
                                   "computeVersion",
                                   "snapshotContentHash",
@@ -133929,6 +134417,16 @@
                                       {
                                         "const": "insufficient_n",
                                         "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "unavailableReason": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
                                       }
                                     ]
                                   },
@@ -134059,6 +134557,7 @@
                           "rate",
                           "thresholdMet",
                           "bandColor",
+                          "unavailableReason",
                           "computedAt",
                           "computeVersion",
                           "snapshotContentHash",
@@ -134153,6 +134652,16 @@
                               {
                                 "const": "insufficient_n",
                                 "type": "string"
+                              }
+                            ]
+                          },
+                          "unavailableReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
                               }
                             ]
                           },
@@ -143383,7 +143892,7 @@
         "tags": [
           "33-reporting"
         ],
-        "summary": "Read one dashboard (share-scope visibility gate)",
+        "summary": "Read one dashboard: summary + its tile manifest (share-scope visibility gate)",
         "parameters": [
           {
             "name": "dashboardId",
@@ -143407,7 +143916,8 @@
                     "authorship",
                     "tileCount",
                     "shareScope",
-                    "isOrgDefault"
+                    "isOrgDefault",
+                    "tiles"
                   ],
                   "properties": {
                     "dashboardId": {
@@ -143449,6 +143959,28 @@
                     },
                     "isOrgDefault": {
                       "type": "boolean"
+                    },
+                    "tiles": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "tileKey",
+                          "displayName",
+                          "kind"
+                        ],
+                        "properties": {
+                          "tileKey": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        }
+                      }
                     }
                   }
                 }

@@ -29,6 +29,10 @@ import { spawnSync } from "node:child_process";
  */
 export const GATES = [
   "arch:merge-artifacts",
+  // F-040/#100 — cheap, and it gates the one file that can disarm the release image scan. Ordered here
+  // with the other "is the repo in a shape worth checking at all" gates rather than beside the build
+  // ones: a suppression that expired last month is a fact about the repo, not about this build.
+  "arch:vuln-allowlist",
   "arch:parity",
   // Before `arch:boundaries`: that gate resolves import boundaries THROUGH the .cjs mirror, so a mirror
   // that disagrees with the manifest makes its verdict meaningless. Better to say the mirror is wrong

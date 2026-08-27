@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1258,
-    "enriched": 1253,
+    "routes": 1259,
+    "enriched": 1254,
     "deficit": 5,
     "mutating": 715,
     "mutatingNoBody": 1,
-    "gets": 510,
+    "gets": 511,
     "getsNoResponse": 7
   },
   "modules": [
@@ -71,12 +71,12 @@
     },
     {
       "module": "08-encounters",
-      "routes": 31,
-      "enriched": 31,
+      "routes": 32,
+      "enriched": 32,
       "deficit": 0,
       "mutating": 22,
       "mutatingNoBody": 0,
-      "gets": 8,
+      "gets": 9,
       "getsNoResponse": 0
     },
     {

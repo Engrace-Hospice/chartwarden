@@ -47,7 +47,11 @@ describe("M34 provision gateway", () => {
       }),
     });
     await expect(
-      gateway.kekUnwrap.unwrap({ kekWrappedCiphertext: Buffer.from("wrapped"), kekId: "kek-1" }),
+      gateway.kekUnwrap.unwrap({
+        organizationId: "org-1",
+        kekWrappedCiphertext: Buffer.from("wrapped"),
+        kekId: "kek-1",
+      }),
     ).resolves.toEqual(plaintext);
   });
 
@@ -59,7 +63,11 @@ describe("M34 provision gateway", () => {
       }),
     });
     await expect(
-      gateway.kekUnwrap.unwrap({ kekWrappedCiphertext: Buffer.from("wrapped"), kekId: "kek-1" }),
+      gateway.kekUnwrap.unwrap({
+        organizationId: "org-1",
+        kekWrappedCiphertext: Buffer.from("wrapped"),
+        kekId: "kek-1",
+      }),
     ).rejects.toThrow("not 256 bits");
   });
 

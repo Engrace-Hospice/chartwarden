@@ -323,6 +323,41 @@ export interface SignedEncountersReader {
     organizationId: string,
     window: { from: IsoInstant; to: IsoInstant },
   ): Promise<{ readonly numerator: number; readonly denominator: number }>;
+
+  /**
+   * ORG-LEVEL skilled-nursing delivery per (admission, service date) over a window — the M8 half of HCI
+   * indicators 2, 8 and 9.
+   *
+   * Returns the day totals rather than a rate or a count for the same reason
+   * {@link lateEntryCountsForOrg} returns a pair: all three indicators reduce these days DIFFERENTLY (2
+   * measures the gaps BETWEEN visit dates inside an election, 8 counts routine-home-care days at/above a
+   * per-day minute floor, 9 counts weekend days at the same floor), and each reduction needs the spans M6
+   * holds to be intersected with these days. A reduction performed on either side of the module boundary
+   * would answer one indicator and destroy the other two.
+   *
+   * "Skilled nursing" is the `rn` and `lpn` disciplines; only SIGNED encounters count (an unsigned note is
+   * not evidence a visit was delivered). `minutes` is the recorded visit duration summed over the day, and
+   * is 0 when the day's encounters carry no start/end bracket — a visit that happened with no duration
+   * recorded still counts in `visits`, so indicator 2 (which asks only WHETHER a visit occurred) is not
+   * silently narrowed by a documentation gap that only indicators 8 and 9 care about.
+   *
+   * Aggregate-but-admission-linked within one org — no patient identifier, no narrative (D6).
+   */
+  skilledNursingDayTotalsForOrg(
+    organizationId: string,
+    window: { from: LocalDate; to: LocalDate },
+  ): Promise<ReadonlyArray<SkilledNursingDayTotal>>;
+}
+
+/** One (admission, service date) skilled-nursing total (§4.7 `skilledNursingDayTotalsForOrg`). */
+export interface SkilledNursingDayTotal {
+  readonly admissionId: AdmissionId;
+  /** The org-timezone calendar date the visit(s) occurred on, `YYYY-MM-DD`. */
+  readonly serviceDate: LocalDate;
+  /** Signed `rn`/`lpn` encounters on that date (≥ 1). */
+  readonly visits: number;
+  /** Summed recorded duration in whole minutes; 0 when no encounter that day carried a start/end bracket. */
+  readonly minutes: number;
 }
 
 /**

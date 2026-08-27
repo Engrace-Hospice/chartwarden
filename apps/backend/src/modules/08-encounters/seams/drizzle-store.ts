@@ -18,6 +18,12 @@ import { type EncounterReaderStore, createInMemoryEncounterReaderStore } from ".
 
 const E = schema.encounters;
 
+/** The `encounter_discipline` values that are SKILLED NURSING for the CMS HCI indicators (2, 8, 9). */
+const SKILLED_NURSING_DISCIPLINES = ["rn", "lpn"] as const;
+
+/** Encounter statuses that count as a delivered, attested visit (`draft`/`finalized`/`voided` do not). */
+const SIGNED_ENCOUNTER_STATUSES = ["signed", "cosigned"] as const;
+
 /** The actor id the read's withOrgContext envelope carries — the empty-string system sentinel the M4 audit
  *  trigger maps to a null actor (an aggregate read has no acting user; withOrgContext requires a userId). */
 const ENCOUNTER_READER_SYSTEM_USER_ID = "";
@@ -71,6 +77,53 @@ export function createDrizzleEncounterReaderStore(db: DbClient): EncounterReader
             if (r.tier !== "normal") numerator += n;
           }
           return { numerator, denominator };
+        },
+      );
+    },
+    /**
+     * The ORG-LEVEL skilled-nursing day totals HCI indicators 2, 8 and 9 read (see the seam doc on
+     * `SignedEncountersReader`). One grouped scan of `encounter`, no per-admission N+1.
+     *
+     * SIGNED only (`signed` / `cosigned`) — an unsigned note is not evidence a visit was delivered, and a
+     * `voided` one is evidence it was retracted. Minutes come from the `started_at`/`ended_at` bracket
+     * (EVV or clinician-entered); a row with no bracket contributes 0 minutes but still counts as a VISIT,
+     * because indicator 2 asks only whether a nurse came, and letting a missing duration erase the visit
+     * would turn a documentation gap into a fabricated care gap.
+     */
+    skilledNursingDayTotalsForOrg(organizationId, window) {
+      return withOrgContext(
+        db,
+        { organizationId, userId: ENCOUNTER_READER_SYSTEM_USER_ID },
+        async (tx) => {
+          const rows = await tx
+            .select({
+              admissionId: E.admissionId,
+              serviceDate: E.serviceDate,
+              visits: sql<number>`count(*)::int`,
+              // `epoch` on the interval → seconds; floor to whole minutes and sum. A null bracket
+              // contributes 0 rather than nulling the whole day's total.
+              minutes: sql<number>`coalesce(sum(
+                floor(greatest(extract(epoch from (${E.endedAt} - ${E.startedAt})), 0) / 60)
+              ), 0)::int`,
+            })
+            .from(E)
+            .where(
+              and(
+                eq(E.organizationId, organizationId),
+                inArray(E.discipline, SKILLED_NURSING_DISCIPLINES),
+                inArray(E.status, SIGNED_ENCOUNTER_STATUSES),
+                gte(E.serviceDate, window.from),
+                lt(E.serviceDate, window.to),
+              ),
+            )
+            .groupBy(E.admissionId, E.serviceDate);
+
+          return rows.map((r) => ({
+            admissionId: r.admissionId,
+            serviceDate: r.serviceDate,
+            visits: Number(r.visits) || 0,
+            minutes: Number(r.minutes) || 0,
+          }));
         },
       );
     },

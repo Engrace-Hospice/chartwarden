@@ -280,6 +280,11 @@ jobs:
                 "test:m34:hold-discovery:live test:m34:dsar-export:live test:m34:tenant-export:live
                 test:m34:tenant-export-approval:live",
             }
+          # F-045 (#105): the per-tenant DEK chain, which four modules' encryption surfaces terminated at
+          # and which had never once run. Its own runner because it DROPs and re-CREATEs the cluster roles
+          # and then relies on `wardenx_app` being refused a grant — a suite sharing a runner with one that
+          # re-grants anything would make that assertion pass or fail for the wrong reason.
+          - { name: "M34 tenant key provider", scripts: "test:m34:tenant-key-provider:live" }
           - { name: "M37 IPU", scripts: "test:m37:write:live" }
           - { name: "M37 privacy gates", scripts: "test:m37:privacy-gates:live" }
           # AC-01: the §7.4 break-glass co-signature as a real TWO-PERSON control. `cosign` matched on
@@ -321,7 +326,7 @@ jobs:
           - {
               name: "M30 HQRP & Quality",
               scripts:
-                "test:m30:scheduled-jobs:live test:m30:cost-report-filing-measure:live",
+                "test:m30:scheduled-jobs:live test:m30:cost-report-filing-measure:live test:m30:hci-inputs:live",
             }
           - {
               name: "M31 Portal & Telehealth",
@@ -344,6 +349,11 @@ jobs:
               name: "M33 export render",
               scripts: "test:m33:export-render:live test:m33:scheduled-jobs:live",
             }
+          # F-044 / F-059: the dashboard READ path (catalog → dashboard → tile manifest → tile → metric
+          # seam) and the D8 `reportable_scope` narrowing. Five of its eight assertions fail on the
+          # pre-fix tree, and the scope ones fail SILENTLY there — a self-scoped clinician reading the
+          # whole organization's per-clinician productivity looks exactly like a working tile.
+          - { name: "M33 read path", scripts: "test:m33:read-path:live" }
     services:
       # F-025 (#59): four of the newly-wired suites gate on `WARDENX_TEST_REDIS_URL` as well as the
       # database — `test:m30:scheduled-jobs:live`, `test:m33:scheduled-jobs:live`,
@@ -433,6 +443,17 @@ jobs:
 
       - name: Apply against a fresh disposable DB via the real CLI (pre-deploy simulation)
         run: bun run db:migrate
+
+      # F-033/#93 — partition rotation runs HERE rather than in a job of its own because this is the
+      # only job that already holds a fully migrated database, and rotation is a property of the
+      # migrated schema: the suite asserts that every time-RANGE partitioned table the migrations
+      # create has a creator function the catalog scan can find. A migration that adds a partitioned
+      # table without one fails this step, which is the check `arch:fitness` cannot make — it runs
+      # with no database, so it would have to parse migration text, and that approach demonstrably
+      # missed 3 of the 43 tables.
+      - name: Partition rotation — live proof (idempotency, DEFAULT-trap detection, creator coverage)
+        run: bun run test:partition-rotation:live
+
       - name: Verify --strict --schema-only fails the pipeline on checksum drift (not just warns)
         run: |
           docker exec wardenx-ci-pg-migrate psql -U postgres -d wardenx_migration_gate -c \
@@ -678,7 +699,7 @@ jobs:
       # `forbidOnly` is already on under CI (playwright.config.ts), so a stray `.only` fails the job
       # rather than silently shrinking the suite to one test — the browser-side version of the
       # self-skip this workflow's live jobs guard against.
-      - name: 18 critical-workflow specs + 6 axe-core WCAG 2A/AA scans (real browser, real stack)
+      - name: 20 browser specs — 13 critical-workflow + 7 axe-core WCAG 2A/AA scans (real stack)
         run: bun run test:e2e
       - name: Upload the Playwright report, traces and stack logs
         if: failure()

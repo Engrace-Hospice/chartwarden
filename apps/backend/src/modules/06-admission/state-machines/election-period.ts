@@ -58,6 +58,49 @@ export const ELECTION_PERIOD_GRAPH: Readonly<
 /** Recert periods (sequence ≥ 3) require an attested F2F before `setActive` (R-F2F-04, §2.4). */
 export const RECERT_SEQUENCE_FLOOR = 3;
 
+// ── the benefit-period WINDOW (42 CFR 418.21(a)) ────────────────────────────────────────────────────────
+//
+// A hospice election runs in benefit periods: an initial 90-day period, a second 90-day period, then an
+// unlimited number of 60-day periods. The length is therefore a pure function of the period's SEQUENCE —
+// which is why `election_period.period_kind` exists as an enum of exactly those two lengths.
+//
+// This is the source of truth the `m6.election.period_started` schema comment says the platform lacks
+// ("computing real dates here would mean fabricating a period-kind-derived (90/60-day) end date the schema
+// has no source of truth for"). It does not lack one: the regulation fixes the length, the sequence is
+// stored, and the START is the moment the period is activated — the same `activatedAt` the caller already
+// holds. The columns went unwritten because the write path stamps status directly and never ran the
+// `set_timestamp` effects this machine returns, not because the dates were unknowable.
+
+/** Days in each benefit-period kind (42 CFR 418.21(a)). */
+export const ELECTION_PERIOD_LENGTH_DAYS: Readonly<Record<"ninety_day" | "sixty_day", number>> = {
+  ninety_day: 90,
+  sixty_day: 60,
+};
+
+/** The `election_period_kind` a sequence number takes: 1 and 2 are 90-day, every later period is 60-day. */
+export function electionPeriodKindForSequence(sequenceNumber: number): "ninety_day" | "sixty_day" {
+  return sequenceNumber <= 2 ? "ninety_day" : "sixty_day";
+}
+
+/**
+ * The INCLUSIVE last day of a benefit period that became effective on `effectiveOn`.
+ *
+ * Inclusive because that is the convention every downstream consumer of a hospice benefit period already
+ * uses — a 90-day period effective 2026-01-01 ends 2026-03-31, which is the date that goes on the NOE and
+ * the claim, not 2026-04-01. Readers that want a half-open window add a day; `scheduled_end_at` is the
+ * last covered day, and `effective_at` is the first.
+ *
+ * Pure UTC date math on `YYYY-MM-DD` strings (the column type), so no timezone enters the calculation.
+ */
+export function electionPeriodScheduledEnd(
+  effectiveOn: LocalDate,
+  kind: "ninety_day" | "sixty_day",
+): LocalDate {
+  const start = new Date(`${effectiveOn}T00:00:00.000Z`);
+  const end = new Date(start.getTime() + (ELECTION_PERIOD_LENGTH_DAYS[kind] - 1) * 86_400_000);
+  return end.toISOString().slice(0, 10);
+}
+
 /**
  * Apply an election-period event (§2.3.2). Throws {@link AdmissionStateError} `ILLEGAL_TRANSITION` for
  * an unaccepted event, or the specific §2.4 code on a guard failure.

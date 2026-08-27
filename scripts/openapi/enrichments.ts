@@ -1044,6 +1044,7 @@ import {
 // ── from reporting-typebox.ts (READ + admin + metric-seam responses; request queries) ──────────────
 import {
   BaseListQuerySchema as M33BaseListQuerySchema,
+  DashboardDetailViewSchema as M33DashboardDetailViewSchema,
   DashboardListQuerySchema as M33DashboardListQuerySchema,
   DashboardListResponseSchema as M33DashboardListResponseSchema,
   DashboardSummaryViewSchema as M33DashboardSummaryViewSchema,
@@ -1384,6 +1385,7 @@ import {
   SignedSinceQuerySchema as M8SignedSinceQuerySchema,
   SupervisorReleaseSchema as M8SupervisorReleaseSchema,
   UpdateSelectionsSchema as M8UpdateSelectionsSchema,
+  VitalsListResponseSchema as M8VitalsListResponseSchema,
   VitalsResultResponseSchema as M8VitalsResultResponseSchema,
   VoidEncounterSchema as M8VoidEncounterSchema,
   VoidResponseSchema as M8VoidResponseSchema,
@@ -5957,6 +5959,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M8CaptureVitalsSchema,
     response: M8VitalsResultResponseSchema,
   },
+  "GET /api/v1/encounters/:encounterId/vitals": {
+    summary: "Read the vitals sets recorded on an encounter",
+    response: M8VitalsListResponseSchema,
+  },
   "PATCH /api/v1/encounters/:encounterId/vitals/:vitalId": {
     summary: "Edit a vitals set (§7.7 If-Match)",
     body: M8CaptureVitalsSchema,
@@ -9097,8 +9103,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M33DashboardListResponseSchema,
   },
   "GET /api/v1/reporting/dashboards/:dashboardId": {
-    summary: "Read one dashboard (share-scope visibility gate)",
-    response: M33DashboardSummaryViewSchema,
+    summary: "Read one dashboard: summary + its tile manifest (share-scope visibility gate)",
+    // F-044 — was the SUMMARY schema, which carries `tileCount` and no tiles. The render screen has
+    // always read `detail.tiles`; with the contract declaring no such field the generated client typed it
+    // away, and the screen's own fallback ("the tile manifest is not available in this context") became
+    // the only branch it could take.
+    response: M33DashboardDetailViewSchema,
   },
   "GET /api/v1/reporting/tiles/:tileKey": {
     summary: "Read a tile: compile+execute its spec (aggregate-only, D6)",

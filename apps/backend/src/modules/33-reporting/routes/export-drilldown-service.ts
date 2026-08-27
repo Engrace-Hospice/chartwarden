@@ -52,6 +52,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
 import type { M33WriteActor } from "./actor";
+import { type ReportScopeResolverPort, narrowScope } from "./read-service-drizzle";
 
 // ── shared DTOs ─────────────────────────────────────────────────────────────────────────────────────────
 
@@ -245,6 +246,12 @@ export interface M33ExportDrilldownDrizzleDeps {
   readonly newId?: () => string;
   /** Injected clock. */
   readonly now?: () => Date;
+  /**
+   * Resolves the caller's §4.7.1 `reportable_scope` envelope (D8). REQUIRED for the same reason as on the
+   * read service: this file's `scopeEnvelope` used to read `query.scopeOverride ?? "org"` off the request,
+   * so the CSV/PDF/XLSX export — the widest data surface M33 has — ran org-wide for every caller (F-059).
+   */
+  readonly scope: ReportScopeResolverPort;
 }
 
 /** A no-op CSV-export telemetry outbox (the best-effort default until the §4.10 dispatcher binds). */
@@ -252,13 +259,14 @@ const NOOP_CSV_OUTBOX: CsvExportOutboxPort = { async emitCsvStreamed() {} };
 /** A no-op drilldown-audit outbox (best-effort default). */
 const NOOP_DRILLDOWN_OUTBOX: DrilldownAuditOutboxPort = { async emitDrilldown() {} };
 
-function scopeEnvelope(actor: M33WriteActor, query: ExportQuery): ReportableScopeEnvelope {
-  return {
-    scopeKind: query.scopeOverride ?? "org",
-    organizationId: actor.organizationId,
-    membershipIds: [],
-    locationIds: [],
-  };
+/** The actor's RESOLVED scope, narrowed by an explicit `scopeOverride` (never widened by one). */
+async function scopeEnvelope(
+  deps: M33ExportDrilldownDrizzleDeps,
+  actor: M33WriteActor,
+  query: ExportQuery,
+): Promise<ReportableScopeEnvelope> {
+  return narrowScope(await deps.scope.resolve(actor), query.scopeOverride, actor.membershipId)
+    .scope;
 }
 
 let idCounter = 0;
@@ -313,11 +321,13 @@ export function createDrizzleM33ExportDrilldownBackend(deps: M33ExportDrilldownD
       measures: base.measures,
       maxRowLimit: base.maxRowLimit,
       drilldownUrlTemplate: base.drilldownUrlTemplate,
+      scopeMembershipColumn: base.scopeMembershipColumn,
+      scopeLocationColumn: base.scopeLocationColumn,
     };
     const translation = translateSpec(
       { ...spec, filters },
       translatorBase,
-      scopeEnvelope(actor, query),
+      await scopeEnvelope(deps, actor, query),
     );
     return { translation, rowLimit, viewName: view.displayName };
   };

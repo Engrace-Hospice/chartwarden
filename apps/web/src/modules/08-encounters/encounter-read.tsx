@@ -32,6 +32,7 @@ import {
 // `write-workflow.ts`'s authFailureRedirect can't route this ceremony to `/step-up` specifically — it
 // falls into the generic "you do not have permission" message below. Fixing that needs a
 // packages/auth-level change (every `requireStepUp` caller, not just M8), out of scope here.
+import type { paths } from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -63,6 +64,49 @@ interface PatientSummary {
   status: string;
 }
 
+/**
+ * One vitals set as `GET /encounters/:id/vitals` returns it (#92). Structurally typed off the
+ * generated client rather than restated, so a contract change breaks the build here instead of
+ * silently rendering `undefined`.
+ */
+type VitalsSet = NonNullable<
+  paths["/api/v1/encounters/{encounterId}/vitals"]["get"]["responses"]["200"]["content"]["application/json"]["vitals"]
+>[number];
+
+interface VitalCell {
+  readonly label: string;
+  /** The formatted measurement, or `null` when nobody recorded it (rendered as an em dash). */
+  readonly value: string | null;
+  readonly abnormal: boolean;
+}
+
+/**
+ * Project a vitals set into the strip's six cells. Units come from the row (the API stores each
+ * measurement's unit explicitly rather than assuming one), and `abnormal` reads the server's own
+ * `abnormalFlags` — re-deriving thresholds in the browser would put a second, drifting opinion of
+ * "normal" in front of a clinician.
+ */
+function vitalCells(v: VitalsSet | null): VitalCell[] {
+  const flagged = (key: string): boolean => v?.abnormalFlags.includes(key) ?? false;
+  const num = (n: number | null | undefined, suffix = ""): string | null =>
+    typeof n === "number" ? `${n}${suffix}` : null;
+  const bp =
+    typeof v?.bpSystolic === "number" && typeof v?.bpDiastolic === "number"
+      ? `${v.bpSystolic}/${v.bpDiastolic}`
+      : null;
+  const temp = v?.temperature
+    ? `${v.temperature}${v.temperatureUnit === "f" ? "°F" : v.temperatureUnit === "c" ? "°C" : ""}`
+    : null;
+  return [
+    { label: "HR", value: num(v?.heartRate), abnormal: flagged("heart_rate") },
+    { label: "RR", value: num(v?.respiratoryRate), abnormal: flagged("respiratory_rate") },
+    { label: "Temp", value: temp, abnormal: flagged("temperature") },
+    { label: "BP", value: bp, abnormal: flagged("bp_systolic") || flagged("bp_diastolic") },
+    { label: "SpO₂", value: num(v?.spo2, "%"), abnormal: flagged("spo2") },
+    { label: "Pain", value: num(v?.painScore), abnormal: flagged("pain_score") },
+  ];
+}
+
 // The HearthNote sections the documentation frame lays out (SUBJECTIVE/OBJECTIVE/ASSESSMENT/PLAN). The
 // read DTO doesn't return their content yet, so each is rendered as a labelled, empty section — the
 // document scaffold is faithful; the prose fills in when the read exposes the assembled body.
@@ -78,6 +122,7 @@ export function EncounterRead(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [vitals, setVitals] = useState<VitalsSet[] | null>(null);
   const [ceremony, setCeremony] = useState<CeremonyMode>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -109,20 +154,29 @@ export function EncounterRead(): JSX.Element {
       cosignedAt: data.cosignedAt ?? null,
     });
     const pid = patientId ?? data.patientId;
-    const [cos, pat] = await Promise.all([
+    const [cos, pat, vit] = await Promise.all([
       client.GET("/api/v1/encounters/{encounterId}/cosignature", {
         params: { path: { encounterId } },
       }),
       client.GET("/api/v1/patients/{id}", { params: { path: { id: pid } } }),
+      client.GET("/api/v1/encounters/{encounterId}/vitals", {
+        params: { path: { encounterId } },
+      }),
     ]);
     setCosignStatus(cos.data?.status ?? null);
     if (pat.data) setPatient(pat.data as PatientSummary);
+    // A vitals read that fails leaves the strip in its "no data" state rather than failing the whole
+    // chart open — the header, signatures and cosign state are the load-bearing part of this screen.
+    setVitals(vit.data?.vitals ?? null);
     setLoading(false);
   }, [client, encounterId, patientId]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // The service returns newest-capture-first, so the strip's set is simply the head.
+  const newestVitals = vitals?.[0] ?? null;
 
   const closeCeremony = useCallback(() => {
     setCeremony(null);
@@ -277,7 +331,10 @@ export function EncounterRead(): JSX.Element {
               {e.isF2f ? " · F2F" : ""} · v{e.version}
             </p>
 
-            {/* Vitals strip — labelled cells; values render once the read exposes the vitals row. */}
+            {/* Vitals strip — the newest recorded set (#92). Each cell shows a real measurement or an
+                em dash meaning nobody recorded it; the two are different clinical statements and the
+                read DTO distinguishes them, so this does too. Abnormal readings are toned from the
+                server's own `abnormalFlags`, never re-derived here. */}
             <section
               style={{
                 ...cardSurface,
@@ -286,16 +343,34 @@ export function EncounterRead(): JSX.Element {
                 display: "flex",
                 gap: "1.5rem",
                 flexWrap: "wrap",
+                alignItems: "flex-end",
               }}
             >
-              {["HR", "RR", "Temp", "BP", "SpO₂", "Pain"].map((v) => (
-                <div key={v} style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}>
-                  <span style={vitalLabel}>{v}</span>
-                  <span className="tabular-nums" style={{ fontSize: "1.1rem", color: t.muted }}>
-                    —
+              {vitalCells(newestVitals).map((cell) => (
+                <div
+                  key={cell.label}
+                  style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}
+                >
+                  <span style={vitalLabel}>{cell.label}</span>
+                  <span
+                    className="tabular-nums"
+                    style={{
+                      fontSize: "1.1rem",
+                      color:
+                        cell.value === null ? t.muted : cell.abnormal ? t.warning : t.onSurface,
+                    }}
+                  >
+                    {cell.value ?? "—"}
                   </span>
                 </div>
               ))}
+              <p style={{ ...meta, marginLeft: "auto", textAlign: "right" }}>
+                {newestVitals
+                  ? `Recorded ${new Date(newestVitals.capturedAt).toLocaleString()}${
+                      (vitals?.length ?? 0) > 1 ? ` · ${vitals?.length} sets this visit` : ""
+                    }`
+                  : "No vitals recorded on this encounter"}
+              </p>
             </section>
 
             {/* SOAP document scaffold */}

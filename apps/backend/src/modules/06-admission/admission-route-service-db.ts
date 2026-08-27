@@ -59,6 +59,10 @@ import {
 } from "./state-machines/admission";
 import { planDischarge, planRevocation, planTransferOut } from "./state-machines/commands";
 import type { SideEffect } from "./state-machines/effects";
+import {
+  electionPeriodKindForSequence,
+  electionPeriodScheduledEnd,
+} from "./state-machines/election-period";
 import { AdmissionStateError } from "./state-machines/errors";
 import { type FaceToFaceState, transitionFaceToFace } from "./state-machines/face-to-face";
 import { type LevelOfCareState, transitionLevelOfCare } from "./state-machines/level-of-care";
@@ -364,14 +368,49 @@ export function createDbAdmissionRouteService(
           .where(and(eq(LOC.admissionId, ctx.admissionId), sql`${LOC.endedAt} is null`));
       } else if (e.kind === "end_election_period") {
         // §2.3.1 discharge/revocation/transfer cascade — complete every non-terminal benefit period.
+        //
+        // `actual_end_at` is stamped here, not left null: it is the `complete` transition's own
+        // `set_timestamp` effect (state-machines/election-period.ts), and a completed period whose
+        // actual end is unknown makes the period's real length unrecoverable — which is the whole
+        // question HCI indicator 2 and M28's benefit-period projection ask of this row. Only ever SET
+        // on the transition, never recomputed, so a period completed earlier keeps its own date.
         await tx
           .update(EP)
-          .set({ status: "completed", version: sql`${EP.version} + 1`, updatedAt: now() })
+          .set({
+            status: "completed",
+            actualEndAt: isoDay(now()),
+            version: sql`${EP.version} + 1`,
+            updatedAt: now(),
+          })
           .where(and(eq(EP.admissionId, ctx.admissionId), ne(EP.status, "completed")));
       }
       // `audit`, `set_timestamp`, `set_flag`, `start_level_of_care` are folded into the aggregate
       // INSERT/UPDATE by the caller; `audit` is the M4 write-audit trigger (automatic).
     }
+  }
+
+  /** A `Date` → the UTC `YYYY-MM-DD` string M6's `date` columns store. */
+  function isoDay(d: Date): string {
+    return d.toISOString().slice(0, 10);
+  }
+
+  /**
+   * The `election_period` window a `setActive` stamps: the day the period became effective plus the
+   * INCLUSIVE last day 42 CFR 418.21(a) gives a period of that sequence (1–2 → 90 days, 3+ → 60).
+   * Spread into the same `.set({...})` as `status`, so a period cannot go active without a window.
+   */
+  function electionPeriodWindow(
+    effectiveAt: Date,
+    sequenceNumber: number,
+  ): { effectiveAt: string; scheduledEndAt: string } {
+    const effectiveOn = isoDay(effectiveAt);
+    return {
+      effectiveAt: effectiveOn,
+      scheduledEndAt: electionPeriodScheduledEnd(
+        effectiveOn,
+        electionPeriodKindForSequence(sequenceNumber),
+      ),
+    };
   }
 
   /** Load a referral's lock/state facts, or 404. */
@@ -1373,7 +1412,17 @@ export function createDbAdmissionRouteService(
         if (facts.periodId) {
           await tx
             .update(EP)
-            .set({ status: "active", version: sql`${EP.version} + 1` })
+            .set({
+              status: "active",
+              // The `setActive` transition's `set_timestamp effective_at` effect, folded in here the
+              // same way `status` is. Without it the three date columns were written by NOTHING in the
+              // codebase while being read in seven places — so M6's own `ElectionPeriodReader` (which
+              // filters `isNotNull(effective_at)`) returned an empty list for every admission on the
+              // platform, and HCI indicator 1's denominator, which selects election periods by
+              // `effective_at`, was permanently zero.
+              ...electionPeriodWindow(activatedAt, facts.periodSequence),
+              version: sql`${EP.version} + 1`,
+            })
             .where(and(eq(EP.id, facts.periodId), ne(EP.status, "active")));
         }
         await runEffects(
@@ -1574,14 +1623,19 @@ export function createDbAdmissionRouteService(
           .select({ seq: sql<number>`coalesce(max(${EP.sequenceNumber}), 0)` })
           .from(EP)
           .where(eq(EP.admissionId, admissionId));
+        const nextSequence = Number(max?.seq ?? 0) + 1;
         const ep = firstOrThrow(
           await tx
             .insert(EP)
             .values({
               organizationId,
               admissionId,
-              sequenceNumber: Number(max?.seq ?? 0) + 1,
-              periodKind: "ninety_day",
+              sequenceNumber: nextSequence,
+              // 42 CFR 418.21(a): periods 1 and 2 are 90-day, every later period is 60-day. This was a
+              // hard-coded `ninety_day` at every insert site, which is right only for the two seeds that
+              // are always sequence 1 — a recert period and a transfer-in's carried sequence can be any
+              // number, and the kind is what `scheduled_end_at` is derived from.
+              periodKind: electionPeriodKindForSequence(nextSequence),
             })
             .returning({ id: EP.id, status: EP.status, version: EP.version }),
           "election period insert returned no row",
@@ -1696,7 +1750,13 @@ export function createDbAdmissionRouteService(
         if (outcome.activatesPeriod && cti.epId) {
           await tx
             .update(EP)
-            .set({ status: "active", version: sql`${EP.version} + 1` })
+            .set({
+              status: "active",
+              // Same `setActive` effect as the admission-activation path above — a recert period needs
+              // its own window, and `period.seq` here is exactly the sequence 418.21(a) keys the length on.
+              ...electionPeriodWindow(now(), period?.seq ?? 1),
+              version: sql`${EP.version} + 1`,
+            })
             .where(and(eq(EP.id, cti.epId), ne(EP.status, "active")));
           await outbox.publish(tx, {
             eventName: "m6.election.period_started",
@@ -2347,8 +2407,18 @@ export function createDbAdmissionRouteService(
               organizationId,
               admissionId,
               sequenceNumber: plan.inherited.sequence,
-              periodKind: "ninety_day",
+              periodKind: electionPeriodKindForSequence(plan.inherited.sequence),
               status: plan.inherited.state,
+              // The inherited period is inserted straight into `active` (42 CFR 418.28 — the sending
+              // hospice's certification carries it), so it never passes the `setActive` update where
+              // every other period gets its window. `priorElectionStartDate` is documented on
+              // `TransferInInput` as "anchors the inherited active period's start" and was read by the
+              // in-memory slice alone; the Drizzle path discarded it, leaving the one period a receiving
+              // hospice cannot re-derive a start for with no start at all.
+              ...electionPeriodWindow(
+                new Date(`${input.priorElectionStartDate}T00:00:00.000Z`),
+                plan.inherited.sequence,
+              ),
             })
             .returning({ id: EP.id }),
           "election period insert returned no row",
@@ -2360,7 +2430,7 @@ export function createDbAdmissionRouteService(
               organizationId,
               admissionId,
               sequenceNumber: plan.next.sequence,
-              periodKind: "ninety_day",
+              periodKind: electionPeriodKindForSequence(plan.next.sequence),
               status: plan.next.state,
             })
             .returning({ id: EP.id }),

@@ -27,7 +27,7 @@ import {
 
 interface TileDescriptor {
   tileKey: string;
-  displayName?: string;
+  displayName: string;
 }
 
 interface DashboardDetail {
@@ -37,7 +37,10 @@ interface DashboardDetail {
   tileCount: number;
   shareScope: "private" | "role" | "org";
   isOrgDefault: boolean;
-  tiles?: TileDescriptor[];
+  // F-044 — the tile manifest, now part of the published contract. It used to be optional and was
+  // projected by no backend, so the "the tile manifest is not available in this context" empty state was
+  // the only state this screen could reach.
+  tiles: TileDescriptor[];
 }
 
 interface TileReadResult {
@@ -87,7 +90,7 @@ export function RoleDashboard(): JSX.Element {
   if (error || !detail)
     return <EmptyState title="Unavailable" description={error ?? "No dashboard."} />;
 
-  const tiles = detail.tiles ?? [];
+  const tiles = detail.tiles;
 
   return (
     <DetailPageLayout
@@ -105,7 +108,7 @@ export function RoleDashboard(): JSX.Element {
       {tiles.length === 0 ? (
         <EmptyState
           title="No KPIs"
-          description={`This role dashboard declares ${detail.tileCount} tile(s); the tile manifest is not available in this context.`}
+          description="This role dashboard's report definition resolves to no report base, so it has no tile to read."
         />
       ) : (
         <KpiStrip>

@@ -43,6 +43,8 @@ import {
   RISK_BAND_TONE,
   SHIFT_DISCIPLINES,
   SHIFT_STATUS_TONE,
+  SOURCE_FILTERS,
+  STATE_FILTERS,
   clockTime,
   dateTime,
   disciplineLabel,
@@ -344,5 +346,43 @@ describe("M19 formatting helpers", () => {
     // An unparseable value becomes "now" rather than travelling as garbage — every field using it is
     // optional or defaulted, so "now" is never a silently wrong clinical fact.
     expect(Number.isNaN(Date.parse(toInstant("nonsense")))).toBe(false);
+  });
+  // ── §5.1 queue filter pickers (F-041 / #101) ────────────────────────────────────────────────────
+  //
+  // These ran as `key={option.value || "open"}`, and `CALL_STATES` CONTAINS `"open"` — so the
+  // unnarrowed sentinel and the real open state rendered as two `<option>`s sharing one key, and React
+  // stopped guaranteeing which DOM node belonged to which. The invariant is pinned here rather than in
+  // the component because it is a property of the DATA, and because a duplicate key is a console
+  // warning at runtime: nothing fails, so nothing catches it.
+
+  it("gives every state-filter option a key that is unique across the list", () => {
+    const keys = STATE_FILTERS.map((o) => o.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("gives every source-filter option a key that is unique across the list", () => {
+    const keys = SOURCE_FILTERS.map((o) => o.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("keeps each sentinel key out of the enum it prepends, so a real member can never collide with it", () => {
+    // The specific collision that was live: `""` falling back to the string `"open"`.
+    expect(CALL_STATES).toContain("open");
+    const sentinel = STATE_FILTERS.find((o) => o.value === "");
+    expect(sentinel).toBeDefined();
+    expect(CALL_STATES).not.toContain(sentinel?.key as never);
+    const sourceSentinel = SOURCE_FILTERS.find((o) => o.value === "");
+    expect(sourceSentinel).toBeDefined();
+    expect(SOURCE_FILTERS.filter((o) => o.value !== "").map((o) => o.value)).not.toContain(
+      sourceSentinel?.key as never,
+    );
+  });
+
+  it("exposes exactly one unnarrowed sentinel per picker, and every real value once", () => {
+    expect(STATE_FILTERS.filter((o) => o.value === "")).toHaveLength(1);
+    expect(SOURCE_FILTERS.filter((o) => o.value === "")).toHaveLength(1);
+    const states = STATE_FILTERS.filter((o) => o.value !== "").map((o) => o.value);
+    expect(states).toEqual([...CALL_STATES]);
+    expect(new Set(states).size).toBe(states.length);
   });
 });
