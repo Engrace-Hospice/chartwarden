@@ -30,17 +30,34 @@ allowlist + active-org enumerator. M23 and M27 are now **merged** (no longer pla
 forward-seam binds for the CMS-1984-14 cap calc (`CapAccrualReader` et al.) and M27's own forward seam into
 M30 (`CostReportFilingStatusReader`) are **live and tested**, not deny-stubs (`m30-forward-seam-binds.test.ts`,
 `m26-cost-report-cap-seam.live.test.ts`, `m27-validation-context.live.test.ts`) — this un-suppresses the CoP
-418.310 failure-to-file indicator and half of HCI 5/6/7's inputs. **`hci_composite`'s real remaining blocker
-is DATA, not wiring**: 9 of its 10 indicators need M6/M8 aggregate seams
-(per-election-period LOC-days, discharge timing, cross-setting transition sequences, per-day
-skilled-nursing minutes) that were never built — only `hci_indicator_10` computes. All 10 of the
+418.310 failure-to-file indicator. **The HCI is now resolved as far as a provider-side system can take it
+(F-042, #102).** Seven of the ten indicators compute from data the agency itself records: 1 and 2 off M6's
+election periods, 3 and 4 off its discharges, 8 and 9 off M6 level-of-care day spans intersected with a new
+M8 per-day skilled-nursing read (`skilledNursingDayTotalsForOrg`), and 10 off the death census. **Three
+never will**: 5, 6 and 7 are defined by CMS over the beneficiary's Medicare claims across EVERY provider —
+the inpatient stay in the middle of a burdensome transition, and the non-hospice Part A/B spend — which no
+single-tenant EHR holds. They are a DECLARED absence (`HCI_UNAVAILABLE_INDICATORS`) that computes a real
+`quality_measure_value` row carrying its reason, not an unbound resolver that throws three DLQ entries per
+provider entity per night, and the quality hub reads them as "Not computable here" rather than as
+"Suppressed (low N)" — `unavailableReason` on the wire is what tells those two apart.
+**`hci_composite` therefore SUPPRESSES rather than scoring**, and that is the fix, not a remaining gap: the
+composite is a count out of ten, an un-computable indicator contributes a zero exactly like a MISSED one,
+and the best a scoring composite could ever publish here is 7/10 — which is precisely
+`compositeAboveAverageScore`, so every tenant would sit on the "above the national average" boundary as an
+artefact of what the platform cannot measure. Getting there needed a defect one layer down first:
+`election_period.effective_at`/`scheduled_end_at`/`actual_end_at` were read in seven places and **written
+in none** (the `setActive` transition returns a `set_timestamp` effect the write path never ran), so
+`ElectionPeriodReader` answered `[]` for every admission and HCI indicator 1 — nominally bound — selected
+its denominator by `effective_at` and was permanently 0/0. Bound is not computing. All 10 of the
 remaining operational measures are now bound, including `bereavement_coverage_rate` (M16) and the two
 that needed an M15 producer-side fix first — `volunteer_compliance_gate_rate` /
 `supervisory_visit_on_time` used to return a pre-divided rate (no denominator, so CMS small-N suppression
 couldn't apply); M15's `DisciplineComplianceProvider` now exposes the count pair beside each rate method
 (`supervisoryOnTimeCounts`/`volunteerGateComplianceCounts`), the same store round-trip, no new query.
-`opioid_on_admission_rate` remains genuinely blocked — it needs an M38 RxCUI→therapeutic-class capability
-that doesn't exist yet.
+`opioid_on_admission_rate` is **bound and computing** (`resolveOpioidOnAdmissionInput`) — it walks M6's
+admission-onset census, calls M12's per-admission medication-order read and classifies by drug NAME inside
+the admission's med-rec window, so the M38 RxCUI→therapeutic-class capability it was once said to be
+blocked on is not on its path at all.
 
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104, see
 [`audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md`](./audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md)):

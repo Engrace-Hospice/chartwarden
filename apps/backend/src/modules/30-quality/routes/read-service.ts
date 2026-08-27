@@ -56,6 +56,17 @@ export interface MeasureValueView {
   readonly rate: number | null;
   readonly thresholdMet: boolean | null;
   readonly bandColor: MeasureBandColor;
+  /**
+   * Why this measure could not be computed AT ALL, or null when the value is a real (or low-N) one.
+   *
+   * `insufficient_n` collapses two different facts into one band: "we counted and the population was under
+   * the reportable floor" and "the input for this measure is not data a provider-side system holds"
+   * (HCI 5/6/7, whose populations are the beneficiary's Medicare claims across every provider). Both show a
+   * null rate, so without this the quality hub labels the second "Suppressed (low N)" — which is false, and
+   * points a Director of Quality at a patient-volume problem that does not exist. Projected from the
+   * persisted `computation_snapshot`, so the reason travels with the value a surveyor asks about.
+   */
+  readonly unavailableReason: string | null;
   readonly computedAt: string;
   readonly computeVersion: string;
   readonly snapshotContentHash: string;

@@ -133958,6 +133958,7 @@
                                   "rate",
                                   "thresholdMet",
                                   "bandColor",
+                                  "unavailableReason",
                                   "computedAt",
                                   "computeVersion",
                                   "snapshotContentHash",
@@ -134052,6 +134053,16 @@
                                       {
                                         "const": "insufficient_n",
                                         "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "unavailableReason": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
                                       }
                                     ]
                                   },
@@ -134182,6 +134193,7 @@
                           "rate",
                           "thresholdMet",
                           "bandColor",
+                          "unavailableReason",
                           "computedAt",
                           "computeVersion",
                           "snapshotContentHash",
@@ -134276,6 +134288,16 @@
                               {
                                 "const": "insufficient_n",
                                 "type": "string"
+                              }
+                            ]
+                          },
+                          "unavailableReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
                               }
                             ]
                           },

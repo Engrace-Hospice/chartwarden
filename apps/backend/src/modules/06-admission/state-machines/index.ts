@@ -48,7 +48,10 @@ export {
 } from "./admission";
 export {
   ELECTION_PERIOD_GRAPH,
+  ELECTION_PERIOD_LENGTH_DAYS,
   RECERT_SEQUENCE_FLOOR,
+  electionPeriodKindForSequence,
+  electionPeriodScheduledEnd,
   transitionElectionPeriod,
   type ElectionPeriodEvent,
   type ElectionPeriodState,

@@ -13,7 +13,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { LevelOfCarePeriodReader } from "@wardenx/types";
-import { and, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
 
 const EP = schema.electionPeriods;
 const LOC = schema.levelOfCarePeriods;
@@ -26,6 +26,22 @@ const SYSTEM_USER_ID = "";
 
 /** Parse a `date` column value (Drizzle returns it as a `yyyy-mm-dd` string) to a `Date` at UTC midnight. */
 const toDate = (d: string): Date => new Date(`${d}T00:00:00.000Z`);
+
+const MS_PER_DAY = 86_400_000;
+
+/** A `Date` (or a `date`-column string) as the UTC `yyyy-mm-dd` the window bounds are expressed in. */
+const toIsoDay = (d: Date | string): string =>
+  typeof d === "string" ? d.slice(0, 10) : d.toISOString().slice(0, 10);
+
+/** The day AFTER `isoDay` — turns M6's INCLUSIVE `scheduled_end_at`/`actual_end_at` into a half-open bound. */
+const dayAfter = (isoDay: string): string =>
+  new Date(toDate(isoDay).getTime() + MS_PER_DAY).toISOString().slice(0, 10);
+
+/** The later of two `yyyy-mm-dd` strings (lexicographic order IS chronological order for ISO dates). */
+const maxDay = (a: string, b: string): string => (a >= b ? a : b);
+
+/** The earlier of two `yyyy-mm-dd` strings. */
+const minDay = (a: string, b: string): string => (a <= b ? a : b);
 
 /**
  * The production {@link LevelOfCarePeriodReader} over M6's `election_period` / `level_of_care_period`
@@ -77,7 +93,10 @@ export function createLevelOfCarePeriodReader(db: DbClient): LevelOfCarePeriodRe
           if (p.effectiveAt === null) continue; // defensive: a period always carries an effectiveAt in practice
           const periodStart = toDate(p.effectiveAt);
           const endSource = p.actualEndAt ?? p.scheduledEndAt;
-          const periodEnd = endSource === null ? null : toDate(endSource);
+          // `scheduled_end_at`/`actual_end_at` are the period's INCLUSIVE last day (a 90-day period
+          // effective 2026-01-01 ends 2026-03-31 — the date that goes on the NOE). Comparing a LOC start
+          // against midnight OF that day would drop a level of care begun on the period's final day.
+          const periodEnd = endSource === null ? null : toDate(dayAfter(endSource));
           const hasChcOrGipDay = locRows.some((loc) => {
             if (loc.admissionId !== p.admissionId) return false;
             const startsBeforePeriodEnds = periodEnd === null || loc.effectiveAt < periodEnd;
@@ -87,6 +106,91 @@ export function createLevelOfCarePeriodReader(db: DbClient): LevelOfCarePeriodRe
           if (hasChcOrGipDay) numerator += 1;
         }
         return { numerator, denominator: periods.length };
+      });
+    },
+
+    levelOfCareDaySpans(organizationId, period) {
+      return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const rows = await t
+          .select({
+            admissionId: LOC.admissionId,
+            levelOfCare: LOC.levelOfCare,
+            effectiveAt: LOC.effectiveAt,
+            endedAt: LOC.endedAt,
+          })
+          .from(LOC)
+          .where(
+            and(
+              eq(LOC.organizationId, organizationId),
+              // Overlap, not containment: a level of care that began before the window and is still
+              // running inside it contributes days to the window and must not be filtered out.
+              lt(LOC.effectiveAt, toDate(period.to)),
+              or(sql`${LOC.endedAt} is null`, gte(LOC.endedAt, toDate(period.from))),
+            ),
+          );
+
+        const spans: {
+          admissionId: string;
+          levelOfCare: string;
+          from: string;
+          to: string;
+        }[] = [];
+        for (const r of rows) {
+          // The day a level of care ENDS belongs to whatever level follows it, not to this one — so the
+          // span is half-open at the end. Without that the changeover day would be counted twice (once as
+          // routine home care, once as general inpatient), and HCI indicator 8's denominator would exceed
+          // the patient's actual days on service.
+          const startDay = toIsoDay(r.effectiveAt);
+          const endDayExclusive = r.endedAt === null ? period.to : toIsoDay(r.endedAt);
+          const from = maxDay(startDay, period.from);
+          const to = minDay(endDayExclusive, period.to);
+          if (from >= to) continue; // clipped away entirely, or a same-instant open/close
+          spans.push({ admissionId: r.admissionId, levelOfCare: r.levelOfCare, from, to });
+        }
+        return spans;
+      });
+    },
+
+    electionPeriodSpans(organizationId, period) {
+      return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const rows = await t
+          .select({
+            id: EP.id,
+            admissionId: EP.admissionId,
+            effectiveAt: EP.effectiveAt,
+            scheduledEndAt: EP.scheduledEndAt,
+            actualEndAt: EP.actualEndAt,
+          })
+          .from(EP)
+          .where(
+            and(
+              eq(EP.organizationId, organizationId),
+              isNotNull(EP.effectiveAt),
+              lt(EP.effectiveAt, period.to),
+            ),
+          );
+
+        const spans: {
+          admissionId: string;
+          electionPeriodId: string;
+          from: string;
+          to: string;
+        }[] = [];
+        for (const r of rows) {
+          if (r.effectiveAt === null) continue; // narrowed by the SQL predicate; kept for the type
+          // `actual_end_at` wins over `scheduled_end_at`: a period completed early by discharge, death or
+          // revocation really did end then, and scoring a gap against the days after it would penalise the
+          // agency for not visiting a patient who was no longer on service.
+          const endInclusive = r.actualEndAt ?? r.scheduledEndAt;
+          const endExclusive = endInclusive === null ? period.to : dayAfter(endInclusive);
+          const from = maxDay(toIsoDay(r.effectiveAt), period.from);
+          const to = minDay(endExclusive, period.to);
+          if (from >= to) continue;
+          spans.push({ admissionId: r.admissionId, electionPeriodId: r.id, from, to });
+        }
+        return spans;
       });
     },
   };
