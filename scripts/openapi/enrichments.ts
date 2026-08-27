@@ -6202,11 +6202,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/admissions/:admissionId/hope/timepoints": {
     summary: "Record a new HOPE timepoint (draft; RN/NP/MD author)",
     body: M10RecordTimepointSchema,
+    status: 201,
     response: M10HopeAssessmentResponseSchema,
   },
   "POST /api/v1/admissions/:admissionId/hope/sfv": {
     summary: "Record an SFV completion (RFA-04; RN/NP author)",
     body: M10RecordSfvSchema,
+    status: 201,
     response: M10HopeAssessmentResponseSchema,
   },
   "PUT /api/v1/hope/assessments/:id": {
@@ -6222,6 +6224,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/hope/assessments/:id/correct": {
     summary: "Insert a correction RFA (supersedes the original)",
     body: M10CorrectTimepointSchema,
+    status: 201,
     response: M10HopeAssessmentResponseSchema,
   },
   "GET /api/v1/hope/assessments/:id": {
@@ -6235,6 +6238,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/hope/assessments/:id/summary-pdf": {
     summary: "Request the printable HOPE summary (emits summary_requested)",
     body: M10SummaryPdfSchema,
+    status: 202,
     response: M10HopeSummaryRequestedResponseSchema,
   },
   "GET /api/v1/hope/assessments/:id/validation": {
@@ -6264,6 +6268,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/hope/submissions/assemble": {
     summary: "Force-assemble a submission outside the cron cadence",
     body: M10AssembleSubmissionSchema,
+    status: 201,
     response: M10HopeSubmissionResponseSchema,
   },
   "GET /api/v1/hope/dashboard/compliance": {

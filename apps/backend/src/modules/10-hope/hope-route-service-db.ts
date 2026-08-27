@@ -23,6 +23,7 @@ import { type DbClient, schema } from "@wardenx/db";
 // target_date)` demands it); the DB supersede trigger flips the original.
 import {
   type CaptureDecision,
+  HOPE_VALIDATION_RULES,
   HopeStateError,
   type J2051SymptomReading,
   assertAdmissionActiveAtTarget,
@@ -60,6 +61,7 @@ import type {
 } from "./routes/service";
 import { rateOf } from "./routes/service";
 import { regenerateSchedulesForAdmission } from "./scheduling/schedule-writer";
+import { runHopeAssessmentValidation } from "./validation/run-validation";
 
 const ASSESS = schema.hopeAssessments;
 const SCHED = schema.hopeTimepointSchedules;
@@ -103,6 +105,12 @@ const D8_SNAPSHOT_SCALES = ["pps", "esas_r"] as const;
 
 /** The §D8 rule id + message the compensating warning finding carries (spec §D8 / M10 §7.13). */
 const D8_MISSING_PPS_RULE = "D8_CLINICAL_CONTEXT_PPS_MISSING";
+
+/** Every rule id the CMS pre-submission engine produces (F-057). `getValidation` recomputes these and
+ * so must NOT also return the persisted copies, while every OTHER stored finding — the D8 missing-PPS
+ * warning above, and the per-item iQIES rejection findings the reconcile pass writes — has no other
+ * source and is merged in. */
+const CMS_RULE_IDS: ReadonlySet<string> = new Set(Object.values(HOPE_VALIDATION_RULES));
 
 /** The §D8 scales snapshotted at HOPE sign — skipped in the DB backend (M9 seam not threaded; §7.13). */
 const j2051EntriesOf = (data: Record<string, unknown>): J2051SymptomReading[] => {
@@ -254,6 +262,30 @@ export function createDbHopeBackend(
   }
 
   /**
+   * F-057 — the sibling target dates the cross-RFA temporal rules need (HUV1 must fall after the
+   * Admission timepoint; HUV2 after HUV1). Read from the admission's own SIGNED assessments, so a
+   * superseded or still-draft sibling never becomes the reference point. `null` for an RFA that has no
+   * predecessor, which the engine reads as "no ordering to check" rather than as a violation.
+   */
+  async function siblingTargetDates(
+    t: DbClient,
+    admissionId: string,
+  ): Promise<{ admissionTargetDate: string | null; huv1TargetDate: string | null }> {
+    const rows = (await t
+      .select({ rfaKind: ASSESS.rfaKind, targetDate: ASSESS.targetDate })
+      .from(ASSESS)
+      .where(and(eq(ASSESS.admissionId, admissionId), eq(ASSESS.status, "signed")))) as {
+      rfaKind: string;
+      targetDate: Date;
+    }[];
+    const earliest = (kind: string): string | null => {
+      const dates = rows.filter((r) => r.rfaKind === kind).map((r) => r.targetDate.getTime());
+      return dates.length === 0 ? null : new Date(Math.min(...dates)).toISOString();
+    };
+    return { admissionTargetDate: earliest("01_admission"), huv1TargetDate: earliest("02_huv1") };
+  }
+
+  /**
    * #45 / #48 — WHOSE admission this is and WHAT STATE it is in, through M6's `AdmissionStatusReader`:
    * the subject of a HOPE record, and the fact the §2.3 active-admission guard turns on.
    *
@@ -374,28 +406,64 @@ export function createDbHopeBackend(
 
     // ── Pre-submission validation findings (§3.3 hope_validation_finding) ───────────────────────────
     async getValidation(organizationId, id) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const [a] = (await tx
-          .select({ id: ASSESS.id })
-          .from(ASSESS)
-          .where(eq(ASSESS.id, id))
-          .limit(1)) as {
-          id: string;
-        }[];
-        if (!a) throw new NotFoundError(`HOPE assessment ${id} not found`);
-        const rows = await tx
-          .select({ ruleId: FINDING.ruleId, severity: FINDING.severity, message: FINDING.message })
+      // F-057 — §4.1 route 14 is "Pre-submission validation findings (run ON-DEMAND for the row)", and
+      // this only ever SELECTed. Since nothing wrote a CMS finding anywhere in the codebase, it returned
+      // an empty list for every assessment ever recorded — a permanently clean bill of health the HOPE
+      // Assessment Detail rail rendered as "No findings." and whose error count gated a submission-blocked
+      // banner that could therefore never appear.
+      //
+      // The rule set is RECOMPUTED here rather than read back, for two reasons: a DRAFT has no persisted
+      // findings at all (they are written at sign) and a draft is precisely when the clinician can still
+      // fix what the rules complain about; and membership is resolved against M38 as of `target_date`, so
+      // a recomputation picks up a value-set correction without waiting for the spec's
+      // `revalidate-on-terminology-update` cron, which is not wired (see `jobs/cron-workers.ts`).
+      // Stored findings the engine does NOT produce — the D8 missing-PPS warning, and the per-item iQIES
+      // rejection findings the reconcile pass writes — have no other source and are merged in.
+      const subject = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const row = await loadA(t, id);
+        const siblings = await siblingTargetDates(t, row.admissionId);
+        const stored = (await t
+          .select({
+            ruleId: FINDING.ruleId,
+            severity: FINDING.severity,
+            message: FINDING.message,
+          })
           .from(FINDING)
-          .where(eq(FINDING.hopeAssessmentId, id));
-        return {
-          assessmentId: id,
-          findings: rows.map((f) => ({
-            ruleId: f.ruleId,
+          .where(eq(FINDING.hopeAssessmentId, id))) as {
+          ruleId: string;
+          severity: unknown;
+          message: string;
+        }[];
+        return { row, siblings, stored };
+      });
+
+      const computed = await runHopeAssessmentValidation({
+        rfaKind: subject.row.rfaKind as HopeAssessmentView["rfaKind"],
+        dischargeReason: (subject.row.dischargeReason as HopeDischargeReason | null) ?? null,
+        data: subject.row.data,
+        targetDate: subject.row.targetDate,
+        admissionTargetDate: subject.siblings.admissionTargetDate,
+        huv1TargetDate: subject.siblings.huv1TargetDate,
+      });
+
+      return {
+        assessmentId: id,
+        findings: [
+          ...computed.map((f) => ({
+            ruleId: f.ruleId as string,
             severity: String(f.severity),
             message: f.message,
           })),
-        };
-      });
+          ...subject.stored
+            .filter((f) => !CMS_RULE_IDS.has(f.ruleId))
+            .map((f) => ({
+              ruleId: f.ruleId,
+              severity: String(f.severity),
+              message: f.message,
+            })),
+        ],
+      };
     },
 
     // ── iQIES submission reads (§2.2.4) ────────────────────────────────────────────────────────────
@@ -733,17 +801,44 @@ export function createDbHopeBackend(
       // come from OTHER modules' seams, each of which opens its own tenant context. They are resolved
       // here, before the write transaction, and the assessment is re-read inside it so the draft guard
       // and the UPDATE still see one consistent row.
-      const pre = await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
-        loadA(tx as unknown as DbClient, id),
-      );
-      const snapshot = pre.status === "draft" ? await d8Snapshot(pre.patientId) : null;
+      const pre = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const row = await loadA(t, id);
+        // F-057 — read the siblings in the same pre-pass; the CMS temporal rules need them and the
+        // validation runner (which talks to M38) must not run inside the write transaction.
+        const siblings =
+          row.status === "draft"
+            ? await siblingTargetDates(t, row.admissionId)
+            : { admissionTargetDate: null, huv1TargetDate: null };
+        return { row, siblings };
+      });
+      const { row: preRow, siblings } = pre;
+      const snapshot = preRow.status === "draft" ? await d8Snapshot(preRow.patientId) : null;
       // A snapshot with no PPS reading is the case §D8 names: "if no PPS is on file at the time of
       // signing, the validator emits a warning-severity finding (not blocking)". An ABSENT snapshot
       // (M9 unreachable) is the same compliance gap from the reviewer's side, so both take the finding.
-      const ppsMissing = pre.status === "draft" && (snapshot === null || snapshot.pps === null);
-      const siting = ppsMissing
-        ? await admissionSiting(organizationId, pre.patientId, pre.admissionId)
-        : null;
+      const ppsMissing = preRow.status === "draft" && (snapshot === null || snapshot.pps === null);
+      // F-057 — the CMS pre-submission rule set (M10 spec §2.3: "Validation re-runs on every signed
+      // assessment"). Run BEFORE the write transaction for the same reason the D8 snapshot is: it reads
+      // M38 through the seam, whose store opens its own tenant context. A draft only — re-signing is
+      // impossible (the guard below refuses a non-draft), so findings are written exactly once per row.
+      const cmsFindings =
+        preRow.status === "draft"
+          ? await runHopeAssessmentValidation({
+              rfaKind: preRow.rfaKind as HopeAssessmentView["rfaKind"],
+              dischargeReason: (preRow.dischargeReason as HopeDischargeReason | null) ?? null,
+              data: preRow.data,
+              targetDate: preRow.targetDate,
+              admissionTargetDate: siblings.admissionTargetDate,
+              huv1TargetDate: siblings.huv1TargetDate,
+            })
+          : [];
+      // Siting is now needed whenever ANY finding is to be written, not just the D8 one:
+      // `hope_validation_finding.provider_entity_id` / `location_id` are NOT NULL.
+      const siting =
+        ppsMissing || cmsFindings.length > 0
+          ? await admissionSiting(organizationId, preRow.patientId, preRow.admissionId)
+          : null;
 
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
@@ -800,7 +895,31 @@ export function createDbHopeBackend(
           // NOT NULL siting could not be resolved, so the finding row is impossible. Say so — a
           // compliance control that silently declines to record itself is the defect this closes.
           console.warn(
-            `m10: HOPE assessment ${id} signed with no PPS clinical context and the D8 warning finding could not be written (admission ${pre.admissionId} has no resolvable provider entity / location).`,
+            `m10: HOPE assessment ${id} signed with no PPS clinical context and the D8 warning finding could not be written (admission ${preRow.admissionId} has no resolvable provider entity / location).`,
+          );
+        }
+        // F-057 — persist the CMS pre-submission findings alongside. Same siting rule as D8: a finding
+        // that cannot be written says so in the log rather than disappearing, because an assessment
+        // reported as clean when it was never checked is exactly the state this closes.
+        if (cmsFindings.length > 0 && siting) {
+          await t.insert(FINDING).values(
+            cmsFindings.map((f) => ({
+              organizationId,
+              providerEntityId: siting.providerEntityId,
+              locationId: siting.locationId,
+              hopeAssessmentId: id,
+              ruleId: f.ruleId,
+              severity: f.severity,
+              section: f.section,
+              itemCode: f.itemCode,
+              message: f.message,
+              evaluatedAt: at,
+              resolved: false,
+            })),
+          );
+        } else if (cmsFindings.length > 0) {
+          console.warn(
+            `m10: HOPE assessment ${id} signed with ${cmsFindings.length} CMS pre-submission finding(s) that could not be written (admission ${preRow.admissionId} has no resolvable provider entity / location).`,
           );
         }
         await emit(t, organizationId, "m10.hope.timepoint_signed", "hope_assessment", id, {

@@ -20,8 +20,11 @@ import {
 // submission), with a sticky footer (submission guard + actions). Reads GET /hope/assessments/:id (+ its
 // /validation, the patient summary, and the patient's HOPE timeline for the rail). The server is
 // authoritative for status / J2051 / validation (ADR-0030). Honest gap: the per-section completion the
-// frame shows isn't exposed — the section `data` is opaque server-side except Section J (J2051). So the
-// section list is a faithful scaffold with J2051 real and the rest '—' (never fabricated completeness).
+// frame shows isn't exposed — the section `data` is opaque on the wire except the four sections the CMS
+// rule set reads (I, J's J2030/J2050/J2051, N — F-057). So the section list is a faithful scaffold with
+// J2051 real and the rest '—' (never fabricated completeness). The validation rail is no longer a
+// scaffold: `GET /validation` recomputes the CMS pre-submission rule set per request, so a blocking
+// finding here is a real one and "No findings." now means checked-and-clean rather than never-checked.
 import { useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -318,7 +321,11 @@ export function HopeAssessmentDetail(): JSX.Element {
                 >
                   {findings.map((f) => (
                     <li
-                      key={f.ruleId}
+                      // NOT keyed on `ruleId` alone (F-057): one assessment yields one
+                      // `cms_hope_v1_required_section` finding PER missing section — 17 of them on an
+                      // empty comprehensive payload — so the rule id is not unique within the list. It
+                      // looked unique while the list was permanently empty.
+                      key={`${f.ruleId}:${f.message}`}
                       style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}
                     >
                       <StatusPill

@@ -23755,7 +23755,24 @@ export interface operations {
                     authorDiscipline: "RN" | "NP" | "MD";
                     adminOverride?: boolean;
                     data: {
+                        I?: {
+                            primaryDiagnosisIcd10?: string;
+                        } & {
+                            [key: string]: unknown;
+                        };
                         J?: {
+                            J2030?: {
+                                screened?: boolean | "yes" | "no";
+                                characteristics?: unknown;
+                            } & {
+                                [key: string]: unknown;
+                            };
+                            J2050?: {
+                                screened?: boolean | "yes" | "no";
+                                characteristics?: unknown;
+                            } & {
+                                [key: string]: unknown;
+                            };
                             J2051?: {
                                 entries: {
                                     symptomCode: string;
@@ -23763,6 +23780,13 @@ export interface operations {
                                     otherSymptomLabel?: string;
                                 }[];
                             };
+                        } & {
+                            [key: string]: unknown;
+                        };
+                        N?: {
+                            opioidPrescribed?: boolean | "yes" | "no";
+                            scheduledBowelRegimen?: boolean | "yes" | "no";
+                            bowelRegimenContraindication?: string;
                         } & {
                             [key: string]: unknown;
                         };
@@ -23774,7 +23798,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23829,7 +23853,24 @@ export interface operations {
                     /** Format: uuid */
                     scheduleId?: string;
                     data: {
+                        I?: {
+                            primaryDiagnosisIcd10?: string;
+                        } & {
+                            [key: string]: unknown;
+                        };
                         J?: {
+                            J2030?: {
+                                screened?: boolean | "yes" | "no";
+                                characteristics?: unknown;
+                            } & {
+                                [key: string]: unknown;
+                            };
+                            J2050?: {
+                                screened?: boolean | "yes" | "no";
+                                characteristics?: unknown;
+                            } & {
+                                [key: string]: unknown;
+                            };
                             J2051?: {
                                 entries: {
                                     symptomCode: string;
@@ -23837,6 +23878,13 @@ export interface operations {
                                     otherSymptomLabel?: string;
                                 }[];
                             };
+                        } & {
+                            [key: string]: unknown;
+                        };
+                        N?: {
+                            opioidPrescribed?: boolean | "yes" | "no";
+                            scheduledBowelRegimen?: boolean | "yes" | "no";
+                            bowelRegimenContraindication?: string;
                         } & {
                             [key: string]: unknown;
                         };
@@ -23848,7 +23896,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -40791,7 +40839,24 @@ export interface operations {
             content: {
                 "application/json": {
                     data: {
+                        I?: {
+                            primaryDiagnosisIcd10?: string;
+                        } & {
+                            [key: string]: unknown;
+                        };
                         J?: {
+                            J2030?: {
+                                screened?: boolean | "yes" | "no";
+                                characteristics?: unknown;
+                            } & {
+                                [key: string]: unknown;
+                            };
+                            J2050?: {
+                                screened?: boolean | "yes" | "no";
+                                characteristics?: unknown;
+                            } & {
+                                [key: string]: unknown;
+                            };
                             J2051?: {
                                 entries: {
                                     symptomCode: string;
@@ -40799,6 +40864,13 @@ export interface operations {
                                     otherSymptomLabel?: string;
                                 }[];
                             };
+                        } & {
+                            [key: string]: unknown;
+                        };
+                        N?: {
+                            opioidPrescribed?: boolean | "yes" | "no";
+                            scheduledBowelRegimen?: boolean | "yes" | "no";
+                            bowelRegimenContraindication?: string;
                         } & {
                             [key: string]: unknown;
                         };
@@ -40858,7 +40930,24 @@ export interface operations {
                     targetDate: string;
                     authorDiscipline: "RN" | "NP" | "MD";
                     data: {
+                        I?: {
+                            primaryDiagnosisIcd10?: string;
+                        } & {
+                            [key: string]: unknown;
+                        };
                         J?: {
+                            J2030?: {
+                                screened?: boolean | "yes" | "no";
+                                characteristics?: unknown;
+                            } & {
+                                [key: string]: unknown;
+                            };
+                            J2050?: {
+                                screened?: boolean | "yes" | "no";
+                                characteristics?: unknown;
+                            } & {
+                                [key: string]: unknown;
+                            };
                             J2051?: {
                                 entries: {
                                     symptomCode: string;
@@ -40866,6 +40955,13 @@ export interface operations {
                                     otherSymptomLabel?: string;
                                 }[];
                             };
+                        } & {
+                            [key: string]: unknown;
+                        };
+                        N?: {
+                            opioidPrescribed?: boolean | "yes" | "no";
+                            scheduledBowelRegimen?: boolean | "yes" | "no";
+                            bowelRegimenContraindication?: string;
                         } & {
                             [key: string]: unknown;
                         };
@@ -40877,7 +40973,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -40974,7 +41070,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -41368,7 +41464,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
