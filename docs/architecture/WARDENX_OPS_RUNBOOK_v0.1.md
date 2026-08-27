@@ -1000,6 +1000,11 @@ Maintained in `infra/secrets/inventory.yaml` (encrypted via SOPS):
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Backend (subscription billing) | Annual | | |
 | `XERO_*` (OAuth refresh tokens) | Cost report worker | Per Xero contract | | |
 | `INTERNAL_SERVICE_TOKEN` (backend↔workers) | All | Quarterly | | |
+| `M34_TENANT_KEK` (platform KEK wrapping every tenant DEK) | Backend, workers | Annual — **rotatable**, see §8.3.3 | | |
+| `M34_TENANT_KEK_RETIRED` (prior KEKs, unwrap-only) | Backend, workers | Pruned only after re-wrap, §8.3.3 | | |
+| `TWO_FACTOR_ENCRYPTION_KEY` (TOTP secrets + backup codes) | Backend | **Not rotatable today**, §8.3.3 | | |
+| `M24_CREDENTIAL_ENCRYPTION_KEY` (Medicaid trading-partner secrets) | Backend | **Not rotatable today**, §8.3.3 | | |
+| `MESSAGING_ENCRYPTION_KEY` (message bodies) | Backend, workers | **Not rotatable today**, §8.3.3 | | |
 | `SOPS_AGE_KEY` (decryption key for secrets-in-Git) | Each VM at startup | Annual (with operator presence) | | |
 | `PGBACKREST_REPO1_CIPHER_PASS` | Backups | Annual | | |
 | `PGBACKREST_REPO2_CIPHER_PASS` | Backup VM | Annual | | |
@@ -1133,6 +1138,51 @@ sudo -u postgres pgbackrest --stanza=wardenx-v2 --type=full verify
 # 8. Retain old stanza wardenx for historical backup restoration only
 # 9. After 6 months (per retention class), retire old stanza
 ```
+
+#### 8.3.3 Application Encryption Keys (KEKs)
+
+Four master keys encrypt data at rest in the application layer (ADR-0038 — the mechanism is
+AES-256-GCM in the app process, never pgcrypto). They do **not** rotate alike, and the difference is
+structural rather than a matter of procedure.
+
+**`M34_TENANT_KEK` — rotatable (ADR-0045).** Each tenant's DEK is 32 random bytes *wrapped* under
+this KEK, and `tenant_key_ring.current_dek_kek_id` records which KEK wrapped it. Rotation is
+therefore additive: introduce the new key as active, keep the old one readable, re-wrap at leisure.
+
+```bash
+# 1. Mint the new KEK. The id must be new; it is what stored rings resolve by.
+NEW_KEK="kek-$(date +%Y%m):$(openssl rand -base64 32)"
+
+# 2. Move the CURRENT active key into the retired (unwrap-only) list, then set the new active key.
+#    Order matters: a deploy that drops the old key before every ring is re-wrapped makes those
+#    tenants' ciphertext unreadable. Retired keys are only ever removed AFTER step 4 reports zero.
+#    (in .env.production, via SOPS)
+#      M34_TENANT_KEK_RETIRED=<previous M34_TENANT_KEK>[,<older entries…>]
+#      M34_TENANT_KEK=$NEW_KEK
+
+# 3. Roll the API + worker containers. New tenants wrap under the new KEK immediately; existing
+#    rings keep resolving through the retired entry.
+
+# 4. Re-wrap existing tenants by rotating their DEKs (the `tenant.dek_rotate` job re-mints and
+#    re-wraps under whatever KEK is active). Which rings still name an old KEK:
+#      SELECT current_dek_kek_id, count(*) FROM tenant_key_ring
+#       WHERE destroyed_at IS NULL GROUP BY 1;
+
+# 5. Only once that query returns the new kekId alone, prune M34_TENANT_KEK_RETIRED and roll again.
+```
+
+**`TWO_FACTOR_ENCRYPTION_KEY`, `M24_CREDENTIAL_ENCRYPTION_KEY`, `MESSAGING_ENCRYPTION_KEY` — not
+rotatable today.** All three HKDF-*derive* their per-scope DEK from the master key, so the master key
+is not a wrapper that can be swapped: changing it changes every derived DEK, and every existing
+ciphertext becomes unreadable at once. Their at-rest format reserves a version byte for a future
+two-key read path (ADR-0034 §3), and nothing implements one. Until it does, treat a compromise of any
+of the three as requiring a **re-encryption project**, not a rotation — and note that the affected
+data is recoverable by re-entry (a user re-enrols 2FA; an operator re-enters a trading-partner
+secret) except for message bodies, which are not.
+
+**Losing `M34_TENANT_KEK` without a retired copy is unrecoverable by design** — it is the same
+property that makes the M34 cryptographic shred real, pointed the wrong way. It belongs in the sealed
+off-site envelope alongside `SOPS_AGE_KEY` (§8.4).
 
 #### 8.3.2 TLS Certificate Rotation
 

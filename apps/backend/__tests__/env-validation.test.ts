@@ -43,6 +43,8 @@ const GOOD: EnvLike = {
   TRUSTED_PROXY_CIDRS: "10.0.0.0/8",
   // TASK-013 — the internal-seam machine-credential shared secret (authenticate.ts).
   INTERNAL_SERVICE_TOKEN: "w".repeat(32),
+  // #105 — the platform KEK wrapping every tenant DEK: `<kekId>:<base64 32 bytes>` (ADR-0045).
+  M34_TENANT_KEK: `kek-1:${Buffer.alloc(32, 5).toString("base64")}`,
 };
 
 describe("collectEnvProblems", () => {
@@ -53,6 +55,16 @@ describe("collectEnvProblems", () => {
 
   it("passes a fully-configured production env", () => {
     expect(collectEnvProblems(GOOD)).toEqual([]);
+  });
+
+  it("flags a malformed platform KEK by shape, not just by absence (#105)", () => {
+    const problemFor = (v: string) =>
+      collectEnvProblems({ ...GOOD, M34_TENANT_KEK: v }).find((p) => p.key === "M34_TENANT_KEK")
+        ?.problem;
+    expect(problemFor("just-a-key")).toMatch(/<kekId>:<base64 32-byte key>/);
+    expect(problemFor(`kek 1:${Buffer.alloc(32).toString("base64")}`)).toMatch(/kekId must be/);
+    expect(problemFor(`kek-1:${Buffer.alloc(16).toString("base64")}`)).toMatch(/32 base64 bytes/);
+    expect(problemFor(GOOD.M34_TENANT_KEK as string)).toBeUndefined();
   });
 
   it("flags every missing required secret", () => {

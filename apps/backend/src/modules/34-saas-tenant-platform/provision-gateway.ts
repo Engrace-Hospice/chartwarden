@@ -72,6 +72,7 @@ export interface M34ProvisionGateway
   extends Pick<ProvisionCapability, "keyMaterial" | "storage" | "invitation"> {
   readonly kekUnwrap: {
     unwrap(input: {
+      readonly organizationId: string;
       readonly kekWrappedCiphertext: Buffer;
       readonly kekId: string;
     }): Promise<Buffer>;
@@ -106,6 +107,7 @@ export function createM34ProvisionGateway(
     kekUnwrap: {
       async unwrap(input) {
         const body = await call(http, config, "/dek/unwrap", {
+          organizationId: input.organizationId,
           wrappedCiphertextB64: input.kekWrappedCiphertext.toString("base64"),
           kekId: input.kekId,
         });

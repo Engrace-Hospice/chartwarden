@@ -1190,20 +1190,14 @@ export function buildM27WorkerDeps(deps: {
 //     (parses the org id off the producer's existing dedupe-key convention; the producer call sites in
 //     write-service-drizzle.ts were not touched).
 // Still genuinely unbound (out of this slice's scope — see docs/audits/.../14-task-backlog.md WX-PR-013):
-//   • the M1 per-tenant DEK envelope-encrypt (`deps.dek`) — this module is wired to NO DEK source at all:
-//     the composition root simply never passes `deps.dek`, so `buildM27WorkerDeps` falls through to the
-//     typed `M27WorkerPortUnbound` stub. That is the whole gap here, and it is a LOCAL wiring one. It is
-//     NOT the platform lacking a key path: M34 binds a real `buildKeyProvider` on the production path
-//     (seam-registration.ts), whose `KekUnwrapPort` IS implemented — `createM34ProvisionGateway`'s
-//     `/dek/unwrap` client (34-saas-tenant-platform/provision-gateway.ts) — and the composition root
-//     binds it whenever `M34_PROVISION_GATEWAY_URL`/`_TOKEN`/`M34_INVITATION_ACCEPT_URL` are set, which
-//     `assertProductionEnv()` makes REQUIRED in production. The optional-looking `gateway?.kekUnwrap` at
-//     index.ts therefore cannot degrade a production boot, and the fallback it guards throws
-//     `M34InfraPortUnbound` on call rather than failing open. What genuinely does not exist is the
-//     GATEWAY SERVICE those endpoints address — see #115. Needed only for the
-//     live Xero/Gusto pull path (this slice's proven path — manual trial-balance/wage-data import — never
-//     sets `raw_payload_cipher`, so it does not need DEK). A real (non-KMS) template exists at M24's
-//     `credential-crypto.ts` if a future pass wants to unblock the live-pull path specifically.
+//   • the M1 per-tenant DEK envelope-encrypt (`deps.dek`) — needed only for the live Xero/Gusto pull path
+//     (this slice's proven path, the manual trial-balance/wage-data import, never sets `raw_payload_cipher`,
+//     so it does not need a DEK). RESOLVED UPSTREAM as of #105: the blocker was never M34's slice deny-stub
+//     (`SLICE_MODULE_34_SEAM_DEPS` in `apps/backend/src/index.ts` — the db-less boot path, which this comment
+//     named), it was the PRODUCTION path's unbound `kekUnwrap` port plus a key-ring read on a credential
+//     whose SELECT is revoked. Both are bound now (`apps/backend/src/bootstrap/tenant-kek.ts`, ADR-0045), so
+//     `getTenantKeyProvider().dekForOrg(orgId)` resolves and this port is a bind, not a build. What is still
+//     genuinely missing for the live pull is the OAuth credential storage below, not the DEK.
 //   • the M27 Xero/Gusto pull seams (`deps.trialBalanceSeam`/`deps.wageDataSeam`) — the @wardenx/xero-client
 //     / @wardenx/gusto-client packages are real, structured clients, but binding a LIVE pull additionally
 //     requires OAuth token storage (M34 tenant-onboarding infra) that does not exist yet — a separate,
