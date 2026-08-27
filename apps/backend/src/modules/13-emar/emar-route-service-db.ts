@@ -54,19 +54,25 @@
 import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import {
+  ADMINISTRATION_MODE_CATALOG,
   AdministrationStateError,
   type BarcodeMatchResult,
+  type IvSegment,
+  type IvSegmentMode,
   WITNESS_ELIGIBLE_DISCIPLINES,
   barcodeScanBlocks,
   buildWitnessAttestationToken,
+  composeIvSession,
+  deriveIvSessionState,
   evaluateBarcodeScan,
+  planIvSegment,
   resolveLateEntryTier,
   verifyWitnessAttestationToken,
   witnessTokenDigest,
 } from "@wardenx/emar";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, ValidationError } from "@wardenx/types";
-import { and, eq, gt, gte, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNull, lte, ne, or } from "drizzle-orm";
 import type { CaregiverReviewAbacFacts, WitnessAbacFacts } from "./abac-predicates";
 import type {
   AdministrationPolicyView,
@@ -168,6 +174,12 @@ export interface EmarMedicationOrderPort {
     readonly admissionId: string;
     readonly drugName: string;
     readonly route: string;
+    /**
+     * §2.11 D11 — the titration bounds the order authorises, or null when it authorises none. The IV
+     * branch hands this to `planIvSegment`, which refuses a `rate_change` against a null policy
+     * (`IV_RATE_OUT_OF_RANGE`): an infusion rate nobody bounded is a rate nobody prescribed.
+     */
+    readonly ivContinuousPolicy: { readonly minRate: number; readonly maxRate: number } | null;
   } | null>;
 }
 
@@ -182,6 +194,35 @@ const UNBOUND_MEDICATION_ORDER: EmarMedicationOrderPort = {
     return null;
   },
 };
+
+/** The §2.1 per-mode `data` fields the IV branch reads. The mode catalog names them: `iv_continuous_start`
+ *  carries `infusionRate`, `iv_continuous_rate_change` carries `previousRate`/`newRate`/`titrationReason`,
+ *  `iv_continuous_stop` may carry `wastageAmount`. Read defensively — `data` is `Type.Unknown()` at the
+ *  route boundary by design (the server discriminates on `mode`). */
+function ivBodyOf(data: unknown): { newRate: number | null; wastageAmount: number | null } {
+  const d = (data ?? {}) as { newRate?: unknown; wastageAmount?: unknown };
+  return {
+    newRate: typeof d.newRate === "number" ? d.newRate : null,
+    wastageAmount: typeof d.wastageAmount === "number" ? d.wastageAmount : null,
+  };
+}
+
+/** The rate a stored segment carries, per the same mode catalog. Mirrors `segmentRateOf` in the seam store
+ *  — the projection and the write path must read the same keys or the derived session state disagrees with
+ *  the one the seam publishes. */
+function ivRateOf(data: unknown): { rate?: number; rateUnit?: string } {
+  const d = (data ?? {}) as Record<string, unknown>;
+  const rate = [d.infusionRate, d.newRate, d.rate].find((v) => typeof v === "number") as
+    | number
+    | undefined;
+  const rateUnit = [d.rateUnit, d.infusionRateUnit].find((v) => typeof v === "string") as
+    | string
+    | undefined;
+  return {
+    ...(rate !== undefined ? { rate } : {}),
+    ...(rateUnit !== undefined ? { rateUnit } : {}),
+  };
+}
 
 const ADM = schema.administrationRecords;
 const SD = schema.scheduledDoses;
@@ -251,6 +292,7 @@ const toDecisionView = (d: typeof RD.$inferSelect): ReconciliationDecisionView =
   lineKind: d.lineKind,
   sourceId: d.m12MedicationOrderId ?? d.m12MedicationHistoryRecordId ?? d.id,
   decision: d.decisionKind,
+  resultingMedicationOrderId: d.resultingMedicationOrderId ?? null,
 });
 
 /**
@@ -470,12 +512,37 @@ export function createDbEmarBackend(
     },
     async getIvSession(orgId, sessionId): Promise<IvSessionView> {
       return withOrg(orgId, async (tx) => {
-        const segs = await tx.select().from(ADM).where(eq(ADM.ivSessionId, sessionId));
+        // F-031/#134 — ordered by the clinical `administered_at`, which is the order the §2.11 graph is
+        // legal in, and voided segments dropped (entered-in-error). This used to select unordered and
+        // project `recorded_at`, so the sequence a reader saw was the SERVER-RECEIVE order — fine while
+        // nothing could create a session, wrong the moment one exists and a segment is back-dated.
+        const segs = await tx
+          .select()
+          .from(ADM)
+          .where(and(eq(ADM.ivSessionId, sessionId), ne(ADM.status, "voided")))
+          .orderBy(asc(ADM.administeredAt), asc(ADM.recordedAt), asc(ADM.id));
         if (segs.length === 0) throw new NotFoundError("iv session not found");
+        const ordered: IvSegment[] = segs.map((r) => ({
+          mode: r.mode as IvSegmentMode,
+          administeredAt: iso(r.administeredAt) as string,
+          ...ivRateOf(r.data),
+        }));
+        // `composeIvSession` is the pure projection the seam consumers already read; the route DTO now
+        // derives from the same core rather than a second, looser reading of the same rows. It requires
+        // the first segment to be a `start`, which is the invariant the write path enforces.
+        const session = composeIvSession(sessionId, segs[0]!.medicationOrderId, ordered, null);
         return {
           sessionId,
-          medicationOrderId: segs[0]!.medicationOrderId,
-          segments: segs.map((r) => ({ kind: r.mode, recordedAt: iso(r.recordedAt)! })),
+          medicationOrderId: session.medicationOrderId,
+          startedAt: session.startedAt,
+          endedAt: session.endedAt,
+          state: deriveIvSessionState(ordered),
+          segments: session.segments.map((seg) => ({
+            kind: seg.mode,
+            recordedAt: seg.administeredAt,
+            rate: seg.rate,
+            rateUnit: seg.rateUnit,
+          })),
         };
       });
     },
@@ -645,16 +712,17 @@ export function createDbEmarBackend(
         const sched = args.scheduledDoseId
           ? (await tx.select().from(SD).where(eq(SD.id, args.scheduledDoseId)).limit(1))[0]
           : undefined;
-        // F-031 — the dose, when there is one, is the anchor (it carries siting as well). Otherwise the
-        // ORDER is: `getAdministrationContext` is the seam written for exactly this question. Nothing is
-        // invented — an order that resolves to nothing refuses, because a row filed under a placeholder
-        // patient is not a weaker record, it is a record of a different patient.
-        const identity = sched
-          ? null
-          : await medOrder().administrationIdentity({
-              organizationId: orgId,
-              medicationOrderId: args.medicationOrderId,
-            });
+        // F-031 — the dose, when there is one, is the anchor for patient/admission (it carries siting as
+        // well). The ORDER is what answers everything else, through `getAdministrationContext` — the seam
+        // written for exactly this question. Resolved UNCONDITIONALLY, not only on the no-dose path: the
+        // §2.11 IV branch needs the order's titration bounds whether or not a scheduled dose named the row,
+        // and the drug-name snapshot is worth having on both paths. Nothing is invented — an order that
+        // resolves to nothing on the no-dose path refuses, because a row filed under a placeholder patient
+        // is not a weaker record, it is a record of a different patient.
+        const identity = await medOrder().administrationIdentity({
+          organizationId: orgId,
+          medicationOrderId: args.medicationOrderId,
+        });
         if (!sched && identity === null)
           throw new ValidationError(
             "the medication order for this administration is unresolvable",
@@ -670,10 +738,88 @@ export function createDbEmarBackend(
         const patientId = sched?.patientId ?? identity?.patientId ?? PATIENT_SENTINEL;
         const admissionId = sched?.admissionId ?? identity?.admissionId ?? ADMISSION_SENTINEL;
 
+        // ── §2.11 D11 — the IV-continuous session (F-031/#134) ────────────────────────────────────────
+        //
+        // `administration_record.iv_session_id` used to be written NOWHERE: the production path never set
+        // it and the in-memory slice hard-coded it null, so no session could exist, `getIvSession` 404'd
+        // for every input, and `IV_SESSION_GRAPH` / `assertIvSegmentLegal` / `checkIvRateBounds` — all
+        // real, all unit-tested in @wardenx/emar — were called by nothing. The ordering graph and the
+        // titration bounds were enforced at runtime by no one.
+        //
+        // `planIvSegment` is that core, and it is the authority here rather than a re-derivation: it
+        // asserts the segment is legal from the state the PRIOR segments derive, validates the rate
+        // against the order's bounds, and returns the two facts the §2.2 commit needs — whether this
+        // segment mints the session, and whether it requires the D7 witness. Note the witness rule it
+        // returns is NARROWER than "controlled": a controlled infusion is witnessed at the segments that
+        // begin, alter or end administration (start / rate_change / stop) and NOT at pause/resume, which
+        // change no dose. Applying the blanket controlled-substance rule to a pause would demand a second
+        // clinician at the bedside to stop a running pump.
+        const modeMeta = ADMINISTRATION_MODE_CATALOG[args.mode];
+        let ivSessionId: string | null = null;
+        let ivPlan: ReturnType<typeof planIvSegment> | null = null;
+        if (modeMeta.isIvContinuous) {
+          const ivMode = args.mode as IvSegmentMode;
+          if (modeMeta.ivSessionRole === "mint") {
+            if (args.ivSessionId)
+              throw new ValidationError("an IV-continuous start mints its own session", [
+                {
+                  field: "ivSessionId",
+                  code: "INVALID",
+                  message: "iv_continuous_start must not name an existing session",
+                },
+              ]);
+          } else if (!args.ivSessionId) {
+            throw new ValidationError("this IV segment must name its session", [
+              {
+                field: "ivSessionId",
+                code: "REQUIRED",
+                message: `${args.mode} continues an existing IV session and requires its ivSessionId`,
+              },
+            ]);
+          }
+          // The prior sequence, in the clinical `administered_at` order the graph is legal in (the
+          // `admin_rec_iv_session_idx` ascending order). A voided segment is entered-in-error and drops
+          // out, exactly as the seam projection already treats it.
+          //
+          // `recorded_at` is the tiebreak, and it is load-bearing rather than tidy: a clinician enters
+          // `administered_at` from a datetime-local control, which has MINUTE resolution, so a start and
+          // the titration that follows it a few seconds later carry the identical clinical instant. With
+          // only `id` to break the tie the order was a random uuid comparison — which meant the derived
+          // session state was a coin flip, and `composeIvSession` could refuse a perfectly good session
+          // for "not beginning with a start". When two segments share an instant, the order they were
+          // RECORDED in is the only evidence of sequence there is.
+          const priorSegments: IvSegment[] = args.ivSessionId
+            ? (
+                await tx
+                  .select()
+                  .from(ADM)
+                  .where(and(eq(ADM.ivSessionId, args.ivSessionId), ne(ADM.status, "voided")))
+                  .orderBy(asc(ADM.administeredAt), asc(ADM.id))
+              ).map((r) => ({
+                mode: r.mode as IvSegmentMode,
+                administeredAt: iso(r.administeredAt) as string,
+                ...ivRateOf(r.data),
+              }))
+            : [];
+          if (args.ivSessionId && priorSegments.length === 0)
+            throw new NotFoundError("iv session not found");
+          const body = ivBodyOf(args.data);
+          ivPlan = planIvSegment(deriveIvSessionState(priorSegments), {
+            mode: ivMode,
+            isControlled,
+            newRate: body.newRate,
+            policy: identity?.ivContinuousPolicy ?? null,
+            wastageAmount: body.wastageAmount,
+          });
+          ivSessionId = ivPlan.mintsSession ? randomUUID() : (args.ivSessionId ?? null);
+        }
+        // Non-IV: every controlled administration is witnessed. IV: the pure core's narrower rule.
+        const requiresWitness = ivPlan ? ivPlan.requiresWitness : isControlled;
+
         // D7 — a controlled administration requires a valid, in-scope, unexpired witness-attestation token.
         let witnessMembershipId: string | null = null;
         let witnessDigest: string | null = null;
-        if (isControlled) {
+        if (requiresWitness) {
           const verify = args.witnessToken
             ? verifyWitnessAttestationToken({
                 token: args.witnessToken,
@@ -752,9 +898,16 @@ export function createDbEmarBackend(
               scheduledDoseId: args.scheduledDoseId ?? null,
               encounterId: args.encounterId ?? null,
               comfortKitDeploymentId: args.comfortKitDeploymentId ?? null,
+              ivSessionId,
               mode: args.mode,
               status: "committed",
-              data: {},
+              // F-031 — the per-mode body is PERSISTED now; it used to be written as `{}` on every row. The
+              // §3.3 schema puts each mode's own fields there by design (infusionRate / titrationReason /
+              // pauseReason / stopReason / wastageAmount / siteOfAdministration), the §3.6 audit trigger
+              // already scrubs the denylisted json-paths inside it, and the IV session projection reads the
+              // rate straight out of it — so an empty `data` was not a safe default, it was the reason a
+              // recorded segment could carry no rate.
+              data: typeof args.data === "object" && args.data !== null ? args.data : {},
               // F-031 — the drug AS ADMINISTERED, snapshotted from the order at commit time. It used to be
               // the empty string on every row, which is the one value a medication administration record
               // must never carry: the order can later be corrected or discontinued, and the MAR is supposed
@@ -787,7 +940,7 @@ export function createDbEmarBackend(
             .set({ status: "administered", administeredAt: new Date(args.administeredAt) })
             .where(eq(SD.id, args.scheduledDoseId));
 
-        if (isControlled && witnessMembershipId)
+        if (requiresWitness && witnessMembershipId)
           await tx.insert(schema.administrationWitnesses).values({
             organizationId: orgId,
             administrationRecordId: inserted.id,
@@ -821,7 +974,7 @@ export function createDbEmarBackend(
           encounterId: args.encounterId ?? null,
           scheduledDoseId: args.scheduledDoseId ?? null,
         });
-        if (isControlled && witnessMembershipId)
+        if (requiresWitness && witnessMembershipId)
           await emit(
             tx,
             orgId,
@@ -834,6 +987,26 @@ export function createDbEmarBackend(
               witnessesScope: "administration_only",
             },
           );
+        // §2.11 — a controlled infusion stopped with drug left in the bag destroys the remainder, and the
+        // destruction carries its own witness. `planIvSegment` is what decides this happened; the event has
+        // been catalogued since M13-T08 with no emitter, so the DEA-relevant wastage of a controlled
+        // infusion was recorded in the row's `data` and announced to nobody.
+        if (ivPlan?.hasControlledWastage && witnessMembershipId) {
+          const body = ivBodyOf(args.data);
+          await emit(
+            tx,
+            orgId,
+            "m13.administration.controlled_wasted",
+            "administration_record",
+            inserted.id,
+            {
+              administrationRecordId: inserted.id,
+              wastageAmount: body.wastageAmount ?? 0,
+              wastageUnit: args.doseUnit ?? identity?.route ?? "unit",
+              witnessMembershipId,
+            },
+          );
+        }
         if (args.prn)
           await emit(
             tx,
@@ -1212,12 +1385,25 @@ export function createDbEmarBackend(
       });
     },
 
-    async updateDecision(orgId, userId, id, lineId, decision): Promise<WorksheetView> {
+    async updateDecision(
+      orgId,
+      userId,
+      id,
+      lineId,
+      decision,
+      resultingMedicationOrderId,
+    ): Promise<WorksheetView> {
       return withOrg(orgId, async (tx) => {
         await loadWorksheet(tx, id);
         const updated = await tx
           .update(RD)
-          .set({ decisionKind: decision })
+          .set({
+            decisionKind: decision,
+            // Only ever SET, never cleared by omission: a caller changing a decision kind must not
+            // silently drop the link to an order that was already sent to a prescriber and may already
+            // be signed. Unlinking is a deliberate act, and no caller asks for it today.
+            ...(resultingMedicationOrderId ? { resultingMedicationOrderId } : {}),
+          })
           .where(and(eq(RD.id, lineId), eq(RD.worksheetId, id)))
           .returning({ id: RD.id });
         if (updated.length === 0) throw new NotFoundError("decision line not found");

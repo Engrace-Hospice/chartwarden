@@ -27,25 +27,30 @@ import {
 //   • Finalize is therefore NOT gated here on every line being decided. The server's own rule is ≥1
 //     recorded decision, and it answers 422 RECONCILIATION_INCOMPLETE when that is unmet; this screen
 //     surfaces that refusal rather than pre-empting it with a different rule.
-//   • "Send to prescriber" (the M12 draft-order mint for a `new_order` decision) is deliberately absent:
-//     no M13 route mints an M12 draft from a decision, so a button here would be a dead end.
+//   • "Send to prescriber" mints an M12 DRAFT from the line and links it back onto the decision
+//     (`resulting_medication_order_id`, a column that existed since M13-T02 and that nothing wrote). The
+//     draft is created against M12's own route from the browser, not through a new M13 route — see
+//     send-to-prescriber-modal.tsx for why, and for why it is a draft and never a signed order.
 //   • Every write is refused server-side by `reconciliation_authoring_eligible` unless the caller's
 //     discipline may author for this worksheet's trigger kind. A 403 is surfaced verbatim.
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useParams } from "react-router-dom";
 import {
+  type ActiveMedicationOrder,
   type ReconciliationDecisionKind,
   type WorksheetView,
   addCaregiverReportedLine,
   errorMessage,
   finalizeReconciliation,
   getWorksheet,
+  listPatientMedicationOrders,
   recordDecision,
   updateDecision,
   voidWorksheet,
 } from "./emar-api";
 import { DECISION_TONE, WORKSHEET_TONE, stateLabel } from "./emar-status";
+import { SendToPrescriberModal } from "./send-to-prescriber-modal";
 
 const DECISIONS: readonly { value: ReconciliationDecisionKind; label: string }[] = [
   { value: "carry_forward", label: "Carry forward" },
@@ -62,6 +67,8 @@ export function ReconciliationWorksheet(): JSX.Element {
   const client = useApiClient();
   const { worksheetId } = useParams<{ worksheetId: string }>();
   const [row, setRow] = useState<WorksheetView | null>(null);
+  const [orders, setOrders] = useState<ActiveMedicationOrder[]>([]);
+  const [sendLineId, setSendLineId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,6 +94,13 @@ export function ReconciliationWorksheet(): JSX.Element {
     }
     setRow(worksheet);
     setLoading(false);
+    // The patient's orders, so a line sourced from one can prefill the draft rather than making a nurse
+    // retype a drug that is already on the chart. A caller without `prescribing.read` just gets an empty
+    // form — degraded, never fabricated.
+    if (worksheet) {
+      const { orders: loaded } = await listPatientMedicationOrders(client, worksheet.patientId);
+      setOrders(loaded);
+    }
   }, [client, worksheetId]);
 
   useEffect(() => {
@@ -116,6 +130,7 @@ export function ReconciliationWorksheet(): JSX.Element {
 
   const open = row !== null && row.status !== "finalized" && row.status !== "voided";
   const decided = row?.decisions.length ?? 0;
+  const sendLine = row?.decisions.find((d) => d.lineId === sendLineId) ?? null;
 
   return (
     <DetailPageLayout
@@ -162,6 +177,7 @@ export function ReconciliationWorksheet(): JSX.Element {
                   <th>Source kind</th>
                   <th>Decision</th>
                   <th>Change</th>
+                  <th>Order</th>
                 </tr>
               </thead>
               <tbody>
@@ -201,6 +217,24 @@ export function ReconciliationWorksheet(): JSX.Element {
                           ))}
                         </select>
                       ) : null}
+                    </td>
+                    <td>
+                      {d.resultingMedicationOrderId ? (
+                        <span className="wx-data-md" style={{ color: "var(--color-on-surface)" }}>
+                          {d.resultingMedicationOrderId.slice(0, 8)}
+                        </span>
+                      ) : open && (d.decision === "new_order" || d.decision === "carry_forward") ? (
+                        <Button
+                          size="sm"
+                          tone="secondary"
+                          disabled={busy}
+                          onClick={() => setSendLineId(d.lineId)}
+                        >
+                          Send to prescriber
+                        </Button>
+                      ) : (
+                        <span style={{ color: "var(--color-muted)" }}>—</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -316,6 +350,28 @@ export function ReconciliationWorksheet(): JSX.Element {
                 </div>
               </section>
             </div>
+          ) : null}
+
+          {sendLine ? (
+            <SendToPrescriberModal
+              open
+              patientId={row.patientId}
+              admissionId={row.admissionId}
+              sourceOrder={orders.find((o) => o.id === sendLine.sourceId) ?? null}
+              onClose={() => setSendLineId(null)}
+              onDrafted={(medicationOrderId) => {
+                const line = sendLine;
+                setSendLineId(null);
+                void run(
+                  () =>
+                    updateDecision(client, row.id, line.lineId, {
+                      decision: line.decision,
+                      resultingMedicationOrderId: medicationOrderId,
+                    }),
+                  "The draft was created but could not be linked to this line.",
+                );
+              }}
+            />
           ) : null}
 
           <ConfirmDialog

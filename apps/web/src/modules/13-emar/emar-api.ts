@@ -57,8 +57,26 @@ export type WorksheetView = Ok<operations["getApiV1ReconciliationWorksheetsById"
 export type ReconciliationDecisionView = WorksheetView["decisions"][number];
 /** §6.1 #7 — a comfort-kit deployment. */
 export type DeploymentView = Ok<operations["getApiV1ComfortkitsDeploymentsById"]>;
-/** §6.1 #5 — an IV continuous session's ordered segment sequence. */
+/** §6.1 #5 — an IV continuous session's ordered segment sequence, its derived state and its period. */
 export type IvSessionView = Ok<operations["getApiV1AdministrationsIvsessionsBySessionId"]>;
+/** §2.11 — the state the segment sequence derives. The client offers only what the graph accepts next. */
+export type IvSessionState = IvSessionView["state"];
+/** The five `iv_continuous_*` segment kinds. */
+export type IvSegmentMode = Exclude<AdministrationMode, "single_dose">;
+
+/**
+ * §2.11 — `IV_SESSION_GRAPH`, mirrored for the CLIENT's benefit only. The server runs the real one
+ * (`assertIvSegmentLegal` on every write), so this decides which BUTTONS to render and nothing else —
+ * the alternative is offering all five segments and letting a clinician discover the illegal ones as
+ * 409s at an infusion pump. It is a copy because `apps/web` may not import `@wardenx/emar` (a backend
+ * feature package); the `state` the server publishes is what keeps the two in agreement.
+ */
+export const IV_NEXT_SEGMENTS: Readonly<Record<IvSessionState, readonly IvSegmentMode[]>> = {
+  none: ["iv_continuous_start"],
+  running: ["iv_continuous_rate_change", "iv_continuous_pause", "iv_continuous_stop"],
+  paused: ["iv_continuous_resume", "iv_continuous_stop"],
+  stopped: [],
+};
 /** §6.1 #12 — the tenant administration policy. */
 export type AdministrationPolicyView = Ok<operations["getApiV1AdminAdministrationpolicy"]>;
 
@@ -480,4 +498,42 @@ export async function putPolicy(
   const res = await client.PUT("/api/v1/admin/administration-policy", { body });
   if (res.error) return { policy: null, error: res.error };
   return { policy: res.data, error: null };
+}
+
+// ── M12 reach: the reconciliation "send to prescriber" mint (§2.8 D17) ─────────────────────────────────
+
+/** The draft-order body M12's own create route takes. Aliased from the generated contract, so the
+ *  reconciliation form is typed by M12's schema rather than by a copy of it that can drift. */
+export type MedicationOrderDraftBody = ReqBody<operations["postApiV1Medicationorders"]>;
+/** The created draft — the id "send to prescriber" writes back onto the decision line. */
+export type MedicationOrderDraft = Ok<operations["postApiV1Medicationorders"]>;
+/** One MDM physician the prescriber lookup offers. */
+export type MdmPhysicianResult = Ok<operations["getApiV1MdmByKindSearch"]>["results"][number];
+
+/**
+ * Mint an M12 medication-order DRAFT. Deliberately M12's own public route rather than a new M13 route:
+ * M13 does not write another module's table, and a draft is what a prescriber signs — the same object the
+ * prescribing surface creates, arriving from a different doorway. The caller then links the returned id to
+ * the reconciliation decision via {@link updateDecision}.
+ */
+export async function createMedicationOrderDraft(
+  client: ApiClient,
+  body: MedicationOrderDraftBody,
+): Promise<{ draft: MedicationOrderDraft | null; error: unknown }> {
+  const res = await client.POST("/api/v1/medication-orders", { body });
+  if (res.error) return { draft: null, error: res.error };
+  return { draft: res.data, error: null };
+}
+
+/** M40 MDM — the prescriber lookup behind the draft form's physician field. */
+export async function searchMdmPhysicians(
+  client: ApiClient,
+  q: string,
+  limit: number,
+): Promise<{ results: MdmPhysicianResult[]; error: unknown }> {
+  const res = await client.GET("/api/v1/mdm/{kind}/search", {
+    params: { path: { kind: "physician" }, query: { q, limit } },
+  });
+  if (res.error) return { results: [], error: res.error };
+  return { results: res.data?.results ?? [], error: null };
 }

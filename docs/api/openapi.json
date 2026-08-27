@@ -13950,6 +13950,10 @@
                     "format": "uuid",
                     "type": "string"
                   },
+                  "ivSessionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
                   "data": {},
                   "prn": {
                     "type": "object",
@@ -15892,6 +15896,9 @@
                   "required": [
                     "sessionId",
                     "medicationOrderId",
+                    "startedAt",
+                    "endedAt",
+                    "state",
                     "segments"
                   ],
                   "properties": {
@@ -15901,13 +15908,48 @@
                     "medicationOrderId": {
                       "type": "string"
                     },
+                    "startedAt": {
+                      "type": "string"
+                    },
+                    "endedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "none",
+                          "type": "string"
+                        },
+                        {
+                          "const": "running",
+                          "type": "string"
+                        },
+                        {
+                          "const": "paused",
+                          "type": "string"
+                        },
+                        {
+                          "const": "stopped",
+                          "type": "string"
+                        }
+                      ]
+                    },
                     "segments": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "required": [
                           "kind",
-                          "recordedAt"
+                          "recordedAt",
+                          "rate",
+                          "rateUnit"
                         ],
                         "properties": {
                           "kind": {
@@ -15940,6 +15982,26 @@
                           },
                           "recordedAt": {
                             "type": "string"
+                          },
+                          "rate": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rateUnit": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }
@@ -16321,6 +16383,10 @@
                           "type": "string"
                         },
                         "encounterId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "ivSessionId": {
                           "format": "uuid",
                           "type": "string"
                         },
@@ -105342,8 +105408,356 @@
         "summary": "Create a medication-order draft (prescriber_eligible ABAC)",
         "parameters": [],
         "responses": {
-          "200": {
-            "description": "OK"
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "medClass",
+                    "status",
+                    "drugName",
+                    "strength",
+                    "doseForm",
+                    "route",
+                    "rxnormRxcui",
+                    "ndc",
+                    "version",
+                    "prescriberMembershipId",
+                    "prescriberDiscipline",
+                    "prescribingPhysicianMdmId",
+                    "dispensingPharmacyMdmId",
+                    "isControlledSubstance",
+                    "deaSchedule",
+                    "cosignRequired",
+                    "cosignStatus",
+                    "refillsRemaining",
+                    "derivedFromRefillId",
+                    "replacesMedicationOrderId",
+                    "signedAt",
+                    "signedBy",
+                    "transmittedAt",
+                    "discontinuedAt",
+                    "discontinuationReason",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "medClass": {
+                      "anyOf": [
+                        {
+                          "const": "standard",
+                          "type": "string"
+                        },
+                        {
+                          "const": "controlled_substance",
+                          "type": "string"
+                        },
+                        {
+                          "const": "compounded",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pending_signature",
+                          "type": "string"
+                        },
+                        {
+                          "const": "verbal_pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "epcs_identity_pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "signed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "queued_for_transmission",
+                          "type": "string"
+                        },
+                        {
+                          "const": "transmitted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ack_received",
+                          "type": "string"
+                        },
+                        {
+                          "const": "nack_received",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "completed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "discontinued",
+                          "type": "string"
+                        },
+                        {
+                          "const": "transmission_failed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expired_unsigned",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "drugName": {
+                      "type": "string"
+                    },
+                    "strength": {
+                      "type": "string"
+                    },
+                    "doseForm": {
+                      "type": "string"
+                    },
+                    "route": {
+                      "type": "string"
+                    },
+                    "rxnormRxcui": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ndc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "prescriberMembershipId": {
+                      "type": "string"
+                    },
+                    "prescriberDiscipline": {
+                      "type": "string"
+                    },
+                    "prescribingPhysicianMdmId": {
+                      "type": "string"
+                    },
+                    "dispensingPharmacyMdmId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isControlledSubstance": {
+                      "type": "boolean"
+                    },
+                    "deaSchedule": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "II",
+                              "type": "string"
+                            },
+                            {
+                              "const": "III",
+                              "type": "string"
+                            },
+                            {
+                              "const": "IV",
+                              "type": "string"
+                            },
+                            {
+                              "const": "V",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cosignRequired": {
+                      "type": "boolean"
+                    },
+                    "cosignStatus": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "attached",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "refillsRemaining": {
+                      "type": "integer"
+                    },
+                    "derivedFromRefillId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "replacesMedicationOrderId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "transmittedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "discontinuedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "discontinuationReason": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "clinical_judgement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "patient_request",
+                              "type": "string"
+                            },
+                            {
+                              "const": "adverse_event",
+                              "type": "string"
+                            },
+                            {
+                              "const": "replaced_by_corrected_order",
+                              "type": "string"
+                            },
+                            {
+                              "const": "admission_discharged",
+                              "type": "string"
+                            },
+                            {
+                              "const": "pharmacy_nack",
+                              "type": "string"
+                            },
+                            {
+                              "const": "corrected_replacement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired_verbal",
+                              "type": "string"
+                            },
+                            {
+                              "const": "transmission_failed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "no_refills_no_renewal",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -141748,7 +142162,8 @@
                             "lineId",
                             "lineKind",
                             "sourceId",
-                            "decision"
+                            "decision",
+                            "resultingMedicationOrderId"
                           ],
                           "properties": {
                             "lineId": {
@@ -141781,6 +142196,16 @@
                                 {
                                   "const": "document_only",
                                   "type": "string"
+                                }
+                              ]
+                            },
+                            "resultingMedicationOrderId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
                                 }
                               ]
                             }
@@ -141896,7 +142321,8 @@
                           "lineId",
                           "lineKind",
                           "sourceId",
-                          "decision"
+                          "decision",
+                          "resultingMedicationOrderId"
                         ],
                         "properties": {
                           "lineId": {
@@ -141929,6 +142355,16 @@
                               {
                                 "const": "document_only",
                                 "type": "string"
+                              }
+                            ]
+                          },
+                          "resultingMedicationOrderId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
                               }
                             ]
                           }
@@ -142043,7 +142479,8 @@
                           "lineId",
                           "lineKind",
                           "sourceId",
-                          "decision"
+                          "decision",
+                          "resultingMedicationOrderId"
                         ],
                         "properties": {
                           "lineId": {
@@ -142076,6 +142513,16 @@
                               {
                                 "const": "document_only",
                                 "type": "string"
+                              }
+                            ]
+                          },
+                          "resultingMedicationOrderId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
                               }
                             ]
                           }
@@ -142218,7 +142665,8 @@
                           "lineId",
                           "lineKind",
                           "sourceId",
-                          "decision"
+                          "decision",
+                          "resultingMedicationOrderId"
                         ],
                         "properties": {
                           "lineId": {
@@ -142251,6 +142699,16 @@
                               {
                                 "const": "document_only",
                                 "type": "string"
+                              }
+                            ]
+                          },
+                          "resultingMedicationOrderId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
                               }
                             ]
                           }
@@ -142428,7 +142886,8 @@
                           "lineId",
                           "lineKind",
                           "sourceId",
-                          "decision"
+                          "decision",
+                          "resultingMedicationOrderId"
                         ],
                         "properties": {
                           "lineId": {
@@ -142461,6 +142920,16 @@
                               {
                                 "const": "document_only",
                                 "type": "string"
+                              }
+                            ]
+                          },
+                          "resultingMedicationOrderId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
                               }
                             ]
                           }
@@ -142515,6 +142984,10 @@
                   },
                   "decisionNotes": {
                     "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "resultingMedicationOrderId": {
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -142618,7 +143091,8 @@
                           "lineId",
                           "lineKind",
                           "sourceId",
-                          "decision"
+                          "decision",
+                          "resultingMedicationOrderId"
                         ],
                         "properties": {
                           "lineId": {
@@ -142651,6 +143125,16 @@
                               {
                                 "const": "document_only",
                                 "type": "string"
+                              }
+                            ]
+                          },
+                          "resultingMedicationOrderId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
                               }
                             ]
                           }
@@ -142785,7 +143269,8 @@
                           "lineId",
                           "lineKind",
                           "sourceId",
-                          "decision"
+                          "decision",
+                          "resultingMedicationOrderId"
                         ],
                         "properties": {
                           "lineId": {
@@ -142818,6 +143303,16 @@
                               {
                                 "const": "document_only",
                                 "type": "string"
+                              }
+                            ]
+                          },
+                          "resultingMedicationOrderId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
                               }
                             ]
                           }

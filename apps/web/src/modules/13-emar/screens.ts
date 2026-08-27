@@ -14,12 +14,16 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // (Missed-Dose inbox); record / update / add-caregiver-line / finalize / void (Reconciliation Worksheet);
 // acknowledge-return (Comfort Kit); the tighten-only policy PUT (Administration Policy).
 //
-// WHAT IS NOT, AND WHY — both are missing PRODUCERS, not missing UI:
-//   • IV titrate / pause / resume / stop. `administration_record.iv_session_id` is written nowhere in the
-//     codebase, so no route can append a segment to a session and the §2.11 D11 ordering graph is never
-//     applied. Out of launch scope until an IV-session producer exists; see iv-session.tsx.
-//   • The reconciliation "Send to prescriber" M12 draft-order mint. No route mints an M12 draft from a
-//     decision; see reconciliation-worksheet.tsx.
+// The two surfaces this task first declined are built too, each once its missing PRODUCER was built:
+//   • IV start / titrate / pause / resume / stop (§2.11 D11, #134). `administration_record.iv_session_id`
+//     was written NOWHERE — no route could append a segment to a session, so `IV_SESSION_GRAPH`,
+//     `assertIvSegmentLegal` and `checkIvRateBounds` were enforced at runtime by nothing.
+//     `iv_continuous_start` mints the session now and every continuation names it; the buttons offered are
+//     the ones the session's published state accepts, and the server still refuses the rest.
+//   • The reconciliation "Send to prescriber" M12 draft mint (§2.8 D17). The draft is created against
+//     M12's own route and linked back onto the decision via `resulting_medication_order_id` — a column
+//     that had existed since M13-T02 with no writer, so a worksheet could not show which lines it had
+//     actioned.
 // The M22 eMAR PDF (apps/admin) and M28 FHIR MedicationAdministration projection remain deferred (Wave F/H
 // deny-stubs).
 import { lazy } from "react";

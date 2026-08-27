@@ -74,6 +74,9 @@ export const RecordAdministrationRequest = Type.Object({
   scheduledDoseId: Type.Optional(Type.String({ format: "uuid" })),
   comfortKitDeploymentId: Type.Optional(Type.String({ format: "uuid" })),
   encounterId: Type.Optional(Type.String({ format: "uuid" })),
+  /** §2.11 D11 — REQUIRED for `rate_change`/`pause`/`resume`/`stop` (they continue a session); REFUSED
+   *  for `iv_continuous_start`, which mints one and returns it on the recorded row. */
+  ivSessionId: Type.Optional(Type.String({ format: "uuid" })),
   data: Type.Unknown(),
   prn: Type.Optional(
     Type.Object({
@@ -166,6 +169,15 @@ export const UpdateDecisionRequest = Type.Object({
     Type.Literal("document_only"),
   ]),
   decisionNotes: Type.Optional(Type.String({ maxLength: 1000 })),
+  /**
+   * §2.8 D17 — the M12 draft this decision produced ("send to prescriber"). The column
+   * `medication_reconciliation_decision.resulting_medication_order_id` has existed since M13-T02 and
+   * nothing ever wrote it, so a reconciliation that CREATED an order kept no link to it and the
+   * worksheet could not show which lines had been actioned. Written here rather than through a new
+   * route: linking IS an update to the decision, and the M12 draft itself is minted by the caller
+   * against M12's own `POST /api/v1/medication-orders` — M13 does not write another module's table.
+   */
+  resultingMedicationOrderId: Type.Optional(Type.String({ format: "uuid" })),
 });
 export const AddCaregiverReportedLineRequest = Type.Object({
   drugName: Type.String({ minLength: 1, maxLength: 200 }),
@@ -326,6 +338,8 @@ const ReconciliationDecisionViewSchema = Type.Object({
   lineKind: Type.String(),
   sourceId: Type.String(),
   decision: RECONCILIATION_DECISION_KIND,
+  /** The M12 draft this decision produced, once one has been sent to the prescriber. */
+  resultingMedicationOrderId: Nullable(Type.String()),
 });
 export const WorksheetViewSchema = Type.Object({
   id: Type.String(),
@@ -349,7 +363,18 @@ export const DeploymentListResponseSchema = Type.Array(DeploymentViewSchema);
 export const IvSessionViewSchema = Type.Object({
   sessionId: Type.String(),
   medicationOrderId: Type.String(),
-  segments: Type.Array(Type.Object({ kind: ADMINISTRATION_MODE, recordedAt: Type.String() })),
+  startedAt: Type.String(),
+  endedAt: Nullable(Type.String()),
+  /** §2.11 — the derived session state, so a client can offer only the segments the graph accepts next. */
+  state: lit(["none", "running", "paused", "stopped"] as const),
+  segments: Type.Array(
+    Type.Object({
+      kind: ADMINISTRATION_MODE,
+      recordedAt: Type.String(),
+      rate: Nullable(Type.Number()),
+      rateUnit: Nullable(Type.String()),
+    }),
+  ),
 });
 
 export const AdministrationPolicyViewSchema = Type.Object({

@@ -58,6 +58,52 @@ test.describe("eMAR", () => {
     expect(before).toBeLessThanOrEqual(1);
   });
 
+  test("IV: start an infusion, titrate it, and stop it — the graph decides what is offered", async ({
+    page,
+  }) => {
+    // #134 — `administration_record.iv_session_id` was written nowhere, so no session could exist and the
+    // §2.11 D11 ordering graph was enforced at runtime by nothing. This drives the producer end to end.
+    await signInAs(page, RN_ACCOUNT());
+    const patientId = await openPatientChartByLastName(page, PATIENT_LAST_NAME);
+    await page.goto(`/patients/${patientId}/emar`);
+    await page.getByRole("button", { name: "Start IV infusion" }).click();
+
+    const startDialog = page.getByRole("dialog");
+    await expect(startDialog.getByRole("heading", { name: "Start infusion" })).toBeVisible();
+    await startDialog.getByLabel("Infusion rate").fill("4");
+    await startDialog.getByLabel("Rate unit").fill("mg/hr");
+    await startDialog.getByLabel("Dilution").fill("morphine 1 mg/mL in NS");
+    await startDialog.getByRole("button", { name: "Start infusion" }).click();
+
+    // Starting MINTS the session, so the app follows it to the session surface.
+    await page.waitForURL(/\/iv-sessions\/[0-9a-f-]{36}$/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "IV Continuous Session" })).toBeVisible();
+
+    // A running session offers Titrate / Pause / Stop and NOT Resume — IV_SESSION_GRAPH, not a guess.
+    await expect(page.getByRole("button", { name: "Titrate" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Resume" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Pause" }).click();
+    const pauseDialog = page.getByRole("dialog");
+    await pauseDialog.getByLabel("Pause reason").fill("line infiltrated");
+    await pauseDialog.getByRole("button", { name: "Record pause" }).click();
+    await expect(pauseDialog).toBeHidden({ timeout: 15_000 });
+
+    // Paused: Resume and Stop, and no Titrate — a paused pump has no rate to change.
+    await expect(page.getByRole("button", { name: "Resume" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Titrate" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Stop" }).click();
+    const stopDialog = page.getByRole("dialog");
+    await stopDialog.getByLabel("Stop reason").fill("comfort achieved");
+    await stopDialog.getByRole("button", { name: "Record stop" }).click();
+    await expect(stopDialog).toBeHidden({ timeout: 15_000 });
+
+    // Stopped is terminal — every CTA is gone and the screen says so.
+    await expect(page.getByText("This session is stopped", { exact: false })).toBeVisible();
+  });
+
   test("accessibility: the eMAR and its administer ceremony have no WCAG 2A/AA violations", async ({
     page,
   }) => {

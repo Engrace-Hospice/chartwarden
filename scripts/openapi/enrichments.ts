@@ -6399,6 +6399,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/medication-orders": {
     summary: "Create a medication-order draft (prescriber_eligible ABAC)",
     body: M12CreateMedicationOrderRequest,
+    // F-031 — the route replies 201 with the created order and published neither, so `client:gen` typed the
+    // response `never` and a caller could create a draft without learning its id. M13's reconciliation
+    // "send to prescriber" needs exactly that id, to write it back onto the decision line
+    // (`resulting_medication_order_id`) — so the contract has to say what the write returns.
+    status: 201,
+    response: M12MedicationOrderResponseSchema,
   },
   "GET /api/v1/medication-orders/:id": {
     summary: "One medication order's detail",

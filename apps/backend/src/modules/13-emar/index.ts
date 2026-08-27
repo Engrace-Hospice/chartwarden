@@ -41,11 +41,13 @@ export function mountEmarRoutes(
           medicationOrderId,
         );
         if (ctx === null) return null;
+        const policy = ctx.order.sigStructured.ivContinuousPolicy;
         return {
           patientId: ctx.order.patientId,
           admissionId: ctx.order.admissionId,
           drugName: ctx.order.drugName,
           route: ctx.order.route,
+          ivContinuousPolicy: policy ? { minRate: policy.minRate, maxRate: policy.maxRate } : null,
         };
       },
     }),

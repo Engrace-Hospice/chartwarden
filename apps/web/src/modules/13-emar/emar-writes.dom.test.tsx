@@ -21,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
 import { AdministrationDetail } from "./administration-detail";
 import { ComfortKitView } from "./comfort-kit-view";
+import { IvSession } from "./iv-session";
 import { MissedDoseInbox } from "./missed-dose-inbox";
 import { PatientEmar } from "./patient-emar";
 import { ReconciliationWorksheet } from "./reconciliation-worksheet";
@@ -31,6 +32,8 @@ const ADMIN_ID = "cccccccc-3333-4333-8333-cccccccccccc";
 const WORKSHEET = "dddddddd-4444-4444-8444-dddddddddddd";
 const DEPLOYMENT = "eeeeeeee-5555-4555-8555-eeeeeeeeeeee";
 const MISSED = "ffffffff-6666-4666-8666-ffffffffffff";
+const IV_SESSION = "12121212-7777-4777-8777-121212121212";
+const DRAFT_ORDER = "34343434-8888-4888-8888-343434343434";
 
 const ACTIVE_ORDER = {
   id: ORDER,
@@ -46,6 +49,8 @@ const ACTIVE_ORDER = {
   ndc: null,
   isControlledSubstance: false,
   deaSchedule: null,
+  prescribingPhysicianMdmId: "55555555-9999-4999-8999-555555555555",
+  prescriberDiscipline: "md",
 };
 
 const ADMINISTRATION = {
@@ -72,6 +77,22 @@ const ADMINISTRATION = {
   barcodeMatchResult: null,
 };
 
+const IV_SESSION_VIEW = {
+  sessionId: IV_SESSION,
+  medicationOrderId: ORDER,
+  startedAt: "2026-08-26T07:00:00.000Z",
+  endedAt: null,
+  state: "running",
+  segments: [
+    {
+      kind: "iv_continuous_start",
+      recordedAt: "2026-08-26T07:00:00.000Z",
+      rate: 4,
+      rateUnit: "mg/hr",
+    },
+  ],
+};
+
 const WORKSHEET_VIEW = {
   id: WORKSHEET,
   patientId: PATIENT,
@@ -80,7 +101,13 @@ const WORKSHEET_VIEW = {
   status: "in_progress",
   lineCount: 2,
   decisions: [
-    { lineId: "line-1", lineKind: "home_medication", sourceId: ORDER, decision: "carry_forward" },
+    {
+      lineId: "line-1",
+      lineKind: "home_medication",
+      sourceId: ORDER,
+      decision: "carry_forward",
+      resultingMedicationOrderId: null,
+    },
   ],
 };
 
@@ -102,6 +129,8 @@ const MISSED_VIEW = {
 
 /** Every request the screen issued, in order: "METHOD /path". */
 let calls: string[] = [];
+/** Every JSON body sent, in order — so a test can assert WHAT was written, not only that something was. */
+let bodies: Record<string, unknown>[] = [];
 
 // openapi-fetch calls `fetch(new Request(url, init))` — the method rides on the Request, NOT on a separate
 // `init`, so reading `init.method` alone records every call as a GET.
@@ -116,6 +145,7 @@ function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string;
 /** Route each GET to the shape that screen reads; every write answers 200 with a plausible row. */
 function bodyFor(method: string, path: string): unknown {
   if (method !== "GET") {
+    if (path === "/api/v1/medication-orders") return { ...ACTIVE_ORDER, id: DRAFT_ORDER };
     if (path.includes("/reconciliation/")) return WORKSHEET_VIEW;
     if (path.includes("/comfort-kits/")) return DEPLOYMENT_VIEW;
     if (path.includes("/missed-doses/"))
@@ -134,22 +164,39 @@ function bodyFor(method: string, path: string): unknown {
       dob: "1948-03-02",
       status: "active",
     };
+  if (path.startsWith("/api/v1/administrations/iv-sessions/")) return IV_SESSION_VIEW;
   if (path.startsWith("/api/v1/administrations/")) return ADMINISTRATION;
+  if (path.startsWith("/api/v1/mdm/")) return { results: [] };
   if (path.startsWith("/api/v1/reconciliation/")) return WORKSHEET_VIEW;
   if (path.startsWith("/api/v1/comfort-kits/")) return DEPLOYMENT_VIEW;
   return {};
 }
 
-function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const { url, method } = requestOf(input, init);
   const path = new URL(url, "http://localhost").pathname;
   calls.push(`${method} ${path}`);
-  return Promise.resolve(
-    new Response(JSON.stringify(bodyFor(method, path)), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    }),
-  );
+  if (method !== "GET") {
+    // The body rides on the Request openapi-fetch builds, not on a separate `init` — clone before
+    // reading so the caller's own stream stays intact.
+    const raw =
+      typeof input === "object" && "clone" in input
+        ? await (input as Request).clone().text()
+        : typeof init?.body === "string"
+          ? init.body
+          : "";
+    if (raw) {
+      try {
+        bodies.push(JSON.parse(raw) as Record<string, unknown>);
+      } catch {
+        // A non-JSON body is not something any M13 write sends; recording nothing is the honest answer.
+      }
+    }
+  }
+  return new Response(JSON.stringify(bodyFor(method, path)), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 const SESSION = {
@@ -181,6 +228,7 @@ const writes = () => calls.filter((c) => !c.startsWith("GET "));
 
 beforeEach(() => {
   calls = [];
+  bodies = [];
   vi.stubGlobal("fetch", vi.fn(stubFetch));
 });
 afterEach(() => {
@@ -279,6 +327,54 @@ describe("F-031 — the M13 write controls issue real requests", () => {
     await waitFor(() =>
       expect(writes()).toContain(`POST /api/v1/reconciliation/worksheets/${WORKSHEET}/decisions`),
     );
+  });
+
+  it("IV session: Titrate POSTs a rate-change segment naming the session", async () => {
+    mount(
+      `/patients/${PATIENT}/iv-sessions/${IV_SESSION}`,
+      "/patients/:patientId/iv-sessions/:sessionId",
+      <IvSession />,
+    );
+    // A RUNNING session offers exactly what IV_SESSION_GRAPH accepts next — no Resume.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Titrate" })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Resume" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Titrate" }));
+    fireEvent.change(screen.getByLabelText("New rate", { exact: false }), {
+      target: { value: "6" },
+    });
+    fireEvent.change(screen.getByLabelText("Titration reason", { exact: false }), {
+      target: { value: "pain uncontrolled" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Record rate change" }));
+    await waitFor(() => expect(writes()).toContain("POST /api/v1/administrations"));
+    const sent = bodies.find((b) => b.mode === "iv_continuous_rate_change");
+    expect(sent?.ivSessionId).toBe(IV_SESSION);
+    expect((sent?.data as { newRate?: number } | undefined)?.newRate).toBe(6);
+  });
+
+  it("Reconciliation worksheet: Send to prescriber mints a draft AND links it to the line", async () => {
+    mount(
+      `/patients/${PATIENT}/reconciliation/${WORKSHEET}`,
+      "/patients/:patientId/reconciliation/:worksheetId",
+      <ReconciliationWorksheet />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Send to prescriber" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send to prescriber" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create draft order" }));
+    // Both halves matter: minting a draft nobody links is the state this surface exists to end.
+    await waitFor(() => expect(writes()).toContain("POST /api/v1/medication-orders"));
+    await waitFor(() =>
+      expect(writes()).toContain(
+        `PATCH /api/v1/reconciliation/worksheets/${WORKSHEET}/decisions/line-1`,
+      ),
+    );
+    const link = bodies.find((b) => "resultingMedicationOrderId" in b);
+    expect(link?.resultingMedicationOrderId).toBe(DRAFT_ORDER);
   });
 
   it("Comfort kit: Acknowledge return POSTs it", async () => {

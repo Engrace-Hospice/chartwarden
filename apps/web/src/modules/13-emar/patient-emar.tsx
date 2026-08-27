@@ -61,6 +61,7 @@ import {
   listScheduledDoses,
 } from "./emar-api";
 import { ADMIN_STATUS_TONE, DOSE_TONE, lateEntryTone, stateLabel } from "./emar-status";
+import { IvSegmentModal } from "./iv-segment-modal";
 import { WitnessAttestModal } from "./witness-attest-modal";
 
 interface PatientSummary {
@@ -88,6 +89,7 @@ export function PatientEmar(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [ceremony, setCeremony] = useState<AdministerIntent | null>(null);
   const [witnessOpen, setWitnessOpen] = useState(false);
+  const [ivStartOrderId, setIvStartOrderId] = useState<string | null>(null);
   const [holdDoseId, setHoldDoseId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -281,7 +283,13 @@ export function PatientEmar(): JSX.Element {
                   <button
                     key={a.id}
                     type="button"
-                    onClick={() => navigate(`/patients/${patientId}/administrations/${a.id}`)}
+                    onClick={() =>
+                      navigate(
+                        a.ivSessionId
+                          ? `/patients/${patientId}/iv-sessions/${a.ivSessionId}`
+                          : `/patients/${patientId}/administrations/${a.id}`,
+                      )
+                    }
                     style={{ ...adminRow, borderTop: i === 0 ? "none" : ghostBorder }}
                   >
                     <span style={{ flex: 1, minWidth: 0, textAlign: "left", color: t.onSurface }}>
@@ -352,6 +360,16 @@ export function PatientEmar(): JSX.Element {
                   Hold this dose
                 </Button>
               ) : null}
+              {orders.length > 0 ? (
+                <Button
+                  tone="tertiary"
+                  onClick={() =>
+                    setIvStartOrderId(selectedDose?.medicationOrderId ?? orders[0]!.id)
+                  }
+                >
+                  Start IV infusion
+                </Button>
+              ) : null}
               {controlledOrders.length > 0 ? (
                 <Button tone="tertiary" onClick={() => setWitnessOpen(true)}>
                   Witness a controlled substance
@@ -382,6 +400,22 @@ export function PatientEmar(): JSX.Element {
             void load();
           }}
         />
+        {ivStartOrderId ? (
+          // §2.11 — starting an infusion MINTS the session, so the ceremony hands back its id and this
+          // screen follows it: the segment sequence lives on the session surface, not in the MAR grid.
+          <IvSegmentModal
+            open
+            mode="iv_continuous_start"
+            medicationOrderId={ivStartOrderId}
+            medClass={orders.find((o) => o.id === ivStartOrderId)?.medClass ?? "standard"}
+            onClose={() => setIvStartOrderId(null)}
+            onRecorded={(sessionId) => {
+              setIvStartOrderId(null);
+              if (sessionId) navigate(`/patients/${patientId}/iv-sessions/${sessionId}`);
+              else void load();
+            }}
+          />
+        ) : null}
         <WitnessAttestModal
           open={witnessOpen}
           patientId={patientId ?? ""}

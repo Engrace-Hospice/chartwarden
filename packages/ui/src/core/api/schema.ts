@@ -23051,6 +23051,8 @@ export interface operations {
                     comfortKitDeploymentId?: string;
                     /** Format: uuid */
                     encounterId?: string;
+                    /** Format: uuid */
+                    ivSessionId?: string;
                     data: unknown;
                     prn?: {
                         triggeringPrnReason: string;
@@ -23462,9 +23464,14 @@ export interface operations {
                     "application/json": {
                         sessionId: string;
                         medicationOrderId: string;
+                        startedAt: string;
+                        endedAt: string | null;
+                        state: "none" | "running" | "paused" | "stopped";
                         segments: {
                             kind: "single_dose" | "iv_continuous_start" | "iv_continuous_rate_change" | "iv_continuous_pause" | "iv_continuous_resume" | "iv_continuous_stop";
                             recordedAt: string;
+                            rate: number | null;
+                            rateUnit: string | null;
                         }[];
                     };
                 };
@@ -23496,6 +23503,8 @@ export interface operations {
                         comfortKitDeploymentId?: string;
                         /** Format: uuid */
                         encounterId?: string;
+                        /** Format: uuid */
+                        ivSessionId?: string;
                         data: unknown;
                         prn?: {
                             triggeringPrnReason: string;
@@ -47273,11 +47282,43 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        medClass: "standard" | "controlled_substance" | "compounded";
+                        status: "draft" | "pending_signature" | "verbal_pending" | "epcs_identity_pending" | "signed" | "queued_for_transmission" | "transmitted" | "ack_received" | "nack_received" | "active" | "completed" | "discontinued" | "transmission_failed" | "expired_unsigned";
+                        drugName: string;
+                        strength: string;
+                        doseForm: string;
+                        route: string;
+                        rxnormRxcui: string | null;
+                        ndc: string | null;
+                        version: number;
+                        prescriberMembershipId: string;
+                        prescriberDiscipline: string;
+                        prescribingPhysicianMdmId: string;
+                        dispensingPharmacyMdmId: string | null;
+                        isControlledSubstance: boolean;
+                        deaSchedule: ("II" | "III" | "IV" | "V") | null;
+                        cosignRequired: boolean;
+                        cosignStatus: ("pending" | "attached") | null;
+                        refillsRemaining: number;
+                        derivedFromRefillId: string | null;
+                        replacesMedicationOrderId: string | null;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        transmittedAt: string | null;
+                        discontinuedAt: string | null;
+                        discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "pharmacy_nack" | "corrected_replacement" | "expired_verbal" | "transmission_failed" | "no_refills_no_renewal") | null;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -57649,6 +57690,7 @@ export interface operations {
                             lineKind: string;
                             sourceId: string;
                             decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
+                            resultingMedicationOrderId: string | null;
                         }[];
                     }[];
                 };
@@ -57686,6 +57728,7 @@ export interface operations {
                             lineKind: string;
                             sourceId: string;
                             decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
+                            resultingMedicationOrderId: string | null;
                         }[];
                     };
                 };
@@ -57731,6 +57774,7 @@ export interface operations {
                             lineKind: string;
                             sourceId: string;
                             decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
+                            resultingMedicationOrderId: string | null;
                         }[];
                     };
                 };
@@ -57777,6 +57821,7 @@ export interface operations {
                             lineKind: string;
                             sourceId: string;
                             decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
+                            resultingMedicationOrderId: string | null;
                         }[];
                     };
                 };
@@ -57800,6 +57845,8 @@ export interface operations {
                 "application/json": {
                     decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
                     decisionNotes?: string;
+                    /** Format: uuid */
+                    resultingMedicationOrderId?: string;
                 };
             };
         };
@@ -57822,6 +57869,7 @@ export interface operations {
                             lineKind: string;
                             sourceId: string;
                             decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
+                            resultingMedicationOrderId: string | null;
                         }[];
                     };
                 };
@@ -57865,6 +57913,7 @@ export interface operations {
                             lineKind: string;
                             sourceId: string;
                             decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
+                            resultingMedicationOrderId: string | null;
                         }[];
                     };
                 };
@@ -57908,6 +57957,7 @@ export interface operations {
                             lineKind: string;
                             sourceId: string;
                             decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
+                            resultingMedicationOrderId: string | null;
                         }[];
                     };
                 };
