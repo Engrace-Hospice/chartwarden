@@ -24,12 +24,25 @@ import { type DbClient, schema } from "@wardenx/db";
 import { templateKey as hearthnoteTemplateKey } from "@wardenx/hearthnote";
 import { VOCAB_VERSION } from "@wardenx/narrative-vocab";
 import { withOrgContext } from "@wardenx/tenancy";
-import { type LocalDate, NotFoundError, STEP_UP_POLICY, type StepUpFactor } from "@wardenx/types";
+import {
+  type CarePlanOverdueStatus,
+  type LocalDate,
+  NotFoundError,
+  type PatientId,
+  STEP_UP_POLICY,
+  type StepUpFactor,
+} from "@wardenx/types";
 import { and, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { planF2fDualWrite, planMileageCapture, planVitalsCapture } from "./authoring/index";
 import { transitionCosignature } from "./cosignature/index";
 import type { CosignatureState } from "./cosignature/index";
+import {
+  type GateSectionSelection,
+  assertGatePassed,
+  runAddendumComplianceGate,
+  runEncounterComplianceGate,
+} from "./gate/index";
 import type { HearthnoteFreeTextCipher } from "./hearthnote-crypto";
 import { transitionAddendum } from "./lifecycle/addendum";
 import { transitionEncounter } from "./lifecycle/encounter";
@@ -50,6 +63,7 @@ import type {
   SelectionSectionInput,
 } from "./routes/service";
 import { assembleSelections } from "./routes/service";
+import { getCarePlanReader } from "./seams/index";
 
 const ENC = schema.encounters;
 const COSIGN = schema.cosignatureRequests;
@@ -58,6 +72,33 @@ const VITALS = schema.vitals;
 const MILEAGE = schema.mileage;
 const SIG = schema.encounterSignatures;
 const SEL = schema.hearthnoteSelections;
+
+// ── The stored selection tree (#114 write path, #121 gate input) ──────────────────────────────────────
+//
+// What actually lands in `hearthnote_selection.selections`: the vocabulary codes and their numeric slot
+// params, plus `hasFreeText` — a boolean saying a section carries prose, never the prose (that is sealed
+// under the tenant DEK in `free_text_cipher`). The API shape (`SelectionSectionInput`) has the prose and
+// not the marker; the two are converted at the storage boundary, in `splitFreeText` and `openProse`.
+interface StoredSelectionSection {
+  readonly sectionId: string;
+  readonly entries: SelectionSectionInput["entries"];
+  readonly hasFreeText?: boolean;
+}
+
+/** Project the jsonb column to the stored tree (an unwritten row reads as no sections, not a throw). */
+function storedSections(selections: unknown): StoredSelectionSection[] {
+  return ((selections as { sections?: StoredSelectionSection[] } | null)?.sections ??
+    []) as StoredSelectionSection[];
+}
+
+/** The §2.6 gate's view of a stored tree: presence only — how many entries, and whether prose exists. */
+function gateSections(selections: unknown): GateSectionSelection[] {
+  return storedSections(selections).map((s) => ({
+    sectionId: s.sectionId,
+    entryCount: s.entries?.length ?? 0,
+    hasFreeText: s.hasFreeText === true,
+  }));
+}
 
 // ── §3.3/D13 signature provenance (CoP 418.104(c), 21 CFR Part 11 principles) ─────────────────────────
 //
@@ -257,12 +298,21 @@ export function createDbEncounterRouteService(
   // never depends on a key ring that has not bound yet.
   const splitFreeText = (
     sections: readonly SelectionSectionInput[],
-  ): { stored: SelectionSectionInput[]; prose: Record<string, string> } => {
-    const stored: SelectionSectionInput[] = [];
+  ): { stored: StoredSelectionSection[]; prose: Record<string, string> } => {
+    const stored: StoredSelectionSection[] = [];
     const prose: Record<string, string> = {};
     for (const s of sections) {
-      stored.push({ sectionId: s.sectionId, entries: s.entries });
-      if (s.freeText !== undefined && s.freeText.length > 0) prose[s.sectionId] = s.freeText;
+      const hasFreeText = s.freeText !== undefined && s.freeText.length > 0;
+      // `hasFreeText` is storage METADATA, not content: the §2.6 gate counts a section populated when it
+      // has entries OR prose, and the prose itself lives in the DEK envelope. Without this marker the
+      // gate would have to open that envelope to answer a question about PRESENCE — reading PHI to
+      // decide whether something is there, and refusing to run at all wherever the key ring is unbound.
+      stored.push({
+        sectionId: s.sectionId,
+        entries: s.entries,
+        ...(hasFreeText ? { hasFreeText } : {}),
+      });
+      if (hasFreeText) prose[s.sectionId] = s.freeText as string;
     }
     return { stored, prose };
   };
@@ -287,16 +337,84 @@ export function createDbEncounterRouteService(
     organizationId: string,
     row: { selections: unknown; freeTextCipher: string | null },
   ): Promise<SelectionSectionInput[]> {
-    const stored = ((row.selections as { sections?: SelectionSectionInput[] } | null)?.sections ??
-      []) as SelectionSectionInput[];
-    if (row.freeTextCipher === null || !freeTextCipher) return stored;
+    const stored = storedSections(row.selections);
+    // `hasFreeText` is a storage marker for the gate; it never leaves the service (the API shape is
+    // `{ sectionId, entries, freeText? }` — the prose itself, or its absence).
+    const project = ({ sectionId, entries }: StoredSelectionSection): SelectionSectionInput => ({
+      sectionId,
+      entries,
+    });
+    if (row.freeTextCipher === null || !freeTextCipher) return stored.map(project);
     const prose = JSON.parse(
       await freeTextCipher.open(organizationId, row.freeTextCipher),
     ) as Record<string, string>;
     return stored.map((s) => {
       const text = prose[s.sectionId];
-      return text === undefined ? s : { ...s, freeText: text };
+      return text === undefined ? project(s) : { ...project(s), freeText: text };
     });
+  }
+
+  // ── §2.6 Layer-3 compliance gate (#121) ───────────────────────────────────────────────────────────
+  //
+  // The gate itself is pure (./gate); this resolves the facts it decides over. Both write paths that
+  // used to hand `transitionEncounter` the literal `true` now hand it this verdict.
+
+  /**
+   * M7's §7.8 overdue verdict (CoP 418.56). `null` = the patient has no active care plan, which the
+   * gate treats as "no review window to have missed". A THROW is not that: M7's store runs under the
+   * caller's ambient request context and refuses to read unscoped, and the boot deny-stub refuses
+   * outright — either way the check did not run, and a signing-blocking control that passes when it
+   * could not evaluate is precisely the defect this gate was fixed from. So it refuses, with a code
+   * that says the gate was unavailable rather than that the note was incomplete.
+   */
+  async function carePlanOverdueFor(patientId: string): Promise<CarePlanOverdueStatus | null> {
+    try {
+      return await getCarePlanReader().isReviewOverdue(patientId as PatientId);
+    } catch (cause) {
+      throw new EncounterStateError(
+        "COMPLIANCE_GATE_UNAVAILABLE",
+        `the §2.6 care-plan review check could not be decided: M7's CarePlanReader is unreachable (${
+          cause instanceof Error ? cause.message : String(cause)
+        })`,
+      );
+    }
+  }
+
+  /** Run the §2.6 gate for one encounter and raise the 422 + remediation list when it does not pass. */
+  async function gateEncounter(
+    t: DbClient,
+    r: typeof ENC.$inferSelect,
+    at: "finalize" | "sign",
+  ): Promise<boolean> {
+    const [sel] = await t
+      .select({ selections: SEL.selections })
+      .from(SEL)
+      .where(eq(SEL.encounterId, r.id))
+      .limit(1);
+    const verdict = runEncounterComplianceGate({
+      encounterType: r.encounterType,
+      discipline: r.discipline,
+      sections: gateSections(sel?.selections ?? null),
+      carePlanOverdue: await carePlanOverdueFor(r.patientId),
+    });
+    assertGatePassed(verdict, at);
+    return verdict.pass;
+  }
+
+  /** Run the §2.6 gate for one addendum (the narrower form — see runAddendumComplianceGate). */
+  async function gateAddendum(
+    t: DbClient,
+    addendumId: string,
+    at: "finalize" | "sign",
+  ): Promise<boolean> {
+    const [sel] = await t
+      .select({ selections: SEL.selections })
+      .from(SEL)
+      .where(eq(SEL.addendumId, addendumId))
+      .limit(1);
+    const verdict = runAddendumComplianceGate(gateSections(sel?.selections ?? null));
+    assertGatePassed(verdict, at);
+    return verdict.pass;
   }
   /** Load one org-scoped encounter row → the shared projection, or `null` when absent/cross-tenant. */
   async function loadRow(
@@ -852,9 +970,11 @@ export function createDbEncounterRouteService(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
+        // §2.3 — the gate runs as a PREVIEW here: a failure raises the 422 + remediation list and the
+        // row stays in draft, which is the transition not happening at all.
         const trans = transitionEncounter(r.status, {
           type: "finalize",
-          gatePreviewPassed: true,
+          gatePreviewPassed: await gateEncounter(t, r, "finalize"),
           at,
         });
         const updated = firstOrThrow(
@@ -918,6 +1038,7 @@ export function createDbEncounterRouteService(
         // The M6 write descriptor (plan.attestation) is handed to M6's writer by the composition root in
         // prod; this slice performs the M8 side only (no cross-module write edge).
         if (isF2f(r)) {
+          const gatePassed = await gateEncounter(t, r, "sign");
           const plan = planF2fDualWrite({
             status: r.status,
             encounterId: r.id,
@@ -925,7 +1046,7 @@ export function createDbEncounterRouteService(
               typeof planF2fDualWrite
             >[0]["faceToFaceEncounterId"],
             discipline: r.discipline,
-            gatePassed: true,
+            gatePassed,
             stepUpFresh: provenance.stepUpFresh,
             at: args.at,
           });
@@ -969,7 +1090,7 @@ export function createDbEncounterRouteService(
         const trans = transitionEncounter(r.status, {
           type: "sign",
           discipline: r.discipline,
-          gatePassed: true,
+          gatePassed: await gateEncounter(t, r, "sign"),
           stepUpFresh: provenance.stepUpFresh,
           isF2f: false,
           f2fDualWriteSatisfied: true,
@@ -1311,7 +1432,7 @@ export function createDbEncounterRouteService(
         const a = await loadAddendum(t, encounterId, addendumId);
         const trans = transitionAddendum(a.status as "draft" | "finalized" | "signed", {
           type: "finalize",
-          gatePreviewPassed: true,
+          gatePreviewPassed: await gateAddendum(t, addendumId, "finalize"),
           at: new Date().toISOString().slice(0, 10) as LocalDate,
         });
         await t
@@ -1336,7 +1457,7 @@ export function createDbEncounterRouteService(
         }
         const trans = transitionAddendum(a.status as "draft" | "finalized" | "signed", {
           type: "sign",
-          gatePassed: true,
+          gatePassed: await gateAddendum(t, addendumId, "sign"),
           stepUpFresh: provenance.stepUpFresh,
           at: args.at,
         });

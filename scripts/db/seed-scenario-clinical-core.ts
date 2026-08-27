@@ -25,6 +25,7 @@
  * Prereqs: bun run db:seed:staff, db:seed:scenario-admissions (Whitfield must be active).
  * Run:     bun run db:seed:scenario-clinical
  */
+import { resolveTemplate } from "@wardenx/hearthnote";
 import { Client } from "pg";
 import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
 
@@ -276,6 +277,22 @@ async function main(): Promise<void> {
       },
     });
 
+    // Write the HearthNote before finalizing. The §2.6 Layer-3 gate is real now and refuses an encounter
+    // with no documentation — which is correct, and which this seed depended on NOT being true: it
+    // captured vitals and finalized a visit note that said nothing. Without this the finalize is a 422
+    // with four MISSING_SECTION details, `log.fail` sets exit 1, and `db:seed:all`'s && chain stops.
+    const template = resolveTemplate("routine_visit", "rn");
+    if (template === undefined) throw new Error("no HearthNote template for routine_visit × rn");
+    const sel = await rn.client.PATCH("/api/v1/encounters/{encounterId}/selections", {
+      params: { path: { encounterId: encData.id }, header: { "If-Match": "0" } },
+      body: {
+        sections: template.sections
+          .filter((t) => t.required)
+          .map((t) => ({ sectionId: t.id, entries: [{ code: "nv.cv.stable" }] })),
+      },
+    });
+    if (sel.error) throw new Error(`encounter selections failed: ${JSON.stringify(sel.error)}`);
+
     const fin = await rn.client.POST("/api/v1/encounters/{encounterId}/finalize", {
       params: { path: { encounterId: encData.id } },
     });
@@ -294,7 +311,7 @@ async function main(): Promise<void> {
     void enc2;
 
     log.ok(
-      "Encounters: 1 finalized visit (vitals captured), 1 draft visit — sign unreachable (step-up routes unmounted, see file header)",
+      "Encounters: 1 finalized visit (vitals + HearthNote captured), 1 draft visit — sign unreachable (step-up routes unmounted, see file header)",
     );
   } catch (err) {
     log.fail(`M8 encounters: ${String(err)}`);

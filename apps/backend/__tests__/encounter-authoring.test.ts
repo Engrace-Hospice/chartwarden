@@ -35,6 +35,28 @@ import {
   registerEncounterRoutes,
   resolveMiles,
 } from "../src/modules/08-encounters/index";
+import { requiredSectionSelections } from "./_hearthnote-fixtures";
+
+/**
+ * Document a draft to the §2.6 Layer-3 gate's floor (#121) — one selection per required template
+ * section. Every §7 flow below goes through it because a clinician does: the gate refuses to finalize a
+ * note with nothing in it, which is the whole point of the gate.
+ */
+async function document(
+  app: { inject: (o: unknown) => Promise<{ statusCode: number }> },
+  id: string,
+  headers: Record<string, string>,
+  encounterType: "routine_visit" | "face_to_face",
+  discipline: "rn" | "md",
+): Promise<void> {
+  const res = await app.inject({
+    method: "PATCH",
+    url: `/api/v1/encounters/${id}/selections`,
+    headers: { ...headers, "if-match": "0" },
+    payload: requiredSectionSelections(encounterType, discipline),
+  });
+  if (res.statusCode !== 200) throw new Error(`documenting the draft failed: ${res.statusCode}`);
+}
 
 /** GAP-014 — see encounter-routes.test.ts's identical helper for why this reimplements step_up_recent
  *  inline over a fresh per-test registry instead of `registerAuthorizationAbacPredicates()` (which
@@ -334,6 +356,8 @@ describe("M8-T10 — §7.1 RN routine visit happy path", () => {
     });
     expect(link.statusCode).toBe(201);
 
+    await document(app, id, RN, "routine_visit", "rn");
+
     const finalize = await app.inject({
       method: "POST",
       url: `/api/v1/encounters/${id}/finalize`,
@@ -383,6 +407,7 @@ describe("M8-T10 — §7.4 MD/NP F2F dual-write with M6 (D1)", () => {
     expect(created.statusCode).toBe(201);
     const id = created.json().id as string;
 
+    await document(app, id, MD, "face_to_face", "md");
     await app.inject({ method: "POST", url: `/api/v1/encounters/${id}/finalize`, headers: MD });
     const sign = await app.inject({
       method: "POST",
@@ -426,6 +451,7 @@ describe("M8-T10 — §7.4 MD/NP F2F dual-write with M6 (D1)", () => {
       },
     });
     const id = created.json().id as string;
+    await document(app, id, MD, "face_to_face", "md");
     await app.inject({ method: "POST", url: `/api/v1/encounters/${id}/finalize`, headers: MD });
 
     const sign = await app.inject({
