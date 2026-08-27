@@ -149,7 +149,12 @@ describe("M16-T06 §4.4 — the outbox catalog", () => {
     for (const event of M16_OUTBOX_EVENTS) {
       expect(event.moduleOwner).toBe("m16");
       expect(event.eventName).toMatch(/^m16\.[a-z_]+\.[a-z0-9_]+$/);
-      expect(event.declaredConsumers.length).toBeGreaterThan(0);
+      // An event may legitimately have NO outbox consumer — several m16 events are alert-only, and
+      // their audience receives them through M36's `AlertEmitter` seam. What must never be true is an
+      // event nobody is interested in at all (#103).
+      expect(event.declaredConsumers.length + (event.seamConsumers?.length ?? 0)).toBeGreaterThan(
+        0,
+      );
     }
   });
 

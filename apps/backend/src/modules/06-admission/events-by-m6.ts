@@ -42,7 +42,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       source: Type.String({ minLength: 1 }),
       receivedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -56,7 +57,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       referralId: Type.String({ minLength: 1 }),
       outcome: Type.Union([Type.Literal("eligible"), Type.Literal("ineligible")]),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -69,7 +71,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m36", "m22"],
+    declaredConsumers: ["m22"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -81,7 +84,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       referralId: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -96,7 +100,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       originalReferralReceivedAt: Type.String({ minLength: 1 }),
       withdrawnAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── admission ─────────────────────────────────────────────────────────────────────────────────
@@ -146,10 +151,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       "m27",
       "m28",
       "m30",
-      "m33",
-      "m36",
       "m37",
     ],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -196,10 +200,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       "m27",
       "m28",
       "m30",
-      "m33",
-      "m36",
       "m37",
     ],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   // ── election ──────────────────────────────────────────────────────────────────────────────────

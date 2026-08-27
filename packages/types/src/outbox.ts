@@ -31,8 +31,34 @@ export interface OutboxEventEntry<TName extends OutboxEventName = OutboxEventNam
   readonly description: string;
   /** TypeBox schema every published payload must satisfy (W-M1-11). */
   readonly payloadSchema: TSchema;
-  /** Module ids declared as consumers (validated against real module ids); empty = broadcast. */
+  /**
+   * Module ids that consume this event **from the outbox** (validated against real module ids).
+   *
+   * Empty means **record-only** — the row is written and delivered to NOBODY. It does not mean
+   * broadcast, which is what this comment used to say; `buildOutboxRoutingPlan` puts an entry with no
+   * declared consumers in `recordOnly` and refuses to boot if one has a live binding.
+   *
+   * Every module named here MUST have a live `OutboxConsumerBinding`, or be registered in
+   * `scripts/outbox-deferred-consumers.ts` with its blocker. A name here that never binds is not
+   * inert: `buildOutboxRoutingPlan` defers the event while ANY declared consumer is unbound, and the
+   * relay then re-claims that row every 30 minutes for the life of the deployment without ever
+   * burning an attempt (#103). Declare the mechanism you actually use.
+   */
   readonly declaredConsumers: readonly ModuleToken[];
+  /**
+   * Modules that receive this event's information through a registered **synchronous seam** rather
+   * than the outbox — M4's write-audit triggers, M36's `AlertEmitter`, M33's `MetricsProvider` pull.
+   *
+   * Documentation of a real cross-module relationship, NOT a delivery guarantee and NOT a routing
+   * input: the dispatcher ignores it entirely, so naming a module here can never defer a row. It
+   * exists because the catalog previously had one word for two mechanisms, and 623 (module, event)
+   * pairs used `declaredConsumers` to describe a seam — which is how 252 events came to be deferred
+   * forever by a subscription nothing ever intended to make (#103, F-043).
+   *
+   * A module named here must NOT also have a live binding for the event; if it really does consume
+   * from the outbox it belongs in {@link declaredConsumers}. `check-outbox-bindings.ts` enforces that.
+   */
+  readonly seamConsumers?: readonly ModuleToken[];
   /** When false, the event is ALSO pushed over Socket.IO (not outbox-only). */
   readonly isOutboxOnly: boolean;
 }

@@ -59,8 +59,11 @@ describe("M8 outbox event contract (§4.4)", () => {
   it("`m8.encounter.signed` fans out to the clinical-record subscriber set (§4.4 subscriber map)", () => {
     const signed = M8_OUTBOX_EVENTS.find((e) => e.eventName === "m8.encounter.signed");
     expect(signed?.declaredConsumers).toEqual(
-      expect.arrayContaining(["m9", "m10", "m14", "m22", "m28", "m30", "m31", "m33", "m36"]),
+      expect.arrayContaining(["m9", "m10", "m14", "m22", "m28", "m30", "m31"]),
     );
+    // m33 (MetricsProvider pull) and m36 (AlertEmitter seam) receive this synchronously, not from the
+    // outbox. Declaring them here deferred every signed encounter's row forever (#103).
+    expect(signed?.seamConsumers).toEqual(expect.arrayContaining(["m33", "m36"]));
   });
 
   it("`m8.encounter.cosigned` reaches the billing readers (§7.2 billable flip)", () => {

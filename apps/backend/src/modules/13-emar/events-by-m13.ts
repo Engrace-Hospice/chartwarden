@@ -37,6 +37,7 @@ interface M13OutboxEntry {
   readonly description: string;
   readonly payloadSchema: TSchema;
   readonly declaredConsumers: readonly ModuleToken[];
+  readonly seamConsumers?: readonly ModuleToken[];
   readonly isOutboxOnly: boolean;
 }
 
@@ -59,7 +60,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       encounterId: Type.Union([id, Type.Null()]),
       scheduledDoseId: Type.Union([id, Type.Null()]),
     }),
-    declaredConsumers: ["m14", "m28", "m30", "m31", "m33"],
+    declaredConsumers: ["m14", "m28", "m30", "m31"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -112,7 +114,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       newAdministrationId: id,
       reason: Type.String(),
     }),
-    declaredConsumers: ["m28", "m30", "m33"],
+    declaredConsumers: ["m28", "m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -125,7 +128,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       voidReason: Type.String(),
       voidedBy: id,
     }),
-    declaredConsumers: ["m28", "m30", "m36"],
+    declaredConsumers: ["m28", "m30"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -140,7 +144,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       caregiverSessionId: id,
       requiresRnReview: Type.Boolean(),
     }),
-    declaredConsumers: ["m14", "m28", "m36"],
+    declaredConsumers: ["m14", "m28"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -149,7 +154,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     description:
       "`acknowledge-caregiver` — the RN case manager confirmed a caregiver-attested row.",
     payloadSchema: Type.Object({ administrationRecordId: id, acknowledgedBy: id }),
-    declaredConsumers: ["m14", "m33"],
+    declaredConsumers: ["m14"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -162,7 +168,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       disputedBy: id,
       disputeReason: Type.String(),
     }),
-    declaredConsumers: ["m14", "m30", "m36"],
+    declaredConsumers: ["m14", "m30"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -210,7 +217,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       isControlled: Type.Boolean(),
       isComfortKitMedication: Type.Boolean(),
     }),
-    declaredConsumers: ["m14", "m30", "m33", "m36"],
+    declaredConsumers: ["m14", "m30"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -224,7 +232,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       cancellationReason: id,
       sourceEventId: id,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -237,7 +246,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       recordedBy: id,
       missedKind: Type.Literal("intentionally_held"),
     }),
-    declaredConsumers: ["m14", "m33"],
+    declaredConsumers: ["m14"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -245,7 +255,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     moduleOwner: "m13",
     description: "`acknowledge-missed-dose` — the case manager acknowledged a missed dose.",
     payloadSchema: Type.Object({ missedDoseId: id, acknowledgedBy: id }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -258,7 +269,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       administrationRecordId: id,
       revertReason: Type.String(),
     }),
-    declaredConsumers: ["m14", "m36"],
+    declaredConsumers: ["m14"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── reconciliation workflow (§2.8 / §4.4) ───────────────────────────────────────────────────────────────
@@ -274,7 +286,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       triggerKind: id,
       dueAt: isoInstant,
     }),
-    declaredConsumers: ["m14", "m33", "m36"],
+    declaredConsumers: ["m14"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -286,7 +299,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       dueAt: isoInstant,
       hoursRemaining: Type.Number(),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -295,7 +309,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     description:
       "The `reconciliation-due-warning` cron found an overdue worksheet; M36 high-severity, M30 survey log.",
     payloadSchema: Type.Object({ worksheetId: id, dueAt: isoInstant, overdueHours: Type.Number() }),
-    declaredConsumers: ["m30", "m36"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -340,7 +355,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       finalizedBy: id,
       lineSummary: Type.Unknown(),
     }),
-    declaredConsumers: ["m14", "m22", "m30", "m33"],
+    declaredConsumers: ["m14", "m22", "m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -349,7 +365,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     description:
       "`void-reconciliation` voided a worksheet (e.g., re-triggered by a transfer-correction).",
     payloadSchema: Type.Object({ worksheetId: id, voidReason: Type.String() }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── comfort-kit deployment + drawdown (§2.7 / §4.4) ─────────────────────────────────────────────────────
@@ -364,7 +381,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       admissionId: id,
       contents: Type.Unknown(),
     }),
-    declaredConsumers: ["m14", "m33"],
+    declaredConsumers: ["m14"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -394,7 +412,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       admissionId: id,
       returnRequiredAt: isoInstant,
     }),
-    declaredConsumers: ["m21", "m33", "m36"],
+    declaredConsumers: ["m21"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -408,7 +427,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       finalRemainingByMedication: Type.Unknown(),
       disposalReconciliationStatus: id,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -417,7 +437,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     description:
       "The nightly `kit-return-overdue` cron found a deployment not returned within the window.",
     payloadSchema: Type.Object({ deploymentId: id, daysOverdue: Type.Integer({ minimum: 0 }) }),
-    declaredConsumers: ["m30", "m36"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -431,7 +452,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       deltaQuantity: Type.Number(),
       deltaPercent: Type.Number(),
     }),
-    declaredConsumers: ["m30", "m36"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── document render + policy (§4.4) ─────────────────────────────────────────────────────────────────────
@@ -466,7 +488,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     description:
       "`admin-policy-update` changed the tenant administration policy; M33 + M30 survey log.",
     payloadSchema: Type.Object({ policyDeltaSummary: Type.Unknown() }),
-    declaredConsumers: ["m30", "m33"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
 ];

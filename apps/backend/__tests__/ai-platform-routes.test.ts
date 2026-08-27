@@ -593,7 +593,11 @@ describe("M32-T07 §4.11 — the `m32.*` outbox catalog", () => {
     const invoked = M32_OUTBOX_EVENTS.find((e) => e.eventName === "m32.capability.invoked");
     expect(disclosure).toBeDefined();
     expect(invoked).toBeDefined();
-    expect(disclosure?.declaredConsumers).toContain("m4");
+    // M4's accounting sink is the write-audit TRIGGER layer, not an outbox consumer — it writes
+    // `audit_event` inside the producer's own transaction. Declaring it as one deferred this event
+    // forever (#103); the relationship is recorded where the mechanism is truthful.
+    expect(disclosure?.seamConsumers).toContain("m4");
+    expect(disclosure?.declaredConsumers).not.toContain("m4");
     expect(
       Object.keys((invoked?.payloadSchema as { properties: object }).properties),
     ).not.toContain("patientId");

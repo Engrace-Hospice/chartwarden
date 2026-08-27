@@ -34,7 +34,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       planSlug: id,
       startedAt: isoInstant,
     }),
-    declaredConsumers: ["m33", "m34", "m36"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -42,7 +43,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m35",
     description: "A subscription transitioned from trialing to active.",
     payloadSchema: Type.Object({ subscriptionId: id, organizationId: id, activatedAt: isoInstant }),
-    declaredConsumers: ["m33", "m34", "m36"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -57,7 +59,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       transitionedAt: isoInstant,
       reasonCode: id,
     }),
-    declaredConsumers: ["m33", "m34", "m36"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -72,7 +75,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       prorationBehavior: id,
       effectiveAt: isoInstant,
     }),
-    declaredConsumers: ["m33", "m34", "m36"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -86,7 +90,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       reasonCode: id,
       atPeriodEnd: flag,
     }),
-    declaredConsumers: ["m33", "m34", "m36"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -99,7 +104,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       pausedAt: isoInstant,
       pausedUntil: nullableInstant,
     }),
-    declaredConsumers: ["m33", "m34", "m36"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -107,7 +113,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m35",
     description: "A subscription resumed from paused.",
     payloadSchema: Type.Object({ subscriptionId: id, organizationId: id, resumedAt: isoInstant }),
-    declaredConsumers: ["m33", "m34", "m36"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -121,7 +128,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       reasonCode: id,
       lastSuccessfulPaymentAt: nullableInstant,
     }),
-    declaredConsumers: ["m33", "m34", "m36"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   // ── dunning (§4.15 / §4.11) ──────────────────────────────────────────────────────────────────────
@@ -137,7 +145,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       enteredAt: isoInstant,
       nextAttemptAt: nullableInstant,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -150,7 +159,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       resolvedAt: isoInstant,
       lastStage: id,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   // ── invoice mirror (§2.2 / §4.11) ────────────────────────────────────────────────────────────────
@@ -166,7 +176,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       periodStart: nullableInstant,
       periodEnd: nullableInstant,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -179,7 +190,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       paidAt: isoInstant,
       amountPaidCents: cents,
     }),
-    declaredConsumers: ["m33", "m36", "m29"],
+    declaredConsumers: ["m29"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -193,7 +205,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       attemptCount: count,
       nextAttemptAt: nullableInstant,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -206,7 +219,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       voidedAt: isoInstant,
       voidedByMembershipId: nullableId,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -214,7 +228,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m35",
     description: "An invoice was marked uncollectible (webhook invoice.marked_uncollectible).",
     payloadSchema: Type.Object({ invoiceId: id, organizationId: id, markedAt: isoInstant }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   // ── payment method (§4.11) ───────────────────────────────────────────────────────────────────────
@@ -228,7 +243,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: id,
       isDefault: flag,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -241,7 +257,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       expiresAt: isoInstant,
       daysUntilExpiry: count,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -249,7 +266,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m35",
     description: "A payment method's expiry date passed.",
     payloadSchema: Type.Object({ paymentMethodId: id, organizationId: id, expiredAt: isoInstant }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -261,7 +279,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       organizationId: id,
       deactivatedAt: isoInstant,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   // ── usage metering (§4.11) ───────────────────────────────────────────────────────────────────────
@@ -276,7 +295,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       periodEnd: isoInstant,
       meterTotals: Type.Array(Type.Object({ eventType: id, totalQuantity: count })),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -291,7 +311,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       inclusiveQuantity: count,
       projectedOverageCents: cents,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -305,7 +326,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       totalQuantity: count,
       inclusiveQuantity: count,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   // ── refund four-stage workflow (§D16 / §4.11) ────────────────────────────────────────────────────
@@ -321,7 +343,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       requestedByMembershipId: id,
       reasonCode: id,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -334,7 +357,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       approvedByMembershipId: id,
       approvedAt: isoInstant,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -348,7 +372,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       amountCents: cents,
       stripeRefundId: id,
     }),
-    declaredConsumers: ["m33", "m36", "m29"],
+    declaredConsumers: ["m29"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -361,7 +386,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       failedAt: isoInstant,
       stripeFailureCode: id,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   // ── promo (§4.11) ────────────────────────────────────────────────────────────────────────────────
@@ -376,7 +402,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       promoCode: id,
       appliedByMembershipId: id,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -384,7 +411,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m35",
     description: "A promo application reached the end of its duration.",
     payloadSchema: Type.Object({ applicationId: id, organizationId: id, expiredAt: isoInstant }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── stripe adapter internal + failure (§4.13/§4.14 / §4.11) ──────────────────────────────────────
@@ -412,7 +440,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       attemptIndex: count,
       errorText: id,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   // ── tenant billing gate + revenue (§4.11) ────────────────────────────────────────────────────────
@@ -427,7 +456,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       blockedAt: isoInstant,
       dunningStage: id,
     }),
-    declaredConsumers: ["m33", "m34", "m36"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -441,7 +471,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       arrCents: cents,
       activeSubscriptions: count,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
 ];

@@ -36,6 +36,7 @@ interface M14OutboxEntry {
   readonly description: string;
   readonly payloadSchema: TSchema;
   readonly declaredConsumers: readonly ModuleToken[];
+  readonly seamConsumers?: readonly ModuleToken[];
   readonly isOutboxOnly: boolean;
 }
 
@@ -50,7 +51,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       meetingsCreated: Type.Integer({ minimum: 0 }),
       windowEndIso: isoInstant,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -63,7 +65,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       scheduledStart: isoInstant,
       scheduledEnd: isoInstant,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── packet build pipeline (§2.4 / §4.4) ─────────────────────────────────────────────────────────────────
@@ -76,7 +79,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       meetingId: id,
       includedPatientCount: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -90,7 +94,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       reason: Type.String(),
       willRetry: Type.Boolean(),
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -103,7 +108,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       builtPacketCount: Type.Integer({ minimum: 0 }),
       scheduledAttendees: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -126,7 +132,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
     moduleOwner: "m14",
     description: "The `START` transition opened the live meeting.",
     payloadSchema: Type.Object({ meetingId: id, startedByMembershipId: id, startedAt: isoInstant }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -142,7 +149,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       checkedInAt: isoInstant,
       isTardy: Type.Boolean(),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── decisions + action items (§2.6 / §2.7 / §4.4) ───────────────────────────────────────────────────────
@@ -160,7 +168,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       recordedByMembershipId: id,
       recordedAt: isoInstant,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -176,7 +185,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       dueDate: isoInstant,
       linkedArtifactKind: nullableId,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -190,7 +200,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       toStatus: id,
       actorMembershipId: id,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -204,7 +215,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       linkedArtifactId: id,
       closeTrigger: id,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -218,7 +230,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       carryForwardCount: Type.Integer({ minimum: 1 }),
       isComplianceAlert: Type.Boolean(),
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   // ── the canonical cross-module decision seam (§4.4; locked legacy name, M7 D4) ───────────────────────────
@@ -258,7 +271,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       actionItemsAssignedCount: Type.Integer({ minimum: 0 }),
       attendanceSnapshot: Type.Unknown(),
     }),
-    declaredConsumers: ["m22", "m28", "m30", "m33"],
+    declaredConsumers: ["m22", "m28", "m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -271,7 +285,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       cancellationReason: Type.String(),
       cancelledAt: isoInstant,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -285,7 +300,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       newScheduledStart: isoInstant,
       reason: Type.String(),
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   // ── M14-F01 / ADR-0018 D2 — per-patient 15-day review-clock floor (§4.4) ────────────────────────────────
@@ -301,7 +317,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       breachingPatients: Type.Array(Type.Object({ patientId: id, floorAt: isoInstant })),
       overriddenAt: isoInstant,
     }),
-    declaredConsumers: ["m30", "m33", "m36"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -322,7 +339,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       ]),
       severity: Type.Union([Type.Literal("clinical_routine"), Type.Literal("critical")]),
     }),
-    declaredConsumers: ["m30", "m33", "m36"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   // ── minutes finalize + amendment + packet freeze (§2.2 / §4.4) ──────────────────────────────────────────
@@ -352,7 +370,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       approvedByMembershipId: id,
       amendmentReasonHash: id,
     }),
-    declaredConsumers: ["m22", "m28", "m33"],
+    declaredConsumers: ["m22", "m28"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -365,7 +384,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       packetId: id,
       frozenAt: isoInstant,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
 ];

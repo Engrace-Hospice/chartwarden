@@ -110,7 +110,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       appliedRadiusM: Type.Integer(),
       kind: Type.Union([Type.Literal("check_in"), Type.Literal("check_out")]),
     }),
-    declaredConsumers: ["m20", "m36"],
+    declaredConsumers: ["m20"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -141,7 +142,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       postingMembershipId: id,
       detectionSignals: Type.Array(Type.String()),
     }),
-    declaredConsumers: ["m20", "m36"],
+    declaredConsumers: ["m20"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── missing-EVV resolution (§2.2.4 D6 / §4.10) ──────────────────────────────────────────────────────────
@@ -156,7 +158,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       hoursPastGrace: Type.Number(),
       hasCheckIn: Type.Boolean(),
     }),
-    declaredConsumers: ["m19", "m36"],
+    declaredConsumers: ["m19"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -185,7 +188,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       membershipId: id,
       platform: Type.Union([Type.Literal("ios"), Type.Literal("android")]),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -211,7 +215,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       membershipId: id,
       reason: Type.String(),
     }),
-    declaredConsumers: ["m2", "m36"],
+    declaredConsumers: ["m2"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -228,7 +233,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       newMaxAccuracyM: Type.Integer(),
       setByMembershipId: id,
     }),
-    declaredConsumers: ["m4"],
+    declaredConsumers: [],
+    seamConsumers: ["m4"],
     isOutboxOnly: true,
   },
   // ── per-state aggregator submission (§2.2.5 D7 / §7.8 / §7.9 / §4.10) ────────────────────────────────────
@@ -274,7 +280,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       rejectionCode: id,
       rejectionReason: Type.String(),
     }),
-    declaredConsumers: ["m25", "m36"],
+    declaredConsumers: ["m25"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -288,7 +295,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       stateCode: id,
       attemptCount: Type.Integer(),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {

@@ -48,7 +48,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       assignedCounselorUserId: Id,
       archivesAt: Iso,
     }),
-    declaredConsumers: ["m22", "m28", "m33", "m36"],
+    declaredConsumers: ["m22", "m28"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -57,7 +58,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The plan moved to `paused`; future-dated outreach was cancelled and M36 write-disables the channel (§2.2).",
     payloadSchema: Type.Object({ planId: Id, pauseKind: Str, pausedAt: Iso }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -66,7 +68,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The plan returned to `active`; the forward schedule was regenerated FROM NOW, never replayed from the death date (§2.2).",
     payloadSchema: Type.Object({ planId: Id, resumedAt: Iso }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -75,7 +78,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The 13-month CoP 418.64(d) clock ran out (or a pre-death patient opt-out closed the program as completed). M22 renders the closeout summary; M36's channel auto-archives (§7.11).",
     payloadSchema: Type.Object({ planId: Id, closedAt: Iso, outreachStats: OutreachStats }),
-    declaredConsumers: ["m22", "m28", "m30", "m33", "m36"],
+    declaredConsumers: ["m22", "m28", "m30"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -84,7 +88,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "EVERY enrollee opted out (D6) — distinct from `closed_completed` because the survey record must show the family refused, not that the program ran its course.",
     payloadSchema: Type.Object({ planId: Id, closedAt: Iso }),
-    declaredConsumers: ["m22", "m30", "m33", "m36"],
+    declaredConsumers: ["m22", "m30"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -98,7 +103,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       closedAt: Iso,
       cosignedByUserId: IdN,
     }),
-    declaredConsumers: ["m22", "m30", "m33", "m36"],
+    declaredConsumers: ["m22", "m30"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -107,7 +113,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "M6 declared the admission bereavement-eligible but the M5 patient-level directive said no (D9). Carries NO planId: nothing opened, and no M36 channel was created.",
     payloadSchema: Type.Object({ patientId: Id, admissionId: Id, deathDate: Str }),
-    declaredConsumers: ["m30", "m33"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -121,7 +128,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       cosignedAt: Iso,
       medicalDirectorMembershipId: Id,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -130,7 +138,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A counselor whose discipline may provide bereavement took the plan (§7.2). M36 adds them to the channel and M3's `bereavement_window` predicate cache invalidates (§7.12).",
     payloadSchema: Type.Object({ planId: Id, counselorUserId: Id, assignedAt: Iso }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -139,7 +148,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A bereavement volunteer whose 418.78 gates are satisfied joined the plan with the D10 reduced-PHI scope.",
     payloadSchema: Type.Object({ planId: Id, volunteerUserId: Id, assignedAt: Iso }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -148,7 +158,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A bereaved person confirmed with a verified M39 bereavement-outreach consent (D6). M36 adds their portal account to the channel; M28 projects the FHIR `RelatedPerson`.",
     payloadSchema: Type.Object({ planId: Id, contactId: Id, portalAccountId: IdN }),
-    declaredConsumers: ["m28", "m31", "m33", "m36"],
+    declaredConsumers: ["m28", "m31"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -157,7 +168,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "D9 — a survivor left the program. `source` distinguishes the portal-self path from the M39 revocation cascade, which is what keeps the §8.1 audit story truthful about whose decision it was.",
     payloadSchema: Type.Object({ planId: Id, contactId: Id, optOutKind: Str, source: Str }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -166,7 +178,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "An opt-out was undone inside the D9 90-day self-service window (or by a counselor with a documented reason); the forward schedule regenerated.",
     payloadSchema: Type.Object({ planId: Id, contactId: Id }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -175,7 +188,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The bereaved contact themselves died (verified date + source). The only terminal §2.3 state — there is no way back.",
     payloadSchema: Type.Object({ planId: Id, contactId: Id }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -184,7 +198,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The 3-strikes no-response detector's proposal was accepted by a counselor (§2.3); M36 raises the counselor alert.",
     payloadSchema: Type.Object({ planId: Id, contactId: Id, missedTouchpointCount: Count }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -193,7 +208,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "§7.7 — complicated grief / suicidal ideation routed to an M40 external mental-health resource. M36 raises the `clinical_urgent` alert; M30 treats it as incident-potential.",
     payloadSchema: Type.Object({ planId: Id, contactId: Id, externalResourceId: Id }),
-    declaredConsumers: ["m30", "m33", "m36"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -208,7 +224,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: Str,
       dueAt: Iso,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -223,7 +240,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       outcome: Str,
       sourceEncounterId: Type.Optional(Id),
     }),
-    declaredConsumers: ["m30", "m33"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -232,7 +250,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The hourly worker's verdict once `late_grace_until` passed with no state change — the M30 rate denominator and the M36 counselor alert (§2.4).",
     payloadSchema: Type.Object({ planId: Id, contactId: Id, outreachId: Id, dueAt: Iso }),
-    declaredConsumers: ["m30", "m33", "m36"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -264,7 +283,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       dataCompleteness: Str,
       confidenceBand: Str,
     }),
-    declaredConsumers: ["m30", "m32", "m33"],
+    declaredConsumers: ["m30", "m32"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -278,7 +298,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       targetDate: Str,
       anniversaryReminderId: Id,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
 ];

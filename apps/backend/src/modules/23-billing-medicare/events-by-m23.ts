@@ -46,7 +46,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       serviceFrom: isoInstant,
       serviceTo: isoInstant,
     }),
-    declaredConsumers: ["m23", "m33"],
+    declaredConsumers: ["m23"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -55,7 +56,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A claim entered VALIDATING; a validation_run was enqueued against the current claim state.",
     payloadSchema: Type.Object({ claimId: id, validationRunId: id, trigger: str }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -68,7 +70,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       validationRunId: id,
       failedRuleKeys: Type.Array(str),
     }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -77,7 +80,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "Validation completed with no unresolved blocking failures; the claim transitioned VALIDATING → READY.",
     payloadSchema: Type.Object({ claimId: id, validationRunId: id }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -106,7 +110,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       macJurisdiction: str,
       submittedAt: isoInstant,
     }),
-    declaredConsumers: ["m22", "m25", "m33", "m36"],
+    declaredConsumers: ["m22", "m25"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -120,7 +125,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     // (outbox-consumers/submit-requests.ts), which binds this name and enqueues `claim.submit.retry`.
     // The list said `["m33"]`, so the dispatcher threw at boot — the backend did not start in any
     // deployment with `DATABASE_PLATFORM_URL` set, and the retry it names never ran in any other.
-    declaredConsumers: ["m23", "m33"],
+    declaredConsumers: ["m23"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -129,7 +135,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The retry worker exhausted its attempts (max 5); the stalled-submission alert is dispatched.",
     payloadSchema: Type.Object({ claimId: id, submissionId: id, attemptIndex: int, reason: str }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -138,7 +145,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The 277CA accepted the claim; ACK_PENDING → ACK_ACCEPTED with the payer claim control number.",
     payloadSchema: Type.Object({ claimId: id, acknowledgmentId: id, payerClaimControlNumber: str }),
-    declaredConsumers: ["m22", "m25", "m26", "m33", "m36"],
+    declaredConsumers: ["m22", "m25", "m26"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -153,7 +161,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       rejectedLineNumbers: Type.Array(int),
       rejectionCodes: Type.Array(str),
     }),
-    declaredConsumers: ["m25", "m33", "m36"],
+    declaredConsumers: ["m25"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -167,7 +176,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       rejectionStage: str,
       rejectionCodes: Type.Array(str),
     }),
-    declaredConsumers: ["m22", "m25", "m33", "m36"],
+    declaredConsumers: ["m22", "m25"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -181,7 +191,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       paidAmountCents: cents,
       paidAt: isoInstant,
     }),
-    declaredConsumers: ["m26", "m27", "m33"],
+    declaredConsumers: ["m26", "m27"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -193,7 +204,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       remittanceAdviceId: id,
       denialCodes: Type.Array(str),
     }),
-    declaredConsumers: ["m25", "m33", "m36"],
+    declaredConsumers: ["m25"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -212,7 +224,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       remittanceAdviceId: id,
       adjudicatedAt: isoInstant,
     }),
-    declaredConsumers: ["m30", "m33"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -228,7 +241,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       days: int,
       finalizedAt: isoInstant,
     }),
-    declaredConsumers: ["m26", "m33"],
+    declaredConsumers: ["m26"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -237,7 +251,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A TOB 817 replacement was accepted at 277CA; the original claim transitioned ACK_ACCEPTED → REPLACED.",
     payloadSchema: Type.Object({ originalClaimId: id, replacementClaimId: id, reason: str }),
-    declaredConsumers: ["m26", "m27", "m33"],
+    declaredConsumers: ["m26", "m27"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -246,7 +261,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A TOB 818 void was accepted at 277CA; the original claim transitioned ACK_ACCEPTED → VOIDED.",
     payloadSchema: Type.Object({ originalClaimId: id, voidClaimId: id, reason: str }),
-    declaredConsumers: ["m26", "m27", "m33"],
+    declaredConsumers: ["m26", "m27"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -262,7 +278,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       ruleKey: str,
       overrideRoleApplied: str,
     }),
-    declaredConsumers: ["m33", "m4"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m4"],
     isOutboxOnly: true,
   },
   // ── NOE lifecycle (§3.x / §4.10) ──────────────────────────────────────────────────────────────────
@@ -278,7 +295,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       electionEffectiveDate: isoInstant,
       windowTargetAt: isoInstant,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -295,7 +313,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m23",
     description: "The noe.submit worker uploaded the NOE to the MAC portal; READY → SUBMITTED.",
     payloadSchema: Type.Object({ noeId: id, submissionId: id, submittedAt: isoInstant }),
-    declaredConsumers: ["m22", "m33"],
+    declaredConsumers: ["m22"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -304,7 +323,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The NOE was accepted; ACK_PENDING → ACK_ACCEPTED — closes the M6 NOE compliance window.",
     payloadSchema: Type.Object({ noeId: id, acknowledgmentId: id, payerNoeControlNumber: str }),
-    declaredConsumers: ["m6", "m33"],
+    declaredConsumers: ["m6"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -312,7 +332,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m23",
     description: "The NOE was rejected; the rejection codes are attached for remediation + alert.",
     payloadSchema: Type.Object({ noeId: id, rejectionCodes: Type.Array(str) }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -321,7 +342,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The day-3 NOE-window watchdog tick fired (the 5-day CMS filing window is at risk).",
     payloadSchema: Type.Object({ noeId: id, admissionId: id, daysIntoWindow: int }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -329,7 +351,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m23",
     description: "The day-5+1 NOE-window watchdog tick fired (the CMS filing window was breached).",
     payloadSchema: Type.Object({ noeId: id, admissionId: id, breachedAt: isoInstant }),
-    declaredConsumers: ["m36", "m33", "m30"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   // ── NOTR lifecycle (§4.10 "mirror of NOE", expanded to the 7 concrete events) ──────────────────────
@@ -345,7 +368,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       terminationEffectiveDate: isoInstant,
       windowTargetAt: isoInstant,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -362,7 +386,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m23",
     description: "The notr.submit worker uploaded the NOTR to the MAC portal; READY → SUBMITTED.",
     payloadSchema: Type.Object({ notrId: id, submissionId: id, submittedAt: isoInstant }),
-    declaredConsumers: ["m22", "m33"],
+    declaredConsumers: ["m22"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -371,7 +396,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The NOTR was accepted; ACK_PENDING → ACK_ACCEPTED — closes the M6 NOTR compliance window.",
     payloadSchema: Type.Object({ notrId: id, acknowledgmentId: id, payerNotrControlNumber: str }),
-    declaredConsumers: ["m6", "m33"],
+    declaredConsumers: ["m6"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -379,7 +405,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m23",
     description: "The NOTR was rejected; the rejection codes are attached for remediation + alert.",
     payloadSchema: Type.Object({ notrId: id, rejectionCodes: Type.Array(str) }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -387,7 +414,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m23",
     description: "The day-3 NOTR-window watchdog tick fired (the filing window is at risk).",
     payloadSchema: Type.Object({ notrId: id, admissionId: id, daysIntoWindow: int }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -395,7 +423,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m23",
     description: "The day-5+1 NOTR-window watchdog tick fired (the filing window was breached).",
     payloadSchema: Type.Object({ notrId: id, admissionId: id, breachedAt: isoInstant }),
-    declaredConsumers: ["m36", "m33", "m30"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   // ── eligibility (§4.8 / §4.10) ────────────────────────────────────────────────────────────────────
@@ -421,7 +450,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       checkedAt: isoInstant,
       staleAt: isoInstant,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -430,7 +460,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The stale-watch cron marked an eligibility_check past its staleAt; the re-check prompt is raised.",
     payloadSchema: Type.Object({ patientId: id, lastCheckedAt: isoInstant }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   // ── MAC credential + portal health (§4.8 / §4.10) ─────────────────────────────────────────────────
@@ -440,7 +471,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A per-PE mac_submitter_credential was upserted (secrets never emitted); the version is bumped.",
     payloadSchema: Type.Object({ providerEntityId: id, macJurisdiction: str, version: int }),
-    declaredConsumers: ["m34", "m33"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -453,7 +485,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       lastSeenUpAt: nullableInstant,
       downedAt: isoInstant,
     }),
-    declaredConsumers: ["m36", "m33", "m1"],
+    declaredConsumers: ["m1"],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -466,7 +499,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       downedAt: isoInstant,
       recoveredAt: isoInstant,
     }),
-    declaredConsumers: ["m36", "m33", "m1"],
+    declaredConsumers: ["m1"],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   // ── M22 render handshake + ABN (§4.10) ────────────────────────────────────────────────────────────

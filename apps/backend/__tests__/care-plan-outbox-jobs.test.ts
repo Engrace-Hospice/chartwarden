@@ -56,7 +56,10 @@ describe("M7 outbox event contract (§2.4)", () => {
 
   it("version_signed fans out to the M8 gate + M22 PDF + reporting", () => {
     const signed = M7_OUTBOX_EVENTS.find((e) => e.eventName === "m7.care_plan.version_signed");
-    expect(signed?.declaredConsumers).toEqual(expect.arrayContaining(["m8", "m22", "m33"]));
+    expect(signed?.declaredConsumers).toEqual(expect.arrayContaining(["m8", "m22"]));
+    // M33's reporting intake is a PULL over `report_mv.*`, not a subscription — it moved to the field
+    // that says so, which is what stopped this event deferring on every emit (#103).
+    expect(signed?.seamConsumers).toContain("m33");
   });
 
   it("validates a representative payload and rejects one missing a required key", () => {

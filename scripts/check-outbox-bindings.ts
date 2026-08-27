@@ -72,8 +72,16 @@
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { buildBootOutboxCatalog } from "../apps/backend/src/bootstrap/outbox-persister";
+import { MODULES } from "../architecture/module-manifest";
 import type { ModuleEventContribution, OutboxEventEntry } from "../packages/types/src/index";
 import { DEFERRED_CONSUMERS, type DeferredConsumerGroup } from "./outbox-deferred-consumers";
+
+/**
+ * Every real module token. `ModuleToken` is the template-literal type `m${number}`, so the compiler
+ * accepts `"m99"` — the type's own comment claims declaredConsumers are "validated against real module
+ * ids" and nothing was doing that. The manifest is the single source of what modules exist.
+ */
+const MODULE_TOKENS = new Set(MODULES.map((m) => `m${m.id}`));
 
 const REPO_ROOT = process.cwd();
 const SCAN_ROOTS = ["apps", "packages"];
@@ -333,6 +341,32 @@ async function main(): Promise<void> {
         failures.push(
           `${binding.file}: consumer '${binding.consumerName}' module '${binding.consumerModule}' ` +
             `is not in declaredConsumers for '${eventType}' [${entry.declaredConsumers.join(", ")}]`,
+        );
+      }
+    }
+  }
+
+  // ── rule 5: `seamConsumers` names a real module, and never one that binds (F-043 / #103) ──────
+  //
+  // `seamConsumers` records a cross-module relationship the OUTBOX does not carry — M4's write-audit
+  // triggers, M36's AlertEmitter, M33's MetricsProvider pull. The dispatcher ignores it by
+  // construction, which is the point: naming a module there can never defer a row. Precisely because
+  // it is inert at runtime, nothing else would notice it going wrong, so it is checked here.
+  //
+  // The failure this prevents is a module drifting into the seam list to silence a deferral it should
+  // have satisfied with a binding. A module that genuinely consumes from the outbox belongs in
+  // `declaredConsumers`; being in both is a contradiction about how the event is delivered.
+  for (const [eventType, entry] of catalog) {
+    const seam = entry.seamConsumers ?? [];
+    for (const module of seam) {
+      if (!MODULE_TOKENS.has(module)) {
+        failures.push(
+          `catalog: event '${eventType}' names '${module}' in seamConsumers, which is not a real module id`,
+        );
+      }
+      if (entry.declaredConsumers.includes(module as never)) {
+        failures.push(
+          `catalog: event '${eventType}' names '${module}' in BOTH declaredConsumers and seamConsumers — an event is delivered to a module by the outbox or by a seam, not both; pick one`,
         );
       }
     }

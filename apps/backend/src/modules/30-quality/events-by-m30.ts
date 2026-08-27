@@ -39,7 +39,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       bandColor: id,
       snapshotContentHash: id,
     }),
-    declaredConsumers: ["m28", "m33"],
+    declaredConsumers: ["m28"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -56,7 +57,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       threshold: Type.Number(),
       severityBand: id,
     }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   // ── incidents (§4.10) ───────────────────────────────────────────────────────────────────────────
@@ -73,7 +75,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       reportedAt: isoInstant,
       hasPatientLink: Type.Boolean(),
     }),
-    declaredConsumers: ["m22", "m28", "m33", "m36"],
+    declaredConsumers: ["m22", "m28"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -89,7 +92,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       actorUserId: id,
       occurredAt: isoInstant,
     }),
-    declaredConsumers: ["m33", "m36", "m4"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36", "m4"],
     isOutboxOnly: true,
   },
   {
@@ -104,7 +108,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       dueAt: isoInstant,
       ownerUserId: id,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── CAHPS (§4.10) ───────────────────────────────────────────────────────────────────────────────
@@ -119,7 +124,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       decedentCount: Type.Integer({ minimum: 0 }),
       vendor: id,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -134,7 +140,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       vendor: id,
       status: id,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -147,7 +154,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       period,
       measuresAffected: Type.Array(id),
     }),
-    declaredConsumers: ["m28", "m33"],
+    declaredConsumers: ["m28"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── QAPI (§4.10) ────────────────────────────────────────────────────────────────────────────────
@@ -162,7 +170,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       indicatorId: id,
       phase: Type.Literal("planned"),
     }),
-    declaredConsumers: ["m33", "m22"],
+    declaredConsumers: ["m22"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -179,7 +188,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       outcome: id,
       closedAt: isoInstant,
     }),
-    declaredConsumers: ["m33", "m22"],
+    declaredConsumers: ["m22"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── SRA (§4.10) ─────────────────────────────────────────────────────────────────────────────────
@@ -194,7 +204,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       fiscalYear: Type.Integer(),
       scopeTemplateVersion: id,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -209,7 +220,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       controlRef: id,
       riskBand: id,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -223,7 +235,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       closedAt: isoInstant,
       openFindingsAtClose: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m33", "m34"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── mortality (§4.10) ───────────────────────────────────────────────────────────────────────────
@@ -239,7 +252,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       dateOfDeath: isoInstant,
       targetCompletionAt: nullableId,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -256,7 +270,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
         compliance: id,
       }),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── CoP compliance (§4.10) ──────────────────────────────────────────────────────────────────────
@@ -272,7 +287,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       toStatus: id,
       lastReviewedAt: nullableId,
     }),
-    declaredConsumers: ["m33", "m34"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── infection surveillance (§4.10) ──────────────────────────────────────────────────────────────
@@ -305,7 +321,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       firstEventAt: isoInstant,
       lastEventAt: isoInstant,
     }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -318,7 +335,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       resolutionNote: Type.String(),
       resolvedAt: isoInstant,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── risk register (§4.10) ───────────────────────────────────────────────────────────────────────
@@ -332,7 +350,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       refreshedAt: isoInstant,
       totalRows: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
 ];
