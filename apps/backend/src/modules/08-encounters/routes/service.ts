@@ -9,6 +9,15 @@
 // SCOPE (T09): the route inventory + the §4.5 RBAC gating + the §4.6 cosigner predicate. The heavier
 // authoring surfaces (vitals/mileage, the F2F dual-write happy path) land in M8-T10; here they are lean
 // success handlers over the same optimistic-locked records so the inventory is wired and smoke-tested.
+import {
+  type AssemblyContext,
+  HearthnoteAssemblyError,
+  type SelectionState,
+  assemble,
+  templateKey as hearthnoteTemplateKey,
+  resolveTemplate,
+} from "@wardenx/hearthnote";
+import { VOCAB_VERSION } from "@wardenx/narrative-vocab";
 import type {
   EncounterDiscipline,
   EncounterStatus,
@@ -28,6 +37,7 @@ import {
 import { type CosignatureState, transitionCosignature } from "../cosignature/index";
 import { type AddendumState, transitionAddendum } from "../lifecycle/addendum";
 import { transitionEncounter } from "../lifecycle/encounter";
+import { EncounterStateError } from "../lifecycle/errors";
 import {
   checkEncounterDisciplinePair,
   checkMutableForEdit,
@@ -151,6 +161,134 @@ export interface EncounterView {
   readonly cosignedAt: string | null;
 }
 
+// ── HearthNote selections (§2.6, #114) ──────────────────────────────────────────────────────────────
+
+/** One selected vocabulary entry with its resolved `${slot}` params (the wire shape of `EntrySelection`). */
+export interface SelectionEntryInput {
+  readonly code: string;
+  readonly params?: Readonly<Record<string, string | number>>;
+}
+
+/** One section's selections plus the clinician's verbatim prose for it. */
+export interface SelectionSectionInput {
+  readonly sectionId: string;
+  readonly entries: readonly SelectionEntryInput[];
+  readonly freeText?: string;
+}
+
+/**
+ * What a selections PATCH carries. SECTIONS ONLY — `templateKey` / `vocabVersion` / the pair are derived
+ * server-side from the encounter row, so a caller cannot assemble a note against a template its
+ * encounter's discipline may not use.
+ */
+export interface SelectionsInput {
+  readonly sections: readonly SelectionSectionInput[];
+}
+
+/** The stored tree read back, with the Layer-1 assembly of it (routes 3b / 23b). */
+export interface SelectionsView {
+  readonly templateKey: string;
+  readonly vocabVersion: string;
+  readonly sections: readonly SelectionSectionInput[];
+  readonly layer1Preview: string;
+  readonly version: number;
+}
+
+/**
+ * The `${patient}` slot Layer-1 interpolates.
+ *
+ * `AssemblyContext.patient` is documented as "the real name" at Layer 1, and M8 cannot resolve one: it
+ * consumes no M5 reader (manifest `dependsOn: [1, 6, 7, 36, 38]`), and adding a cross-module dependency
+ * to fill a narrative slot is a bigger decision than this fix. `Patient` is the safe resolution rather
+ * than a placeholder — the assembled prose reads as ordinary clinical documentation ("Patient is
+ * cardiovascularly stable…"), and it is PHI-minimal by construction. Named here so the day M8 does
+ * consume a patient reader, there is exactly one line to change.
+ */
+export const ASSEMBLY_PATIENT_SLOT = "Patient";
+
+/** Build the `SelectionState` the pure assembler takes from the stored tree + the encounter's own facts. */
+export function toSelectionState(
+  encounterType: EncounterType,
+  discipline: EncounterDiscipline,
+  sections: readonly SelectionSectionInput[],
+  vocabVersion: string = VOCAB_VERSION,
+): SelectionState {
+  return {
+    templateKey: hearthnoteTemplateKey(encounterType, discipline),
+    vocabVersion,
+    encounterType,
+    discipline,
+    sections: sections.map((s) => ({
+      sectionId: s.sectionId,
+      entries: s.entries.map((e) => ({ code: e.code, ...(e.params ? { params: e.params } : {}) })),
+      ...(s.freeText === undefined ? {} : { freeText: s.freeText }),
+    })),
+  };
+}
+
+/**
+ * The §2.7 code each `HearthnoteAssemblyError` maps to. The package documents this mapping in its own
+ * `AssemblyErrorCode` union ("mapped to HTTP by the M8 service in T09"); it was never written, because
+ * nothing ever called `assemble`. `TEMPLATE_KEY_MISMATCH` cannot occur through these routes — the key is
+ * server-derived from the encounter row — but it is mapped rather than left to fall through as a 500.
+ */
+const ASSEMBLY_ERROR_CODE = {
+  TEMPLATE_NOT_FOUND: "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
+  TEMPLATE_KEY_MISMATCH: "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
+  VOCAB_VERSION_MISMATCH: "VOCAB_VERSION_MISMATCH",
+  UNKNOWN_VOCAB_CODE: "UNKNOWN_VOCAB_CODE",
+} as const;
+
+/**
+ * Assemble the Layer-1 narrative for a selection tree, refusing anything that cannot become a note.
+ *
+ * Two failures are checked, and neither is allowed to pass silently:
+ *
+ *   · An unknown SECTION id. `assembleLayer1` walks the TEMPLATE's sections and looks each one up in the
+ *     selection, so a section the template does not have is simply never visited — the content would be
+ *     stored and then vanish from every render, which is the same class of silent loss as the discarded
+ *     PATCH itself. Rejected here instead.
+ *   · An unknown vocabulary CODE, an illegal (encounterType × discipline) pair, or a vocab-version
+ *     mismatch — `assemble`'s own guards, surfaced as the §2.7 codes above rather than a 500.
+ *
+ * Nothing is caught and turned into `""`. A note that cannot be assembled must say so; returning an
+ * empty string for it is the defect this whole path is being fixed for.
+ */
+export function assembleSelections(
+  encounterType: EncounterType,
+  discipline: EncounterDiscipline,
+  serviceDate: string,
+  sections: readonly SelectionSectionInput[],
+  vocabVersion: string = VOCAB_VERSION,
+): string {
+  const template = resolveTemplate(encounterType, discipline);
+  if (template === undefined) {
+    throw new EncounterStateError(
+      "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
+      `no HearthNote template for '${hearthnoteTemplateKey(encounterType, discipline)}'`,
+    );
+  }
+  const known = new Set(template.sections.map((t) => t.id));
+  for (const s of sections) {
+    if (!known.has(s.sectionId)) {
+      throw new EncounterStateError(
+        "UNKNOWN_TEMPLATE_SECTION",
+        `section '${s.sectionId}' is not part of template '${template.key}'`,
+      );
+    }
+  }
+  const context: AssemblyContext = { patient: ASSEMBLY_PATIENT_SLOT, serviceDate };
+  try {
+    return assemble(toSelectionState(encounterType, discipline, sections, vocabVersion), context)
+      .narrative;
+  } catch (e) {
+    if (e instanceof HearthnoteAssemblyError) {
+      throw new EncounterStateError(ASSEMBLY_ERROR_CODE[e.code], e.message);
+    }
+    throw e;
+  }
+}
+
 /** The route service the §4.1 handlers compose over. Every method is org-scoped (RLS in prod). */
 export interface EncounterRouteService {
   createDraft(
@@ -163,7 +301,10 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
     ifVersion: number,
+    input: SelectionsInput,
   ): Promise<{ version: number; layer1Preview: string }>;
+  /** Read the stored selection tree back, assembled (#114 — the round-trip the PATCH never had). */
+  getSelections(organizationId: string, encounterId: string): Promise<SelectionsView>;
   captureVitals(
     organizationId: string,
     encounterId: string,
@@ -261,7 +402,13 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
     addendumId: string,
-  ): Promise<{ version: number }>;
+    input: SelectionsInput,
+  ): Promise<{ version: number; layer1Preview: string }>;
+  getAddendumSelections(
+    organizationId: string,
+    encounterId: string,
+    addendumId: string,
+  ): Promise<SelectionsView>;
   finalizeAddendum(
     organizationId: string,
     encounterId: string,
@@ -308,7 +455,17 @@ interface EncounterRecord {
   signedAt: string | null;
   cosignedAt: string | null;
   cosignature: CosignatureState | null;
-  addenda: Map<string, { id: string; status: AddendumState; version: number }>;
+  addenda: Map<
+    string,
+    {
+      id: string;
+      status: AddendumState;
+      version: number;
+      selections: readonly SelectionSectionInput[];
+    }
+  >;
+  /** The stored HearthNote tree (#114). Empty until the clinician PATCHes selections. */
+  selections: readonly SelectionSectionInput[];
   vitals: Map<string, { capturedAt: string; bmi: string | null; input: VitalsInput }>;
   mileage: { id: string; milesDriven: string; source: string } | null;
 }
@@ -429,6 +586,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       cosignedAt: null,
       cosignature: null,
       addenda: new Map(),
+      selections: [],
       vitals: new Map(),
       mileage: null,
       ...e,
@@ -487,14 +645,18 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         cosignedAt: null,
         cosignature: null,
         addenda: new Map(),
+        selections: [],
         vitals: new Map(),
         mileage: null,
       });
       return {
         id,
         status: "draft",
-        templateKey: `${args.discipline}_${args.encounterType}_v1`,
-        templateVersion: "v1",
+        // The registry key, not an invented one. This used to be `${discipline}_${encounterType}_v1`,
+        // a string matching no template in `@wardenx/hearthnote`'s registry — so a client that used it
+        // to fetch its section list would have found nothing (#114).
+        templateKey: hearthnoteTemplateKey(args.encounterType, args.discipline),
+        templateVersion: VOCAB_VERSION,
         version: 0,
       };
     },
@@ -503,12 +665,37 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       return toView(load(organizationId, encounterId));
     },
 
-    async updateSelections(organizationId, encounterId, ifVersion) {
+    async updateSelections(organizationId, encounterId, ifVersion, input) {
       const r = load(organizationId, encounterId);
       checkMutableForEdit({ status: r.status });
       checkVersion({ expected: ifVersion, actual: r.version });
+      // Assemble BEFORE persisting: an unknown vocabulary code or an illegal pair must reject the write,
+      // not be stored and discovered later by whoever tries to render the note.
+      const layer1Preview = assembleSelections(
+        r.encounterType,
+        r.discipline,
+        r.serviceDate,
+        input.sections,
+      );
+      r.selections = input.sections;
       r.version += 1;
-      return { version: r.version, layer1Preview: "" };
+      return { version: r.version, layer1Preview };
+    },
+
+    async getSelections(organizationId, encounterId) {
+      const r = load(organizationId, encounterId);
+      return {
+        templateKey: hearthnoteTemplateKey(r.encounterType, r.discipline),
+        vocabVersion: VOCAB_VERSION,
+        sections: r.selections,
+        layer1Preview: assembleSelections(
+          r.encounterType,
+          r.discipline,
+          r.serviceDate,
+          r.selections,
+        ),
+        version: r.version,
+      };
     },
 
     async captureVitals(organizationId, encounterId, input) {
@@ -712,15 +899,40 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       const r = load(organizationId, encounterId);
       checkParentNotVoided({ parentStatus: r.status });
       const id = subId();
-      r.addenda.set(id, { id, status: "draft", version: 0 });
+      r.addenda.set(id, { id, status: "draft", version: 0, selections: [] });
       return { id, status: "draft" };
     },
-    async updateAddendumSelections(organizationId, encounterId, addendumId) {
+    async updateAddendumSelections(organizationId, encounterId, addendumId, input) {
       const r = load(organizationId, encounterId);
       const a = r.addenda.get(addendumId);
       if (!a) throw new NotFoundError("addendum");
+      const layer1Preview = assembleSelections(
+        r.encounterType,
+        r.discipline,
+        r.serviceDate,
+        input.sections,
+      );
+      a.selections = input.sections;
       a.version += 1;
-      return { version: a.version };
+      return { version: a.version, layer1Preview };
+    },
+
+    async getAddendumSelections(organizationId, encounterId, addendumId) {
+      const r = load(organizationId, encounterId);
+      const a = r.addenda.get(addendumId);
+      if (!a) throw new NotFoundError("addendum");
+      return {
+        templateKey: hearthnoteTemplateKey(r.encounterType, r.discipline),
+        vocabVersion: VOCAB_VERSION,
+        sections: a.selections,
+        layer1Preview: assembleSelections(
+          r.encounterType,
+          r.discipline,
+          r.serviceDate,
+          a.selections,
+        ),
+        version: a.version,
+      };
     },
     async finalizeAddendum(organizationId, encounterId, addendumId) {
       const r = load(organizationId, encounterId);
@@ -798,7 +1010,14 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     },
     async renderPayload(organizationId, encounterId) {
       const r = load(organizationId, encounterId);
-      return { encounterId: r.id, final: "" };
+      // Was `final: ""` unconditionally. An empty string is a RENDERABLE answer, so a bound M22 renderer
+      // would have produced an empty note and reported success; a 404 is the truthful answer when the
+      // encounter has no HearthNote to render (#114).
+      if (r.selections.length === 0) throw new NotFoundError("hearthnote_selection");
+      return {
+        encounterId: r.id,
+        final: assembleSelections(r.encounterType, r.discipline, r.serviceDate, r.selections),
+      };
     },
   };
 

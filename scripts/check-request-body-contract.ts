@@ -71,18 +71,7 @@ interface Registered {
  * DECISION (start reading it, or stop publishing it) that belongs to the module's owner, not to this
  * gate.
  */
-const PUBLISHES_UNREAD: Record<string, Registered> = {
-  "PATCH /api/v1/encounters/:encounterId/selections": {
-    reason:
-      "publishes { selections, freeText } required:true and parses only params — the clinician's " +
-      "note is accepted with a 200 + version bump and discarded; nothing writes hearthnote_selection",
-    issue: "#114",
-  },
-  "PATCH /api/v1/encounters/:encounterId/addenda/:addendumId/selections": {
-    reason: "the addendum twin of the above, same schema, same discard",
-    issue: "#114",
-  },
-};
+const PUBLISHES_UNREAD: Record<string, Registered> = {};
 
 /** Direction B — routes whose handler reads a body the contract publishes none for. */
 const READS_UNPUBLISHED: Record<string, Registered> = {

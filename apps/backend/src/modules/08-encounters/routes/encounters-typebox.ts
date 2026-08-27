@@ -92,9 +92,37 @@ export const CreateEncounterSchema = Type.Object({
   bereavementPlanId: Type.Optional(Type.String({ format: "uuid" })),
 });
 
+// §2.6 — the HearthNote selection tree a clinician builds against the template for their
+// (encounterType × discipline) pair. This used to be `{ selections: Record<string, unknown>, freeText?:
+// Record<string, string> }`: a shape that validated nothing, imported by `scripts/openapi/enrichments.ts`
+// and by NO route file, and parsed by neither PATCH — it existed to be published, not to be read (#114).
+// It is now the real shape, because the note is a legal clinical record and `Type.Unknown()` in a jsonb
+// column is how a record becomes unreadable later. Widening the validation is free here: the routes
+// discarded every body ever sent, so there is no caller whose payload this newly rejects.
+//
+// The client sends SECTIONS only. `templateKey`, `vocabVersion`, `encounterType` and `discipline` are
+// server-derived from the encounter row — a client that could name its own template key could assemble a
+// note against a template the encounter's discipline is not allowed to use.
+const SelectionEntrySchema = Type.Object({
+  /** A `@wardenx/narrative-vocab` entry code; assembly rejects one that is not in the shipped corpus. */
+  code: Type.String({ minLength: 1, maxLength: 64 }),
+  /** Values for the phrase template's `${slot}`s (numeric-direct vitals, grades, scores). */
+  params: Type.Optional(
+    Type.Record(
+      Type.String({ maxLength: 64 }),
+      Type.Union([Type.String({ maxLength: 200 }), Type.Number()]),
+    ),
+  ),
+});
+const SelectionSectionSchema = Type.Object({
+  /** Must name a section of the resolved template (§2.6); an unknown id is a 422. */
+  sectionId: Type.String({ minLength: 1, maxLength: 64 }),
+  entries: Type.Array(SelectionEntrySchema, { maxItems: 200 }),
+  /** Verbatim clinician prose. Sealed per-tenant DEK at rest — never stored in the clear (§3.6). */
+  freeText: Type.Optional(Type.String({ maxLength: 20_000 })),
+});
 export const UpdateSelectionsSchema = Type.Object({
-  selections: Type.Record(Type.String(), Type.Unknown()),
-  freeText: Type.Optional(Type.Record(Type.String(), Type.String())),
+  sections: Type.Array(SelectionSectionSchema, { maxItems: 100 }),
 });
 
 // §2.2 — numeric-direct vitals (the `vitals` row shape; numerics-as-text preserve their unit). "Clinically
@@ -340,6 +368,30 @@ export const SelectionsUpdateResponseSchema = Type.Object({
   layer1Preview: Type.String(),
 });
 
+/** Routes 3b / 23b — read the stored selection tree back, with its assembled Layer-1 narrative (#114). */
+export const SelectionsViewResponseSchema = Type.Object({
+  templateKey: Type.String(),
+  vocabVersion: Type.String(),
+  sections: Type.Array(
+    Type.Object({
+      sectionId: Type.String(),
+      entries: Type.Array(
+        Type.Object({
+          code: Type.String(),
+          params: Type.Optional(
+            Type.Record(Type.String(), Type.Union([Type.String(), Type.Number()])),
+          ),
+        }),
+      ),
+      /** Absent when the section carries no prose, or when no cipher is bound to open it. */
+      freeText: Type.Optional(Type.String()),
+    }),
+  ),
+  /** The Layer-1 assembly of the stored tree — the note as it currently reads. */
+  layer1Preview: Type.String(),
+  version: Type.Integer(),
+});
+
 /** Route 8 — care-plan link created. */
 export const CarePlanLinkResponseSchema = Type.Object({ linkId: Type.String() });
 
@@ -388,8 +440,11 @@ export const CreateAddendumResponseSchema = Type.Object({
   status: Type.Literal("draft"),
 });
 
-/** Route 23 — addendum selections update (version bump). */
-export const AddendumSelectionsResponseSchema = Type.Object({ version: Type.Integer() });
+/** Route 23 — addendum selections update (version bump + Layer-1 preview). */
+export const AddendumSelectionsResponseSchema = Type.Object({
+  version: Type.Integer(),
+  layer1Preview: Type.String(),
+});
 
 /** Route 24 — addendum finalize. */
 export const AddendumFinalizeResponseSchema = Type.Object({ status: Type.Literal("finalized") });
@@ -458,6 +513,11 @@ type _AddendumFinalize = Conforms<
 type _AddendumSign = Conforms<Static<typeof AddendumSignResponseSchema>, Ret<"signAddendum">>;
 type _Billable = Conforms<Static<typeof BillableResponseSchema>, Ret<"billable">>;
 type _RenderPayload = Conforms<Static<typeof RenderPayloadResponseSchema>, Ret<"renderPayload">>;
+type _SelectionsView = Conforms<Static<typeof SelectionsViewResponseSchema>, Ret<"getSelections">>;
+type _AddendumSelectionsView = Conforms<
+  Static<typeof SelectionsViewResponseSchema>,
+  Ret<"getAddendumSelections">
+>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

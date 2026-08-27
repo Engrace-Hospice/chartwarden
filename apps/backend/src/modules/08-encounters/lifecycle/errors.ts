@@ -44,6 +44,14 @@ export const M8_ERROR_STATUS = {
   PARENT_VOIDED: 409,
   VERSION_MISMATCH: 412,
   IMMUTABLE_AFTER_SIGN: 409,
+  // §2.6 HearthNote Layer-1 assembly (#114). `@wardenx/hearthnote` documents its own error codes as
+  // "mapped to HTTP by the M8 service in T09" — this is that mapping, which was never written because
+  // nothing ever assembled. TEMPLATE_NOT_FOUND and VOCAB_VERSION_MISMATCH already have codes above
+  // (INVALID_ENCOUNTER_DISCIPLINE_PAIR / VOCAB_VERSION_MISMATCH), exactly as the package prescribes.
+  UNKNOWN_VOCAB_CODE: 422,
+  UNKNOWN_TEMPLATE_SECTION: 422,
+  /** No tenant-DEK envelope is bound, so §3.6 free text cannot be sealed — the write refuses. */
+  HEARTHNOTE_CIPHER_UNBOUND: 503,
   // §2.3 Layer-3 gate (enforced at sign; preview at finalize)
   COMPLIANCE_GATE_FAILED: 422,
   // §2.3 void (admin-only; reason ≥ 40 chars)

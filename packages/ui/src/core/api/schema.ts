@@ -6932,13 +6932,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Read an addendum's stored HearthNote selection tree back, assembled */
+        get: operations["getApiV1EncountersByEncounterIdAddendaByAddendumIdSelections"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /** Update addendum selections (§7.7 If-Match) */
+        /** Write an addendum's HearthNote selection tree (§7.7 If-Match). Returns the Layer-1 assembly of what was stored */
         patch: operations["patchApiV1EncountersByEncounterIdAddendaByAddendumIdSelections"];
         trace?: never;
     };
@@ -7188,13 +7189,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Read the stored HearthNote selection tree back, with its assembled Layer-1 narrative */
+        get: operations["getApiV1EncountersByEncounterIdSelections"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /** Update draft selections (§7.7 If-Match) */
+        /** Write the draft's HearthNote selection tree (§7.7 If-Match). Returns the Layer-1 assembly of what was stored */
         patch: operations["patchApiV1EncountersByEncounterIdSelections"];
         trace?: never;
     };
@@ -9306,7 +9308,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Internal: M22 PDF-render payload */
+        /** Internal: M22 PDF-render payload — the assembled HearthNote. 404 when the encounter has no selection tree to render (never an empty string) */
         get: operations["getApiV1InternalEncountersByEncounterIdRenderpayload"];
         put?: never;
         post?: never;
@@ -37480,6 +37482,46 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1EncountersByEncounterIdAddendaByAddendumIdSelections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        templateKey: string;
+                        vocabVersion: string;
+                        sections: {
+                            sectionId: string;
+                            entries: {
+                                code: string;
+                                params?: {
+                                    [key: string]: string | number;
+                                };
+                            }[];
+                            freeText?: string;
+                        }[];
+                        layer1Preview: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     patchApiV1EncountersByEncounterIdAddendaByAddendumIdSelections: {
         parameters: {
             query?: never;
@@ -37496,12 +37538,16 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    selections: {
-                        [key: string]: unknown;
-                    };
-                    freeText?: {
-                        [key: string]: string;
-                    };
+                    sections: {
+                        sectionId: string;
+                        entries: {
+                            code: string;
+                            params?: {
+                                [key: string]: string | number;
+                            };
+                        }[];
+                        freeText?: string;
+                    }[];
                 };
             };
         };
@@ -37514,6 +37560,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         version: number;
+                        layer1Preview: string;
                     };
                 };
             };
@@ -38015,6 +38062,45 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1EncountersByEncounterIdSelections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        templateKey: string;
+                        vocabVersion: string;
+                        sections: {
+                            sectionId: string;
+                            entries: {
+                                code: string;
+                                params?: {
+                                    [key: string]: string | number;
+                                };
+                            }[];
+                            freeText?: string;
+                        }[];
+                        layer1Preview: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     patchApiV1EncountersByEncounterIdSelections: {
         parameters: {
             query?: never;
@@ -38030,12 +38116,16 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    selections: {
-                        [key: string]: unknown;
-                    };
-                    freeText?: {
-                        [key: string]: string;
-                    };
+                    sections: {
+                        sectionId: string;
+                        entries: {
+                            code: string;
+                            params?: {
+                                [key: string]: string | number;
+                            };
+                        }[];
+                        freeText?: string;
+                    }[];
                 };
             };
         };

@@ -1,5 +1,5 @@
 // apps/backend/src/modules/08-encounters/routes/encounters-routes.ts — M8-T09 the §4.1 route inventory
-// (32 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth,
+// (34 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth,
 // M3) on the §4.5 keys M8 registers into M3's catalog (M8_CONTRIBUTED_PERMISSIONS). Org binding is
 // server-side (`request.context`, never the body). Handlers compose over the injected EncounterRouteService
 // (in-memory slice; Drizzle in prod under `withOrgContext` so RLS backstops).
@@ -36,6 +36,7 @@ import {
   SignEncounterSchema,
   SignedSinceQuerySchema,
   SupervisorReleaseSchema,
+  UpdateSelectionsSchema,
   VitalParamsSchema,
   VoidEncounterSchema,
   parse,
@@ -211,18 +212,42 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
   );
 
-  // 3 — update selections (§7.7 If-Match).
+  // 3 — update selections (§7.7 If-Match). The body used to be published and never read: the clinician's
+  // HearthNote arrived, the version bumped, a 200 came back, and nothing was written (#114).
   app.patch(
     "/api/v1/encounters/:encounterId/selections",
     { preHandler: [AUTHOR, SCOPE_FOR("encounter.author"), IF_MATCH] },
     async (request) => {
       const { organizationId } = actorOf(request);
       parse(EncounterParamsSchema, request.params);
+      const body = parse(UpdateSelectionsSchema, request.body);
       return service.updateSelections(
         organizationId,
         encounterIdOf(request),
         ifMatchVersionOf(request),
+        body,
       );
+    },
+  );
+
+  // 3b — read the stored selection tree back, assembled. The PATCH had no counterpart read, which is
+  // why the discard was invisible from every caller-facing surface (#114).
+  app.get(
+    "/api/v1/encounters/:encounterId/selections",
+    {
+      preHandler: [READ, SCOPE_FOR("encounter.read")],
+      config: {
+        auditRead: {
+          resourceKind: "hearthnote_selection",
+          resourceIdParam: "encounterId",
+          fields: ["selections", "freeText", "layer1Preview"],
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      parse(EncounterParamsSchema, request.params);
+      return service.getSelections(organizationId, encounterIdOf(request));
     },
   );
 
@@ -496,14 +521,35 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
   );
 
-  // 23 — update addendum selections (§7.7 If-Match).
+  // 23 — update addendum selections (§7.7 If-Match). Same discard as route 3, same fix (#114).
   app.patch(
     "/api/v1/encounters/:encounterId/addenda/:addendumId/selections",
     { preHandler: [ADDENDUM_AUTHOR, IF_MATCH] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { encounterId, addendumId } = parse(AddendumParamsSchema, request.params);
-      return service.updateAddendumSelections(organizationId, encounterId, addendumId);
+      const body = parse(UpdateSelectionsSchema, request.body);
+      return service.updateAddendumSelections(organizationId, encounterId, addendumId, body);
+    },
+  );
+
+  // 23b — read an addendum's stored selection tree back, assembled (#114).
+  app.get(
+    "/api/v1/encounters/:encounterId/addenda/:addendumId/selections",
+    {
+      preHandler: [READ, SCOPE_FOR("encounter.read")],
+      config: {
+        auditRead: {
+          resourceKind: "hearthnote_selection",
+          resourceIdParam: "addendumId",
+          fields: ["selections", "freeText", "layer1Preview"],
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { encounterId, addendumId } = parse(AddendumParamsSchema, request.params);
+      return service.getAddendumSelections(organizationId, encounterId, addendumId);
     },
   );
 
