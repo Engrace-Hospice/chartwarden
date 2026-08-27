@@ -30,3 +30,27 @@ export async function openFirstPatientChart(page: Page): Promise<string> {
   if (!match?.[1]) throw new Error(`e2e fixtures: could not parse patient id from ${page.url()}`);
   return match[1];
 }
+
+/**
+ * Opens the census row for a named patient and returns their chart's patient id. Same discovery-through-
+ * the-app rule as {@link openFirstPatientChart} — no hardcoded UUID — but for a spec that needs a
+ * SPECIFIC patient's data rather than any in-scope one.
+ *
+ * F-031: the eMAR spec needs Eleanor Whitfield, the flagship patient
+ * `db:seed:scenario-orders-meds-idg` anchors the whole orders/meds/IDG scenario to. She is the only
+ * seeded patient with a medication order, so "the first census row" would land on a chart with nothing
+ * to administer and the spec would fail on an empty picker rather than on the thing it is testing.
+ */
+export async function openPatientChartByLastName(page: Page, lastName: string): Promise<string> {
+  await page.goto("/patients");
+  const rows = page.getByRole("table").getByRole("row");
+  await expect.poll(() => rows.count(), { timeout: 10_000 }).toBeGreaterThan(1);
+  const row = rows.filter({ hasText: lastName }).first();
+  await expect(row).toBeVisible();
+  await row.click();
+  await page.getByRole("button", { name: "Open chart" }).click();
+  await page.waitForURL(/\/patients\/[^/]+$/);
+  const match = page.url().match(/\/patients\/([^/?#]+)/);
+  if (!match?.[1]) throw new Error(`e2e fixtures: could not parse patient id from ${page.url()}`);
+  return match[1];
+}

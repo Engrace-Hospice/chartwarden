@@ -20,6 +20,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import {
+  type EmarMedicationOrderPort,
   type EmarWriteOutboxPort,
   createDbEmarBackend,
 } from "../src/modules/13-emar/emar-route-service-db";
@@ -191,7 +192,22 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
     const outbox: EmarWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m13" }),
     };
-    svc = createDbEmarBackend(handle.db, outbox);
+    // F-031 — the M12 identity reader the production mount binds over
+    // `MedicationOrderProvider.getAdministrationContext`. Stands in for M12 here (this is M13's suite, and
+    // M12's own provider is proven in dosespot-seams.test.ts) but answers the SAME question with the same
+    // shape: an unknown order resolves to null and the write refuses.
+    const medicationOrder: EmarMedicationOrderPort = {
+      async administrationIdentity({ medicationOrderId }) {
+        if (medicationOrderId !== MED_ORDER) return null;
+        return {
+          patientId: PATIENT,
+          admissionId: ADMISSION,
+          drugName: "Morphine Sulfate Oral Solution",
+          route: "oral",
+        };
+      },
+    };
+    svc = createDbEmarBackend(handle.db, outbox, undefined, () => medicationOrder);
   }, 120_000);
 
   afterAll(async () => {
@@ -273,6 +289,53 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
       [view.id],
     );
     expect(rows[0].n).toBe(1);
+  });
+
+  it("F-031: an ad-hoc administration is filed under the ORDER's patient, not a sentinel", async () => {
+    // Before F-031 this row landed on patient_id 00000000-…-aa. Nothing in production materializes a
+    // `scheduled_dose` (the m12.medication_order.active -> m13.materialize-schedule consumer is declared and
+    // unbound), so this branch was not an edge case — it was every administration the platform could record,
+    // and every one of them was absent from the patient's own eMAR.
+    const view = await svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs());
+    expect(view.patientId).toBe(PATIENT);
+    const { rows } = await admin.query(
+      "SELECT patient_id, admission_id, drug_name_snapshot FROM administration_record WHERE id=$1",
+      [view.id],
+    );
+    expect(rows[0].patient_id).toBe(PATIENT);
+    expect(rows[0].admission_id).toBe(ADMISSION);
+    // The MAR must say what was given, not "" — the order can be corrected or discontinued afterwards.
+    expect(rows[0].drug_name_snapshot).toBe("Morphine Sulfate Oral Solution");
+    const listed = await svc.listAdministrations(ORG_A, { patient: PATIENT });
+    expect(listed.map((r) => r.id)).toContain(view.id);
+  });
+
+  it("F-031: an ad-hoc CONTROLLED-SUBSTANCE administration can now be witnessed", async () => {
+    // The D7 verifier binds the token's scope to the patient the service RESOLVED. While that was the
+    // sentinel and the witness minted against the real patient, no token could ever match — the
+    // controlled-substance path refused every caller, including a correctly-witnessed one.
+    const { token } = await svc.mintWitnessToken(ORG_A, member2Of[ORG_A], {
+      patientId: PATIENT,
+      medicationOrderId: MED_ORDER,
+      administeringClinicianMembershipId: memberOf[ORG_A],
+    });
+    const view = await svc.recordAdministration(
+      ORG_A,
+      memberOf[ORG_A],
+      recordArgs({ medClass: "controlled_substance", witnessToken: token }),
+    );
+    expect(view.status).toBe("committed");
+    expect(view.witnessMembershipId).toBe(member2Of[ORG_A]);
+  });
+
+  it("F-031: an administration naming no dose and an unresolvable order is REFUSED, not sentinel-filed", async () => {
+    await expect(
+      svc.recordAdministration(
+        ORG_A,
+        memberOf[ORG_A],
+        recordArgs({ medicationOrderId: "77777777-7777-4777-8777-777777777777" }),
+      ),
+    ).rejects.toMatchObject({ statusCode: 422 });
   });
 
   it("caregiver-attested capture → pending_caregiver_review; acknowledge → committed; dispute flags", async () => {

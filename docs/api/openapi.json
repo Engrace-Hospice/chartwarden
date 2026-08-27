@@ -9532,7 +9532,30 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "graceWindowMinutes",
+                    "prnMinimumIntervalMinutes",
+                    "emarPdfOnCommit"
+                  ],
+                  "properties": {
+                    "graceWindowMinutes": {
+                      "type": "integer"
+                    },
+                    "prnMinimumIntervalMinutes": {
+                      "type": "integer"
+                    },
+                    "emarPdfOnCommit": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -13583,10 +13606,264 @@
           "13-emar"
         ],
         "summary": "Record a clinician administration (five-rights; administering_clinician_eligible ABAC)",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "x-witness-attestation",
+            "in": "header",
+            "required": false,
+            "description": "Single-use witness-attestation token from POST /api/v1/administrations/witness-attest (60s life). REQUIRED when medClass is controlled_substance; ignored otherwise.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": {
-            "description": "OK"
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "medicationOrderId",
+                    "mode",
+                    "status",
+                    "actorKind",
+                    "administeredAt",
+                    "recordedAt",
+                    "lateEntryTier",
+                    "administeringClinicianMembershipId",
+                    "witnessMembershipId",
+                    "encounterId",
+                    "scheduledDoseId",
+                    "comfortKitDeploymentId",
+                    "ivSessionId",
+                    "isControlledSubstance",
+                    "isComfortKitDrawdown",
+                    "requiresRnReview",
+                    "supersededById",
+                    "barcodeMatchResult"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "medicationOrderId": {
+                      "type": "string"
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "single_dose",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_start",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_rate_change",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_pause",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_resume",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_stop",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "committed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pending_caregiver_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "superseded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "voided",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "actorKind": {
+                      "anyOf": [
+                        {
+                          "const": "clinician",
+                          "type": "string"
+                        },
+                        {
+                          "const": "caregiver_attested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "system_iv_session_event",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "administeredAt": {
+                      "type": "string"
+                    },
+                    "recordedAt": {
+                      "type": "string"
+                    },
+                    "lateEntryTier": {
+                      "anyOf": [
+                        {
+                          "const": "normal",
+                          "type": "string"
+                        },
+                        {
+                          "const": "late",
+                          "type": "string"
+                        },
+                        {
+                          "const": "significant_late",
+                          "type": "string"
+                        },
+                        {
+                          "const": "administrative_override",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "administeringClinicianMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "witnessMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "encounterId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "scheduledDoseId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "comfortKitDeploymentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ivSessionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isControlledSubstance": {
+                      "type": "boolean"
+                    },
+                    "isComfortKitDrawdown": {
+                      "type": "boolean"
+                    },
+                    "requiresRnReview": {
+                      "type": "boolean"
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "barcodeMatchResult": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "match",
+                              "type": "string"
+                            },
+                            {
+                              "const": "wrong_drug",
+                              "type": "string"
+                            },
+                            {
+                              "const": "wrong_patient",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "no_order_active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -14081,7 +14358,251 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "medicationOrderId",
+                    "mode",
+                    "status",
+                    "actorKind",
+                    "administeredAt",
+                    "recordedAt",
+                    "lateEntryTier",
+                    "administeringClinicianMembershipId",
+                    "witnessMembershipId",
+                    "encounterId",
+                    "scheduledDoseId",
+                    "comfortKitDeploymentId",
+                    "ivSessionId",
+                    "isControlledSubstance",
+                    "isComfortKitDrawdown",
+                    "requiresRnReview",
+                    "supersededById",
+                    "barcodeMatchResult"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "medicationOrderId": {
+                      "type": "string"
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "single_dose",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_start",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_rate_change",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_pause",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_resume",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_stop",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "committed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pending_caregiver_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "superseded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "voided",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "actorKind": {
+                      "anyOf": [
+                        {
+                          "const": "clinician",
+                          "type": "string"
+                        },
+                        {
+                          "const": "caregiver_attested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "system_iv_session_event",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "administeredAt": {
+                      "type": "string"
+                    },
+                    "recordedAt": {
+                      "type": "string"
+                    },
+                    "lateEntryTier": {
+                      "anyOf": [
+                        {
+                          "const": "normal",
+                          "type": "string"
+                        },
+                        {
+                          "const": "late",
+                          "type": "string"
+                        },
+                        {
+                          "const": "significant_late",
+                          "type": "string"
+                        },
+                        {
+                          "const": "administrative_override",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "administeringClinicianMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "witnessMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "encounterId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "scheduledDoseId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "comfortKitDeploymentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ivSessionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isControlledSubstance": {
+                      "type": "boolean"
+                    },
+                    "isComfortKitDrawdown": {
+                      "type": "boolean"
+                    },
+                    "requiresRnReview": {
+                      "type": "boolean"
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "barcodeMatchResult": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "match",
+                              "type": "string"
+                            },
+                            {
+                              "const": "wrong_drug",
+                              "type": "string"
+                            },
+                            {
+                              "const": "wrong_patient",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "no_order_active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -14126,8 +14647,252 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "OK"
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "medicationOrderId",
+                    "mode",
+                    "status",
+                    "actorKind",
+                    "administeredAt",
+                    "recordedAt",
+                    "lateEntryTier",
+                    "administeringClinicianMembershipId",
+                    "witnessMembershipId",
+                    "encounterId",
+                    "scheduledDoseId",
+                    "comfortKitDeploymentId",
+                    "ivSessionId",
+                    "isControlledSubstance",
+                    "isComfortKitDrawdown",
+                    "requiresRnReview",
+                    "supersededById",
+                    "barcodeMatchResult"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "medicationOrderId": {
+                      "type": "string"
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "single_dose",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_start",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_rate_change",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_pause",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_resume",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_stop",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "committed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pending_caregiver_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "superseded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "voided",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "actorKind": {
+                      "anyOf": [
+                        {
+                          "const": "clinician",
+                          "type": "string"
+                        },
+                        {
+                          "const": "caregiver_attested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "system_iv_session_event",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "administeredAt": {
+                      "type": "string"
+                    },
+                    "recordedAt": {
+                      "type": "string"
+                    },
+                    "lateEntryTier": {
+                      "anyOf": [
+                        {
+                          "const": "normal",
+                          "type": "string"
+                        },
+                        {
+                          "const": "late",
+                          "type": "string"
+                        },
+                        {
+                          "const": "significant_late",
+                          "type": "string"
+                        },
+                        {
+                          "const": "administrative_override",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "administeringClinicianMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "witnessMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "encounterId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "scheduledDoseId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "comfortKitDeploymentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ivSessionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isControlledSubstance": {
+                      "type": "boolean"
+                    },
+                    "isComfortKitDrawdown": {
+                      "type": "boolean"
+                    },
+                    "requiresRnReview": {
+                      "type": "boolean"
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "barcodeMatchResult": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "match",
+                              "type": "string"
+                            },
+                            {
+                              "const": "wrong_drug",
+                              "type": "string"
+                            },
+                            {
+                              "const": "wrong_patient",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "no_order_active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -14186,7 +14951,251 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "medicationOrderId",
+                    "mode",
+                    "status",
+                    "actorKind",
+                    "administeredAt",
+                    "recordedAt",
+                    "lateEntryTier",
+                    "administeringClinicianMembershipId",
+                    "witnessMembershipId",
+                    "encounterId",
+                    "scheduledDoseId",
+                    "comfortKitDeploymentId",
+                    "ivSessionId",
+                    "isControlledSubstance",
+                    "isComfortKitDrawdown",
+                    "requiresRnReview",
+                    "supersededById",
+                    "barcodeMatchResult"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "medicationOrderId": {
+                      "type": "string"
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "single_dose",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_start",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_rate_change",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_pause",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_resume",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_stop",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "committed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pending_caregiver_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "superseded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "voided",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "actorKind": {
+                      "anyOf": [
+                        {
+                          "const": "clinician",
+                          "type": "string"
+                        },
+                        {
+                          "const": "caregiver_attested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "system_iv_session_event",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "administeredAt": {
+                      "type": "string"
+                    },
+                    "recordedAt": {
+                      "type": "string"
+                    },
+                    "lateEntryTier": {
+                      "anyOf": [
+                        {
+                          "const": "normal",
+                          "type": "string"
+                        },
+                        {
+                          "const": "late",
+                          "type": "string"
+                        },
+                        {
+                          "const": "significant_late",
+                          "type": "string"
+                        },
+                        {
+                          "const": "administrative_override",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "administeringClinicianMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "witnessMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "encounterId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "scheduledDoseId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "comfortKitDeploymentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ivSessionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isControlledSubstance": {
+                      "type": "boolean"
+                    },
+                    "isComfortKitDrawdown": {
+                      "type": "boolean"
+                    },
+                    "requiresRnReview": {
+                      "type": "boolean"
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "barcodeMatchResult": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "match",
+                              "type": "string"
+                            },
+                            {
+                              "const": "wrong_drug",
+                              "type": "string"
+                            },
+                            {
+                              "const": "wrong_patient",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "no_order_active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -14236,7 +15245,251 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "medicationOrderId",
+                    "mode",
+                    "status",
+                    "actorKind",
+                    "administeredAt",
+                    "recordedAt",
+                    "lateEntryTier",
+                    "administeringClinicianMembershipId",
+                    "witnessMembershipId",
+                    "encounterId",
+                    "scheduledDoseId",
+                    "comfortKitDeploymentId",
+                    "ivSessionId",
+                    "isControlledSubstance",
+                    "isComfortKitDrawdown",
+                    "requiresRnReview",
+                    "supersededById",
+                    "barcodeMatchResult"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "medicationOrderId": {
+                      "type": "string"
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "single_dose",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_start",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_rate_change",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_pause",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_resume",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_stop",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "committed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pending_caregiver_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "superseded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "voided",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "actorKind": {
+                      "anyOf": [
+                        {
+                          "const": "clinician",
+                          "type": "string"
+                        },
+                        {
+                          "const": "caregiver_attested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "system_iv_session_event",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "administeredAt": {
+                      "type": "string"
+                    },
+                    "recordedAt": {
+                      "type": "string"
+                    },
+                    "lateEntryTier": {
+                      "anyOf": [
+                        {
+                          "const": "normal",
+                          "type": "string"
+                        },
+                        {
+                          "const": "late",
+                          "type": "string"
+                        },
+                        {
+                          "const": "significant_late",
+                          "type": "string"
+                        },
+                        {
+                          "const": "administrative_override",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "administeringClinicianMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "witnessMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "encounterId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "scheduledDoseId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "comfortKitDeploymentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ivSessionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isControlledSubstance": {
+                      "type": "boolean"
+                    },
+                    "isComfortKitDrawdown": {
+                      "type": "boolean"
+                    },
+                    "requiresRnReview": {
+                      "type": "boolean"
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "barcodeMatchResult": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "match",
+                              "type": "string"
+                            },
+                            {
+                              "const": "wrong_drug",
+                              "type": "string"
+                            },
+                            {
+                              "const": "wrong_patient",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "no_order_active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -14276,8 +15529,252 @@
         "summary": "Record a caregiver-attested administration via the M31 portal (D10)",
         "parameters": [],
         "responses": {
-          "200": {
-            "description": "OK"
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "medicationOrderId",
+                    "mode",
+                    "status",
+                    "actorKind",
+                    "administeredAt",
+                    "recordedAt",
+                    "lateEntryTier",
+                    "administeringClinicianMembershipId",
+                    "witnessMembershipId",
+                    "encounterId",
+                    "scheduledDoseId",
+                    "comfortKitDeploymentId",
+                    "ivSessionId",
+                    "isControlledSubstance",
+                    "isComfortKitDrawdown",
+                    "requiresRnReview",
+                    "supersededById",
+                    "barcodeMatchResult"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "medicationOrderId": {
+                      "type": "string"
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "single_dose",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_start",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_rate_change",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_pause",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_resume",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_stop",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "committed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pending_caregiver_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "superseded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "voided",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "actorKind": {
+                      "anyOf": [
+                        {
+                          "const": "clinician",
+                          "type": "string"
+                        },
+                        {
+                          "const": "caregiver_attested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "system_iv_session_event",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "administeredAt": {
+                      "type": "string"
+                    },
+                    "recordedAt": {
+                      "type": "string"
+                    },
+                    "lateEntryTier": {
+                      "anyOf": [
+                        {
+                          "const": "normal",
+                          "type": "string"
+                        },
+                        {
+                          "const": "late",
+                          "type": "string"
+                        },
+                        {
+                          "const": "significant_late",
+                          "type": "string"
+                        },
+                        {
+                          "const": "administrative_override",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "administeringClinicianMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "witnessMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "encounterId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "scheduledDoseId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "comfortKitDeploymentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ivSessionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isControlledSubstance": {
+                      "type": "boolean"
+                    },
+                    "isComfortKitDrawdown": {
+                      "type": "boolean"
+                    },
+                    "requiresRnReview": {
+                      "type": "boolean"
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "barcodeMatchResult": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "match",
+                              "type": "string"
+                            },
+                            {
+                              "const": "wrong_drug",
+                              "type": "string"
+                            },
+                            {
+                              "const": "wrong_patient",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "no_order_active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -14470,8 +15967,267 @@
         "summary": "Bulk offline-queue sync from device (D18)",
         "parameters": [],
         "responses": {
-          "200": {
-            "description": "OK"
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "synced",
+                    "results"
+                  ],
+                  "properties": {
+                    "synced": {
+                      "type": "integer"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "patientId",
+                          "admissionId",
+                          "medicationOrderId",
+                          "mode",
+                          "status",
+                          "actorKind",
+                          "administeredAt",
+                          "recordedAt",
+                          "lateEntryTier",
+                          "administeringClinicianMembershipId",
+                          "witnessMembershipId",
+                          "encounterId",
+                          "scheduledDoseId",
+                          "comfortKitDeploymentId",
+                          "ivSessionId",
+                          "isControlledSubstance",
+                          "isComfortKitDrawdown",
+                          "requiresRnReview",
+                          "supersededById",
+                          "barcodeMatchResult"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "type": "string"
+                          },
+                          "medicationOrderId": {
+                            "type": "string"
+                          },
+                          "mode": {
+                            "anyOf": [
+                              {
+                                "const": "single_dose",
+                                "type": "string"
+                              },
+                              {
+                                "const": "iv_continuous_start",
+                                "type": "string"
+                              },
+                              {
+                                "const": "iv_continuous_rate_change",
+                                "type": "string"
+                              },
+                              {
+                                "const": "iv_continuous_pause",
+                                "type": "string"
+                              },
+                              {
+                                "const": "iv_continuous_resume",
+                                "type": "string"
+                              },
+                              {
+                                "const": "iv_continuous_stop",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "committed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pending_caregiver_review",
+                                "type": "string"
+                              },
+                              {
+                                "const": "superseded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "voided",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "actorKind": {
+                            "anyOf": [
+                              {
+                                "const": "clinician",
+                                "type": "string"
+                              },
+                              {
+                                "const": "caregiver_attested",
+                                "type": "string"
+                              },
+                              {
+                                "const": "system_iv_session_event",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "administeredAt": {
+                            "type": "string"
+                          },
+                          "recordedAt": {
+                            "type": "string"
+                          },
+                          "lateEntryTier": {
+                            "anyOf": [
+                              {
+                                "const": "normal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "late",
+                                "type": "string"
+                              },
+                              {
+                                "const": "significant_late",
+                                "type": "string"
+                              },
+                              {
+                                "const": "administrative_override",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "administeringClinicianMembershipId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "witnessMembershipId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "encounterId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "scheduledDoseId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "comfortKitDeploymentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "ivSessionId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "isControlledSubstance": {
+                            "type": "boolean"
+                          },
+                          "isComfortKitDrawdown": {
+                            "type": "boolean"
+                          },
+                          "requiresRnReview": {
+                            "type": "boolean"
+                          },
+                          "supersededById": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "barcodeMatchResult": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "match",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "wrong_drug",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "wrong_patient",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "expired",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "no_order_active",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -14695,8 +16451,252 @@
         "summary": "Record a refusal (administering_clinician_eligible ABAC)",
         "parameters": [],
         "responses": {
-          "200": {
-            "description": "OK"
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "medicationOrderId",
+                    "mode",
+                    "status",
+                    "actorKind",
+                    "administeredAt",
+                    "recordedAt",
+                    "lateEntryTier",
+                    "administeringClinicianMembershipId",
+                    "witnessMembershipId",
+                    "encounterId",
+                    "scheduledDoseId",
+                    "comfortKitDeploymentId",
+                    "ivSessionId",
+                    "isControlledSubstance",
+                    "isComfortKitDrawdown",
+                    "requiresRnReview",
+                    "supersededById",
+                    "barcodeMatchResult"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "medicationOrderId": {
+                      "type": "string"
+                    },
+                    "mode": {
+                      "anyOf": [
+                        {
+                          "const": "single_dose",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_start",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_rate_change",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_pause",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_resume",
+                          "type": "string"
+                        },
+                        {
+                          "const": "iv_continuous_stop",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "committed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pending_caregiver_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "superseded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "voided",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "actorKind": {
+                      "anyOf": [
+                        {
+                          "const": "clinician",
+                          "type": "string"
+                        },
+                        {
+                          "const": "caregiver_attested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "system_iv_session_event",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "administeredAt": {
+                      "type": "string"
+                    },
+                    "recordedAt": {
+                      "type": "string"
+                    },
+                    "lateEntryTier": {
+                      "anyOf": [
+                        {
+                          "const": "normal",
+                          "type": "string"
+                        },
+                        {
+                          "const": "late",
+                          "type": "string"
+                        },
+                        {
+                          "const": "significant_late",
+                          "type": "string"
+                        },
+                        {
+                          "const": "administrative_override",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "administeringClinicianMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "witnessMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "encounterId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "scheduledDoseId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "comfortKitDeploymentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ivSessionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isControlledSubstance": {
+                      "type": "boolean"
+                    },
+                    "isComfortKitDrawdown": {
+                      "type": "boolean"
+                    },
+                    "requiresRnReview": {
+                      "type": "boolean"
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "barcodeMatchResult": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "match",
+                              "type": "string"
+                            },
+                            {
+                              "const": "wrong_drug",
+                              "type": "string"
+                            },
+                            {
+                              "const": "wrong_patient",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "no_order_active",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -14770,8 +16770,27 @@
         "summary": "Mint a single-use controlled-substance witness-attestation token (D7)",
         "parameters": [],
         "responses": {
-          "200": {
-            "description": "OK"
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "token",
+                    "expiresInSeconds"
+                  ],
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    },
+                    "expiresInSeconds": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -47462,7 +49481,34 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "disposalStatus"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "disposalStatus": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -106539,7 +108585,49 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "scheduledDoseId",
+                    "medicationOrderId",
+                    "dueAt",
+                    "acknowledgedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "scheduledDoseId": {
+                      "type": "string"
+                    },
+                    "medicationOrderId": {
+                      "type": "string"
+                    },
+                    "dueAt": {
+                      "type": "string"
+                    },
+                    "acknowledgedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -139879,8 +141967,125 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "OK"
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "triggerKind",
+                    "status",
+                    "lineCount",
+                    "decisions"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "triggerKind": {
+                      "anyOf": [
+                        {
+                          "const": "admission",
+                          "type": "string"
+                        },
+                        {
+                          "const": "transfer_in",
+                          "type": "string"
+                        },
+                        {
+                          "const": "discharge",
+                          "type": "string"
+                        },
+                        {
+                          "const": "recertification",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_progress",
+                          "type": "string"
+                        },
+                        {
+                          "const": "finalized",
+                          "type": "string"
+                        },
+                        {
+                          "const": "voided",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "lineCount": {
+                      "type": "integer"
+                    },
+                    "decisions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "lineId",
+                          "lineKind",
+                          "sourceId",
+                          "decision"
+                        ],
+                        "properties": {
+                          "lineId": {
+                            "type": "string"
+                          },
+                          "lineKind": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "decision": {
+                            "anyOf": [
+                              {
+                                "const": "carry_forward",
+                                "type": "string"
+                              },
+                              {
+                                "const": "discontinue",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hold",
+                                "type": "string"
+                              },
+                              {
+                                "const": "new_order",
+                                "type": "string"
+                              },
+                              {
+                                "const": "document_only",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -139937,8 +142142,125 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "OK"
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "triggerKind",
+                    "status",
+                    "lineCount",
+                    "decisions"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "triggerKind": {
+                      "anyOf": [
+                        {
+                          "const": "admission",
+                          "type": "string"
+                        },
+                        {
+                          "const": "transfer_in",
+                          "type": "string"
+                        },
+                        {
+                          "const": "discharge",
+                          "type": "string"
+                        },
+                        {
+                          "const": "recertification",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_progress",
+                          "type": "string"
+                        },
+                        {
+                          "const": "finalized",
+                          "type": "string"
+                        },
+                        {
+                          "const": "voided",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "lineCount": {
+                      "type": "integer"
+                    },
+                    "decisions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "lineId",
+                          "lineKind",
+                          "sourceId",
+                          "decision"
+                        ],
+                        "properties": {
+                          "lineId": {
+                            "type": "string"
+                          },
+                          "lineKind": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "decision": {
+                            "anyOf": [
+                              {
+                                "const": "carry_forward",
+                                "type": "string"
+                              },
+                              {
+                                "const": "discontinue",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hold",
+                                "type": "string"
+                              },
+                              {
+                                "const": "new_order",
+                                "type": "string"
+                              },
+                              {
+                                "const": "document_only",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -140031,7 +142353,124 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "triggerKind",
+                    "status",
+                    "lineCount",
+                    "decisions"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "triggerKind": {
+                      "anyOf": [
+                        {
+                          "const": "admission",
+                          "type": "string"
+                        },
+                        {
+                          "const": "transfer_in",
+                          "type": "string"
+                        },
+                        {
+                          "const": "discharge",
+                          "type": "string"
+                        },
+                        {
+                          "const": "recertification",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_progress",
+                          "type": "string"
+                        },
+                        {
+                          "const": "finalized",
+                          "type": "string"
+                        },
+                        {
+                          "const": "voided",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "lineCount": {
+                      "type": "integer"
+                    },
+                    "decisions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "lineId",
+                          "lineKind",
+                          "sourceId",
+                          "decision"
+                        ],
+                        "properties": {
+                          "lineId": {
+                            "type": "string"
+                          },
+                          "lineKind": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "decision": {
+                            "anyOf": [
+                              {
+                                "const": "carry_forward",
+                                "type": "string"
+                              },
+                              {
+                                "const": "discontinue",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hold",
+                                "type": "string"
+                              },
+                              {
+                                "const": "new_order",
+                                "type": "string"
+                              },
+                              {
+                                "const": "document_only",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -140104,7 +142543,124 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "triggerKind",
+                    "status",
+                    "lineCount",
+                    "decisions"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "triggerKind": {
+                      "anyOf": [
+                        {
+                          "const": "admission",
+                          "type": "string"
+                        },
+                        {
+                          "const": "transfer_in",
+                          "type": "string"
+                        },
+                        {
+                          "const": "discharge",
+                          "type": "string"
+                        },
+                        {
+                          "const": "recertification",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_progress",
+                          "type": "string"
+                        },
+                        {
+                          "const": "finalized",
+                          "type": "string"
+                        },
+                        {
+                          "const": "voided",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "lineCount": {
+                      "type": "integer"
+                    },
+                    "decisions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "lineId",
+                          "lineKind",
+                          "sourceId",
+                          "decision"
+                        ],
+                        "properties": {
+                          "lineId": {
+                            "type": "string"
+                          },
+                          "lineKind": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "decision": {
+                            "anyOf": [
+                              {
+                                "const": "carry_forward",
+                                "type": "string"
+                              },
+                              {
+                                "const": "discontinue",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hold",
+                                "type": "string"
+                              },
+                              {
+                                "const": "new_order",
+                                "type": "string"
+                              },
+                              {
+                                "const": "document_only",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -140154,7 +142710,124 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "admissionId",
+                    "triggerKind",
+                    "status",
+                    "lineCount",
+                    "decisions"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "triggerKind": {
+                      "anyOf": [
+                        {
+                          "const": "admission",
+                          "type": "string"
+                        },
+                        {
+                          "const": "transfer_in",
+                          "type": "string"
+                        },
+                        {
+                          "const": "discharge",
+                          "type": "string"
+                        },
+                        {
+                          "const": "recertification",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_progress",
+                          "type": "string"
+                        },
+                        {
+                          "const": "finalized",
+                          "type": "string"
+                        },
+                        {
+                          "const": "voided",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "lineCount": {
+                      "type": "integer"
+                    },
+                    "decisions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "lineId",
+                          "lineKind",
+                          "sourceId",
+                          "decision"
+                        ],
+                        "properties": {
+                          "lineId": {
+                            "type": "string"
+                          },
+                          "lineKind": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "decision": {
+                            "anyOf": [
+                              {
+                                "const": "carry_forward",
+                                "type": "string"
+                              },
+                              {
+                                "const": "discontinue",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hold",
+                                "type": "string"
+                              },
+                              {
+                                "const": "new_order",
+                                "type": "string"
+                              },
+                              {
+                                "const": "document_only",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -159790,7 +162463,59 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "medicationOrderId",
+                    "dueAt",
+                    "status"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "medicationOrderId": {
+                      "type": "string"
+                    },
+                    "dueAt": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "administered",
+                          "type": "string"
+                        },
+                        {
+                          "const": "missed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "intentionally_held",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

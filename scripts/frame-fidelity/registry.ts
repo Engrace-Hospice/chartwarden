@@ -135,8 +135,10 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
       "over a sticky footer (cosign guard + actions). REAL: header (type/discipline/date/status/late-entry/" +
       "version), cosignature state, signed/cosigned timestamps, patient banner. Honest placeholders — the " +
       "encounter read DTO exposes NO note body or vitals, so those cells/sections render '—' (never a " +
-      "fabricated note); EVV/visit join (M17/M18) isn't on the DTO; footer uses real nav, not the unbuilt " +
-      "Save-draft / Sign-note write paths.",
+      "fabricated note); EVV/visit join (M17/M18) isn't on the DTO. F-031 corrects a stale note here: the " +
+      "Sign-note write path IS built and has been since TASK-031 — encounter-read.tsx wires all four " +
+      "ceremonies (/sign, /cosignature/acknowledge, /cosignature/sign, /cosignature/supervisor-release) " +
+      "with real step-up and 412/403 handling. Save-draft is the one that remains unbuilt.",
   },
   {
     screenId: "assessment.timeline",

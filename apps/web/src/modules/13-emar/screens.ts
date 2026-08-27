@@ -1,14 +1,27 @@
 import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/13-emar — M13 eMAR screen registration (Track B, ADR-0030, M13-T10).
-// The §6.1 administration (eMAR) read screens that have a backing M13 read route on the generated client: the
-// Patient eMAR (§6.1 #1, the bedside MAR-grid projection), the Administration Detail (§6.1 #11), the IV
-// Continuous Session (§6.1 #5), the patient Missed-Dose inbox (§6.1 #8), the Reconciliation Worksheet (§6.1 #6),
-// the Comfort Kit view (§6.1 #7), and the Administration Policy admin (§6.1 #12). Nav visibility is gated by the
-// matching M13 permission key; the SERVER stays the only enforcement point (no frontend authz, ADR-0030 —
-// out-of-scope resources 404, never 403; SUD-flagged rows redacted/skipped server-side). The Single-Dose / PRN /
-// Witness administration modals, the IV titrate/stop, the missed-dose acknowledge, the reconciliation decide /
-// finalize, and the comfort-kit acknowledge-return write surfaces fill in as those write paths harden. The M22
-// eMAR PDF (apps/admin) and M28 FHIR MedicationAdministration projection are deferred (Wave F/H deny-stubs).
+// The §6.1 administration (eMAR) screens: the Patient eMAR (§6.1 #1, the bedside MAR-grid projection), the
+// Administration Detail (§6.1 #11), the IV Continuous Session (§6.1 #5), the patient Missed-Dose inbox
+// (§6.1 #8), the Reconciliation Worksheet (§6.1 #6), the Comfort Kit view (§6.1 #7), and the Administration
+// Policy admin (§6.1 #12). Nav visibility is gated by the matching M13 permission key; the SERVER stays the
+// only enforcement point (no frontend authz, ADR-0030 — out-of-scope resources 404, never 403; SUD-flagged
+// rows redacted/skipped server-side).
+//
+// F-031 — this header used to end "…fill in as those write paths harden", which made the screens.ts corpus
+// the only accurate inventory of what the app could not do. It is accurate the other way now. WHAT IS BUILT:
+// single-dose / PRN / controlled-substance-with-witness administration + refusal + intentional hold (Patient
+// eMAR); correct / void / acknowledge-caregiver / dispute-caregiver (Administration Detail); acknowledge
+// (Missed-Dose inbox); record / update / add-caregiver-line / finalize / void (Reconciliation Worksheet);
+// acknowledge-return (Comfort Kit); the tighten-only policy PUT (Administration Policy).
+//
+// WHAT IS NOT, AND WHY — both are missing PRODUCERS, not missing UI:
+//   • IV titrate / pause / resume / stop. `administration_record.iv_session_id` is written nowhere in the
+//     codebase, so no route can append a segment to a session and the §2.11 D11 ordering graph is never
+//     applied. Out of launch scope until an IV-session producer exists; see iv-session.tsx.
+//   • The reconciliation "Send to prescriber" M12 draft-order mint. No route mints an M12 draft from a
+//     decision; see reconciliation-worksheet.tsx.
+// The M22 eMAR PDF (apps/admin) and M28 FHIR MedicationAdministration projection remain deferred (Wave F/H
+// deny-stubs).
 import { lazy } from "react";
 import type { ComponentType } from "react";
 const AdministrationDetail = lazy(() =>

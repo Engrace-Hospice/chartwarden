@@ -1513,17 +1513,21 @@ import {
   IvSessionViewSchema as M13IvSessionViewSchema,
   MissedDoseListResponseSchema as M13MissedDoseListResponseSchema,
   MissedDoseQuerySchema as M13MissedDoseQuerySchema,
+  MissedDoseViewSchema as M13MissedDoseViewSchema,
   OfflineSyncRequest as M13OfflineSyncRequest,
+  OfflineSyncResponseSchema as M13OfflineSyncResponseSchema,
   RecordAdministrationRequest as M13RecordAdministrationRequest,
   RecordCaregiverAttestedRequest as M13RecordCaregiverAttestedRequest,
   RecordDecisionRequest as M13RecordDecisionRequest,
   RecordRefusalRequest as M13RecordRefusalRequest,
   ScheduledDoseListResponseSchema as M13ScheduledDoseListResponseSchema,
   ScheduledDoseQuerySchema as M13ScheduledDoseQuerySchema,
+  ScheduledDoseViewSchema as M13ScheduledDoseViewSchema,
   UpdateDecisionRequest as M13UpdateDecisionRequest,
   VoidAdministrationRequest as M13VoidAdministrationRequest,
   VoidReconciliationRequest as M13VoidReconciliationRequest,
   WitnessAttestRequest as M13WitnessAttestRequest,
+  WitnessTokenResponseSchema as M13WitnessTokenResponseSchema,
   WorksheetListResponseSchema as M13WorksheetListResponseSchema,
   WorksheetQuerySchema as M13WorksheetQuerySchema,
   WorksheetViewSchema as M13WorksheetViewSchema,
@@ -6512,35 +6516,67 @@ Object.assign(ROUTE_ENRICHMENTS, {
 });
 
 // ── M13 eMAR & Med Administration (28 routes) ─────────────────────────────────────────────────────
+//
+// F-031 — every M13 WRITE returns a real DTO (`AdministrationView`, `ScheduledDoseView`, `MissedDoseView`,
+// `WorksheetView`, `DeploymentView`, `AdministrationPolicyView`, the witness token, the offline-sync
+// receipt) and, for eleven of them, at HTTP 201. Until this pass none of that was published: the
+// enrichments carried `body` and no `response`, so `emit.ts` wrote each one a bare `200: OK` with
+// `content?: never` and `client:gen` typed every write's `data` as `never`. A caller could send the
+// request and could not read what came back — which is why the M13 screens could not be built off the
+// generated client without a cast, and why the witness ceremony (whose whole payload IS the returned
+// token) had no typed path at all. `status` is the route's real `reply.code(...)`, so the contract now
+// says 201 where the server says 201 rather than documenting a 200 nothing sends.
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/administrations": {
     summary:
       "Record a clinician administration (five-rights; administering_clinician_eligible ABAC)",
     body: M13RecordAdministrationRequest,
+    // The §2.6 D7 double-witness credential. Server-MINTED and single-use (never a self-assertion —
+    // check-request-header-auth.ts classifies it `verified` for exactly that reason), so it is declared
+    // here as the optional header it is: the controlled-substance branch is refused 422 without it, and
+    // an undeclared header is one the generated client cannot send at all.
+    headers: {
+      "x-witness-attestation": {
+        required: false,
+        description:
+          "Single-use witness-attestation token from POST /api/v1/administrations/witness-attest (60s life). REQUIRED when medClass is controlled_substance; ignored otherwise.",
+      },
+    },
+    status: 201,
+    response: M13AdministrationViewSchema,
   },
   "POST /api/v1/administrations/witness-attest": {
     summary: "Mint a single-use controlled-substance witness-attestation token (D7)",
     body: M13WitnessAttestRequest,
+    status: 201,
+    response: M13WitnessTokenResponseSchema,
   },
   "POST /api/v1/administrations/caregiver-attested": {
     summary: "Record a caregiver-attested administration via the M31 portal (D10)",
     body: M13RecordCaregiverAttestedRequest,
+    status: 201,
+    response: M13AdministrationViewSchema,
   },
   "POST /api/v1/administrations/:id/acknowledge-caregiver": {
     summary: "RN acknowledges a caregiver-attested row (caregiver_attested_review_required ABAC)",
     body: M13AcknowledgeCaregiverRequest,
+    response: M13AdministrationViewSchema,
   },
   "POST /api/v1/administrations/:id/dispute-caregiver": {
     summary: "RN disputes a caregiver-attested row",
     body: M13DisputeCaregiverRequest,
+    response: M13AdministrationViewSchema,
   },
   "POST /api/v1/administrations/:id/correct": {
     summary: "Correct a committed administration (supersede)",
     body: M13CorrectAdministrationRequest,
+    status: 201,
+    response: M13AdministrationViewSchema,
   },
   "POST /api/v1/administrations/:id/void": {
     summary: "Administrative hard-void (recorded in error)",
     body: M13VoidAdministrationRequest,
+    response: M13AdministrationViewSchema,
   },
   "GET /api/v1/administrations/:id": {
     summary: "Read one administration",
@@ -6558,10 +6594,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/administrations/refuse": {
     summary: "Record a refusal (administering_clinician_eligible ABAC)",
     body: M13RecordRefusalRequest,
+    status: 201,
+    response: M13AdministrationViewSchema,
   },
   "POST /api/v1/administrations/offline-sync": {
     summary: "Bulk offline-queue sync from device (D18)",
     body: M13OfflineSyncRequest,
+    status: 201,
+    response: M13OfflineSyncResponseSchema,
   },
   "GET /api/v1/scheduled-doses": {
     summary: "Read the scheduled-dose timeline for a patient",
@@ -6571,6 +6611,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/scheduled-doses/:id/intentional-hold": {
     summary: "Record an intentional hold before the grace window expires",
     body: M13IntentionalHoldRequest,
+    response: M13ScheduledDoseViewSchema,
   },
   "GET /api/v1/missed-doses": {
     summary: "List missed doses for a patient",
@@ -6579,6 +6620,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/missed-doses/:id/acknowledge": {
     summary: "Case manager acknowledges a missed dose",
+    response: M13MissedDoseViewSchema,
   },
   "GET /api/v1/reconciliation/worksheets": {
     summary: "List reconciliation worksheets for a patient",
@@ -6592,22 +6634,29 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/reconciliation/worksheets/:id/decisions": {
     summary: "Record a per-line reconciliation decision (reconciliation_authoring_eligible ABAC)",
     body: M13RecordDecisionRequest,
+    status: 201,
+    response: M13WorksheetViewSchema,
   },
   "PATCH /api/v1/reconciliation/worksheets/:id/decisions/:lineId": {
     summary: "Update a per-line decision before finalization",
     body: M13UpdateDecisionRequest,
+    response: M13WorksheetViewSchema,
   },
   "POST /api/v1/reconciliation/worksheets/:id/add-caregiver-reported-line": {
     summary: "Add a caregiver-reported home-med line",
     body: M13AddCaregiverReportedLineRequest,
+    status: 201,
+    response: M13WorksheetViewSchema,
   },
   "POST /api/v1/reconciliation/worksheets/:id/finalize": {
     summary: "Finalize the worksheet (emits m13.reconciliation.completed)",
     body: M13FinalizeReconciliationRequest,
+    response: M13WorksheetViewSchema,
   },
   "POST /api/v1/reconciliation/worksheets/:id/void": {
     summary: "Void a reconciliation worksheet",
     body: M13VoidReconciliationRequest,
+    response: M13WorksheetViewSchema,
   },
   "GET /api/v1/comfort-kits/deployments": {
     summary: "List comfort-kit deployments for a patient",
@@ -6621,6 +6670,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/comfort-kits/deployments/:id/acknowledge-return": {
     summary: "Manual return acknowledgment (Phase-1 fallback)",
     body: M13AcknowledgeReturnRequest,
+    response: M13DeploymentViewSchema,
   },
   "GET /api/v1/admin/administration-policy": {
     summary: "Read tenant administration policy",
@@ -6629,6 +6679,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "PUT /api/v1/admin/administration-policy": {
     summary: "Update tenant administration policy",
     body: M13AdministrationPolicyRequest,
+    response: M13AdministrationPolicyViewSchema,
   },
 });
 

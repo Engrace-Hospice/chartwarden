@@ -3,48 +3,85 @@ import {
   EmptyState,
   Glyph,
   LoadingSpinner,
+  Modal,
   PageHeader,
   StatusPill,
+  TextField,
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/13-emar — administration policy admin (M13 §4.1/§6.1 #12, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Work Queue" (administration-policy admin).
-// Read-only tenant configuration for org_admin / compliance_officer: the grace window, the PRN minimum-interval
-// default, and the eMAR-PDF-on-commit toggle. The tighten-only PUT write action (step-up enforced server-side)
-// fills in as its write surface hardens; the SERVER owns the platform floors and the §2.5 grace-window policy
-// (ADR-0030). Reads GET /api/v1/admin/administration-policy via the typed client. Leaves only (@wardenx/ui).
+// Tenant configuration for org_admin / compliance_officer: the grace window, the PRN minimum-interval
+// default, and the eMAR-PDF-on-commit toggle. F-031 — the tighten-only PUT is live. Nothing here decides
+// what "tighten" means: the SERVER holds the platform floors, so a loosened value is REFUSED there and the
+// refusal is shown, rather than the form greying out a range it would have to guess at. Step-up is likewise
+// the server's (§4.1 route 28). Reads GET /api/v1/admin/administration-policy via the typed client.
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
-
-interface AdministrationPolicyView {
-  graceWindowMinutes: number;
-  prnMinimumIntervalMinutes: number;
-  emarPdfOnCommit: boolean;
-}
+import type { CSSProperties, JSX } from "react";
+import { type AdministrationPolicyView, errorMessage, getPolicy, putPolicy } from "./emar-api";
 
 export function AdministrationPolicy(): JSX.Element {
   const client = useApiClient();
   const [policy, setPolicy] = useState<AdministrationPolicyView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [grace, setGrace] = useState("");
+  const [prn, setPrn] = useState("");
+  const [pdf, setPdf] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const { data, error: err } = await client.GET("/api/v1/admin/administration-policy", {});
+    const { policy: next, error: err } = await getPolicy(client);
     if (err) {
       setError("Could not load the administration policy.");
       setLoading(false);
       return;
     }
-    setPolicy(data as AdministrationPolicyView);
+    setPolicy(next);
     setLoading(false);
   }, [client]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const openEditor = useCallback(() => {
+    if (!policy) return;
+    setGrace(String(policy.graceWindowMinutes));
+    setPrn(String(policy.prnMinimumIntervalMinutes));
+    setPdf(policy.emarPdfOnCommit);
+    setActionError(null);
+    setEditing(true);
+  }, [policy]);
+
+  const save = useCallback(async () => {
+    setBusy(true);
+    setActionError(null);
+    const { error: err } = await putPolicy(client, {
+      graceWindowMinutes: Number(grace),
+      prnMinimumIntervalMinutes: Number(prn),
+      emarPdfOnCommit: pdf,
+    });
+    setBusy(false);
+    if (err) {
+      setActionError(errorMessage(err, "The policy could not be updated."));
+      return;
+    }
+    setEditing(false);
+    void load();
+  }, [client, grace, prn, pdf, load]);
+
+  const savable =
+    !busy &&
+    Number.isInteger(Number(grace)) &&
+    Number(grace) >= 0 &&
+    Number.isInteger(Number(prn)) &&
+    Number(prn) >= 0;
 
   return (
     <WorkQueueLayout
@@ -53,9 +90,14 @@ export function AdministrationPolicy(): JSX.Element {
           title="Administration Policy"
           breadcrumb="Admin / Medications"
           actions={
-            <Button type="button" tone="secondary" onClick={() => void load()} disabled={loading}>
-              {loading ? "Refreshing..." : "Refresh"}
-            </Button>
+            <span style={{ display: "inline-flex", gap: "0.5rem" }}>
+              <Button type="button" tone="secondary" onClick={() => void load()} disabled={loading}>
+                {loading ? "Refreshing..." : "Refresh"}
+              </Button>
+              <Button type="button" tone="primary" onClick={openEditor} disabled={!policy}>
+                Edit policy
+              </Button>
+            </span>
           }
         >
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
@@ -113,11 +155,101 @@ export function AdministrationPolicy(): JSX.Element {
                 </div>
               </div>
             </PolicySection>
+
+            <PolicyEditor
+              open={editing}
+              grace={grace}
+              prn={prn}
+              pdf={pdf}
+              busy={busy}
+              savable={savable}
+              error={actionError}
+              onGrace={setGrace}
+              onPrn={setPrn}
+              onPdf={setPdf}
+              onSave={() => void save()}
+              onCancel={() => setEditing(false)}
+            />
           </div>
         )
       }
       fullPageScroll
     />
+  );
+}
+
+/** The tighten-only editor. Every bound is the SERVER's — this form validates only that the numbers ARE
+ *  numbers, so a rejected value comes back as the platform floor that refused it, not as a guess. */
+function PolicyEditor({
+  open,
+  grace,
+  prn,
+  pdf,
+  busy,
+  savable,
+  error,
+  onGrace,
+  onPrn,
+  onPdf,
+  onSave,
+  onCancel,
+}: {
+  open: boolean;
+  grace: string;
+  prn: string;
+  pdf: boolean;
+  busy: boolean;
+  savable: boolean;
+  error: string | null;
+  onGrace: (v: string) => void;
+  onPrn: (v: string) => void;
+  onPdf: (v: boolean) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}): JSX.Element {
+  return (
+    <Modal
+      open={open}
+      onClose={busy ? undefined : onCancel}
+      ariaLabel="Edit administration policy"
+      width="30rem"
+    >
+      <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "0.875rem" }}>
+        <h2 style={editorTitleStyle}>Edit administration policy</h2>
+        <p style={editorMetaStyle}>
+          Tighten-only. The server holds the platform floors and refuses a value that loosens one.
+        </p>
+        <TextField
+          label="Grace window (minutes)"
+          inputMode="numeric"
+          value={grace}
+          onChange={(e) => onGrace(e.target.value)}
+        />
+        <TextField
+          label="PRN minimum interval (minutes)"
+          inputMode="numeric"
+          value={prn}
+          onChange={(e) => onPrn(e.target.value)}
+        />
+        <label style={checkRowStyle}>
+          <input type="checkbox" checked={pdf} onChange={(e) => onPdf(e.target.checked)} />
+          <span>Render an eMAR PDF when an administration commits</span>
+        </label>
+        {error ? (
+          <p role="alert" style={{ ...editorMetaStyle, color: "var(--color-error)" }}>
+            {error}
+          </p>
+        ) : null}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+          <Button tone="secondary" disabled={busy} onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button tone="primary" disabled={!savable} loading={busy} onClick={onSave}>
+            Save policy
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -244,4 +376,26 @@ const factDetailStyle = {
   marginTop: "0.25rem",
   fontSize: "0.75rem",
   color: "var(--color-on-surface-variant)",
+};
+
+const editorTitleStyle: CSSProperties = {
+  margin: 0,
+  fontFamily: "var(--font-display)",
+  fontWeight: 500,
+  fontSize: "1.25rem",
+  color: "var(--color-on-surface)",
+};
+
+const editorMetaStyle: CSSProperties = {
+  fontSize: "0.8rem",
+  color: "var(--color-on-surface-variant)",
+  margin: 0,
+};
+
+const checkRowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  fontSize: "0.82rem",
+  color: "var(--color-on-surface)",
 };

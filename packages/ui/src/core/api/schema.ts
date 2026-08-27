@@ -21604,7 +21604,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        graceWindowMinutes: number;
+                        prnMinimumIntervalMinutes: number;
+                        emarPdfOnCommit: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23023,7 +23029,10 @@ export interface operations {
     postApiV1Administrations: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Single-use witness-attestation token from POST /api/v1/administrations/witness-attest (60s life). REQUIRED when medClass is controlled_substance; ignored otherwise. */
+                "x-witness-attestation"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -23074,11 +23083,35 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        medicationOrderId: string;
+                        mode: "single_dose" | "iv_continuous_start" | "iv_continuous_rate_change" | "iv_continuous_pause" | "iv_continuous_resume" | "iv_continuous_stop";
+                        status: "committed" | "pending_caregiver_review" | "superseded" | "voided";
+                        actorKind: "clinician" | "caregiver_attested" | "system_iv_session_event";
+                        administeredAt: string;
+                        recordedAt: string;
+                        lateEntryTier: "normal" | "late" | "significant_late" | "administrative_override";
+                        administeringClinicianMembershipId: string | null;
+                        witnessMembershipId: string | null;
+                        encounterId: string | null;
+                        scheduledDoseId: string | null;
+                        comfortKitDeploymentId: string | null;
+                        ivSessionId: string | null;
+                        isControlledSubstance: boolean;
+                        isComfortKitDrawdown: boolean;
+                        requiresRnReview: boolean;
+                        supersededById: string | null;
+                        barcodeMatchResult: ("match" | "wrong_drug" | "wrong_patient" | "expired" | "no_order_active") | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23152,7 +23185,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        medicationOrderId: string;
+                        mode: "single_dose" | "iv_continuous_start" | "iv_continuous_rate_change" | "iv_continuous_pause" | "iv_continuous_resume" | "iv_continuous_stop";
+                        status: "committed" | "pending_caregiver_review" | "superseded" | "voided";
+                        actorKind: "clinician" | "caregiver_attested" | "system_iv_session_event";
+                        administeredAt: string;
+                        recordedAt: string;
+                        lateEntryTier: "normal" | "late" | "significant_late" | "administrative_override";
+                        administeringClinicianMembershipId: string | null;
+                        witnessMembershipId: string | null;
+                        encounterId: string | null;
+                        scheduledDoseId: string | null;
+                        comfortKitDeploymentId: string | null;
+                        ivSessionId: string | null;
+                        isControlledSubstance: boolean;
+                        isComfortKitDrawdown: boolean;
+                        requiresRnReview: boolean;
+                        supersededById: string | null;
+                        barcodeMatchResult: ("match" | "wrong_drug" | "wrong_patient" | "expired" | "no_order_active") | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23180,11 +23237,35 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        medicationOrderId: string;
+                        mode: "single_dose" | "iv_continuous_start" | "iv_continuous_rate_change" | "iv_continuous_pause" | "iv_continuous_resume" | "iv_continuous_stop";
+                        status: "committed" | "pending_caregiver_review" | "superseded" | "voided";
+                        actorKind: "clinician" | "caregiver_attested" | "system_iv_session_event";
+                        administeredAt: string;
+                        recordedAt: string;
+                        lateEntryTier: "normal" | "late" | "significant_late" | "administrative_override";
+                        administeringClinicianMembershipId: string | null;
+                        witnessMembershipId: string | null;
+                        encounterId: string | null;
+                        scheduledDoseId: string | null;
+                        comfortKitDeploymentId: string | null;
+                        ivSessionId: string | null;
+                        isControlledSubstance: boolean;
+                        isComfortKitDrawdown: boolean;
+                        requiresRnReview: boolean;
+                        supersededById: string | null;
+                        barcodeMatchResult: ("match" | "wrong_drug" | "wrong_patient" | "expired" | "no_order_active") | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23212,7 +23293,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        medicationOrderId: string;
+                        mode: "single_dose" | "iv_continuous_start" | "iv_continuous_rate_change" | "iv_continuous_pause" | "iv_continuous_resume" | "iv_continuous_stop";
+                        status: "committed" | "pending_caregiver_review" | "superseded" | "voided";
+                        actorKind: "clinician" | "caregiver_attested" | "system_iv_session_event";
+                        administeredAt: string;
+                        recordedAt: string;
+                        lateEntryTier: "normal" | "late" | "significant_late" | "administrative_override";
+                        administeringClinicianMembershipId: string | null;
+                        witnessMembershipId: string | null;
+                        encounterId: string | null;
+                        scheduledDoseId: string | null;
+                        comfortKitDeploymentId: string | null;
+                        ivSessionId: string | null;
+                        isControlledSubstance: boolean;
+                        isComfortKitDrawdown: boolean;
+                        requiresRnReview: boolean;
+                        supersededById: string | null;
+                        barcodeMatchResult: ("match" | "wrong_drug" | "wrong_patient" | "expired" | "no_order_active") | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23240,7 +23345,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        medicationOrderId: string;
+                        mode: "single_dose" | "iv_continuous_start" | "iv_continuous_rate_change" | "iv_continuous_pause" | "iv_continuous_resume" | "iv_continuous_stop";
+                        status: "committed" | "pending_caregiver_review" | "superseded" | "voided";
+                        actorKind: "clinician" | "caregiver_attested" | "system_iv_session_event";
+                        administeredAt: string;
+                        recordedAt: string;
+                        lateEntryTier: "normal" | "late" | "significant_late" | "administrative_override";
+                        administeringClinicianMembershipId: string | null;
+                        witnessMembershipId: string | null;
+                        encounterId: string | null;
+                        scheduledDoseId: string | null;
+                        comfortKitDeploymentId: string | null;
+                        ivSessionId: string | null;
+                        isControlledSubstance: boolean;
+                        isComfortKitDrawdown: boolean;
+                        requiresRnReview: boolean;
+                        supersededById: string | null;
+                        barcodeMatchResult: ("match" | "wrong_drug" | "wrong_patient" | "expired" | "no_order_active") | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23279,11 +23408,35 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        medicationOrderId: string;
+                        mode: "single_dose" | "iv_continuous_start" | "iv_continuous_rate_change" | "iv_continuous_pause" | "iv_continuous_resume" | "iv_continuous_stop";
+                        status: "committed" | "pending_caregiver_review" | "superseded" | "voided";
+                        actorKind: "clinician" | "caregiver_attested" | "system_iv_session_event";
+                        administeredAt: string;
+                        recordedAt: string;
+                        lateEntryTier: "normal" | "late" | "significant_late" | "administrative_override";
+                        administeringClinicianMembershipId: string | null;
+                        witnessMembershipId: string | null;
+                        encounterId: string | null;
+                        scheduledDoseId: string | null;
+                        comfortKitDeploymentId: string | null;
+                        ivSessionId: string | null;
+                        isControlledSubstance: boolean;
+                        isComfortKitDrawdown: boolean;
+                        requiresRnReview: boolean;
+                        supersededById: string | null;
+                        barcodeMatchResult: ("match" | "wrong_drug" | "wrong_patient" | "expired" | "no_order_active") | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23376,11 +23529,38 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        synced: number;
+                        results: {
+                            id: string;
+                            patientId: string;
+                            admissionId: string;
+                            medicationOrderId: string;
+                            mode: "single_dose" | "iv_continuous_start" | "iv_continuous_rate_change" | "iv_continuous_pause" | "iv_continuous_resume" | "iv_continuous_stop";
+                            status: "committed" | "pending_caregiver_review" | "superseded" | "voided";
+                            actorKind: "clinician" | "caregiver_attested" | "system_iv_session_event";
+                            administeredAt: string;
+                            recordedAt: string;
+                            lateEntryTier: "normal" | "late" | "significant_late" | "administrative_override";
+                            administeringClinicianMembershipId: string | null;
+                            witnessMembershipId: string | null;
+                            encounterId: string | null;
+                            scheduledDoseId: string | null;
+                            comfortKitDeploymentId: string | null;
+                            ivSessionId: string | null;
+                            isControlledSubstance: boolean;
+                            isComfortKitDrawdown: boolean;
+                            requiresRnReview: boolean;
+                            supersededById: string | null;
+                            barcodeMatchResult: ("match" | "wrong_drug" | "wrong_patient" | "expired" | "no_order_active") | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23411,11 +23591,35 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        medicationOrderId: string;
+                        mode: "single_dose" | "iv_continuous_start" | "iv_continuous_rate_change" | "iv_continuous_pause" | "iv_continuous_resume" | "iv_continuous_stop";
+                        status: "committed" | "pending_caregiver_review" | "superseded" | "voided";
+                        actorKind: "clinician" | "caregiver_attested" | "system_iv_session_event";
+                        administeredAt: string;
+                        recordedAt: string;
+                        lateEntryTier: "normal" | "late" | "significant_late" | "administrative_override";
+                        administeringClinicianMembershipId: string | null;
+                        witnessMembershipId: string | null;
+                        encounterId: string | null;
+                        scheduledDoseId: string | null;
+                        comfortKitDeploymentId: string | null;
+                        ivSessionId: string | null;
+                        isControlledSubstance: boolean;
+                        isComfortKitDrawdown: boolean;
+                        requiresRnReview: boolean;
+                        supersededById: string | null;
+                        barcodeMatchResult: ("match" | "wrong_drug" | "wrong_patient" | "expired" | "no_order_active") | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23443,11 +23647,16 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        token: string;
+                        expiresInSeconds: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -31637,7 +31846,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        disposalStatus: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -48178,7 +48394,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        scheduledDoseId: string;
+                        medicationOrderId: string;
+                        dueAt: string;
+                        acknowledgedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -57489,11 +57714,26 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        triggerKind: "admission" | "transfer_in" | "discharge" | "recertification";
+                        status: "pending" | "in_progress" | "finalized" | "voided";
+                        lineCount: number;
+                        decisions: {
+                            lineId: string;
+                            lineKind: string;
+                            sourceId: string;
+                            decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -57520,11 +57760,26 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        triggerKind: "admission" | "transfer_in" | "discharge" | "recertification";
+                        status: "pending" | "in_progress" | "finalized" | "voided";
+                        lineCount: number;
+                        decisions: {
+                            lineId: string;
+                            lineKind: string;
+                            sourceId: string;
+                            decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -57554,7 +57809,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        triggerKind: "admission" | "transfer_in" | "discharge" | "recertification";
+                        status: "pending" | "in_progress" | "finalized" | "voided";
+                        lineCount: number;
+                        decisions: {
+                            lineId: string;
+                            lineKind: string;
+                            sourceId: string;
+                            decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -57582,7 +57852,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        triggerKind: "admission" | "transfer_in" | "discharge" | "recertification";
+                        status: "pending" | "in_progress" | "finalized" | "voided";
+                        lineCount: number;
+                        decisions: {
+                            lineId: string;
+                            lineKind: string;
+                            sourceId: string;
+                            decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -57610,7 +57895,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        triggerKind: "admission" | "transfer_in" | "discharge" | "recertification";
+                        status: "pending" | "in_progress" | "finalized" | "voided";
+                        lineCount: number;
+                        decisions: {
+                            lineId: string;
+                            lineKind: string;
+                            sourceId: string;
+                            decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -62074,7 +62374,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        medicationOrderId: string;
+                        dueAt: string;
+                        status: "pending" | "administered" | "missed" | "cancelled" | "intentionally_held";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

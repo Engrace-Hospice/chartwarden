@@ -14,6 +14,7 @@ import type {
   AdministrationPolicyView as ServiceAdministrationPolicyView,
   AdministrationView as ServiceAdministrationView,
   DeploymentView as ServiceDeploymentView,
+  EmarRouteService as ServiceEmarRouteService,
   IvSessionView as ServiceIvSessionView,
   MissedDoseView as ServiceMissedDoseView,
   ReconciliationDecisionView as ServiceReconciliationDecisionView,
@@ -357,6 +358,22 @@ export const AdministrationPolicyViewSchema = Type.Object({
   emarPdfOnCommit: Type.Boolean(),
 });
 
+/** The §2.6 D7 witness-attestation token the mint route returns. The token is a SERVER-MINTED, single-use
+ * bearer credential (check-request-header-auth.ts classifies `x-witness-attestation` as `verified` on that
+ * basis) with a 60-second life, so the administering clinician's device has to receive it out of band and
+ * spend it immediately — publishing the shape is what lets a client show the witness what to relay and how
+ * long they have, instead of a caller guessing at an undeclared body. */
+export const WitnessTokenResponseSchema = Type.Object({
+  token: Type.String(),
+  expiresInSeconds: Type.Integer(),
+});
+
+/** §2.10 D18 — the offline-queue drain receipt: how many rows committed, and each committed row. */
+export const OfflineSyncResponseSchema = Type.Object({
+  synced: Type.Integer(),
+  results: Type.Array(AdministrationViewSchema),
+});
+
 // ── compile-time pins: what each schema PUBLISHES (`T`) must be assignable to what the service RETURNS (`V`),
 // so a view field added/renamed/retyped fails the build instead of drifting from the generated client. ────────
 type Conforms<T extends V, V> = T;
@@ -379,6 +396,14 @@ type _IvSessionView = Conforms<Static<typeof IvSessionViewSchema>, ServiceIvSess
 type _AdministrationPolicyView = Conforms<
   Static<typeof AdministrationPolicyViewSchema>,
   ServiceAdministrationPolicyView
+>;
+type _WitnessTokenResponse = Conforms<
+  Static<typeof WitnessTokenResponseSchema>,
+  Awaited<ReturnType<ServiceEmarRouteService["mintWitnessToken"]>>
+>;
+type _OfflineSyncResponse = Conforms<
+  Static<typeof OfflineSyncResponseSchema>,
+  Awaited<ReturnType<ServiceEmarRouteService["offlineSync"]>>
 >;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */

@@ -19,11 +19,28 @@
 //   (1) `withOrgContext` runs with `userId:""` → the M4 write-audit trigger fires with a NULL actor (the
 //       acting membership is the passed `userId`, stored where a column exists);
 //   (2) siting (provider_entity_id + location_id) is sourced from the `scheduled_dose` when a scheduledDoseId
-//       is supplied, else null (mig 0133); patient/admission fall back to the in-mem sentinels;
-//   (3) the M12 `MedicationOrderProvider` seam is NOT threaded, so the §2.9 D6 order-context gates
-//       (administerable / five-rights) are skipped (fail-open, §7.13, mirroring the in-mem unseeded-order
-//       default); a supplied barcodeScan is still evaluated + persisted, but against a permissive order
-//       context (an honest scan reads `match`; an expired scan still hard-blocks);
+//       is supplied, else null (mig 0133). [PARTLY CLOSED, F-031] patient/admission USED to fall back to a
+//       hard-coded sentinel pair whenever no scheduled dose was named — and nothing in production ever
+//       materializes a `scheduled_dose` (the `m12.medication_order.active` -> `m13.materialize-schedule`
+//       consumer is declared and unbound; see scripts/outbox-deferred-consumers.ts), so EVERY administration
+//       this platform can record today took that branch. The row committed, and then
+//       `listAdministrations(patient)` filters on `patient_id` — so it was invisible on the patient's own
+//       eMAR, invisible to every seam consumer that joins by patient, and its witness-attestation scope
+//       compare (which binds the resolved patient) could never match a token a witness minted against the
+//       REAL patient, making the §2.6 D7 controlled-substance path unsatisfiable. The identity facts now
+//       resolve through M12's already-published `MedicationOrderProvider.getAdministrationContext` — the seam
+//       the §2.9 D6 note below was already written against — and an order that resolves to nothing is
+//       REFUSED rather than filed under a sentinel: without the order there is no answer to "which patient
+//       received this dose", and inventing one is worse than declining to record;
+//   (3) the M12 `MedicationOrderProvider` seam is threaded for the identity facts only (see (2)). The §2.9
+//       D6 order-context GATES (`allowAdministration`/`blockedReasons` — not_active / discontinued /
+//       replaced / expired_unsigned / transmission_failed) are still NOT applied, deliberately and
+//       separately: only `status = "active"` clears that gate, and nothing in this repo activates an order
+//       (`db:seed:scenario-orders-meds-idg` administers against a `signed` one), so switching it on here
+//       would refuse every administration the platform can currently produce. Threading the reader and
+//       arming the gate are two changes; this is the first. A supplied barcodeScan is still evaluated +
+//       persisted against a permissive order context (an honest scan reads `match`; an expired scan still
+//       hard-blocks);
 //   (4) the M8 `SignedEncountersReader` is NOT threaded → encounter auto-linkage is skipped (the caller may
 //       still pass an explicit encounterId);
 //   (5) [CLOSED, TASK-008] the witness-attestation secret is externalized via `M13_WITNESS_SIGNING_KEY`
@@ -129,6 +146,43 @@ const UNBOUND_CASE_MANAGER: EmarCaseManagerPort = {
   },
 };
 
+/**
+ * F-031 — the M12 medication-order reach every administration write needs: WHICH PATIENT is this order for?
+ *
+ * Restated locally as a one-method port (the `MedicationOrderProvider` seam's `getAdministrationContext`
+ * half, narrowed to the identity facts M13 files the row under) so this module takes no compile edge on
+ * M12 — the composition root passes a thunk over `getSeam("MedicationOrderProvider")`, exactly the shape
+ * {@link EmarCaseManagerPort} already uses for M5.
+ *
+ * Narrowed on purpose: the seam also answers `allowAdministration`/`blockedReasons`, and this port does not
+ * carry them. Arming that gate is a separate decision with a real blast radius (see compromise (3) in the
+ * file header) — quietly importing it alongside the identity fix would have coupled a correctness repair to
+ * a policy change nobody reviewed.
+ */
+export interface EmarMedicationOrderPort {
+  administrationIdentity(input: {
+    organizationId: string;
+    medicationOrderId: string;
+  }): Promise<{
+    readonly patientId: string;
+    readonly admissionId: string;
+    readonly drugName: string;
+    readonly route: string;
+  } | null>;
+}
+
+/**
+ * Fail-closed default: no order resolves, so an administration that names no scheduled dose is REFUSED.
+ * That is a behaviour change from the sentinel fallback it replaces, and it is the point — the sentinel
+ * made an unresolvable order look like a successful write. Callers that supply a `scheduledDoseId` are
+ * unaffected: the dose already carries the patient and admission, and this port is never consulted.
+ */
+const UNBOUND_MEDICATION_ORDER: EmarMedicationOrderPort = {
+  async administrationIdentity() {
+    return null;
+  },
+};
+
 const ADM = schema.administrationRecords;
 const SD = schema.scheduledDoses;
 const MD = schema.missedDoses;
@@ -213,10 +267,16 @@ export function createDbEmarBackend(
    * construction time would capture the pre-registration state.
    */
   caseManager: () => EmarCaseManagerPort = () => UNBOUND_CASE_MANAGER,
+  /**
+   * F-031 — the M12 order reader, a THUNK for the same reason `caseManager` is one: seams register after
+   * the route mount, so resolving at construction time would capture the pre-registration deny-stub.
+   */
+  medicationOrder: () => EmarMedicationOrderPort = () => UNBOUND_MEDICATION_ORDER,
 ): EmarRouteService {
   const withOrg = <T>(orgId: string, fn: (tx: DbClient) => Promise<T>): Promise<T> =>
     withOrgContext(db, { organizationId: orgId, userId: "" }, fn as never) as Promise<T>;
   const careTeam = caseManager;
+  const medOrder = medicationOrder;
 
   /** Emit one `m13.*` event on the caller's tx (validated + persisted by the bound publisher). */
   async function emit(
@@ -585,8 +645,30 @@ export function createDbEmarBackend(
         const sched = args.scheduledDoseId
           ? (await tx.select().from(SD).where(eq(SD.id, args.scheduledDoseId)).limit(1))[0]
           : undefined;
-        const patientId = sched?.patientId ?? PATIENT_SENTINEL;
-        const admissionId = sched?.admissionId ?? ADMISSION_SENTINEL;
+        // F-031 — the dose, when there is one, is the anchor (it carries siting as well). Otherwise the
+        // ORDER is: `getAdministrationContext` is the seam written for exactly this question. Nothing is
+        // invented — an order that resolves to nothing refuses, because a row filed under a placeholder
+        // patient is not a weaker record, it is a record of a different patient.
+        const identity = sched
+          ? null
+          : await medOrder().administrationIdentity({
+              organizationId: orgId,
+              medicationOrderId: args.medicationOrderId,
+            });
+        if (!sched && identity === null)
+          throw new ValidationError(
+            "the medication order for this administration is unresolvable",
+            [
+              {
+                field: "medicationOrderId",
+                code: "MEDICATION_ORDER_UNRESOLVED",
+                message:
+                  "no scheduled dose was named and the medication order could not be read, so the patient this dose was given to is unknown",
+              },
+            ],
+          );
+        const patientId = sched?.patientId ?? identity?.patientId ?? PATIENT_SENTINEL;
+        const admissionId = sched?.admissionId ?? identity?.admissionId ?? ADMISSION_SENTINEL;
 
         // D7 — a controlled administration requires a valid, in-scope, unexpired witness-attestation token.
         let witnessMembershipId: string | null = null;
@@ -673,8 +755,12 @@ export function createDbEmarBackend(
               mode: args.mode,
               status: "committed",
               data: {},
-              drugNameSnapshot: "",
-              routeSnapshot: args.route ?? "",
+              // F-031 — the drug AS ADMINISTERED, snapshotted from the order at commit time. It used to be
+              // the empty string on every row, which is the one value a medication administration record
+              // must never carry: the order can later be corrected or discontinued, and the MAR is supposed
+              // to say what was given, not what the order says today.
+              drugNameSnapshot: identity?.drugName ?? "",
+              routeSnapshot: args.route ?? identity?.route ?? "",
               doseAmountSnapshot: args.doseAmount != null ? String(args.doseAmount) : null,
               doseUnitSnapshot: args.doseUnit ?? null,
               isControlledSubstance: isControlled,
@@ -976,20 +1062,27 @@ export function createDbEmarBackend(
 
     async recordRefusal(orgId, userId, args: RecordRefusalArgs): Promise<AdministrationView> {
       return withOrg(orgId, async (tx) => {
+        // F-031 — a refusal carried the real patient (the body supplies it) but a SENTINEL admission, so it
+        // was filed on the chart and missing from every admission-scoped rollup that reads it. Same seam,
+        // same answer; the refusal itself is never blocked on it (the patient is already known).
+        const identity = await medOrder().administrationIdentity({
+          organizationId: orgId,
+          medicationOrderId: args.medicationOrderId,
+        });
         const inserted = (
           await tx
             .insert(ADM)
             .values({
               organizationId: orgId,
               patientId: args.patientId,
-              admissionId: ADMISSION_SENTINEL,
+              admissionId: identity?.admissionId ?? ADMISSION_SENTINEL,
               medicationOrderId: args.medicationOrderId,
               scheduledDoseId: args.scheduledDoseId ?? null,
               mode: "single_dose",
               status: "committed",
               data: {},
-              drugNameSnapshot: "",
-              routeSnapshot: "",
+              drugNameSnapshot: identity?.drugName ?? "",
+              routeSnapshot: identity?.route ?? "",
               isControlledSubstance: args.medClass === "controlled_substance",
               refused: true,
               administeredAt: new Date(args.refusedAt),
