@@ -326,18 +326,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -437,18 +425,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -4420,18 +4396,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -4619,18 +4583,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -6431,18 +6383,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -7851,18 +7791,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -8406,18 +8334,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -11492,7 +11408,7 @@
         "tags": [
           "31-portal"
         ],
-        "summary": "Reverse a portal-account suspension; step-up",
+        "summary": "Reverse a portal-account suspension; step-up. The `reason` is sealed and stored on the account (503 if no tenant key envelope is bound)",
         "parameters": [
           {
             "name": "id",
@@ -11557,7 +11473,7 @@
         "tags": [
           "31-portal"
         ],
-        "summary": "Org-admin temporary disable of a portal account; step-up",
+        "summary": "Org-admin temporary disable of a portal account; step-up. The `reason` is sealed and stored on the account (503 if no tenant key envelope is bound)",
         "parameters": [
           {
             "name": "id",
@@ -11837,18 +11753,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -12489,16 +12393,143 @@
         "tags": [
           "bootstrap"
         ],
+        "summary": "Upsert one system-status component (platform_ops only)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "components"
+                  ],
+                  "properties": {
+                    "components": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "status",
+                          "headline",
+                          "details",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "operational",
+                                "type": "string"
+                              },
+                              {
+                                "const": "degraded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "outage",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "headline": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "details": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "status"
+                ],
+                "properties": {
+                  "id": {
+                    "minLength": 1,
+                    "description": "Stable component key, e.g. `api` or `documents`",
+                    "type": "string"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "operational",
+                        "type": "string"
+                      },
+                      {
+                        "const": "degraded",
+                        "type": "string"
+                      },
+                      {
+                        "const": "outage",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "headline": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "details": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -25197,19 +25228,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "description": "No body fields are read by this route; If-Match header carries the concurrency token.",
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -65080,19 +65098,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "description": "No body fields are read by this route; If-Match header carries the concurrency token.",
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -65422,19 +65427,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "description": "No body fields are read by this route; If-Match header carries the concurrency token.",
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -66078,17 +66070,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -72943,27 +72924,127 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
     "/api/v1/encounters/{encounterId}/addenda/{addendumId}/selections": {
+      "get": {
+        "operationId": "getApiV1EncountersByEncounterIdAddendaByAddendumIdSelections",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Read an addendum's stored HearthNote selection tree back, assembled",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "addendumId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "templateKey",
+                    "vocabVersion",
+                    "sections",
+                    "layer1Preview",
+                    "version"
+                  ],
+                  "properties": {
+                    "templateKey": {
+                      "type": "string"
+                    },
+                    "vocabVersion": {
+                      "type": "string"
+                    },
+                    "sections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "sectionId",
+                          "entries"
+                        ],
+                        "properties": {
+                          "sectionId": {
+                            "type": "string"
+                          },
+                          "entries": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "code"
+                              ],
+                              "properties": {
+                                "code": {
+                                  "type": "string"
+                                },
+                                "params": {
+                                  "type": "object",
+                                  "patternProperties": {
+                                    "^(.*)$": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "number"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "freeText": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "layer1Preview": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "patch": {
         "operationId": "patchApiV1EncountersByEncounterIdAddendaByAddendumIdSelections",
         "tags": [
           "08-encounters"
         ],
-        "summary": "Update addendum selections (§7.7 If-Match)",
+        "summary": "Write an addendum's HearthNote selection tree (§7.7 If-Match). Returns the Layer-1 assembly of what was stored",
         "parameters": [
           {
             "name": "encounterId",
@@ -72999,11 +73080,15 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "version"
+                    "version",
+                    "layer1Preview"
                   ],
                   "properties": {
                     "version": {
                       "type": "integer"
+                    },
+                    "layer1Preview": {
+                      "type": "string"
                     }
                   }
                 }
@@ -73024,20 +73109,61 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "selections"
+                  "sections"
                 ],
                 "properties": {
-                  "selections": {
-                    "type": "object",
-                    "patternProperties": {
-                      "^(.*)$": {}
-                    }
-                  },
-                  "freeText": {
-                    "type": "object",
-                    "patternProperties": {
-                      "^(.*)$": {
-                        "type": "string"
+                  "sections": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "sectionId",
+                        "entries"
+                      ],
+                      "properties": {
+                        "sectionId": {
+                          "minLength": 1,
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "entries": {
+                          "maxItems": 200,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "code"
+                            ],
+                            "properties": {
+                              "code": {
+                                "minLength": 1,
+                                "maxLength": 64,
+                                "type": "string"
+                              },
+                              "params": {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^(.*)$": {
+                                    "anyOf": [
+                                      {
+                                        "maxLength": 200,
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "number"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "freeText": {
+                          "maxLength": 20000,
+                          "type": "string"
+                        }
                       }
                     }
                   }
@@ -73786,17 +73912,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -73825,11 +73940,49 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "modificationId"
+                    "enhanced",
+                    "reason"
                   ],
                   "properties": {
-                    "modificationId": {
-                      "type": "string"
+                    "enhanced": {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "anyOf": [
+                        {
+                          "const": "eligible",
+                          "type": "string"
+                        },
+                        {
+                          "const": "tenant_flag_off",
+                          "type": "string"
+                        },
+                        {
+                          "const": "clinician_opted_out",
+                          "type": "string"
+                        },
+                        {
+                          "const": "encounter_type_excluded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "token_budget_exceeded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "baa_not_executed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "routing_preference_blocks_cloud",
+                          "type": "string"
+                        },
+                        {
+                          "const": "kill_switch_active",
+                          "type": "string"
+                        }
+                      ]
                     }
                   }
                 }
@@ -74288,12 +74441,115 @@
       }
     },
     "/api/v1/encounters/{encounterId}/selections": {
+      "get": {
+        "operationId": "getApiV1EncountersByEncounterIdSelections",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Read the stored HearthNote selection tree back, with its assembled Layer-1 narrative",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "templateKey",
+                    "vocabVersion",
+                    "sections",
+                    "layer1Preview",
+                    "version"
+                  ],
+                  "properties": {
+                    "templateKey": {
+                      "type": "string"
+                    },
+                    "vocabVersion": {
+                      "type": "string"
+                    },
+                    "sections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "sectionId",
+                          "entries"
+                        ],
+                        "properties": {
+                          "sectionId": {
+                            "type": "string"
+                          },
+                          "entries": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "code"
+                              ],
+                              "properties": {
+                                "code": {
+                                  "type": "string"
+                                },
+                                "params": {
+                                  "type": "object",
+                                  "patternProperties": {
+                                    "^(.*)$": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "number"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "freeText": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "layer1Preview": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "patch": {
         "operationId": "patchApiV1EncountersByEncounterIdSelections",
         "tags": [
           "08-encounters"
         ],
-        "summary": "Update draft selections (§7.7 If-Match)",
+        "summary": "Write the draft's HearthNote selection tree (§7.7 If-Match). Returns the Layer-1 assembly of what was stored",
         "parameters": [
           {
             "name": "encounterId",
@@ -74350,20 +74606,61 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "selections"
+                  "sections"
                 ],
                 "properties": {
-                  "selections": {
-                    "type": "object",
-                    "patternProperties": {
-                      "^(.*)$": {}
-                    }
-                  },
-                  "freeText": {
-                    "type": "object",
-                    "patternProperties": {
-                      "^(.*)$": {
-                        "type": "string"
+                  "sections": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "sectionId",
+                        "entries"
+                      ],
+                      "properties": {
+                        "sectionId": {
+                          "minLength": 1,
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "entries": {
+                          "maxItems": 200,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "code"
+                            ],
+                            "properties": {
+                              "code": {
+                                "minLength": 1,
+                                "maxLength": 64,
+                                "type": "string"
+                              },
+                              "params": {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^(.*)$": {
+                                    "anyOf": [
+                                      {
+                                        "maxLength": 200,
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "number"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "freeText": {
+                          "maxLength": 20000,
+                          "type": "string"
+                        }
                       }
                     }
                   }
@@ -74463,6 +74760,493 @@
       }
     },
     "/api/v1/encounters/{encounterId}/vitals": {
+      "get": {
+        "operationId": "getApiV1EncountersByEncounterIdVitals",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Read the vitals sets recorded on an encounter",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "encounterId",
+                    "vitals"
+                  ],
+                  "properties": {
+                    "encounterId": {
+                      "type": "string"
+                    },
+                    "vitals": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "encounterId",
+                          "capturedAt",
+                          "bpSystolic",
+                          "bpDiastolic",
+                          "heartRate",
+                          "respiratoryRate",
+                          "temperature",
+                          "temperatureUnit",
+                          "spo2",
+                          "painScore",
+                          "painScale",
+                          "weight",
+                          "weightUnit",
+                          "height",
+                          "heightUnit",
+                          "bmi",
+                          "bloodGlucose",
+                          "bloodGlucoseUnit",
+                          "clinicallyNotIndicatedFields",
+                          "clinicallyNotIndicatedReason",
+                          "abnormalFlags"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "encounterId": {
+                            "type": "string"
+                          },
+                          "capturedAt": {
+                            "type": "string"
+                          },
+                          "bpSystolic": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "bpDiastolic": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "heartRate": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "respiratoryRate": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "temperature": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "temperatureUnit": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "mmHg",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "bpm",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "breaths_per_min",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "c",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "f",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "percent_o2",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "kg",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "lb",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "cm",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "in",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "mg_dl",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "mmol_l",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "spo2": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "painScore": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "painScale": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "nrs_0_10",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "flacc",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "painad",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "verbal_descriptor",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "weight": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "weightUnit": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "mmHg",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "bpm",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "breaths_per_min",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "c",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "f",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "percent_o2",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "kg",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "lb",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "cm",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "in",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "mg_dl",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "mmol_l",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "height": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "heightUnit": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "mmHg",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "bpm",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "breaths_per_min",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "c",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "f",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "percent_o2",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "kg",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "lb",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "cm",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "in",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "mg_dl",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "mmol_l",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "bmi": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "bloodGlucose": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "bloodGlucoseUnit": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "mmHg",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "bpm",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "breaths_per_min",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "c",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "f",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "percent_o2",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "kg",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "lb",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "cm",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "in",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "mg_dl",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "mmol_l",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "clinicallyNotIndicatedFields": {
+                            "anyOf": [
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "clinicallyNotIndicatedReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "abnormalFlags": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "post": {
         "operationId": "postApiV1EncountersByEncounterIdVitals",
         "tags": [
@@ -92068,7 +92852,7 @@
         "tags": [
           "08-encounters"
         ],
-        "summary": "Internal: M22 PDF-render payload",
+        "summary": "Internal: M22 PDF-render payload — the assembled HearthNote. 404 when the encounter has no selection tree to render (never an empty string)",
         "parameters": [
           {
             "name": "encounterId",
@@ -92088,7 +92872,8 @@
                   "type": "object",
                   "required": [
                     "encounterId",
-                    "final"
+                    "final",
+                    "pinned"
                   ],
                   "properties": {
                     "encounterId": {
@@ -92096,6 +92881,9 @@
                     },
                     "final": {
                       "type": "string"
+                    },
+                    "pinned": {
+                      "type": "boolean"
                     }
                   }
                 }
@@ -119133,18 +119921,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -126755,18 +127531,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -131621,18 +132385,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -132227,18 +132979,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -132542,18 +133282,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -135320,17 +136048,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -135594,17 +136311,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -136460,6 +137166,7 @@
                                   "rate",
                                   "thresholdMet",
                                   "bandColor",
+                                  "unavailableReason",
                                   "computedAt",
                                   "computeVersion",
                                   "snapshotContentHash",
@@ -136554,6 +137261,16 @@
                                       {
                                         "const": "insufficient_n",
                                         "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "unavailableReason": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
                                       }
                                     ]
                                   },
@@ -136684,6 +137401,7 @@
                           "rate",
                           "thresholdMet",
                           "bandColor",
+                          "unavailableReason",
                           "computedAt",
                           "computeVersion",
                           "snapshotContentHash",
@@ -136778,6 +137496,16 @@
                               {
                                 "const": "insufficient_n",
                                 "type": "string"
+                              }
+                            ]
+                          },
+                          "unavailableReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
                               }
                             ]
                           },
@@ -146674,7 +147402,7 @@
         "tags": [
           "33-reporting"
         ],
-        "summary": "Read one dashboard (share-scope visibility gate)",
+        "summary": "Read one dashboard: summary + its tile manifest (share-scope visibility gate)",
         "parameters": [
           {
             "name": "dashboardId",
@@ -146698,7 +147426,8 @@
                     "authorship",
                     "tileCount",
                     "shareScope",
-                    "isOrgDefault"
+                    "isOrgDefault",
+                    "tiles"
                   ],
                   "properties": {
                     "dashboardId": {
@@ -146740,6 +147469,28 @@
                     },
                     "isOrgDefault": {
                       "type": "boolean"
+                    },
+                    "tiles": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "tileKey",
+                          "displayName",
+                          "kind"
+                        ],
+                        "properties": {
+                          "tileKey": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -165922,18 +166673,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -166139,18 +166878,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -179754,10 +180481,80 @@
         "tags": [
           "bootstrap"
         ],
+        "summary": "Read this org's system-status components",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "components"
+                  ],
+                  "properties": {
+                    "components": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "status",
+                          "headline",
+                          "details",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "operational",
+                                "type": "string"
+                              },
+                              {
+                                "const": "degraded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "outage",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "headline": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "details": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -180122,18 +180919,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -180178,18 +180963,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -208103,7 +208876,7 @@
         "tags": [
           "28-fhir"
         ],
-        "summary": "CodeSystem $validate-code (R13). Requires `system/CodeSystem.read`; returns a well-formed Parameters result",
+        "summary": "CodeSystem $validate-code (R13). Requires `system/CodeSystem.read`; resolves the supplied Parameters (`url` or `system`, plus `code`) through M38 terminology and returns the answer as Parameters. 400 when either is missing; 404 `not-supported` for a code system this server does not serve",
         "parameters": [],
         "responses": {
           "200": {

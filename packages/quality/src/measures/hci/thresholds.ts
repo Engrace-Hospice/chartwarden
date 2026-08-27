@@ -77,6 +77,32 @@ export const HCI_THRESHOLDS_v2025: HciThresholdTable = {
   },
 };
 
+// ── platform reduction constants (NOT CMS-published in this form) ───────────────────────────────────────
+//
+// Indicators 2, 8 and 9 are defined by CMS over the national claims distribution: 8 and 9 are a RATIO
+// (total skilled-nursing minutes ÷ routine-home-care days, and the same on weekends), scored by percentile,
+// not a count of days meeting a per-day cut. This platform's calculators take the day-count shape instead
+// (`rhcDaysMeetingSnMinuteFloor / totalRhcDays`), which needs two numbers CMS never publishes: what counts
+// as a day with skilled nursing on it, and how long a stretch without a nurse is a gap.
+//
+// They are declared HERE, beside the threshold table and under the same caveat, so the two invented numbers
+// in the HCI computation are in one reviewed place rather than buried in a worker — and so a reader can see
+// that they are the platform's reading, not a spec value. Both are single-constant edits.
+/**
+ * ★ PLATFORM CONSTANT — minutes of skilled nursing that make a calendar day count as "delivered" for
+ * indicators 8 and 9. 15 minutes is the shortest bracket that reads as a visit rather than a doorstep
+ * check; CMS states no per-day figure at all, because its own indicator does not have a per-day arm.
+ */
+export const HCI_SKILLED_NURSING_MINUTES_PER_DAY_FLOOR = 15;
+
+/**
+ * ★ PLATFORM CONSTANT — days between skilled-nursing visits after which indicator 2 counts an election as
+ * having a GAP. Seven days matches the CMS HCI narrative description ("more than seven days between skilled
+ * nursing visits"), which is the one of the three numbers here with a published anchor; it is still listed
+ * as a platform constant because the technical spec computes it over claim lines, not encounter records.
+ */
+export const HCI_SKILLED_NURSING_GAP_DAYS = 7;
+
 /** FY2026 HCI thresholds — carried forward from FY2025 (no CMS technical-spec change at this revision). */
 export const HCI_THRESHOLDS_v2026: HciThresholdTable = {
   ...HCI_THRESHOLDS_v2025,

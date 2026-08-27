@@ -9,11 +9,13 @@
  * physician-eligible actions and the second care-plan signature.
  *
  * Genuine platform gaps hit and worked around/documented, not silently papered over:
- *   - M8 encounter SIGNING is unreachable — `requireStepUp` gates it, and the step-up routes
- *     (`POST /api/v1/sessions/step-up/initiate` / `/step-up`) are implemented but never mounted in
- *     the composition root (confirmed by reading `apps/backend/src/index.ts` — `registerSessionStepUpRoutes`
- *     is never imported there, unlike every other module's route mount). Encounters here are created
- *     + vitals captured + finalized, but stop at `finalized` rather than `signed`.
+ *   - M8 encounter SIGNING is unreachable from a seed: `requireStepUp` gates it and a step-up is a
+ *     live re-authentication ceremony (WebAuthn assertion or a TOTP code) that a script cannot perform.
+ *     The routes themselves are mounted as of #90 — the older note here that they were never mounted
+ *     is no longer true. Encounters stop at `finalized` rather than `signed`.
+ *   - M8 FINALIZE pins the assembled narrative under the tenant DEK (#122), and no KEK/KMS adapter is
+ *     bound (#105), so on a local stack it refuses with 503 HEARTHNOTE_CIPHER_UNBOUND. Reported as a
+ *     named platform gap (⊘) rather than a seed failure; the encounters stay in `draft`.
  *   - M9's scale scorer only implements 4 of 14 scale types (`pps`, `fast`, `painad`, `esas_r`) —
  *     every other `scaleType` 500s (`SCALE_SCORER_UNAVAILABLE`). Only those 4 are used here.
  *     `pps`/`fast` also need an active `scale_license` row first (D3) — created here.
@@ -25,6 +27,7 @@
  * Prereqs: bun run db:seed:staff, db:seed:scenario-admissions (Whitfield must be active).
  * Run:     bun run db:seed:scenario-clinical
  */
+import { resolveTemplate } from "@wardenx/hearthnote";
 import { Client } from "pg";
 import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
 
@@ -276,12 +279,25 @@ async function main(): Promise<void> {
       },
     });
 
+    // Write the HearthNote before finalizing. The §2.6 Layer-3 gate is real now and refuses an encounter
+    // with no documentation — which is correct, and which this seed depended on NOT being true: it
+    // captured vitals and finalized a visit note that said nothing. Without this the finalize is a 422
+    // with four MISSING_SECTION details, `log.fail` sets exit 1, and `db:seed:all`'s && chain stops.
+    const template = resolveTemplate("routine_visit", "rn");
+    if (template === undefined) throw new Error("no HearthNote template for routine_visit × rn");
+    const sel = await rn.client.PATCH("/api/v1/encounters/{encounterId}/selections", {
+      params: { path: { encounterId: encData.id }, header: { "If-Match": "0" } },
+      body: {
+        sections: template.sections
+          .filter((t) => t.required)
+          .map((t) => ({ sectionId: t.id, entries: [{ code: "nv.cv.stable" }] })),
+      },
+    });
+    if (sel.error) throw new Error(`encounter selections failed: ${JSON.stringify(sel.error)}`);
+
     const fin = await rn.client.POST("/api/v1/encounters/{encounterId}/finalize", {
       params: { path: { encounterId: encData.id } },
-      body: {},
     });
-    if (fin.error) throw new Error(`encounter finalize failed: ${JSON.stringify(fin.error)}`);
-
     // A second encounter left in draft, for realism (not every visit note is finalized same-day).
     const enc2 = await rn.client.POST("/api/v1/encounters", {
       body: {
@@ -294,9 +310,21 @@ async function main(): Promise<void> {
     });
     void enc2;
 
-    log.ok(
-      "Encounters: 1 finalized visit (vitals captured), 1 draft visit — sign unreachable (step-up routes unmounted, see file header)",
-    );
+    // Finalize now PINS the assembled narrative under the tenant DEK (#122), and the M34 key ring is a
+    // deny-stub until #105 binds the KEK adapter — so on a local stack this refuses. That is a platform
+    // gap, not a seeding bug: report it as one, by name, instead of failing the whole chain.
+    const finErr = fin.error as { error?: { code?: string } } | undefined;
+    if (finErr?.error?.code === "HEARTHNOTE_CIPHER_UNBOUND") {
+      log.blocked(
+        "Encounters: 2 draft visits (vitals + HearthNote captured) — finalize refused, no tenant DEK is bound to seal the assembled narrative (#105)",
+      );
+    } else if (fin.error) {
+      throw new Error(`encounter finalize failed: ${JSON.stringify(fin.error)}`);
+    } else {
+      log.ok(
+        "Encounters: 1 finalized visit (vitals + HearthNote captured), 1 draft visit — sign unreachable (step-up requires a live step-up ceremony this seed cannot perform)",
+      );
+    }
   } catch (err) {
     log.fail(`M8 encounters: ${String(err)}`);
   }

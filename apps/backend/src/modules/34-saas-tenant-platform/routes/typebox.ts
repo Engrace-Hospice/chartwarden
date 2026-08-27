@@ -110,7 +110,8 @@ export const PublicSignupIntentRequest = Type.Object({
 });
 
 // POST /api/v1/public/signup-intents/:tokenHash/verify-email — single-use email-verification consumption.
-export const VerifyEmailRequest = Type.Object({});
+// verify-email carries NO request body: the token in the path IS the credential. The empty-object
+// parse it used to perform validated nothing and published a request body clients cannot omit (#94).
 
 // POST /api/v1/public/tenant-invitations/:tokenHash/accept — first-admin invitation acceptance.
 export const AcceptInvitationRequest = Type.Object({

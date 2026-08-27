@@ -34,10 +34,27 @@
  * A discovered binding file that yields NO binding is an ERROR, never a skip. "I could not evaluate
  * this one" and "this one is fine" must not look the same.
  *
- * WHAT IT ASSERTS (the three rules of `assertBindableAgainstCatalog`, verbatim):
+ * WHAT IT ASSERTS. Rules 1-3 are `assertBindableAgainstCatalog`, verbatim:
  *   1. the bound event exists in the boot catalog;
  *   2. an event catalogued record-only (`declaredConsumers: []`) has no live binding;
  *   3. the binding's module is named in that event's `declaredConsumers`.
+ *
+ * Rule 4 is the direction none of them ran (F-043, issue #103):
+ *   4. every module a catalogued event names in `declaredConsumers` has a LIVE BINDING for it —
+ *      or the (module, event) pair is named in `outbox-deferred-consumers.ts` with a reason.
+ *
+ * All three original rules run binding -> catalog. An event declaring `["m33", "m36"]` with zero
+ * consumers anywhere satisfied every one of them and passed green, so the catalog read as if all 599
+ * of its consumer-declaring entries were wired when 570 of them were not. Same unasked-direction
+ * defect as F-025/#59, where the live-suite gate checked package.json -> CI and never CI ->
+ * package.json and 29 suite files ran nowhere. The fix is the same: ask both directions, and name the
+ * exceptions rather than leaving them undeclared.
+ *
+ * THE ABSENCE IS NOT SILENT AT RUNTIME. `resolveRouting` marks an event `deferred` when any declared
+ * consumer is not live, and the relay finalizes each row `pending` with `attemptCount - 1` and
+ * `nextAttemptAt: now + deferredRetryMs`. The decrement means it never reaches `maxAttempts` and never
+ * dead-letters; the retention purge touches only `dispatched` rows. So each emission of a
+ * declared-but-unbound event is a row that stays pending forever and is re-claimed every 30 minutes.
  *
  * The catalog is assembled the way BOOT assembles it — from the `MNN_OUTBOX_EVENTS` contributions
  * index.ts actually passes to `buildBootOutboxCatalog`, not from every contribution file on disk. A
@@ -48,13 +65,15 @@
  * registers any given binding, nor that the relay runs — the `outbox-boot` CI job covers that.
  *
  * Run:   bun run scripts/check-outbox-bindings.ts
+ *        bun run scripts/check-outbox-bindings.ts --update   (regenerate the deferral event lists)
  * CI:    exits 1 on any disagreement (arch:fitness stage).
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { buildBootOutboxCatalog } from "../apps/backend/src/bootstrap/outbox-persister";
 import type { ModuleEventContribution, OutboxEventEntry } from "../packages/types/src/index";
+import { DEFERRED_CONSUMERS, type DeferredConsumerGroup } from "./outbox-deferred-consumers";
 
 const REPO_ROOT = process.cwd();
 const SCAN_ROOTS = ["apps", "packages"];
@@ -217,6 +236,62 @@ async function bootCatalog(): Promise<{
   return { catalog: buildBootOutboxCatalog(contributions), errors };
 }
 
+const DEFERRAL_NAME = "outbox-deferred-consumers.ts";
+const DEFERRAL_FILE = join(REPO_ROOT, "scripts", DEFERRAL_NAME);
+const updating = process.argv.includes("--update");
+
+interface Pair {
+  readonly eventType: string;
+  readonly module: string;
+}
+
+const pairKey = (eventType: string, module: string): string => `${module}::${eventType}`;
+
+/**
+ * Rewrite ONLY the `events: [...]` arrays in the register, preserving every hand-written `reason`, and
+ * append a stub group for a consumer module that has newly acquired unbound pairs. The stub is written
+ * `unclassified` with an EMPTY reason, which fails the gate — `--update` may not create a passing state
+ * out of a fact nobody has explained.
+ */
+function regenerate(source: string, unbound: readonly Pair[]): string {
+  const byModule = new Map<string, string[]>();
+  for (const { eventType, module } of unbound) {
+    const events = byModule.get(module) ?? [];
+    events.push(eventType);
+    byModule.set(module, events);
+  }
+  let out = source;
+  for (const group of DEFERRED_CONSUMERS) {
+    const events = (byModule.get(group.module) ?? []).sort();
+    byModule.delete(group.module);
+    // Locate the group's OWN block and replace only its events array. Regex across the whole file
+    // would run past a single-line `events: [...]` (biome collapses short arrays) into the next
+    // group's list, silently reassigning events between modules — which is what the first cut did.
+    const anchor = out.indexOf(`module: "${group.module}",`);
+    if (anchor === -1) continue;
+    const listStart = out.indexOf("events: [", anchor);
+    const blockEnd = out.indexOf("\n  },", anchor);
+    if (listStart === -1 || blockEnd === -1 || listStart > blockEnd) continue;
+    const listEnd = out.lastIndexOf("]", blockEnd);
+    const rendered = events.map((e) => `\n      "${e}",`).join("");
+    out = `${out.slice(0, listStart)}events: [${rendered}\n    ${out.slice(listEnd)}`;
+  }
+  const additions = [...byModule.entries()].sort();
+  if (additions.length > 0) {
+    const stubs = additions
+      .map(
+        ([module, events]) =>
+          `  {\n    module: "${module}",\n    kind: "unclassified",\n    reason: "",\n    events: [${events
+            .sort()
+            .map((e) => `\n      "${e}",`)
+            .join("")}\n    ],\n  },\n`,
+      )
+      .join("");
+    out = out.replace(/\n\];\n$/, `\n${stubs}];\n`);
+  }
+  return out;
+}
+
 async function main(): Promise<void> {
   const failures: string[] = [];
 
@@ -263,11 +338,106 @@ async function main(): Promise<void> {
     }
   }
 
+  // ── rule 4: catalog → binding, the direction rules 1-3 never ran (F-043 / #103) ───────────────
+  const boundPairs = new Set<string>();
+  for (const binding of bindings) {
+    for (const eventType of binding.eventTypes)
+      boundPairs.add(pairKey(eventType, binding.consumerModule));
+  }
+
+  const unbound: Pair[] = [];
+  for (const [eventType, entry] of catalog) {
+    for (const module of entry.declaredConsumers) {
+      if (!boundPairs.has(pairKey(eventType, module))) unbound.push({ eventType, module });
+    }
+  }
+
+  if (updating) {
+    writeFileSync(DEFERRAL_FILE, regenerate(readFileSync(DEFERRAL_FILE, "utf8"), unbound));
+    console.log(
+      `Updated ${relative(REPO_ROOT, DEFERRAL_FILE)}: ${unbound.length} deferred (module, event) pair(s).`,
+    );
+    console.log("Review the diff — a NEW group is written `unclassified` and needs a real reason.");
+    return;
+  }
+
+  const declaredPairs = new Map<string, DeferredConsumerGroup>();
+  for (const group of DEFERRED_CONSUMERS) {
+    if (group.reason.trim().length === 0) {
+      failures.push(
+        `${DEFERRAL_NAME}: group '${group.module}' carries no reason — an unexplained deferral is exactly what this register exists to end`,
+      );
+    }
+    for (const eventType of group.events) {
+      const key = pairKey(eventType, group.module);
+      if (declaredPairs.has(key)) {
+        failures.push(`${DEFERRAL_NAME}: (${group.module}, ${eventType}) is listed twice`);
+      }
+      declaredPairs.set(key, group);
+    }
+  }
+
+  const unboundKeys = new Set(unbound.map((p) => pairKey(p.eventType, p.module)));
+  for (const { eventType, module } of unbound) {
+    if (declaredPairs.has(pairKey(eventType, module))) continue;
+    const entry = catalog.get(eventType);
+    const remedy = `bind it, drop '${module}' from declaredConsumers (or catalogue the event record-only), or register the deferral in ${DEFERRAL_NAME} with a reason`;
+    failures.push(
+      `catalog: '${eventType}' declares consumer '${module}' [${entry?.declaredConsumers.join(", ")}] and no live binding from '${module}' exists — ${remedy}. Left as is, every emission of this event is an outbox row that stays pending forever and is re-claimed every 30 minutes.`,
+    );
+  }
+
+  // An entry that gained a binding, or whose event/declaration went away, must not outlive its reason.
+  for (const group of DEFERRED_CONSUMERS) {
+    for (const eventType of group.events) {
+      const entry = catalog.get(eventType);
+      if (!entry) {
+        failures.push(
+          `${DEFERRAL_NAME}: (${group.module}, ${eventType}) names an event the boot catalog does not carry — delete the entry`,
+        );
+        continue;
+      }
+      if (!entry.declaredConsumers.includes(group.module as never)) {
+        failures.push(
+          `${DEFERRAL_NAME}: (${group.module}, ${eventType}) — '${group.module}' is no longer in declaredConsumers, so the deferral has nothing to defer; delete the entry`,
+        );
+        continue;
+      }
+      if (!unboundKeys.has(pairKey(eventType, group.module))) {
+        failures.push(
+          `${DEFERRAL_NAME}: (${group.module}, ${eventType}) is bound live now — the deferral has outlived its reason; delete the entry (\`--update\` rewrites the lists)`,
+        );
+      }
+    }
+  }
+
   const boundEvents = new Set(bindings.flatMap((b) => b.eventTypes));
   console.log(
     `Outbox bindings: ${bindings.length} live binding(s) across ${sites.length} file(s), ` +
       `covering ${boundEvents.size} of ${catalog.size} catalogued event(s).`,
   );
+  const byKind = new Map<string, number>();
+  for (const group of DEFERRED_CONSUMERS) {
+    byKind.set(group.kind, (byKind.get(group.kind) ?? 0) + group.events.length);
+  }
+  const kindSummary = [...byKind.entries()]
+    .sort()
+    .map(([kind, n]) => `${kind} ${n}`)
+    .join(", ");
+  console.log(
+    `Declared-but-unbound: ${unbound.length} (module, event) pair(s) across ${DEFERRED_CONSUMERS.length} consumer module(s) — ${kindSummary}`,
+  );
+  // The `deviceAttestationValid` rule, as check-context-attributes.ts applies it: a declared absence
+  // with no established reason is the STANDING FINDING, printed every run, not a passing state.
+  const unclassified = DEFERRED_CONSUMERS.filter((g) => g.kind === "unclassified");
+  if (unclassified.length > 0) {
+    console.log(
+      `\n  ⚠ ${unclassified.length} consumer module(s) deferred with NO established reason (#103):`,
+    );
+    for (const group of unclassified) {
+      console.log(`      · ${group.module} — ${group.events.length} event(s)`);
+    }
+  }
 
   if (failures.length > 0) {
     console.error(`\n✗ ${failures.length} outbox binding/catalog disagreement(s):\n`);
@@ -278,7 +448,9 @@ async function main(): Promise<void> {
     );
     process.exit(1);
   }
-  console.log("✓ every live outbox binding agrees with the boot event catalog.");
+  console.log(
+    "✓ every live outbox binding agrees with the boot event catalog, and every declared consumer is bound or registered as deferred.",
+  );
 }
 
 await main();

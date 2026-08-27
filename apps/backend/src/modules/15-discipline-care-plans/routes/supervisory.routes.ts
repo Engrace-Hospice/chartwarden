@@ -13,7 +13,6 @@ import { ABAC_SUPERVISOR, P, STEP_UP } from "./guards";
 import {
   CreateSupervisoryVisitBody,
   PlanParams,
-  SignSupervisoryVisitBody,
   SupervisoryVisitParams,
   parse,
 } from "./m15-typebox";
@@ -67,7 +66,6 @@ export function registerAideSupervisoryRoutes(
     },
     async (request) => {
       const { planId, visitId } = parse(SupervisoryVisitParams, request.params);
-      parse(SignSupervisoryVisitBody, request.body);
       return writeService.signSupervisoryVisit(writeActorOf(request), planId, visitId, {
         expectedVersion: ifMatchVersion(request, true),
       });

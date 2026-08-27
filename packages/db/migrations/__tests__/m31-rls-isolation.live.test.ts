@@ -249,5 +249,41 @@ describe.skipIf(!DB_URL)(
       );
       expect(r.rows[0].n).toBeGreaterThan(0);
     });
+
+    // #117 / migration 0224 — the suspend/reinstate reason the API demanded and discarded now lands here.
+    // `check-audit-denylist-sync` proves the CONSTANT and the SQL agree; only an executed trigger proves the
+    // scrub actually happens, and 0224 replaces a function 0139 defined, so this also proves the replacement
+    // took (a CREATE OR REPLACE that silently missed would leave the old three-column array in place).
+    it("a status-change reason is stored on the row and SCRUBBED from the audit trail (0224)", async () => {
+      const sealed = "v1.k1.NONCE.TAG.SEALEDBLOB";
+      const res = await withOrg(ORG_A, () =>
+        db.query(
+          "UPDATE portal_account SET status='suspended', suspended_at=now(), status_change_reason_cipher=$2 WHERE id=$1",
+          [a.portalAccount, sealed],
+        ),
+      );
+      expect(res.rowCount).toBe(1);
+
+      // On the row: the sealed reason is there to be read back by whoever can open it.
+      const row = await db.query(
+        "SELECT status, status_change_reason_cipher FROM portal_account WHERE id=$1",
+        [a.portalAccount],
+      );
+      expect(row.rows[0].status).toBe("suspended");
+      expect(row.rows[0].status_change_reason_cipher).toBe(sealed);
+
+      // In the audit trail: the STATUS transition is visible, the reason's ciphertext is not — the same
+      // posture as the three contact ciphers. The audit records that a reason was given, not what it said.
+      const ev = await db.query(
+        `SELECT after->>'status' AS status, after->>'status_change_reason_cipher' AS reason
+           FROM audit_event
+          WHERE resource_kind='portal_account' AND resource_id=$1 AND event_type='portal_account.update'
+          ORDER BY created_at DESC LIMIT 1`,
+        [a.portalAccount],
+      );
+      expect(ev.rows[0].status).toBe("suspended");
+      expect(ev.rows[0].reason).toBe("<changed>");
+      expect(ev.rows[0].reason).not.toContain("SEALEDBLOB");
+    });
   },
 );

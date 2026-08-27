@@ -21,15 +21,36 @@
 // status + signed_at/cosigned_at carry the signed state, exactly as the in-memory reference models it.
 import { isStepUpRecent } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
+import {
+  DEFAULT_HEARTHNOTE_FLAGS,
+  enhanceNarrative,
+  templateKey as hearthnoteTemplateKey,
+} from "@wardenx/hearthnote";
+import { VOCAB_VERSION } from "@wardenx/narrative-vocab";
 import { withOrgContext } from "@wardenx/tenancy";
-import { type LocalDate, NotFoundError, STEP_UP_POLICY, type StepUpFactor } from "@wardenx/types";
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import {
+  type CarePlanOverdueStatus,
+  type LocalDate,
+  NotFoundError,
+  type PatientId,
+  STEP_UP_POLICY,
+  type StepUpFactor,
+} from "@wardenx/types";
+import { and, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { planF2fDualWrite, planMileageCapture, planVitalsCapture } from "./authoring/index";
 import { transitionCosignature } from "./cosignature/index";
 import type { CosignatureState } from "./cosignature/index";
+import {
+  type GateSectionSelection,
+  assertGatePassed,
+  runAddendumComplianceGate,
+  runEncounterComplianceGate,
+} from "./gate/index";
+import type { HearthnoteCiphers } from "./hearthnote-crypto";
+import { LAYER2_TENANT_FACTS_UNBOUND, resolveLayer2Eligibility } from "./layer2";
 import { transitionAddendum } from "./lifecycle/addendum";
-import { transitionEncounter } from "./lifecycle/encounter";
+import { requiresCosignature, transitionEncounter } from "./lifecycle/encounter";
 import { EncounterStateError } from "./lifecycle/errors";
 import {
   checkEncounterDisciplinePair,
@@ -38,12 +59,16 @@ import {
   checkServiceDateNotFuture,
   checkVersion,
 } from "./lifecycle/validation";
+import { toVitalsView } from "./routes/service";
 import type {
   EncounterAbacFacts,
   EncounterAbacResolver,
   EncounterRouteService,
   EncounterView,
+  SelectionSectionInput,
 } from "./routes/service";
+import { assembleSelections } from "./routes/service";
+import { getCarePlanReader, getCareTeamProvider } from "./seams/index";
 
 const ENC = schema.encounters;
 const COSIGN = schema.cosignatureRequests;
@@ -51,6 +76,36 @@ const ADDENDUM = schema.encounterAddenda;
 const VITALS = schema.vitals;
 const MILEAGE = schema.mileage;
 const SIG = schema.encounterSignatures;
+const SEL = schema.hearthnoteSelections;
+const OUT = schema.hearthnoteAssembledOutputs;
+const LLM = schema.hearthnoteLlmModifications;
+
+// ── The stored selection tree (#114 write path, #121 gate input) ──────────────────────────────────────
+//
+// What actually lands in `hearthnote_selection.selections`: the vocabulary codes and their numeric slot
+// params, plus `hasFreeText` — a boolean saying a section carries prose, never the prose (that is sealed
+// under the tenant DEK in `free_text_cipher`). The API shape (`SelectionSectionInput`) has the prose and
+// not the marker; the two are converted at the storage boundary, in `splitFreeText` and `openProse`.
+interface StoredSelectionSection {
+  readonly sectionId: string;
+  readonly entries: SelectionSectionInput["entries"];
+  readonly hasFreeText?: boolean;
+}
+
+/** Project the jsonb column to the stored tree (an unwritten row reads as no sections, not a throw). */
+function storedSections(selections: unknown): StoredSelectionSection[] {
+  return ((selections as { sections?: StoredSelectionSection[] } | null)?.sections ??
+    []) as StoredSelectionSection[];
+}
+
+/** The §2.6 gate's view of a stored tree: presence only — how many entries, and whether prose exists. */
+function gateSections(selections: unknown): GateSectionSelection[] {
+  return storedSections(selections).map((s) => ({
+    sectionId: s.sectionId,
+    entryCount: s.entries?.length ?? 0,
+    hasFreeText: s.hasFreeText === true,
+  }));
+}
 
 // ── §3.3/D13 signature provenance (CoP 418.104(c), 21 CFR Part 11 principles) ─────────────────────────
 //
@@ -238,7 +293,314 @@ const toView = (r: EncounterRow): EncounterView => ({
 export function createDbEncounterRouteService(
   db: DbClient,
   outbox: EncounterWriteOutboxPort = NOOP_OUTBOX,
+  ciphers?: HearthnoteCiphers,
 ): EncounterRouteService {
+  const freeTextCipher = ciphers?.freeText;
+  const narrativeCipher = ciphers?.narrative;
+
+  /**
+   * Run one tenant-DEK operation, turning a KEY-RESOLVE failure into the designed 503.
+   *
+   * Without this the `HEARTHNOTE_CIPHER_UNBOUND` code is unreachable in production: the composition root
+   * always constructs the cipher OBJECTS (`createHearthnoteCiphers(getTenantKeyProvider())`), so the
+   * `!cipher` branch only ever fires in the slice and in tests. The key resolve happens per CALL, deep
+   * inside M34 — `dekForOrg` throws `M34InfraPortUnbound` while the KEK/KMS adapter is unbound (#105),
+   * `TenantKeyMissing` for an org with no key ring, `TenantKeyDestroyed` after a crypto-shred. Unwrapped,
+   * every one of those surfaces as a 500. They are all the same operational statement — this deployment
+   * cannot key this tenant's PHI right now — and 503 is what says it.
+   */
+  async function withTenantDek<T>(what: string, run: () => Promise<T>): Promise<T> {
+    try {
+      return await run();
+    } catch (cause) {
+      throw new EncounterStateError(
+        "HEARTHNOTE_CIPHER_UNBOUND",
+        `${what}: the tenant DEK could not be resolved (${
+          cause instanceof Error ? cause.message : String(cause)
+        })`,
+      );
+    }
+  }
+  // ── HearthNote selections (§2.6/§3.6, #114) ────────────────────────────────────────────────────────
+  //
+  // `selections` (vocabulary codes + numeric slot params) goes to the jsonb column in the clear; the
+  // clinician's verbatim prose goes to `free_text_cipher`, sealed under the tenant DEK. With NO cipher
+  // bound, a tree carrying prose is REFUSED — the M32 R18 / M31 #117 posture: writing prose in the clear
+  // into a column named `_cipher` would make the §3.6 minimization a claim rather than a fact. A tree
+  // with no prose writes normally, so the structured note — which is what Layer-1 actually assembles —
+  // never depends on a key ring that has not bound yet.
+  const splitFreeText = (
+    sections: readonly SelectionSectionInput[],
+  ): { stored: StoredSelectionSection[]; prose: Record<string, string> } => {
+    const stored: StoredSelectionSection[] = [];
+    const prose: Record<string, string> = {};
+    for (const s of sections) {
+      const hasFreeText = s.freeText !== undefined && s.freeText.length > 0;
+      // `hasFreeText` is storage METADATA, not content: the §2.6 gate counts a section populated when it
+      // has entries OR prose, and the prose itself lives in the DEK envelope. Without this marker the
+      // gate would have to open that envelope to answer a question about PRESENCE — reading PHI to
+      // decide whether something is there, and refusing to run at all wherever the key ring is unbound.
+      stored.push({
+        sectionId: s.sectionId,
+        entries: s.entries,
+        ...(hasFreeText ? { hasFreeText } : {}),
+      });
+      if (hasFreeText) prose[s.sectionId] = s.freeText as string;
+    }
+    return { stored, prose };
+  };
+
+  async function sealProse(
+    organizationId: string,
+    prose: Record<string, string>,
+  ): Promise<string | null> {
+    if (Object.keys(prose).length === 0) return null;
+    if (!freeTextCipher) {
+      throw new EncounterStateError(
+        "HEARTHNOTE_CIPHER_UNBOUND",
+        "no per-tenant DEK envelope is bound for M8, so the clinician's free text cannot be sealed; a selection tree with no free text writes normally",
+      );
+    }
+    return withTenantDek("the clinician's free text could not be sealed", () =>
+      freeTextCipher.seal(organizationId, JSON.stringify(prose)),
+    );
+  }
+
+  /** Re-attach the sealed prose to the stored tree. Never throws on a missing cipher — a reader without
+   *  one still gets the structured note, and the absent `freeText` is the honest answer for it. */
+  async function openProse(
+    organizationId: string,
+    row: { selections: unknown; freeTextCipher: string | null },
+  ): Promise<SelectionSectionInput[]> {
+    const stored = storedSections(row.selections);
+    // `hasFreeText` is a storage marker for the gate; it never leaves the service (the API shape is
+    // `{ sectionId, entries, freeText? }` — the prose itself, or its absence).
+    const project = ({ sectionId, entries }: StoredSelectionSection): SelectionSectionInput => ({
+      sectionId,
+      entries,
+    });
+    if (row.freeTextCipher === null || !freeTextCipher) return stored.map(project);
+    const prose = JSON.parse(
+      await withTenantDek("the clinician's free text could not be opened", () =>
+        freeTextCipher.open(organizationId, row.freeTextCipher as string),
+      ),
+    ) as Record<string, string>;
+    return stored.map((s) => {
+      const text = prose[s.sectionId];
+      return text === undefined ? project(s) : { ...project(s), freeText: text };
+    });
+  }
+
+  // ── §2.6 Layer-3 compliance gate (#121) ───────────────────────────────────────────────────────────
+  //
+  // The gate itself is pure (./gate); this resolves the facts it decides over. Both write paths that
+  // used to hand `transitionEncounter` the literal `true` now hand it this verdict.
+
+  /**
+   * M7's §7.8 overdue verdict (CoP 418.56). `null` = the patient has no active care plan, which the
+   * gate treats as "no review window to have missed". A THROW is not that: M7's store runs under the
+   * caller's ambient request context and refuses to read unscoped, and the boot deny-stub refuses
+   * outright — either way the check did not run, and a signing-blocking control that passes when it
+   * could not evaluate is precisely the defect this gate was fixed from. So it refuses, with a code
+   * that says the gate was unavailable rather than that the note was incomplete.
+   */
+  async function carePlanOverdueFor(patientId: string): Promise<CarePlanOverdueStatus | null> {
+    try {
+      return await getCarePlanReader().isReviewOverdue(patientId as PatientId);
+    } catch (cause) {
+      throw new EncounterStateError(
+        "COMPLIANCE_GATE_UNAVAILABLE",
+        `the §2.6 care-plan review check could not be decided: M7's CarePlanReader is unreachable (${
+          cause instanceof Error ? cause.message : String(cause)
+        })`,
+      );
+    }
+  }
+
+  /** Run the §2.6 gate for one encounter and raise the 422 + remediation list when it does not pass. */
+  async function gateEncounter(
+    t: DbClient,
+    r: typeof ENC.$inferSelect,
+    at: "finalize" | "sign",
+  ): Promise<boolean> {
+    const [sel] = await t
+      .select({ selections: SEL.selections })
+      .from(SEL)
+      .where(eq(SEL.encounterId, r.id))
+      .limit(1);
+    const verdict = runEncounterComplianceGate({
+      encounterType: r.encounterType,
+      discipline: r.discipline,
+      sections: gateSections(sel?.selections ?? null),
+      carePlanOverdue: await carePlanOverdueFor(r.patientId),
+    });
+    assertGatePassed(verdict, at);
+    return verdict.pass;
+  }
+
+  /**
+   * §2.4 D3 / §2.6 check 10 (#124) — the patient's RN case manager, as the membership a cosignature is
+   * routed to. `null` means there is no eligible cosigner, which the §2.3 machine turns into
+   * NO_ELIGIBLE_COSIGNER; the sign is refused BEFORE any write, so no signature row and no
+   * `cosignature_request` routed at nobody are left behind.
+   *
+   * The spec is specific about who this is: "a `cosignature_request` row is created with the assigned RN
+   * case manager as the routed cosigner" (§2.4). So the existence question and the routing question have
+   * one answer, resolved once here — they used to have two different wrong ones, `true` and "the LPN who
+   * just signed it".
+   *
+   * The signer is excluded explicitly. `patient_assignment.role = 'primary_rn'` already names an RN, and
+   * the cosign route independently refuses a non-RN caller, so this should be unreachable — but a note
+   * that cosigns itself is the one outcome the whole D3 workflow exists to prevent, and it costs a
+   * comparison to make that structural rather than incidental.
+   */
+  async function cosignerMembershipIdFor(
+    organizationId: string,
+    patientId: string,
+    signedByMembershipId: string,
+  ): Promise<string | null> {
+    let cosigner: string | null;
+    try {
+      cosigner = await getCareTeamProvider().primaryRnMembershipId({ organizationId, patientId });
+    } catch (cause) {
+      // Same posture as the care-plan check: a check that could not RUN must not read as one that
+      // passed, and must not read as one that failed either — NO_ELIGIBLE_COSIGNER would tell a
+      // clinician to go find an RN who may well be assigned.
+      throw new EncounterStateError(
+        "COMPLIANCE_GATE_UNAVAILABLE",
+        `the §2.6 cosigner-exists check could not be decided: M5's CareTeamProvider is unreachable (${
+          cause instanceof Error ? cause.message : String(cause)
+        })`,
+      );
+    }
+    return cosigner === signedByMembershipId ? null : cosigner;
+  }
+
+  // ── §2.6 the assembled-output pin (#122) ────────────────────────────────────────────────────────
+  //
+  // `hearthnote_assembled_output` holds the bytes that ARE the signed narrative. Nothing had ever written
+  // it: the §2.3 machine has emitted `{ kind: "persist_assembled_output" }` on every finalize since
+  // M8-T04 — `encounter-lifecycle.test.ts` asserts that it does — and no service performed the effect. So
+  // the note was reassembled from `hearthnote_selection` at every read, which defeats the D11 vocabulary
+  // pin at the last step: a `@wardenx/narrative-vocab` release that edits a phrase would change the
+  // rendered text of an ALREADY-SIGNED encounter, and the `${patient}` slot (a literal today) will change
+  // every historical note the day M8 binds an M5 reader. For a 42 CFR 418.104 legal record, "we can
+  // rebuild it" is not the claim "here is what it said".
+
+  /** Resolve one parent's stored tree. Absent → an empty section list, not a throw: a template with no
+   *  REQUIRED section passes the §2.6 gate with nothing documented, and the honest pin for that is the
+   *  template's own text. (An addendum cannot reach it — its gate refuses an empty tree outright.) */
+  async function storedTreeFor(
+    t: DbClient,
+    organizationId: string,
+    parent: { readonly encounterId: string } | { readonly addendumId: string },
+  ): Promise<SelectionSectionInput[]> {
+    const [row] = await t
+      .select()
+      .from(SEL)
+      .where(
+        "addendumId" in parent
+          ? eq(SEL.addendumId, parent.addendumId)
+          : eq(SEL.encounterId, parent.encounterId),
+      )
+      .limit(1);
+    return row ? await openProse(organizationId, row) : [];
+  }
+
+  /**
+   * Assemble the stored tree and PIN the result, sealed under the tenant DEK. Called once per finalize,
+   * inside the finalize transaction, AFTER the §2.6 gate has passed — so a refused finalize leaves no row.
+   *
+   * The seal is not optional. `layer1_cipher` and `final_cipher` are NOT NULL and the column names are the
+   * §3.6 promise; an assembled narrative is prose by construction, so unlike the selection tree there is no
+   * codes-in-the-clear half that could be written without a key. A deployment that cannot key the tenant's
+   * PHI therefore cannot finalize — see {@link withTenantDek} for why that surfaces as a 503 naming the
+   * DEK, and #105 for the binding it names.
+   */
+  async function pinAssembledOutput(
+    t: DbClient,
+    organizationId: string,
+    input: {
+      readonly kind: "primary_finalize" | "addendum_finalize";
+      readonly encounterId: string | null;
+      readonly addendumId: string | null;
+      readonly providerEntityId: string | null;
+      readonly locationId: string | null;
+      readonly encounterType: EncounterView["encounterType"];
+      readonly discipline: EncounterView["discipline"];
+      readonly serviceDate: string;
+      readonly vocabVersionId: string;
+    },
+  ): Promise<void> {
+    if (!narrativeCipher) {
+      throw new EncounterStateError(
+        "HEARTHNOTE_CIPHER_UNBOUND",
+        "no per-tenant DEK envelope is bound for M8, so the assembled narrative cannot be sealed and the encounter cannot be finalized",
+      );
+    }
+    const sections = await storedTreeFor(
+      t,
+      organizationId,
+      input.addendumId === null
+        ? { encounterId: input.encounterId as string }
+        : { addendumId: input.addendumId },
+    );
+    const layer1 = assembleSelections(
+      input.encounterType,
+      input.discipline,
+      input.serviceDate,
+      sections,
+    );
+    // D5's finalize-time reification, through the module's own shipped ladder rather than a literal.
+    // Phase 1: the platform flag is off, so this is `kill_switch_active` / `enhanced: false` / final === layer1.
+    const outcome = enhanceNarrative({
+      layer1,
+      flags: DEFAULT_HEARTHNOTE_FLAGS,
+      eligibility: LAYER2_TENANT_FACTS_UNBOUND,
+    });
+    const [layer1Cipher, finalCipher] = await withTenantDek(
+      "the assembled narrative could not be sealed",
+      () =>
+        Promise.all([
+          narrativeCipher.seal(organizationId, outcome.layer1),
+          narrativeCipher.seal(organizationId, outcome.final),
+        ]),
+    );
+    await t.insert(OUT).values({
+      organizationId,
+      providerEntityId: input.providerEntityId,
+      locationId: input.locationId,
+      encounterId: input.encounterId,
+      addendumId: input.addendumId,
+      kind: input.kind,
+      layer1Cipher,
+      finalCipher,
+      // The layer2 pair is derived from the outcome, never asserted: the `hearthnote_output_layer2_consistency`
+      // CHECK requires cipher-and-flag to agree, and deriving both from one value is what keeps them agreeing
+      // when Layer 2 becomes reachable.
+      layer2Cipher: null,
+      layer2InvolvedAtFinalize: outcome.enhanced,
+      layer2Eligibility: outcome.reason,
+      assemblyTemplateKey: hearthnoteTemplateKey(input.encounterType, input.discipline),
+      vocabVersionId: input.vocabVersionId,
+    });
+  }
+
+  /** Run the §2.6 gate for one addendum (the narrower form — see runAddendumComplianceGate). */
+  async function gateAddendum(
+    t: DbClient,
+    addendumId: string,
+    at: "finalize" | "sign",
+  ): Promise<boolean> {
+    const [sel] = await t
+      .select({ selections: SEL.selections })
+      .from(SEL)
+      .where(eq(SEL.addendumId, addendumId))
+      .limit(1);
+    const verdict = runAddendumComplianceGate(gateSections(sel?.selections ?? null));
+    assertGatePassed(verdict, at);
+    return verdict.pass;
+  }
   /** Load one org-scoped encounter row → the shared projection, or `null` when absent/cross-tenant. */
   async function loadRow(
     organizationId: string,
@@ -365,11 +727,56 @@ export function createDbEncounterRouteService(
       if (!r) throw new NotFoundError("encounter"); // non-leaking 404 (mirrors the in-memory `load`)
       return toView(r);
     },
+    // ── M22 render seam (§4.1 route 31) ────────────────────────────────────────────────────────────
+    //
+    // Was `final: ""` unconditionally, with a comment saying the real render arrived later. An empty
+    // string is a RENDERABLE answer: a bound M22 renderer would have produced an empty note for a signed
+    // encounter and reported success. A 404 is the truthful answer when there is no HearthNote to render
+    // (#114) — the renderer can distinguish "nothing to render" from "here is nothing".
     async renderPayload(organizationId, encounterId) {
-      const r = await loadRow(organizationId, encounterId);
-      if (!r) throw new NotFoundError("encounter");
-      // The assembled HearthNote render arrives with the M8L-T02+ write/assembly lifecycle; empty for now.
-      return { encounterId: r.id, final: "" };
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadEnc(t, encounterId);
+        // The PINNED bytes win whenever they exist (#122). This is the whole point of the pin: what M22
+        // prints and M28 exposes is what was assembled at finalize, not what the current corpus would
+        // produce from the same selections today.
+        const [pinned] = await t
+          .select({ finalCipher: OUT.finalCipher })
+          .from(OUT)
+          .where(and(eq(OUT.encounterId, encounterId), eq(OUT.kind, "primary_finalize")))
+          .orderBy(desc(OUT.createdAt))
+          .limit(1);
+        if (pinned) {
+          if (!narrativeCipher) {
+            throw new EncounterStateError(
+              "HEARTHNOTE_CIPHER_UNBOUND",
+              "the encounter's narrative is pinned but no per-tenant DEK envelope is bound to open it",
+            );
+          }
+          return {
+            encounterId: r.id,
+            final: await withTenantDek("the pinned narrative could not be opened", () =>
+              narrativeCipher.open(organizationId, pinned.finalCipher),
+            ),
+            pinned: true,
+          };
+        }
+        // No pin: either a draft (nothing has been finalized, so a live preview is the only answer there
+        // is) or a row finalized before #122 shipped. `pinned: false` is the difference, and it is on the
+        // wire — a renderer must be able to tell a legal record from a preview of one.
+        const [row] = await t.select().from(SEL).where(eq(SEL.encounterId, encounterId)).limit(1);
+        if (!row) throw new NotFoundError("hearthnote_selection");
+        return {
+          encounterId: r.id,
+          final: assembleSelections(
+            r.encounterType,
+            r.discipline,
+            r.serviceDate,
+            await openProse(organizationId, row),
+          ),
+          pinned: false,
+        };
+      });
     },
     async listEncounters(organizationId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
@@ -498,13 +905,27 @@ export function createDbEncounterRouteService(
       });
     },
 
-    // ── HearthNote selection edit (§2.3 — bumps the optimistic-lock version) ───────────────────────────
-    async updateSelections(organizationId, encounterId, ifVersion) {
+    // ── HearthNote selection edit (§2.3/§2.6 — persists the tree, bumps the optimistic-lock version) ──
+    //
+    // This used to bump `version`, stamp `updated_at` and return `layer1Preview: ""` — the clinician's
+    // note accepted with a 200 and dropped on the floor (#114). It now writes the row the table was
+    // shaped for. One row per parent (mig 0225 made that index genuinely unique), so this is an upsert.
+    async updateSelections(organizationId, encounterId, ifVersion, input) {
+      const { stored, prose } = splitFreeText(input.sections);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
         checkMutableForEdit({ status: r.status });
         checkVersion({ expected: ifVersion, actual: Number(r.version) });
+        // Assemble BEFORE the write: an unknown code or section must reject the PATCH, not be stored and
+        // discovered by whoever later tries to render the note.
+        const layer1Preview = assembleSelections(
+          r.encounterType,
+          r.discipline,
+          r.serviceDate,
+          input.sections,
+        );
+        const freeTextCipherValue = await sealProse(organizationId, prose);
         const updated = firstOrThrow(
           await t
             .update(ENC)
@@ -513,7 +934,97 @@ export function createDbEncounterRouteService(
             .returning({ version: ENC.version }),
           "updateSelections matched no row (stale write)",
         );
-        return { version: Number(updated.version), layer1Preview: "" };
+        await t
+          .insert(SEL)
+          .values({
+            organizationId,
+            providerEntityId: r.providerEntityId,
+            locationId: r.locationId,
+            encounterId,
+            templateKey: hearthnoteTemplateKey(r.encounterType, r.discipline),
+            templateVersion: VOCAB_VERSION,
+            selections: { sections: stored },
+            freeTextCipher: freeTextCipherValue,
+          })
+          .onConflictDoUpdate({
+            target: SEL.encounterId,
+            targetWhere: isNotNull(SEL.encounterId),
+            set: {
+              selections: { sections: stored },
+              freeTextCipher: freeTextCipherValue,
+              templateKey: hearthnoteTemplateKey(r.encounterType, r.discipline),
+              templateVersion: VOCAB_VERSION,
+              updatedAt: new Date(),
+              version: sql`${SEL.version} + 1`,
+            },
+          });
+        return { version: Number(updated.version), layer1Preview };
+      });
+    },
+
+    async getSelections(organizationId, encounterId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadEnc(t, encounterId); // non-leaking 404 before the child read
+        const [row] = await t.select().from(SEL).where(eq(SEL.encounterId, encounterId)).limit(1);
+        const sections = row ? await openProse(organizationId, row) : [];
+        return {
+          templateKey: hearthnoteTemplateKey(r.encounterType, r.discipline),
+          vocabVersion: VOCAB_VERSION,
+          sections,
+          layer1Preview: assembleSelections(r.encounterType, r.discipline, r.serviceDate, sections),
+          version: row ? Number(row.version) : 0,
+        };
+      });
+    },
+
+    /**
+     * #92 — read back every vitals set on one encounter. Until this existed the `vitals` table was
+     * write-only through the public API: `POST`/`PATCH .../vitals` wrote real rows and no route
+     * returned them, so a recorded blood pressure left the clinician's screen for good.
+     *
+     * Runs under `withOrgContext` like every other read here, so RLS scopes the rows by tenant even
+     * though the query filters on `encounter_id` alone. The encounter is loaded FIRST so an unknown
+     * or cross-tenant id 404s exactly as `getEncounter` does, rather than returning an empty list —
+     * an empty list and "not yours" must not be the same answer to the caller.
+     */
+    async listVitals(organizationId, encounterId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        await loadEnc(t, encounterId); // throws NotFoundError on unknown/cross-tenant (non-leaking)
+        const rows = await t
+          .select()
+          .from(VITALS)
+          .where(eq(VITALS.encounterId, encounterId))
+          .orderBy(desc(VITALS.capturedAt), desc(VITALS.id));
+        return {
+          encounterId,
+          vitals: rows.map((row) =>
+            toVitalsView(row.id, encounterId, {
+              capturedAt: row.capturedAt.toISOString(),
+              bmi: row.bmi,
+              input: {
+                bpSystolic: row.bpSystolic ?? undefined,
+                bpDiastolic: row.bpDiastolic ?? undefined,
+                heartRate: row.heartRate ?? undefined,
+                respiratoryRate: row.respiratoryRate ?? undefined,
+                temperature: row.temperature ?? undefined,
+                temperatureUnit: row.temperatureUnit ?? undefined,
+                spo2: row.spo2 ?? undefined,
+                painScore: row.painScore ?? undefined,
+                painScale: row.painScale ?? undefined,
+                weight: row.weight ?? undefined,
+                weightUnit: row.weightUnit ?? undefined,
+                height: row.height ?? undefined,
+                heightUnit: row.heightUnit ?? undefined,
+                bloodGlucose: row.bloodGlucose ?? undefined,
+                bloodGlucoseUnit: row.bloodGlucoseUnit ?? undefined,
+                clinicallyNotIndicatedFields: row.clinicallyNotIndicatedFields ?? undefined,
+                clinicallyNotIndicatedReason: row.clinicallyNotIndicatedReason ?? undefined,
+              },
+            }),
+          ),
+        };
       });
     },
 
@@ -672,17 +1183,23 @@ export function createDbEncounterRouteService(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
+        // §2.3 — the gate runs as a PREVIEW here: a failure raises the 422 + remediation list and the
+        // row stays in draft, which is the transition not happening at all.
         const trans = transitionEncounter(r.status, {
           type: "finalize",
-          gatePreviewPassed: true,
+          gatePreviewPassed: await gateEncounter(t, r, "finalize"),
           at,
         });
+        // The D11 pin, resolved ONCE: the encounter row, the assembled output and the outbox event all
+        // carry the same value, so the version the note was assembled under cannot disagree with the
+        // version the encounter claims. (It is still the sentinel — see VOCAB_VERSION_SENTINEL / #128.)
+        const vocabVersionId = r.vocabVersionId ?? VOCAB_VERSION_SENTINEL;
         const updated = firstOrThrow(
           await t
             .update(ENC)
             .set({
               status: trans.to,
-              vocabVersionId: r.vocabVersionId ?? VOCAB_VERSION_SENTINEL, // D11 pin (immutable thereafter)
+              vocabVersionId, // D11 pin (immutable thereafter)
               version: Number(r.version) + 1,
               updatedAt: new Date(),
             })
@@ -690,9 +1207,21 @@ export function createDbEncounterRouteService(
             .returning({ version: ENC.version }),
           "finalize matched no row",
         );
+        // The `persist_assembled_output` effect the machine has declared since M8-T04 (#122).
+        await pinAssembledOutput(t, organizationId, {
+          kind: "primary_finalize",
+          encounterId,
+          addendumId: null,
+          providerEntityId: r.providerEntityId,
+          locationId: r.locationId,
+          encounterType: r.encounterType,
+          discipline: r.discipline,
+          serviceDate: r.serviceDate,
+          vocabVersionId,
+        });
         await emit(t, organizationId, "m8.encounter.finalized", "encounter", encounterId, {
           encounterId,
-          vocabVersionId: r.vocabVersionId ?? VOCAB_VERSION_SENTINEL,
+          vocabVersionId,
           layer2Involved: false,
           lateEntryTier: r.lateEntryTier,
         });
@@ -700,16 +1229,40 @@ export function createDbEncounterRouteService(
       });
     },
 
-    // ── HearthNote Layer-2 (§2.6 D5 — no Layer-2 in this slice; ids only, no provenance row) ───────────
+    // ── HearthNote Layer-2 (§2.6 D5) ──────────────────────────────────────────────────────────────────
+    //
+    // Was: return `r.id` — the ENCOUNTER's own id — as a `modificationId`, and echo back whatever id the
+    // decision route was handed. Nothing wrote `hearthnote_llm_modification`, so a caller invoked
+    // enhancement, received an id that identified something else, recorded a per-passage decision against
+    // it, and got a 200 both times. Nothing happened, twice, successfully (#123).
     async enhanceHearthnote(organizationId, encounterId) {
       const r = await loadRow(organizationId, encounterId);
       if (!r) throw new NotFoundError("encounter");
-      return { modificationId: r.id };
+      // The D5 ladder is the answer, and it is the SAME resolution `finalize` reifies on the assembled
+      // output — so the row and the route cannot disagree about why Layer 2 did not run.
+      return { enhanced: false, reason: resolveLayer2Eligibility() };
     },
     async recordModificationDecision(organizationId, encounterId, modId) {
-      const r = await loadRow(organizationId, encounterId);
-      if (!r) throw new NotFoundError("encounter");
-      return { modificationId: modId };
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        await loadEnc(t, encounterId); // non-leaking 404 for the parent first
+        // A real read, org-scoped, RLS-backstopped. `hearthnote_llm_modification` is written by nothing
+        // today (the Layer-2 dispatch is unbuilt), so in practice this always 404s — but it 404s because
+        // the row is ABSENT, not because the route decided to. The live suite inserts one and gets a 200,
+        // which is what distinguishes this from a hard-coded refusal.
+        const [row] = await t
+          .select({ id: LLM.id })
+          .from(LLM)
+          .innerJoin(OUT, eq(OUT.id, LLM.assembledOutputId))
+          .where(and(eq(LLM.id, modId), eq(OUT.encounterId, encounterId)))
+          .limit(1);
+        if (!row) throw new NotFoundError("hearthnote_llm_modification");
+        // The DECISION itself is not recorded yet, and cannot be from this contract: the column is
+        // `per_passage_decisions` and `ModificationDecisionSchema` carries no passage id. Passage
+        // identity is created by the Layer-1↔Layer-2 diff, so there is nothing to key a decision to
+        // until the dispatch that produces that diff exists (#123's remaining half).
+        return { modificationId: row.id };
+      });
     },
 
     // ── Sign (§2.3 — the LOCKED clinical-record trigger; §7.4 D1 F2F dual-write + LPN/CHHA cosign) ──────
@@ -738,6 +1291,7 @@ export function createDbEncounterRouteService(
         // The M6 write descriptor (plan.attestation) is handed to M6's writer by the composition root in
         // prod; this slice performs the M8 side only (no cross-module write edge).
         if (isF2f(r)) {
+          const gatePassed = await gateEncounter(t, r, "sign");
           const plan = planF2fDualWrite({
             status: r.status,
             encounterId: r.id,
@@ -745,7 +1299,7 @@ export function createDbEncounterRouteService(
               typeof planF2fDualWrite
             >[0]["faceToFaceEncounterId"],
             discipline: r.discipline,
-            gatePassed: true,
+            gatePassed,
             stepUpFresh: provenance.stepUpFresh,
             at: args.at,
           });
@@ -786,14 +1340,19 @@ export function createDbEncounterRouteService(
           return { status: "signed", signedAt: now.toISOString(), cosignatureRequestId: null };
         }
 
+        // §2.6 check 10 — resolved ONLY for the disciplines that route a cosignature; an RN/MD/NP note
+        // never asks M5 a question whose answer it would not use.
+        const cosignerMembershipId = requiresCosignature(r.discipline)
+          ? await cosignerMembershipIdFor(organizationId, r.patientId, signedByMembershipId)
+          : null;
         const trans = transitionEncounter(r.status, {
           type: "sign",
           discipline: r.discipline,
-          gatePassed: true,
+          gatePassed: await gateEncounter(t, r, "sign"),
           stepUpFresh: provenance.stepUpFresh,
           isF2f: false,
           f2fDualWriteSatisfied: true,
-          eligibleCosignerExists: true,
+          eligibleCosignerExists: cosignerMembershipId !== null,
           at: args.at,
         });
         const requiresCosign = trans.to === "cosign_pending";
@@ -832,15 +1391,19 @@ export function createDbEncounterRouteService(
           documentRenderPayload: { final: "", addenda: [] },
         });
         if (requiresCosign) {
-          // §2.4 D3 — open the cosignature request already `routed` to the assigned RN. The route threads
-          // no cosigner; it routes to the authoring membership until M5's CaseloadProvider is bound.
+          // §2.4 D3 — open the cosignature request already `routed` to the assigned RN case manager,
+          // resolved above through M5's CareTeamProvider. It used to route to `signedByMembershipId` —
+          // the LPN who just signed the note — so the 12h/24h/48h SLA chain escalated at the author and
+          // the cosignature queue showed them their own note (#124). The machine has already refused the
+          // sign if this is null, so the non-null assertion is the guard's postcondition, not a hope.
+          const routedToMembershipId = cosignerMembershipId as string;
           const cr = firstOrThrow(
             await t
               .insert(COSIGN)
               .values({
                 organizationId,
                 encounterId,
-                routedToMembershipId: signedByMembershipId,
+                routedToMembershipId,
                 status: "routed",
                 routedAt: now,
               })
@@ -855,7 +1418,7 @@ export function createDbEncounterRouteService(
             cr.id,
             {
               encounterId,
-              routedToMembershipId: signedByMembershipId,
+              routedToMembershipId,
               signedAt: now.toISOString(),
             },
           );
@@ -1052,10 +1615,21 @@ export function createDbEncounterRouteService(
         return { id: a.id, status: "draft" };
       });
     },
-    async updateAddendumSelections(organizationId, encounterId, addendumId) {
+    async updateAddendumSelections(organizationId, encounterId, addendumId, input) {
+      const { stored, prose } = splitFreeText(input.sections);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const a = await loadAddendum(t, encounterId, addendumId);
+        // The addendum inherits its parent's template — an addendum to an RN routine visit is written
+        // against the RN routine-visit template, not one of its own.
+        const parent = await loadEnc(t, encounterId);
+        const layer1Preview = assembleSelections(
+          parent.encounterType,
+          parent.discipline,
+          parent.serviceDate,
+          input.sections,
+        );
+        const freeTextCipherValue = await sealProse(organizationId, prose);
         const updated = firstOrThrow(
           await t
             .update(ADDENDUM)
@@ -1067,7 +1641,51 @@ export function createDbEncounterRouteService(
             .returning({ version: ADDENDUM.version }),
           "addendum update matched no row",
         );
-        return { version: Number(updated.version) };
+        await t
+          .insert(SEL)
+          .values({
+            organizationId,
+            providerEntityId: a.providerEntityId,
+            locationId: a.locationId,
+            addendumId,
+            templateKey: hearthnoteTemplateKey(parent.encounterType, parent.discipline),
+            templateVersion: VOCAB_VERSION,
+            selections: { sections: stored },
+            freeTextCipher: freeTextCipherValue,
+          })
+          .onConflictDoUpdate({
+            target: SEL.addendumId,
+            targetWhere: isNotNull(SEL.addendumId),
+            set: {
+              selections: { sections: stored },
+              freeTextCipher: freeTextCipherValue,
+              updatedAt: new Date(),
+              version: sql`${SEL.version} + 1`,
+            },
+          });
+        return { version: Number(updated.version), layer1Preview };
+      });
+    },
+
+    async getAddendumSelections(organizationId, encounterId, addendumId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        await loadAddendum(t, encounterId, addendumId);
+        const parent = await loadEnc(t, encounterId);
+        const [row] = await t.select().from(SEL).where(eq(SEL.addendumId, addendumId)).limit(1);
+        const sections = row ? await openProse(organizationId, row) : [];
+        return {
+          templateKey: hearthnoteTemplateKey(parent.encounterType, parent.discipline),
+          vocabVersion: VOCAB_VERSION,
+          sections,
+          layer1Preview: assembleSelections(
+            parent.encounterType,
+            parent.discipline,
+            parent.serviceDate,
+            sections,
+          ),
+          version: row ? Number(row.version) : 0,
+        };
       });
     },
     async finalizeAddendum(organizationId, encounterId, addendumId) {
@@ -1076,13 +1694,28 @@ export function createDbEncounterRouteService(
         const a = await loadAddendum(t, encounterId, addendumId);
         const trans = transitionAddendum(a.status as "draft" | "finalized" | "signed", {
           type: "finalize",
-          gatePreviewPassed: true,
+          gatePreviewPassed: await gateAddendum(t, addendumId, "finalize"),
           at: new Date().toISOString().slice(0, 10) as LocalDate,
         });
         await t
           .update(ADDENDUM)
           .set({ status: trans.to, updatedAt: new Date() })
           .where(eq(ADDENDUM.id, addendumId));
+        // The addendum's own assembled output (`addendum_finalize`), pinned the same way and against the
+        // PARENT's template and pinned vocab version — an addendum to an RN routine visit is written
+        // against the RN routine-visit template, so it must be pinned against it too.
+        const parent = await loadEnc(t, encounterId);
+        await pinAssembledOutput(t, organizationId, {
+          kind: "addendum_finalize",
+          encounterId: null,
+          addendumId,
+          providerEntityId: a.providerEntityId,
+          locationId: a.locationId,
+          encounterType: parent.encounterType,
+          discipline: parent.discipline,
+          serviceDate: parent.serviceDate,
+          vocabVersionId: parent.vocabVersionId ?? VOCAB_VERSION_SENTINEL,
+        });
         return { status: "finalized" };
       });
     },
@@ -1101,7 +1734,7 @@ export function createDbEncounterRouteService(
         }
         const trans = transitionAddendum(a.status as "draft" | "finalized" | "signed", {
           type: "sign",
-          gatePassed: true,
+          gatePassed: await gateAddendum(t, addendumId, "sign"),
           stepUpFresh: provenance.stepUpFresh,
           at: args.at,
         });

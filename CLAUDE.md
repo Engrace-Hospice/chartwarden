@@ -12,10 +12,11 @@ platform services M36/M38/M39/M40. The generated **implementation-status matrix*
 (`bun run status:matrix` → `audit/implementation-status/IMPLEMENTATION_STATUS.md`) is the per-module
 truth — currently **🟢 40 · 🟡 0 · ⚪ 0** (the module set is complete; the last three placeholders —
 M29, M35, and M37 — are now merged). Every module is enrichment-complete (matrix `Enriched`
-full-ratio ✅, corpus 1219/1226 routes carry request/response contracts —
-`audit/openapi-coverage/OPENAPI_COVERAGE.md` is the generated, authoritative count; re-check there
-before citing a number here, since this line is hand-maintained prose and the generated report is
-not). The `Live` column (cross-tenant RLS proof) is also full-ratio ✅ across all 40 modules,
+full-ratio ✅; for the corpus-wide enriched-route count read
+`audit/openapi-coverage/OPENAPI_COVERAGE.md`, which is generated and authoritative. **No number is
+restated here on purpose** — the figure this line used to carry sat two sweeps stale and an external
+audit repeated it back as a finding, which is exactly what a hand-maintained mirror of a generated
+number does). The `Live` column (cross-tenant RLS proof) is also full-ratio ✅ across all 40 modules,
 including the three newest — **M29 (11/11), M35 (21/21), M37 (26/26)** — whose live-RLS suites
 completed in the Phase 0-2 remediation pass. **M30 is merged (PR #106)**: 18 frozen
 `quality/` tables + migrations 0062–0068; the `@wardenx/quality` domain core + `@wardenx/cahps-vendors`;
@@ -30,17 +31,36 @@ allowlist + active-org enumerator. M23 and M27 are now **merged** (no longer pla
 forward-seam binds for the CMS-1984-14 cap calc (`CapAccrualReader` et al.) and M27's own forward seam into
 M30 (`CostReportFilingStatusReader`) are **live and tested**, not deny-stubs (`m30-forward-seam-binds.test.ts`,
 `m26-cost-report-cap-seam.live.test.ts`, `m27-validation-context.live.test.ts`) — this un-suppresses the CoP
-418.310 failure-to-file indicator and half of HCI 5/6/7's inputs. **`hci_composite`'s real remaining blocker
-is DATA, not wiring**: 9 of its 10 indicators need M6/M8 aggregate seams
-(per-election-period LOC-days, discharge timing, cross-setting transition sequences, per-day
-skilled-nursing minutes) that were never built — only `hci_indicator_10` computes. All 10 of the
+418.310 failure-to-file indicator. **The HCI is now resolved as far as a provider-side system can take it
+(F-042, #102).** Seven of the ten indicators compute from data the agency itself records: 1 and 2 off M6's
+election periods, 3 and 4 off its discharges, 8 and 9 off M6 level-of-care day spans intersected with a new
+M8 per-day skilled-nursing read (`skilledNursingDayTotalsForOrg`), and 10 off the death census. **Three
+never will**: 5, 6 and 7 are defined by CMS over the beneficiary's Medicare claims across EVERY provider —
+the inpatient stay in the middle of a burdensome transition, and the non-hospice Part A/B spend — which no
+single-tenant EHR holds. They are a DECLARED absence (`HCI_UNAVAILABLE_INDICATORS`) that computes a real
+`quality_measure_value` row carrying its reason, not an unbound resolver that throws three DLQ entries per
+provider entity per night, and the quality hub reads them as "Not computable here" rather than as
+"Suppressed (low N)" — `unavailableReason` on the wire is what tells those two apart.
+**`hci_composite` therefore SUPPRESSES rather than scoring**, and that is the fix, not a remaining gap: the
+composite is a count out of ten, an un-computable indicator contributes a zero exactly like a MISSED one,
+and the best a scoring composite could ever publish here is 7/10 — which is precisely
+`compositeAboveAverageScore`, so every tenant would sit on the "above the national average" boundary as an
+artefact of what the platform cannot measure. Getting there needed a defect one layer down first:
+`election_period.effective_at`/`scheduled_end_at`/`actual_end_at` were read in seven places and **written
+in none** (the `setActive` transition returns a `set_timestamp` effect the write path never ran), so
+`ElectionPeriodReader` answered `[]` for every admission and HCI indicator 1 — nominally bound — selected
+its denominator by `effective_at` and was permanently 0/0. Bound is not computing. All 10 of the
 remaining operational measures are now bound, including `bereavement_coverage_rate` (M16) and the two
 that needed an M15 producer-side fix first — `volunteer_compliance_gate_rate` /
 `supervisory_visit_on_time` used to return a pre-divided rate (no denominator, so CMS small-N suppression
 couldn't apply); M15's `DisciplineComplianceProvider` now exposes the count pair beside each rate method
 (`supervisoryOnTimeCounts`/`volunteerGateComplianceCounts`), the same store round-trip, no new query.
-`opioid_on_admission_rate` remains genuinely blocked — it needs an M38 RxCUI→therapeutic-class capability
-that doesn't exist yet.
+`opioid_on_admission_rate` is **bound and computing** (`resolveOpioidOnAdmissionInput`): it walks M6's
+admission-onset census, calls M12's existing per-admission medication-order read, and classifies inside
+the admission's med-rec window. It needs **no** M38 capability — classification is by drug NAME, a
+deliberate choice `isOpioidDrugName`'s own header argues for over RxCUI. This entry previously read
+"genuinely blocked … needs an M38 RxCUI→therapeutic-class capability"; that was true before the measure
+was bound and was still being cited as a launch blocker afterwards (#102).
 
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104, see
 [`audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md`](./audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md)):
@@ -419,7 +439,7 @@ analysis a gate would need is a call graph from the composition root, and the ob
   blocker, never an unmatched name (the `deviceAttestationValid` rule), and the gate fails the
   moment CI starts running a deferred script so the entry cannot outlive its reason; `DEFERRED` is
   empty today. All **122** suites run in CI, `test:e2e` included — the `e2e` job drives a real
-  Chromium over a migrated, `db:seed:all`-seeded full stack (18 critical-workflow specs + the six
+  Chromium over a migrated, `db:seed:all`-seeded full stack (20 browser specs — 13 critical-workflow + the seven
   axe-core WCAG 2A/AA scans that are the repo's only automated accessibility coverage). The gate
   now checks **both directions** (F-025/#59): script → CI, and **file → script**. The second was
   never asked, so 29 suite files (112 tests) were named by no script and therefore run by nothing —
@@ -446,7 +466,27 @@ analysis a gate would need is a call graph from the composition root, and the ob
   to express their event lists resolve to their real values. A binding file that yields no binding is
   an error, never a skip. The runtime half is the `outbox-boot` CI job
   (`bun run check:boot:platform`), which boots the backend with a real provisioned platform login and
-  proves the relay starts.
+  proves the relay starts. **F-043 (#103) adds the direction none of them ran**: all three
+  rules above go binding → catalog, so an event declaring `["m33","m36"]` with no consumer anywhere
+  satisfied every one of them — the catalog read as if all 599 of its consumer-declaring entries were
+  wired when **570** were not, and at (module, event) granularity **1165 of 1203** pairs were unbound.
+  Same unasked-direction shape as F-025/#59 (the live-suite gate checked `package.json` → CI and never
+  the reverse, hiding 29 suite files). Rule 4 now requires every module named in `declaredConsumers` to
+  have a live binding **or** to be named in `scripts/outbox-deferred-consumers.ts` with a reason — the
+  `deviceAttestationValid` rule again, at (module, event) granularity so the count cannot drift: a new
+  unbound pair fails, a listed pair that gains a binding fails ("outlived its reason"), an entry whose
+  event or declaration disappears fails, and an empty reason fails. `--update`
+  (`bun run outbox:deferrals:update`) regenerates the event lists but never the reasons, and writes a
+  brand-new consumer module as `kind: "unclassified"` with an EMPTY reason — so updating cannot
+  manufacture a passing state. `unclassified` groups print on every run as the standing finding (today:
+  **0**). The absence is **not silent at runtime**: `resolveRouting` marks such an event `deferred` and
+  the relay finalizes each row `pending` with `attemptCount - 1`, so it never reaches `maxAttempts`,
+  never dead-letters, and is never purged (retention touches only `dispatched` rows) — every emission
+  becomes a row re-claimed every 30 minutes for the life of the deployment, which
+  `outbox-dispatcher.live.test.ts` already proves. The two largest groups are one decision each, not
+  hundreds of forgotten consumers: **m36** (272) routes alerts through the `AlertEmitter` **seam**, and
+  **m33** (319) pulls metrics from `report_mv.*` materialized views.
+
 - `scripts/check-architecture-docs.ts` — **architecture-corpus freshness gate**
   (`bun run arch:architecture-docs`, in `arch:fitness` since 2026-08-14). The authority rule makes
   `docs/architecture/` binding, yet it was the only ungated documentation body and drifted for two
@@ -503,9 +543,10 @@ analysis a gate would need is a call graph from the composition root, and the ob
   ship their contracts), and when it **falls** the baseline must be re-tightened
   (`bun run openapi:coverage --update`) so progress is locked in. A module absent from the
   baseline has an implied floor of **0** — a brand-new module's first unenriched route fails.
-  The 2026-08-01 sweep retro-enriched the corpus from **478 unenriched → 6** (currently **1219/1226
-  enriched**; only bootstrap's health/infra routes remain unenriched) and re-tightened the baseline — the gate
-  never *required* that backfill, but the progress is now locked in. Writes
+  The 2026-08-01 sweep retro-enriched the corpus from **478 unenriched → 6** (only bootstrap's
+  health/infra routes remain unenriched; the current ratio is in the generated report, not here) and
+  re-tightened the baseline — the gate never *required* that backfill, but the progress is now
+  locked in. Writes
   `audit/openapi-coverage/OPENAPI_COVERAGE.md` (+ `.json`).
   `client:check` (generated typed client ↔ openapi.json) is now in `arch:fitness` too.
 - `scripts/report-ui-parity.ts` — **UI implementation-parity report**: bridges the documented

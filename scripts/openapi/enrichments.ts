@@ -30,6 +30,10 @@ import {
   ManualValidateRequest,
 } from "@wardenx/billing";
 import {
+  SystemStatusComponentBodySchema as M1SystemStatusComponentBodySchema,
+  SystemStatusResponseSchema as M1SystemStatusResponseSchema,
+} from "../../apps/backend/src/bootstrap/routes/system";
+import {
   AuthContextResponseSchema as M2AuthContextResponseSchema,
   CollaboratorConsumeRequestSchema as M2CollaboratorConsumeRequestSchema,
   CollaboratorConsumeResponseSchema as M2CollaboratorConsumeResponseSchema,
@@ -1040,6 +1044,7 @@ import {
 // ── from reporting-typebox.ts (READ + admin + metric-seam responses; request queries) ──────────────
 import {
   BaseListQuerySchema as M33BaseListQuerySchema,
+  DashboardDetailViewSchema as M33DashboardDetailViewSchema,
   DashboardListQuerySchema as M33DashboardListQuerySchema,
   DashboardListResponseSchema as M33DashboardListResponseSchema,
   DashboardSummaryViewSchema as M33DashboardSummaryViewSchema,
@@ -1368,6 +1373,7 @@ import {
   EvvReconcileSchema as M8EvvReconcileSchema,
   FinalizeEncounterSchema as M8FinalizeEncounterSchema,
   FinalizeResponseSchema as M8FinalizeResponseSchema,
+  HearthnoteEnhanceResponseSchema as M8HearthnoteEnhanceResponseSchema,
   HearthnoteEnhanceSchema as M8HearthnoteEnhanceSchema,
   LateEntryOverrideSchema as M8LateEntryOverrideSchema,
   MileageResultResponseSchema as M8MileageResultResponseSchema,
@@ -1375,11 +1381,13 @@ import {
   ModificationResponseSchema as M8ModificationResponseSchema,
   RenderPayloadResponseSchema as M8RenderPayloadResponseSchema,
   SelectionsUpdateResponseSchema as M8SelectionsUpdateResponseSchema,
+  SelectionsViewResponseSchema as M8SelectionsViewResponseSchema,
   SignEncounterSchema as M8SignEncounterSchema,
   SignResponseSchema as M8SignResponseSchema,
   SignedSinceQuerySchema as M8SignedSinceQuerySchema,
   SupervisorReleaseSchema as M8SupervisorReleaseSchema,
   UpdateSelectionsSchema as M8UpdateSelectionsSchema,
+  VitalsListResponseSchema as M8VitalsListResponseSchema,
   VitalsResultResponseSchema as M8VitalsResultResponseSchema,
   VoidEncounterSchema as M8VoidEncounterSchema,
   VoidResponseSchema as M8VoidResponseSchema,
@@ -3778,7 +3786,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   // binds to come off the session, never the body.
   "POST /api/v1/devices/attestation/challenge": {
     summary: "Mint a single-use device-attestation challenge for this session (§12.4)",
-    body: Type.Object({}),
     response: Type.Object({
       challengeId: Type.String(),
       nonce: Type.String({ description: "The value the device MACs; single-use, spent on submit" }),
@@ -5293,12 +5300,14 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: M31AckResponse,
   },
   "POST /api/v1/admin/portal-accounts/:id/suspend": {
-    summary: "Org-admin temporary disable of a portal account; step-up",
+    summary:
+      "Org-admin temporary disable of a portal account; step-up. The `reason` is sealed and stored on the account (503 if no tenant key envelope is bound)",
     body: M31AccountSuspendRequest,
     response: M31AckResponse,
   },
   "POST /api/v1/admin/portal-accounts/:id/reinstate": {
-    summary: "Reverse a portal-account suspension; step-up",
+    summary:
+      "Reverse a portal-account suspension; step-up. The `reason` is sealed and stored on the account (503 if no tenant key envelope is bound)",
     body: M31AccountSuspendRequest,
     response: M31AckResponse,
   },
@@ -5948,15 +5957,24 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M8EncounterViewResponseSchema,
   },
   "PATCH /api/v1/encounters/:encounterId/selections": {
-    summary: "Update draft selections (§7.7 If-Match)",
+    summary:
+      "Write the draft's HearthNote selection tree (§7.7 If-Match). Returns the Layer-1 assembly of what was stored",
     body: M8UpdateSelectionsSchema,
     response: M8SelectionsUpdateResponseSchema,
     headers: IF_MATCH_HEADER,
+  },
+  "GET /api/v1/encounters/:encounterId/selections": {
+    summary: "Read the stored HearthNote selection tree back, with its assembled Layer-1 narrative",
+    response: M8SelectionsViewResponseSchema,
   },
   "POST /api/v1/encounters/:encounterId/vitals": {
     summary: "Capture a vitals set",
     body: M8CaptureVitalsSchema,
     response: M8VitalsResultResponseSchema,
+  },
+  "GET /api/v1/encounters/:encounterId/vitals": {
+    summary: "Read the vitals sets recorded on an encounter",
+    response: M8VitalsListResponseSchema,
   },
   "PATCH /api/v1/encounters/:encounterId/vitals/:vitalId": {
     summary: "Edit a vitals set (§7.7 If-Match)",
@@ -5990,13 +6008,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/encounters/:encounterId/finalize": {
     summary: "Finalize the encounter (Layer-3 gate preview)",
-    body: M8FinalizeEncounterSchema,
     response: M8FinalizeResponseSchema,
   },
   "POST /api/v1/encounters/:encounterId/hearthnote/enhance": {
     summary: "Invoke HearthNote Layer-2 enhancement",
     body: M8HearthnoteEnhanceSchema,
-    response: M8ModificationResponseSchema,
+    response: M8HearthnoteEnhanceResponseSchema,
   },
   "PATCH /api/v1/encounters/:encounterId/hearthnote/modifications/:modId/decisions": {
     summary: "Record a per-passage accept/edit/reject decision",
@@ -6047,14 +6064,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M8CreateAddendumResponseSchema,
   },
   "PATCH /api/v1/encounters/:encounterId/addenda/:addendumId/selections": {
-    summary: "Update addendum selections (§7.7 If-Match)",
+    summary:
+      "Write an addendum's HearthNote selection tree (§7.7 If-Match). Returns the Layer-1 assembly of what was stored",
     body: M8UpdateSelectionsSchema,
     response: M8AddendumSelectionsResponseSchema,
     headers: IF_MATCH_HEADER,
   },
+  "GET /api/v1/encounters/:encounterId/addenda/:addendumId/selections": {
+    summary: "Read an addendum's stored HearthNote selection tree back, assembled",
+    response: M8SelectionsViewResponseSchema,
+  },
   "POST /api/v1/encounters/:encounterId/addenda/:addendumId/finalize": {
     summary: "Finalize an addendum",
-    body: M8FinalizeEncounterSchema,
     response: M8AddendumFinalizeResponseSchema,
   },
   "POST /api/v1/encounters/:encounterId/addenda/:addendumId/sign": {
@@ -6073,7 +6094,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M8EncounterListResponseSchema,
   },
   "GET /api/v1/internal/encounters/:encounterId/render-payload": {
-    summary: "Internal: M22 PDF-render payload",
+    summary:
+      "Internal: M22 PDF-render payload — the assembled HearthNote. 404 when the encounter has no selection tree to render (never an empty string)",
     response: M8RenderPayloadResponseSchema,
   },
 });
@@ -7302,7 +7324,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/orgs/:id/invitations/:invId/resend": {
     summary: "Re-mint a pending invite's token + expiry, invalidating the prior link (TASK-030)",
-    body: M2InvitationResendRequestSchema,
     response: M2InvitationResendResponseSchema,
   },
   "GET /api/v1/invitations/:token": {
@@ -9154,8 +9175,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M33DashboardListResponseSchema,
   },
   "GET /api/v1/reporting/dashboards/:dashboardId": {
-    summary: "Read one dashboard (share-scope visibility gate)",
-    response: M33DashboardSummaryViewSchema,
+    summary: "Read one dashboard: summary + its tile manifest (share-scope visibility gate)",
+    // F-044 — was the SUMMARY schema, which carries `tileCount` and no tiles. The render screen has
+    // always read `detail.tiles`; with the contract declaring no such field the generated client typed it
+    // away, and the screen's own fallback ("the tile manifest is not available in this context") became
+    // the only branch it could take.
+    response: M33DashboardDetailViewSchema,
   },
   "GET /api/v1/reporting/tiles/:tileKey": {
     summary: "Read a tile: compile+execute its spec (aggregate-only, D6)",
@@ -10110,7 +10135,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /fhir/r4/CodeSystem/$validate-code": {
     summary:
-      "CodeSystem $validate-code (R13). Requires `system/CodeSystem.read`; returns a well-formed Parameters result",
+      "CodeSystem $validate-code (R13). Requires `system/CodeSystem.read`; resolves the supplied Parameters (`url` or `system`, plus `code`) through M38 terminology and returns the answer as Parameters. 400 when either is missing; 404 `not-supported` for a code system this server does not serve",
     body: M28ValidateCodeBody,
   },
   "GET /fhir/r4/ValueSet/:vs": {
@@ -10651,52 +10676,42 @@ const M35EmptyActionBody = Type.Object({}, { additionalProperties: false });
 
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/admin/dunning/:subscriptionId/reset": {
-    body: M35EmptyActionBody,
     response: M35DunningDto,
     summary: "Reset dunning",
   },
   "POST /api/admin/dunning/:subscriptionId/skip_stage": {
-    body: M35EmptyActionBody,
     response: M35DunningDto,
     summary: "Skip dunning stage",
   },
   "POST /api/admin/plans/:id/activate": {
-    body: M35EmptyActionBody,
     response: M35PlanAdminDto,
     summary: "Activate plan",
   },
   "POST /api/admin/plans/:id/deprecate": {
-    body: M35EmptyActionBody,
     response: M35PlanAdminDto,
     summary: "Deprecate plan",
   },
   "POST /api/admin/refunds/:id/approve": {
-    body: M35EmptyActionBody,
     response: M35RefundDto,
     summary: "Approve refund",
   },
   "POST /api/admin/subscriptions/:id/cancel": {
-    body: M35EmptyActionBody,
     response: M35SubscriptionAdminResponseDto,
     summary: "Cancel immediately",
   },
   "POST /api/admin/subscriptions/:id/resume": {
-    body: M35EmptyActionBody,
     response: M35SubscriptionAdminResponseDto,
     summary: "Resume subscription (admin)",
   },
   "POST /api/v1/payment_methods/setup_intent": {
-    body: M35EmptyActionBody,
     response: M35SetupIntentResponseDto,
     summary: "Create Stripe SetupIntent",
   },
   "POST /api/v1/subscription/cancel": {
-    body: M35EmptyActionBody,
     response: M35SubscriptionResponseDto,
     summary: "Cancel at period end",
   },
   "POST /api/v1/subscription/resume": {
-    body: M35EmptyActionBody,
     response: M35SubscriptionResponseDto,
     summary: "Resume subscription",
   },
@@ -10725,17 +10740,14 @@ const M25RemittanceEmptyBodySchema = Type.Object(
 Object.assign(ROUTE_ENRICHMENTS, {
   "PATCH /api/v1/appeals/:id/ack": {
     summary: "Record the payer's receipt acknowledgement of an appeal (§4.1)",
-    body: M25RemittanceEmptyBodySchema,
     response: M25VersionedResultSchema,
   },
   "POST /api/v1/denials/:id/close": {
     summary: "Close a resolved denial case (§4.1)",
-    body: M25RemittanceEmptyBodySchema,
     response: M25VersionedResultSchema,
   },
   "PATCH /api/v1/denials/:id/start": {
     summary: "Start work on a denial case (→ in_progress, §4.1)",
-    body: M25RemittanceEmptyBodySchema,
     response: M25VersionedResultSchema,
   },
 });
@@ -10751,32 +10763,26 @@ const M31EmptyBody = Type.Object({}, { additionalProperties: false });
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/admin/portal-invitations/:id/revoke": {
     summary: "Revoke a portal invite before acceptance",
-    body: M31EmptyBody,
     response: M31AckResponse,
   },
   "POST /api/v1/portal/documents/upload-complete/:uploadId": {
     summary: "Confirm the M22 intake batch received",
-    body: M31EmptyBody,
     response: M31UploadCompleteResponse,
   },
   "POST /api/v1/portal/sessions/logout": {
     summary: "Server-side portal session close",
-    body: M31EmptyBody,
     response: M31AckResponse,
   },
   "POST /api/v1/portal/telehealth/visits/:visitId/leave": {
     summary: "Portal-side telehealth leave (idempotent)",
-    body: M31EmptyBody,
     response: M31AckResponse,
   },
   "POST /api/v1/telehealth/visits/:visitId/join": {
     summary: "Clinician-side telehealth join — mints a participant token",
-    body: M31EmptyBody,
     response: M31TelehealthJoinResponse,
   },
   "POST /api/v1/telehealth/visits/:visitId/leave": {
     summary: "Clinician-side telehealth leave",
-    body: M31EmptyBody,
     response: M31AckResponse,
   },
 });
@@ -10811,12 +10817,10 @@ const M30EmptyIncidentActionBody = Type.Object({});
 
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/quality/incidents/:incidentId/submit": {
-    body: M30EmptyIncidentActionBody,
     summary:
       "Submit a draft incident for triage (draft to submitted; reporter-owned, no body fields consumed) (Sec 4.1 R-54)",
   },
   "POST /api/v1/quality/incidents/:incidentId/close": {
-    body: M30EmptyIncidentActionBody,
     summary:
       "Close a resolved incident (resolved to closed_followup_complete; no body fields consumed) (Sec 4.1 R-59)",
   },
@@ -12541,5 +12545,21 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/ops/outbox/:id": {
     summary: "Outbox event detail — full payload + last error (operator recovery view, WX-PR-020)",
     response: OpsOutboxDetailResponse,
+  },
+});
+
+// ── M1 bootstrap system routes (#94) ──────────────────────────────────────────────────────────────────
+// `POST /api/v1/admin/system/status` reads and validates a real body and published none, so `client:gen`
+// typed that body as `never` — the generated client could not express the call. The schemas live beside
+// the route's own runtime validator so the two cannot drift.
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/system/status": {
+    summary: "Read this org's system-status components",
+    response: M1SystemStatusResponseSchema,
+  },
+  "POST /api/v1/admin/system/status": {
+    summary: "Upsert one system-status component (platform_ops only)",
+    body: M1SystemStatusComponentBodySchema,
+    response: M1SystemStatusResponseSchema,
   },
 });

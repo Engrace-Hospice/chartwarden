@@ -76,19 +76,26 @@ export function QualityHub(): JSX.Element {
     };
   }, [client]);
 
+  // `insufficient_n` covers two facts the wire used to conflate: a population under the CMS reportable
+  // floor, and an input this platform structurally cannot assemble (HCI 5/6/7, defined over the
+  // beneficiary's Medicare claims across every provider). Only the first is a low-N problem, and only the
+  // first can be fixed by having more patients — so they get their own tiles. `unavailableReason` is the
+  // discriminator; it is non-null only for the second.
   const kpis = useMemo(() => {
     let meeting = 0;
     let missing = 0;
     let suppressed = 0;
+    let notComputable = 0;
     let uncomputed = 0;
     for (const m of measures) {
       const v = m.latestValue;
       if (!v) uncomputed += 1;
+      else if (v.unavailableReason) notComputable += 1;
       else if (v.bandColor === "insufficient_n") suppressed += 1;
       else if (v.thresholdMet) meeting += 1;
       else missing += 1;
     }
-    return { meeting, missing, suppressed, uncomputed };
+    return { meeting, missing, suppressed, notComputable, uncomputed };
   }, [measures]);
 
   const deficient = useMemo(
@@ -104,7 +111,14 @@ export function QualityHub(): JSX.Element {
   const filteredMeasures = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return measures.filter((m) => {
-      const currentBand = m.latestValue?.bandColor ?? "not_computed";
+      // `not_computable` is a pseudo-band the filter understands but the wire does not send: it is the
+      // `insufficient_n` rows carrying a reason. Resolved here so the tile, the dropdown and the free-text
+      // search all agree on one vocabulary.
+      const currentBand = m.latestValue
+        ? m.latestValue.unavailableReason
+          ? "not_computable"
+          : m.latestValue.bandColor
+        : "not_computed";
       const matchesDomain = !domain || m.domain === domain;
       const matchesBand = !band || currentBand === band;
       const matchesSearch =
@@ -170,6 +184,18 @@ export function QualityHub(): JSX.Element {
             selected={band === "insufficient_n"}
             onSelect={() => {
               setBand("insufficient_n");
+              setPage(1);
+            }}
+          />
+          <KpiCard
+            label="Not computable here"
+            value={loading ? "—" : String(kpis.notComputable)}
+            detail="Needs data outside this system"
+            tone="neutral"
+            accentColor="var(--color-outline-variant)"
+            selected={band === "not_computable"}
+            onSelect={() => {
+              setBand("not_computable");
               setPage(1);
             }}
           />
@@ -255,6 +281,7 @@ export function QualityHub(): JSX.Element {
                 <option value="yellow">Yellow</option>
                 <option value="red">Red</option>
                 <option value="insufficient_n">Suppressed</option>
+                <option value="not_computable">Not computable here</option>
                 <option value="not_computed">Not computed</option>
               </select>
               {activeFilters > 0 ? (
@@ -320,14 +347,22 @@ export function QualityHub(): JSX.Element {
                     </td>
                     <td style={{ ...tdStyle, textAlign: "right" }}>
                       {m.latestValue ? (
-                        <StatusPill
-                          tone={toneOf(MEASURE_BAND_TONE, m.latestValue.bandColor)}
-                          label={
-                            m.latestValue.bandColor === "insufficient_n"
-                              ? "Suppressed"
-                              : humanize(m.latestValue.bandColor)
-                          }
-                        />
+                        // The reason rides on a wrapping `title` rather than its own column: it is a full
+                        // sentence per measure and only three of ~36 carry one, so a column would be empty
+                        // for the rest. A row that HAS one is still discoverable without hovering — the
+                        // "Not computable here" tile filters straight to them.
+                        <span title={m.latestValue.unavailableReason ?? undefined}>
+                          <StatusPill
+                            tone={toneOf(MEASURE_BAND_TONE, m.latestValue.bandColor)}
+                            label={
+                              m.latestValue.unavailableReason
+                                ? "Not computable here"
+                                : m.latestValue.bandColor === "insufficient_n"
+                                  ? "Suppressed"
+                                  : humanize(m.latestValue.bandColor)
+                            }
+                          />
+                        </span>
                       ) : (
                         <StatusPill tone="neutral" label="Not computed" />
                       )}

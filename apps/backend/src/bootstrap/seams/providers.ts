@@ -157,6 +157,9 @@ export const careTeamDenyStub: CareTeamProvider = {
   primaryRnUserId() {
     throw new NotImplementedError("CareTeamProvider");
   },
+  primaryRnMembershipId() {
+    throw new NotImplementedError("CareTeamProvider");
+  },
 };
 
 export const credentialReaderDenyStub: CredentialReader = {
@@ -610,6 +613,12 @@ export const levelOfCarePeriodReaderDenyStub: LevelOfCarePeriodReader = {
   chcOrGipCoverageCounts() {
     throw new NotImplementedError("LevelOfCarePeriodReader");
   },
+  levelOfCareDaySpans() {
+    throw new NotImplementedError("LevelOfCarePeriodReader");
+  },
+  electionPeriodSpans() {
+    throw new NotImplementedError("LevelOfCarePeriodReader");
+  },
 };
 
 /** M6 — ALL-discharge-type census + early/late live-discharge counts (M30 HCI 3/4). Denies until M6 registers it. */
@@ -664,6 +673,9 @@ export const signedEncountersReaderDenyStub: SignedEncountersReader = {
     throw new NotImplementedError("SignedEncountersReader");
   },
   lateEntryCountsForOrg() {
+    throw new NotImplementedError("SignedEncountersReader");
+  },
+  skilledNursingDayTotalsForOrg() {
     throw new NotImplementedError("SignedEncountersReader");
   },
 };

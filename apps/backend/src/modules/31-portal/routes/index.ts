@@ -32,7 +32,14 @@ export {
 } from "./guards";
 export { parse, parseQuery } from "./portal-typebox";
 
+import type { PortalReasonCipher } from "../portal-crypto";
 import type { PortalStore } from "./store";
+
+export {
+  type PortalReasonCipher,
+  type PortalTenantKeyProvider,
+  createPortalReasonCipher,
+} from "../portal-crypto";
 
 /**
  * The structural projection of the `@wardenx/telehealth-client` `TelehealthProvider` the route layer calls
@@ -60,6 +67,12 @@ export interface PortalRouteDeps {
   readonly store: PortalStore;
   /** The video vendor adapter (Daily.co default per D1); a fail-closed NOOP when absent. */
   readonly telehealth?: TelehealthAdapterPort;
+  /**
+   * Seals the operator's reason for an account suspend/reinstate (#117). ABSENT ⇒ those two routes
+   * refuse with 503 rather than dropping the reason or writing it in the clear into a `_cipher` column
+   * — the M32 R18 posture, for the same reason.
+   */
+  readonly reasonCipher?: PortalReasonCipher;
   /** Injected clock (every timestamp decision is reproducible in a unit test). */
   readonly now?: () => Date;
 }

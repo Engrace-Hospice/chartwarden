@@ -104,6 +104,24 @@ export const DashboardSummaryViewSchema = Type.Object({
 });
 export const DashboardListResponseSchema = CursorPageOf(DashboardSummaryViewSchema);
 
+/** One tile on a dashboard — the `report_base_catalog.base_key` `GET /reporting/tiles/:tileKey` takes. */
+export const DashboardTileDescriptorSchema = Type.Object({
+  tileKey: Type.String(),
+  displayName: Type.String(),
+  kind: Type.String(),
+});
+
+/** §4.1 #2 — the dashboard READ: summary + the tile manifest the render screen composes from (F-044). */
+export const DashboardDetailViewSchema = Type.Object({
+  dashboardId: Type.String(),
+  displayName: Type.String(),
+  authorship: lit(["system", "tenant"] as const),
+  tileCount: Type.Integer(),
+  shareScope: lit(["private", "role", "org"] as const),
+  isOrgDefault: Type.Boolean(),
+  tiles: Type.Array(DashboardTileDescriptorSchema),
+});
+
 const DimensionDescriptorSchema = Type.Object({
   dimensionKey: Type.String(),
   displayName: Type.String(),

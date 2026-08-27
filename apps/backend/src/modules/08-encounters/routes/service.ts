@@ -9,6 +9,15 @@
 // SCOPE (T09): the route inventory + the §4.5 RBAC gating + the §4.6 cosigner predicate. The heavier
 // authoring surfaces (vitals/mileage, the F2F dual-write happy path) land in M8-T10; here they are lean
 // success handlers over the same optimistic-locked records so the inventory is wired and smoke-tested.
+import {
+  type AssemblyContext,
+  HearthnoteAssemblyError,
+  type SelectionState,
+  assemble,
+  templateKey as hearthnoteTemplateKey,
+  resolveTemplate,
+} from "@wardenx/hearthnote";
+import { VOCAB_VERSION } from "@wardenx/narrative-vocab";
 import type {
   EncounterDiscipline,
   EncounterStatus,
@@ -20,13 +29,22 @@ import {
   type F2fAttestationWrite,
   type MileageInput,
   type VitalsInput,
+  deriveAbnormalFlags,
   planF2fDualWrite,
   planMileageCapture,
   planVitalsCapture,
 } from "../authoring/index";
 import { type CosignatureState, transitionCosignature } from "../cosignature/index";
+import {
+  type GateSectionSelection,
+  assertGatePassed,
+  runAddendumComplianceGate,
+  runEncounterComplianceGate,
+} from "../gate/index";
+import { type Layer2EnhanceOutcome, resolveLayer2Eligibility } from "../layer2";
 import { type AddendumState, transitionAddendum } from "../lifecycle/addendum";
-import { transitionEncounter } from "../lifecycle/encounter";
+import { requiresCosignature, transitionEncounter } from "../lifecycle/encounter";
+import { EncounterStateError } from "../lifecycle/errors";
 import {
   checkEncounterDisciplinePair,
   checkMutableForEdit,
@@ -86,6 +104,45 @@ export interface VitalsResult {
   readonly bmi: string | null;
 }
 
+/**
+ * One stored vitals set, read back (§2.2, §3.3 `vitals`). The write path returns only the DERIVED
+ * facts (`VitalsResult`: ids + flags + BMI) and the measured values were then unreadable through any
+ * caller-facing route — a clinician could record a blood pressure and never see it again (#92).
+ *
+ * `abnormalFlags` is re-derived on read with `deriveAbnormalFlags`, the same pure function the write
+ * path uses, so the two cannot disagree about which value is out of range. It deliberately does NOT
+ * call `planVitalsCapture`: that validates, and a stored row is a signed clinical record — a read
+ * that can throw because a plausibility envelope was tightened after the write would make the record
+ * unretrievable, which is the opposite of what 42 CFR 418.104 requires.
+ *
+ * `loincReferences` is not surfaced: it is per-field FHIR mapping metadata, not a clinician-facing
+ * measurement, and M28 maps it from the table directly.
+ */
+export interface VitalsView {
+  readonly id: string;
+  readonly encounterId: string;
+  readonly capturedAt: string;
+  readonly bpSystolic: number | null;
+  readonly bpDiastolic: number | null;
+  readonly heartRate: number | null;
+  readonly respiratoryRate: number | null;
+  readonly temperature: string | null;
+  readonly temperatureUnit: string | null;
+  readonly spo2: number | null;
+  readonly painScore: number | null;
+  readonly painScale: string | null;
+  readonly weight: string | null;
+  readonly weightUnit: string | null;
+  readonly height: string | null;
+  readonly heightUnit: string | null;
+  readonly bmi: string | null;
+  readonly bloodGlucose: number | null;
+  readonly bloodGlucoseUnit: string | null;
+  readonly clinicallyNotIndicatedFields: readonly string[] | null;
+  readonly clinicallyNotIndicatedReason: string | null;
+  readonly abnormalFlags: readonly string[];
+}
+
 /** Route result for a mileage capture/edit — the authoritative figure (D10). */
 export interface MileageResult {
   readonly mileageId: string;
@@ -111,6 +168,147 @@ export interface EncounterView {
   readonly cosignedAt: string | null;
 }
 
+// ── HearthNote selections (§2.6, #114) ──────────────────────────────────────────────────────────────
+
+/** One selected vocabulary entry with its resolved `${slot}` params (the wire shape of `EntrySelection`). */
+export interface SelectionEntryInput {
+  readonly code: string;
+  readonly params?: Readonly<Record<string, string | number>>;
+}
+
+/** One section's selections plus the clinician's verbatim prose for it. */
+export interface SelectionSectionInput {
+  readonly sectionId: string;
+  readonly entries: readonly SelectionEntryInput[];
+  readonly freeText?: string;
+}
+
+/**
+ * What a selections PATCH carries. SECTIONS ONLY — `templateKey` / `vocabVersion` / the pair are derived
+ * server-side from the encounter row, so a caller cannot assemble a note against a template its
+ * encounter's discipline may not use.
+ */
+export interface SelectionsInput {
+  readonly sections: readonly SelectionSectionInput[];
+}
+
+/** The stored tree read back, with the Layer-1 assembly of it (routes 3b / 23b). */
+export interface SelectionsView {
+  readonly templateKey: string;
+  readonly vocabVersion: string;
+  readonly sections: readonly SelectionSectionInput[];
+  readonly layer1Preview: string;
+  readonly version: number;
+}
+
+/**
+ * The `${patient}` slot Layer-1 interpolates.
+ *
+ * `AssemblyContext.patient` is documented as "the real name" at Layer 1, and M8 cannot resolve one: it
+ * consumes no M5 reader (manifest `dependsOn: [1, 6, 7, 36, 38]`), and adding a cross-module dependency
+ * to fill a narrative slot is a bigger decision than this fix. `Patient` is the safe resolution rather
+ * than a placeholder — the assembled prose reads as ordinary clinical documentation ("Patient is
+ * cardiovascularly stable…"), and it is PHI-minimal by construction. Named here so the day M8 does
+ * consume a patient reader, there is exactly one line to change.
+ */
+export const ASSEMBLY_PATIENT_SLOT = "Patient";
+
+/** Build the `SelectionState` the pure assembler takes from the stored tree + the encounter's own facts. */
+/**
+ * The §2.6 gate's view of a selection tree: presence only (how many entries, and whether the clinician
+ * attached prose) — never the content. The Drizzle service derives the same shape from the STORED tree,
+ * where the prose lives inside the DEK envelope and only a `hasFreeText` marker sits beside the codes.
+ */
+export function toGateSections(sections: readonly SelectionSectionInput[]): GateSectionSelection[] {
+  return sections.map((s) => ({
+    sectionId: s.sectionId,
+    entryCount: s.entries.length,
+    hasFreeText: (s.freeText?.length ?? 0) > 0,
+  }));
+}
+
+export function toSelectionState(
+  encounterType: EncounterType,
+  discipline: EncounterDiscipline,
+  sections: readonly SelectionSectionInput[],
+  vocabVersion: string = VOCAB_VERSION,
+): SelectionState {
+  return {
+    templateKey: hearthnoteTemplateKey(encounterType, discipline),
+    vocabVersion,
+    encounterType,
+    discipline,
+    sections: sections.map((s) => ({
+      sectionId: s.sectionId,
+      entries: s.entries.map((e) => ({ code: e.code, ...(e.params ? { params: e.params } : {}) })),
+      ...(s.freeText === undefined ? {} : { freeText: s.freeText }),
+    })),
+  };
+}
+
+/**
+ * The §2.7 code each `HearthnoteAssemblyError` maps to. The package documents this mapping in its own
+ * `AssemblyErrorCode` union ("mapped to HTTP by the M8 service in T09"); it was never written, because
+ * nothing ever called `assemble`. `TEMPLATE_KEY_MISMATCH` cannot occur through these routes — the key is
+ * server-derived from the encounter row — but it is mapped rather than left to fall through as a 500.
+ */
+const ASSEMBLY_ERROR_CODE = {
+  TEMPLATE_NOT_FOUND: "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
+  TEMPLATE_KEY_MISMATCH: "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
+  VOCAB_VERSION_MISMATCH: "VOCAB_VERSION_MISMATCH",
+  UNKNOWN_VOCAB_CODE: "UNKNOWN_VOCAB_CODE",
+} as const;
+
+/**
+ * Assemble the Layer-1 narrative for a selection tree, refusing anything that cannot become a note.
+ *
+ * Two failures are checked, and neither is allowed to pass silently:
+ *
+ *   · An unknown SECTION id. `assembleLayer1` walks the TEMPLATE's sections and looks each one up in the
+ *     selection, so a section the template does not have is simply never visited — the content would be
+ *     stored and then vanish from every render, which is the same class of silent loss as the discarded
+ *     PATCH itself. Rejected here instead.
+ *   · An unknown vocabulary CODE, an illegal (encounterType × discipline) pair, or a vocab-version
+ *     mismatch — `assemble`'s own guards, surfaced as the §2.7 codes above rather than a 500.
+ *
+ * Nothing is caught and turned into `""`. A note that cannot be assembled must say so; returning an
+ * empty string for it is the defect this whole path is being fixed for.
+ */
+export function assembleSelections(
+  encounterType: EncounterType,
+  discipline: EncounterDiscipline,
+  serviceDate: string,
+  sections: readonly SelectionSectionInput[],
+  vocabVersion: string = VOCAB_VERSION,
+): string {
+  const template = resolveTemplate(encounterType, discipline);
+  if (template === undefined) {
+    throw new EncounterStateError(
+      "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
+      `no HearthNote template for '${hearthnoteTemplateKey(encounterType, discipline)}'`,
+    );
+  }
+  const known = new Set(template.sections.map((t) => t.id));
+  for (const s of sections) {
+    if (!known.has(s.sectionId)) {
+      throw new EncounterStateError(
+        "UNKNOWN_TEMPLATE_SECTION",
+        `section '${s.sectionId}' is not part of template '${template.key}'`,
+      );
+    }
+  }
+  const context: AssemblyContext = { patient: ASSEMBLY_PATIENT_SLOT, serviceDate };
+  try {
+    return assemble(toSelectionState(encounterType, discipline, sections, vocabVersion), context)
+      .narrative;
+  } catch (e) {
+    if (e instanceof HearthnoteAssemblyError) {
+      throw new EncounterStateError(ASSEMBLY_ERROR_CODE[e.code], e.message);
+    }
+    throw e;
+  }
+}
+
 /** The route service the §4.1 handlers compose over. Every method is org-scoped (RLS in prod). */
 export interface EncounterRouteService {
   createDraft(
@@ -123,7 +321,10 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
     ifVersion: number,
+    input: SelectionsInput,
   ): Promise<{ version: number; layer1Preview: string }>;
+  /** Read the stored selection tree back, assembled (#114 — the round-trip the PATCH never had). */
+  getSelections(organizationId: string, encounterId: string): Promise<SelectionsView>;
   captureVitals(
     organizationId: string,
     encounterId: string,
@@ -135,6 +336,11 @@ export interface EncounterRouteService {
     vitalsId: string,
     input: VitalsInput,
   ): Promise<VitalsResult>;
+  /** Read back every vitals set recorded on one encounter, newest capture first (#92). */
+  listVitals(
+    organizationId: string,
+    encounterId: string,
+  ): Promise<{ encounterId: string; vitals: VitalsView[] }>;
   captureMileage(
     organizationId: string,
     encounterId: string,
@@ -156,10 +362,9 @@ export interface EncounterRouteService {
     encounterId: string,
     at: LocalDate,
   ): Promise<{ status: "finalized"; version: number }>;
-  enhanceHearthnote(
-    organizationId: string,
-    encounterId: string,
-  ): Promise<{ modificationId: string }>;
+  /** §2.6 D5 — invoke Layer-2. Returns the ladder's verdict; see {@link Layer2EnhanceOutcome} for why
+   *  there is no `enhanced: true` arm to return yet (#123). */
+  enhanceHearthnote(organizationId: string, encounterId: string): Promise<Layer2EnhanceOutcome>;
   recordModificationDecision(
     organizationId: string,
     encounterId: string,
@@ -216,7 +421,13 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
     addendumId: string,
-  ): Promise<{ version: number }>;
+    input: SelectionsInput,
+  ): Promise<{ version: number; layer1Preview: string }>;
+  getAddendumSelections(
+    organizationId: string,
+    encounterId: string,
+    addendumId: string,
+  ): Promise<SelectionsView>;
   finalizeAddendum(
     organizationId: string,
     encounterId: string,
@@ -237,10 +448,13 @@ export interface EncounterRouteService {
     encounterIds: readonly string[],
   ): Promise<{ billability: { encounterId: string; billable: boolean }[] }>;
   signedSince(organizationId: string, since: string): Promise<{ encounters: EncounterView[] }>;
+  /** The M22/M28 render payload. `pinned` says whether `final` is the byte-for-byte narrative recorded at
+   *  finalize (`hearthnote_assembled_output.final_cipher`) or a live re-assembly of the current selection
+   *  tree — a legal record versus a preview of one, which a renderer must be able to tell apart (#122). */
   renderPayload(
     organizationId: string,
     encounterId: string,
-  ): Promise<{ encounterId: string; final: string }>;
+  ): Promise<{ encounterId: string; final: string; pinned: boolean }>;
 }
 
 // ── in-memory record + slice ────────────────────────────────────────────────────────────────────────
@@ -263,16 +477,89 @@ interface EncounterRecord {
   signedAt: string | null;
   cosignedAt: string | null;
   cosignature: CosignatureState | null;
-  addenda: Map<string, { id: string; status: AddendumState; version: number }>;
-  vitals: Map<string, VitalsInput>;
+  addenda: Map<
+    string,
+    {
+      id: string;
+      status: AddendumState;
+      version: number;
+      selections: readonly SelectionSectionInput[];
+      /** The narrative pinned at this addendum's finalize (#122). */
+      pinnedNarrative?: string;
+    }
+  >;
+  /** The stored HearthNote tree (#114). Empty until the clinician PATCHes selections. */
+  selections: readonly SelectionSectionInput[];
+  /** The narrative pinned at finalize (#122) — undefined while the encounter is still a draft. */
+  pinnedNarrative?: string;
+  /** The membership the D3 cosignature routed to, once one has (#124); null before sign / when none. */
+  cosignerMembershipId?: string | null;
+  vitals: Map<string, { capturedAt: string; bmi: string | null; input: VitalsInput }>;
   mileage: { id: string; milesDriven: string; source: string } | null;
 }
+
+/**
+ * Project one stored vitals set into its read view (#92). Exported so the Drizzle adapter reuses the
+ * exact same projection and ordering as the in-memory slice — the read DTO is a published contract,
+ * and two hand-written projections of it would eventually disagree about a null.
+ */
+export function toVitalsView(
+  id: string,
+  encounterId: string,
+  stored: { capturedAt: string; bmi: string | null; input: VitalsInput },
+): VitalsView {
+  const { input } = stored;
+  return {
+    id,
+    encounterId,
+    capturedAt: stored.capturedAt,
+    bpSystolic: input.bpSystolic ?? null,
+    bpDiastolic: input.bpDiastolic ?? null,
+    heartRate: input.heartRate ?? null,
+    respiratoryRate: input.respiratoryRate ?? null,
+    temperature: input.temperature ?? null,
+    temperatureUnit: input.temperatureUnit ?? null,
+    spo2: input.spo2 ?? null,
+    painScore: input.painScore ?? null,
+    painScale: input.painScale ?? null,
+    weight: input.weight ?? null,
+    weightUnit: input.weightUnit ?? null,
+    height: input.height ?? null,
+    heightUnit: input.heightUnit ?? null,
+    bmi: stored.bmi,
+    bloodGlucose: input.bloodGlucose ?? null,
+    bloodGlucoseUnit: input.bloodGlucoseUnit ?? null,
+    clinicallyNotIndicatedFields: input.clinicallyNotIndicatedFields
+      ? [...input.clinicallyNotIndicatedFields]
+      : null,
+    clinicallyNotIndicatedReason: input.clinicallyNotIndicatedReason ?? null,
+    abnormalFlags: deriveAbnormalFlags(input),
+  };
+}
+
+/** Newest capture first, id as the tiebreak so two sets captured in the same instant still order. */
+export function byCapturedAtDesc(a: VitalsView, b: VitalsView): number {
+  if (a.capturedAt !== b.capturedAt) return a.capturedAt < b.capturedAt ? 1 : -1;
+  return a.id < b.id ? 1 : -1;
+}
+
+/** The membership a cosignature routes to when the slice is not told otherwise (see below). */
+export const SLICE_DEFAULT_COSIGNER_MEMBERSHIP_ID = "c0000000-0000-4000-8000-00000000c051";
 
 /** Deterministic, I/O-free seed for the in-memory route service (slice + smoke tests). */
 export interface EncounterRouteSeed {
   readonly encounters?: ReadonlyArray<
     Partial<EncounterRecord> & { id: string; organizationId: string; patientId: string }
   >;
+  /**
+   * §2.4 D3 / §2.6 check 10 — the patient's RN case manager as a membership id, or `null` for "this
+   * patient has none". In production this comes from M5's `CareTeamProvider.primaryRnMembershipId`; this
+   * slice binds no seams, so it is an injected function with a documented stand-in default
+   * ({@link SLICE_DEFAULT_COSIGNER_MEMBERSHIP_ID}) — the same convention as `stepUpFresh` being `true`
+   * here. It is a FUNCTION rather than a constant so a test can model "no eligible cosigner" without
+   * the slice pretending to know the answer for every patient.
+   */
+  readonly primaryRnMembershipId?: (organizationId: string, patientId: string) => string | null;
 }
 
 /** Pads `n` to a uuid-shaped id so created ids round-trip through uuid-validated bodies (M6/M8 slice). */
@@ -314,6 +601,8 @@ export interface EncounterBackendInspect {
   mileageOf(encounterId: string): { id: string; milesDriven: string; source: string } | null;
   /** The number of vitals rows captured on an encounter (§2.2 — 0..n per visit). */
   vitalsCount(encounterId: string): number;
+  /** The membership the D3 cosignature routed to, or null (§2.4 — the assigned RN case manager, #124). */
+  cosignerOf(encounterId: string): string | null;
 }
 
 export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
@@ -339,11 +628,14 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       cosignedAt: null,
       cosignature: null,
       addenda: new Map(),
+      selections: [],
       vitals: new Map(),
       mileage: null,
       ...e,
     });
   }
+  const primaryRnMembershipId =
+    seed.primaryRnMembershipId ?? (() => SLICE_DEFAULT_COSIGNER_MEMBERSHIP_ID);
   let created = 0;
   let subCounter = 0;
   const now = () => "2026-06-21T12:00:00.000Z";
@@ -368,6 +660,33 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
   }
 
   const subId = () => uuidFromCounter("1", ++subCounter);
+  /**
+   * §2.6 Layer-3 gate (#121) — the same pure function the Drizzle service runs, over this slice's
+   * records. `carePlanOverdue: null` is this slice's convention, not a verdict: it binds no seams (the
+   * M7 reader reads under the caller's ambient request context and this dataset has none), the same
+   * reason `stepUpFresh` is `true` here and resolved for real in the Drizzle backend. So the slice
+   * decides the checks it CAN — every required template section populated — and defers the one it
+   * cannot to the production path, where the verdict is real.
+   */
+  const gate = (r: EncounterRecord, at: "finalize" | "sign"): boolean => {
+    const verdict = runEncounterComplianceGate({
+      encounterType: r.encounterType,
+      discipline: r.discipline,
+      sections: toGateSections(r.selections),
+      carePlanOverdue: null,
+    });
+    assertGatePassed(verdict, at);
+    return verdict.pass;
+  };
+
+  const gateAddendum = (
+    sections: readonly SelectionSectionInput[],
+    at: "finalize" | "sign",
+  ): boolean => {
+    const verdict = runAddendumComplianceGate(toGateSections(sections));
+    assertGatePassed(verdict, at);
+    return verdict.pass;
+  };
 
   const service: EncounterRouteService = {
     async createDraft(organizationId, actorUserId, args) {
@@ -397,14 +716,18 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         cosignedAt: null,
         cosignature: null,
         addenda: new Map(),
+        selections: [],
         vitals: new Map(),
         mileage: null,
       });
       return {
         id,
         status: "draft",
-        templateKey: `${args.discipline}_${args.encounterType}_v1`,
-        templateVersion: "v1",
+        // The registry key, not an invented one. This used to be `${discipline}_${encounterType}_v1`,
+        // a string matching no template in `@wardenx/hearthnote`'s registry — so a client that used it
+        // to fetch its section list would have found nothing (#114).
+        templateKey: hearthnoteTemplateKey(args.encounterType, args.discipline),
+        templateVersion: VOCAB_VERSION,
         version: 0,
       };
     },
@@ -413,12 +736,37 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       return toView(load(organizationId, encounterId));
     },
 
-    async updateSelections(organizationId, encounterId, ifVersion) {
+    async updateSelections(organizationId, encounterId, ifVersion, input) {
       const r = load(organizationId, encounterId);
       checkMutableForEdit({ status: r.status });
       checkVersion({ expected: ifVersion, actual: r.version });
+      // Assemble BEFORE persisting: an unknown vocabulary code or an illegal pair must reject the write,
+      // not be stored and discovered later by whoever tries to render the note.
+      const layer1Preview = assembleSelections(
+        r.encounterType,
+        r.discipline,
+        r.serviceDate,
+        input.sections,
+      );
+      r.selections = input.sections;
       r.version += 1;
-      return { version: r.version, layer1Preview: "" };
+      return { version: r.version, layer1Preview };
+    },
+
+    async getSelections(organizationId, encounterId) {
+      const r = load(organizationId, encounterId);
+      return {
+        templateKey: hearthnoteTemplateKey(r.encounterType, r.discipline),
+        vocabVersion: VOCAB_VERSION,
+        sections: r.selections,
+        layer1Preview: assembleSelections(
+          r.encounterType,
+          r.discipline,
+          r.serviceDate,
+          r.selections,
+        ),
+        version: r.version,
+      };
     },
 
     async captureVitals(organizationId, encounterId, input) {
@@ -426,7 +774,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       checkMutableForEdit({ status: r.status });
       const plan = planVitalsCapture(input); // validates envelopes + CNI reason (§2.2)
       const vitalsId = subId();
-      r.vitals.set(vitalsId, input);
+      r.vitals.set(vitalsId, { capturedAt: now(), bmi: plan.bmi, input });
       recordOutbox(r.id, plan.effects);
       return {
         vitalsId,
@@ -438,15 +786,25 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     async editVitals(organizationId, encounterId, vitalsId, input) {
       const r = load(organizationId, encounterId);
       checkMutableForEdit({ status: r.status });
-      if (!r.vitals.has(vitalsId)) throw new NotFoundError("vitals");
+      const prior = r.vitals.get(vitalsId);
+      if (!prior) throw new NotFoundError("vitals");
       const plan = planVitalsCapture(input);
-      r.vitals.set(vitalsId, input);
+      r.vitals.set(vitalsId, { capturedAt: prior.capturedAt, bmi: plan.bmi, input });
       recordOutbox(r.id, plan.effects);
       return {
         vitalsId,
         fieldsCaptured: plan.fieldsCaptured,
         abnormalFlags: plan.abnormalFlags,
         bmi: plan.bmi,
+      };
+    },
+    async listVitals(organizationId, encounterId) {
+      const r = load(organizationId, encounterId);
+      return {
+        encounterId: r.id,
+        vitals: [...r.vitals.entries()]
+          .map(([id, v]) => toVitalsView(id, r.id, v))
+          .sort(byCapturedAtDesc),
       };
     },
     async captureMileage(organizationId, encounterId, input) {
@@ -484,23 +842,40 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
 
     async finalize(organizationId, encounterId, at) {
       const r = load(organizationId, encounterId);
-      const t = transitionEncounter(r.status, { type: "finalize", gatePreviewPassed: true, at });
+      const t = transitionEncounter(r.status, {
+        type: "finalize",
+        gatePreviewPassed: gate(r, "finalize"),
+        at,
+      });
       r.status = t.to;
       r.version += 1;
+      // The `persist_assembled_output` effect (#122). The slice holds no DEK and no table, so the pin is
+      // the assembled string on the record — but it is a PIN: nothing reassembles it afterwards, so a
+      // later edit to the selection tree cannot change what this encounter says.
+      r.pinnedNarrative = assembleSelections(
+        r.encounterType,
+        r.discipline,
+        r.serviceDate,
+        r.selections,
+      );
       recordOutbox(r.id, t.effects);
       return { status: "finalized", version: r.version };
     },
 
+    // §2.6 D5 (#123). Was a minted id and an echo — neither identified a `hearthnote_llm_modification`,
+    // because nothing writes one. The slice models the same refusal the production service does.
     async enhanceHearthnote(organizationId, encounterId) {
       load(organizationId, encounterId);
-      return { modificationId: subId() };
+      return { enhanced: false, reason: resolveLayer2Eligibility() };
     },
     async recordModificationDecision(organizationId, encounterId, modId) {
       load(organizationId, encounterId);
-      return { modificationId: modId };
+      // The slice holds no modification rows (nothing produces one), so every id names nothing.
+      void modId;
+      throw new NotFoundError("hearthnote_llm_modification");
     },
 
-    async sign(organizationId, encounterId, _actor, args) {
+    async sign(organizationId, encounterId, actor, args) {
       const r = load(organizationId, encounterId);
       // In-memory reference slice: no real session/step-up infra (not mounted in production — see the
       // module header), so step-up is always treated as fresh here. The production Drizzle backend
@@ -516,7 +891,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
           encounterId: r.id,
           faceToFaceEncounterId: r.faceToFaceEncounterId,
           discipline: r.discipline,
-          gatePassed: true,
+          gatePassed: gate(r, "sign"),
           stepUpFresh,
           at: args.at,
         });
@@ -526,14 +901,20 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         recordOutbox(r.id, plan.encounter.effects);
         return { status: "signed", signedAt: r.signedAt, cosignatureRequestId: null };
       }
+      // §2.6 check 10 (#124) — the routed cosigner and the "an eligible cosigner exists" verdict are one
+      // answer, exactly as in the Drizzle service. Excluding the signer is the same structural guard:
+      // a note must never cosign itself.
+      const cosigner = requiresCosignature(r.discipline)
+        ? primaryRnMembershipId(organizationId, r.patientId)
+        : null;
       const t = transitionEncounter(r.status, {
         type: "sign",
         discipline: r.discipline,
-        gatePassed: true,
+        gatePassed: gate(r, "sign"),
         stepUpFresh,
         isF2f: false,
         f2fDualWriteSatisfied: true,
-        eligibleCosignerExists: true,
+        eligibleCosignerExists: cosigner !== null && cosigner !== actor.membershipId,
         at: args.at,
       });
       r.status = t.to;
@@ -541,6 +922,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       recordOutbox(r.id, t.effects);
       if (t.to === "cosign_pending") {
         r.cosignature = "routed";
+        r.cosignerMembershipId = cosigner;
         return { status: "cosign_pending", signedAt: r.signedAt, cosignatureRequestId: subId() };
       }
       return { status: "signed", signedAt: r.signedAt, cosignatureRequestId: null };
@@ -612,15 +994,40 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       const r = load(organizationId, encounterId);
       checkParentNotVoided({ parentStatus: r.status });
       const id = subId();
-      r.addenda.set(id, { id, status: "draft", version: 0 });
+      r.addenda.set(id, { id, status: "draft", version: 0, selections: [] });
       return { id, status: "draft" };
     },
-    async updateAddendumSelections(organizationId, encounterId, addendumId) {
+    async updateAddendumSelections(organizationId, encounterId, addendumId, input) {
       const r = load(organizationId, encounterId);
       const a = r.addenda.get(addendumId);
       if (!a) throw new NotFoundError("addendum");
+      const layer1Preview = assembleSelections(
+        r.encounterType,
+        r.discipline,
+        r.serviceDate,
+        input.sections,
+      );
+      a.selections = input.sections;
       a.version += 1;
-      return { version: a.version };
+      return { version: a.version, layer1Preview };
+    },
+
+    async getAddendumSelections(organizationId, encounterId, addendumId) {
+      const r = load(organizationId, encounterId);
+      const a = r.addenda.get(addendumId);
+      if (!a) throw new NotFoundError("addendum");
+      return {
+        templateKey: hearthnoteTemplateKey(r.encounterType, r.discipline),
+        vocabVersion: VOCAB_VERSION,
+        sections: a.selections,
+        layer1Preview: assembleSelections(
+          r.encounterType,
+          r.discipline,
+          r.serviceDate,
+          a.selections,
+        ),
+        version: a.version,
+      };
     },
     async finalizeAddendum(organizationId, encounterId, addendumId) {
       const r = load(organizationId, encounterId);
@@ -628,10 +1035,16 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       if (!a) throw new NotFoundError("addendum");
       const t = transitionAddendum(a.status, {
         type: "finalize",
-        gatePreviewPassed: true,
+        gatePreviewPassed: gateAddendum(a.selections, "finalize"),
         at: now().slice(0, 10),
       });
       a.status = t.to;
+      a.pinnedNarrative = assembleSelections(
+        r.encounterType,
+        r.discipline,
+        r.serviceDate,
+        a.selections,
+      );
       return { status: "finalized" };
     },
     async signAddendum(organizationId, encounterId, addendumId, _actor, args) {
@@ -640,7 +1053,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       if (!a) throw new NotFoundError("addendum");
       const t = transitionAddendum(a.status, {
         type: "sign",
-        gatePassed: true,
+        gatePassed: gateAddendum(a.selections, "sign"),
         // In-memory reference slice: no real step-up infra (not mounted in production).
         stepUpFresh: true,
         at: args.at,
@@ -698,7 +1111,20 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     },
     async renderPayload(organizationId, encounterId) {
       const r = load(organizationId, encounterId);
-      return { encounterId: r.id, final: "" };
+      // The pinned bytes win when they exist (#122) — a finalized note renders what it said, not what the
+      // current selection tree would say now.
+      if (r.pinnedNarrative !== undefined) {
+        return { encounterId: r.id, final: r.pinnedNarrative, pinned: true };
+      }
+      // Was `final: ""` unconditionally. An empty string is a RENDERABLE answer, so a bound M22 renderer
+      // would have produced an empty note and reported success; a 404 is the truthful answer when the
+      // encounter has no HearthNote to render (#114).
+      if (r.selections.length === 0) throw new NotFoundError("hearthnote_selection");
+      return {
+        encounterId: r.id,
+        final: assembleSelections(r.encounterType, r.discipline, r.serviceDate, r.selections),
+        pinned: false,
+      };
     },
   };
 
@@ -720,6 +1146,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     f2fAttestations: () => f2fAttestations,
     mileageOf: (encounterId) => byId.get(encounterId)?.mileage ?? null,
     vitalsCount: (encounterId) => byId.get(encounterId)?.vitals.size ?? 0,
+    cosignerOf: (encounterId) => byId.get(encounterId)?.cosignerMembershipId ?? null,
   };
 
   return { service, resolver, inspect };

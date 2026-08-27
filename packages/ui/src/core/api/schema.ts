@@ -1368,7 +1368,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reverse a portal-account suspension; step-up */
+        /** Reverse a portal-account suspension; step-up. The `reason` is sealed and stored on the account (503 if no tenant key envelope is bound) */
         post: operations["postApiV1AdminPortalaccountsByIdReinstate"];
         delete?: never;
         options?: never;
@@ -1385,7 +1385,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Org-admin temporary disable of a portal account; step-up */
+        /** Org-admin temporary disable of a portal account; step-up. The `reason` is sealed and stored on the account (503 if no tenant key envelope is bound) */
         post: operations["postApiV1AdminPortalaccountsByIdSuspend"];
         delete?: never;
         options?: never;
@@ -1541,6 +1541,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Upsert one system-status component (platform_ops only) */
         post: operations["postApiV1AdminSystemStatus"];
         delete?: never;
         options?: never;
@@ -6931,13 +6932,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Read an addendum's stored HearthNote selection tree back, assembled */
+        get: operations["getApiV1EncountersByEncounterIdAddendaByAddendumIdSelections"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /** Update addendum selections (§7.7 If-Match) */
+        /** Write an addendum's HearthNote selection tree (§7.7 If-Match). Returns the Layer-1 assembly of what was stored */
         patch: operations["patchApiV1EncountersByEncounterIdAddendaByAddendumIdSelections"];
         trace?: never;
     };
@@ -7187,13 +7189,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Read the stored HearthNote selection tree back, with its assembled Layer-1 narrative */
+        get: operations["getApiV1EncountersByEncounterIdSelections"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /** Update draft selections (§7.7 If-Match) */
+        /** Write the draft's HearthNote selection tree (§7.7 If-Match). Returns the Layer-1 assembly of what was stored */
         patch: operations["patchApiV1EncountersByEncounterIdSelections"];
         trace?: never;
     };
@@ -7221,7 +7224,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Read the vitals sets recorded on an encounter */
+        get: operations["getApiV1EncountersByEncounterIdVitals"];
         put?: never;
         /** Capture a vitals set */
         post: operations["postApiV1EncountersByEncounterIdVitals"];
@@ -9304,7 +9308,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Internal: M22 PDF-render payload */
+        /** Internal: M22 PDF-render payload — the assembled HearthNote. 404 when the encounter has no selection tree to render (never an empty string) */
         get: operations["getApiV1InternalEncountersByEncounterIdRenderpayload"];
         put?: never;
         post?: never;
@@ -15243,7 +15247,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read one dashboard (share-scope visibility gate) */
+        /** Read one dashboard: summary + its tile manifest (share-scope visibility gate) */
         get: operations["getApiV1ReportingDashboardsByDashboardId"];
         put?: never;
         post?: never;
@@ -17019,6 +17023,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read this org's system-status components */
         get: operations["getApiV1SystemStatus"];
         put?: never;
         post?: never;
@@ -18528,7 +18533,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** CodeSystem $validate-code (R13). Requires `system/CodeSystem.read`; returns a well-formed Parameters result */
+        /** CodeSystem $validate-code (R13). Requires `system/CodeSystem.read`; resolves the supplied Parameters (`url` or `system`, plus `code`) through M38 terminology and returns the answer as Parameters. 400 when either is missing; 404 `not-supported` for a code system this server does not serve */
         post: operations["postFhirR4CodeSystemValidatecode"];
         delete?: never;
         options?: never;
@@ -18935,11 +18940,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -18970,11 +18971,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -20157,11 +20154,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -20208,11 +20201,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -20710,11 +20699,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -21057,11 +21042,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -21162,11 +21143,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -22447,11 +22424,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -22712,14 +22685,34 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Stable component key, e.g. `api` or `documents` */
+                    id: string;
+                    status: "operational" | "degraded" | "outage";
+                    headline?: string | null;
+                    details?: string | null;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        components: {
+                            id: string;
+                            status: "operational" | "degraded" | "outage";
+                            headline: string | null;
+                            details: string | null;
+                            updatedAt: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26050,11 +26043,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -35435,11 +35424,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -35603,11 +35588,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -35856,11 +35837,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -37712,11 +37689,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -37727,6 +37700,46 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         status: "finalized";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersByEncounterIdAddendaByAddendumIdSelections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+                addendumId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        templateKey: string;
+                        vocabVersion: string;
+                        sections: {
+                            sectionId: string;
+                            entries: {
+                                code: string;
+                                params?: {
+                                    [key: string]: string | number;
+                                };
+                            }[];
+                            freeText?: string;
+                        }[];
+                        layer1Preview: string;
+                        version: number;
                     };
                 };
             };
@@ -37750,12 +37763,16 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    selections: {
-                        [key: string]: unknown;
-                    };
-                    freeText?: {
-                        [key: string]: string;
-                    };
+                    sections: {
+                        sectionId: string;
+                        entries: {
+                            code: string;
+                            params?: {
+                                [key: string]: string | number;
+                            };
+                        }[];
+                        freeText?: string;
+                    }[];
                 };
             };
         };
@@ -37768,6 +37785,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         version: number;
+                        layer1Preview: string;
                     };
                 };
             };
@@ -38066,11 +38084,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -38116,7 +38130,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        modificationId: string;
+                        /** @constant */
+                        enhanced: false;
+                        reason: "eligible" | "tenant_flag_off" | "clinician_opted_out" | "encounter_type_excluded" | "token_budget_exceeded" | "baa_not_executed" | "routing_preference_blocks_cloud" | "kill_switch_active";
                     };
                 };
             };
@@ -38273,6 +38289,45 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1EncountersByEncounterIdSelections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        templateKey: string;
+                        vocabVersion: string;
+                        sections: {
+                            sectionId: string;
+                            entries: {
+                                code: string;
+                                params?: {
+                                    [key: string]: string | number;
+                                };
+                            }[];
+                            freeText?: string;
+                        }[];
+                        layer1Preview: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     patchApiV1EncountersByEncounterIdSelections: {
         parameters: {
             query?: never;
@@ -38288,12 +38343,16 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    selections: {
-                        [key: string]: unknown;
-                    };
-                    freeText?: {
-                        [key: string]: string;
-                    };
+                    sections: {
+                        sectionId: string;
+                        entries: {
+                            code: string;
+                            params?: {
+                                [key: string]: string | number;
+                            };
+                        }[];
+                        freeText?: string;
+                    }[];
                 };
             };
         };
@@ -38342,6 +38401,56 @@ export interface operations {
                         status: "signed" | "cosign_pending";
                         signedAt: string;
                         cosignatureRequestId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersByEncounterIdVitals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        encounterId: string;
+                        vitals: {
+                            id: string;
+                            encounterId: string;
+                            capturedAt: string;
+                            bpSystolic: number | null;
+                            bpDiastolic: number | null;
+                            heartRate: number | null;
+                            respiratoryRate: number | null;
+                            temperature: string | null;
+                            temperatureUnit: ("mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l") | null;
+                            spo2: number | null;
+                            painScore: number | null;
+                            painScale: ("nrs_0_10" | "flacc" | "painad" | "verbal_descriptor") | null;
+                            weight: string | null;
+                            weightUnit: ("mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l") | null;
+                            height: string | null;
+                            heightUnit: ("mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l") | null;
+                            bmi: string | null;
+                            bloodGlucose: number | null;
+                            bloodGlucoseUnit: ("mmHg" | "bpm" | "breaths_per_min" | "c" | "f" | "percent_o2" | "kg" | "lb" | "cm" | "in" | "mg_dl" | "mmol_l") | null;
+                            clinicallyNotIndicatedFields: string[] | null;
+                            clinicallyNotIndicatedReason: string | null;
+                            abnormalFlags: string[];
+                        }[];
                     };
                 };
             };
@@ -43480,6 +43589,7 @@ export interface operations {
                     "application/json": {
                         encounterId: string;
                         final: string;
+                        pinned: boolean;
                     };
                 };
             };
@@ -50593,11 +50703,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -52451,11 +52557,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -54164,11 +54266,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -54465,11 +54563,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -54623,11 +54717,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -55544,11 +55634,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -55690,11 +55776,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -55958,6 +56040,7 @@ export interface operations {
                                 rate: number | null;
                                 thresholdMet: boolean | null;
                                 bandColor: "green" | "yellow" | "red" | "insufficient_n";
+                                unavailableReason: string | null;
                                 computedAt: string;
                                 computeVersion: string;
                                 snapshotContentHash: string;
@@ -56011,6 +56094,7 @@ export interface operations {
                             rate: number | null;
                             thresholdMet: boolean | null;
                             bandColor: "green" | "yellow" | "red" | "insufficient_n";
+                            unavailableReason: string | null;
                             computedAt: string;
                             computeVersion: string;
                             snapshotContentHash: string;
@@ -59080,6 +59164,11 @@ export interface operations {
                         tileCount: number;
                         shareScope: "private" | "role" | "org";
                         isOrgDefault: boolean;
+                        tiles: {
+                            tileKey: string;
+                            displayName: string;
+                            kind: string;
+                        }[];
                     };
                 };
             };
@@ -63135,11 +63224,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -63178,11 +63263,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -65631,7 +65712,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        components: {
+                            id: string;
+                            status: "operational" | "degraded" | "outage";
+                            headline: string | null;
+                            details: string | null;
+                            updatedAt: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -65744,11 +65835,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -65781,11 +65868,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {

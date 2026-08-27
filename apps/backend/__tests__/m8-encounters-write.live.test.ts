@@ -22,11 +22,16 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { registerSeam } from "../src/bootstrap/seams/registry";
+import { createCareTeamProvider } from "../src/modules/05-patient/seams/care-team-provider";
+import { createDrizzleCareTeamStore } from "../src/modules/05-patient/seams/drizzle-stores";
+import { createDrizzleEncounterEraseStore } from "../src/modules/08-encounters/erasers/encounter-eraser";
 import {
   type EncounterWriteOutboxPort,
   M8_OUTBOX_EVENTS,
   createDbEncounterRouteService,
+  createHearthnoteCiphers,
 } from "../src/modules/08-encounters/index";
+import { requiredSectionSelections } from "./_hearthnote-fixtures";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -42,13 +47,47 @@ const ADMISSION = "55555555-5555-5555-5555-555555555555";
 const SERVICE_DATE = "2026-01-15";
 // `encounter_signature.session_id` is a uuid column — session ids in this system are uuids.
 const SESSION_A = "66666666-6666-6666-6666-666666666666";
+/** The patient's RN case manager (#124): a DIFFERENT user from the signer, with their own membership —
+ *  so "routed to the case manager" and "routed to whoever signed" cannot look the same. */
+const USER_RN_CM = "88888888-8888-8888-8888-888888888888";
 /** A session id the store never seeds — `resolveStepUpState` resolves it to `null` (never fresh). */
 const STALE_SESSION = "77777777-7777-7777-7777-777777777777";
+
+/** §2.6 selection trees (#114). Real template sections + real `@wardenx/narrative-vocab` codes. */
+const EMPTY_TREE = { sections: [] };
+const TREE = {
+  sections: [
+    {
+      sectionId: "assessment",
+      entries: [{ code: "nv.cv.stable" }, { code: "nv.cv.edema", params: { edema_grade: "2+" } }],
+    },
+  ],
+};
+/**
+ * The REAL AES-256-GCM envelopes over a fixed test DEK — not a reversible stand-in. The production key
+ * provider resolves through M34's key ring (a deny-stub until #105); everything above it, including the
+ * per-column AAD binding this suite relies on, is the shipping code.
+ */
+const TEST_DEK = { version: "test-v1", key: Buffer.alloc(32, 7) };
+const CIPHERS = createHearthnoteCiphers({
+  async dekForOrg() {
+    return TEST_DEK;
+  },
+  async dekForOrgVersion(_org: string, version: string) {
+    return { version, key: TEST_DEK.key };
+  },
+});
 
 describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T02)", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbEncounterRouteService>;
+  /** The same service with NO DEK envelope bound — the §3.6 / §2.6 refusal paths. */
+  let noCipherSvc: ReturnType<typeof createDbEncounterRouteService>;
+  /** What the faked M7 reader answers (see the seam registration in beforeAll). */
+  let carePlanOverdue: unknown = null;
+  /** The RN case manager's membership id — what a cosignature must route to (#124). */
+  let CASE_MANAGER_MEMBERSHIP_ID: string;
   const membershipOf: Record<string, string> = {};
   /** The real caller signing (§3.3/D13) — `resolveSignatureProvenance` resolves SESSION_A's step-up
    *  through the SessionContextResolver seam registered in beforeAll (fresh, webauthn). */
@@ -143,15 +182,57 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       },
     ]);
     registerSeam("SessionContextResolver", createSessionContextResolver(sessions.store));
+    // §2.4 D3 / §2.6 check 10 (#124) — the cosignature routes to the patient's RN case manager, which
+    // M5's CareTeamProvider answers off `patient_assignment` + `membership`. Bound to the REAL M5
+    // Drizzle store over the same database, not a fake: the whole point of the fix is that M8 stopped
+    // inventing this answer, so a fake here would put the invention back one layer out.
+    //
+    // That needs a real `patient` row — the rest of this suite gets away with a literal `patient_id`
+    // because `encounter.patient_id` carries no FK, but `patient_assignment.patient_id` does.
+    await admin.query(
+      `INSERT INTO patient (id, organization_id, provider_entity_id, location_id, mrn,
+                            legal_first_name, legal_last_name, dob, sex_assigned_at_birth, status)
+       VALUES ($1,$2,$3,$4,'MRN-M8W','Test','Patient','1950-01-01','F','active')`,
+      [PATIENT, ORG_A, SITING_A.providerEntityId, SITING_A.locationId],
+    );
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m8cm@x.test')`, [USER_RN_CM]);
+    CASE_MANAGER_MEMBERSHIP_ID = (
+      await admin.query(
+        `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+        [USER_RN_CM, ORG_A],
+      )
+    ).rows[0].id as string;
+    await admin.query(
+      `INSERT INTO patient_assignment (patient_id, organization_id, provider_entity_id, location_id,
+                                       clinician_user_id, role, assigned_at)
+       VALUES ($1,$2,$3,$4,$5,'primary_rn',CURRENT_DATE)`,
+      [PATIENT, ORG_A, SITING_A.providerEntityId, SITING_A.locationId, USER_RN_CM],
+    );
+    // §2.6 check 6 (#121) — the gate consults M7's CarePlanReader at finalize and sign. In production
+    // the composition root binds M7's real reader; here a fake stands in, because M7's Drizzle store
+    // reads under the CALLER'S ambient request context and this suite drives the service directly with
+    // none. `carePlanOverdue` is the switch the overdue tests below flip.
+    registerSeam("CarePlanReader", {
+      relevantElementsForEncounter: async () => null,
+      isReviewOverdue: async () => carePlanOverdue,
+      fifteenDayCycleCountsForOrg: async () => ({ numerator: 0, denominator: 0 }),
+      terminologyCodeUsageForOrg: async () => [],
+    } as never);
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });
+    // Registered after the app-role client exists — the M5 store reads `patient_assignment` under RLS as
+    // `wardenx_app`, the same role M8's own writes run as.
+    registerSeam("CareTeamProvider", createCareTeamProvider(createDrizzleCareTeamStore(handle.db)));
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M8_OUTBOX_EVENTS]));
     const outbox: EncounterWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m8" }),
     };
-    svc = createDbEncounterRouteService(handle.db, outbox);
+    // Cipher-bound, as production is: the composition root always constructs the envelopes (only the KEY
+    // resolve is deny-stubbed). `noCipherSvc` is the same service with none, for the §3.6 refusal cases.
+    svc = createDbEncounterRouteService(handle.db, outbox, CIPHERS);
+    noCipherSvc = createDbEncounterRouteService(handle.db, outbox);
   }, 120_000);
 
   afterAll(async () => {
@@ -163,7 +244,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   async function draft(
     encounterType: string,
     discipline: string,
-    extra: { faceToFaceEncounterId?: string } = {},
+    extra: { faceToFaceEncounterId?: string; document?: boolean } = {},
   ): Promise<string> {
     const d = await svc.createDraft(ORG_A, membershipOf[ORG_A], {
       patientId: PATIENT,
@@ -171,13 +252,26 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       encounterType: encounterType as never,
       discipline: discipline as never,
       serviceDate: SERVICE_DATE as never,
-      ...extra,
+      ...(extra.faceToFaceEncounterId
+        ? { faceToFaceEncounterId: extra.faceToFaceEncounterId }
+        : {}),
     });
     await admin.query("UPDATE encounter SET provider_entity_id=$1, location_id=$2 WHERE id=$3", [
       SITING_A.providerEntityId,
       SITING_A.locationId,
       d.id,
     ]);
+    // Document it to the §2.6 gate's floor (#121) unless the caller is testing the gate itself. Every
+    // finalize/sign case below went through this draft helper and documented NOTHING before the gate
+    // was real — and signed anyway.
+    if (extra.document !== false) {
+      await svc.updateSelections(
+        ORG_A,
+        d.id,
+        0,
+        requiredSectionSelections(encounterType as never, discipline as never),
+      );
+    }
     return d.id;
   }
 
@@ -230,7 +324,8 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const id = await draft("routine_visit", "rn");
     const fin = await svc.finalize(ORG_A, id, SERVICE_DATE as never);
     expect(fin.status).toBe("finalized");
-    expect(fin.version).toBe(1);
+    // 2, not 1: documenting the note to the §2.6 gate's floor (#121) is itself a versioned edit.
+    expect(fin.version).toBe(2);
     const [row] = (await admin.query("SELECT vocab_version_id FROM encounter WHERE id=$1", [id]))
       .rows;
     expect(row.vocab_version_id).not.toBeNull(); // D11 pinned at finalize
@@ -264,6 +359,16 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     expect(await eventsFor(id)).toContain("m8.encounter.signed");
     const cr = signed.cosignatureRequestId as string;
     expect(await eventsFor(cr)).toContain("m8.encounter.cosignature_routed");
+    // §2.4 — "routed to the assigned RN case manager". It used to route to `signedByMembershipId`, so
+    // the LPN who signed the note owned its cosignature queue entry and its 12h/24h/48h escalations
+    // (#124). Asserted against the ROW, and against the signer specifically, so a stand-in that happened
+    // to be non-null could not satisfy it.
+    const routed = await admin.query(
+      "SELECT routed_to_membership_id FROM cosignature_request WHERE id=$1",
+      [cr],
+    );
+    expect(routed.rows[0].routed_to_membership_id).toBe(CASE_MANAGER_MEMBERSHIP_ID);
+    expect(routed.rows[0].routed_to_membership_id).not.toBe(ACTOR_A.membershipId);
     // The cosignature queue surfaces it; the RN acknowledges then cosigns.
     const queue = await svc.cosignatureQueue(ORG_A);
     expect(queue.encounters.some((e) => e.id === id)).toBe(true);
@@ -316,7 +421,15 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
     const a = await svc.createAddendum(ORG_A, id);
     expect(a.status).toBe("draft");
-    await svc.updateAddendumSelections(ORG_A, id, a.id);
+    const addendumNote = await svc.updateAddendumSelections(ORG_A, id, a.id, TREE);
+    expect(addendumNote.layer1Preview).toContain("cardiovascularly stable");
+    // The addendum's note is its OWN hearthnote_selection row, keyed by addendum_id (#114).
+    const addendumRows = await admin.query(
+      "SELECT template_key FROM hearthnote_selection WHERE addendum_id=$1",
+      [a.id],
+    );
+    expect(addendumRows.rowCount).toBe(1);
+    expect(addendumRows.rows[0].template_key).toBe("routine_visit:rn");
     const fin = await svc.finalizeAddendum(ORG_A, id, a.id);
     expect(fin.status).toBe("finalized");
     const signed = await svc.signAddendum(ORG_A, id, a.id, ACTOR_A, { at: SERVICE_DATE as never });
@@ -324,10 +437,208 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     expect(await eventsFor(id)).toContain("m8.encounter.addendum_signed");
   });
 
-  it("§7.7 optimistic concurrency — a stale updateSelections is 412, a fresh one bumps the version", async () => {
+  // ── §2.6 the assembled-output pin (#122) ────────────────────────────────────────────────────────
+  //
+  // `hearthnote_assembled_output` had never been written by anything but the eraser. The §2.3 machine has
+  // emitted `{ kind: "persist_assembled_output" }` at every finalize since M8-T04 and no service performed
+  // it, so the "byte-identical" narrative was reassembled from the selection tree on every read.
+
+  it("§2.6 — finalize PINS the assembled narrative, sealed, and never in the clear", async () => {
+    // `draft()` documents every REQUIRED section with `nv.cv.stable`, whose phrase is the string this
+    // test looks for in (and never in) the sealed columns.
     const id = await draft("routine_visit", "rn");
-    await expect(svc.updateSelections(ORG_A, id, 99)).rejects.toMatchObject({ statusCode: 412 });
-    const bumped = await svc.updateSelections(ORG_A, id, 0);
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+
+    const out = await admin.query(
+      `SELECT kind, encounter_id, addendum_id, layer1_cipher, layer2_cipher, final_cipher,
+              layer2_eligibility, layer2_involved_at_finalize, assembly_template_key, vocab_version_id
+         FROM hearthnote_assembled_output WHERE encounter_id=$1`,
+      [id],
+    );
+    expect(out.rowCount).toBe(1);
+    const row = out.rows[0];
+    expect(row.kind).toBe("primary_finalize");
+    expect(row.addendum_id).toBeNull();
+    expect(row.assembly_template_key).toBe("routine_visit:rn");
+    // D5's finalize-time reification, from the module's own eligibility ladder: the platform
+    // `hearthnote.layer2` flag is OFF in Phase 1, so the ladder's outermost gate is the answer.
+    expect(row.layer2_eligibility).toBe("kill_switch_active");
+    expect(row.layer2_involved_at_finalize).toBe(false);
+    expect(row.layer2_cipher).toBeNull(); // the layer2_consistency CHECK, satisfied by derivation
+    // The narrative is PHI: neither cipher column may contain it.
+    expect(row.layer1_cipher).not.toContain("cardiovascularly stable");
+    expect(row.final_cipher).not.toContain("cardiovascularly stable");
+    expect(row.final_cipher.startsWith("v1.")).toBe(true);
+    // The D11 pin the encounter claims and the version the note was assembled under are ONE value.
+    const enc = await admin.query("SELECT vocab_version_id FROM encounter WHERE id=$1", [id]);
+    expect(row.vocab_version_id).toBe(enc.rows[0].vocab_version_id);
+  });
+
+  it("§2.6 — the pinned bytes survive a change to the tree they were assembled from", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    const atFinalize = await svc.renderPayload(ORG_A, id);
+    expect(atFinalize.pinned).toBe(true);
+    expect(atFinalize.final).toContain("cardiovascularly stable");
+
+    // Rewrite the inputs underneath the signed note — the shape of a `@wardenx/narrative-vocab` release
+    // that edits a shipped phrase, or of the `${patient}` slot resolving for the first time. Done in SQL
+    // because the service itself refuses to edit a finalized encounter (§2.7), which is exactly why the
+    // recompute-at-read behaviour was invisible: nothing a CLINICIAN can do changes the tree afterwards.
+    await admin.query(
+      `UPDATE hearthnote_selection
+          SET selections = jsonb_set(selections, '{sections,0,entries,0,code}', '"nv.resp.unlabored"')
+        WHERE encounter_id=$1`,
+      [id],
+    );
+    // The tree really did change — the selections read reflects it, so the two answers now diverge.
+    const tree = await svc.getSelections(ORG_A, id);
+    expect(tree.layer1Preview).not.toBe(atFinalize.final);
+
+    const afterEdit = await svc.renderPayload(ORG_A, id);
+    expect(afterEdit.final).toBe(atFinalize.final);
+    expect(afterEdit.pinned).toBe(true);
+  });
+
+  it("§2.6 — a draft renders as an UNPINNED preview, distinguishably", async () => {
+    const id = await draft("routine_visit", "rn");
+    const preview = await svc.renderPayload(ORG_A, id);
+    expect(preview.pinned).toBe(false);
+    expect(preview.final).toContain("cardiovascularly stable");
+    expect(
+      (await admin.query("SELECT 1 FROM hearthnote_assembled_output WHERE encounter_id=$1", [id]))
+        .rowCount,
+    ).toBe(0);
+  });
+
+  it("§2.6 — an addendum finalize pins its OWN output against the parent's template", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    const a = await svc.createAddendum(ORG_A, id);
+    await svc.updateAddendumSelections(ORG_A, id, a.id, TREE);
+    await svc.finalizeAddendum(ORG_A, id, a.id);
+
+    const out = await admin.query(
+      `SELECT kind, encounter_id, assembly_template_key, vocab_version_id
+         FROM hearthnote_assembled_output WHERE addendum_id=$1`,
+      [a.id],
+    );
+    expect(out.rowCount).toBe(1);
+    expect(out.rows[0].kind).toBe("addendum_finalize");
+    expect(out.rows[0].encounter_id).toBeNull(); // the parent_xor CHECK
+    // An addendum to an RN routine visit is written against the RN routine-visit template, so it is
+    // pinned against that template and the PARENT's pinned vocabulary version.
+    expect(out.rows[0].assembly_template_key).toBe("routine_visit:rn");
+    const enc = await admin.query("SELECT vocab_version_id FROM encounter WHERE id=$1", [id]);
+    expect(out.rows[0].vocab_version_id).toBe(enc.rows[0].vocab_version_id);
+  });
+
+  it("§2.6 — with no DEK bound, finalize REFUSES and leaves the encounter in draft", async () => {
+    const id = await draft("routine_visit", "rn");
+    // The assembled narrative is prose by construction and its columns are NOT NULL, so unlike the
+    // selection tree there is no codes-in-the-clear half to write without a key. This is the whole
+    // blast radius of #122 until #105 binds the KEK adapter, made executable rather than asserted.
+    await expect(noCipherSvc.finalize(ORG_A, id, SERVICE_DATE as never)).rejects.toMatchObject({
+      statusCode: 503,
+      code: "HEARTHNOTE_CIPHER_UNBOUND",
+    });
+    expect((await svc.getEncounter(ORG_A, id)).status).toBe("draft");
+    expect(
+      (await admin.query("SELECT 1 FROM hearthnote_assembled_output WHERE encounter_id=$1", [id]))
+        .rowCount,
+    ).toBe(0);
+  });
+
+  it("§3.6 — the crypto-shred now has something to shred: an erased note's ciphers go empty", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    // The eraser has always handled `hearthnote_assembled_output` — it ran against a table that had never
+    // held a row. This is the first time the §3.6 DEK-first shred has had one. Only the shred is driven
+    // here: the delete half runs as `wardenx_destruction` (0157), and this suite's connection is the
+    // NOBYPASSRLS `wardenx_app` role, which holds DELETE on no M8 table by design (append-only).
+    const store = createDrizzleEncounterEraseStore(handle.db);
+    await store.cryptoEraseHearthnote(ORG_A, PATIENT);
+    const out = await admin.query(
+      "SELECT layer1_cipher, final_cipher FROM hearthnote_assembled_output WHERE encounter_id=$1",
+      [id],
+    );
+    expect(out.rowCount).toBe(1);
+    expect(out.rows[0].layer1_cipher).toBe("");
+    expect(out.rows[0].final_cipher).toBe("");
+    // And the render refuses rather than serving an empty note as if it were the record.
+    await expect(svc.renderPayload(ORG_A, id)).rejects.toBeTruthy();
+  });
+
+  // ── §2.6 D5 Layer-2 (#123) ───────────────────────────────────────────────────────────────────────
+
+  it("§2.6 D5 — enhance answers the ladder's reason, and the same reason the pinned row records", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    const out = await svc.enhanceHearthnote(ORG_A, id);
+    expect(out).toEqual({ enhanced: false, reason: "kill_switch_active" });
+    // The route and `hearthnote_assembled_output.layer2_eligibility` resolve through the SAME ladder,
+    // so they cannot say different things about why Layer 2 did not run for this encounter.
+    const row = await admin.query(
+      "SELECT layer2_eligibility FROM hearthnote_assembled_output WHERE encounter_id=$1",
+      [id],
+    );
+    expect(row.rows[0].layer2_eligibility).toBe(out.reason);
+  });
+
+  it("§2.6 D5 — the decision route's 404 is a real absence: a REAL modification row gets a 200", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    const outputId = (
+      await admin.query("SELECT id FROM hearthnote_assembled_output WHERE encounter_id=$1", [id])
+    ).rows[0].id as string;
+
+    // An id that names nothing → 404. On its own this is unfalsifiable — a hard-coded refusal looks
+    // identical — so the row below is what makes it a real read.
+    await expect(
+      svc.recordModificationDecision(ORG_A, id, "2f1d4c9e-0000-4000-8000-000000000001"),
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    // Nothing in the product writes `hearthnote_llm_modification` (the Layer-2 dispatch is unbuilt), so
+    // this suite writes one directly — the only way to prove the lookup resolves rather than refuses.
+    const modId = (
+      await admin.query(
+        `INSERT INTO hearthnote_llm_modification
+           (organization_id, provider_entity_id, location_id, assembled_output_id,
+            prompt_template_key, prompt_template_version, model_id,
+            tokens_input, tokens_output, latency_ms, diff_json, called_by_membership_id)
+         VALUES ($1,$2,$3,$4,'hearthnote.enhance','v1','claude-test',0,0,0,'[]'::jsonb,$5)
+         RETURNING id`,
+        [ORG_A, SITING_A.providerEntityId, SITING_A.locationId, outputId, membershipOf[ORG_A]],
+      )
+    ).rows[0].id as string;
+    expect(await svc.recordModificationDecision(ORG_A, id, modId)).toEqual({
+      modificationId: modId,
+    });
+
+    // And it is scoped to its own encounter: the same real modification, asked for under a DIFFERENT
+    // encounter, is not found. The route used to echo any id back under any encounter.
+    const other = await draft("routine_visit", "rn");
+    await expect(svc.recordModificationDecision(ORG_A, other, modId)).rejects.toMatchObject({
+      statusCode: 404,
+    });
+  });
+
+  it("§3.6 — the two envelopes are bound to their columns: a blob cannot be moved between them", async () => {
+    const sealed = await CIPHERS.freeText.seal(ORG_A, "Family to call if pain escalates.");
+    // Same key, same scheme, different AAD — so a free-text envelope written into `final_cipher` fails
+    // to open rather than decrypting into the wrong column, and vice versa.
+    await expect(CIPHERS.narrative.open(ORG_A, sealed)).rejects.toThrow();
+    // And the org is in the AAD too: another tenant's key ring cannot open this one's note.
+    await expect(CIPHERS.freeText.open(ORG_B, sealed)).rejects.toThrow();
+  });
+
+  it("§7.7 optimistic concurrency — a stale updateSelections is 412, a fresh one bumps the version", async () => {
+    const id = await draft("routine_visit", "rn", { document: false });
+    await expect(svc.updateSelections(ORG_A, id, 99, EMPTY_TREE)).rejects.toMatchObject({
+      statusCode: 412,
+    });
+    const bumped = await svc.updateSelections(ORG_A, id, 0, EMPTY_TREE);
     expect(bumped.version).toBe(1);
   });
 
@@ -340,8 +651,343 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     });
   });
 
-  it("RLS — org B cannot read or write org A's encounter (non-leaking 404)", async () => {
+  // #92 — the vitals read-back, against real rows under the NOBYPASSRLS `wardenx_app` role. The pure
+  // suite proves the projection over in-memory Maps; only this proves the SELECT returns the columns
+  // the write actually persisted, that `captured_at` orders them, and that RLS scopes them by tenant.
+  it("#92 listVitals round-trips the persisted measurements, newest capture first", async () => {
     const id = await draft("routine_visit", "rn");
+    const first = await svc.captureVitals(ORG_A, id, {
+      heartRate: 60,
+      temperature: "37.1",
+      temperatureUnit: "c",
+    });
+    // A distinct `captured_at` — the ordering claim is about the real clock, not an id tiebreak.
+    await new Promise((r) => setTimeout(r, 25));
+    const second = await svc.captureVitals(ORG_A, id, {
+      bpSystolic: 150,
+      bpDiastolic: 95,
+      spo2: 97,
+      painScore: 4,
+      painScale: "nrs_0_10",
+      weight: "80",
+      weightUnit: "kg",
+      height: "180",
+      heightUnit: "cm",
+      bloodGlucose: 110,
+      bloodGlucoseUnit: "mg_dl",
+    });
+
+    const read = await svc.listVitals(ORG_A, id);
+    expect(read.encounterId).toBe(id);
+    expect(read.vitals.map((v) => v.id)).toEqual([second.vitalsId, first.vitalsId]);
+
+    const [newest, oldest] = read.vitals;
+    if (!newest || !oldest) throw new Error("expected two vitals sets");
+    expect(newest.bpSystolic).toBe(150);
+    expect(newest.bpDiastolic).toBe(95);
+    expect(newest.spo2).toBe(97);
+    expect(newest.painScore).toBe(4);
+    expect(newest.painScale).toBe("nrs_0_10");
+    expect(newest.weight).toBe("80");
+    expect(newest.height).toBe("180");
+    expect(newest.bloodGlucose).toBe(110);
+    expect(newest.bloodGlucoseUnit).toBe("mg_dl");
+    // Stored BMI comes back as stored; flags re-derive to the same answer the write returned.
+    expect(newest.bmi).toBe(second.bmi);
+    expect(newest.abnormalFlags).toEqual(second.abnormalFlags);
+    // A measurement nobody took reads as null on a row that exists — not as a missing key.
+    expect(oldest.heartRate).toBe(60);
+    expect(oldest.temperature).toBe("37.1");
+    expect(oldest.spo2).toBeNull();
+    expect(oldest.bmi).toBeNull();
+  });
+
+  it("#92 listVitals survives the encounter being signed (the record stays retrievable)", async () => {
+    const id = await draft("routine_visit", "rn");
+    const written = await svc.captureVitals(ORG_A, id, { heartRate: 72 });
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    // Writing is refused after signing (§2.7); READING must not be — 42 CFR 418.104 requires the
+    // signed record be retrievable, and it is the signed state the record exists in.
+    const read = await svc.listVitals(ORG_A, id);
+    expect(read.vitals.map((v) => v.id)).toEqual([written.vitalsId]);
+    expect(read.vitals[0]?.heartRate).toBe(72);
+  });
+
+  it("#92 RLS — org B cannot read org A's vitals, and gets a non-leaking 404 not an empty list", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.captureVitals(ORG_A, id, { heartRate: 72 });
+    await expect(svc.listVitals(ORG_B, id)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  // ── §2.6 HearthNote selections (#114) ─────────────────────────────────────────────────────────────
+  //
+  // The two selections PATCHes published a required body, parsed none of it, bumped `version` and
+  // returned 200. Nothing had ever written a `hearthnote_selection` row — the only code that touched the
+  // three hearthnote tables was the ERASER. These cases drive the real Drizzle path as the NOBYPASSRLS
+  // role and read the row back out of Postgres.
+
+  it("§2.6 — the tree is PERSISTED to hearthnote_selection and reads back assembled", async () => {
+    const id = await draft("routine_visit", "rn", { document: false });
+    const written = await svc.updateSelections(ORG_A, id, 0, TREE);
+    expect(written.version).toBe(1);
+    expect(written.layer1Preview).toContain("2+ dependent edema");
+
+    // The row exists. Asserted against the TABLE, not the service, because "nothing writes this table"
+    // is the finding — a service that returns the right shape from memory would satisfy a weaker test.
+    const rows = await admin.query(
+      "SELECT template_key, template_version, selections, free_text_cipher, provider_entity_id FROM hearthnote_selection WHERE encounter_id=$1",
+      [id],
+    );
+    expect(rows.rowCount).toBe(1);
+    expect(rows.rows[0].template_key).toBe("routine_visit:rn");
+    expect(rows.rows[0].selections.sections).toHaveLength(1);
+    // No cipher is bound in this suite, so the tree carries no free text and the column stays NULL —
+    // never plaintext prose in a column named `_cipher`.
+    expect(rows.rows[0].free_text_cipher).toBeNull();
+
+    const read = await svc.getSelections(ORG_A, id);
+    expect(read.sections).toEqual(TREE.sections);
+    expect(read.layer1Preview).toBe(written.layer1Preview);
+  });
+
+  it("§2.6 — a second PATCH UPDATES the one row rather than adding a second (mig 0225)", async () => {
+    const id = await draft("routine_visit", "rn", { document: false });
+    await svc.updateSelections(ORG_A, id, 0, TREE);
+    await svc.updateSelections(ORG_A, id, 1, {
+      sections: [{ sectionId: "assessment", entries: [{ code: "nv.neuro.alert" }] }],
+    });
+    const rows = await admin.query(
+      "SELECT version, selections FROM hearthnote_selection WHERE encounter_id=$1",
+      [id],
+    );
+    // Before 0225 the "unique" indexes were plain indexes, so this would have been two rows and every
+    // reader afterwards would have had to guess which one was the note.
+    expect(rows.rowCount).toBe(1);
+    expect(Number(rows.rows[0].version)).toBe(1);
+    const read = await svc.getSelections(ORG_A, id);
+    expect(read.sections[0]?.entries[0]?.code).toBe("nv.neuro.alert");
+  });
+
+  it("§3.6 — free text is REFUSED with no cipher bound, and nothing is written", async () => {
+    const id = await draft("routine_visit", "rn", { document: false });
+    await expect(
+      noCipherSvc.updateSelections(ORG_A, id, 0, {
+        sections: [{ sectionId: "plan", entries: [], freeText: "Family to call overnight." }],
+      }),
+    ).rejects.toMatchObject({ statusCode: 503, code: "HEARTHNOTE_CIPHER_UNBOUND" });
+    const rows = await admin.query("SELECT 1 FROM hearthnote_selection WHERE encounter_id=$1", [
+      id,
+    ]);
+    expect(rows.rowCount).toBe(0);
+    // The refusal is a refusal, not a partial write: the encounter's own version did not move either.
+    expect((await svc.getEncounter(ORG_A, id)).version).toBe(0);
+  });
+
+  it("§3.6 — with a cipher bound, the prose round-trips and is NEVER stored in the clear", async () => {
+    const id = await draft("routine_visit", "rn", { document: false });
+    const prose = "Family to call if pain escalates overnight.";
+    const written = await svc.updateSelections(ORG_A, id, 0, {
+      sections: [{ sectionId: "plan", entries: [], freeText: prose }],
+    });
+    expect(written.layer1Preview).toContain(prose);
+
+    const rows = await admin.query(
+      "SELECT selections, free_text_cipher FROM hearthnote_selection WHERE encounter_id=$1",
+      [id],
+    );
+    expect(rows.rows[0].free_text_cipher).not.toBeNull();
+    expect(rows.rows[0].free_text_cipher).not.toContain(prose);
+    // And it is not hiding in the structured column either — the split is the §3.6 minimization rule.
+    expect(JSON.stringify(rows.rows[0].selections)).not.toContain(prose);
+
+    const read = await svc.getSelections(ORG_A, id);
+    expect(read.sections[0]?.freeText).toBe(prose);
+  });
+
+  it("the M22 render seam 404s with no note, and serves the assembled one after a PATCH", async () => {
+    const id = await draft("routine_visit", "rn", { document: false });
+    // Was a 200 with `final: ""` — an empty note reported as a successful render.
+    await expect(svc.renderPayload(ORG_A, id)).rejects.toMatchObject({ statusCode: 404 });
+    await svc.updateSelections(ORG_A, id, 0, TREE);
+    const rendered = await svc.renderPayload(ORG_A, id);
+    expect(rendered.final).toContain("Assessment");
+    expect(rendered.final).toContain("cardiovascularly stable");
+  });
+
+  it("RLS — org B cannot read or write org A's hearthnote_selection (non-leaking 404)", async () => {
+    const id = await draft("routine_visit", "rn", { document: false });
+    await svc.updateSelections(ORG_A, id, 0, TREE);
+    await expect(svc.getSelections(ORG_B, id)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(svc.updateSelections(ORG_B, id, 1, TREE)).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    await expect(svc.renderPayload(ORG_B, id)).rejects.toMatchObject({ statusCode: 404 });
+    // Org A's note is untouched by org B's attempt.
+    expect((await svc.getSelections(ORG_A, id)).sections).toEqual(TREE.sections);
+  });
+
+  // ── §2.6 Layer-3 compliance gate (#121) ───────────────────────────────────────────────────────────
+  //
+  // `transitionEncounter` enforced `gatePreviewPassed`/`gatePassed` correctly and all four callers in
+  // this file's subject handed it the literal `true`, so an encounter with nothing documented in any of
+  // its four required sections finalized, signed, and emitted `m8.encounter.signed`. These cases drive
+  // the real Drizzle path and assert against the TABLE — the row must still be a draft afterwards.
+
+  it("§2.6 — an undocumented encounter does not finalize, and the ROW stays draft", async () => {
+    const id = await draft("routine_visit", "rn", { document: false });
+    await expect(svc.finalize(ORG_A, id, SERVICE_DATE as never)).rejects.toMatchObject({
+      statusCode: 422,
+      code: "COMPLIANCE_GATE_FAILED",
+    });
+    const rows = await admin.query("SELECT status, vocab_version_id FROM encounter WHERE id=$1", [
+      id,
+    ]);
+    expect(rows.rows[0].status).toBe("draft");
+    // The D11 pin is a finalize side-effect, so a refused finalize must not have left one behind.
+    expect(rows.rows[0].vocab_version_id).toBeNull();
+    expect(await eventsFor(id)).not.toContain("m8.encounter.finalized");
+  });
+
+  it("§2.6 — a note documented short of its required sections is refused, per section", async () => {
+    const id = await draft("routine_visit", "rn", { document: false });
+    // Only two of the four required sections for routine_visit × rn.
+    await svc.updateSelections(ORG_A, id, 0, {
+      sections: [
+        { sectionId: "chief_concern", entries: [{ code: "nv.cv.stable" }] },
+        { sectionId: "assessment", entries: [{ code: "nv.neuro.alert" }] },
+      ],
+    });
+    const err = await svc.finalize(ORG_A, id, SERVICE_DATE as never).catch((e: unknown) => e);
+    const details = (err as { details?: Array<{ field?: string }> }).details ?? [];
+    expect(details.map((d) => d.field).sort()).toEqual(["plan", "vitals_review"]);
+  });
+
+  it("§2.6 check 6 — an overdue M7 care plan blocks the SIGN of a fully documented note", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    carePlanOverdue = {
+      planId: "cp_1",
+      patientId: PATIENT,
+      overdue: true,
+      initialOverdue: false,
+      reviewOverdue: true,
+      initialDueAt: "2026-01-06T00:00:00.000Z",
+      nextReviewDueAt: "2026-01-20T00:00:00.000Z",
+    };
+    try {
+      await expect(
+        svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never }),
+      ).rejects.toMatchObject({ statusCode: 422, code: "COMPLIANCE_GATE_FAILED" });
+      const rows = await admin.query("SELECT status FROM encounter WHERE id=$1", [id]);
+      expect(rows.rows[0].status).toBe("finalized");
+      expect(await eventsFor(id)).not.toContain("m8.encounter.signed");
+      // No signature provenance row either — a refused sign leaves no CoP 418.104(c) trail.
+      const sigs = await admin.query("SELECT 1 FROM encounter_signature WHERE encounter_id=$1", [
+        id,
+      ]);
+      expect(sigs.rowCount).toBe(0);
+    } finally {
+      carePlanOverdue = null;
+    }
+    // With the plan back in window the same encounter signs — so the block was the plan, not the note.
+    const signed = await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    expect(signed.status).toBe("signed");
+  });
+
+  it("§2.6 — an addendum with nothing in it does not finalize", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    const a = await svc.createAddendum(ORG_A, id);
+    await expect(svc.finalizeAddendum(ORG_A, id, a.id)).rejects.toMatchObject({
+      statusCode: 422,
+      code: "COMPLIANCE_GATE_FAILED",
+    });
+    const rows = await admin.query("SELECT status FROM encounter_addendum WHERE id=$1", [a.id]);
+    expect(rows.rows[0].status).toBe("draft");
+  });
+
+  // ── §2.6 check 10 / §2.4 D3 — the cosigner-exists guard (#124) ────────────────────────────────────
+
+  it("§2.6 check 10 — an LPN note refuses to sign when the patient has no RN case manager", async () => {
+    const id = await draft("routine_visit", "lpn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    await admin.query(
+      "UPDATE patient_assignment SET unassigned_at = CURRENT_DATE WHERE patient_id=$1 AND role='primary_rn'",
+      [PATIENT],
+    );
+    try {
+      await expect(
+        svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never }),
+      ).rejects.toMatchObject({ statusCode: 422, code: "NO_ELIGIBLE_COSIGNER" });
+      // A refused sign writes NOTHING: the row is still finalized, there is no CoP 418.104(c)
+      // signature row, and no cosignature_request routed at nobody.
+      const enc = await admin.query("SELECT status FROM encounter WHERE id=$1", [id]);
+      expect(enc.rows[0].status).toBe("finalized");
+      expect(
+        (await admin.query("SELECT 1 FROM encounter_signature WHERE encounter_id=$1", [id]))
+          .rowCount,
+      ).toBe(0);
+      expect(
+        (await admin.query("SELECT 1 FROM cosignature_request WHERE encounter_id=$1", [id]))
+          .rowCount,
+      ).toBe(0);
+      expect(await eventsFor(id)).not.toContain("m8.encounter.signed");
+    } finally {
+      await admin.query(
+        "UPDATE patient_assignment SET unassigned_at = NULL WHERE patient_id=$1 AND role='primary_rn'",
+        [PATIENT],
+      );
+    }
+    // Re-assigned, the SAME encounter signs — so the refusal was the missing case manager, not the note.
+    expect((await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never })).status).toBe(
+      "cosign_pending",
+    );
+  });
+
+  it("§2.6 check 10 — a case manager whose MEMBERSHIP has lapsed is not an eligible cosigner", async () => {
+    const id = await draft("routine_visit", "lpn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    // The assignment stays open; only the membership goes. An RN who has left the agency cannot
+    // cosign, and routing to their stale membership id would send the duty to nobody.
+    await admin.query("UPDATE membership SET status='revoked' WHERE id=$1", [
+      CASE_MANAGER_MEMBERSHIP_ID,
+    ]);
+    try {
+      await expect(
+        svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never }),
+      ).rejects.toMatchObject({ statusCode: 422, code: "NO_ELIGIBLE_COSIGNER" });
+    } finally {
+      await admin.query("UPDATE membership SET status='active' WHERE id=$1", [
+        CASE_MANAGER_MEMBERSHIP_ID,
+      ]);
+    }
+  });
+
+  it("§2.6 check 10 — an RN note never asks the question: no case manager, still signs", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    await admin.query(
+      "UPDATE patient_assignment SET unassigned_at = CURRENT_DATE WHERE patient_id=$1 AND role='primary_rn'",
+      [PATIENT],
+    );
+    try {
+      // Only lpn/chha route a cosignature (§2.3), so the guard must not become a new way for an RN
+      // note to fail — the discipline decides, not the assignment roster.
+      expect((await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never })).status).toBe(
+        "signed",
+      );
+    } finally {
+      await admin.query(
+        "UPDATE patient_assignment SET unassigned_at = NULL WHERE patient_id=$1 AND role='primary_rn'",
+        [PATIENT],
+      );
+    }
+  });
+
+  it("RLS — org B cannot read or write org A's encounter (non-leaking 404)", async () => {
+    const id = await draft("routine_visit", "rn", { document: false });
     await expect(svc.getEncounter(ORG_B, id)).rejects.toMatchObject({ statusCode: 404 });
     await expect(svc.finalize(ORG_B, id, SERVICE_DATE as never)).rejects.toMatchObject({
       statusCode: 404,

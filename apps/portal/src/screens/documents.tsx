@@ -117,7 +117,6 @@ export function PortalDocumentList(): JSX.Element {
       }
       const done = await client.POST("/api/v1/portal/documents/upload-complete/{uploadId}", {
         params: { path: { uploadId } },
-        body: {},
       });
       if (done.error) {
         setUploadMsg({ tone: "err", msg: readError(done.response?.status) });

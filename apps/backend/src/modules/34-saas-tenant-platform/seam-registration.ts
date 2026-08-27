@@ -86,12 +86,22 @@ export class TenantKeyVersionMissing extends Error {
 
 /**
  * The KEK-unwrap port the `TenantKeyProvider` composes over (D5). M34's package holds NO KMS/KEK
- * knowledge, so the composition root binds this to the real KEK/KMS adapter (M1 infra). `unwrap` takes
- * the KEK-wrapped DEK ciphertext + the KEK id that wrapped it and returns the live DEK key material —
- * never logged, never persisted unwrapped, held only within the resolving `withOrgContext` scope.
+ * knowledge, so the composition root binds this to the real KEK/KMS adapter (M1 infra — today
+ * `apps/backend/src/bootstrap/tenant-kek.ts`, ADR-0045). `unwrap` takes the KEK-wrapped DEK ciphertext,
+ * the KEK id that wrapped it, and the ORGANIZATION whose key ring it was read from; it returns the live
+ * DEK key material — never logged, never persisted unwrapped, held only within the resolving scope.
+ *
+ * `organizationId` is part of the request because the adapter binds it into the AAD: a wrapped DEK is
+ * openable only in the key ring it was minted for. Without it, anyone who can WRITE `tenant_key_ring`
+ * (the platform credential, or a restored backup) could copy tenant B's wrapped ciphertext into tenant
+ * A's row and read B's PHI through A's request path while never holding the KEK at all.
  */
 export interface KekUnwrapPort {
-  unwrap(input: { kekWrappedCiphertext: Buffer; kekId: string }): Promise<Buffer>;
+  unwrap(input: {
+    organizationId: string;
+    kekWrappedCiphertext: Buffer;
+    kekId: string;
+  }): Promise<Buffer>;
 }
 
 /** Shape of one retained prior DEK version (the `tenant_key_ring.prior_dek_versions` jsonb element). */
@@ -111,6 +121,23 @@ export interface M34SeamRegistrationDeps {
   readonly runInPlatformContext: RunInPlatformContext;
   /** The KEK/KMS unwrap adapter the MANDATORY `TenantKeyProvider` (D5) composes over. */
   readonly kekUnwrap: KekUnwrapPort;
+  /**
+   * Run `fn` org-scoped over a credential that MAY SELECT `tenant_key_ring` — the platform login, not the
+   * request path's `wardenx_app`.
+   *
+   * This is a separate port from {@link RunInOrgContext} on purpose. Migration 0052 §5 REVOKES SELECT on
+   * `tenant_key_ring` from `wardenx_app` and surfaces only the ciphertext-free `tenant_key_ring_metadata_v`
+   * view to it, so that a compromise of the request path's credential yields no key material at all — the
+   * §3.10 / M34-F02 control. Reading the wrapped DEK through `runInOrgContext` therefore does not fail on
+   * the KEK, it fails one step earlier with `42501 permission denied for table tenant_key_ring`, whatever
+   * the KEK port is bound to. Binding this to the platform pool keeps the control intact (the tenant
+   * credential still cannot read key material) while giving the provider a credential that can.
+   *
+   * Still ORG-scoped, not platform-scoped: resolving one tenant's DEK is not a cross-tenant read, so it
+   * takes no `withPlatformContext` entry and writes no `platform.bypass_invoked` audit row — which would
+   * otherwise land on every encounter finalize and every message read.
+   */
+  readonly runInKeyRingContext: RunInOrgContext;
   /** M34's own export-shard store (Drizzle-backed in prod; defaults to the in-memory slice store). */
   readonly exportShardStore?: Parameters<typeof createTenantExportShardForM34>[0];
 }
@@ -238,7 +265,7 @@ function buildSupportSessionProvider(deps: M34SeamRegistrationDeps): TenantSuppo
 /** Build the MANDATORY `TenantKeyProvider` (D5) over `TenantKeyRingRepository` + the injected KEK-unwrap port. */
 function buildKeyProvider(deps: M34SeamRegistrationDeps): TenantKeyProvider {
   const loadRing = (orgId: string) =>
-    deps.runInOrgContext(orgId, (tx) =>
+    deps.runInKeyRingContext(orgId, (tx) =>
       new TenantKeyRingRepository(tx).findByOrganizationId(orgId),
     );
   return {
@@ -251,6 +278,7 @@ function buildKeyProvider(deps: M34SeamRegistrationDeps): TenantKeyProvider {
       }
       if (ring.currentDekKekId === null) throw new TenantKeyMissing(orgId);
       const key = await deps.kekUnwrap.unwrap({
+        organizationId: orgId,
         kekWrappedCiphertext: ring.currentDekKekWrappedCiphertext,
         kekId: ring.currentDekKekId,
       });
@@ -265,6 +293,7 @@ function buildKeyProvider(deps: M34SeamRegistrationDeps): TenantKeyProvider {
           throw new TenantKeyDestroyed(orgId);
         }
         const key = await deps.kekUnwrap.unwrap({
+          organizationId: orgId,
           kekWrappedCiphertext: ring.currentDekKekWrappedCiphertext,
           kekId: ring.currentDekKekId,
         });
@@ -274,6 +303,7 @@ function buildKeyProvider(deps: M34SeamRegistrationDeps): TenantKeyProvider {
       const prior = priors.find((p) => p.version === version);
       if (!prior) throw new TenantKeyVersionMissing(orgId, version);
       const key = await deps.kekUnwrap.unwrap({
+        organizationId: orgId,
         kekWrappedCiphertext: Buffer.from(prior.kekWrappedCiphertext, "base64"),
         kekId: prior.kekId,
       });

@@ -150,6 +150,14 @@ const PLATFORM_WRITER_FUNCTIONS = [
   "report_writer_insert_platform_report_run(uuid, text, text, uuid, timestamptz, text, int)",
   "report_writer_update_platform_report_run(uuid, timestamptz, jsonb)",
   "report_writer_update_platform_mv_metadata(text, jsonb)",
+  // F-033/#93 — the `platform.partition_rotate` cron's two entry points (migration 0224). Creating a
+  // partition needs OWNERSHIP of the parent table, which `wardenx_platform` deliberately does not have
+  // and should not be given: making it a DDL role to solve a monthly maintenance task would hand every
+  // platform job the ability to reshape the schema. `rotate_time_partitions` is SECURITY DEFINER and
+  // takes an integer — every identifier it executes comes from `pg_catalog`, none from the caller — so
+  // this grant widens WHO may rotate partitions, not what the platform role can do to the schema.
+  "rotate_time_partitions(int)",
+  "time_partition_coverage()",
 ] as const;
 
 /** The M35 platform-only tables (migration 0143 — RLS with no wardenx_app grant): full write. */

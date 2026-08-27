@@ -29,6 +29,7 @@
 //     here, so a run fails closed (DrilldownDekUnavailable) and writes NOTHING (never plaintext at rest, §3.6).
 import { randomUUID } from "node:crypto";
 import { type AuditContext, audit } from "@wardenx/audit";
+import { createDbAdminMembershipReader } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import {
   type CsvExportPorts,
@@ -59,6 +60,7 @@ import {
   translateSpec,
 } from "@wardenx/reporting";
 import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
+import type { AdminMembershipReader } from "@wardenx/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { eq, sql } from "drizzle-orm";
 import type Redis from "ioredis";
@@ -119,6 +121,13 @@ export interface M33WorkerDeps {
    * the name, it is module-agnostic (its event records the caller's own jobId).
    */
   readonly auditBypass?: PlatformBypassAuditor<DbClient>;
+  /**
+   * The M3-owned `org_admin`-grant reader (`createDbAdminMembershipReader`, @wardenx/auth). Consulted by
+   * the `report.scheduled_run` snapshot to decide the OWNER's §4.7.1 scope (F-059) — see the call site.
+   * ABSENT ⇒ every scheduled snapshot narrows to its owner's `self` scope, which is fail-closed: an
+   * unwired reader yields less data, never the whole organization's.
+   */
+  readonly adminMemberships?: AdminMembershipReader;
   /** Injected clock (deterministic in tests; the package workers stamp every instant through this). */
   now?: () => Date;
   /**
@@ -429,13 +438,35 @@ export function buildM33WorkerPorts(deps: M33WorkerDeps): M33WorkerPortBundles {
           measures: base.measures,
           maxRowLimit: base.maxRowLimit,
           drilldownUrlTemplate: base.drilldownUrlTemplate,
+          scopeMembershipColumn: base.scopeMembershipColumn,
+          scopeLocationColumn: base.scopeLocationColumn,
         };
-        const scope: ReportableScopeEnvelope = {
-          scopeKind: "org",
-          organizationId,
-          membershipIds: [],
-          locationIds: [],
-        };
+        // F-059 — the scheduled snapshot's §4.7.1 scope, resolved from the SCHEDULE'S OWNER rather than
+        // hard-coded `org`. This is the highest-consequence of the four places that built their own
+        // org-wide envelope: the interactive read at least stays inside the app, whereas this snapshot is
+        // rendered to a PDF/XLSX and DELIVERED — a clinician could save a view, schedule it, and receive
+        // the whole organization's per-clinician figures in their inbox on a cron.
+        //
+        // Re-derived at RUN time, not pinned at create time, so an owner whose org-admin grant is revoked
+        // stops receiving org-wide snapshots on the next fire rather than at the next schedule edit.
+        //
+        // Only the `org_admin` rung is resolvable here: this runs on a queue with no session, and
+        // `AdminMembershipReader` is the one role fact the platform exposes by membership id. A
+        // `compliance_officer` owner therefore narrows to `self` — LESS than the interactive ladder would
+        // grant them, never more, which is the right direction for the error to point on a delivery path.
+        const orgWide = deps.adminMemberships
+          ? (await deps.adminMemberships.adminMembershipIds(organizationId)).has(
+              view.ownerMembershipId,
+            )
+          : false;
+        const scope: ReportableScopeEnvelope = orgWide
+          ? { scopeKind: "org", organizationId, membershipIds: [], locationIds: [] }
+          : {
+              scopeKind: "self",
+              organizationId,
+              membershipIds: [view.ownerMembershipId],
+              locationIds: [],
+            };
         const translation = translateSpec({ ...spec, filters }, translatorBase, scope);
         if (translation.kind === "deny_stub") {
           throw new Error(
@@ -986,6 +1017,8 @@ export function buildM33WorkerDeps(deps: {
     primaryDb: deps.primaryDb,
     platformDb: deps.platformDb,
     auditBypass: deps.auditBypass,
+    // F-059 — the scheduled-run snapshot's owner-scope decision. Same reader M2's member roster uses.
+    adminMemberships: createDbAdminMembershipReader(deps.db),
     outboxPublisher: deps.outboxPublisher,
     lagProbeRedis: deps.lagProbeRedis,
     mvRefreshEnqueue: deps.mvRefreshEnqueue,

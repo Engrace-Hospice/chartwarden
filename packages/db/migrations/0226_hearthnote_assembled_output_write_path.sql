@@ -1,0 +1,29 @@
+-- M8 `hearthnote_assembled_output` — make the table writable by the finalize path (F-052 / #122).
+--
+-- WHAT WAS WRONG. `hearthnote_assembled_output` holds what a signed note SAYS: the deterministic Layer-1
+-- narrative, any post-hardblock Layer-2 narrative, and `final_cipher` — the column the schema's own
+-- comment calls "the bytes that ARE the signed encounter narrative". Nothing has ever written it. The
+-- §2.3 state machine has emitted `{ kind: 'persist_assembled_output' }` on every finalize since M8-T04
+-- and a unit test asserts it does; no service ever performed the effect. So the note was RECOMPUTED from
+-- `hearthnote_selection` on every read, which defeats the D11 vocabulary pin at the last step — a
+-- `@wardenx/narrative-vocab` release that edits a phrase would change the rendered text of an
+-- already-signed encounter, and there was no record of what was signed independent of the inputs it was
+-- derived from. For a 42 CFR 418.104 legal record, "we can rebuild it" is not the claim "here is what it
+-- said".
+--
+-- THE SITING PAIR. `provider_entity_id` / `location_id` are NOT NULL here, exactly as they were on
+-- `encounter` before 0128 and on `hearthnote_selection` before 0225. Both were relaxed for the same
+-- reason: the draft route captures neither, and the M6 admission may itself be unsited. A child that
+-- DENORMALIZES the parent's siting cannot require what the parent may not have — so every encounter
+-- created through the API today would be unable to hold its own assembled narrative. This table was
+-- deliberately left out of 0225 on the grounds that relaxing a constraint no writer has yet met is
+-- guessing. The writer exists now, so the guess is no longer needed: this is the same relaxation, made
+-- at the moment 0225 said to make it.
+--
+-- `hearthnote_llm_modification` is still NOT relaxed, for the identical reason: it is the Layer-2
+-- provenance path, which still writes nothing (#123).
+--
+-- Safe to apply unconditionally: the table has never held a row, so the NULL relaxation cannot conflict
+-- with existing data.
+ALTER TABLE "hearthnote_assembled_output" ALTER COLUMN "provider_entity_id" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "hearthnote_assembled_output" ALTER COLUMN "location_id" DROP NOT NULL;

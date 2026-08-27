@@ -31,6 +31,7 @@ import {
   createInMemoryEncounterBackend,
   registerEncounterRoutes,
 } from "../src/modules/08-encounters/index";
+import { requiredSectionSelections } from "./_hearthnote-fixtures";
 
 /**
  * GAP-014: a FRESH `createPredicateRegistry()` per server/test — reusing the shared module-level
@@ -86,6 +87,7 @@ const ALL_AUTHOR = [
   "encounter.finalize",
   "encounter.sign",
   "encounter.cosign",
+  "encounter.addendum_author",
   "vitals.author",
   "mileage.author",
 ];
@@ -94,6 +96,7 @@ const PERMISSION_SEED = [
   { userId: "rn_1", permissions: ALL_AUTHOR },
   { userId: "lpn_cos", permissions: ["encounter.read", "encounter.cosign"] },
   { userId: "viewer_1", permissions: ["encounter.read"] },
+  { userId: "svc_m22", permissions: ["encounter.read_internal"] },
 ];
 
 function makeServer(
@@ -186,6 +189,8 @@ function makeServer(
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
 const LPN_COSIGNER = { "x-test-user": "lpn_cos", "x-test-org": ORG, "x-test-roles": "lpn" };
+/** The system principal the M22 render seam (route 31) is called as. */
+const INTERNAL = { "x-test-user": "svc_m22", "x-test-org": ORG, "x-test-roles": "system" };
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -329,6 +334,17 @@ describe("M8-T09 — finalize → sign happy path (§2.3)", () => {
     });
     const id = draft.json().id as string;
 
+    // The §2.6 Layer-3 gate (#121) refuses a note with nothing in it, so the happy path documents one
+    // first — which is what this test always claimed to be exercising. Before the gate was real it
+    // finalized and signed an encounter carrying zero selections, and passed.
+    const documented = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "0" },
+      payload: requiredSectionSelections("routine_visit", "rn"),
+    });
+    expect(documented.statusCode).toBe(200);
+
     const finalize = await app.inject({
       method: "POST",
       url: `/api/v1/encounters/${id}/finalize`,
@@ -364,11 +380,21 @@ describe("M8-T09 — finalize → sign happy path (§2.3)", () => {
     });
     const id = draft.json().id as string;
     await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "0" },
+      payload: requiredSectionSelections("routine_visit", "rn"),
+    });
+    const finalized = await app.inject({
       method: "POST",
       url: `/api/v1/encounters/${id}/finalize`,
       headers: RN,
       payload: {},
     });
+    // Asserted so the 403 below can only be the step-up gate: an undocumented draft never reaches
+    // `finalized`, and a sign attempt on a still-`draft` row would 403 at the preHandler for a
+    // different reason entirely.
+    expect(finalized.statusCode).toBe(200);
     // Push rn_1's session past the 300s step-up floor (PARAM-004/CoP-418.104(c) follow-up — freshness
     // is now a real server-side check via requireStepUp, not a client-supplied timestamp; a stale
     // step-up denies at the ABAC gate (403) rather than reaching the old service-layer 412 domain check.
@@ -411,11 +437,13 @@ describe("M8-T09 — §7.7 optimistic concurrency on selections PATCH", () => {
     });
     const id = draft.json().id as string;
 
+    // `{ sections: [] }` is the empty tree. It used to be `{ selections: {} }` against a schema that
+    // validated nothing and a handler that read nothing (#114).
     const noMatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/encounters/${id}/selections`,
       headers: RN,
-      payload: { selections: {} },
+      payload: { sections: [] },
     });
     expect(noMatch.statusCode).toBe(428);
 
@@ -423,7 +451,7 @@ describe("M8-T09 — §7.7 optimistic concurrency on selections PATCH", () => {
       method: "PATCH",
       url: `/api/v1/encounters/${id}/selections`,
       headers: { ...RN, "if-match": "0" },
-      payload: { selections: {} },
+      payload: { sections: [] },
     });
     expect(ok.statusCode).toBe(200);
     expect(ok.json().version).toBe(1);
@@ -432,10 +460,248 @@ describe("M8-T09 — §7.7 optimistic concurrency on selections PATCH", () => {
       method: "PATCH",
       url: `/api/v1/encounters/${id}/selections`,
       headers: { ...RN, "if-match": "0" },
-      payload: { selections: {} },
+      payload: { sections: [] },
     });
     expect(stale.statusCode).toBe(412);
     expect(stale.json().error.code).toBe("VERSION_MISMATCH");
+  });
+});
+
+// #114 — the two selections PATCHes published a required body, parsed none of it, bumped the version and
+// returned 200. The clinician's note was accepted and dropped; nothing had ever written a
+// `hearthnote_selection` row, and no read existed through which the loss could be seen.
+describe("M8 §2.6 — the HearthNote selection tree round-trips (#114)", () => {
+  const TREE = {
+    sections: [
+      {
+        sectionId: "assessment",
+        entries: [{ code: "nv.cv.stable" }, { code: "nv.cv.edema", params: { edema_grade: "2+" } }],
+      },
+      { sectionId: "plan", entries: [], freeText: "Family to call if pain escalates overnight." },
+    ],
+  };
+
+  async function draft(app: Awaited<ReturnType<typeof makeServer>>["app"]): Promise<string> {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/encounters",
+      headers: RN,
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "rn",
+        serviceDate: "2026-06-20",
+      },
+    });
+    return res.json().id as string;
+  }
+
+  it("writes the tree and reads it back through a caller-facing route", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "0" },
+      payload: TREE,
+    });
+    expect(patched.statusCode).toBe(200);
+    // The response is the assembled note, not an empty string — the entry's `${edema_grade}` param and
+    // the verbatim free text are both in it.
+    expect(patched.json().layer1Preview).toContain("cardiovascularly stable");
+    expect(patched.json().layer1Preview).toContain("2+ dependent edema");
+    expect(patched.json().layer1Preview).toContain("Family to call if pain escalates overnight.");
+
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: RN,
+    });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().templateKey).toBe("routine_visit:rn");
+    expect(read.json().sections).toEqual(TREE.sections);
+    expect(read.json().layer1Preview).toBe(patched.json().layer1Preview);
+  });
+
+  it("a fresh draft reads back an EMPTY tree — absent is distinguishable from written", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: RN,
+    });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().sections).toEqual([]);
+    expect(read.json().layer1Preview).toBe("");
+  });
+
+  it("refuses a vocabulary code the corpus does not have — and stores nothing", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "0" },
+      payload: { sections: [{ sectionId: "assessment", entries: [{ code: "nv.not.a.code" }] }] },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("UNKNOWN_VOCAB_CODE");
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: RN,
+    });
+    expect(read.json().sections).toEqual([]);
+  });
+
+  // `assembleLayer1` walks the TEMPLATE's sections and looks each one up in the selection, so a section
+  // the template does not have is never visited — it would be stored and then vanish from every render.
+  it("refuses a section the template does not have, rather than storing content that never renders", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "0" },
+      payload: { sections: [{ sectionId: "not_a_section", entries: [{ code: "nv.cv.stable" }] }] },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("UNKNOWN_TEMPLATE_SECTION");
+  });
+
+  it("the M22 render seam serves the assembled note, and 404s when there is none to render", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+
+    // Was `{ final: "" }` with a 200 — a renderable answer for a note that does not exist.
+    const empty = await app.inject({
+      method: "GET",
+      url: `/api/v1/internal/encounters/${id}/render-payload`,
+      headers: INTERNAL,
+    });
+    expect(empty.statusCode).toBe(404);
+
+    await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "0" },
+      payload: TREE,
+    });
+    const rendered = await app.inject({
+      method: "GET",
+      url: `/api/v1/internal/encounters/${id}/render-payload`,
+      headers: INTERNAL,
+    });
+    expect(rendered.statusCode).toBe(200);
+    expect(rendered.json().final).toContain("Assessment");
+    expect(rendered.json().final).toContain("cardiovascularly stable");
+    // A draft has nothing pinned, so this is a live re-assembly — and it says so on the wire (#122).
+    expect(rendered.json().pinned).toBe(false);
+
+    // Document the rest of the §2.6 required set so the gate lets this finalize (TREE deliberately
+    // populates only two sections), then capture the preview the pin must match.
+    await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "1" },
+      payload: requiredSectionSelections("routine_visit", "rn"),
+    });
+    const preview = await app.inject({
+      method: "GET",
+      url: `/api/v1/internal/encounters/${id}/render-payload`,
+      headers: INTERNAL,
+    });
+    expect(preview.json().pinned).toBe(false);
+
+    // Finalize pins it. Afterwards the same route serves the PINNED bytes, and a renderer can tell the
+    // legal record from a preview of one without asking what status the encounter is in.
+    const finalized = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/finalize`,
+      headers: RN,
+      payload: { at: "2026-06-20" },
+    });
+    expect(finalized.statusCode).toBe(200);
+    const pinned = await app.inject({
+      method: "GET",
+      url: `/api/v1/internal/encounters/${id}/render-payload`,
+      headers: INTERNAL,
+    });
+    expect(pinned.json().pinned).toBe(true);
+    expect(pinned.json().final).toBe(preview.json().final);
+  });
+
+  // ── §2.6 D5 Layer-2 (#123) ───────────────────────────────────────────────────────────────────────
+
+  it("the Layer-2 enhance route answers the D5 ladder's reason, not a fabricated modification id", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/hearthnote/enhance`,
+      headers: RN,
+      payload: { style: { tone: "formal", brevity: "concise" } },
+    });
+    expect(res.statusCode).toBe(200);
+    // Was `{ modificationId: <the ENCOUNTER's own id> }` — an identifier for something else entirely.
+    expect(res.json()).toEqual({ enhanced: false, reason: "kill_switch_active" });
+    expect(res.json().modificationId).toBeUndefined();
+    expect(JSON.stringify(res.json())).not.toContain(id);
+  });
+
+  it("a per-passage decision against a modification that does not exist is a 404, not an echo", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    // Was a 200 echoing back whatever id the caller invented. Nothing writes
+    // `hearthnote_llm_modification`, so every id names nothing — and the route now says so.
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/hearthnote/modifications/2f1d4c9e-0000-4000-8000-000000000001/decisions`,
+      headers: RN,
+      payload: { decision: "accept" },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("an addendum keeps its own tree, against its parent's template", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const created = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/addenda`,
+      headers: RN,
+      payload: { reason: "late clarification of the evening pain plan" },
+    });
+    expect(created.statusCode).toBe(201);
+    const addendumId = created.json().id as string;
+
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/addenda/${addendumId}/selections`,
+      headers: { ...RN, "if-match": "0" },
+      payload: { sections: [{ sectionId: "plan", entries: [], freeText: "Clarifying the plan." }] },
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().layer1Preview).toContain("Clarifying the plan.");
+
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/addenda/${addendumId}/selections`,
+      headers: RN,
+    });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().templateKey).toBe("routine_visit:rn");
+    expect(read.json().layer1Preview).toContain("Clarifying the plan.");
+    // The parent's own tree is untouched — the addendum is a separate row, not an overwrite.
+    const parent = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: RN,
+    });
+    expect(parent.json().sections).toEqual([]);
   });
 });
 

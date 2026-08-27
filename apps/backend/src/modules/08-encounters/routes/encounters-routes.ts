@@ -1,5 +1,5 @@
 // apps/backend/src/modules/08-encounters/routes/encounters-routes.ts — M8-T09 the §4.1 route inventory
-// (31 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth,
+// (34 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth,
 // M3) on the §4.5 keys M8 registers into M3's catalog (M8_CONTRIBUTED_PERMISSIONS). Org binding is
 // server-side (`request.context`, never the body). Handlers compose over the injected EncounterRouteService
 // (in-memory slice; Drizzle in prod under `withOrgContext` so RLS backstops).
@@ -36,6 +36,7 @@ import {
   SignEncounterSchema,
   SignedSinceQuerySchema,
   SupervisorReleaseSchema,
+  UpdateSelectionsSchema,
   VitalParamsSchema,
   VoidEncounterSchema,
   parse,
@@ -211,18 +212,42 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
   );
 
-  // 3 — update selections (§7.7 If-Match).
+  // 3 — update selections (§7.7 If-Match). The body used to be published and never read: the clinician's
+  // HearthNote arrived, the version bumped, a 200 came back, and nothing was written (#114).
   app.patch(
     "/api/v1/encounters/:encounterId/selections",
     { preHandler: [AUTHOR, SCOPE_FOR("encounter.author"), IF_MATCH] },
     async (request) => {
       const { organizationId } = actorOf(request);
       parse(EncounterParamsSchema, request.params);
+      const body = parse(UpdateSelectionsSchema, request.body);
       return service.updateSelections(
         organizationId,
         encounterIdOf(request),
         ifMatchVersionOf(request),
+        body,
       );
+    },
+  );
+
+  // 3b — read the stored selection tree back, assembled. The PATCH had no counterpart read, which is
+  // why the discard was invisible from every caller-facing surface (#114).
+  app.get(
+    "/api/v1/encounters/:encounterId/selections",
+    {
+      preHandler: [READ, SCOPE_FOR("encounter.read")],
+      config: {
+        auditRead: {
+          resourceKind: "hearthnote_selection",
+          resourceIdParam: "encounterId",
+          fields: ["selections", "freeText", "layer1Preview"],
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      parse(EncounterParamsSchema, request.params);
+      return service.getSelections(organizationId, encounterIdOf(request));
     },
   );
 
@@ -247,6 +272,43 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       const { encounterId, vitalId } = parse(VitalParamsSchema, request.params);
       const body = parse(CaptureVitalsSchema, request.body);
       return service.editVitals(organizationId, encounterId, vitalId, body);
+    },
+  );
+
+  // 5b — read back the encounter's vitals (#92).
+  //
+  // A SIBLING read rather than an expansion of the encounter DTO: `GET /encounters` and the two work
+  // queues return `EncounterView[]` through the same projection, so folding vitals into the view would
+  // ship every clinician's full measurement set on every list page — a PHI over-fetch to solve a
+  // single-chart problem. `encounter.read` + the same `encounter.scope` caseload predicate the
+  // encounter read carries, so the vitals of an encounter are exactly as reachable as the encounter.
+  app.get(
+    "/api/v1/encounters/:encounterId/vitals",
+    {
+      preHandler: [READ, SCOPE_FOR("encounter.read")],
+      config: {
+        auditRead: {
+          resourceKind: "vitals",
+          resourceIdParam: "encounterId",
+          fields: [
+            "bpSystolic",
+            "bpDiastolic",
+            "heartRate",
+            "respiratoryRate",
+            "temperature",
+            "spo2",
+            "painScore",
+            "weight",
+            "height",
+            "bmi",
+            "bloodGlucose",
+          ],
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.listVitals(organizationId, encounterIdOf(request));
     },
   );
 
@@ -318,7 +380,11 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
   );
 
-  // 12 — invoke HearthNote Layer-2 enhancement.
+  // 12 — invoke HearthNote Layer-2 enhancement. Answers the §2.6 D5 ladder's verdict, not a fabricated
+  // modification id (#123). 200 is the spec's own status for this route, and the right one: Layer 2
+  // being off is a steady state, not a fault — every call in Phase 1 returns it, and a normal outcome
+  // expressed as an HTTP error would pollute error rates and client retry logic for a feature that is
+  // simply switched off. The refusal is in the BODY, where a UI can render it.
   app.post(
     "/api/v1/encounters/:encounterId/hearthnote/enhance",
     { preHandler: [FINALIZE] },
@@ -459,14 +525,35 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
   );
 
-  // 23 — update addendum selections (§7.7 If-Match).
+  // 23 — update addendum selections (§7.7 If-Match). Same discard as route 3, same fix (#114).
   app.patch(
     "/api/v1/encounters/:encounterId/addenda/:addendumId/selections",
     { preHandler: [ADDENDUM_AUTHOR, IF_MATCH] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { encounterId, addendumId } = parse(AddendumParamsSchema, request.params);
-      return service.updateAddendumSelections(organizationId, encounterId, addendumId);
+      const body = parse(UpdateSelectionsSchema, request.body);
+      return service.updateAddendumSelections(organizationId, encounterId, addendumId, body);
+    },
+  );
+
+  // 23b — read an addendum's stored selection tree back, assembled (#114).
+  app.get(
+    "/api/v1/encounters/:encounterId/addenda/:addendumId/selections",
+    {
+      preHandler: [READ, SCOPE_FOR("encounter.read")],
+      config: {
+        auditRead: {
+          resourceKind: "hearthnote_selection",
+          resourceIdParam: "addendumId",
+          fields: ["selections", "freeText", "layer1Preview"],
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { encounterId, addendumId } = parse(AddendumParamsSchema, request.params);
+      return service.getAddendumSelections(organizationId, encounterId, addendumId);
     },
   );
 

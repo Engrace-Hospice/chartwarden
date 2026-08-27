@@ -150,10 +150,13 @@ function createFakePortalStore(): {
   seedAccount(digest: PortalAccountDigest): void;
   seedGrant(digest: PortalAccessGrantDigest): void;
   seedVisit(digest: TelehealthVisitDigest): void;
+  /** Every sealed reason the two #117 status-change routes handed the store, in call order. */
+  readonly statusChangeReasons: { id: string; action: string; reasonCipher: string }[];
 } {
   const accounts = new Map<string, PortalAccountDigest>();
   const grants = new Map<string, PortalAccessGrantDigest>();
   const visits = new Map<string, TelehealthVisitDigest>();
+  const statusChangeReasons: { id: string; action: string; reasonCipher: string }[] = [];
 
   const findActiveGrant = (
     portalAccountId: string,
@@ -273,18 +276,20 @@ function createFakePortalStore(): {
     async activeGrant(_orgId, portalAccountId, patientId) {
       return findActiveGrant(portalAccountId, patientId);
     },
-    async suspendAccount(_orgId, _userId, id) {
+    async suspendAccount(_orgId, _userId, id, reasonCipher) {
       const row = accounts.get(id);
       if (!row) return null;
       const updated = { ...row, status: "suspended" as const };
       accounts.set(id, updated);
+      statusChangeReasons.push({ id, action: "suspend", reasonCipher });
       return updated;
     },
-    async reinstateAccount(_orgId, _userId, id) {
+    async reinstateAccount(_orgId, _userId, id, reasonCipher) {
       const row = accounts.get(id);
       if (!row) return null;
       const updated = { ...row, status: "active" as const };
       accounts.set(id, updated);
+      statusChangeReasons.push({ id, action: "reinstate", reasonCipher });
       return updated;
     },
     async telehealthById(_orgId, id) {
@@ -319,6 +324,7 @@ function createFakePortalStore(): {
     seedAccount: (digest) => accounts.set(digest.portalAccountId, digest),
     seedGrant: (digest) => grants.set(digest.grantId, digest),
     seedVisit: (digest) => visits.set(digest.telehealthVisitId, digest),
+    statusChangeReasons,
   };
 }
 
@@ -363,6 +369,9 @@ function makeServer(
     /** Make M36's care-team roster reconcile fail (the GAP-059 condition), so the send path's
      *  refusal-vs-disclosure behaviour can be asserted. */
     readonly careTeamSyncThrows?: boolean;
+    /** Leave the #117 reason cipher UNBOUND, so suspend/reinstate refuse rather than record a status
+     *  change with no reason. Bound by default — the composition root binds it. */
+    readonly reasonCipherUnbound?: boolean;
   } = {},
 ) {
   const backend = createFakePortalStore();
@@ -525,7 +534,20 @@ function makeServer(
     opts.telehealthWebhookSignatureValid === false
       ? { ...FAKE_TELEHEALTH_ADAPTER, verifyWebhookSignature: () => false }
       : FAKE_TELEHEALTH_ADAPTER;
-  const deps: PortalRouteDeps = { store: backend.store, telehealth, now: () => new Date(NOW) };
+  const deps: PortalRouteDeps = {
+    store: backend.store,
+    telehealth,
+    now: () => new Date(NOW),
+    ...(opts.reasonCipherUnbound
+      ? {}
+      : {
+          reasonCipher: {
+            async encrypt(_org, plaintext) {
+              return `sealed:${plaintext}`;
+            },
+          },
+        }),
+  };
   mountM31Routes(app, deps);
   return { app, backend, messagingCalls };
 }
@@ -1016,7 +1038,9 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: `/api/v1/admin/portal-accounts/${ACCOUNT}/reinstate`,
     headers: { ...STAFF, ...IDEMP("k46") },
-    payload: {},
+    // Used to send `{}` and expect 200 — which is exactly the defect: the route publishes `reason` as
+    // required and read nothing, so the empty body sailed through (#117).
+    payload: { reason: "credential compromise resolved; access restored" },
     expectStatus: 200,
   },
   {
@@ -1183,5 +1207,72 @@ describe("M31 route smoke — fixed findings", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ received: true });
     await app.close();
+  });
+});
+
+describe("M31 §4.1 — the account status-change reason is read, sealed and stored (#117)", () => {
+  it("suspend seals the reason and hands it to the store", async () => {
+    const { app, backend } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/portal-accounts/${ACCOUNT}/suspend`,
+      headers: { ...STAFF, ...IDEMP("k117-a") },
+      payload: { reason: "suspected credential compromise reported by the family" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(backend.statusChangeReasons).toEqual([
+      {
+        id: ACCOUNT,
+        action: "suspend",
+        reasonCipher: "sealed:suspected credential compromise reported by the family",
+      },
+    ]);
+  });
+
+  it("reinstate seals its own reason — the two are not one write with two names", async () => {
+    const { app, backend } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/portal-accounts/${ACCOUNT}/reinstate`,
+      headers: { ...STAFF, ...IDEMP("k117-b") },
+      payload: { reason: "compromise investigated and closed; access restored" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(backend.statusChangeReasons[0]?.action).toBe("reinstate");
+    expect(backend.statusChangeReasons[0]?.reasonCipher).toBe(
+      "sealed:compromise investigated and closed; access restored",
+    );
+  });
+
+  // The regression this issue is: an empty body used to return 200 and suspend the account anyway.
+  for (const [label, payload] of [
+    ["an empty body", {}],
+    ["a reason below the published minimum", { reason: "no" }],
+  ] as const) {
+    it(`refuses ${label} and changes nothing`, async () => {
+      const { app, backend } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/admin/portal-accounts/${ACCOUNT}/suspend`,
+        headers: { ...STAFF, ...IDEMP(`k117-${label}`) },
+        payload,
+      });
+      expect(res.statusCode).toBe(422);
+      expect(backend.statusChangeReasons).toEqual([]);
+    });
+  }
+
+  it("refuses with 503 when no cipher is bound, rather than recording a status change with no reason", async () => {
+    const { app, backend } = makeServer({ reasonCipherUnbound: true });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admin/portal-accounts/${ACCOUNT}/suspend`,
+      headers: { ...STAFF, ...IDEMP("k117-unbound") },
+      payload: { reason: "suspected credential compromise reported by the family" },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error?.code).toBe("PORTAL_REASON_CIPHER_UNBOUND");
+    // The account is untouched — a refusal, not a partial write.
+    expect(backend.statusChangeReasons).toEqual([]);
   });
 });

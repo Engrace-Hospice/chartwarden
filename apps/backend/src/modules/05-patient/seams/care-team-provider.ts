@@ -22,6 +22,14 @@ export interface CareTeamStore {
    * roster to answer a one-clinician question.
    */
   findPrimaryRn(organizationId: string, patientId: string): Promise<string | null>;
+  /**
+   * The same open `primary_rn` assignment as {@link findPrimaryRn}, resolved to the clinician's ACTIVE
+   * membership id in `organizationId` (M8 §2.6 check 10 / §2.4 D3 routing — a cosignature is routed to a
+   * membership, not to a user account). Null when there is no such assignment OR the clinician's
+   * membership in that org is no longer active: an RN who has left the agency is not an eligible
+   * cosigner, and answering with their stale membership id would route a clinical duty to nobody.
+   */
+  findPrimaryRnMembership(organizationId: string, patientId: string): Promise<string | null>;
 }
 
 /** Build the real {@link CareTeamProvider} over an injected store (slice in-memory; Drizzle in prod). */
@@ -32,6 +40,9 @@ export function createCareTeamProvider(store: CareTeamStore): CareTeamProvider {
     },
     async primaryRnUserId({ organizationId, patientId }) {
       return store.findPrimaryRn(organizationId, patientId);
+    },
+    async primaryRnMembershipId({ organizationId, patientId }) {
+      return store.findPrimaryRnMembership(organizationId, patientId);
     },
   };
 }
@@ -62,6 +73,12 @@ export interface SeedCareTeamAssignment {
   readonly clinicianUserId: string;
   /** The `patient_assignment_role` value; defaults to a non-case-manager role (GAP-022). */
   readonly role?: string;
+  /**
+   * The clinician's ACTIVE membership id in this org, for `findPrimaryRnMembership`. Omitted means the
+   * clinician has no active membership — which is a real state (an RN who has left), not a shorthand
+   * for "same as the user id", so the seam answers null for them.
+   */
+  readonly membershipId?: string;
 }
 
 /** The `patient_assignment_role` member that IS the RN case manager (§3.5; one open row per patient). */
@@ -74,6 +91,7 @@ export function createInMemoryCareTeamStore(seed: readonly SeedCareTeamAssignmen
   const key = (o: string, p: string) => `${o} ${p}`;
   const byPatient = new Map<string, Set<string>>();
   const primaryRnByPatient = new Map<string, string>();
+  const primaryRnMembershipByPatient = new Map<string, string>();
   for (const a of seed) {
     const k = key(a.organizationId, a.patientId);
     (byPatient.get(k) ?? byPatient.set(k, new Set()).get(k)!).add(a.clinicianUserId);
@@ -81,6 +99,7 @@ export function createInMemoryCareTeamStore(seed: readonly SeedCareTeamAssignmen
     // seed that violates it behaves like the DB would rather than silently picking the last writer.
     if (a.role === PRIMARY_RN_ASSIGNMENT_ROLE && !primaryRnByPatient.has(k)) {
       primaryRnByPatient.set(k, a.clinicianUserId);
+      if (a.membershipId !== undefined) primaryRnMembershipByPatient.set(k, a.membershipId);
     }
   }
   return {
@@ -90,6 +109,9 @@ export function createInMemoryCareTeamStore(seed: readonly SeedCareTeamAssignmen
       },
       async findPrimaryRn(organizationId, patientId) {
         return primaryRnByPatient.get(key(organizationId, patientId)) ?? null;
+      },
+      async findPrimaryRnMembership(organizationId, patientId) {
+        return primaryRnMembershipByPatient.get(key(organizationId, patientId)) ?? null;
       },
     },
   };

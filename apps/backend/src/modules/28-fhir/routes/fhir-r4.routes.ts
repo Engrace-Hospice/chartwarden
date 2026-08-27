@@ -27,12 +27,15 @@ import {
 } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
+import { getFhirTerminologyProvider } from "../seams/index";
+import { codeSystemIdForUri } from "./code-system-uris";
 import {
   ExportQuery,
   ResourceReadParams,
   ResourceSearchQuery,
   ResourceTypeParams,
   TokenFormBody,
+  ValidateCodeBody,
   parse,
   parseQuery,
 } from "./m28-typebox";
@@ -346,6 +349,18 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
   });
 
   // ── R13 — CodeSystem/$validate-code ──────────────────────────────────────────────────────────────
+  //
+  // This route used to return `result: false` for every request without reading its Parameters at all
+  // (#117). That is not a Phase-1 stub, it is a WRONG ANSWER: `false` means "this code is not valid in
+  // that system", so a conformant client acting on it rejects codes that are perfectly good. Its
+  // neighbours R12/R14 are honest about the same gap — they return `not-supported` — but a
+  // `$validate-code` cannot borrow that shape without also refusing the systems it CAN answer for.
+  //
+  // It can answer for all of them. M38's `TerminologyProvider` is registered live on every boot (Drizzle-
+  // backed with a DB, in-memory without one), and `validate(system, code)` is the exact question. The only
+  // missing piece was the vocabulary join — a FHIR client names a code system by canonical URI, M38 by id
+  // — which is `codeSystemIdForUri`. A system that map does not carry is `not-supported`, named, rather
+  // than silently answered `false`.
   app.post("/fhir/r4/CodeSystem/$validate-code", async (request, reply) => {
     const ctx = await resolveBearer(request, reply);
     if (ctx === null) return reply;
@@ -359,8 +374,64 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
         "FHIR_SCOPE_DENIED",
       );
     }
+    const params = parse(ValidateCodeBody, request.body);
+    // FHIR names the system `url`; `system` is the spelling several clients send and costs nothing to
+    // accept. `code` may arrive as valueCode or valueString depending on the client's serializer.
+    const named = (name: string): string | null => {
+      const p = params.parameter.find((x) => x.name === name);
+      return p?.valueUri ?? p?.valueCode ?? p?.valueString ?? null;
+    };
+    const systemUri = named("url") ?? named("system");
+    const code = named("code");
+    if (systemUri === null || code === null) {
+      return sendOutcome(
+        reply,
+        400,
+        "error",
+        "invalid",
+        "Parameters must supply both a code system (`url` or `system`) and a `code`",
+        "FHIR_VALIDATE_CODE_INCOMPLETE",
+      );
+    }
+    const systemId = codeSystemIdForUri(systemUri);
+    if (systemId === null) {
+      return sendOutcome(
+        reply,
+        404,
+        "warning",
+        "not-supported",
+        `code system ${systemUri} is not served by this server`,
+        "FHIR_NOT_SUPPORTED",
+      );
+    }
+    let result: { valid: boolean; status?: string };
+    try {
+      result = await getFhirTerminologyProvider().validate(systemId, code);
+    } catch {
+      // The seam is registered on every boot, so this is defensive — but a throw here must still leave
+      // the FHIR surface FHIR: the M1 error envelope is not an OperationOutcome, and a conformance
+      // surface that answers a terminology outage in a second error format is two bugs, not one.
+      return sendOutcome(
+        reply,
+        503,
+        "error",
+        "processing",
+        "the terminology service is unavailable",
+        "FHIR_TERMINOLOGY_UNAVAILABLE",
+      );
+    }
     reply.header("content-type", FHIR_JSON_CONTENT_TYPE);
-    return { resourceType: "Parameters", parameter: [{ name: "result", valueBoolean: false }] };
+    return {
+      resourceType: "Parameters",
+      parameter: [
+        { name: "result", valueBoolean: result.valid },
+        ...(result.valid
+          ? result.status && result.status !== "active"
+            ? [{ name: "message", valueString: `code is ${result.status} in ${systemUri}` }]
+            : []
+          : [{ name: "message", valueString: `code ${code} is not valid in ${systemUri}` }]),
+      ],
+    };
   });
 
   // ── R14 — ValueSet read ──────────────────────────────────────────────────────────────────────────

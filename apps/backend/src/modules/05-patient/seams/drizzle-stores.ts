@@ -27,6 +27,8 @@ const EMAIL = schema.patientEmails;
 const ALIAS = schema.patientNameAliases;
 const COMM = schema.patientCommunicationPreferences;
 const PA = schema.patientAssignments;
+// M2's `membership` — read-only, to resolve an assignment's clinician USER to their membership (#124).
+const MB = schema.memberships;
 
 /** The seam envelope's actor id — a cross-module identity read has no acting membership. */
 const SEAM_SYSTEM_USER_ID = "";
@@ -486,6 +488,35 @@ export function createDrizzleCareTeamStore(db: DbClient): CareTeamStore {
           )
           .limit(1);
         return row?.clinicianUserId ?? null;
+      });
+    },
+
+    // The same open `primary_rn` row, joined to the clinician's ACTIVE membership in this org (#124).
+    // `patient_assignment` stores a user id and `cosignature_request.routed_to_membership_id` is a NOT
+    // NULL FK to `membership`, so somebody has to make the hop; it happens here because M5 owns the
+    // assignment and the "which membership counts as current" rule then lives in one place. An RN who
+    // has left the agency (membership suspended/revoked/pending) resolves to null rather than to a stale
+    // id — for a gate asking whether an eligible cosigner EXISTS, that is the fail-closed direction.
+    async findPrimaryRnMembership(organizationId, patientId) {
+      return withOrgContext(db, { organizationId, userId: SEAM_SYSTEM_USER_ID }, async (tx) => {
+        const [row] = await tx
+          .select({ membershipId: MB.id })
+          .from(PA)
+          .innerJoin(
+            MB,
+            and(eq(MB.userId, PA.clinicianUserId), eq(MB.organizationId, PA.organizationId)),
+          )
+          .where(
+            and(
+              eq(PA.organizationId, organizationId),
+              eq(PA.patientId, patientId),
+              eq(PA.role, PRIMARY_RN_ASSIGNMENT_ROLE),
+              isNull(PA.unassignedAt),
+              eq(MB.status, "active"),
+            ),
+          )
+          .limit(1);
+        return row?.membershipId ?? null;
       });
     },
   };

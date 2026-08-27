@@ -11,6 +11,7 @@ import {
   createDbEncounterAbacResolver,
   createDbEncounterRouteService,
 } from "./encounters-route-service-db";
+import type { HearthnoteCiphers } from "./hearthnote-crypto";
 import { registerEncounterRoutes as _registerM8Routes } from "./routes/encounters-routes";
 
 /**
@@ -25,12 +26,17 @@ export function mountEncounterRoutes(
   app: FastifyInstance,
   db: DbClient,
   outbox?: EncounterWriteOutboxPort,
+  ciphers?: HearthnoteCiphers,
 ): void {
   _registerM8Abac({ resolver: createDbEncounterAbacResolver(db) });
-  _registerM8Routes(app, { service: createDbEncounterRouteService(db, outbox) });
+  _registerM8Routes(app, { service: createDbEncounterRouteService(db, outbox, ciphers) });
 }
 
 export * from "./lifecycle/index";
+// #121 — the §2.6 Layer-3 compliance gate + the register of what each of its twelve checks is today.
+export * from "./gate/index";
+// #123 — the §2.6 D5 Layer-2 eligibility ladder, resolved once for both the route and the pinned row.
+export * from "./layer2";
 // M8-T06 — the §2.4 D3 cosignature-request state machine + 12h/24h/48h SLA clock.
 export * from "./cosignature/index";
 // M8-T07 — the §2.5 D4 late-entry tier clock + significant/administrative override workflows.
@@ -51,6 +57,17 @@ export {
   createDbEncounterAbacResolver,
   createDbEncounterRouteService,
 } from "./encounters-route-service-db";
+// The tenant-DEK envelopes: §3.6 over `hearthnote_selection.free_text_cipher` (#114) and §2.6 over
+// `hearthnote_assembled_output.layer1_cipher` / `final_cipher` (#122).
+export {
+  type EncounterTenantKeyProvider,
+  type HearthnoteCiphers,
+  type HearthnoteEnvelopeCipher,
+  type HearthnoteFreeTextCipher,
+  createHearthnoteCiphers,
+  createHearthnoteFreeTextCipher,
+  createHearthnoteNarrativeCipher,
+} from "./hearthnote-crypto";
 export {
   type CreateEncounterArgs,
   type CreatedEncounter,
@@ -62,6 +79,7 @@ export {
   type EncounterView,
   type MileageResult,
   type VitalsResult,
+  SLICE_DEFAULT_COSIGNER_MEMBERSHIP_ID,
   createInMemoryEncounterBackend,
 } from "./routes/service";
 export {

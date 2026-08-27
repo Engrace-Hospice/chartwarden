@@ -151,3 +151,78 @@ export function ratioResult(args: {
     computationSnapshot: args.snapshot,
   };
 }
+
+// ── structurally-unavailable measures ───────────────────────────────────────────────────────────────────
+
+/**
+ * Why a measure's INPUT cannot be assembled at all — distinct from "the population was too small".
+ *
+ * `insufficient_n` says *we counted, and the denominator was under the reportable floor*. This says *we
+ * cannot count*: the fact the numerator or denominator is defined over is not data a single-tenant hospice
+ * EHR holds (HCI 5/6/7 are defined over the beneficiary's Medicare claims across ALL providers — hospital
+ * inpatient stays and non-hospice Part A/B spend — which CMS computes centrally and no provider system
+ * sees). Both collapse to a null rate on the wire, so without this the two are indistinguishable, and the
+ * quality hub labels every suppressed measure "low N" — which for these three is simply false.
+ *
+ * Carried in the persisted `computation_snapshot` (the reproducibility record), so the reason survives with
+ * the value and a surveyor's "why is this blank?" has an answer in the row itself.
+ */
+export interface MeasureUnavailability {
+  /** Why the input cannot be assembled, in one sentence, for a human reading the dashboard. */
+  readonly reason: string;
+  /** What would have to exist for it to become computable (the declared-absence rule — never just "TODO"). */
+  readonly requires: string;
+}
+
+/** The `computation_snapshot` keys {@link unavailableResult} stamps (read back by {@link isDataUnavailable}). */
+export const MEASURE_UNAVAILABLE_SNAPSHOT_KEY = "dataUnavailable";
+
+/**
+ * The result for a measure whose input is structurally unavailable (see {@link MeasureUnavailability}).
+ *
+ * Shaped exactly like the `insufficient_n` floor case — 0/0, null rate, null verdict — because it must NOT
+ * score: a measure that cannot be computed is not a measure that was missed. The difference lives in the
+ * snapshot, which is the one part of the result that is persisted verbatim.
+ */
+export function unavailableResult(args: {
+  readonly snapshot: MeasureComputationSnapshot;
+  readonly unavailable: MeasureUnavailability;
+  readonly threshold?: ThresholdRule;
+}): QualityMeasureValueResult {
+  return {
+    numerator: 0,
+    denominator: 0,
+    rate: null,
+    thresholdMet: null,
+    thresholdValue: args.threshold?.value ?? null,
+    bandColor: "insufficient_n",
+    computationSnapshot: {
+      ...args.snapshot,
+      [MEASURE_UNAVAILABLE_SNAPSHOT_KEY]: true,
+      unavailableReason: args.unavailable.reason,
+      unavailableRequires: args.unavailable.requires,
+    },
+  };
+}
+
+/** Whether a result (or a persisted snapshot) was produced by {@link unavailableResult}. */
+export function isDataUnavailable(
+  source:
+    | Pick<QualityMeasureValueResult, "computationSnapshot">
+    | MeasureComputationSnapshot
+    | null,
+): boolean {
+  if (source === null) return false;
+  const snapshot =
+    "computationSnapshot" in source
+      ? (source as Pick<QualityMeasureValueResult, "computationSnapshot">).computationSnapshot
+      : (source as MeasureComputationSnapshot);
+  return snapshot?.[MEASURE_UNAVAILABLE_SNAPSHOT_KEY] === true;
+}
+
+/** The `reason` stamped by {@link unavailableResult}, or null when the snapshot carries none. */
+export function unavailableReasonOf(snapshot: MeasureComputationSnapshot | null): string | null {
+  if (snapshot === null || snapshot[MEASURE_UNAVAILABLE_SNAPSHOT_KEY] !== true) return null;
+  const reason = snapshot.unavailableReason;
+  return typeof reason === "string" ? reason : null;
+}

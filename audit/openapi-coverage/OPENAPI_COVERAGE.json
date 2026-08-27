@@ -1,12 +1,12 @@
 {
   "totals": {
-    "routes": 1258,
-    "enriched": 1251,
-    "deficit": 7,
+    "routes": 1261,
+    "enriched": 1256,
+    "deficit": 5,
     "mutating": 715,
-    "mutatingNoBody": 89,
-    "gets": 510,
-    "getsNoResponse": 8
+    "mutatingNoBody": 1,
+    "gets": 513,
+    "getsNoResponse": 7
   },
   "modules": [
     {
@@ -25,7 +25,7 @@
       "enriched": 17,
       "deficit": 0,
       "mutating": 9,
-      "mutatingNoBody": 2,
+      "mutatingNoBody": 0,
       "gets": 6,
       "getsNoResponse": 0
     },
@@ -35,7 +35,7 @@
       "enriched": 13,
       "deficit": 0,
       "mutating": 5,
-      "mutatingNoBody": 1,
+      "mutatingNoBody": 0,
       "gets": 8,
       "getsNoResponse": 0
     },
@@ -45,7 +45,7 @@
       "enriched": 14,
       "deficit": 0,
       "mutating": 5,
-      "mutatingNoBody": 1,
+      "mutatingNoBody": 0,
       "gets": 9,
       "getsNoResponse": 0
     },
@@ -71,12 +71,12 @@
     },
     {
       "module": "08-encounters",
-      "routes": 31,
-      "enriched": 31,
+      "routes": 34,
+      "enriched": 34,
       "deficit": 0,
       "mutating": 22,
-      "mutatingNoBody": 1,
-      "gets": 8,
+      "mutatingNoBody": 0,
+      "gets": 11,
       "getsNoResponse": 0
     },
     {
@@ -105,7 +105,7 @@
       "enriched": 28,
       "deficit": 0,
       "mutating": 18,
-      "mutatingNoBody": 2,
+      "mutatingNoBody": 0,
       "gets": 10,
       "getsNoResponse": 0
     },
@@ -115,7 +115,7 @@
       "enriched": 31,
       "deficit": 0,
       "mutating": 21,
-      "mutatingNoBody": 2,
+      "mutatingNoBody": 0,
       "gets": 10,
       "getsNoResponse": 0
     },
@@ -125,7 +125,7 @@
       "enriched": 28,
       "deficit": 0,
       "mutating": 18,
-      "mutatingNoBody": 1,
+      "mutatingNoBody": 0,
       "gets": 10,
       "getsNoResponse": 0
     },
@@ -135,7 +135,7 @@
       "enriched": 27,
       "deficit": 0,
       "mutating": 17,
-      "mutatingNoBody": 2,
+      "mutatingNoBody": 0,
       "gets": 7,
       "getsNoResponse": 0
     },
@@ -145,7 +145,7 @@
       "enriched": 28,
       "deficit": 0,
       "mutating": 17,
-      "mutatingNoBody": 2,
+      "mutatingNoBody": 0,
       "gets": 11,
       "getsNoResponse": 2
     },
@@ -165,7 +165,7 @@
       "enriched": 32,
       "deficit": 0,
       "mutating": 18,
-      "mutatingNoBody": 1,
+      "mutatingNoBody": 0,
       "gets": 13,
       "getsNoResponse": 0
     },
@@ -175,7 +175,7 @@
       "enriched": 25,
       "deficit": 0,
       "mutating": 15,
-      "mutatingNoBody": 1,
+      "mutatingNoBody": 0,
       "gets": 10,
       "getsNoResponse": 0
     },
@@ -185,7 +185,7 @@
       "enriched": 39,
       "deficit": 0,
       "mutating": 27,
-      "mutatingNoBody": 2,
+      "mutatingNoBody": 0,
       "gets": 12,
       "getsNoResponse": 0
     },
@@ -225,7 +225,7 @@
       "enriched": 43,
       "deficit": 0,
       "mutating": 17,
-      "mutatingNoBody": 4,
+      "mutatingNoBody": 0,
       "gets": 24,
       "getsNoResponse": 0
     },
@@ -235,7 +235,7 @@
       "enriched": 39,
       "deficit": 0,
       "mutating": 20,
-      "mutatingNoBody": 4,
+      "mutatingNoBody": 0,
       "gets": 17,
       "getsNoResponse": 0
     },
@@ -245,7 +245,7 @@
       "enriched": 32,
       "deficit": 0,
       "mutating": 19,
-      "mutatingNoBody": 2,
+      "mutatingNoBody": 0,
       "gets": 13,
       "getsNoResponse": 0
     },
@@ -255,7 +255,7 @@
       "enriched": 27,
       "deficit": 0,
       "mutating": 12,
-      "mutatingNoBody": 3,
+      "mutatingNoBody": 0,
       "gets": 15,
       "getsNoResponse": 0
     },
@@ -265,7 +265,7 @@
       "enriched": 45,
       "deficit": 0,
       "mutating": 28,
-      "mutatingNoBody": 9,
+      "mutatingNoBody": 0,
       "gets": 16,
       "getsNoResponse": 0
     },
@@ -275,7 +275,7 @@
       "enriched": 35,
       "deficit": 0,
       "mutating": 18,
-      "mutatingNoBody": 7,
+      "mutatingNoBody": 0,
       "gets": 16,
       "getsNoResponse": 0
     },
@@ -285,7 +285,7 @@
       "enriched": 33,
       "deficit": 0,
       "mutating": 16,
-      "mutatingNoBody": 5,
+      "mutatingNoBody": 0,
       "gets": 17,
       "getsNoResponse": 0
     },
@@ -295,7 +295,7 @@
       "enriched": 60,
       "deficit": 0,
       "mutating": 36,
-      "mutatingNoBody": 1,
+      "mutatingNoBody": 0,
       "gets": 24,
       "getsNoResponse": 0
     },
@@ -305,7 +305,7 @@
       "enriched": 53,
       "deficit": 0,
       "mutating": 25,
-      "mutatingNoBody": 7,
+      "mutatingNoBody": 0,
       "gets": 28,
       "getsNoResponse": 0
     },
@@ -325,7 +325,7 @@
       "enriched": 42,
       "deficit": 0,
       "mutating": 22,
-      "mutatingNoBody": 10,
+      "mutatingNoBody": 0,
       "gets": 20,
       "getsNoResponse": 0
     },
@@ -335,7 +335,7 @@
       "enriched": 50,
       "deficit": 0,
       "mutating": 31,
-      "mutatingNoBody": 1,
+      "mutatingNoBody": 0,
       "gets": 18,
       "getsNoResponse": 0
     },
@@ -345,7 +345,7 @@
       "enriched": 54,
       "deficit": 0,
       "mutating": 30,
-      "mutatingNoBody": 5,
+      "mutatingNoBody": 1,
       "gets": 23,
       "getsNoResponse": 0
     },
@@ -355,7 +355,7 @@
       "enriched": 22,
       "deficit": 0,
       "mutating": 13,
-      "mutatingNoBody": 3,
+      "mutatingNoBody": 0,
       "gets": 6,
       "getsNoResponse": 0
     },
@@ -365,7 +365,7 @@
       "enriched": 45,
       "deficit": 0,
       "mutating": 33,
-      "mutatingNoBody": 4,
+      "mutatingNoBody": 0,
       "gets": 10,
       "getsNoResponse": 0
     },
@@ -375,7 +375,7 @@
       "enriched": 14,
       "deficit": 0,
       "mutating": 3,
-      "mutatingNoBody": 1,
+      "mutatingNoBody": 0,
       "gets": 10,
       "getsNoResponse": 0
     },
@@ -385,7 +385,7 @@
       "enriched": 27,
       "deficit": 0,
       "mutating": 13,
-      "mutatingNoBody": 2,
+      "mutatingNoBody": 0,
       "gets": 13,
       "getsNoResponse": 0
     },
@@ -395,19 +395,19 @@
       "enriched": 14,
       "deficit": 0,
       "mutating": 8,
-      "mutatingNoBody": 2,
+      "mutatingNoBody": 0,
       "gets": 6,
       "getsNoResponse": 0
     },
     {
       "module": "bootstrap",
       "routes": 11,
-      "enriched": 4,
-      "deficit": 7,
+      "enriched": 6,
+      "deficit": 5,
       "mutating": 1,
-      "mutatingNoBody": 1,
+      "mutatingNoBody": 0,
       "gets": 10,
-      "getsNoResponse": 6
+      "getsNoResponse": 5
     }
   ]
 }

@@ -44,6 +44,7 @@ import {
   SraRepository,
   buildRiskRegister,
   riskBandFromScore,
+  unavailableReasonOf,
 } from "@wardenx/quality";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError } from "@wardenx/types";
@@ -142,6 +143,7 @@ function mapMeasureValue(row: schema.QualityMeasureValue): MeasureValueView {
     rate: num(row.ratio),
     thresholdMet: row.thresholdMet,
     bandColor: bandOf(row),
+    unavailableReason: unavailableReasonOf(row.computationSnapshot ?? null),
     computedAt: isoReq(row.computedAt),
     computeVersion: row.calculatorVersion,
     snapshotContentHash: row.snapshotContentHash,

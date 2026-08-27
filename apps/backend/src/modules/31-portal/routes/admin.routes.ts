@@ -9,6 +9,7 @@
 // magic-link is accepted and the tenant DEK cipher (M1) encrypts the contact PHI, so this route does not
 // write plaintext into the `*_cipher` columns. The §164.528 audit view is M4's disclosure trail (read via
 // M4, empty here until the M4 read seam is bound).
+import { WardenXError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { resolveInvitationTtlMs } from "../lifecycle/invitation";
 import { actorOf } from "./actor";
@@ -16,7 +17,12 @@ import { requireIdempotencyKey } from "./concurrency";
 import { rejectOffsetPagination } from "./concurrency";
 import { ABAC_IN_ORG, P, STEP_UP } from "./guards";
 import type { PortalRouteDeps } from "./index";
-import { InviteBereavedRequest, PortalInvitationIssueRequest, parse } from "./portal-typebox";
+import {
+  AccountSuspendRequest,
+  InviteBereavedRequest,
+  PortalInvitationIssueRequest,
+  parse,
+} from "./portal-typebox";
 
 const IDEMPOTENT = requireIdempotencyKey();
 const NO_OFFSET = rejectOffsetPagination();
@@ -24,6 +30,27 @@ const NO_OFFSET = rejectOffsetPagination();
 export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRouteDeps): void {
   const { store } = deps;
   const now = deps.now ?? (() => new Date());
+
+  /**
+   * Seal the operator's reason for an account status change (#117).
+   *
+   * Both routes publish `reason` as `required: true` and both used to parse only the path param, so the
+   * suspension was recorded with no reason while every caller believed it had supplied one. With no
+   * cipher bound the answer is a REFUSAL, not a silent drop and not cleartext in a column named
+   * `_cipher` — the M32 R18 posture, for the same reason: an unreadable audit trail and a missing one
+   * look identical afterwards, and only the refusal is visible at the time it matters.
+   */
+  const sealReason = async (organizationId: string, body: unknown): Promise<string> => {
+    const { reason } = parse(AccountSuspendRequest, body);
+    if (!deps.reasonCipher) {
+      throw new WardenXError(
+        "PORTAL_REASON_CIPHER_UNBOUND",
+        "no per-tenant DEK envelope is bound for M31, so the operator's reason cannot be stored encrypted; recording the status change without it is what this route was filed for (#117)",
+        503,
+      );
+    }
+    return deps.reasonCipher.encrypt(organizationId, reason);
+  };
 
   // ── invitations ──────────────────────────────────────────────────────────────────────────────────────
   app.post(
@@ -105,7 +132,13 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
     async (request) => {
       const actor = actorOf(request);
       const { id } = request.params as { id: string };
-      const account = await store.suspendAccount(actor.organizationId, actor.userId, id);
+      const reasonCipher = await sealReason(actor.organizationId, request.body);
+      const account = await store.suspendAccount(
+        actor.organizationId,
+        actor.userId,
+        id,
+        reasonCipher,
+      );
       return { ok: account !== null, status: account?.status ?? "not_found" };
     },
   );
@@ -122,7 +155,13 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
     async (request) => {
       const actor = actorOf(request);
       const { id } = request.params as { id: string };
-      const account = await store.reinstateAccount(actor.organizationId, actor.userId, id);
+      const reasonCipher = await sealReason(actor.organizationId, request.body);
+      const account = await store.reinstateAccount(
+        actor.organizationId,
+        actor.userId,
+        id,
+        reasonCipher,
+      );
       return { ok: account !== null, status: account?.status ?? "not_found" };
     },
   );
