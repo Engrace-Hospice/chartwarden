@@ -122,10 +122,18 @@ export function wireM34Tenancy(): void {
  * register the real providers over the bootstrap deny-stubs. The org runner binds `withOrgContext`; the
  * platform runner binds `withPlatformContext` under {@link M34_PLATFORM_JOB_ID}.
  *
- * TODO(integrator — KEK/KMS): `kekUnwrap` is the ONLY genuinely-missing dep here. M34's package holds no
- * KMS knowledge (no `dependsOn` edge), so the real KEK adapter (M1 infra) binds here when it lands. Until
- * then it FAILS CLOSED on call — `validateModule34Seams()` still passes (it only requires the provider be
- * REGISTERED, not that a live key resolve succeed), so boot is clean and a PHI-key resolve denies loudly.
+ * `kekUnwrap` is OPTIONAL here, and that is not a gap: M34's package holds no KMS knowledge (no
+ * `dependsOn` edge) by design (ADR-0038 §3), and the composition root binds the real adapter —
+ * `createM34ProvisionGateway`'s `/dek/unwrap` client — whenever the three `M34_PROVISION_GATEWAY_*` /
+ * `M34_INVITATION_ACCEPT_URL` vars are set, which `assertProductionEnv()` makes REQUIRED in production.
+ * So a production boot either has this bound or does not start.
+ *
+ * The fallback below therefore only ever runs on a db-present NON-production boot, and it FAILS CLOSED
+ * on call. `validateModule34Seams()` still passes (it requires the provider be REGISTERED, not that a
+ * live key resolve succeed), so boot is clean and a PHI-key resolve denies loudly.
+ *
+ * What genuinely does not exist is the gateway SERVICE those endpoints address — see
+ * deploy/production/PROVISION_GATEWAY.md and #115. This port is bound; its far end is the operator's.
  */
 export function registerLiveM34Seams(deps: {
   db: DbClient;

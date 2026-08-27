@@ -1,3 +1,10 @@
+// apps/backend/src/modules/34-saas-tenant-platform/provision-gateway.ts — the HTTP client for the
+// EXTERNAL tenant provision gateway (ADR-0038 §3: KEK custody is a port, and binding a production KMS
+// is integration work). This file is the AUTHORITY on that service's contract; the operator-facing
+// derivation lives at deploy/production/PROVISION_GATEWAY.md and is stale if the two disagree.
+//
+// No unit in deploy/production/compose.yml provides this service — its `provision` service is an
+// unrelated one-shot DB role provisioner that happens to share the word (#115).
 import type { M34WorkerDeps } from "./jobs/saas-jobs";
 
 type ProvisionCapability = NonNullable<M34WorkerDeps["provision"]>;
