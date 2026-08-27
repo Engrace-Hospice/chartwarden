@@ -26,7 +26,7 @@ import {
   enhanceNarrative,
   templateKey as hearthnoteTemplateKey,
 } from "@wardenx/hearthnote";
-import { VOCAB_VERSION } from "@wardenx/narrative-vocab";
+import { VOCAB_VERSION, activeNarrativeVocabRelease } from "@wardenx/narrative-vocab";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
   type CarePlanOverdueStatus,
@@ -58,6 +58,7 @@ import {
   checkParentNotVoided,
   checkServiceDateNotFuture,
   checkVersion,
+  checkVocabVersion,
 } from "./lifecycle/validation";
 import { toVitalsView } from "./routes/service";
 import type {
@@ -183,12 +184,45 @@ async function resolveSignatureProvenance(
 }
 
 /**
- * The §2.7 D11 pinned vocabulary version. In prod the active `code_system_version` id comes from M38's
- * TerminologyReader (checked at finalize via `checkVocabVersion`); until that seam is threaded, finalize
- * pins this fixed sentinel — it satisfies the `encounter_vocab_pinned_when_finalized` CHECK and the
- * `m8.encounter.finalized` payload's required `vocabVersionId`, and is replaced when M38 is wired.
+ * The §2.7 D11 pinned vocabulary version (#128).
+ *
+ * This used to be a fixed sentinel uuid, written identically onto every encounter the platform ever
+ * finalized, because `encounter.vocab_version_id` is a `uuid` and the corpus versions itself as a
+ * string. It satisfied the `encounter_vocab_pinned_when_finalized` CHECK and identified nothing — so
+ * §2.6 check 12 could not be evaluated against it in either direction (comparing a placeholder to a
+ * real id refuses every signature; comparing it to itself passes unconditionally, which is the F-051
+ * defect one level down).
+ *
+ * `@wardenx/narrative-vocab` now carries the `(version → uuid)` registry the column always needed, and
+ * this resolves the running build's release through it. The pin is the CORPUS release, not an M38
+ * `code_system_version` row: architecture §10.5.2 makes Layer-1 assembly a pure function of
+ * (selections × template × that package), M38 has no single active-version pointer to hold, and
+ * `packages/narrative-vocab` is M8-owned so no seam is involved. See `releases.ts` for the full
+ * reasoning — the module spec §2.7 names M38 and architecture wins on conflict.
+ *
+ * It THROWS on an unregistered version rather than degrading. That is deliberate: the alternative is
+ * a placeholder that every later read is unable to tell from a real pin.
  */
-const VOCAB_VERSION_SENTINEL = "00000000-0000-4000-8000-0000000000d8";
+function activeVocabPin(): { readonly id: string; readonly version: string } {
+  return activeNarrativeVocabRelease(VOCAB_VERSION);
+}
+
+/**
+ * The parent encounter's D11 pin, for an addendum assembled against it. Refuses rather than
+ * substituting: a fabricated pin on an addendum would claim the addendum was written against a
+ * vocabulary nobody chose, and the `encounter_vocab_pinned_when_finalized` CHECK already guarantees a
+ * non-draft parent has one — so reaching the throw means the invariant is broken and inventing a value
+ * would hide it.
+ */
+function requireParentVocabPin(pin: string | null, encounterId: string): string {
+  if (pin === null) {
+    throw new EncounterStateError(
+      "VOCAB_VERSION_MISMATCH",
+      `encounter ${encounterId} is finalized with no D11 vocabulary pin; an addendum cannot inherit one`,
+    );
+  }
+  return pin;
+}
 
 /** §2.5 D4 override / §2.7 D9 EVV-missing reasons the thin route interface does not capture (sentinels
  * meeting the DB CHECK minimums; a real reason threads through when the route body carries it). */
@@ -1190,10 +1224,34 @@ export function createDbEncounterRouteService(
           gatePreviewPassed: await gateEncounter(t, r, "finalize"),
           at,
         });
+        // §2.7 D11 — the vocabulary version guard, which had never run: `checkVocabVersion` has existed
+        // in `lifecycle/validation.ts` since M8-T04 and was called by no production path (#128).
+        //
+        // The draft records the corpus it was authored against in `hearthnote_selection.template_version`
+        // (written on every selections PATCH). If a corpus release ships between the last edit and the
+        // finalize, the selections were built from phrases this build may no longer render identically —
+        // which is the exact scenario §2.7 puts a 409 VOCAB_VERSION_MISMATCH on. Re-opening and saving
+        // the draft re-stamps it and clears the refusal, so the remedy is in the clinician's hands.
+        //
+        // A draft with NO selection row has nothing to disagree about (an empty note the §2.6 gate has
+        // already judged), so there is nothing to compare and the check does not run.
+        const pin = activeVocabPin();
+        const [selRow] = await t
+          .select({ templateVersion: SEL.templateVersion })
+          .from(SEL)
+          .where(eq(SEL.encounterId, encounterId))
+          .limit(1);
+        if (selRow !== undefined) {
+          checkVocabVersion({
+            pinnedVersionId: selRow.templateVersion,
+            activeVersionId: pin.version,
+          });
+        }
         // The D11 pin, resolved ONCE: the encounter row, the assembled output and the outbox event all
         // carry the same value, so the version the note was assembled under cannot disagree with the
-        // version the encounter claims. (It is still the sentinel — see VOCAB_VERSION_SENTINEL / #128.)
-        const vocabVersionId = r.vocabVersionId ?? VOCAB_VERSION_SENTINEL;
+        // version the encounter claims. Set at FIRST finalize and immutable thereafter, so an already
+        // pinned row keeps the id it was signed under.
+        const vocabVersionId = r.vocabVersionId ?? pin.id;
         const updated = firstOrThrow(
           await t
             .update(ENC)
@@ -1486,8 +1544,11 @@ export function createDbEncounterRouteService(
           .set({
             status: trans.to,
             // `encounter_vocab_pinned_when_finalized` requires a pinned vocab for any non-draft status;
-            // a draft voided before it ever finalized has none, so pin the sentinel on the way out.
-            vocabVersionId: r.vocabVersionId ?? VOCAB_VERSION_SENTINEL,
+            // a draft voided before it ever finalized has none. Pin the corpus current AT THE VOID — a
+            // real, decodable release rather than the old sentinel. Nothing was ever assembled under it,
+            // and a voided draft claims no narrative, but the column must say something and a truthful
+            // "this is what the platform was shipping" beats a uuid that names nothing (#128).
+            vocabVersionId: r.vocabVersionId ?? activeVocabPin().id,
             voidedAt: new Date(),
             voidedBy: r.authoredByMembershipId, // no distinct void actor threaded (see file header)
             voidedReason: args.reason,
@@ -1714,7 +1775,11 @@ export function createDbEncounterRouteService(
           encounterType: parent.encounterType,
           discipline: parent.discipline,
           serviceDate: parent.serviceDate,
-          vocabVersionId: parent.vocabVersionId ?? VOCAB_VERSION_SENTINEL,
+          // The parent is finalized or later, and `encounter_vocab_pinned_when_finalized` makes a pin
+          // NOT NULL for every non-draft row — so this is the parent's real pin. There is deliberately
+          // no fallback: an addendum inherits the vocabulary its parent was signed under, and if that
+          // is somehow absent the honest move is to refuse, not to mint a second answer (#128).
+          vocabVersionId: requireParentVocabPin(parent.vocabVersionId, encounterId),
         });
         return { status: "finalized" };
       });

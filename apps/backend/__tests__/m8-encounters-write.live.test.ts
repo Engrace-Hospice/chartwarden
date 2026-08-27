@@ -18,6 +18,11 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createInMemorySessionContextStore, createSessionContextResolver } from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
+import {
+  VOCAB_VERSION,
+  activeNarrativeVocabRelease,
+  narrativeVocabReleaseById,
+} from "@wardenx/narrative-vocab";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
@@ -984,6 +989,114 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
         [PATIENT],
       );
     }
+  });
+
+  // ── §2.7 D11 the vocabulary version pin (#128) ────────────────────────────────────────────────────
+  //
+  // Finalize used to write ONE constant sentinel uuid (`…0000d8`) into `encounter.vocab_version_id` on
+  // every encounter the platform had ever signed. It satisfied the `encounter_vocab_pinned_when_finalized`
+  // CHECK and identified nothing, so §2.6 check 12 could be evaluated against it in neither direction and
+  // `checkVocabVersion` — the §2.7 guard, written in M8-T04 — was reached by no production path.
+  //
+  // The pure suite proves the rule over the in-memory slice. Only these prove the value that actually
+  // lands in Postgres, on both tables, and that they cannot disagree.
+
+  const RETIRED_SENTINEL = "00000000-0000-4000-8000-0000000000d8";
+
+  it("#128 finalize pins the real corpus release on the encounter row — never the sentinel", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+
+    const { rows } = await admin.query("SELECT vocab_version_id FROM encounter WHERE id=$1", [id]);
+    const pinned = rows[0].vocab_version_id as string;
+    expect(pinned).not.toBe(RETIRED_SENTINEL);
+    expect(pinned).toBe(activeNarrativeVocabRelease(VOCAB_VERSION).id);
+    // The stored uuid decodes back to a named corpus — the whole point of D11 for a retained record.
+    expect(narrativeVocabReleaseById(pinned)?.version).toBe(VOCAB_VERSION);
+  });
+
+  it("#128 the encounter row and its assembled output carry the SAME pin", async () => {
+    // Resolved once per finalize, so the version the bytes were assembled under cannot drift from the
+    // version the encounter claims. #122 pinned the bytes; this is what they are pinned AGAINST.
+    const id = await draft("routine_visit", "rn");
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+
+    const enc = await admin.query("SELECT vocab_version_id FROM encounter WHERE id=$1", [id]);
+    const out = await admin.query(
+      "SELECT vocab_version_id FROM hearthnote_assembled_output WHERE encounter_id=$1",
+      [id],
+    );
+    expect(out.rows.length).toBe(1);
+    expect(out.rows[0].vocab_version_id).toBe(enc.rows[0].vocab_version_id);
+    expect(out.rows[0].vocab_version_id).not.toBe(RETIRED_SENTINEL);
+  });
+
+  it("#128 the §2.7 guard REFUSES a draft authored against an older corpus, and the row stays draft", async () => {
+    const id = await draft("routine_visit", "rn");
+    // Model the mid-draft corpus flip: the selections were saved under an earlier release. The column
+    // is written by the production upsert, so this is the same fact finalize reads, not a stand-in.
+    await admin.query("UPDATE hearthnote_selection SET template_version=$1 WHERE encounter_id=$2", [
+      "narrative-vocab@2026.05.0",
+      id,
+    ]);
+
+    await expect(svc.finalize(ORG_A, id, SERVICE_DATE as never)).rejects.toMatchObject({
+      code: "VOCAB_VERSION_MISMATCH",
+    });
+
+    const { rows } = await admin.query(
+      "SELECT status, vocab_version_id FROM encounter WHERE id=$1",
+      [id],
+    );
+    expect(rows[0].status).toBe("draft");
+    expect(rows[0].vocab_version_id).toBeNull(); // the transition did not happen at all
+    // …and no assembled output was pinned for a note that never finalized.
+    const out = await admin.query(
+      "SELECT 1 FROM hearthnote_assembled_output WHERE encounter_id=$1",
+      [id],
+    );
+    expect(out.rows.length).toBe(0);
+  });
+
+  it("#128 re-saving the selections restamps the corpus and the finalize then succeeds", async () => {
+    const id = await draft("routine_visit", "rn");
+    await admin.query("UPDATE hearthnote_selection SET template_version=$1 WHERE encounter_id=$2", [
+      "narrative-vocab@2026.05.0",
+      id,
+    ]);
+    await expect(svc.finalize(ORG_A, id, SERVICE_DATE as never)).rejects.toThrow();
+
+    const before = await svc.getEncounter(ORG_A, id);
+    await svc.updateSelections(
+      ORG_A,
+      id,
+      before?.version as number,
+      requiredSectionSelections("routine_visit" as never, "rn" as never),
+    );
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+
+    const { rows } = await admin.query("SELECT vocab_version_id FROM encounter WHERE id=$1", [id]);
+    expect(rows[0].vocab_version_id).toBe(activeNarrativeVocabRelease(VOCAB_VERSION).id);
+  });
+
+  it("#128 a draft voided before it ever finalized pins a real release, satisfying the CHECK", async () => {
+    // `encounter_vocab_pinned_when_finalized` demands a pin for every non-draft row, and a voided draft
+    // has never assembled anything. It used to take the sentinel; it now takes the corpus current at
+    // the void — decodable, and still never confusable with a signed note's pin.
+    const id = await draft("routine_visit", "rn");
+    await svc.voidEncounter(ORG_A, id, {
+      isAdmin: true,
+      reason: "documented void reason meeting the 40-character minimum length rule",
+      at: SERVICE_DATE as never,
+    });
+
+    const { rows } = await admin.query(
+      "SELECT status, vocab_version_id FROM encounter WHERE id=$1",
+      [id],
+    );
+    expect(rows[0].status).toBe("voided");
+    expect(rows[0].vocab_version_id).not.toBe(RETIRED_SENTINEL);
+    expect(narrativeVocabReleaseById(rows[0].vocab_version_id as string)).not.toBeNull();
   });
 
   it("RLS — org B cannot read or write org A's encounter (non-leaking 404)", async () => {
