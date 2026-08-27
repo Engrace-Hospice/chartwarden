@@ -133,13 +133,17 @@ export const FRAME_FIDELITY: readonly FrameFidelityEntry[] = [
       "Rebuilt to the frame's Patient Workspace: banner | visit-note document (note title + status, a " +
       "vitals strip, a SUBJECTIVE/OBJECTIVE/ASSESSMENT/PLAN scaffold) | right rail (Sign-off + EVV/visit), " +
       "over a sticky footer (cosign guard + actions). REAL: header (type/discipline/date/status/late-entry/" +
-      "version), cosignature state, signed/cosigned timestamps, patient banner, and — since #92 — the " +
-      "vitals strip, bound to the real GET /encounters/:id/vitals (newest set, per-cell units, abnormal " +
-      "tone from the server's own flags; an em dash now means 'nobody recorded it', not 'the API can't " +
-      "say'). Honest placeholders — the SOAP sections render '—' because the note body is written " +
-      "NOWHERE: PATCH .../selections bumps the version and discards its body, and the three hearthnote_* " +
-      "tables are touched by no code but the eraser (never a fabricated note); EVV/visit join (M17/M18) " +
-      "isn't on the DTO; footer uses real nav, not the unbuilt Save-draft / Sign-note write paths.",
+      "version), cosignature state, signed/cosigned timestamps, patient banner, the four sign/cosign " +
+      "ceremonies (/sign, /cosignature/acknowledge, /cosignature/sign, /cosignature/supervisor-release — " +
+      "TASK-031, real step-up + 412/403 handling), and — since #92 — the vitals strip, bound to the real " +
+      "GET /encounters/:id/vitals (newest set, per-cell units, abnormal tone from the server's own " +
+      "flags; an em dash now means 'nobody recorded it', not 'the API can't say'). Honest " +
+      "placeholders — the SOAP sections render '—' because the note body is written NOWHERE: PATCH " +
+      ".../selections bumps the version and discards its body, and the three hearthnote_* tables are " +
+      "touched by no code but the eraser (never a fabricated note); EVV/visit join (M17/M18) isn't on " +
+      "the DTO; the footer's Save-draft is the one unbuilt write path (#91). This note used to say " +
+      "Sign-note was unbuilt too — it is not, and an external audit repeated that back as a release " +
+      "blocker (#107).",
   },
   {
     screenId: "assessment.timeline",
