@@ -278,7 +278,6 @@ async function main(): Promise<void> {
 
     const fin = await rn.client.POST("/api/v1/encounters/{encounterId}/finalize", {
       params: { path: { encounterId: encData.id } },
-      body: {},
     });
     if (fin.error) throw new Error(`encounter finalize failed: ${JSON.stringify(fin.error)}`);
 

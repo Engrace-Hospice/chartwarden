@@ -173,7 +173,6 @@ export function StaffManagement(): JSX.Element {
     setInviteLink(null);
     const { data, error: err } = await client.POST("/api/v1/orgs/{id}/invitations/{invId}/resend", {
       params: { path: { id: orgId, invId: inv.invitationId } },
-      body: {},
     });
     if (err) {
       setError("Could not resend that invitation (it may no longer be pending).");

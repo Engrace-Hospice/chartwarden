@@ -65,6 +65,15 @@ const designTokensGate = (fixtureRoot: string) =>
     WARDENX_FITNESS_ROOT: fixtureRoot,
   });
 
+// check-request-body-contract.ts imports the enrichment registry STATICALLY, so a fixture tree cannot
+// substitute one — its fixture swaps the SCAN ROOT instead of the cwd, through the same test-only
+// override. Setting it also tells the gate its scan is partial, so the registered-exception entries (none
+// of whose routes exist in the fixture tree) are not reported as stale; see the script's own note.
+const requestBodyContractGate = (fixtureRoot: string) =>
+  run("bun", ["run", join(SCRIPTS, "check-request-body-contract.ts")], ROOT, {
+    WARDENX_FITNESS_ROOT: fixtureRoot,
+  });
+
 // check-migration-numbering.ts self-roots the same way and for the same reason, so it uses the same
 // override rather than a cwd swap.
 const migrationNumberingGate = (fixtureRoot?: string) =>
@@ -210,6 +219,20 @@ describe("each gate goes RED on its planted violation", () => {
     expect(r.out).toMatch(/totally_unregistered_predicate/);
   });
 
+  it("request-body-contract — a published body nobody reads, and a read body nobody publishes", async () => {
+    const r = await requestBodyContractGate(join(FIX, "request-body-contract"));
+    expect(r.status).not.toBe(0);
+    // Direction A — the dangerous half: the route returns 200 and drops the payload.
+    expect(r.out).toMatch(/POST \/api\/v1\/patients/);
+    expect(r.out).toMatch(/publishes a request body the handler never reads/);
+    // Direction B — `client:gen` types the body `never`, so no generated client can express the call.
+    expect(r.out).toMatch(/POST \/api\/v1\/fixture\/unpublished/);
+    expect(r.out).toMatch(/publishes none for/);
+    // Red for what it PLANTS. The fixture tree contains none of the registered routes, so a stale-entry
+    // failure would fire with the plants removed — and the fixture would prove nothing.
+    expect(r.out).not.toMatch(/must not outlive its reason/);
+  });
+
   it("design-tokens — raw hex literal in render code", async () => {
     const r = await designTokensGate(join(FIX, "design-tokens"));
     expect(r.status).not.toBe(0);
@@ -262,6 +285,9 @@ describe("every gate stays GREEN on the repo-root baseline", () => {
     expectGreen(run("bun", ["run", join(SCRIPTS, "report-openapi-coverage.ts"), "--check"], ROOT)),
   );
   baselineGate("abac-predicates", () => expectGreen(gate("check-abac-predicates.ts", ROOT)));
+  baselineGate("request-body-contract", () =>
+    expectGreen(gate("check-request-body-contract.ts", ROOT)),
+  );
   baselineGate("openapi-provenance", () => expectGreen(gate("check-openapi-provenance.ts", ROOT)));
   baselineGate("live-suites", () => expectGreen(gate("check-live-suite-coverage.ts", ROOT)));
   baselineGate("org-index coverage", () => expectGreen(gate("check-org-index-coverage.ts", ROOT)));

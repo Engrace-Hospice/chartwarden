@@ -326,18 +326,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -437,18 +425,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -4420,18 +4396,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -4619,18 +4583,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -6431,18 +6383,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -7851,18 +7791,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -8406,18 +8334,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -11815,18 +11731,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -12466,16 +12370,143 @@
         "tags": [
           "bootstrap"
         ],
+        "summary": "Upsert one system-status component (platform_ops only)",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "components"
+                  ],
+                  "properties": {
+                    "components": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "status",
+                          "headline",
+                          "details",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "operational",
+                                "type": "string"
+                              },
+                              {
+                                "const": "degraded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "outage",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "headline": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "details": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "status"
+                ],
+                "properties": {
+                  "id": {
+                    "minLength": 1,
+                    "description": "Stable component key, e.g. `api` or `documents`",
+                    "type": "string"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "operational",
+                        "type": "string"
+                      },
+                      {
+                        "const": "degraded",
+                        "type": "string"
+                      },
+                      {
+                        "const": "outage",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "headline": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "details": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -23112,19 +23143,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "description": "No body fields are read by this route; If-Match header carries the concurrency token.",
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -62968,19 +62986,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "description": "No body fields are read by this route; If-Match header carries the concurrency token.",
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -63310,19 +63315,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "description": "No body fields are read by this route; If-Match header carries the concurrency token.",
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -63966,17 +63958,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -70831,17 +70812,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -71673,17 +71643,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -117118,18 +117077,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -124740,18 +124687,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -129606,18 +129541,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -130212,18 +130135,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -130527,18 +130438,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -133305,17 +133204,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -133579,17 +133467,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -163234,18 +163111,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -163451,18 +163316,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }
@@ -177066,10 +176919,80 @@
         "tags": [
           "bootstrap"
         ],
+        "summary": "Read this org's system-status components",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "components"
+                  ],
+                  "properties": {
+                    "components": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "status",
+                          "headline",
+                          "details",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "operational",
+                                "type": "string"
+                              },
+                              {
+                                "const": "degraded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "outage",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "headline": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "details": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -177434,18 +177357,6 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
-          }
         }
       }
     },
@@ -177490,18 +177401,6 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "properties": {}
-              }
-            }
           }
         }
       }

@@ -69,7 +69,6 @@ export function RefundApprove(): JSX.Element {
     const res = await client.POST("/api/admin/refunds/{id}/approve", {
       params: { path: { id } },
       headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: {},
     });
     if (res.error) {
       setOutcome({ ok: false, message: denialMessage(res.error, "Could not approve the refund.") });

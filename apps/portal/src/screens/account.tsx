@@ -75,7 +75,7 @@ export function PortalAccount(): JSX.Element {
   }
 
   async function logout(): Promise<void> {
-    await client.POST("/api/v1/portal/sessions/logout", { body: {} });
+    await client.POST("/api/v1/portal/sessions/logout");
     window.location.assign("/");
   }
 

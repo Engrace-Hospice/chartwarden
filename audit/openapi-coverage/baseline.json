@@ -2,24 +2,24 @@
   "$comment": "RATCHET FLOOR for OpenAPI enrichment coverage. `deficit` = routes with no entry in scripts/openapi/enrichments.ts; `mutatingNoBody` = POST/PUT/PATCH routes whose entry (if any) carries no `body` schema — a SHALLOW (summary-only) enrichment still counts as enriched for `deficit` but must not hide a body-less mutation, so it is ratcheted separately. Neither may ever RISE per module (new routes must ship real request contracts); when either FALLS, re-baseline with `bun run openapi:coverage --update` to lock the progress in. A module missing here has an implied floor of 0 for both.",
   "modules": {
     "02-identity": {
-      "routes": 20,
+      "routes": 24,
       "deficit": 0,
       "mutatingNoBody": 0
     },
     "03-authorization": {
       "routes": 17,
       "deficit": 0,
-      "mutatingNoBody": 2
+      "mutatingNoBody": 0
     },
     "04-audit": {
       "routes": 13,
       "deficit": 0,
-      "mutatingNoBody": 1
+      "mutatingNoBody": 0
     },
     "05-patient": {
       "routes": 14,
       "deficit": 0,
-      "mutatingNoBody": 1
+      "mutatingNoBody": 0
     },
     "06-admission": {
       "routes": 48,
@@ -34,7 +34,7 @@
     "08-encounters": {
       "routes": 31,
       "deficit": 0,
-      "mutatingNoBody": 1
+      "mutatingNoBody": 0
     },
     "09-assessments": {
       "routes": 18,
@@ -49,27 +49,27 @@
     "11-orders": {
       "routes": 28,
       "deficit": 0,
-      "mutatingNoBody": 2
+      "mutatingNoBody": 0
     },
     "12-dosespot": {
       "routes": 31,
       "deficit": 0,
-      "mutatingNoBody": 2
+      "mutatingNoBody": 0
     },
     "13-emar": {
       "routes": 28,
       "deficit": 0,
-      "mutatingNoBody": 1
+      "mutatingNoBody": 0
     },
     "14-idg": {
       "routes": 27,
       "deficit": 0,
-      "mutatingNoBody": 2
+      "mutatingNoBody": 0
     },
     "15-discipline-care-plans": {
       "routes": 28,
       "deficit": 0,
-      "mutatingNoBody": 2
+      "mutatingNoBody": 0
     },
     "16-bereavement": {
       "routes": 33,
@@ -79,17 +79,17 @@
     "17-scheduling": {
       "routes": 32,
       "deficit": 0,
-      "mutatingNoBody": 1
+      "mutatingNoBody": 0
     },
     "18-evv": {
       "routes": 25,
       "deficit": 0,
-      "mutatingNoBody": 1
+      "mutatingNoBody": 0
     },
     "19-oncall": {
-      "routes": 38,
+      "routes": 39,
       "deficit": 0,
-      "mutatingNoBody": 2
+      "mutatingNoBody": 0
     },
     "20-field-safety": {
       "routes": 30,
@@ -109,47 +109,47 @@
     "23-billing-medicare": {
       "routes": 43,
       "deficit": 0,
-      "mutatingNoBody": 4
+      "mutatingNoBody": 0
     },
     "24-billing-medicaid": {
       "routes": 39,
       "deficit": 0,
-      "mutatingNoBody": 4
+      "mutatingNoBody": 0
     },
     "25-remittance": {
       "routes": 32,
       "deficit": 0,
-      "mutatingNoBody": 2
+      "mutatingNoBody": 0
     },
     "26-cap": {
       "routes": 27,
       "deficit": 0,
-      "mutatingNoBody": 3
+      "mutatingNoBody": 0
     },
     "27-cost-report": {
       "routes": 45,
       "deficit": 0,
-      "mutatingNoBody": 9
+      "mutatingNoBody": 0
     },
     "28-fhir": {
       "routes": 35,
       "deficit": 0,
-      "mutatingNoBody": 7
+      "mutatingNoBody": 0
     },
     "29-external-interfaces": {
       "routes": 33,
       "deficit": 0,
-      "mutatingNoBody": 5
+      "mutatingNoBody": 0
     },
     "30-quality": {
       "routes": 60,
       "deficit": 0,
-      "mutatingNoBody": 1
+      "mutatingNoBody": 0
     },
     "31-portal": {
       "routes": 53,
       "deficit": 0,
-      "mutatingNoBody": 7
+      "mutatingNoBody": 0
     },
     "32-ai-platform": {
       "routes": 32,
@@ -159,47 +159,47 @@
     "33-reporting": {
       "routes": 42,
       "deficit": 0,
-      "mutatingNoBody": 10
+      "mutatingNoBody": 0
     },
     "34-saas-tenant-platform": {
       "routes": 50,
       "deficit": 0,
-      "mutatingNoBody": 1
+      "mutatingNoBody": 0
     },
     "35-subscription": {
       "routes": 54,
       "deficit": 0,
-      "mutatingNoBody": 5
+      "mutatingNoBody": 1
     },
     "36-messaging": {
       "routes": 22,
       "deficit": 0,
-      "mutatingNoBody": 3
+      "mutatingNoBody": 0
     },
     "37-ipu": {
       "routes": 45,
       "deficit": 0,
-      "mutatingNoBody": 4
+      "mutatingNoBody": 0
     },
     "38-terminology": {
       "routes": 14,
       "deficit": 0,
-      "mutatingNoBody": 1
+      "mutatingNoBody": 0
     },
     "39-consent": {
       "routes": 27,
       "deficit": 0,
-      "mutatingNoBody": 2
+      "mutatingNoBody": 0
     },
     "40-mdm": {
       "routes": 14,
       "deficit": 0,
-      "mutatingNoBody": 2
+      "mutatingNoBody": 0
     },
     "bootstrap": {
-      "routes": 9,
-      "deficit": 7,
-      "mutatingNoBody": 1
+      "routes": 11,
+      "deficit": 5,
+      "mutatingNoBody": 0
     }
   }
 }

@@ -478,7 +478,6 @@ async function main(): Promise<void> {
     const submit = await admin.client.POST("/api/v1/quality/incidents/{incidentId}/submit", {
       params: { path: { incidentId } },
       headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: {},
     });
     if (submit.error) throw new Error(`incident submit failed: ${JSON.stringify(submit.error)}`);
 
@@ -524,7 +523,6 @@ async function main(): Promise<void> {
     const close = await supervisor.client.POST("/api/v1/quality/incidents/{incidentId}/close", {
       params: { path: { incidentId } },
       headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: {},
     });
     if (close.error) throw new Error(`incident close failed: ${JSON.stringify(close.error)}`);
 
