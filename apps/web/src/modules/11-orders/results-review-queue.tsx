@@ -18,6 +18,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { type OrderAction, OrderActionModal } from "./order-action-modal";
 import { RESULTS_TONE, TRANSMISSION_TONE, stateLabel } from "./orders-status";
 
 interface OrderRow {
@@ -83,6 +84,7 @@ export function ResultsReviewQueue(): JSX.Element {
   ].filter(Boolean).length;
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
   const activePage = Math.min(page, pageCount);
+  const [acting, setActing] = useState<{ id: string; action: OrderAction } | null>(null);
   const pagedRows = rows.slice((activePage - 1) * pageSize, activePage * pageSize);
 
   const clearFilters = (): void => {
@@ -93,190 +95,225 @@ export function ResultsReviewQueue(): JSX.Element {
   };
 
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader title="Lab Results - Pending Review" breadcrumb="Clinical / Orders">
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Triage lab orders with attached results that still need clinician review.
-          </div>
-        </PageHeader>
-      }
-      filters={
-        <div style={filterShellStyle}>
-          {error ? (
-            <div role="alert" style={errorBannerStyle}>
-              <span>{error}</span>
-              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
-                x
-              </button>
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader title="Lab Results - Pending Review" breadcrumb="Clinical / Orders">
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Triage lab orders with attached results that still need clinician review.
             </div>
-          ) : null}
-          <div style={toolbarStyle}>
-            <div style={toolbarTitleStyle}>
-              <span style={toolbarEyebrowStyle}>Queue</span>
-              <strong>{rows.length} matching results</strong>
-            </div>
-            <div style={controlGroupStyle}>
-              <div style={searchWrapStyle}>
-                <input
-                  type="search"
-                  placeholder="Search order or patient..."
-                  value={searchQuery}
+          </PageHeader>
+        }
+        filters={
+          <div style={filterShellStyle}>
+            {error ? (
+              <div role="alert" style={errorBannerStyle}>
+                <span>{error}</span>
+                <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
+                  x
+                </button>
+              </div>
+            ) : null}
+            <div style={toolbarStyle}>
+              <div style={toolbarTitleStyle}>
+                <span style={toolbarEyebrowStyle}>Queue</span>
+                <strong>{rows.length} matching results</strong>
+              </div>
+              <div style={controlGroupStyle}>
+                <div style={searchWrapStyle}>
+                  <input
+                    type="search"
+                    placeholder="Search order or patient..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setPage(1);
+                    }}
+                    aria-label="Search results pending review"
+                    style={searchInputStyle}
+                  />
+                </div>
+                <select
+                  aria-label="Results status"
+                  value={resultsStatus}
                   onChange={(e) => {
-                    setSearchQuery(e.target.value);
+                    setResultsStatus(e.target.value);
                     setPage(1);
                   }}
-                  aria-label="Search results pending review"
-                  style={searchInputStyle}
-                />
+                  style={selectStyle}
+                >
+                  <option value="">Results: All</option>
+                  <option value="results_received">Results received</option>
+                  <option value="partial_results_received">Partial results</option>
+                  <option value="awaiting_results">Awaiting results</option>
+                  <option value="results_overdue">Results overdue</option>
+                </select>
+                <select
+                  aria-label="Transmission status"
+                  value={transmissionStatus}
+                  onChange={(e) => {
+                    setTransmissionStatus(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="">Transmission: All</option>
+                  <option value="transmitted">Transmitted</option>
+                  <option value="pending">Pending</option>
+                  <option value="pending_retry">Pending retry</option>
+                  <option value="failed">Failed</option>
+                  <option value="not_required">Not required</option>
+                </select>
+                {activeFilters > 0 ? (
+                  <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                    Clear
+                  </Button>
+                ) : null}
               </div>
-              <select
-                aria-label="Results status"
-                value={resultsStatus}
-                onChange={(e) => {
-                  setResultsStatus(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Results: All</option>
-                <option value="results_received">Results received</option>
-                <option value="partial_results_received">Partial results</option>
-                <option value="awaiting_results">Awaiting results</option>
-                <option value="results_overdue">Results overdue</option>
-              </select>
-              <select
-                aria-label="Transmission status"
-                value={transmissionStatus}
-                onChange={(e) => {
-                  setTransmissionStatus(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Transmission: All</option>
-                <option value="transmitted">Transmitted</option>
-                <option value="pending">Pending</option>
-                <option value="pending_retry">Pending retry</option>
-                <option value="failed">Failed</option>
-                <option value="not_required">Not required</option>
-              </select>
-              {activeFilters > 0 ? (
-                <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                  Clear
-                </Button>
-              ) : null}
             </div>
           </div>
-        </div>
-      }
-      table={
-        error ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState title="Unavailable" description={error} />
-          </div>
-        ) : loading && items.length === 0 ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : rows.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState
-              title={activeFilters > 0 ? "No matching results" : "No results to review"}
-              description={
-                activeFilters > 0
-                  ? "Try adjusting the queue filters."
-                  : "No lab results are awaiting clinician review."
-              }
-              action={
-                activeFilters > 0 ? (
-                  <Button size="sm" tone="secondary" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                ) : undefined
-              }
-            />
-          </div>
-        ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr style={headerRowStyle}>
-                  <th style={{ ...thStyle, width: "32%" }}>Order</th>
-                  <th style={{ ...thStyle, width: "22%" }}>Patient</th>
-                  <th style={{ ...thStyle, width: "16%" }}>Results</th>
-                  <th style={{ ...thStyle, width: "18%" }}>Transmission</th>
-                  <th style={{ ...thStyle, width: "12%", textAlign: "right" }}>Signed</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedRows.map((o) => (
-                  <tr
-                    key={o.id}
-                    // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => navigate(`/orders/${o.id}`)}
-                    onKeyDown={(ev) => {
-                      if (ev.key === "Enter" || ev.key === " ") {
-                        ev.preventDefault();
-                        navigate(`/orders/${o.id}`);
-                      }
-                    }}
-                    style={rowStyle}
-                    className="wx-data-row-interactive"
-                  >
-                    <td style={tdStyle}>
-                      <div style={primaryCellStyle}>
-                        <span style={primaryTextStyle}>{stateLabel(o.kind)}</span>
-                        <code className="wx-data-md" style={codeStyle}>
-                          {shortId(o.id)}
-                        </code>
-                      </div>
-                    </td>
-                    <td style={tdStyle}>
-                      <code className="wx-data-md" style={codeStyle}>
-                        {shortId(o.patientId)}
-                      </code>
-                    </td>
-                    <td style={tdStyle}>
-                      <StatusPill
-                        label={stateLabel(o.resultsStatus)}
-                        tone={RESULTS_TONE[o.resultsStatus] ?? "neutral"}
-                      />
-                    </td>
-                    <td style={tdStyle}>
-                      <StatusPill
-                        label={stateLabel(o.transmissionStatus)}
-                        tone={TRANSMISSION_TONE[o.transmissionStatus] ?? "neutral"}
-                      />
-                    </td>
-                    <td
-                      style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
-                    >
-                      {formatDateTime(o.signedAt)}
-                    </td>
+        }
+        table={
+          error ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState title="Unavailable" description={error} />
+            </div>
+          ) : loading && items.length === 0 ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : rows.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title={activeFilters > 0 ? "No matching results" : "No results to review"}
+                description={
+                  activeFilters > 0
+                    ? "Try adjusting the queue filters."
+                    : "No lab results are awaiting clinician review."
+                }
+                action={
+                  activeFilters > 0 ? (
+                    <Button size="sm" tone="secondary" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : (
+            <div style={tableWrapStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={headerRowStyle}>
+                    <th style={{ ...thStyle, width: "32%" }}>Order</th>
+                    <th style={{ ...thStyle, width: "22%" }}>Patient</th>
+                    <th style={{ ...thStyle, width: "16%" }}>Results</th>
+                    <th style={{ ...thStyle, width: "18%" }}>Transmission</th>
+                    <th style={{ ...thStyle, width: "12%", textAlign: "right" }}>Signed</th>
+                    <th style={{ ...thStyle, width: "9%", textAlign: "right" }}>Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <OffsetPagination
-              page={activePage}
-              pageSize={pageSize}
-              totalItems={rows.length}
-              onPageChange={setPage}
-              onPageSizeChange={(nextPageSize) => {
-                setPageSize(nextPageSize);
-                setPage(1);
-              }}
-              pageSizeOptions={ORDERS_PAGE_SIZES}
-              noun="results"
-            />
-          </div>
-        )
-      }
-      fullPageScroll
-    />
+                </thead>
+                <tbody>
+                  {pagedRows.map((o) => (
+                    <tr
+                      key={o.id}
+                      // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => navigate(`/orders/${o.id}`)}
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter" || ev.key === " ") {
+                          ev.preventDefault();
+                          navigate(`/orders/${o.id}`);
+                        }
+                      }}
+                      style={rowStyle}
+                      className="wx-data-row-interactive"
+                    >
+                      <td style={tdStyle}>
+                        <div style={primaryCellStyle}>
+                          <span style={primaryTextStyle}>{stateLabel(o.kind)}</span>
+                          <code className="wx-data-md" style={codeStyle}>
+                            {shortId(o.id)}
+                          </code>
+                        </div>
+                      </td>
+                      <td style={tdStyle}>
+                        <code className="wx-data-md" style={codeStyle}>
+                          {shortId(o.patientId)}
+                        </code>
+                      </td>
+                      <td style={tdStyle}>
+                        <StatusPill
+                          label={stateLabel(o.resultsStatus)}
+                          tone={RESULTS_TONE[o.resultsStatus] ?? "neutral"}
+                        />
+                      </td>
+                      <td style={tdStyle}>
+                        <StatusPill
+                          label={stateLabel(o.transmissionStatus)}
+                          tone={TRANSMISSION_TONE[o.transmissionStatus] ?? "neutral"}
+                        />
+                      </td>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {formatDateTime(o.signedAt)}
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                        {/* The action this queue EXISTS for. Offered to everyone the queue is shown to; the
+                            server decides who may take it (§4.7) and renders a 403 as the refusal it is. */}
+                        <Button
+                          size="sm"
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            setActing({ id: o.id, action: "complete" });
+                          }}
+                        >
+                          Mark reviewed
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <OffsetPagination
+                page={activePage}
+                pageSize={pageSize}
+                totalItems={rows.length}
+                onPageChange={setPage}
+                onPageSizeChange={(nextPageSize) => {
+                  setPageSize(nextPageSize);
+                  setPage(1);
+                }}
+                pageSizeOptions={ORDERS_PAGE_SIZES}
+                noun="results"
+              />
+            </div>
+          )
+        }
+        fullPageScroll
+      />
+      {acting ? (
+        <OrderActionModal
+          open
+          action={acting.action}
+          orderId={acting.id}
+          onClose={() => setActing(null)}
+          // Re-read rather than filtering the row out here: whether the order leaves this queue is
+          // the server's answer, and a client that removed it optimistically would be asserting an
+          // outcome it did not observe.
+          onDone={() => {
+            setActing(null);
+            void load();
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 

@@ -6309,6 +6309,9 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Create a draft order (discipline_can_order ABAC)",
     body: M11CreateOrderRequest,
     response: M11OrderViewResponseSchema,
+    // The route sends `reply.code(201)`; the contract declared only a 200, so the generated client had
+    // no typed slot for what this actually returns (#91 / F-031's finding, one module over).
+    status: 201,
   },
   "GET /api/v1/orders/:id": {
     summary: "Order detail (lifecycle, signatures, verbal deadline, results state)",
@@ -6353,6 +6356,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Issue a corrected order (discipline_can_order ABAC)",
     body: M11CorrectOrderRequest,
     response: M11OrderViewResponseSchema,
+    status: 201, // a correction MINTS a replacement order — `reply.code(201)` (#91)
   },
   "POST /api/v1/orders/:id/complete": {
     summary: "Manual completion (incl. lab Mark-reviewed)",
@@ -6371,6 +6375,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Create a standing-order template (D5 eligibility)",
     body: M11CreateStandingOrderRequest,
     response: M11StandingOrderViewResponseSchema,
+    status: 201, // `reply.code(201)` (#91)
   },
   "PATCH /api/v1/standing-orders/:id": {
     summary: "Edit a standing-order template",
@@ -6394,6 +6399,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "PRN manual spawn from a standing-order template",
     body: M11SpawnStandingOrderRequest,
     response: M11SpawnResponseSchema,
+    status: 201, // the spawn CREATES an order — `reply.code(201)` (#91)
   },
   "GET /api/v1/admin/orders/verbal-policy": {
     summary: "Org verbal-order policy (window, cosign kinds, floor)",

@@ -49762,7 +49762,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -49992,7 +49992,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -62691,7 +62691,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -62917,7 +62917,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
