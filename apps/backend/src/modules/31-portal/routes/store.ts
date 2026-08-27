@@ -91,10 +91,26 @@ export interface PortalOwnedTableOps {
     portalAccountId: string,
     patientId: string,
   ): Promise<PortalAccessGrantDigest | null>;
-  /** §4.1 admin suspend — org-admin temporary disable (returns the new status). */
-  suspendAccount(orgId: string, userId: string, id: string): Promise<PortalAccountDigest | null>;
-  /** §4.1 admin reinstate — reverse of suspend. */
-  reinstateAccount(orgId: string, userId: string, id: string): Promise<PortalAccountDigest | null>;
+  /**
+   * §4.1 admin suspend — org-admin temporary disable (returns the new status).
+   *
+   * `reasonCipher` is the sealed operator reason (#117); it is REQUIRED because the route publishes
+   * `reason` as `required: true` and a suspension recorded without one is the defect that filed the
+   * issue. The route seals it before calling — the store never sees plaintext.
+   */
+  suspendAccount(
+    orgId: string,
+    userId: string,
+    id: string,
+    reasonCipher: string,
+  ): Promise<PortalAccountDigest | null>;
+  /** §4.1 admin reinstate — reverse of suspend; the same sealed reason contract. */
+  reinstateAccount(
+    orgId: string,
+    userId: string,
+    id: string,
+    reasonCipher: string,
+  ): Promise<PortalAccountDigest | null>;
   /** Telehealth visit facts (§4.7 predicate + admin detail + join/recording transitions). */
   telehealthById(orgId: string, id: string): Promise<TelehealthVisitDigest | null>;
   /** Per-tenant telehealth roster (§4.1 admin). */
@@ -410,21 +426,31 @@ export function buildDrizzlePortalStore(db: DbClient): PortalStore {
         return row ? toGrantDigest(row) : null;
       });
     },
-    async suspendAccount(orgId, userId, id) {
+    async suspendAccount(orgId, userId, id, reasonCipher) {
       return withOrgContext(db, ctx(orgId, userId), async (tx) => {
         const [row] = await tx
           .update(portalAccounts)
-          .set({ status: "suspended", suspendedAt: new Date(), updatedAt: new Date() })
+          .set({
+            status: "suspended",
+            suspendedAt: new Date(),
+            statusChangeReasonCipher: reasonCipher,
+            updatedAt: new Date(),
+          })
           .where(eq(portalAccounts.id, id))
           .returning();
         return row ? toAccountDigest(row) : null;
       });
     },
-    async reinstateAccount(orgId, userId, id) {
+    async reinstateAccount(orgId, userId, id, reasonCipher) {
       return withOrgContext(db, ctx(orgId, userId), async (tx) => {
         const [row] = await tx
           .update(portalAccounts)
-          .set({ status: "active", suspendedAt: null, updatedAt: new Date() })
+          .set({
+            status: "active",
+            suspendedAt: null,
+            statusChangeReasonCipher: reasonCipher,
+            updatedAt: new Date(),
+          })
           .where(eq(portalAccounts.id, id))
           .returning();
         return row ? toAccountDigest(row) : null;

@@ -559,6 +559,7 @@ import {
   buildDrizzlePortalStore,
   buildPortalAbacResolverFromStore,
   createM31PublishedSeamImpls,
+  createPortalReasonCipher,
   denyStubPortalAbacResolver,
   mountM31Routes,
   registerM31PublishedSeams,
@@ -3060,7 +3061,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // Record button denies and join mints an empty token rather than reaching a vendor with an
           // unconfigured key. Every lay READ route composes the upstream portal-summary seams and fails
           // CLOSED; the owned-table reads/writes (accounts, grants, telehealth lifecycle) are live over RLS.
-          mountM31Routes(app, { store: buildDrizzlePortalStore(dbHandle.db) });
+          // The reason cipher seals the operator's suspend/reinstate reason (#117); it composes over the
+          // SAME M34 key ring M39's consent notes use, which is a slice deny-stub until the Phase-2D
+          // KMS-backed provider lands — so those two routes refuse with 503 until then rather than
+          // recording an account status change with no reason. Every other admin route is unaffected.
+          mountM31Routes(app, {
+            store: buildDrizzlePortalStore(dbHandle.db),
+            reasonCipher: createPortalReasonCipher(getTenantKeyProvider()),
+          });
           // M32 (AI Platform) — mount the thirty-two §4.1 routes over the T03/T04/T05 command services
           // plus T07's read port. `ai.full` stays OFF: these routes GOVERN a platform that is not yet
           // serving inference, which is the order §2.2 requires (a capability reaches APPROVED only

@@ -48,7 +48,7 @@ import {
 } from "@wardenx/auth";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildServer } from "../src/bootstrap/index";
+import { buildServer, registerSeam } from "../src/bootstrap/index";
 import {
   type FhirGatewayAbacResolver,
   type FhirGatewayStore,
@@ -477,7 +477,71 @@ describe("M28-fhir-inject — R12-R15: CodeSystem / ValueSet", () => {
     await app.close();
   });
 
-  it("POST /fhir/r4/CodeSystem/$validate-code → 200 Parameters", async () => {
+  // R13 used to answer `result: false` for every request WITHOUT reading its Parameters (#117) — a wrong
+  // answer, not a stub: `false` means "that code is not valid in that system", so a conformant client
+  // acting on it rejects perfectly good codes. It now resolves the caller's system + code through M38's
+  // live `TerminologyProvider`. These tests stand up a fake provider so the four answers are separable.
+  const withTerminology = (
+    valid: (system: string, code: string) => boolean | { valid: boolean; status?: string },
+  ): void => {
+    registerSeam("TerminologyProvider", {
+      async validate(system: string, code: string) {
+        const v = valid(system, code);
+        return typeof v === "boolean" ? { valid: v } : v;
+      },
+    } as never);
+  };
+
+  it("POST $validate-code resolves the canonical URI to M38's code-system id and answers from it", async () => {
+    const seen: { system: string; code: string }[] = [];
+    withTerminology((system, code) => {
+      seen.push({ system, code });
+      return code === "R52";
+    });
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/fhir/r4/CodeSystem/$validate-code",
+      headers: BEARER_FULL,
+      payload: {
+        resourceType: "Parameters",
+        parameter: [
+          { name: "url", valueUri: "http://hl7.org/fhir/sid/icd-10-cm" },
+          { name: "code", valueCode: "R52" },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().resourceType).toBe("Parameters");
+    expect(res.json().parameter).toContainEqual({ name: "result", valueBoolean: true });
+    // The FHIR canonical became M38's id — the join the route exists to make.
+    expect(seen).toEqual([{ system: "icd10cm", code: "R52" }]);
+    await app.close();
+  });
+
+  it("POST $validate-code answers false for a code the provider rejects, with a message naming it", async () => {
+    withTerminology(() => false);
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/fhir/r4/CodeSystem/$validate-code",
+      headers: BEARER_FULL,
+      payload: {
+        resourceType: "Parameters",
+        parameter: [
+          { name: "url", valueUri: "http://loinc.org" },
+          { name: "code", valueCode: "not-a-loinc" },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().parameter).toContainEqual({ name: "result", valueBoolean: false });
+    expect(JSON.stringify(res.json())).toContain("not-a-loinc");
+    await app.close();
+  });
+
+  it("POST $validate-code refuses an empty Parameters instead of answering it (was: 200 result:false)", async () => {
+    withTerminology(() => true);
     const { app } = makeServer();
     const res = await app.inject({
       method: "POST",
@@ -485,8 +549,30 @@ describe("M28-fhir-inject — R12-R15: CodeSystem / ValueSet", () => {
       headers: BEARER_FULL,
       payload: { resourceType: "Parameters", parameter: [] },
     });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().resourceType).toBe("Parameters");
+    expect(res.statusCode).toBe(400);
+    expect(res.json().issue[0].code).toBe("invalid");
+    await app.close();
+  });
+
+  it("POST $validate-code says not-supported for a code system this server does not serve", async () => {
+    withTerminology(() => true);
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/fhir/r4/CodeSystem/$validate-code",
+      headers: BEARER_FULL,
+      payload: {
+        resourceType: "Parameters",
+        parameter: [
+          { name: "url", valueUri: "http://example.org/some-local-codes" },
+          { name: "code", valueCode: "X" },
+        ],
+      },
+    });
+    // Not `result: false` — this server cannot answer the question, which is a different thing from
+    // answering it "no".
+    expect(res.statusCode).toBe(404);
+    expect(res.json().issue[0].code).toBe("not-supported");
     await app.close();
   });
 
