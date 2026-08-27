@@ -191,7 +191,7 @@ import {
   buildM8VisitPublishedConsumer,
   createDrizzleEncounterEraseStore,
   createDrizzleEncounterReaderStore,
-  createHearthnoteFreeTextCipher,
+  createHearthnoteCiphers,
   mountEncounterRoutes,
   registerEncounterAbacPredicates,
   registerEncounterErasers,
@@ -2614,17 +2614,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // RLS, replacing the retired in-memory scaffold. Writes fail-closed 501 until each module's write
           // lifecycle lands. See each module's `*-route-service-db.ts`.
           mountCarePlanRoutes(app, dbHandle.db, m7OutboxPublisher); // M7 — reads + the T02 write lifecycle over Drizzle+RLS, m7.* transactional outbox
-          // M8 — reads + the T02 write lifecycle over Drizzle+RLS, m8.* transactional outbox. The
-          // free-text cipher seals `hearthnote_selection.free_text_cipher` (§3.6) over the SAME M34 key
-          // ring M39's consent notes and M31's status reasons use; it is a slice deny-stub until the
-          // Phase-2D KMS-backed provider binds, so a selection tree carrying clinician prose refuses
-          // (503 HEARTHNOTE_CIPHER_UNBOUND) rather than storing it in the clear. A tree with no prose —
-          // the structured note Layer-1 actually assembles — writes normally either way (#114).
+          // M8 — reads + the T02 write lifecycle over Drizzle+RLS, m8.* transactional outbox. Two DEK
+          // envelopes over the SAME M34 key ring M39's consent notes and M31's status reasons use:
+          // `hearthnote_selection.free_text_cipher` (§3.6, #114) and
+          // `hearthnote_assembled_output.layer1_cipher` / `final_cipher` (§2.6, #122). The key ring is a
+          // deny-stub until the Phase-2D KMS-backed provider binds (#105), so both refuse with
+          // 503 HEARTHNOTE_CIPHER_UNBOUND rather than storing PHI in the clear. That means: a selection
+          // tree carrying clinician prose refuses, and — since an assembled narrative is prose by
+          // construction and its columns are NOT NULL — FINALIZE refuses for every encounter. A tree with
+          // no prose still writes, so authoring a structured draft does not depend on the key ring.
           mountEncounterRoutes(
             app,
             dbHandle.db,
             m8OutboxPublisher,
-            createHearthnoteFreeTextCipher(getTenantKeyProvider()),
+            createHearthnoteCiphers(getTenantKeyProvider()),
           );
           mountAssessmentRoutes(app, dbHandle.db, m9OutboxPublisher); // M9 — reads + the §10 write pipeline over Drizzle+RLS, m9.* transactional outbox
           mountHopeRoutes(app, dbHandle.db, m10OutboxPublisher); // M10 — reads + the write lifecycle over Drizzle+RLS, m10.hope.* transactional outbox

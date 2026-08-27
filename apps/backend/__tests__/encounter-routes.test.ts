@@ -598,6 +598,40 @@ describe("M8 §2.6 — the HearthNote selection tree round-trips (#114)", () => 
     expect(rendered.statusCode).toBe(200);
     expect(rendered.json().final).toContain("Assessment");
     expect(rendered.json().final).toContain("cardiovascularly stable");
+    // A draft has nothing pinned, so this is a live re-assembly — and it says so on the wire (#122).
+    expect(rendered.json().pinned).toBe(false);
+
+    // Document the rest of the §2.6 required set so the gate lets this finalize (TREE deliberately
+    // populates only two sections), then capture the preview the pin must match.
+    await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/selections`,
+      headers: { ...RN, "if-match": "1" },
+      payload: requiredSectionSelections("routine_visit", "rn"),
+    });
+    const preview = await app.inject({
+      method: "GET",
+      url: `/api/v1/internal/encounters/${id}/render-payload`,
+      headers: INTERNAL,
+    });
+    expect(preview.json().pinned).toBe(false);
+
+    // Finalize pins it. Afterwards the same route serves the PINNED bytes, and a renderer can tell the
+    // legal record from a preview of one without asking what status the encounter is in.
+    const finalized = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/finalize`,
+      headers: RN,
+      payload: { at: "2026-06-20" },
+    });
+    expect(finalized.statusCode).toBe(200);
+    const pinned = await app.inject({
+      method: "GET",
+      url: `/api/v1/internal/encounters/${id}/render-payload`,
+      headers: INTERNAL,
+    });
+    expect(pinned.json().pinned).toBe(true);
+    expect(pinned.json().final).toBe(preview.json().final);
   });
 
   it("an addendum keeps its own tree, against its parent's template", async () => {

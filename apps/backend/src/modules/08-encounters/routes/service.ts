@@ -448,10 +448,13 @@ export interface EncounterRouteService {
     encounterIds: readonly string[],
   ): Promise<{ billability: { encounterId: string; billable: boolean }[] }>;
   signedSince(organizationId: string, since: string): Promise<{ encounters: EncounterView[] }>;
+  /** The M22/M28 render payload. `pinned` says whether `final` is the byte-for-byte narrative recorded at
+   *  finalize (`hearthnote_assembled_output.final_cipher`) or a live re-assembly of the current selection
+   *  tree — a legal record versus a preview of one, which a renderer must be able to tell apart (#122). */
   renderPayload(
     organizationId: string,
     encounterId: string,
-  ): Promise<{ encounterId: string; final: string }>;
+  ): Promise<{ encounterId: string; final: string; pinned: boolean }>;
 }
 
 // ── in-memory record + slice ────────────────────────────────────────────────────────────────────────
@@ -481,10 +484,14 @@ interface EncounterRecord {
       status: AddendumState;
       version: number;
       selections: readonly SelectionSectionInput[];
+      /** The narrative pinned at this addendum's finalize (#122). */
+      pinnedNarrative?: string;
     }
   >;
   /** The stored HearthNote tree (#114). Empty until the clinician PATCHes selections. */
   selections: readonly SelectionSectionInput[];
+  /** The narrative pinned at finalize (#122) — undefined while the encounter is still a draft. */
+  pinnedNarrative?: string;
   /** The membership the D3 cosignature routed to, once one has (#124); null before sign / when none. */
   cosignerMembershipId?: string | null;
   vitals: Map<string, { capturedAt: string; bmi: string | null; input: VitalsInput }>;
@@ -842,6 +849,15 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       });
       r.status = t.to;
       r.version += 1;
+      // The `persist_assembled_output` effect (#122). The slice holds no DEK and no table, so the pin is
+      // the assembled string on the record — but it is a PIN: nothing reassembles it afterwards, so a
+      // later edit to the selection tree cannot change what this encounter says.
+      r.pinnedNarrative = assembleSelections(
+        r.encounterType,
+        r.discipline,
+        r.serviceDate,
+        r.selections,
+      );
       recordOutbox(r.id, t.effects);
       return { status: "finalized", version: r.version };
     },
@@ -1019,6 +1035,12 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         at: now().slice(0, 10),
       });
       a.status = t.to;
+      a.pinnedNarrative = assembleSelections(
+        r.encounterType,
+        r.discipline,
+        r.serviceDate,
+        a.selections,
+      );
       return { status: "finalized" };
     },
     async signAddendum(organizationId, encounterId, addendumId, _actor, args) {
@@ -1085,6 +1107,11 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     },
     async renderPayload(organizationId, encounterId) {
       const r = load(organizationId, encounterId);
+      // The pinned bytes win when they exist (#122) — a finalized note renders what it said, not what the
+      // current selection tree would say now.
+      if (r.pinnedNarrative !== undefined) {
+        return { encounterId: r.id, final: r.pinnedNarrative, pinned: true };
+      }
       // Was `final: ""` unconditionally. An empty string is a RENDERABLE answer, so a bound M22 renderer
       // would have produced an empty note and reported success; a 404 is the truthful answer when the
       // encounter has no HearthNote to render (#114).
@@ -1092,6 +1119,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       return {
         encounterId: r.id,
         final: assembleSelections(r.encounterType, r.discipline, r.serviceDate, r.selections),
+        pinned: false,
       };
     },
   };

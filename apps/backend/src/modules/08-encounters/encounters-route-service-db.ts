@@ -21,7 +21,12 @@
 // status + signed_at/cosigned_at carry the signed state, exactly as the in-memory reference models it.
 import { isStepUpRecent } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
-import { templateKey as hearthnoteTemplateKey } from "@wardenx/hearthnote";
+import {
+  DEFAULT_HEARTHNOTE_FLAGS,
+  type Layer2TenantEligibility,
+  enhanceNarrative,
+  templateKey as hearthnoteTemplateKey,
+} from "@wardenx/hearthnote";
 import { VOCAB_VERSION } from "@wardenx/narrative-vocab";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
@@ -43,7 +48,7 @@ import {
   runAddendumComplianceGate,
   runEncounterComplianceGate,
 } from "./gate/index";
-import type { HearthnoteFreeTextCipher } from "./hearthnote-crypto";
+import type { HearthnoteCiphers } from "./hearthnote-crypto";
 import { transitionAddendum } from "./lifecycle/addendum";
 import { requiresCosignature, transitionEncounter } from "./lifecycle/encounter";
 import { EncounterStateError } from "./lifecycle/errors";
@@ -72,6 +77,7 @@ const VITALS = schema.vitals;
 const MILEAGE = schema.mileage;
 const SIG = schema.encounterSignatures;
 const SEL = schema.hearthnoteSelections;
+const OUT = schema.hearthnoteAssembledOutputs;
 
 // ── The stored selection tree (#114 write path, #121 gate input) ──────────────────────────────────────
 //
@@ -99,6 +105,28 @@ function gateSections(selections: unknown): GateSectionSelection[] {
     hasFreeText: s.hasFreeText === true,
   }));
 }
+
+// ── §2.6 Layer-2 eligibility at finalize (D5) ────────────────────────────────────────────────────────
+//
+// D5 reifies the three-flag-AND verdict on `hearthnote_assembled_output.layer2_eligibility`, "evaluated at
+// finalize-time". The ladder that computes it is not new code — `@wardenx/hearthnote`'s
+// `evaluateLayer2Eligibility` has shipped it, pure and tested, since M8-T05, with the platform
+// `hearthnote.layer2` flag as the OUTERMOST gate. That flag is OFF platform-wide in Phase 1
+// (`DEFAULT_HEARTHNOTE_FLAGS`), so the ladder short-circuits on its first line and returns
+// `kill_switch_active` without reading any per-tenant fact.
+//
+// The per-tenant facts below are therefore never consulted today, and are set to the DENY value of each:
+// binding real ones means building the M2 tenant flag, the per-clinician opt-out and the per-encounter-type
+// opt-in set, which is #123's work. Writing them fail-closed rather than omitting them means that if the
+// platform flag is ever flipped on before those readers exist, the verdict degrades to `tenant_flag_off` —
+// the next-truest statement — instead of silently reporting `eligible` for a path that cannot run.
+const LAYER2_TENANT_FACTS_UNBOUND: Layer2TenantEligibility = {
+  tenantEnabled: false,
+  clinicianOptedOut: true,
+  encounterTypeOptedIn: false,
+  baaExecuted: false,
+  tokenBudgetAvailable: false,
+} as const;
 
 // ── §3.3/D13 signature provenance (CoP 418.104(c), 21 CFR Part 11 principles) ─────────────────────────
 //
@@ -286,8 +314,34 @@ const toView = (r: EncounterRow): EncounterView => ({
 export function createDbEncounterRouteService(
   db: DbClient,
   outbox: EncounterWriteOutboxPort = NOOP_OUTBOX,
-  freeTextCipher?: HearthnoteFreeTextCipher,
+  ciphers?: HearthnoteCiphers,
 ): EncounterRouteService {
+  const freeTextCipher = ciphers?.freeText;
+  const narrativeCipher = ciphers?.narrative;
+
+  /**
+   * Run one tenant-DEK operation, turning a KEY-RESOLVE failure into the designed 503.
+   *
+   * Without this the `HEARTHNOTE_CIPHER_UNBOUND` code is unreachable in production: the composition root
+   * always constructs the cipher OBJECTS (`createHearthnoteCiphers(getTenantKeyProvider())`), so the
+   * `!cipher` branch only ever fires in the slice and in tests. The key resolve happens per CALL, deep
+   * inside M34 — `dekForOrg` throws `M34InfraPortUnbound` while the KEK/KMS adapter is unbound (#105),
+   * `TenantKeyMissing` for an org with no key ring, `TenantKeyDestroyed` after a crypto-shred. Unwrapped,
+   * every one of those surfaces as a 500. They are all the same operational statement — this deployment
+   * cannot key this tenant's PHI right now — and 503 is what says it.
+   */
+  async function withTenantDek<T>(what: string, run: () => Promise<T>): Promise<T> {
+    try {
+      return await run();
+    } catch (cause) {
+      throw new EncounterStateError(
+        "HEARTHNOTE_CIPHER_UNBOUND",
+        `${what}: the tenant DEK could not be resolved (${
+          cause instanceof Error ? cause.message : String(cause)
+        })`,
+      );
+    }
+  }
   // ── HearthNote selections (§2.6/§3.6, #114) ────────────────────────────────────────────────────────
   //
   // `selections` (vocabulary codes + numeric slot params) goes to the jsonb column in the clear; the
@@ -328,7 +382,9 @@ export function createDbEncounterRouteService(
         "no per-tenant DEK envelope is bound for M8, so the clinician's free text cannot be sealed; a selection tree with no free text writes normally",
       );
     }
-    return freeTextCipher.seal(organizationId, JSON.stringify(prose));
+    return withTenantDek("the clinician's free text could not be sealed", () =>
+      freeTextCipher.seal(organizationId, JSON.stringify(prose)),
+    );
   }
 
   /** Re-attach the sealed prose to the stored tree. Never throws on a missing cipher — a reader without
@@ -346,7 +402,9 @@ export function createDbEncounterRouteService(
     });
     if (row.freeTextCipher === null || !freeTextCipher) return stored.map(project);
     const prose = JSON.parse(
-      await freeTextCipher.open(organizationId, row.freeTextCipher),
+      await withTenantDek("the clinician's free text could not be opened", () =>
+        freeTextCipher.open(organizationId, row.freeTextCipher as string),
+      ),
     ) as Record<string, string>;
     return stored.map((s) => {
       const text = prose[s.sectionId];
@@ -437,6 +495,116 @@ export function createDbEncounterRouteService(
       );
     }
     return cosigner === signedByMembershipId ? null : cosigner;
+  }
+
+  // ── §2.6 the assembled-output pin (#122) ────────────────────────────────────────────────────────
+  //
+  // `hearthnote_assembled_output` holds the bytes that ARE the signed narrative. Nothing had ever written
+  // it: the §2.3 machine has emitted `{ kind: "persist_assembled_output" }` on every finalize since
+  // M8-T04 — `encounter-lifecycle.test.ts` asserts that it does — and no service performed the effect. So
+  // the note was reassembled from `hearthnote_selection` at every read, which defeats the D11 vocabulary
+  // pin at the last step: a `@wardenx/narrative-vocab` release that edits a phrase would change the
+  // rendered text of an ALREADY-SIGNED encounter, and the `${patient}` slot (a literal today) will change
+  // every historical note the day M8 binds an M5 reader. For a 42 CFR 418.104 legal record, "we can
+  // rebuild it" is not the claim "here is what it said".
+
+  /** Resolve one parent's stored tree. Absent → an empty section list, not a throw: a template with no
+   *  REQUIRED section passes the §2.6 gate with nothing documented, and the honest pin for that is the
+   *  template's own text. (An addendum cannot reach it — its gate refuses an empty tree outright.) */
+  async function storedTreeFor(
+    t: DbClient,
+    organizationId: string,
+    parent: { readonly encounterId: string } | { readonly addendumId: string },
+  ): Promise<SelectionSectionInput[]> {
+    const [row] = await t
+      .select()
+      .from(SEL)
+      .where(
+        "addendumId" in parent
+          ? eq(SEL.addendumId, parent.addendumId)
+          : eq(SEL.encounterId, parent.encounterId),
+      )
+      .limit(1);
+    return row ? await openProse(organizationId, row) : [];
+  }
+
+  /**
+   * Assemble the stored tree and PIN the result, sealed under the tenant DEK. Called once per finalize,
+   * inside the finalize transaction, AFTER the §2.6 gate has passed — so a refused finalize leaves no row.
+   *
+   * The seal is not optional. `layer1_cipher` and `final_cipher` are NOT NULL and the column names are the
+   * §3.6 promise; an assembled narrative is prose by construction, so unlike the selection tree there is no
+   * codes-in-the-clear half that could be written without a key. A deployment that cannot key the tenant's
+   * PHI therefore cannot finalize — see {@link withTenantDek} for why that surfaces as a 503 naming the
+   * DEK, and #105 for the binding it names.
+   */
+  async function pinAssembledOutput(
+    t: DbClient,
+    organizationId: string,
+    input: {
+      readonly kind: "primary_finalize" | "addendum_finalize";
+      readonly encounterId: string | null;
+      readonly addendumId: string | null;
+      readonly providerEntityId: string | null;
+      readonly locationId: string | null;
+      readonly encounterType: EncounterView["encounterType"];
+      readonly discipline: EncounterView["discipline"];
+      readonly serviceDate: string;
+      readonly vocabVersionId: string;
+    },
+  ): Promise<void> {
+    if (!narrativeCipher) {
+      throw new EncounterStateError(
+        "HEARTHNOTE_CIPHER_UNBOUND",
+        "no per-tenant DEK envelope is bound for M8, so the assembled narrative cannot be sealed and the encounter cannot be finalized",
+      );
+    }
+    const sections = await storedTreeFor(
+      t,
+      organizationId,
+      input.addendumId === null
+        ? { encounterId: input.encounterId as string }
+        : { addendumId: input.addendumId },
+    );
+    const layer1 = assembleSelections(
+      input.encounterType,
+      input.discipline,
+      input.serviceDate,
+      sections,
+    );
+    // D5's finalize-time reification, through the module's own shipped ladder rather than a literal.
+    // Phase 1: the platform flag is off, so this is `kill_switch_active` / `enhanced: false` / final === layer1.
+    const outcome = enhanceNarrative({
+      layer1,
+      flags: DEFAULT_HEARTHNOTE_FLAGS,
+      eligibility: LAYER2_TENANT_FACTS_UNBOUND,
+    });
+    const [layer1Cipher, finalCipher] = await withTenantDek(
+      "the assembled narrative could not be sealed",
+      () =>
+        Promise.all([
+          narrativeCipher.seal(organizationId, outcome.layer1),
+          narrativeCipher.seal(organizationId, outcome.final),
+        ]),
+    );
+    await t.insert(OUT).values({
+      organizationId,
+      providerEntityId: input.providerEntityId,
+      locationId: input.locationId,
+      encounterId: input.encounterId,
+      addendumId: input.addendumId,
+      kind: input.kind,
+      layer1Cipher,
+      finalCipher,
+      // The layer2 pair is derived from the outcome, never asserted: the `hearthnote_output_layer2_consistency`
+      // CHECK requires cipher-and-flag to agree, and deriving both from one value is what keeps them agreeing
+      // when Layer 2 becomes reachable.
+      layer2Cipher: null,
+      layer2InvolvedAtFinalize: outcome.enhanced,
+      layer2Eligibility: outcome.reason,
+      assemblyTemplateKey: hearthnoteTemplateKey(input.encounterType, input.discipline),
+      vocabVersionId: input.vocabVersionId,
+    });
   }
 
   /** Run the §2.6 gate for one addendum (the narrower form — see runAddendumComplianceGate). */
@@ -590,6 +758,33 @@ export function createDbEncounterRouteService(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
+        // The PINNED bytes win whenever they exist (#122). This is the whole point of the pin: what M22
+        // prints and M28 exposes is what was assembled at finalize, not what the current corpus would
+        // produce from the same selections today.
+        const [pinned] = await t
+          .select({ finalCipher: OUT.finalCipher })
+          .from(OUT)
+          .where(and(eq(OUT.encounterId, encounterId), eq(OUT.kind, "primary_finalize")))
+          .orderBy(desc(OUT.createdAt))
+          .limit(1);
+        if (pinned) {
+          if (!narrativeCipher) {
+            throw new EncounterStateError(
+              "HEARTHNOTE_CIPHER_UNBOUND",
+              "the encounter's narrative is pinned but no per-tenant DEK envelope is bound to open it",
+            );
+          }
+          return {
+            encounterId: r.id,
+            final: await withTenantDek("the pinned narrative could not be opened", () =>
+              narrativeCipher.open(organizationId, pinned.finalCipher),
+            ),
+            pinned: true,
+          };
+        }
+        // No pin: either a draft (nothing has been finalized, so a live preview is the only answer there
+        // is) or a row finalized before #122 shipped. `pinned: false` is the difference, and it is on the
+        // wire — a renderer must be able to tell a legal record from a preview of one.
         const [row] = await t.select().from(SEL).where(eq(SEL.encounterId, encounterId)).limit(1);
         if (!row) throw new NotFoundError("hearthnote_selection");
         return {
@@ -600,6 +795,7 @@ export function createDbEncounterRouteService(
             r.serviceDate,
             await openProse(organizationId, row),
           ),
+          pinned: false,
         };
       });
     },
@@ -1015,12 +1211,16 @@ export function createDbEncounterRouteService(
           gatePreviewPassed: await gateEncounter(t, r, "finalize"),
           at,
         });
+        // The D11 pin, resolved ONCE: the encounter row, the assembled output and the outbox event all
+        // carry the same value, so the version the note was assembled under cannot disagree with the
+        // version the encounter claims. (It is still the sentinel — see VOCAB_VERSION_SENTINEL / #128.)
+        const vocabVersionId = r.vocabVersionId ?? VOCAB_VERSION_SENTINEL;
         const updated = firstOrThrow(
           await t
             .update(ENC)
             .set({
               status: trans.to,
-              vocabVersionId: r.vocabVersionId ?? VOCAB_VERSION_SENTINEL, // D11 pin (immutable thereafter)
+              vocabVersionId, // D11 pin (immutable thereafter)
               version: Number(r.version) + 1,
               updatedAt: new Date(),
             })
@@ -1028,9 +1228,21 @@ export function createDbEncounterRouteService(
             .returning({ version: ENC.version }),
           "finalize matched no row",
         );
+        // The `persist_assembled_output` effect the machine has declared since M8-T04 (#122).
+        await pinAssembledOutput(t, organizationId, {
+          kind: "primary_finalize",
+          encounterId,
+          addendumId: null,
+          providerEntityId: r.providerEntityId,
+          locationId: r.locationId,
+          encounterType: r.encounterType,
+          discipline: r.discipline,
+          serviceDate: r.serviceDate,
+          vocabVersionId,
+        });
         await emit(t, organizationId, "m8.encounter.finalized", "encounter", encounterId, {
           encounterId,
-          vocabVersionId: r.vocabVersionId ?? VOCAB_VERSION_SENTINEL,
+          vocabVersionId,
           layer2Involved: false,
           lateEntryTier: r.lateEntryTier,
         });
@@ -1486,6 +1698,21 @@ export function createDbEncounterRouteService(
           .update(ADDENDUM)
           .set({ status: trans.to, updatedAt: new Date() })
           .where(eq(ADDENDUM.id, addendumId));
+        // The addendum's own assembled output (`addendum_finalize`), pinned the same way and against the
+        // PARENT's template and pinned vocab version — an addendum to an RN routine visit is written
+        // against the RN routine-visit template, so it must be pinned against it too.
+        const parent = await loadEnc(t, encounterId);
+        await pinAssembledOutput(t, organizationId, {
+          kind: "addendum_finalize",
+          encounterId: null,
+          addendumId,
+          providerEntityId: a.providerEntityId,
+          locationId: a.locationId,
+          encounterType: parent.encounterType,
+          discipline: parent.discipline,
+          serviceDate: parent.serviceDate,
+          vocabVersionId: parent.vocabVersionId ?? VOCAB_VERSION_SENTINEL,
+        });
         return { status: "finalized" };
       });
     },

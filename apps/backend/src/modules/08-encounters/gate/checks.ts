@@ -150,7 +150,8 @@ export const GATE_CHECKS: Readonly<Record<GateCheckId, GateCheck>> = {
       kind: "deferred",
       blocker:
         "the pin is written as VOCAB_VERSION_SENTINEL — one constant uuid, the same for every encounter — because `encounter.vocab_version_id` is a uuid FK to M38's code_system_version and the corpus version is a string ('narrative-vocab@2026.06.0'). Comparing the sentinel to the active version would compare a placeholder to a real id and refuse every signature; comparing it to itself would pass unconditionally, which is the defect this gate was fixed from.",
-      needs: "#122 — a real M38 vocabulary version row for the narrative corpus to pin to",
+      needs:
+        "#128 — a real M38 vocabulary version row for the narrative corpus to pin to, and a TerminologyReader seam to resolve the active one",
     },
   },
 } as const;
