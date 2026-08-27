@@ -24,7 +24,7 @@ import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import { registerPlatformJob, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
 import { DegradedError, WardenXError } from "@wardenx/types";
 import { createX12835Client } from "@wardenx/x12-835-client";
-import { type ConnectionOptions, Queue, type Worker } from "bullmq";
+import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
@@ -41,6 +41,15 @@ import {
   registerSeam,
 } from "./bootstrap/index";
 import {
+  PARTITION_ROTATION_CRON,
+  PARTITION_ROTATION_QUEUE,
+  classifyPartitionCoverage,
+  readPartitionCoverage,
+  runPartitionRotation,
+  summarizeRotation,
+  wirePartitionRotationTenancy,
+} from "./bootstrap/jobs/partition-rotation";
+import {
   m34ActiveMembershipUserId,
   m34SoleTenantUserIds,
 } from "./bootstrap/m34-identity-shred-subjects";
@@ -50,6 +59,7 @@ import {
   registerBullMQQueueMetrics,
   registerHttpMetrics,
   registerOutboxMetrics,
+  registerPartitionMetrics,
 } from "./bootstrap/metrics";
 import { wireOrganizationSettingsRegistry } from "./bootstrap/organization-settings-persister";
 import {
@@ -81,6 +91,7 @@ import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
 import { registerProviderEntityLookupRoutes } from "./bootstrap/routes/provider-entities";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
+import { createPlatformKekAdapter, loadPlatformKekRing } from "./bootstrap/tenant-kek";
 
 /** The @wardenx/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
@@ -586,6 +597,7 @@ import {
   buildDrizzleM33ExportDrilldownService,
   buildDrizzleM33ReadService,
   buildDrizzleM33WriteService,
+  buildDrizzleReportingAbacResolver,
   buildM33DocumentBackrefConsumer,
   buildM33MvRefreshEnqueue,
   buildM33ReadEnqueue,
@@ -734,6 +746,13 @@ export function wireModuleSeams(
     sessionContextStore?: SessionContextStore;
     db?: DbClient;
     organizationDb?: DbClient;
+    /**
+     * The PLATFORM-pooled client (`DATABASE_PLATFORM_URL`). Distinct from `organizationDb` even though
+     * the composition root happens to pass the same handle to both: this one is here because M34's D5
+     * key provider needs a credential that may SELECT `tenant_key_ring`, which migration 0052 §5 revokes
+     * from `wardenx_app` (#105). Absent ⇒ the key provider refuses with a stated reason.
+     */
+    platformDb?: DbClient;
     /** The catalog-validating tx outbox publisher (TASK-002) — the M5 PatientMutator's §4.6
      * `m5.patient.updated` emit rides it. Absent on slice/test boots (mutator stays in-memory). */
     outboxPublisher?: OutboxPublishPort;
@@ -1200,10 +1219,19 @@ export function wireModuleSeams(
         },
   });
   // M33 — the two §4.7 ABAC predicate resolvers (`reportable_scope` D8 cross-cutting read scope +
-  // `dashboard_visibility` §4.7.2 saved-view ladder). Defaults to the deny-stub resolver until P2C binds
-  // the real M2 `SupervisorReader` / M5 `CaseloadProvider` reach + the Drizzle `report_view` facts — with
-  // the deny-stub every actor collapses to `self` scope (fail-closed), which is the correct posture.
-  registerM33AbacPredicates();
+  // `dashboard_visibility` §4.7.2 saved-view ladder), over the PRODUCTION Drizzle resolver when a db is
+  // present (F-044). This used to be called with no argument at all, so `dashboard_visibility` ran against
+  // the deny-stub in production: `loadReportView` returned null for every view, the predicate read that as
+  // "absent / cross-tenant" and denied, and `GET /reporting/dashboards/:id` — which mounts it with
+  // `notFoundOnDeny: true` — answered 404 for every caller including a dashboard's own owner.
+  //
+  // The team/location reach behind `reportable_scope` STAYS fail-closed and that is a declared absence:
+  // M2 publishes no `SupervisorReader` seam in this build. Without it every actor lacking org-wide
+  // authority resolves to `self`, the narrowest scope, which is the right answer to a question the
+  // platform cannot yet ask.
+  registerM33AbacPredicates(
+    deps.db ? { resolver: buildDrizzleReportingAbacResolver(deps.db) } : undefined,
+  );
   // M30 — the eleven §4.7 / §6.7 ABAC predicate resolvers (`incidentVisibility`, `ownsIncident`,
   // `assignedToIncident`, `abuseAllegationAccess`, `capVerifyAuthority`, `ownsQapiProject`,
   // `qapiCloseAuthority`, `ownsSraCycle`, `sraCloseAuthority`, `assignedToMortality`, `part2Redisclosure`).
@@ -1270,6 +1298,10 @@ export function wireModuleSeams(
   wireM9Tenancy();
   wireM10Tenancy();
   wireM14Tenancy(); // GAP-092 — allowlist the cron job id so idg.review-clock-sweep may enter withPlatformContext
+  // F-033/#93 — allowlist the platform partition-rotation job. Unlike the module crons above this one
+  // belongs to no module: the 43 time-RANGE tables it keeps ahead are spread across ~20 modules and no
+  // module can see the others', so it is registered here with them rather than from a module wiring file.
+  wirePartitionRotationTenancy();
   // M34 — the 8 §4.6 ABAC predicate resolvers (the platform-ops tenant surface gates on
   // `tenant_lifecycle_platform_ops`, role-only; `dsar_export_*` composes the M5 CaseloadProvider seam,
   // registered above). The grant/flag/onboarding-task resolver methods are exercised by the tenant-scoped
@@ -1395,10 +1427,19 @@ export function wireModuleSeams(
   if (deps.db) {
     const gatewayConfig = m34ProvisionGatewayConfigFromEnv(process.env);
     const gateway = gatewayConfig ? createM34ProvisionGateway(gatewayConfig) : null;
+    // #105 — the platform KEK. Preferred over the gateway's `/dek/unwrap` because a KEK held by this
+    // process is a key this deployment actually has, where the provision gateway is an HTTP service that
+    // is unspecified and undeployed (#115): the whole per-tenant DEK chain hung off a call to nothing.
+    // A KMS/HSM deployment replaces this one binding and nothing else (ADR-0045; the port is unchanged).
+    const platformKek = loadPlatformKekRing(process.env);
+    const kek = platformKek ? createPlatformKekAdapter(platformKek) : null;
     registerLiveM34Seams({
       db: deps.db,
       auditBypass: m34PlatformBypassAuditor,
-      kekUnwrap: gateway?.kekUnwrap,
+      kekUnwrap: kek ?? gateway?.kekUnwrap,
+      // NOT `deps.db`: migration 0052 §5 revokes wardenx_app's SELECT on tenant_key_ring, so the request
+      // path's credential cannot read a wrapped DEK at all. The platform login holds the grant.
+      keyRingDb: deps.platformDb,
     });
   } else {
     bootstrapModule34(SLICE_MODULE_34_SEAM_DEPS);
@@ -1470,10 +1511,9 @@ export const m34PlatformBypassAuditor: PlatformBypassAuditor<DbClient> = async (
  * slice/local boot, so a resolve is a programming error, not a silent fail-open. This satisfies the mandatory
  * D5 registration without handing out a real key.
  *
- * TODO(Phase 2D — TenantKeyProvider adapter): replace with M34's key-ring service backed by the real KEK/KMS
- * (the §3.3 tenant-key-destruction-log + per-tenant DEK wrap/unwrap). It is the ONLY seam that hard-fails boot;
- * the lifecycle/onboarding/support providers + the M35 subscription-entitlement reader bind their real adapters
- * in the same phase (until then they fail-closed via their typed resolvers).
+ * This is the DB-LESS boot only. The db-present path binds the real key-ring provider over the platform KEK
+ * (`registerLiveM34Seams` above, #105 / ADR-0045); a comment in M27 spent a while citing THIS stub as the
+ * reason the per-tenant DEK was unavailable in production, which sent readers to the wrong branch entirely.
  */
 const SLICE_MODULE_34_SEAM_DEPS: BootstrapModule34Deps = {
   tenantKeyProvider: {
@@ -1981,6 +2021,15 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const m34ProvisionGateway = m34ProvisionConfig
     ? createM34ProvisionGateway(m34ProvisionConfig)
     : null;
+  // #105 — the same platform KEK the D5 seam resolves DEKs through (bound in wireModuleSeams above),
+  // rebuilt here for the WRAP half: `tenant.provision` mints a tenant's first DEK and `tenant.dek_rotate`
+  // mints its successors. Wrap and unwrap MUST come from the same adapter — a DEK wrapped by the gateway
+  // and unwrapped by this process (or the reverse) is a key nobody can open. Falls back to the gateway
+  // when no KEK is configured, so a KMS-fronted deployment keeps working unchanged.
+  const m34PlatformKekRing = loadPlatformKekRing(process.env);
+  const m34KeyMaterial = m34PlatformKekRing
+    ? createPlatformKekAdapter(m34PlatformKekRing)
+    : m34ProvisionGateway?.keyMaterial;
   const m34ProvisionQueue =
     queueConnection && platformDbHandle && m34ProvisionGateway
       ? buildM34ProvisionQueue(queueConnection)
@@ -3125,6 +3174,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           : undefined,
         db: dbHandle?.db,
         organizationDb: platformDbHandle?.db,
+        platformDb: platformDbHandle?.db,
         outboxPublisher: txOutboxPublisher,
       }),
     registerModuleErasers: () =>
@@ -3157,6 +3207,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   registerHttpMetrics(app, metricsRegistry);
   const outboxMetrics = registerOutboxMetrics(metricsRegistry, {
     pendingDepth: outboxPendingDepth,
+  });
+  // F-033/#93 — partition-coverage gauges. Registered for EVERY role, like the outbox ones: the read is
+  // a catalog scan of ~43 relations, and an API-only replica answering it is exactly as correct as the
+  // worker answering it. Deliberately NOT folded into `/ready`: a table running low on partition
+  // headroom is a maintenance signal, and taking an otherwise-healthy replica out of the load balancer
+  // for it would turn a scheduling problem into an outage.
+  registerPartitionMetrics(metricsRegistry, {
+    coverage: dbHandle ? () => readPartitionCoverage(dbHandle.db) : undefined,
   });
   mountMetricsRoute(app, metricsRegistry);
   // TASK-040D (OPS-012) — DLQ-promotion alerting, shared by BOTH the BullMQ worker-runner block and the
@@ -3341,11 +3399,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         provision: {
           auditBypass: m34PlatformBypassAuditor,
           ...m34ProvisionGateway,
+          // AFTER the spread: the platform KEK wins over the gateway's `/dek/wrap` (see m34KeyMaterial).
+          ...(m34KeyMaterial ? { keyMaterial: m34KeyMaterial } : {}),
           outbox: m34OutboxPublisher,
         },
         keyLifecycle: {
           auditBypass: m34PlatformBypassAuditor,
-          keyMaterial: m34ProvisionGateway.keyMaterial,
+          keyMaterial: m34KeyMaterial ?? m34ProvisionGateway.keyMaterial,
           storage: m34ProvisionGateway.destructionStorage,
           outbox: m34OutboxPublisher,
           async destroyTenantKeyRing(input) {
@@ -3475,6 +3535,63 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       app.log.error(err, "M33 cron-schedule registration failed");
     }
     app.log.info({ queues: m33Workers.length }, "M33 §4.8 BullMQ reporting workers constructed");
+
+    // ── platform.partition_rotate — the time-partition rotation cron (F-033 / #93) ─────────────────────
+    //
+    // Keeps the current + 3 following months of partitions created for every time-RANGE partitioned
+    // table, discovered from `pg_catalog` (migration 0224). Runs on the 1st, 8th and 15th: the work is a
+    // no-op once the window is covered, so three cheap chances beat one tick that a restart can eat.
+    //
+    // It uses the PLATFORM credential, not the tenant pool. Partition DDL needs ownership of the parent
+    // table and `wardenx_app` has none — the definer-rights `rotate_time_partitions` bridges that, and
+    // `scripts/db/provision-runtime-roles.ts` grants EXECUTE on it to `wardenx_platform`. Falling back to
+    // `dbHandle.db` keeps dev/CI (no DATABASE_PLATFORM_URL) working, where the connected role is usually
+    // the owner anyway.
+    const partitionRotateWorker = new Worker(
+      PARTITION_ROTATION_QUEUE,
+      async () => {
+        const rows = await runPartitionRotation({
+          platformDb: platformDbHandle?.db ?? dbHandle.db,
+          auditBypass: m34PlatformBypassAuditor,
+        });
+        const summary = summarizeRotation(rows);
+        // A blocked table is not a job failure to retry — retrying cannot help, because the partition is
+        // refused for as long as DEFAULT holds those rows. It is an operator task, so it is logged at
+        // error level with the table names and the job still completes.
+        if (!summary.healthy) {
+          app.log.error(
+            { blocked: summary.blocked, noCreator: summary.noCreator },
+            "partition rotation completed with tables that need manual repair",
+          );
+        } else {
+          app.log.info(
+            { created: summary.created, alreadyCovered: summary.ok },
+            "partition rotation complete",
+          );
+        }
+        return summary;
+      },
+      { connection: queueConnection, concurrency: 1 },
+    );
+    attachDlqAlertsToAll([partitionRotateWorker], "platform");
+    app.addHook("onClose", async () => {
+      await partitionRotateWorker.close();
+    });
+    try {
+      const partitionRotateQueue = new Queue(PARTITION_ROTATION_QUEUE, {
+        connection: queueConnection,
+      });
+      await partitionRotateQueue.add(
+        "scheduled",
+        {},
+        { repeat: { pattern: PARTITION_ROTATION_CRON }, removeOnComplete: true },
+      );
+      app.addHook("onClose", async () => {
+        await partitionRotateQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "partition-rotation cron registration failed");
+    }
 
     // ── M30 §4.8 HQRP/quality workers + cron schedules (the same worker-runner shape) ───────────────────
     // Construct the four §4.8 WORK-queue Workers (measure_recompute / cahps_export / outbreak_detection /

@@ -20,6 +20,12 @@ export const reportBaseCatalog = pgTable("report_base_catalog", {
   measures: jsonb("measures").notNull().$type<MeasureCatalog[]>(),
   maxRowLimit: integer("max_row_limit").notNull().default(10000),
   drilldownUrlTemplate: text("drilldown_url_template"), // nullable; not all bases support drilldown
+  // The MV columns the §4.7 D8 `reportable_scope` envelope narrows on. NULLABLE and nullable-by-default:
+  // an org-grain MV (census, EVV-by-week) has no member or location column, and a narrowing scope on such
+  // a base DENIES rather than serving the whole org (packages/reporting scope-injector, F-059). These are
+  // platform-declared structural column names, never tenant input and never a selectable dimension.
+  scopeMembershipColumn: text("scope_membership_column"),
+  scopeLocationColumn: text("scope_location_column"),
   exposesPhiViaDrilldown: boolean("exposes_phi_via_drilldown").notNull().default(false),
   status: text("status", {
     enum: ["seeded", "active", "deprecated", "retired"],

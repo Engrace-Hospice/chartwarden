@@ -18,6 +18,7 @@ import type {
   OncallModel,
   ShiftDiscipline,
   TriageAnswerType,
+  TriageCallSource,
   TriageCallState,
   TriageCallerKind,
   TriageDispositionValue,
@@ -415,3 +416,39 @@ export function isWithinWindow(startsAt: string, endsAt: string, now = Date.now(
   if (Number.isNaN(s) || Number.isNaN(e)) return false;
   return now >= s && now < e;
 }
+
+// ── §5.1 queue filter pickers (F-041) ──────────────────────────────────────────────────────────────
+//
+// The state/source pickers each prepend an "all" SENTINEL whose `value` is the empty string, because
+// the empty string is what the query layer reads as "do not narrow". A React `key` derived from that
+// value with `option.value || "open"` collided with the REAL `"open"` state — `CALL_STATES` begins with
+// `OPEN_CALL_STATES`, whose first member is `"open"` — so two `<option>`s in one `<select>` shared a key
+// and React stopped guaranteeing which DOM node belonged to which option. The key is therefore carried
+// as its OWN field rather than re-derived at the render site: a sentinel key cannot collide with an enum
+// member if it never has to be spelled the same way, and a future filter cannot reintroduce the bug by
+// picking a fallback string that happens to be a state name.
+
+/** One entry in a queue filter `<select>`: the submitted `value` (`""` = unnarrowed), its label, and a
+ *  render `key` that is unique across the whole list by construction. */
+export interface QueueFilterOption<TValue extends string> {
+  readonly key: string;
+  readonly value: TValue | "";
+  readonly label: string;
+}
+
+/** The §5.1 state picker: the "Open board" sentinel followed by every `triage_call_state`. */
+export const STATE_FILTERS: readonly QueueFilterOption<TriageCallState>[] = [
+  { key: "__any_state", value: "", label: "Open board" },
+  ...CALL_STATES.map((state) => ({ key: state, value: state, label: humanize(state) })),
+];
+
+/** The §5.1 source picker: the "All" sentinel followed by every `triage_call_source`. */
+export const SOURCE_FILTERS: readonly QueueFilterOption<TriageCallSource>[] = [
+  { key: "__any_source", value: "", label: "Source: All" },
+  { key: "manual", value: "manual", label: "Manual" },
+  { key: "no_show", value: "no_show", label: "No-show" },
+  { key: "late_checkout", value: "late_checkout", label: "Late checkout" },
+  { key: "geofence_anomaly", value: "geofence_anomaly", label: "Geofence anomaly" },
+  { key: "m36_delivery_failure", value: "m36_delivery_failure", label: "Delivery failure" },
+  { key: "paper_origin", value: "paper_origin", label: "Paper origin" },
+];

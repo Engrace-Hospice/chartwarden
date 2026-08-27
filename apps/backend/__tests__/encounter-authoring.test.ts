@@ -439,3 +439,209 @@ describe("M8-T10 — §7.4 MD/NP F2F dual-write with M6 (D1)", () => {
     expect(backend.inspect.f2fAttestations()).toHaveLength(0);
   });
 });
+
+// ── (3) #92 — the vitals read-back ────────────────────────────────────────────────────────────────────
+//
+// `POST .../vitals` wrote a real row and returned only the DERIVED facts (`vitalsId`, `fieldsCaptured`,
+// `abnormalFlags`, `bmi`); the measured VALUES were readable through no caller-facing route at all —
+// the encounter DTO carries none of them and there was no `GET .../vitals`. A clinician could record a
+// blood pressure and never see it again, which satisfies the storage half of 42 CFR 418.104 and not
+// the retrieval half. These drive the new read through the real Fastify stack, so the guard chain and
+// the `config.auditRead` declaration are exercised too, not just the service method.
+describe("M8 #92 — GET /encounters/:id/vitals reads back what was written", () => {
+  async function seedEncounter(app: ReturnType<typeof makeServer>["app"]): Promise<string> {
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/encounters",
+      headers: RN,
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        encounterType: "routine_visit",
+        discipline: "rn",
+        serviceDate: "2026-06-20",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    return created.json().id as string;
+  }
+
+  it("round-trips every captured measurement, not just the derived facts", async () => {
+    const { app } = makeServer();
+    const id = await seedEncounter(app);
+
+    const written = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/vitals`,
+      headers: RN,
+      payload: {
+        bpSystolic: 142,
+        bpDiastolic: 88,
+        heartRate: 78,
+        respiratoryRate: 16,
+        temperature: "37.2",
+        temperatureUnit: "c",
+        spo2: 97,
+        painScore: 2,
+        painScale: "nrs_0_10",
+        weight: "70",
+        weightUnit: "kg",
+        height: "175",
+        heightUnit: "cm",
+        bloodGlucose: 105,
+        bloodGlucoseUnit: "mg_dl",
+      },
+    });
+    expect(written.statusCode).toBe(201);
+
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/vitals`,
+      headers: RN,
+    });
+    expect(read.statusCode).toBe(200);
+    const body = read.json() as {
+      encounterId: string;
+      vitals: Record<string, unknown>[];
+    };
+    expect(body.encounterId).toBe(id);
+    expect(body.vitals).toHaveLength(1);
+    const v = body.vitals[0] as Record<string, unknown>;
+    expect(v.id).toBe(written.json().vitalsId);
+    expect(v.encounterId).toBe(id);
+    // The whole point of the issue: the MEASUREMENTS come back.
+    expect(v.bpSystolic).toBe(142);
+    expect(v.bpDiastolic).toBe(88);
+    expect(v.heartRate).toBe(78);
+    expect(v.respiratoryRate).toBe(16);
+    expect(v.temperature).toBe("37.2");
+    expect(v.temperatureUnit).toBe("c");
+    expect(v.spo2).toBe(97);
+    expect(v.painScore).toBe(2);
+    expect(v.painScale).toBe("nrs_0_10");
+    expect(v.weight).toBe("70");
+    expect(v.height).toBe("175");
+    expect(v.bloodGlucose).toBe(105);
+    expect(typeof v.capturedAt).toBe("string");
+  });
+
+  it("re-derives abnormalFlags and carries the stored BMI, agreeing with the write result", async () => {
+    const { app } = makeServer();
+    const id = await seedEncounter(app);
+    const written = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/vitals`,
+      headers: RN,
+      payload: {
+        bpSystolic: 142,
+        bpDiastolic: 88,
+        spo2: 97,
+        weight: "70",
+        weightUnit: "kg",
+        height: "175",
+        heightUnit: "cm",
+      },
+    });
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/vitals`,
+      headers: RN,
+    });
+    const v = read.json().vitals[0] as { bmi: string; abnormalFlags: string[] };
+    expect(v.bmi).toBe(written.json().bmi);
+    expect(v.abnormalFlags).toEqual(written.json().abnormalFlags);
+    expect(v.abnormalFlags).toContain("bp_systolic");
+  });
+
+  it("distinguishes an unrecorded measurement (null) from one that was taken", async () => {
+    const { app } = makeServer();
+    const id = await seedEncounter(app);
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/vitals`,
+      headers: RN,
+      payload: { heartRate: 72 },
+    });
+    const v = (
+      await app.inject({ method: "GET", url: `/api/v1/encounters/${id}/vitals`, headers: RN })
+    ).json().vitals[0] as Record<string, unknown>;
+    expect(v.heartRate).toBe(72);
+    // Nullable, never absent: "nobody recorded an SpO2" is a clinical statement, and a missing key
+    // would leave the client unable to tell it apart from a field the API forgot to send.
+    expect(v).toHaveProperty("spo2", null);
+    expect(v).toHaveProperty("painScore", null);
+    expect(v).toHaveProperty("bmi", null);
+  });
+
+  it("returns every set on the encounter, newest capture first", async () => {
+    const { app } = makeServer();
+    const id = await seedEncounter(app);
+    for (const hr of [60, 70, 80]) {
+      await app.inject({
+        method: "POST",
+        url: `/api/v1/encounters/${id}/vitals`,
+        headers: RN,
+        payload: { heartRate: hr },
+      });
+    }
+    const body = (
+      await app.inject({ method: "GET", url: `/api/v1/encounters/${id}/vitals`, headers: RN })
+    ).json() as { vitals: { id: string; capturedAt: string }[] };
+    expect(body.vitals).toHaveLength(3);
+    // The slice's clock is fixed, so this pins the id tiebreak rather than the timestamp ordering —
+    // the live suite is what proves the capturedAt ordering against a real clock.
+    const ids = body.vitals.map((x) => x.id);
+    expect([...ids].sort().reverse()).toEqual(ids);
+  });
+
+  it("an edit corrects the values and preserves when they were taken", async () => {
+    const { app } = makeServer();
+    const id = await seedEncounter(app);
+    const written = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/vitals`,
+      headers: RN,
+      payload: { heartRate: 72 },
+    });
+    const vitalsId = written.json().vitalsId as string;
+    const before = (
+      await app.inject({ method: "GET", url: `/api/v1/encounters/${id}/vitals`, headers: RN })
+    ).json().vitals[0].capturedAt as string;
+
+    const edited = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/encounters/${id}/vitals/${vitalsId}`,
+      headers: { ...RN, "if-match": "0" },
+      payload: { heartRate: 96 },
+    });
+    expect(edited.statusCode).toBe(200);
+
+    const after = (
+      await app.inject({ method: "GET", url: `/api/v1/encounters/${id}/vitals`, headers: RN })
+    ).json().vitals[0] as { heartRate: number; capturedAt: string };
+    expect(after.heartRate).toBe(96);
+    expect(after.capturedAt).toBe(before);
+  });
+
+  it("404s for an encounter that is not the caller's, rather than returning an empty list", async () => {
+    const { app } = makeServer();
+    const read = await app.inject({
+      method: "GET",
+      url: "/api/v1/encounters/99999999-9999-4999-8999-999999999999/vitals",
+      headers: RN,
+    });
+    expect(read.statusCode).toBe(404);
+  });
+
+  it("requires encounter.read — a caller without it is refused", async () => {
+    const { app } = makeServer();
+    const id = await seedEncounter(app);
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/vitals`,
+      headers: { "x-test-user": "nobody_1", "x-test-org": ORG, "x-test-roles": "" },
+    });
+    expect(read.statusCode).toBeGreaterThanOrEqual(400);
+    expect(read.statusCode).toBeLessThan(500);
+  });
+});

@@ -172,6 +172,82 @@ export function registerOutboxMetrics(
   };
 }
 
+// ── partition coverage (F-033 / #93) ────────────────────────────────────────────────────────────────
+
+/** A coverage read, shaped so this module needs no import from the job (M1 keeps metrics dependency-free). */
+export interface PartitionCoverageSample {
+  readonly tableName: string;
+  readonly monthsHeadroom: number;
+  readonly defaultOccupied: boolean;
+  readonly hasCreator: boolean;
+}
+
+export interface PartitionMetricsDeps {
+  /** Reads `time_partition_coverage()`; omitted when no DB is configured. */
+  readonly coverage?: () => Promise<readonly PartitionCoverageSample[]>;
+}
+
+/**
+ * Publish the three partition-health signals an alert needs. Read on SCRAPE rather than cached from the
+ * last rotation run, because the question "is a DEFAULT partition collecting right now" must not be
+ * answerable only as often as the monthly job happens to run.
+ *
+ * Three gauges rather than one, because they warrant different alerts:
+ *
+ *   `…_min_headroom_months`   — how long until writes start diverting into DEFAULT. Self-healing: the
+ *                               rotation cron fixes it. Alert only if it stays low, which means the job
+ *                               is not running.
+ *   `…_default_occupied`      — how many tables ALREADY diverted. Not self-healing — creating the correct
+ *                               partition is refused for as long as those rows sit in DEFAULT, and the
+ *                               eventual repair takes an ACCESS EXCLUSIVE lock that grows with the delay.
+ *                               This is the one that should page someone.
+ *   `…_missing_creator`       — time-RANGE tables nothing can extend at all. Needs a migration.
+ *
+ * A scrape that cannot read coverage reports -1 for headroom rather than 0 or a stale value: 0 would
+ * read as "overdue this month" and fire the wrong alert, while omitting the series would read as
+ * healthy. -1 is outside the domain and unmistakably means "not measured".
+ */
+export function registerPartitionMetrics(
+  registry: Registry,
+  deps: PartitionMetricsDeps = {},
+): void {
+  const sample = async (): Promise<readonly PartitionCoverageSample[] | null> => {
+    if (!deps.coverage) return null;
+    try {
+      return await deps.coverage();
+    } catch {
+      return null;
+    }
+  };
+  new Gauge({
+    name: "wardenx_partition_min_headroom_months",
+    help: "Fewest whole months of created partitions ahead across time-RANGE partitioned tables (-1 = not measured)",
+    registers: [registry],
+    async collect() {
+      const rows = await sample();
+      this.set(rows && rows.length > 0 ? Math.min(...rows.map((r) => r.monthsHeadroom)) : -1);
+    },
+  });
+  new Gauge({
+    name: "wardenx_partition_default_occupied_tables",
+    help: "Tables whose DEFAULT partition already holds rows — rotation can no longer repair these (-1 = not measured)",
+    registers: [registry],
+    async collect() {
+      const rows = await sample();
+      this.set(rows ? rows.filter((r) => r.defaultOccupied).length : -1);
+    },
+  });
+  new Gauge({
+    name: "wardenx_partition_missing_creator_tables",
+    help: "Time-RANGE partitioned tables with no create_*_partition(date) function (-1 = not measured)",
+    registers: [registry],
+    async collect() {
+      const rows = await sample();
+      this.set(rows ? rows.filter((r) => !r.hasCreator).length : -1);
+    },
+  });
+}
+
 // ── the /metrics route ──────────────────────────────────────────────────────────────────────────────
 
 /** Mount `GET /metrics` — Prometheus text exposition, unauthenticated (the `/health`/`/ready` posture:
