@@ -33,10 +33,8 @@ import { getSeam } from "../../../bootstrap/index";
 /** The M38 value sets M10 consumes (`PLATFORM_VALUE_SETS` ids). */
 const HOSPICE_DX_VALUE_SET = "hospice_terminal_diagnosis";
 const HOPE_J_CODE_VALUE_SET = "hope_j_codes";
-/** The code system Section I's primary diagnosis is drawn from. */
+/** The code system Section I's primary diagnosis is drawn from — unambiguous, so it is named here. */
 const ICD10CM = "icd10cm";
-/** Section J's symptom-impact item codes are HOPE instrument items, catalogued by M38 under LOINC. */
-const HOPE_J_SYSTEM = "loinc";
 
 /** The M10-side structural projection of M38's `TerminologyProvider` — the two arms this module calls.
  * The seam is `unknown` in the leaf `SeamContracts` (ADR-0005 D2), so it is narrowed at the call site. */
@@ -92,6 +90,34 @@ async function valueSetHasMembers(
   }
 }
 
+/**
+ * The whole membership of a SMALL value set as of `asOf`, or `null` when it cannot be read.
+ *
+ * Used for `hope_j_codes` (three items) and NOT for `hospice_terminal_diagnosis`, which is ICD-10-CM
+ * and potentially enormous — expanding it to check one diagnosis would be absurd, so that one probes
+ * per code with `isMemberOf`. The asymmetry is deliberate and the reason is size, not semantics.
+ *
+ * Expanding also removes a GUESS this function used to make: `isMemberOf` takes a code SYSTEM, and
+ * before F-059 that argument was the literal `"loinc"` — an invention, since CMS HOPE items are not
+ * LOINC codes. The set knows its own members' systems; asking it what they are beats asserting one.
+ * It is also exactly what the oracle's contract asks of this layer ("resolves both sets … and adapts
+ * them to this synchronous shape"), so availability and membership now come from ONE pass and cannot
+ * disagree about whether the set exists.
+ */
+async function expandAll(
+  reader: HopeTerminologyReader,
+  valueSetId: string,
+  asOf: Date,
+): Promise<string[] | null> {
+  try {
+    const codes: string[] = [];
+    for await (const member of reader.expand(valueSetId, { asOf })) codes.push(member.code);
+    return codes;
+  } catch {
+    return null;
+  }
+}
+
 /** Membership for exactly the codes present, as of `asOf`. Unanswerable codes read as non-members —
  * safe only because the caller has already established the set IS available. */
 async function membersOf(
@@ -133,25 +159,23 @@ export async function runHopeAssessmentValidation(
 
   let available: HopeValueSetAvailability = { hospiceTerminalDiagnosis: false, hopeJCodes: false };
   let dxHits: string[] = [];
-  let jHits: string[] = [];
+  let jCodes: string[] = [];
   if (reader !== null) {
     const dxCode = sections.sectionI.primaryDiagnosisIcd10;
-    const [dxAvailable, jAvailable] = await Promise.all([
+    const [dxAvailable, jMembers] = await Promise.all([
       valueSetHasMembers(reader, HOSPICE_DX_VALUE_SET, asOf),
-      valueSetHasMembers(reader, HOPE_J_CODE_VALUE_SET, asOf),
+      expandAll(reader, HOPE_J_CODE_VALUE_SET, asOf),
     ]);
-    available = { hospiceTerminalDiagnosis: dxAvailable, hopeJCodes: jAvailable };
+    // An unreadable set and an EMPTY one are the same answer here — neither can tell us whether an
+    // item is a member — so both leave `hopeJCodes` unavailable and the rule records that it could
+    // not run rather than warning about every item on the assessment.
+    jCodes = jMembers ?? [];
+    available = {
+      hospiceTerminalDiagnosis: dxAvailable,
+      hopeJCodes: jCodes.length > 0,
+    };
     if (dxAvailable && dxCode !== null) {
       dxHits = await membersOf(reader, HOSPICE_DX_VALUE_SET, ICD10CM, [dxCode], asOf);
-    }
-    if (jAvailable && sections.sectionJ.jCodes.length > 0) {
-      jHits = await membersOf(
-        reader,
-        HOPE_J_CODE_VALUE_SET,
-        HOPE_J_SYSTEM,
-        sections.sectionJ.jCodes,
-        asOf,
-      );
     }
   }
 
@@ -170,8 +194,9 @@ export async function runHopeAssessmentValidation(
         huv1TargetDate: subject.huv1TargetDate ?? null,
       },
     },
-    // The oracle carries ONLY the codes M38 confirmed, plus the availability flags — membership was
-    // probed code-by-code, so set emptiness here means "none of these codes matched", never "no set".
-    valueSetOracle({ hospiceTerminalDiagnoses: dxHits, hopeJCodes: jHits, available }),
+    // Section I carries ONLY the codes M38 confirmed (probed per code, so emptiness means "this
+    // diagnosis did not match", never "no set" — which is why `available` is passed explicitly).
+    // Section J carries the set's FULL membership, so the oracle answers from the real roster.
+    valueSetOracle({ hospiceTerminalDiagnoses: dxHits, hopeJCodes: jCodes, available }),
   );
 }

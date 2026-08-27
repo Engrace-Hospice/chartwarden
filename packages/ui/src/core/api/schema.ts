@@ -22914,7 +22914,7 @@ export interface operations {
                             extensionId: string;
                             valueSetId: string;
                             organizationId: string;
-                            systemId: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                            systemId: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc" | "cms_hope";
                             code: string;
                             reason: string;
                             addedBy: string | null;
@@ -22932,7 +22932,7 @@ export interface operations {
     getApiV1AdminTerminologyVersions: {
         parameters: {
             query?: {
-                system?: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                system?: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc" | "cms_hope";
                 limit?: number;
             };
             header?: never;
@@ -22950,7 +22950,7 @@ export interface operations {
                     "application/json": {
                         items: {
                             logId: string;
-                            systemId: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                            systemId: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc" | "cms_hope";
                             versionId: string | null;
                             version: string | null;
                             versionStatus: string | null;
@@ -66917,7 +66917,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        systemId: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                        systemId: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc" | "cms_hope";
                         code: string;
                         display: string;
                         status: "active" | "deprecated" | "retired";
@@ -67050,7 +67050,7 @@ export interface operations {
         parameters: {
             query?: {
                 since?: string;
-                system?: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                system?: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc" | "cms_hope";
                 limit?: number;
             };
             header?: never;
@@ -67071,7 +67071,7 @@ export interface operations {
                         affectedCodeCount: number;
                         coveredRecordTypes: string[];
                         items: {
-                            systemId: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                            systemId: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc" | "cms_hope";
                             deprecatedCode: string;
                             deprecationEffective: string;
                             successorCodes: string[];
@@ -67128,7 +67128,7 @@ export interface operations {
         parameters: {
             query?: {
                 asOf?: string;
-                system?: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                system?: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc" | "cms_hope";
                 cursor?: string;
                 limit?: number;
                 includeTenantExtensions?: boolean;
@@ -67149,7 +67149,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         items: {
-                            systemId: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                            systemId: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc" | "cms_hope";
                             code: string;
                             display: string;
                             annotations: {
@@ -67176,7 +67176,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    system: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                    system: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc" | "cms_hope";
                     code: string;
                     reason: string;
                 };
@@ -67192,7 +67192,7 @@ export interface operations {
                     "application/json": {
                         extensionId: string;
                         valueSetId: string;
-                        system: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                        system: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc" | "cms_hope";
                         code: string;
                     };
                 };
@@ -67227,7 +67227,7 @@ export interface operations {
     getApiV1TerminologyValuesetsByIdIsmember: {
         parameters: {
             query: {
-                system: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                system: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc" | "cms_hope";
                 code: string;
                 asOf?: string;
             };

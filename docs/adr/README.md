@@ -70,6 +70,7 @@ ADRs below are the normative rationale those changelogs point to.
 | [0044](ADR-0044-evv-launch-aggregator-sandata.md) | EVV launch aggregator is Sandata (multi-state, pluggable per-state registry) — supersedes ADR-0008 D4's Oregon/OR-PTC launch detail; D1–D3/D5 stand and D1 is now enforced in the M23 rule | ADR-compliance audit 2026-08-14 (0008 D4) | Accepted (ratified 2026-08-14) |
 | [0045](ADR-0045-platform-kek-custody.md) | The platform KEK is held by the application (env-injected, AES-256-GCM key wrap, org-bound AAD, `kekId` rotation) rather than fetched from the unspecified provision gateway — binds ADR-0038 §3's `kekUnwrap` port | Production-readiness audit 2026-08-25 (F-045 / #105) | Accepted (ratified 2026-08-26) |
 | [0046](ADR-0046-d11-vocab-pin-is-the-narrative-corpus.md) | The D11 vocabulary pin is the `@wardenx/narrative-vocab` corpus release, not an M38 `code_system_version` row — Layer-1 assembly resolves no M38 concept, so pinning M38 would guard nothing | Production-readiness audit 2026-08-25 (F-056 / #128) | Accepted (ratified 2026-08-27) |
+| [0047](ADR-0047-hope-j-codes-holds-instrument-items.md) | M38's `hope_j_codes` value set holds CMS HOPE ITEM identifiers (J2030/J2050/J2051), not the J2051 symptom codes — those are closed at M10's route boundary, so checking them here could never fail | Production-readiness audit 2026-08-25 (F-059, follows F-057 / #148) | Accepted (ratified 2026-08-27) |
 
 *BB# = "Build Blocking Issues" item number in `audit/AUDIT_CONSOLIDATED_FINAL.md`.*
 

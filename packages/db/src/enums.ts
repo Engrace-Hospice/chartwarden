@@ -231,6 +231,11 @@ export const codeSystemId = pgEnum("code_system_id", [
   "revenue",
   "carc",
   "rarc",
+  // CMS HOPE assessment-instrument items (J2030 / J2050 / J2051 …) — the authority that publishes the
+  // HOPE item roster, so `hope_j_codes` has a system to be curated under (F-059, mig 0229). Sits beside
+  // `revenue` / `carc` / `rarc` rather than the clinical terminologies: all four are administrative code
+  // lists published by a body, not concept graphs.
+  "cms_hope",
   // 'cpt' — reserved; not in enum until D4 unlocks (§7.8).
 ]);
 

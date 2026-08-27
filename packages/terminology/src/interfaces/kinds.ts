@@ -32,8 +32,14 @@ export type CodeSystemId =
   | "cvx"
   | "revenue"
   | "carc"
-  | "rarc";
+  | "rarc"
+  | "cms_hope";
 // 'cpt' — reserved; not in the union until D4 (§1.2, §1.3 AMA CPT license row).
+// 'cms_hope' — the CMS HOPE assessment-instrument item roster (F-059). Added because `hope_j_codes` is
+// defined in PLATFORM_VALUE_SETS while `value_set_member.system_id` is this union, so the set had no
+// system to be curated under and M10's §86 Section-J rule could never resolve. It belongs with
+// `revenue`/`carc`/`rarc` — administrative code lists published by an authority — not with the concept
+// graphs; like those three it ships no concept table.
 
 /**
  * Runtime list of every Phase-1 code system — the value-level mirror of {@link CodeSystemId}
@@ -53,6 +59,7 @@ export const CODE_SYSTEM_IDS = [
   "revenue",
   "carc",
   "rarc",
+  "cms_hope",
 ] as const satisfies readonly CodeSystemId[];
 
 /** Per-row concept lifecycle (§2.4.1). A `retired` row is still returned by an
@@ -135,6 +142,10 @@ export interface ConceptPropertiesBySystem {
   revenue: GenericConceptProperties;
   carc: GenericConceptProperties;
   rarc: GenericConceptProperties;
+  // CMS HOPE items carry no bespoke properties: the instrument's per-item metadata (section letter,
+  // response set) lives in M10's own required-items matrix, not in the terminology concept row. Same
+  // shape as `revenue`/`carc`/`rarc` — an authority-published code list, not a concept graph.
+  cms_hope: GenericConceptProperties;
 }
 
 /** The strongly-typed `properties` for a concept in system `S`. */
