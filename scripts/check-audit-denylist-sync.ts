@@ -194,7 +194,7 @@ const MODULES: ReadonlyArray<{
     migrations: [
       "packages/db/migrations/0139_portal_m31_rls_audit_triggers.sql",
       // #117: adds status_change_reason_cipher (the suspend/reinstate reason) to portal_account's scrub set.
-      "packages/db/migrations/0224_portal_m31_status_change_reason.sql",
+      "packages/db/migrations/0228_portal_m31_status_change_reason.sql",
     ],
   },
   {
