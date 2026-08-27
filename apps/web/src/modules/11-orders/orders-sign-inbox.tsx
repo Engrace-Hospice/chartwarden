@@ -12,11 +12,13 @@ import {
 // Spec: docs/design/screens/clinical/WARDENX_UI_ORDERS.md — "Use Patient Workspace + Work Queue" (signature
 // inbox half). The global queue of orders awaiting a physician signature, KPI'd by kind, sorted by created.
 // Priority (routine/stat/asap) is surfaced as a UX cue; the server owns the authoritative §2.2 D2 status
-// (ADR-0030 — no frontend authz). Reads GET /api/v1/orders/pending-signature via the typed client. The
-// sign step-up action fills in as its write surface hardens. Leaves only (@wardenx/ui).
+// (ADR-0030 — no frontend authz). Reads GET /api/v1/orders/pending-signature via the typed client, and —
+// since #91 — SIGNS from the row: the queue's whole reason to exist was an action it did not offer. There
+// is no step-up ceremony because the server does not ask for one (see screens.ts). Leaves only (@wardenx/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { type OrderAction, OrderActionModal } from "./order-action-modal";
 import { COSIGN_TONE, PRIORITY_TONE, stateLabel } from "./orders-status";
 
 interface OrderRow {
@@ -79,6 +81,7 @@ export function OrdersSignInbox(): JSX.Element {
   ).length;
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
   const activePage = Math.min(page, pageCount);
+  const [acting, setActing] = useState<{ id: string; action: OrderAction } | null>(null);
   const pagedRows = rows.slice((activePage - 1) * pageSize, activePage * pageSize);
 
   const clearFilters = (): void => {
@@ -89,200 +92,235 @@ export function OrdersSignInbox(): JSX.Element {
   };
 
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader title="Orders Awaiting Signature" breadcrumb="Clinical / Orders">
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Review unsigned orders by urgency, order type, and patient context.
-          </div>
-        </PageHeader>
-      }
-      filters={
-        <div style={filterShellStyle}>
-          {error ? (
-            <div role="alert" style={errorBannerStyle}>
-              <span>{error}</span>
-              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
-                x
-              </button>
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader title="Orders Awaiting Signature" breadcrumb="Clinical / Orders">
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Review unsigned orders by urgency, order type, and patient context.
             </div>
-          ) : null}
-          <div style={toolbarStyle}>
-            <div style={toolbarTitleStyle}>
-              <span style={toolbarEyebrowStyle}>Queue</span>
-              <strong>{rows.length} matching orders</strong>
-            </div>
-            <div style={controlGroupStyle}>
-              <div style={searchWrapStyle}>
-                <input
-                  type="search"
-                  placeholder="Search order or patient..."
-                  value={searchQuery}
+          </PageHeader>
+        }
+        filters={
+          <div style={filterShellStyle}>
+            {error ? (
+              <div role="alert" style={errorBannerStyle}>
+                <span>{error}</span>
+                <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
+                  x
+                </button>
+              </div>
+            ) : null}
+            <div style={toolbarStyle}>
+              <div style={toolbarTitleStyle}>
+                <span style={toolbarEyebrowStyle}>Queue</span>
+                <strong>{rows.length} matching orders</strong>
+              </div>
+              <div style={controlGroupStyle}>
+                <div style={searchWrapStyle}>
+                  <input
+                    type="search"
+                    placeholder="Search order or patient..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setPage(1);
+                    }}
+                    aria-label="Search orders awaiting signature"
+                    style={searchInputStyle}
+                  />
+                </div>
+                <select
+                  aria-label="Order kind"
+                  value={kind}
                   onChange={(e) => {
-                    setSearchQuery(e.target.value);
+                    setKind(e.target.value);
                     setPage(1);
                   }}
-                  aria-label="Search orders awaiting signature"
-                  style={searchInputStyle}
-                />
+                  style={selectStyle}
+                >
+                  <option value="">Kind: All</option>
+                  <option value="lab">Lab</option>
+                  <option value="dme">DME</option>
+                  <option value="level_of_care_change">Level of care</option>
+                  <option value="recertification">Recertification</option>
+                  <option value="comfort_kit">Comfort kit</option>
+                  <option value="supply">Supply</option>
+                  <option value="ancillary_service">Ancillary service</option>
+                  <option value="idg_requested">IDG requested</option>
+                </select>
+                <select
+                  aria-label="Priority"
+                  value={priority}
+                  onChange={(e) => {
+                    setPriority(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="">Priority: All</option>
+                  <option value="stat">STAT</option>
+                  <option value="asap">ASAP</option>
+                  <option value="routine">Routine</option>
+                </select>
+                {activeFilters > 0 ? (
+                  <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                    Clear
+                  </Button>
+                ) : null}
               </div>
-              <select
-                aria-label="Order kind"
-                value={kind}
-                onChange={(e) => {
-                  setKind(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Kind: All</option>
-                <option value="lab">Lab</option>
-                <option value="dme">DME</option>
-                <option value="level_of_care_change">Level of care</option>
-                <option value="recertification">Recertification</option>
-                <option value="comfort_kit">Comfort kit</option>
-                <option value="supply">Supply</option>
-                <option value="ancillary_service">Ancillary service</option>
-                <option value="idg_requested">IDG requested</option>
-              </select>
-              <select
-                aria-label="Priority"
-                value={priority}
-                onChange={(e) => {
-                  setPriority(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Priority: All</option>
-                <option value="stat">STAT</option>
-                <option value="asap">ASAP</option>
-                <option value="routine">Routine</option>
-              </select>
-              {activeFilters > 0 ? (
-                <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                  Clear
-                </Button>
-              ) : null}
             </div>
           </div>
-        </div>
-      }
-      table={
-        error ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState title="Unavailable" description={error} />
-          </div>
-        ) : loading && items.length === 0 ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : rows.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState
-              title={activeFilters > 0 ? "No matching orders" : "No orders awaiting signature"}
-              description={
-                activeFilters > 0
-                  ? "Try adjusting the queue filters."
-                  : "The signature inbox is clear."
-              }
-              action={
-                activeFilters > 0 ? (
-                  <Button size="sm" tone="secondary" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                ) : undefined
-              }
-            />
-          </div>
-        ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr style={headerRowStyle}>
-                  <th style={{ ...thStyle, width: "32%" }}>Order</th>
-                  <th style={{ ...thStyle, width: "22%" }}>Patient</th>
-                  <th style={{ ...thStyle, width: "14%" }}>Priority</th>
-                  <th style={{ ...thStyle, width: "14%" }}>Status</th>
-                  <th style={{ ...thStyle, width: "10%" }}>Cosign</th>
-                  <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedRows.map((o) => (
-                  <tr
-                    key={o.id}
-                    // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => navigate(`/orders/${o.id}`)}
-                    onKeyDown={(ev) => {
-                      if (ev.key === "Enter" || ev.key === " ") {
-                        ev.preventDefault();
-                        navigate(`/orders/${o.id}`);
-                      }
-                    }}
-                    style={rowStyle}
-                    className="wx-data-row-interactive"
-                  >
-                    <td style={tdStyle}>
-                      <div style={primaryCellStyle}>
-                        <span style={primaryTextStyle}>{stateLabel(o.kind)}</span>
-                        <code className="wx-data-md" style={codeStyle}>
-                          {shortId(o.id)}
-                        </code>
-                      </div>
-                    </td>
-                    <td style={tdStyle}>
-                      <code className="wx-data-md" style={codeStyle}>
-                        {shortId(o.patientId)}
-                      </code>
-                    </td>
-                    <td style={tdStyle}>
-                      <StatusPill
-                        label={stateLabel(o.priority)}
-                        tone={PRIORITY_TONE[o.priority] ?? "neutral"}
-                      />
-                    </td>
-                    <td style={tdStyle}>
-                      <StatusPill label={stateLabel(o.status)} tone="progress" />
-                    </td>
-                    <td style={tdStyle}>
-                      {o.cosignStatus ? (
-                        <StatusPill
-                          label={stateLabel(o.cosignStatus)}
-                          tone={COSIGN_TONE[o.cosignStatus] ?? "neutral"}
-                        />
-                      ) : (
-                        <span style={{ color: "var(--color-muted)" }}>—</span>
-                      )}
-                    </td>
-                    <td
-                      style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
-                    >
-                      {formatDateTime(o.createdAt)}
-                    </td>
+        }
+        table={
+          error ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState title="Unavailable" description={error} />
+            </div>
+          ) : loading && items.length === 0 ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : rows.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title={activeFilters > 0 ? "No matching orders" : "No orders awaiting signature"}
+                description={
+                  activeFilters > 0
+                    ? "Try adjusting the queue filters."
+                    : "The signature inbox is clear."
+                }
+                action={
+                  activeFilters > 0 ? (
+                    <Button size="sm" tone="secondary" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : (
+            <div style={tableWrapStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={headerRowStyle}>
+                    <th style={{ ...thStyle, width: "32%" }}>Order</th>
+                    <th style={{ ...thStyle, width: "22%" }}>Patient</th>
+                    <th style={{ ...thStyle, width: "14%" }}>Priority</th>
+                    <th style={{ ...thStyle, width: "14%" }}>Status</th>
+                    <th style={{ ...thStyle, width: "10%" }}>Cosign</th>
+                    <th style={{ ...thStyle, width: "8%", textAlign: "right" }}>Created</th>
+                    <th style={{ ...thStyle, width: "9%", textAlign: "right" }}>Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <OffsetPagination
-              page={activePage}
-              pageSize={pageSize}
-              totalItems={rows.length}
-              onPageChange={setPage}
-              onPageSizeChange={(nextPageSize) => {
-                setPageSize(nextPageSize);
-                setPage(1);
-              }}
-              pageSizeOptions={ORDERS_PAGE_SIZES}
-              noun="orders"
-            />
-          </div>
-        )
-      }
-      fullPageScroll
-    />
+                </thead>
+                <tbody>
+                  {pagedRows.map((o) => (
+                    <tr
+                      key={o.id}
+                      // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => navigate(`/orders/${o.id}`)}
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter" || ev.key === " ") {
+                          ev.preventDefault();
+                          navigate(`/orders/${o.id}`);
+                        }
+                      }}
+                      style={rowStyle}
+                      className="wx-data-row-interactive"
+                    >
+                      <td style={tdStyle}>
+                        <div style={primaryCellStyle}>
+                          <span style={primaryTextStyle}>{stateLabel(o.kind)}</span>
+                          <code className="wx-data-md" style={codeStyle}>
+                            {shortId(o.id)}
+                          </code>
+                        </div>
+                      </td>
+                      <td style={tdStyle}>
+                        <code className="wx-data-md" style={codeStyle}>
+                          {shortId(o.patientId)}
+                        </code>
+                      </td>
+                      <td style={tdStyle}>
+                        <StatusPill
+                          label={stateLabel(o.priority)}
+                          tone={PRIORITY_TONE[o.priority] ?? "neutral"}
+                        />
+                      </td>
+                      <td style={tdStyle}>
+                        <StatusPill label={stateLabel(o.status)} tone="progress" />
+                      </td>
+                      <td style={tdStyle}>
+                        {o.cosignStatus ? (
+                          <StatusPill
+                            label={stateLabel(o.cosignStatus)}
+                            tone={COSIGN_TONE[o.cosignStatus] ?? "neutral"}
+                          />
+                        ) : (
+                          <span style={{ color: "var(--color-muted)" }}>—</span>
+                        )}
+                      </td>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {formatDateTime(o.createdAt)}
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                        {/* The action this queue EXISTS for. Offered to everyone the queue is shown to; the
+                            server decides who may take it (§4.7) and renders a 403 as the refusal it is. */}
+                        <Button
+                          size="sm"
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            setActing({ id: o.id, action: "sign" });
+                          }}
+                        >
+                          Sign
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <OffsetPagination
+                page={activePage}
+                pageSize={pageSize}
+                totalItems={rows.length}
+                onPageChange={setPage}
+                onPageSizeChange={(nextPageSize) => {
+                  setPageSize(nextPageSize);
+                  setPage(1);
+                }}
+                pageSizeOptions={ORDERS_PAGE_SIZES}
+                noun="orders"
+              />
+            </div>
+          )
+        }
+        fullPageScroll
+      />
+      {acting ? (
+        <OrderActionModal
+          open
+          action={acting.action}
+          orderId={acting.id}
+          onClose={() => setActing(null)}
+          // Re-read rather than filtering the row out here: whether the order leaves this queue is
+          // the server's answer, and a client that removed it optimistically would be asserting an
+          // outcome it did not observe.
+          onDone={() => {
+            setActing(null);
+            void load();
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 

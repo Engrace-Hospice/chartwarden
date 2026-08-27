@@ -114326,7 +114326,7 @@
         "summary": "Create a draft order (discipline_can_order ABAC)",
         "parameters": [],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK",
             "content": {
               "application/json": {
@@ -115740,7 +115740,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK",
             "content": {
               "application/json": {
@@ -164195,7 +164195,7 @@
         "summary": "Create a standing-order template (D5 eligibility)",
         "parameters": [],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK",
             "content": {
               "application/json": {
@@ -165315,7 +165315,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK",
             "content": {
               "application/json": {

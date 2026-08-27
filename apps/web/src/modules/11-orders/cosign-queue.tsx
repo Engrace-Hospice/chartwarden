@@ -17,6 +17,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { type OrderAction, OrderActionModal } from "./order-action-modal";
 import { ORDER_TONE, stateLabel } from "./orders-status";
 
 interface OrderRow {
@@ -84,6 +85,7 @@ export function CosignQueue(): JSX.Element {
   ).length;
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
   const activePage = Math.min(page, pageCount);
+  const [acting, setActing] = useState<{ id: string; action: OrderAction } | null>(null);
   const pagedRows = rows.slice((activePage - 1) * pageSize, activePage * pageSize);
 
   const clearFilters = (): void => {
@@ -94,185 +96,220 @@ export function CosignQueue(): JSX.Element {
   };
 
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader title="Orders - Cosign Pending" breadcrumb="Clinical / Orders">
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Review orders waiting for the required clinical cosignature.
-          </div>
-        </PageHeader>
-      }
-      filters={
-        <div style={filterShellStyle}>
-          {error ? (
-            <div role="alert" style={errorBannerStyle}>
-              <span>{error}</span>
-              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
-                x
-              </button>
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader title="Orders - Cosign Pending" breadcrumb="Clinical / Orders">
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Review orders waiting for the required clinical cosignature.
             </div>
-          ) : null}
-          <div style={toolbarStyle}>
-            <div style={toolbarTitleStyle}>
-              <span style={toolbarEyebrowStyle}>Queue</span>
-              <strong>{rows.length} matching orders</strong>
-            </div>
-            <div style={controlGroupStyle}>
-              <div style={searchWrapStyle}>
-                <input
-                  type="search"
-                  placeholder="Search order or patient..."
-                  value={searchQuery}
+          </PageHeader>
+        }
+        filters={
+          <div style={filterShellStyle}>
+            {error ? (
+              <div role="alert" style={errorBannerStyle}>
+                <span>{error}</span>
+                <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
+                  x
+                </button>
+              </div>
+            ) : null}
+            <div style={toolbarStyle}>
+              <div style={toolbarTitleStyle}>
+                <span style={toolbarEyebrowStyle}>Queue</span>
+                <strong>{rows.length} matching orders</strong>
+              </div>
+              <div style={controlGroupStyle}>
+                <div style={searchWrapStyle}>
+                  <input
+                    type="search"
+                    placeholder="Search order or patient..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setPage(1);
+                    }}
+                    aria-label="Search cosign pending orders"
+                    style={searchInputStyle}
+                  />
+                </div>
+                <select
+                  aria-label="Drafting discipline"
+                  value={discipline}
                   onChange={(e) => {
-                    setSearchQuery(e.target.value);
+                    setDiscipline(e.target.value);
                     setPage(1);
                   }}
-                  aria-label="Search cosign pending orders"
-                  style={searchInputStyle}
-                />
+                  style={selectStyle}
+                >
+                  <option value="">Discipline: All</option>
+                  {disciplineOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {stateLabel(option)}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Order status"
+                  value={status}
+                  onChange={(e) => {
+                    setStatus(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="">Status: All</option>
+                  <option value="pending_signature">Pending signature</option>
+                  <option value="verbal_pending">Verbal pending</option>
+                  <option value="draft">Draft</option>
+                  <option value="active">Active</option>
+                </select>
+                {activeFilters > 0 ? (
+                  <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                    Clear
+                  </Button>
+                ) : null}
               </div>
-              <select
-                aria-label="Drafting discipline"
-                value={discipline}
-                onChange={(e) => {
-                  setDiscipline(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Discipline: All</option>
-                {disciplineOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {stateLabel(option)}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Order status"
-                value={status}
-                onChange={(e) => {
-                  setStatus(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Status: All</option>
-                <option value="pending_signature">Pending signature</option>
-                <option value="verbal_pending">Verbal pending</option>
-                <option value="draft">Draft</option>
-                <option value="active">Active</option>
-              </select>
-              {activeFilters > 0 ? (
-                <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                  Clear
-                </Button>
-              ) : null}
             </div>
           </div>
-        </div>
-      }
-      table={
-        error ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState title="Unavailable" description={error} />
-          </div>
-        ) : loading && items.length === 0 ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : rows.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState
-              title={activeFilters > 0 ? "No matching cosignatures" : "No cosignatures pending"}
-              description={
-                activeFilters > 0
-                  ? "Try adjusting the queue filters."
-                  : "No orders are awaiting cosignature."
-              }
-              action={
-                activeFilters > 0 ? (
-                  <Button size="sm" tone="secondary" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                ) : undefined
-              }
-            />
-          </div>
-        ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr style={headerRowStyle}>
-                  <th style={{ ...thStyle, width: "34%" }}>Order</th>
-                  <th style={{ ...thStyle, width: "24%" }}>Patient</th>
-                  <th style={{ ...thStyle, width: "16%" }}>Drafted by</th>
-                  <th style={{ ...thStyle, width: "14%" }}>Status</th>
-                  <th style={{ ...thStyle, width: "12%", textAlign: "right" }}>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedRows.map((o) => (
-                  <tr
-                    key={o.id}
-                    // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => navigate(`/orders/${o.id}`)}
-                    onKeyDown={(ev) => {
-                      if (ev.key === "Enter" || ev.key === " ") {
-                        ev.preventDefault();
-                        navigate(`/orders/${o.id}`);
-                      }
-                    }}
-                    style={rowStyle}
-                    className="wx-data-row-interactive"
-                  >
-                    <td style={tdStyle}>
-                      <div style={primaryCellStyle}>
-                        <span style={primaryTextStyle}>{stateLabel(o.kind)}</span>
-                        <code className="wx-data-md" style={codeStyle}>
-                          {shortId(o.id)}
-                        </code>
-                      </div>
-                    </td>
-                    <td style={tdStyle}>
-                      <code className="wx-data-md" style={codeStyle}>
-                        {shortId(o.patientId)}
-                      </code>
-                    </td>
-                    <td style={tdStyle}>{stateLabel(o.drafterDiscipline)}</td>
-                    <td style={tdStyle}>
-                      <StatusPill
-                        label={stateLabel(o.status)}
-                        tone={ORDER_TONE[o.status] ?? "neutral"}
-                      />
-                    </td>
-                    <td
-                      style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
-                    >
-                      {formatDateTime(o.createdAt)}
-                    </td>
+        }
+        table={
+          error ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState title="Unavailable" description={error} />
+            </div>
+          ) : loading && items.length === 0 ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : rows.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title={activeFilters > 0 ? "No matching cosignatures" : "No cosignatures pending"}
+                description={
+                  activeFilters > 0
+                    ? "Try adjusting the queue filters."
+                    : "No orders are awaiting cosignature."
+                }
+                action={
+                  activeFilters > 0 ? (
+                    <Button size="sm" tone="secondary" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : (
+            <div style={tableWrapStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={headerRowStyle}>
+                    <th style={{ ...thStyle, width: "34%" }}>Order</th>
+                    <th style={{ ...thStyle, width: "24%" }}>Patient</th>
+                    <th style={{ ...thStyle, width: "16%" }}>Drafted by</th>
+                    <th style={{ ...thStyle, width: "14%" }}>Status</th>
+                    <th style={{ ...thStyle, width: "12%", textAlign: "right" }}>Created</th>
+                    <th style={{ ...thStyle, width: "9%", textAlign: "right" }}>Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <OffsetPagination
-              page={activePage}
-              pageSize={pageSize}
-              totalItems={rows.length}
-              onPageChange={setPage}
-              onPageSizeChange={(nextPageSize) => {
-                setPageSize(nextPageSize);
-                setPage(1);
-              }}
-              pageSizeOptions={ORDERS_PAGE_SIZES}
-              noun="orders"
-            />
-          </div>
-        )
-      }
-      fullPageScroll
-    />
+                </thead>
+                <tbody>
+                  {pagedRows.map((o) => (
+                    <tr
+                      key={o.id}
+                      // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => navigate(`/orders/${o.id}`)}
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter" || ev.key === " ") {
+                          ev.preventDefault();
+                          navigate(`/orders/${o.id}`);
+                        }
+                      }}
+                      style={rowStyle}
+                      className="wx-data-row-interactive"
+                    >
+                      <td style={tdStyle}>
+                        <div style={primaryCellStyle}>
+                          <span style={primaryTextStyle}>{stateLabel(o.kind)}</span>
+                          <code className="wx-data-md" style={codeStyle}>
+                            {shortId(o.id)}
+                          </code>
+                        </div>
+                      </td>
+                      <td style={tdStyle}>
+                        <code className="wx-data-md" style={codeStyle}>
+                          {shortId(o.patientId)}
+                        </code>
+                      </td>
+                      <td style={tdStyle}>{stateLabel(o.drafterDiscipline)}</td>
+                      <td style={tdStyle}>
+                        <StatusPill
+                          label={stateLabel(o.status)}
+                          tone={ORDER_TONE[o.status] ?? "neutral"}
+                        />
+                      </td>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {formatDateTime(o.createdAt)}
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                        {/* The action this queue EXISTS for. Offered to everyone the queue is shown to; the
+                            server decides who may take it (§4.7) and renders a 403 as the refusal it is. */}
+                        <Button
+                          size="sm"
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            setActing({ id: o.id, action: "cosign" });
+                          }}
+                        >
+                          Cosign
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <OffsetPagination
+                page={activePage}
+                pageSize={pageSize}
+                totalItems={rows.length}
+                onPageChange={setPage}
+                onPageSizeChange={(nextPageSize) => {
+                  setPageSize(nextPageSize);
+                  setPage(1);
+                }}
+                pageSizeOptions={ORDERS_PAGE_SIZES}
+                noun="orders"
+              />
+            </div>
+          )
+        }
+        fullPageScroll
+      />
+      {acting ? (
+        <OrderActionModal
+          open
+          action={acting.action}
+          orderId={acting.id}
+          onClose={() => setActing(null)}
+          // Re-read rather than filtering the row out here: whether the order leaves this queue is
+          // the server's answer, and a client that removed it optimistically would be asserting an
+          // outcome it did not observe.
+          onDone={() => {
+            setActing(null);
+            void load();
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
