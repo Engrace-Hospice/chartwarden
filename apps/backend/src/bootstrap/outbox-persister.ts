@@ -138,6 +138,10 @@ export function buildTxOutboxPublisher(
  */
 export function buildDbCatalogUpserter(db: DbClient): CatalogRowUpserter {
   const T = schema.outboxEventCatalog;
+  // `seamConsumers` (#103) is deliberately NOT projected here. `outbox_event_catalog` exists so the
+  // database can answer "what does this event mean and who subscribes to it"; the seam list answers a
+  // different question (who receives the information by a synchronous call instead), is documentation
+  // rather than routing, and would cost a migration to carry. The in-code catalog stays its home.
   return async (row) => {
     await db
       .insert(T)

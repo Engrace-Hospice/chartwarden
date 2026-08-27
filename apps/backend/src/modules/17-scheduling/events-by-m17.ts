@@ -42,6 +42,7 @@ interface M17OutboxEntry {
   readonly description: string;
   readonly payloadSchema: TSchema;
   readonly declaredConsumers: readonly ModuleToken[];
+  readonly seamConsumers?: readonly ModuleToken[];
   readonly isOutboxOnly: boolean;
 }
 
@@ -61,7 +62,8 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       proposedVisitPurpose: id,
       proposedDiscipline: id,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -127,7 +129,8 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
     description:
       "published → en_route (EVV check-in or self-attest start); M18 brackets the visit.",
     payloadSchema: Type.Object({ visitId: id, startedAt: isoInstant, evvBracketState: id }),
-    declaredConsumers: ["m18", "m33"],
+    declaredConsumers: ["m18"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -141,7 +144,8 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       encounterId: nullableId,
       evvBracketState: id,
     }),
-    declaredConsumers: ["m18", "m30", "m33"],
+    declaredConsumers: ["m18", "m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -155,7 +159,8 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       reason: Type.String(),
       reasonCode: id,
     }),
-    declaredConsumers: ["m18", "m31", "m33", "m36"],
+    declaredConsumers: ["m18", "m31"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -170,7 +175,8 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       newStartedAt: isoInstant,
       reason: Type.String(),
     }),
-    declaredConsumers: ["m18", "m31", "m36"],
+    declaredConsumers: ["m18", "m31"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -184,7 +190,8 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       scheduledStartedAt: isoInstant,
       reason: Type.String(),
     }),
-    declaredConsumers: ["m19", "m36"],
+    declaredConsumers: ["m19"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -212,7 +219,8 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       cancelledChildCount: Type.Integer({ minimum: 0 }),
       discontinuedBy: id,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -228,7 +236,8 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       kind: id,
       conflictingVisitCount: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -242,7 +251,8 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       approvedBy: id,
       affectedPublishedVisitCount: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m19", "m36"],
+    declaredConsumers: ["m19"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -250,7 +260,8 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
     moduleOwner: "m17",
     description: "requested → denied — M36 notifies the requester with the reason.",
     payloadSchema: Type.Object({ timeOffId: id, deniedBy: id, reason: Type.String() }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── route optimisation (§4.10 / §7.9 / §4.11) — Phase-1 emits the degraded path ─────────────────────────
@@ -266,7 +277,8 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       totalProposedMiles: Type.Number(),
       totalProposedDriveMinutes: Type.Number(),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -275,7 +287,8 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
     description:
       "OSRM circuit open / optimisation disabled during optimize-day — the §7.9 Phase-1 degraded path; M36 warns.",
     payloadSchema: Type.Object({ membershipId: id, serviceDate: isoDate, reason: Type.String() }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -292,7 +305,8 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
         Type.Literal("volunteer_gate_expired"),
       ]),
     }),
-    declaredConsumers: ["m19", "m36"],
+    declaredConsumers: ["m19"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -305,7 +319,8 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       stuckInState: Type.Literal("in_visit"),
       hoursStuck: Type.Number(),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -319,7 +334,8 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       channel: Type.Union([Type.Literal("sms"), Type.Literal("email")]),
       scheduledStartedAt: isoInstant,
     }),
-    declaredConsumers: ["m22", "m31", "m36"],
+    declaredConsumers: ["m22", "m31"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
 ];

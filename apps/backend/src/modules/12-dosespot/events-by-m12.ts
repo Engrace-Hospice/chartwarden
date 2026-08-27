@@ -34,6 +34,7 @@ interface M12OutboxEntry {
   readonly description: string;
   readonly payloadSchema: TSchema;
   readonly declaredConsumers: readonly ModuleToken[];
+  readonly seamConsumers?: readonly ModuleToken[];
   readonly isOutboxOnly: boolean;
 }
 
@@ -49,7 +50,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       medClass,
       isControlledSubstance: Type.Boolean(),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -77,7 +79,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       prescriberMembershipId: id,
       prescribingPhysicianMdmId: id,
     }),
-    declaredConsumers: ["m22", "m36"],
+    declaredConsumers: ["m22"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -93,7 +96,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       viaEpcs: Type.Optional(Type.Boolean()),
       secondFactorType: Type.Optional(id),
     }),
-    declaredConsumers: ["m22", "m28", "m33"],
+    declaredConsumers: ["m22", "m28"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -106,7 +110,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       prescriberMembershipId: id,
       outcomeDetail: Type.String(),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -120,7 +125,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       deadlineAt: Type.Optional(isoInstant),
       namedPrescriberMdmId: id,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -142,7 +148,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       transmittedAt: isoInstant,
       dispensingPharmacyMdmId: Type.Optional(Type.Union([id, Type.Null()])),
     }),
-    declaredConsumers: ["m22", "m33"],
+    declaredConsumers: ["m22"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -179,7 +186,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     description:
       "The post-ack transition activated the medication order; the broad eMAR/IDG/FHIR/portal fan-out.",
     payloadSchema: Type.Object({ orderId: id, fullDto: Type.Unknown() }),
-    declaredConsumers: ["m13", "m14", "m28", "m31", "m33"],
+    declaredConsumers: ["m13", "m14", "m28", "m31"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -193,7 +201,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       rejectionReason: Type.String(),
       dispensingPharmacyMdmId: Type.Optional(Type.Union([id, Type.Null()])),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -206,7 +215,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       lastErrorClass: Type.String(),
       retryCount: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m30", "m36"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -232,7 +242,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       completedAt: isoInstant,
       reason: Type.Optional(Type.String()),
     }),
-    declaredConsumers: ["m28", "m33"],
+    declaredConsumers: ["m28"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -270,7 +281,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       patientId: id,
       receivedAt: isoInstant,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -282,7 +294,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       resultingOrderId: id,
       approvedByMembershipId: id,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -295,7 +308,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       deniedByMembershipId: id,
       denialReason: Type.String(),
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -307,7 +321,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       hoursPending: Type.Number(),
       severity: Type.Literal("warn"),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -319,7 +334,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       hoursPending: Type.Number(),
       severity: Type.Literal("high"),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── medication history (§2.8 / §4.4) ───────────────────────────────────────────────────────────────────
@@ -345,7 +361,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       decision: id,
       resultingOrderId: Type.Optional(Type.Union([id, Type.Null()])),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── patient sync (§2.6 / §4.4) ─────────────────────────────────────────────────────────────────────────
@@ -354,7 +371,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     moduleOwner: "m12",
     description: "The `patient-sync` worker upserted the patient to DoseSpot.",
     payloadSchema: Type.Object({ patientId: id, dosespotPatientId: id, syncedAt: isoInstant }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -366,7 +384,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       retryCount: Type.Integer({ minimum: 0 }),
       lastErrorClass: Type.String(),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── prescriber roster + IAL2 (§2.4 / §4.4) ─────────────────────────────────────────────────────────────
@@ -375,7 +394,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     moduleOwner: "m12",
     description: "`enrollPrescriber` registered a DoseSpot prescriber for the tenant.",
     payloadSchema: Type.Object({ membershipId: id, dosespotPrescriberId: id }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -383,7 +403,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     moduleOwner: "m12",
     description: "`revokePrescriber` revoked a prescriber's DoseSpot enrollment.",
     payloadSchema: Type.Object({ membershipId: id, reason: Type.String() }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -396,7 +417,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       expiresAt: isoInstant,
       daysRemaining: Type.Integer(),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── adapter health + policy + safety (§2.5 / §2.7 / §4.4) ───────────────────────────────────────────────
@@ -410,7 +432,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       openedAt: isoInstant,
       lastErrorClass: Type.String(),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -419,7 +442,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     description:
       "The DoseSpot circuit breaker closed; the queued-on-recovery worker drains the backlog.",
     payloadSchema: Type.Object({ breakerName: id, closedAt: isoInstant }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -432,7 +456,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       before: Type.Unknown(),
       after: Type.Unknown(),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {

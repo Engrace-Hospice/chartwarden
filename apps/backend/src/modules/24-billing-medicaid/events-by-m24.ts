@@ -35,7 +35,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       serviceFrom: Iso,
       serviceTo: Iso,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -48,7 +49,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       validationRunId: Id,
       trigger: Str,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -61,7 +63,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       validationRunId: Id,
       failedRuleKeys: StrArr,
     }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -69,7 +72,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m24",
     description: "A claim transitioned VALIDATING → READY (no unresolved blocking failures).",
     payloadSchema: Type.Object({ organizationId: OrgId, claimId: Id, validationRunId: Id }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -82,7 +86,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       medicareClaimId: Id,
       medicareClaimState: Str,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -96,7 +101,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       medicareClaimId: Id,
       medicareClaimState: Str,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -129,7 +135,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       mcoId: Type.Union([Str, Type.Null()]),
       submittedAt: Iso,
     }),
-    declaredConsumers: ["m22", "m25", "m33", "m36"],
+    declaredConsumers: ["m22", "m25"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -143,7 +150,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       attemptIndex: Type.Integer(),
       reason: Str,
     }),
-    declaredConsumers: ["m24", "m33"],
+    declaredConsumers: ["m24"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -157,7 +165,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       attemptIndex: Type.Integer(),
       reason: Str,
     }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -170,7 +179,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       acknowledgmentId: Id,
       payerClaimControlNumber: Type.Union([Str, Type.Null()]),
     }),
-    declaredConsumers: ["m22", "m25", "m26", "m33", "m36"],
+    declaredConsumers: ["m22", "m25", "m26"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -186,7 +196,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       rejectedLineNumbers: Type.Array(Type.Integer()),
       errorCodes: StrArr,
     }),
-    declaredConsumers: ["m25", "m33", "m36"],
+    declaredConsumers: ["m25"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -200,7 +211,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       rejectionStage: Str,
       rejectionCodes: StrArr,
     }),
-    declaredConsumers: ["m22", "m25", "m33", "m36"],
+    declaredConsumers: ["m22", "m25"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -213,7 +225,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       submissionId: Id,
       lastPolledAt: Iso,
     }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -227,7 +240,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       paidAmountCents: Type.Integer(),
       paidAt: Iso,
     }),
-    declaredConsumers: ["m26", "m27", "m33"],
+    declaredConsumers: ["m26", "m27"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -240,7 +254,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       remittanceAdviceId: Id,
       denialCodes: StrArr,
     }),
-    declaredConsumers: ["m25", "m33", "m36"],
+    declaredConsumers: ["m25"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -253,7 +268,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       replacementClaimId: Id,
       reason: Str,
     }),
-    declaredConsumers: ["m26", "m27", "m33"],
+    declaredConsumers: ["m26", "m27"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -266,7 +282,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       voidClaimId: Id,
       reason: Str,
     }),
-    declaredConsumers: ["m26", "m27", "m33"],
+    declaredConsumers: ["m26", "m27"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -282,7 +299,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       ruleKey: Str,
       overrideRoleApplied: Str,
     }),
-    declaredConsumers: ["m33", "m4"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m4"],
     isOutboxOnly: true,
   },
   {
@@ -312,7 +330,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       checkedAt: Iso,
       staleAt: Iso,
     }),
-    declaredConsumers: ["m33", "m5"],
+    declaredConsumers: ["m5"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -326,7 +345,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       currentMcoId: Type.Union([Str, Type.Null()]),
       changedAt: Iso,
     }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -341,7 +361,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       effectiveFrom: Iso,
       effectiveTo: Type.Union([Iso, Type.Null()]),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -355,7 +376,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       endedAt: Iso,
       reason: Type.Union([Str, Type.Null()]),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -370,7 +392,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       mcoId: Type.Union([Str, Type.Null()]),
       version: Type.Integer(),
     }),
-    declaredConsumers: ["m34", "m33"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -384,7 +407,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       lastSeenUpAt: Iso,
       downedAt: Iso,
     }),
-    declaredConsumers: ["m36", "m33", "m1"],
+    declaredConsumers: ["m1"],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -398,7 +422,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       downedAt: Iso,
       recoveredAt: Iso,
     }),
-    declaredConsumers: ["m36", "m33", "m1"],
+    declaredConsumers: ["m1"],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {

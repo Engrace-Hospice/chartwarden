@@ -98,7 +98,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: orderKind,
       orderingPhysicianMdmId: id,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -113,7 +114,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       orderingPhysicianMdmId: id,
       recordingMembershipId: id,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -126,7 +128,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: orderKind,
       cosignerRoleNeeded: id,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -140,7 +143,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       cosignerRole: id,
       cosignerMembershipId: id,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -156,7 +160,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       signedAt: isoInstant,
       viaVerbal: Type.Boolean(),
     }),
-    declaredConsumers: ["m21", "m22", "m28", "m29", "m30", "m33"],
+    declaredConsumers: ["m21", "m22", "m28", "m29", "m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -170,7 +175,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       onBehalfOfMembershipId: id,
       reason: Type.String(),
     }),
-    declaredConsumers: ["m4", "m30", "m33"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m4", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -184,7 +190,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       signedAt: isoInstant,
       hoursBeforeDeadline: Type.Number(),
     }),
-    declaredConsumers: ["m30", "m33"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -199,7 +206,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       hoursOverdue: Type.Number(),
       orderingPhysicianMdmId: id,
     }),
-    declaredConsumers: ["m30", "m33", "m36"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -214,7 +222,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       actorMembershipId: Type.Union([id, Type.Null()]),
       effectiveAt: isoInstant,
     }),
-    declaredConsumers: ["m21", "m22", "m28", "m30", "m33", "m36"],
+    declaredConsumers: ["m21", "m22", "m28", "m30"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -227,7 +236,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       completedAt: isoInstant,
       kindAutoOrManual: Type.Union([Type.Literal("auto"), Type.Literal("manual")]),
     }),
-    declaredConsumers: ["m28", "m30", "m33"],
+    declaredConsumers: ["m28", "m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -241,7 +251,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: orderKind,
       drafterMembershipId: id,
     }),
-    declaredConsumers: ["m22", "m28", "m33"],
+    declaredConsumers: ["m22", "m28"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── kind-specific signed handshakes (§4.4 / regulatory drivers) ───────────────────────────────────────
@@ -325,7 +336,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       failureReason: Type.Optional(id),
       sourceM29EventId: id,
     }),
-    declaredConsumers: ["m30", "m33"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -341,7 +353,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       lastAttemptAt: isoInstant,
       orderingPhysicianMdmId: id,
     }),
-    declaredConsumers: ["m30", "m36"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -357,7 +370,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       orderingPhysicianMdmId: id,
       signedAt: isoInstant,
     }),
-    declaredConsumers: ["m22", "m28", "m33", "m36"],
+    declaredConsumers: ["m22", "m28"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -372,7 +386,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       criticalFlags: Type.Array(Type.String()),
       orderingPhysicianMdmId: id,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -387,7 +402,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       hoursOverdue: Type.Number(),
       orderingPhysicianMdmId: id,
     }),
-    declaredConsumers: ["m30", "m36"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── IDG intake (§4.4 / W-IDG-01 — M14 forward seam) ───────────────────────────────────────────────────
@@ -401,7 +417,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       triggeringIdgDecisionId: id,
       kindHint: Type.Literal("idg_requested"),
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   // ── standing orders (§2.4 D5) ─────────────────────────────────────────────────────────────────────────
@@ -417,7 +434,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: orderKind,
       cadence: id,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -431,7 +449,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       orderId: id,
       spawnedBy: id,
     }),
-    declaredConsumers: ["m22", "m33"],
+    declaredConsumers: ["m22"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -443,7 +462,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       standingOrderId: id,
       reason: id,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── render + UI-banner signals (§4.4) ─────────────────────────────────────────────────────────────────
@@ -471,7 +491,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       hoursUntilDeadline: Type.Number(),
       severity: Type.Union([Type.Literal("medium"), Type.Literal("high")]),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -484,7 +505,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       addedSuggestions: Type.Array(Type.String()),
       droppedSuggestions: Type.Array(Type.String()),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     // ALSO live: server → patient room chart-banner refresh (§2.7 / §4.4 chart-banner cache).
     isOutboxOnly: false,
   },

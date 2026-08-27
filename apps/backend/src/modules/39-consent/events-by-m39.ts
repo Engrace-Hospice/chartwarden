@@ -40,7 +40,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       captureMethod: Type.String(),
       expiresAt: Type.Optional(Type.String()),
     }),
-    declaredConsumers: ["m22", "m5", "m16", "m30", "m33"],
+    declaredConsumers: ["m22", "m5", "m16", "m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -84,7 +85,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       typeKey,
       expiredAt: Type.String(),
     }),
-    declaredConsumers: ["m5", "m22", "m36"],
+    declaredConsumers: ["m5", "m22"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -99,7 +101,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       expiresAt: Type.String(),
       reminderKind: Type.String(),
     }),
-    declaredConsumers: ["m36", "m14"],
+    declaredConsumers: ["m14"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -113,7 +116,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       typeKey,
       nextActionDueAt: Type.Optional(Type.String()),
     }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -128,7 +132,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       typeKey,
       signedAt: Type.String(),
     }),
-    declaredConsumers: ["m22", "m5", "m16", "m36"],
+    declaredConsumers: ["m22", "m5", "m16"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -216,7 +221,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       delegateCaregiverId: Type.String(),
       revokedAt: Type.String(),
     }),
-    declaredConsumers: ["m31", "m17", "m18", "m19", "m36"],
+    declaredConsumers: ["m31", "m17", "m18", "m19"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
 ];

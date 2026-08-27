@@ -189,7 +189,8 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
       externalActorId: nullableId,
       openedAt: isoInstant,
     }),
-    declaredConsumers: ["m20", "m36"],
+    declaredConsumers: ["m20"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -203,7 +204,8 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
       occurredAt: isoInstant,
       shiftId: id,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -218,7 +220,8 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
       gapEndsAt: isoInstant,
       discipline: Type.Literal("clinical_rn"),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {

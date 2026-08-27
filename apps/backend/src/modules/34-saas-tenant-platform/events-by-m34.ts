@@ -60,7 +60,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       legalBusinessName: Type.String(),
       billingContactEmail: Type.String(),
     }),
-    declaredConsumers: ["m33", "m35", "m36"],
+    declaredConsumers: ["m35"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -75,7 +76,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       blockerReason: Type.String(),
       blockedSinceIso: isoInstant,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -90,7 +92,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       dueAt: isoInstant,
       hoursOverdue: Type.Number(),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -105,7 +108,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       tasksCompleted: Type.Integer({ minimum: 0 }),
       tasksSkipped: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -120,7 +124,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       initiatedByMembershipId: id,
       initiatedAt: isoInstant,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -135,7 +140,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       initiatedByMembershipId: id,
       initiatedAt: isoInstant,
     }),
-    declaredConsumers: ["m33", "m35", "m36"],
+    declaredConsumers: ["m35"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -150,7 +156,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       daysRemaining: Type.Integer({ minimum: 0 }),
       tier: Type.Union([Type.Literal("approaching_30d"), Type.Literal("approaching_7d")]),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -164,7 +171,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       retentionEndedAt: isoInstant,
       destructionCertId: nullableId,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -178,7 +186,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       destructionCertId: id,
       destroyedAt: isoInstant,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   // ── per-tenant DEK key-ring alerts (§ER "M1 envelope/DEK" / §4.8) ──────────────────────────────────
@@ -194,7 +203,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       lastRotatedAt: nullableId,
       dueAt: isoInstant,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -209,7 +219,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       toVersion: id,
       rotatedAt: isoInstant,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   // ── support break-glass session alerts (§ER support sessions / §4.8) ───────────────────────────────
@@ -226,7 +237,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       scope: id,
       startedAt: isoInstant,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -242,7 +254,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       elevatedAt: isoInstant,
       elevationExpiresAt: isoInstant,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -261,7 +274,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       ]),
       closedAt: isoInstant,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── DSAR export alerts (§ER DSAR fulfillment / §4.8 SLA escalations) ───────────────────────────────
@@ -277,7 +291,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: id,
       slaDueAt: isoInstant,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -293,7 +308,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       bundleSha256: id,
       fulfilledAt: isoInstant,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   // ── feature-flag + platform-tenant BAA alerts (§4.7 / §4.8) ────────────────────────────────────────
@@ -309,7 +325,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       orgId: nullableId,
       changedAt: isoInstant,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -329,7 +346,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
         Type.Literal("expired"),
       ]),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
 ];

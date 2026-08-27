@@ -28,7 +28,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -41,7 +42,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: versionKind,
       sequence: Type.Integer({ minimum: 1 }),
     }),
-    declaredConsumers: ["m14", "m33"],
+    declaredConsumers: ["m14"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -55,7 +57,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: versionKind,
       snapshotRef: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m8", "m14", "m22", "m28", "m30", "m33"],
+    declaredConsumers: ["m8", "m14", "m22", "m28", "m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -68,7 +71,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       dueAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -82,7 +86,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       dueAt: Type.String({ minLength: 1 }),
       overdueAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m8", "m33", "m36"],
+    declaredConsumers: ["m8"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: false,
   },
   {
@@ -95,7 +100,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       admissionActivatedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m8", "m33", "m36"],
+    declaredConsumers: ["m8"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -108,7 +114,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m16", "m30", "m33"],
+    declaredConsumers: ["m16", "m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── problems ────────────────────────────────────────────────────────────────────────────────────

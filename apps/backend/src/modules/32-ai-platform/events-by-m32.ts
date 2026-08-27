@@ -79,7 +79,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       lifecycleState: Str,
       createdByMembershipId: Id,
     }),
-    declaredConsumers: ["m4", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m4", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -97,7 +98,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       rationale: Str,
       linkedEvaluationRunId: IdOrNull,
     }),
-    declaredConsumers: ["m4", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m4", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -113,7 +115,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       backendKey: Str,
       calibratedByMembershipId: Id,
     }),
-    declaredConsumers: ["m4"],
+    declaredConsumers: [],
+    seamConsumers: ["m4"],
     isOutboxOnly: true,
   },
   // ── consent (§5.3 / §5.4, R10/R11/R13) ────────────────────────────────────────────────────────────
@@ -132,7 +135,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       zdrAcknowledged: Bool,
       pilotEnrollment: Bool,
     }),
-    declaredConsumers: ["m4", "m35"],
+    declaredConsumers: ["m35"],
+    seamConsumers: ["m4"],
     isOutboxOnly: true,
   },
   {
@@ -148,7 +152,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       mode: Str,
       reason: StrOrNull,
     }),
-    declaredConsumers: ["m4", "m35"],
+    declaredConsumers: ["m35"],
+    seamConsumers: ["m4"],
     isOutboxOnly: true,
   },
   {
@@ -162,7 +167,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       optOutId: Id,
       membershipId: Id,
     }),
-    declaredConsumers: ["m4"],
+    declaredConsumers: [],
+    seamConsumers: ["m4"],
     isOutboxOnly: true,
   },
   // ── invocation + disclosure (§3.2.8, decisions 2 and 4) ───────────────────────────────────────────
@@ -183,7 +189,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Str,
       routingDecision: Str,
     }),
-    declaredConsumers: ["m4", "m35"],
+    declaredConsumers: ["m35"],
+    seamConsumers: ["m4"],
     isOutboxOnly: true,
   },
   {
@@ -202,7 +209,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       zdrConfirmed: Bool,
       disclosedAt: Iso,
     }),
-    declaredConsumers: ["m4", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m4", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -217,7 +225,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       modelBackendId: Id,
       latencyMs: Count,
     }),
-    declaredConsumers: ["m4"],
+    declaredConsumers: [],
+    seamConsumers: ["m4"],
     isOutboxOnly: true,
   },
   // ── the four DISCRETE HITL outcomes (decision 3) ──────────────────────────────────────────────────
@@ -232,7 +241,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       ...capability,
       recordedByMembershipId: Id,
     }),
-    declaredConsumers: ["m4"],
+    declaredConsumers: [],
+    seamConsumers: ["m4"],
     isOutboxOnly: true,
   },
   {
@@ -246,7 +256,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       ...capability,
       recordedByMembershipId: Id,
     }),
-    declaredConsumers: ["m4"],
+    declaredConsumers: [],
+    seamConsumers: ["m4"],
     isOutboxOnly: true,
   },
   {
@@ -260,7 +271,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       ...capability,
       recordedByMembershipId: Id,
     }),
-    declaredConsumers: ["m4"],
+    declaredConsumers: [],
+    seamConsumers: ["m4"],
     isOutboxOnly: true,
   },
   {
@@ -275,7 +287,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       recordedByMembershipId: Id,
       flagReason: Str,
     }),
-    declaredConsumers: ["m4", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m4", "m36"],
     isOutboxOnly: true,
   },
   // ── kill switch (§3.2.12, D8, R7/R8) ──────────────────────────────────────────────────────────────
@@ -294,7 +307,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       reasonCategory: Str,
       severity: Str,
     }),
-    declaredConsumers: ["m4", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m4", "m36"],
     isOutboxOnly: false,
   },
   {
@@ -310,7 +324,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       deactivatedByMembershipId: IdOrNull,
       resolutionNarrative: Str,
     }),
-    declaredConsumers: ["m4", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m4", "m36"],
     isOutboxOnly: false,
   },
   // ── hallucination report → triage (§3.2.10, D9/D16, R18/R20) ──────────────────────────────────────
@@ -328,7 +343,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: Str,
       reporterMembershipId: Id,
     }),
-    declaredConsumers: ["m4", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m4", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -345,7 +361,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       triageStatus: Str,
       followUpAction: Str,
     }),
-    declaredConsumers: ["m4", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m4", "m36"],
     isOutboxOnly: true,
   },
   // ── prompt registry (§4.5 / §8.5, R30) ────────────────────────────────────────────────────────────
@@ -363,7 +380,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       activatedByMembershipId: Id,
       contentHash: Str,
     }),
-    declaredConsumers: ["m4"],
+    declaredConsumers: [],
+    seamConsumers: ["m4"],
     isOutboxOnly: false,
   },
   // ── routing sovereignty (§3.2.13, W8, R23) ────────────────────────────────────────────────────────
@@ -381,7 +399,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       setByMembershipId: Id,
       active: Bool,
     }),
-    declaredConsumers: ["m4"],
+    declaredConsumers: [],
+    seamConsumers: ["m4"],
     isOutboxOnly: true,
   },
   // ── evaluation + drift (§3.2.11, D10/D11, R26/§4.8) ───────────────────────────────────────────────
@@ -401,7 +420,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       mlflowRunId: StrOrNull,
       completedByMembershipId: IdOrNull,
     }),
-    declaredConsumers: ["m4"],
+    declaredConsumers: [],
+    seamConsumers: ["m4"],
     isOutboxOnly: true,
   },
   {
@@ -419,7 +439,8 @@ export const M32_OUTBOX_EVENTS: ModuleEventContribution = [
       severityTier: Str,
       sweepTimestamp: Iso,
     }),
-    declaredConsumers: ["m4", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m4", "m36"],
     isOutboxOnly: true,
   },
 ];
