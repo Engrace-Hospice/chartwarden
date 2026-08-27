@@ -49,9 +49,16 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # F-040/#100 — cosign keyless signing exchanges this OIDC token for a short-lived Fulcio
+      # certificate bound to this workflow's identity. No private key exists to store, leak or rotate;
+      # what the deploy verifies against is "this repo's deploy.yml on this ref built this digest",
+      # recorded in the Rekor transparency log.
+      id-token: write
     outputs:
       backend_image: ${{ steps.images.outputs.backend_image }}
       web_image: ${{ steps.images.outputs.web_image }}
+      backend_digest: ${{ steps.images.outputs.backend_digest }}
+      web_digest: ${{ steps.images.outputs.web_digest }}
     env:
       RELEASE_SHA: ${{ github.sha }}
     steps:
@@ -67,6 +74,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push
+        id: build_backend
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -82,6 +90,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Build and push staff web image
+        id: build_web
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -90,11 +99,118 @@ jobs:
           tags: ghcr.io/engrace-hospice/wardenx-web:sha-${{ env.RELEASE_SHA }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      # ── supply chain (F-040/#100) ──────────────────────────────────────────────────────────────────
+      #
+      # Everything below addresses the same digest, never the tag. `sha-<commit>` is immutable by
+      # convention and by nothing else — GHCR will happily move it — so signing or attesting a tag
+      # proves nothing a minute later. `build-push-action` reports the digest it just pushed; that is
+      # what gets scanned, described and signed, and it is what the deploy pulls.
       - name: Publish image references
         id: images
+        env:
+          BACKEND_DIGEST: ${{ steps.build_backend.outputs.digest }}
+          WEB_DIGEST: ${{ steps.build_web.outputs.digest }}
         run: |
+          # A missing digest means the build step changed shape; failing here beats signing an empty
+          # reference and reporting success.
+          test -n "$BACKEND_DIGEST" || { echo "backend build reported no digest" >&2; exit 1; }
+          test -n "$WEB_DIGEST" || { echo "web build reported no digest" >&2; exit 1; }
           echo "backend_image=ghcr.io/engrace-hospice/wardenx:sha-${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
           echo "web_image=ghcr.io/engrace-hospice/wardenx-web:sha-${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "backend_digest=$BACKEND_DIGEST" >> "$GITHUB_OUTPUT"
+          echo "web_digest=$WEB_DIGEST" >> "$GITHUB_OUTPUT"
+
+      # Scan BEFORE signing. Signing a known-vulnerable image is worse than not signing it: the
+      # signature is an assertion that this artefact went through our release process, and a process
+      # that stamps HIGH/CRITICAL findings devalues every signature it has ever produced.
+      #
+      # `.trivyignore.yaml` is the only way past this, and every entry there must carry a statement and
+      # an unexpired date within 90 days — enforced by `arch:vuln-allowlist`, which runs in the CI this
+      # job depends on. There is deliberately no severity knob to turn down.
+      - name: Scan backend image (HIGH/CRITICAL fail the release)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/engrace-hospice/wardenx@${{ steps.build_backend.outputs.digest }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          trivyignores: .trivyignore.yaml
+      - name: Scan staff web image (HIGH/CRITICAL fail the release)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/engrace-hospice/wardenx-web@${{ steps.build_web.outputs.digest }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          trivyignores: .trivyignore.yaml
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      # SBOM per image, in SPDX JSON. Attached to the image as a cosign ATTESTATION rather than only
+      # uploaded as a workflow artifact: an SBOM that lives in an Actions run expires with the run's
+      # retention and cannot be fetched from the host that is actually running the image. The workflow
+      # artifact is kept too, because it is the copy a human can download during an incident without
+      # registry credentials.
+      - name: Generate SBOMs
+        env:
+          BACKEND_DIGEST: ${{ steps.build_backend.outputs.digest }}
+          WEB_DIGEST: ${{ steps.build_web.outputs.digest }}
+        run: |
+          syft "ghcr.io/engrace-hospice/wardenx@${BACKEND_DIGEST}" \
+            -o spdx-json=sbom-backend.spdx.json
+          syft "ghcr.io/engrace-hospice/wardenx-web@${WEB_DIGEST}" \
+            -o spdx-json=sbom-web.spdx.json
+          # A syft run that produces a file describing nothing is a silent failure — an empty SBOM
+          # answers "are we affected by this CVE?" with a confident and wrong "no".
+          for f in sbom-backend.spdx.json sbom-web.spdx.json; do
+            packages=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1])).get('packages',[])))" "$f")
+            echo "$f: $packages package(s)"
+            test "$packages" -gt 0 || { echo "$f describes no packages" >&2; exit 1; }
+          done
+      - name: Upload SBOMs as release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ env.RELEASE_SHA }}
+          path: sbom-*.spdx.json
+          retention-days: 90
+
+      # Keyless: the OIDC token above becomes a short-lived Fulcio certificate and the signature goes to
+      # the Rekor transparency log. Nothing here holds a private key, so there is none to leak — and the
+      # deploy verifies the workflow IDENTITY, which is a stronger statement than "someone with the key".
+      - name: Sign images and attest SBOMs
+        env:
+          BACKEND_DIGEST: ${{ steps.build_backend.outputs.digest }}
+          WEB_DIGEST: ${{ steps.build_web.outputs.digest }}
+          COSIGN_YES: "true"
+        run: |
+          cosign sign "ghcr.io/engrace-hospice/wardenx@${BACKEND_DIGEST}"
+          cosign sign "ghcr.io/engrace-hospice/wardenx-web@${WEB_DIGEST}"
+          cosign attest --predicate sbom-backend.spdx.json --type spdxjson \
+            "ghcr.io/engrace-hospice/wardenx@${BACKEND_DIGEST}"
+          cosign attest --predicate sbom-web.spdx.json --type spdxjson \
+            "ghcr.io/engrace-hospice/wardenx-web@${WEB_DIGEST}"
+
+      # Verify what was just published, from the workflow, before the deploy job ever runs. Not
+      # ceremony: it is the only place a signing misconfiguration surfaces as a red release instead of
+      # as a deploy that refuses to start on the VPS at 2am.
+      - name: Verify the signatures just created
+        env:
+          BACKEND_DIGEST: ${{ steps.build_backend.outputs.digest }}
+          WEB_DIGEST: ${{ steps.build_web.outputs.digest }}
+        run: |
+          for ref in \
+            "ghcr.io/engrace-hospice/wardenx@${BACKEND_DIGEST}" \
+            "ghcr.io/engrace-hospice/wardenx-web@${WEB_DIGEST}"; do
+            cosign verify "$ref" \
+              --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/deploy.yml@${GITHUB_REF}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" >/dev/null
+            echo "verified $ref"
+          done
 
   deploy:
     name: Deploy to production VPS
@@ -124,6 +240,14 @@ jobs:
         run: |
           test -n "$DEPLOY_HOST" && test -n "$DEPLOY_USER"
           port="${DEPLOY_PORT:-22}"
-          scp -P "$port" deploy/production/deploy.sh "$DEPLOY_USER@$DEPLOY_HOST:/opt/wardenx/deploy.sh"
+          # F-038/#98 — compose.yml and smoke.sh ride along with deploy.sh. compose.yml because the
+          # worker and web healthchecks the smoke test waits on live in it, and a server still holding
+          # the old copy would report those services healthy the instant they start — exactly the blind
+          # spot this change closes. Both are uploaded before deploy.sh runs, never after.
+          scp -P "$port" \
+            deploy/production/deploy.sh \
+            deploy/production/smoke.sh \
+            deploy/production/compose.yml \
+            "$DEPLOY_USER@$DEPLOY_HOST:/opt/wardenx/"
           ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "chmod 700 /opt/wardenx/deploy.sh && /opt/wardenx/deploy.sh '$BACKEND_IMAGE' '$WEB_IMAGE'"
+            "chmod 700 /opt/wardenx/deploy.sh /opt/wardenx/smoke.sh && /opt/wardenx/deploy.sh '$BACKEND_IMAGE' '$WEB_IMAGE'"

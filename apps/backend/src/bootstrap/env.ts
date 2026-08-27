@@ -176,6 +176,74 @@ const REQUIREMENTS: readonly Requirement[] = [
 ];
 
 /**
+ * Hostnames reserved by RFC 2606 to never resolve to anything real. `.invalid` (§2) exists so that a
+ * name is *guaranteed* to fail resolution; `.test` (§2) is reserved for testing; `example.com`/`.net`/
+ * `.org` and the `.example` TLD (§2, §3) are reserved for documentation. None of them can be a working
+ * production endpoint anywhere, for anyone.
+ *
+ * Deliberately NOT here: `localhost` and loopback literals. A single-host deployment that runs Postgres
+ * or an object store beside the API and addresses it as `localhost` is doing something ordinary and
+ * correct, and rejecting that would break real deployments to catch a mistake this rule already catches.
+ */
+const RESERVED_HOST_NAMES: readonly string[] = [
+  "invalid",
+  "example",
+  "test",
+  "example.com",
+  "example.net",
+  "example.org",
+];
+
+/**
+ * Is this hostname one RFC 2606 guarantees is not real? Matches the reserved name itself or any
+ * subdomain of it, on a LABEL boundary — `notexample.com` merely ends with the characters of
+ * `example.com` and is somebody's real domain, so a bare `endsWith` would reject it.
+ */
+export function isReservedPlaceholderHost(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase().replace(/\.$/, "");
+  if (host.length === 0) return false;
+  return RESERVED_HOST_NAMES.some((name) => host === name || host.endsWith(`.${name}`));
+}
+
+/**
+ * Pull every hostname out of a config value. A value may be a URL (`https://gw.example.invalid/x`), a
+ * connection string (`postgresql://u:p@host:5432/db`), a comma- or space-separated origin list
+ * (`TRUSTED_ORIGINS`), or a bare host (`PASSKEY_RP_ID`). Anything that is neither parses to no host and
+ * contributes nothing — a base64 key or a hex token has no dots and cannot be mistaken for a hostname.
+ */
+export function hostnamesIn(value: string): string[] {
+  const hosts: string[] = [];
+  for (const part of value.split(/[,\s]+/).filter(Boolean)) {
+    try {
+      const { hostname } = new URL(part);
+      if (hostname) {
+        hosts.push(hostname);
+        continue;
+      }
+    } catch {
+      // Not a URL — fall through to the bare-hostname shape below.
+    }
+    if (/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+\.?$/i.test(part)) {
+      hosts.push(part);
+    }
+  }
+  return hosts;
+}
+
+/**
+ * The placeholder problem for one value, or null. Applied to EVERY requirement rather than only the
+ * ones whose rule mentions a URL: the point is that `.env.example` ships reserved hosts in four values
+ * and the per-key rules ask only for `https://`, so a copied example file passes production validation
+ * intact and the stack boots "validated" against hosts DNS is guaranteed never to answer (#115).
+ */
+export function reservedPlaceholderProblem(value: string): string | null {
+  const reserved = hostnamesIn(value).filter(isReservedPlaceholderHost);
+  if (reserved.length === 0) return null;
+  const names = [...new Set(reserved)].join(", ");
+  return `must not use an RFC 2606 reserved host (${names}) — these never resolve, so this looks like an unedited .env.example placeholder`;
+}
+
+/**
  * Collect every unmet production requirement (empty array = OK). Pure, so the rules are unit-testable
  * without mutating the process environment. Returns [] for any non-production `NODE_ENV`.
  */
@@ -189,7 +257,12 @@ export function collectEnvProblems(env: EnvLike): EnvProblem[] {
       continue;
     }
     const ruleProblem = rule?.(value);
-    if (ruleProblem) problems.push({ key, problem: ruleProblem });
+    if (ruleProblem) {
+      problems.push({ key, problem: ruleProblem });
+      continue;
+    }
+    const placeholder = reservedPlaceholderProblem(value);
+    if (placeholder) problems.push({ key, problem: placeholder });
   }
   return problems;
 }

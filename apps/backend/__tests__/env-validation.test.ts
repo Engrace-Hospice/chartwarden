@@ -5,14 +5,21 @@
  * safe fallbacks (the check is a no-op). Pure rules, exercised against injected env maps.
  */
 import { describe, expect, it } from "vitest";
-import { type EnvLike, assertProductionEnv, collectEnvProblems } from "../src/bootstrap/env";
+import {
+  type EnvLike,
+  assertProductionEnv,
+  collectEnvProblems,
+  hostnamesIn,
+  isReservedPlaceholderHost,
+  reservedPlaceholderProblem,
+} from "../src/bootstrap/env";
 
 const GOOD: EnvLike = {
   NODE_ENV: "production",
   DATABASE_URL: "postgres://u:p@host:5432/db",
   BETTER_AUTH_SECRET: "x".repeat(32),
-  BETTER_AUTH_URL: "https://app.wardenx.example",
-  TRUSTED_ORIGINS: "https://app.wardenx.example",
+  BETTER_AUTH_URL: "https://app.wardenx.cloud",
+  TRUSTED_ORIGINS: "https://app.wardenx.cloud",
   // 32 bytes base64-encoded
   TWO_FACTOR_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
   // M24 §8.7 — the master KEK for state trading-partner secrets (also 32 bytes base64).
@@ -21,16 +28,16 @@ const GOOD: EnvLike = {
   M13_WITNESS_SIGNING_KEY: "y".repeat(32),
   // TASK-010 — the remaining Phase 2 (SEC-005/OPS-010) required vars.
   REDIS_URL: "rediss://user:pass@host:6379",
-  M23_X12_GATEWAY_URL: "https://x12.wardenx.example",
+  M23_X12_GATEWAY_URL: "https://x12.wardenx.cloud",
   M23_X12_GATEWAY_TOKEN: "x".repeat(32),
-  M23_MAC_GATEWAY_URL: "https://mac.wardenx.example",
+  M23_MAC_GATEWAY_URL: "https://mac.wardenx.cloud",
   M23_MAC_GATEWAY_TOKEN: "m".repeat(32),
-  M34_PROVISION_GATEWAY_URL: "https://provision.wardenx.example",
+  M34_PROVISION_GATEWAY_URL: "https://provision.wardenx.cloud",
   M34_PROVISION_GATEWAY_TOKEN: "p".repeat(32),
-  M34_INVITATION_ACCEPT_URL: "https://app.wardenx.example/tenant-invitations",
+  M34_INVITATION_ACCEPT_URL: "https://app.wardenx.cloud/tenant-invitations",
   DATABASE_PLATFORM_URL: "postgres://u:p@platform-host:5432/db",
-  PASSKEY_RP_ID: "app.wardenx.example",
-  WEBAUTHN_RP_ID: "app.wardenx.example",
+  PASSKEY_RP_ID: "app.wardenx.cloud",
+  WEBAUTHN_RP_ID: "app.wardenx.cloud",
   MESSAGING_ENCRYPTION_KEY: Buffer.alloc(32, 3).toString("base64"),
   CURSOR_SIGNING_KEY: "z".repeat(32),
   TRUSTED_PROXY_CIDRS: "10.0.0.0/8",
@@ -172,5 +179,115 @@ describe("assertProductionEnv", () => {
   it("does not throw for a valid production env or outside production", () => {
     expect(() => assertProductionEnv(GOOD)).not.toThrow();
     expect(() => assertProductionEnv({ NODE_ENV: "test" })).not.toThrow();
+  });
+});
+
+// ── #115 — RFC 2606 placeholder hosts ─────────────────────────────────────────────────────────────────
+//
+// The validator's whole purpose is that a production boot cannot be misconfigured silently. For the four
+// gateway URLs it was doing the opposite: their rule asks only for `https://`, and the `.env.example` an
+// operator copies supplies exactly that against `*.example.invalid` — a TLD RFC 2606 §2 reserves so that
+// it can NEVER resolve. So a copied example file passed production validation intact and the stack booted
+// "validated" against hosts DNS is guaranteed not to answer, failing at the first tenant operation.
+describe("#115 — reserved placeholder hosts", () => {
+  it("recognises every RFC 2606 reserved name, and subdomains of them", () => {
+    for (const host of [
+      "provision-gateway.example.invalid",
+      "gw.invalid",
+      "invalid",
+      "app.example",
+      "example.com",
+      "www.example.net",
+      "deep.sub.example.org",
+      "svc.test",
+    ]) {
+      expect(isReservedPlaceholderHost(host), host).toBe(true);
+    }
+  });
+
+  it("leaves real hosts alone — including the loopback a co-located service legitimately uses", () => {
+    for (const host of [
+      "app.wardenx.cloud",
+      "storage.wardenx.chartwarden.cloud",
+      "postgres",
+      "valkey",
+      // Deliberately NOT reserved: a single-host deployment addressing its own Postgres or object
+      // store as localhost is ordinary and correct. Rejecting it would break real deployments to
+      // catch a mistake the reserved-name rule already catches.
+      "localhost",
+      "127.0.0.1",
+      // A name that merely CONTAINS a reserved string is not one.
+      "example.company.com",
+      "notexample.com",
+      "myinvalid.com",
+    ]) {
+      expect(isReservedPlaceholderHost(host), host).toBe(false);
+    }
+  });
+
+  it("extracts hosts from URLs, connection strings, origin lists and bare names", () => {
+    expect(hostnamesIn("https://gw.example.invalid/dek/unwrap")).toEqual(["gw.example.invalid"]);
+    expect(hostnamesIn("postgresql://u:p%40ss@db-host:5432/wardenx")).toEqual(["db-host"]);
+    expect(hostnamesIn("https://a.wardenx.cloud, https://b.wardenx.cloud")).toEqual([
+      "a.wardenx.cloud",
+      "b.wardenx.cloud",
+    ]);
+    expect(hostnamesIn("app.wardenx.cloud")).toEqual(["app.wardenx.cloud"]);
+  });
+
+  it("does not mistake a secret for a hostname", () => {
+    // Every non-URL requirement's value: base64 keys, hex-ish tokens, CIDRs. None may produce a host,
+    // or the rule would start rejecting secrets for what they happen to spell.
+    for (const secret of [
+      Buffer.alloc(32, 7).toString("base64"),
+      "x".repeat(32),
+      "replace-with-a-32-character-service-token",
+      "10.0.0.0/8",
+    ]) {
+      expect(reservedPlaceholderProblem(secret), secret).toBeNull();
+    }
+  });
+
+  it("REJECTS the .env.example placeholders the old rules accepted", () => {
+    // These four values are verbatim from `.env.example`, and every one of them satisfied its own
+    // per-key rule (`/^https:\/\//`). That is the bug.
+    const copied: EnvLike = {
+      ...GOOD,
+      M23_X12_GATEWAY_URL: "https://x12-gateway.example.invalid",
+      M23_MAC_GATEWAY_URL: "https://mac-gateway.example.invalid",
+      M34_PROVISION_GATEWAY_URL: "https://provision-gateway.example.invalid",
+      M34_INVITATION_ACCEPT_URL: "https://app.example.invalid/tenant-invitations",
+    };
+    const keys = collectEnvProblems(copied).map((p) => p.key);
+    expect(keys).toEqual([
+      "M23_X12_GATEWAY_URL",
+      "M23_MAC_GATEWAY_URL",
+      "M34_PROVISION_GATEWAY_URL",
+      "M34_INVITATION_ACCEPT_URL",
+    ]);
+    expect(collectEnvProblems(copied)[0]?.problem).toMatch(/RFC 2606 reserved host/);
+  });
+
+  it("catches a placeholder in a non-URL requirement too", () => {
+    // PASSKEY_RP_ID is a bare hostname with no URL rule at all, so nothing else would look at it.
+    expect(collectEnvProblems({ ...GOOD, PASSKEY_RP_ID: "app.example.com" })).toEqual([
+      { key: "PASSKEY_RP_ID", problem: expect.stringMatching(/RFC 2606 reserved host/) },
+    ]);
+  });
+
+  it("reports the per-key rule first when a value is both wrong and a placeholder", () => {
+    // One problem per key: telling an operator their URL is not https AND is a placeholder is noise
+    // when fixing the scheme is not the fix.
+    const problems = collectEnvProblems({
+      ...GOOD,
+      M23_X12_GATEWAY_URL: "http://x.example.invalid",
+    });
+    expect(problems).toEqual([{ key: "M23_X12_GATEWAY_URL", problem: "must be an https:// URL" }]);
+  });
+
+  it("stays a no-op outside production", () => {
+    expect(
+      collectEnvProblems({ ...GOOD, NODE_ENV: "development", PASSKEY_RP_ID: "x.invalid" }),
+    ).toEqual([]);
   });
 });

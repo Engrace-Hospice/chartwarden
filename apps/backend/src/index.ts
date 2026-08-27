@@ -24,7 +24,7 @@ import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import { registerPlatformJob, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
 import { DegradedError, WardenXError } from "@wardenx/types";
 import { createX12835Client } from "@wardenx/x12-835-client";
-import { type ConnectionOptions, Queue, type Worker } from "bullmq";
+import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
@@ -41,6 +41,15 @@ import {
   registerSeam,
 } from "./bootstrap/index";
 import {
+  PARTITION_ROTATION_CRON,
+  PARTITION_ROTATION_QUEUE,
+  classifyPartitionCoverage,
+  readPartitionCoverage,
+  runPartitionRotation,
+  summarizeRotation,
+  wirePartitionRotationTenancy,
+} from "./bootstrap/jobs/partition-rotation";
+import {
   m34ActiveMembershipUserId,
   m34SoleTenantUserIds,
 } from "./bootstrap/m34-identity-shred-subjects";
@@ -50,6 +59,7 @@ import {
   registerBullMQQueueMetrics,
   registerHttpMetrics,
   registerOutboxMetrics,
+  registerPartitionMetrics,
 } from "./bootstrap/metrics";
 import { wireOrganizationSettingsRegistry } from "./bootstrap/organization-settings-persister";
 import {
@@ -1278,6 +1288,10 @@ export function wireModuleSeams(
   wireM9Tenancy();
   wireM10Tenancy();
   wireM14Tenancy(); // GAP-092 — allowlist the cron job id so idg.review-clock-sweep may enter withPlatformContext
+  // F-033/#93 — allowlist the platform partition-rotation job. Unlike the module crons above this one
+  // belongs to no module: the 43 time-RANGE tables it keeps ahead are spread across ~20 modules and no
+  // module can see the others', so it is registered here with them rather than from a module wiring file.
+  wirePartitionRotationTenancy();
   // M34 — the 8 §4.6 ABAC predicate resolvers (the platform-ops tenant surface gates on
   // `tenant_lifecycle_platform_ops`, role-only; `dsar_export_*` composes the M5 CaseloadProvider seam,
   // registered above). The grant/flag/onboarding-task resolver methods are exercised by the tenant-scoped
@@ -3184,6 +3198,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const outboxMetrics = registerOutboxMetrics(metricsRegistry, {
     pendingDepth: outboxPendingDepth,
   });
+  // F-033/#93 — partition-coverage gauges. Registered for EVERY role, like the outbox ones: the read is
+  // a catalog scan of ~43 relations, and an API-only replica answering it is exactly as correct as the
+  // worker answering it. Deliberately NOT folded into `/ready`: a table running low on partition
+  // headroom is a maintenance signal, and taking an otherwise-healthy replica out of the load balancer
+  // for it would turn a scheduling problem into an outage.
+  registerPartitionMetrics(metricsRegistry, {
+    coverage: dbHandle ? () => readPartitionCoverage(dbHandle.db) : undefined,
+  });
   mountMetricsRoute(app, metricsRegistry);
   // TASK-040D (OPS-012) — DLQ-promotion alerting, shared by BOTH the BullMQ worker-runner block and the
   // outbox-dispatcher block below (two SEPARATE top-level `if`s — declared here, outside either, so it's
@@ -3503,6 +3525,63 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       app.log.error(err, "M33 cron-schedule registration failed");
     }
     app.log.info({ queues: m33Workers.length }, "M33 §4.8 BullMQ reporting workers constructed");
+
+    // ── platform.partition_rotate — the time-partition rotation cron (F-033 / #93) ─────────────────────
+    //
+    // Keeps the current + 3 following months of partitions created for every time-RANGE partitioned
+    // table, discovered from `pg_catalog` (migration 0224). Runs on the 1st, 8th and 15th: the work is a
+    // no-op once the window is covered, so three cheap chances beat one tick that a restart can eat.
+    //
+    // It uses the PLATFORM credential, not the tenant pool. Partition DDL needs ownership of the parent
+    // table and `wardenx_app` has none — the definer-rights `rotate_time_partitions` bridges that, and
+    // `scripts/db/provision-runtime-roles.ts` grants EXECUTE on it to `wardenx_platform`. Falling back to
+    // `dbHandle.db` keeps dev/CI (no DATABASE_PLATFORM_URL) working, where the connected role is usually
+    // the owner anyway.
+    const partitionRotateWorker = new Worker(
+      PARTITION_ROTATION_QUEUE,
+      async () => {
+        const rows = await runPartitionRotation({
+          platformDb: platformDbHandle?.db ?? dbHandle.db,
+          auditBypass: m34PlatformBypassAuditor,
+        });
+        const summary = summarizeRotation(rows);
+        // A blocked table is not a job failure to retry — retrying cannot help, because the partition is
+        // refused for as long as DEFAULT holds those rows. It is an operator task, so it is logged at
+        // error level with the table names and the job still completes.
+        if (!summary.healthy) {
+          app.log.error(
+            { blocked: summary.blocked, noCreator: summary.noCreator },
+            "partition rotation completed with tables that need manual repair",
+          );
+        } else {
+          app.log.info(
+            { created: summary.created, alreadyCovered: summary.ok },
+            "partition rotation complete",
+          );
+        }
+        return summary;
+      },
+      { connection: queueConnection, concurrency: 1 },
+    );
+    attachDlqAlertsToAll([partitionRotateWorker], "platform");
+    app.addHook("onClose", async () => {
+      await partitionRotateWorker.close();
+    });
+    try {
+      const partitionRotateQueue = new Queue(PARTITION_ROTATION_QUEUE, {
+        connection: queueConnection,
+      });
+      await partitionRotateQueue.add(
+        "scheduled",
+        {},
+        { repeat: { pattern: PARTITION_ROTATION_CRON }, removeOnComplete: true },
+      );
+      app.addHook("onClose", async () => {
+        await partitionRotateQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "partition-rotation cron registration failed");
+    }
 
     // ── M30 §4.8 HQRP/quality workers + cron schedules (the same worker-runner shape) ───────────────────
     // Construct the four §4.8 WORK-queue Workers (measure_recompute / cahps_export / outbreak_detection /
