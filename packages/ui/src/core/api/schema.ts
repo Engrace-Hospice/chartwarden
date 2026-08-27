@@ -15243,7 +15243,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read one dashboard (share-scope visibility gate) */
+        /** Read one dashboard: summary + its tile manifest (share-scope visibility gate) */
         get: operations["getApiV1ReportingDashboardsByDashboardId"];
         put?: never;
         post?: never;
@@ -58730,6 +58730,11 @@ export interface operations {
                         tileCount: number;
                         shareScope: "private" | "role" | "org";
                         isOrgDefault: boolean;
+                        tiles: {
+                            tileKey: string;
+                            displayName: string;
+                            kind: string;
+                        }[];
                     };
                 };
             };

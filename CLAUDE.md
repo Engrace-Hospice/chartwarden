@@ -419,7 +419,7 @@ analysis a gate would need is a call graph from the composition root, and the ob
   blocker, never an unmatched name (the `deviceAttestationValid` rule), and the gate fails the
   moment CI starts running a deferred script so the entry cannot outlive its reason; `DEFERRED` is
   empty today. All **122** suites run in CI, `test:e2e` included — the `e2e` job drives a real
-  Chromium over a migrated, `db:seed:all`-seeded full stack (18 critical-workflow specs + the six
+  Chromium over a migrated, `db:seed:all`-seeded full stack (20 browser specs — 13 critical-workflow + the seven
   axe-core WCAG 2A/AA scans that are the repo's only automated accessibility coverage). The gate
   now checks **both directions** (F-025/#59): script → CI, and **file → script**. The second was
   never asked, so 29 suite files (112 tests) were named by no script and therefore run by nothing —

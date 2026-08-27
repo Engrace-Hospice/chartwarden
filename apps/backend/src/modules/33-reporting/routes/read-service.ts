@@ -19,6 +19,12 @@ export interface M33ReadActor {
   readonly organizationId: string;
   readonly userId: string;
   readonly roles: readonly string[];
+  /**
+   * The session's active membership id (`context.attributes.membershipId`), when it carries one. Used
+   * ONLY to resolve the §4.7.1 `self` scope — a read actor with no membership resolves to `self` over an
+   * EMPTY id set, which the scope injector compiles to `FALSE` (deny), never to org-wide (D8).
+   */
+  readonly membershipId?: string;
 }
 
 // ── enqueue port (the thin worker-trigger seam the admin command routes inject) ──────────────────────
@@ -49,6 +55,24 @@ export interface DashboardSummaryView {
   readonly tileCount: number;
   readonly shareScope: "private" | "role" | "org";
   readonly isOrgDefault: boolean;
+}
+
+/** One tile on a dashboard: the `report_base_catalog` key `readTile` resolves, plus its label (§4.1 #2). */
+export interface DashboardTileDescriptor {
+  /** The `GET /reporting/tiles/:tileKey` key — a `report_base_catalog.base_key`. */
+  readonly tileKey: string;
+  readonly displayName: string;
+  /** The base's domain (`census` / `productivity` / `evv` / …), for tile grouping in the UI. */
+  readonly kind: string;
+}
+
+/**
+ * A dashboard READ (§4.1 #2 — "read a dashboard (composed of multiple tiles)"): the summary plus the
+ * TILE MANIFEST. F-044 — the manifest existed in no DTO, so the render screen's `tiles` was permanently
+ * undefined and every dashboard showed "the tile manifest is not available in this context".
+ */
+export interface DashboardDetailView extends DashboardSummaryView {
+  readonly tiles: readonly DashboardTileDescriptor[];
 }
 
 export interface DimensionDescriptor {
@@ -189,7 +213,7 @@ export interface M33ReadRouteService {
     cursor: string | undefined,
     limit: number | undefined,
   ): Promise<CursorPage<DashboardSummaryView>>;
-  getDashboard(actor: M33ReadActor, dashboardId: string): Promise<DashboardSummaryView>;
+  getDashboard(actor: M33ReadActor, dashboardId: string): Promise<DashboardDetailView>;
   // tiles (§4.1 #3–#4)
   readTile(actor: M33ReadActor, tileKey: string, args: TileReadArgs): Promise<TileReadResult>;
   getTileFreshness(actor: M33ReadActor, tileKey: string): Promise<TileFreshnessView>;
@@ -367,7 +391,15 @@ export function createInMemoryM33ReadBackend(seed: M33ReadRouteSeed = {}): {
     async getDashboard(_actor, dashboardId) {
       const found = dashboards.find((d) => d.dashboardId === dashboardId);
       if (!found) throw new NotFoundError("dashboard");
-      return found;
+      // Slice parity with the Drizzle backend's manifest (F-044). The seed carries summaries only, so the
+      // slice synthesizes one tile per declared tile count rather than reporting `tiles: []` — a shape the
+      // Drizzle backend can only produce for a dashboard whose definition resolves to no base at all.
+      const tiles = Array.from({ length: found.tileCount }, (_v, i) => ({
+        tileKey: `${found.dashboardId}-tile-${i + 1}`,
+        displayName: found.displayName,
+        kind: "slice",
+      }));
+      return { ...found, tiles };
     },
     async readTile(_actor, tileKey, args) {
       const base = bases.get(tileKey);

@@ -586,6 +586,7 @@ import {
   buildDrizzleM33ExportDrilldownService,
   buildDrizzleM33ReadService,
   buildDrizzleM33WriteService,
+  buildDrizzleReportingAbacResolver,
   buildM33DocumentBackrefConsumer,
   buildM33MvRefreshEnqueue,
   buildM33ReadEnqueue,
@@ -1200,10 +1201,19 @@ export function wireModuleSeams(
         },
   });
   // M33 — the two §4.7 ABAC predicate resolvers (`reportable_scope` D8 cross-cutting read scope +
-  // `dashboard_visibility` §4.7.2 saved-view ladder). Defaults to the deny-stub resolver until P2C binds
-  // the real M2 `SupervisorReader` / M5 `CaseloadProvider` reach + the Drizzle `report_view` facts — with
-  // the deny-stub every actor collapses to `self` scope (fail-closed), which is the correct posture.
-  registerM33AbacPredicates();
+  // `dashboard_visibility` §4.7.2 saved-view ladder), over the PRODUCTION Drizzle resolver when a db is
+  // present (F-044). This used to be called with no argument at all, so `dashboard_visibility` ran against
+  // the deny-stub in production: `loadReportView` returned null for every view, the predicate read that as
+  // "absent / cross-tenant" and denied, and `GET /reporting/dashboards/:id` — which mounts it with
+  // `notFoundOnDeny: true` — answered 404 for every caller including a dashboard's own owner.
+  //
+  // The team/location reach behind `reportable_scope` STAYS fail-closed and that is a declared absence:
+  // M2 publishes no `SupervisorReader` seam in this build. Without it every actor lacking org-wide
+  // authority resolves to `self`, the narrowest scope, which is the right answer to a question the
+  // platform cannot yet ask.
+  registerM33AbacPredicates(
+    deps.db ? { resolver: buildDrizzleReportingAbacResolver(deps.db) } : undefined,
+  );
   // M30 — the eleven §4.7 / §6.7 ABAC predicate resolvers (`incidentVisibility`, `ownsIncident`,
   // `assignedToIncident`, `abuseAllegationAccess`, `capVerifyAuthority`, `ownsQapiProject`,
   // `qapiCloseAuthority`, `ownsSraCycle`, `sraCloseAuthority`, `assignedToMortality`, `part2Redisclosure`).

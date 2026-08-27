@@ -1040,6 +1040,7 @@ import {
 // ── from reporting-typebox.ts (READ + admin + metric-seam responses; request queries) ──────────────
 import {
   BaseListQuerySchema as M33BaseListQuerySchema,
+  DashboardDetailViewSchema as M33DashboardDetailViewSchema,
   DashboardListQuerySchema as M33DashboardListQuerySchema,
   DashboardListResponseSchema as M33DashboardListResponseSchema,
   DashboardSummaryViewSchema as M33DashboardSummaryViewSchema,
@@ -9097,8 +9098,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M33DashboardListResponseSchema,
   },
   "GET /api/v1/reporting/dashboards/:dashboardId": {
-    summary: "Read one dashboard (share-scope visibility gate)",
-    response: M33DashboardSummaryViewSchema,
+    summary: "Read one dashboard: summary + its tile manifest (share-scope visibility gate)",
+    // F-044 — was the SUMMARY schema, which carries `tileCount` and no tiles. The render screen has
+    // always read `detail.tiles`; with the contract declaring no such field the generated client typed it
+    // away, and the screen's own fallback ("the tile manifest is not available in this context") became
+    // the only branch it could take.
+    response: M33DashboardDetailViewSchema,
   },
   "GET /api/v1/reporting/tiles/:tileKey": {
     summary: "Read a tile: compile+execute its spec (aggregate-only, D6)",
