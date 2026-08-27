@@ -93,33 +93,40 @@ export function sectionIOf(data: unknown): SectionIInput {
   return { primaryDiagnosisIcd10: i === null ? null : str(i.primaryDiagnosisIcd10) };
 }
 
+/** A CMS HOPE Section-J item identifier: the letter J followed by digits (J2030, J2050, J2051 …). */
+const J_ITEM_KEY = /^J\d+$/;
+
 /**
  * §2.1 Section J (Health Conditions) — the pain (J2030) / dyspnea (J2050) screens with their
- * characteristics, and the J2051 symptom codes.
+ * characteristics, and the J ITEMS the payload carries.
  *
- * `jCodes` is drawn from the J2051 entries the D4 trigger already reads, so the value-set rule checks
- * the same codes the trigger fired on — a second, independently-authored code list here would let the
- * two disagree about what was recorded. Blank codes are dropped (the validator skips them anyway);
- * duplicates are collapsed so a repeated code yields one finding, not one per occurrence.
+ * `jCodes` is the set of Section-J ITEM IDENTIFIERS present in `data.J` — the instrument's questions —
+ * NOT the per-symptom severities recorded under J2051, which are its answers (F-059).
+ *
+ * This distinction is the whole point of the rule those codes feed. §86 checks membership in M38's
+ * `hope_j_codes` value set, whose own definition reads "J2030, J2050, J2051 plus related", and whose
+ * rule comment says transposed codes are corrected against it — you transpose digits in an item number
+ * (J2050 → J2005), not letters in a symptom name. Feeding it the J2051 symptom codes instead, as this
+ * function first did, made the rule structurally incapable of failing: `symptomCode` is closed to the
+ * eight `HOPE_J2051_SYMPTOM_CODES` at M10's route boundary, so every value reaching storage is already
+ * a member of a WardenX-internal vocabulary, and re-checking it asynchronously against a terminology
+ * service was a weaker second copy of a check the boundary already makes absolutely.
+ *
+ * Duplicates are impossible (object keys), and a payload carrying an item the CMS roster does not
+ * recognise — a transposed number, or one decommissioned by an annual update — is what now warns.
  */
 export function sectionJOf(data: unknown): SectionJInput {
   const j = obj(obj(data)?.J);
   const j2030 = obj(j?.J2030);
   const j2050 = obj(j?.J2050);
-  const entries = obj(j?.J2051)?.entries;
-  const codes = new Set<string>();
-  if (Array.isArray(entries)) {
-    for (const entry of entries) {
-      const code = str(obj(entry)?.symptomCode);
-      if (code !== null) codes.add(code);
-    }
-  }
+  const jCodes =
+    j === null ? [] : Object.keys(j).filter((key) => J_ITEM_KEY.test(key) && documented(j[key]));
   return {
     painScreenedYes: isYes(j2030?.screened),
     painCharacteristicsPresent: documented(j2030?.characteristics),
     dyspneaScreenedYes: isYes(j2050?.screened),
     dyspneaCharacteristicsPresent: documented(j2050?.characteristics),
-    jCodes: [...codes],
+    jCodes,
   };
 }
 

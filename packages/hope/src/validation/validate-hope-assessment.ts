@@ -31,7 +31,15 @@ export interface SectionJInput {
   readonly dyspneaScreenedYes: boolean;
   /** Dyspnea characteristics captured (required when J2050 = Yes). */
   readonly dyspneaCharacteristicsPresent: boolean;
-  /** The J-item / symptom codes recorded in J2051 (validated against the M38 HOPE J-code value set). */
+  /**
+   * The CMS HOPE Section-J ITEM identifiers the payload carries (J2030, J2050, J2051 …), validated
+   * against M38's `hope_j_codes` value set. These are the instrument's QUESTIONS.
+   *
+   * NOT the J2051 symptom severities — those are its answers, drawn from a WardenX-internal vocabulary
+   * (`HOPE_J2051_SYMPTOM_CODES`) that M10's route boundary already closes, so checking them here would
+   * be a weaker asynchronous copy of a synchronous absolute check, incapable of failing (F-059). This
+   * doc line used to read "J-item / symptom codes", and that slash is where the confusion came from.
+   */
   readonly jCodes: readonly string[];
 }
 
@@ -135,9 +143,10 @@ export function validateHopeAssessment(
     }
   }
 
-  // 3. Section J — every recorded J-code ∈ the M38 CMS HOPE J-code value set (M10-F07: transposed codes
-  // are corrected against the CMS value set). Advisory: the server-authoritative J2051 trigger already
-  // fired on severity regardless of the code label, so an unrecognised code is a warning, not a blocker.
+  // 3. Section J — every J ITEM present ∈ the M38 CMS HOPE J-code value set (M10-F07: transposed codes
+  // are corrected against the CMS value set — you transpose the DIGITS of an item number). Advisory:
+  // the server-authoritative J2051 trigger fires on severity regardless of which items were recorded,
+  // so an unrecognised item is a data-quality warning, not a blocker.
   const jCodesToCheck = input.sectionJ.jCodes.filter((c) => c.trim() !== "");
   if (jCodesToCheck.length > 0 && !oracle.available.hopeJCodes) {
     // ONE finding for the section, not one per code: the codes are not what failed, the set is.
@@ -146,7 +155,7 @@ export function validateHopeAssessment(
         HOPE_VALIDATION_RULES.VALUE_SET_UNAVAILABLE,
         "warning",
         "J",
-        "Section J codes could not be checked: M38 holds no members for the CMS HOPE J-code value set at the assessment target date.",
+        "Section J items could not be checked: M38 holds no members for the CMS HOPE J-code value set at the assessment target date.",
       ),
     );
   } else {
@@ -157,7 +166,7 @@ export function validateHopeAssessment(
             HOPE_VALIDATION_RULES.SECTION_J_CODE_NOT_IN_VALUE_SET,
             "warning",
             "J",
-            `Section J code '${norm(jCode)}' is not in the CMS HOPE J-code value set.`,
+            `Section J item '${norm(jCode)}' is not in the CMS HOPE J-code value set.`,
             norm(jCode),
           ),
         );

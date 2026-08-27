@@ -21,9 +21,10 @@ import {
   resetRbacEngine,
 } from "@wardenx/auth";
 import { HOPE_VALIDATION_RULES } from "@wardenx/hope";
+import { PLATFORM_VALUE_SET_MEMBERS } from "@wardenx/terminology";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildServer } from "../src/bootstrap/index";
+import { __resetSeamsForTest, buildServer, registerSeam } from "../src/bootstrap/index";
 import {
   buildHopeAbacPredicates,
   createInMemoryHopeBackend,
@@ -295,14 +296,18 @@ describe("F-057 — value-set availability (the rule that must NOT become a bloc
     expect(rules(findings, HOPE_VALIDATION_RULES.SECTION_J_CODE_NOT_IN_VALUE_SET)).toEqual([]);
   });
 
-  it("no diagnosis and no J-codes means nothing to check — no unavailability finding either", async () => {
+  it("no diagnosis and no J ITEMS means nothing to check — no unavailability finding either", async () => {
     const { app } = makeServer();
     const findings = await recordSignAndValidate(
       app,
       admissionBody({
         ...COMPLETE_SECTIONS,
         I: { note: "deferred" },
-        J: { J2030: { screened: "no" } },
+        // Section J documented, but carrying no `J####` item — so there is nothing for the §86
+        // membership rule to ask about, and "could not check" would be a finding about nothing.
+        // (Before F-059 this case used `J2030`, which the projection then read as a symptom-code
+        // source rather than as the ITEM it is.)
+        J: { note: "screening deferred to the next visit" },
       }),
     );
     expect(rules(findings, HOPE_VALIDATION_RULES.VALUE_SET_UNAVAILABLE)).toEqual([]);
@@ -387,5 +392,77 @@ describe("F-057 — the D9 Section-Q divergence the record gate cannot see", () 
     const f = rules(findings, HOPE_VALIDATION_RULES.SECTION_Q_REQUIRED);
     expect(f.length).toBe(1);
     expect(f[0].severity).toBe("error");
+  });
+});
+
+// ── F-059: the Section-J value-set rule, once M38 can actually answer ────────────────────────────────
+//
+// The cases above run with NO TerminologyProvider registered, which is the deployment the availability
+// branch exists for. These register one over the real curated seed, so the rule RUNS — which is the
+// point of the F-059 decision: `hope_j_codes` holds the instrument's ITEM identifiers (J2030 / J2050 /
+// J2051, now curated under the `cms_hope` code system), so an unrecognised item is catchable. Had the
+// set held the J2051 SYMPTOM codes instead, this rule could never fail: `symptomCode` is closed to the
+// eight `HOPE_J2051_SYMPTOM_CODES` at the route boundary, so every stored value is already a member.
+describe("F-059 — Section J items are checked against the CMS roster", () => {
+  /** A minimal TerminologyProvider over the real `PLATFORM_VALUE_SET_MEMBERS` curation. */
+  function registerSeededTerminology(): void {
+    registerSeam("TerminologyProvider", {
+      // eslint-disable-next-line require-yield
+      async *expand(valueSetId: string) {
+        for (const m of PLATFORM_VALUE_SET_MEMBERS.filter((x) => x.valueSetId === valueSetId)) {
+          yield { systemId: m.systemId, code: m.code, display: m.display, annotations: {} };
+        }
+      },
+      async isMemberOf(valueSetId: string, system: string, code: string) {
+        return {
+          isMember: PLATFORM_VALUE_SET_MEMBERS.some(
+            (m) => m.valueSetId === valueSetId && m.systemId === system && m.code === code,
+          ),
+          source: "platform" as const,
+        };
+      },
+    } as never);
+  }
+
+  afterEach(() => {
+    __resetSeamsForTest();
+  });
+
+  it("the three curated items pass — no unavailability finding, no membership warning", async () => {
+    registerSeededTerminology();
+    const { app } = makeServer();
+    const findings = await recordSignAndValidate(app, admissionBody(COMPLETE_SECTIONS));
+    const j = findings.filter((f) => f.message.startsWith("Section J"));
+    expect(j).toEqual([]);
+    expect(rules(findings, HOPE_VALIDATION_RULES.SECTION_J_CODE_NOT_IN_VALUE_SET)).toEqual([]);
+  });
+
+  it("an item the CMS roster does not carry WARNS — the rule can now actually fail", async () => {
+    registerSeededTerminology();
+    const { app } = makeServer();
+    const findings = await recordSignAndValidate(
+      app,
+      admissionBody({
+        ...COMPLETE_SECTIONS,
+        // A transposed item number: you transpose the DIGITS of J2050, which is exactly the
+        // correction M10-F07 describes and what the value set exists to catch.
+        J: { ...(COMPLETE_SECTIONS.J as object), J2005: { screened: "no" } },
+      }),
+    );
+    const warn = rules(findings, HOPE_VALIDATION_RULES.SECTION_J_CODE_NOT_IN_VALUE_SET);
+    expect(warn.length).toBe(1);
+    expect(warn[0].severity).toBe("warning");
+    expect(warn[0].message).toContain("J2005");
+    // Advisory only: an unrecognised item is a data-quality signal, never a submission blocker.
+    expect(findings.filter((f) => f.severity === "error")).toEqual([]);
+  });
+
+  it("a J2051 SYMPTOM code is never checked against the value set — it is an answer, not an item", async () => {
+    registerSeededTerminology();
+    const { app } = makeServer();
+    const findings = await recordSignAndValidate(app, admissionBody(COMPLETE_SECTIONS));
+    // `pain` is a member of no value set and never will be; the boundary already closed that
+    // vocabulary. If it were being checked here, this assertion would fail.
+    expect(findings.some((f) => f.message.includes("'PAIN'"))).toBe(false);
   });
 });

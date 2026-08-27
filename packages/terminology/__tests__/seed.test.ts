@@ -25,11 +25,15 @@ describe("PLATFORM_CODE_SYSTEMS — the Phase-1 code_system catalog (§3.9)", ()
     const seeded = PLATFORM_CODE_SYSTEMS.map((c) => c.id).sort();
     const expected = [...CODE_SYSTEM_IDS].sort();
     expect(seeded).toEqual(expected);
-    expect(PLATFORM_CODE_SYSTEMS).toHaveLength(11);
+    // Length DERIVED from the union, not the literal 11 it used to assert. The parity check above is
+    // the real invariant ("one row per CodeSystemId"); a hardcoded count restates it in a second place
+    // that has to be hand-edited, so adding `cms_hope` (F-059) failed this line while the invariant it
+    // stands for was never violated. Deriving keeps it a check on the CATALOG rather than on the tally.
+    expect(PLATFORM_CODE_SYSTEMS).toHaveLength(CODE_SYSTEM_IDS.length);
   });
 
   it("ids are unique and every row carries a name + source uri", () => {
-    expect(new Set(PLATFORM_CODE_SYSTEMS.map((c) => c.id)).size).toBe(11);
+    expect(new Set(PLATFORM_CODE_SYSTEMS.map((c) => c.id)).size).toBe(CODE_SYSTEM_IDS.length);
     for (const c of PLATFORM_CODE_SYSTEMS) {
       expect(c.name.length).toBeGreaterThan(0);
       expect(c.sourceUri).toMatch(/^https:\/\//);

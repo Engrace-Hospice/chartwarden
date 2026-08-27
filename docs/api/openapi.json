@@ -13053,6 +13053,10 @@
                               {
                                 "const": "rarc",
                                 "type": "string"
+                              },
+                              {
+                                "const": "cms_hope",
+                                "type": "string"
                               }
                             ]
                           },
@@ -13169,6 +13173,10 @@
                 {
                   "const": "rarc",
                   "type": "string"
+                },
+                {
+                  "const": "cms_hope",
+                  "type": "string"
                 }
               ]
             }
@@ -13261,6 +13269,10 @@
                               },
                               {
                                 "const": "rarc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cms_hope",
                                 "type": "string"
                               }
                             ]
@@ -184642,6 +184654,10 @@
                         {
                           "const": "rarc",
                           "type": "string"
+                        },
+                        {
+                          "const": "cms_hope",
+                          "type": "string"
                         }
                       ]
                     },
@@ -185207,6 +185223,10 @@
                 {
                   "const": "rarc",
                   "type": "string"
+                },
+                {
+                  "const": "cms_hope",
+                  "type": "string"
                 }
               ]
             }
@@ -185314,6 +185334,10 @@
                               },
                               {
                                 "const": "rarc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cms_hope",
                                 "type": "string"
                               }
                             ]
@@ -185599,6 +185623,10 @@
                 {
                   "const": "rarc",
                   "type": "string"
+                },
+                {
+                  "const": "cms_hope",
+                  "type": "string"
                 }
               ]
             }
@@ -185697,6 +185725,10 @@
                               },
                               {
                                 "const": "rarc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cms_hope",
                                 "type": "string"
                               }
                             ]
@@ -185822,6 +185854,10 @@
                         {
                           "const": "rarc",
                           "type": "string"
+                        },
+                        {
+                          "const": "cms_hope",
+                          "type": "string"
                         }
                       ]
                     },
@@ -185896,6 +185932,10 @@
                       },
                       {
                         "const": "rarc",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cms_hope",
                         "type": "string"
                       }
                     ]
@@ -186019,6 +186059,10 @@
                 },
                 {
                   "const": "rarc",
+                  "type": "string"
+                },
+                {
+                  "const": "cms_hope",
                   "type": "string"
                 }
               ]

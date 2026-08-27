@@ -70,24 +70,33 @@ describe("sectionJOf", () => {
     ).toBe(true);
   });
 
-  it("draws jCodes from the SAME J2051 entries the D4 trigger reads, deduped and blank-free", () => {
+  it("draws jCodes from the Section-J ITEM identifiers, not the J2051 symptom answers (F-059)", () => {
     const j = sectionJOf({
       J: {
-        J2051: {
-          entries: [
-            { symptomCode: "pain", severity: "severe" },
-            { symptomCode: "pain", severity: "mild" },
-            { symptomCode: "  ", severity: "none" },
-            { severity: "none" },
-          ],
-        },
+        J2030: { screened: "yes", characteristics: "burning" },
+        J2050: { screened: "no" },
+        J2051: { entries: [{ symptomCode: "pain", severity: "severe" }] },
       },
     });
-    expect(j.jCodes).toEqual(["pain"]);
+    // The instrument's QUESTIONS. `pain` is an answer drawn from a WardenX-internal vocabulary that
+    // M10's route boundary already closes; re-checking it against a terminology service would be a
+    // weaker asynchronous copy of a synchronous absolute check, incapable of failing.
+    expect(j.jCodes).toEqual(["J2030", "J2050", "J2051"]);
+    expect(j.jCodes).not.toContain("pain");
+  });
+
+  it("reports an UNRECOGNISED J item, which is what the §86 value-set rule exists to catch", () => {
+    // A transposed item number — you transpose the digits of J2050, not the letters of a symptom name.
+    expect(sectionJOf({ J: { J2005: { screened: "no" } } }).jCodes).toEqual(["J2005"]);
+  });
+
+  it("ignores non-item keys and EMPTY items — an opened item is not a recorded one", () => {
+    const j = sectionJOf({ J: { J2030: { screened: "no" }, J2050: {}, notes: "free text" } });
+    expect(j.jCodes).toEqual(["J2030"]);
   });
 
   it("survives a J2051 payload that is not an array", () => {
-    expect(sectionJOf({ J: { J2051: { entries: "pain" } } }).jCodes).toEqual([]);
+    expect(sectionJOf({ J: { J2051: { entries: "pain" } } }).jCodes).toEqual(["J2051"]);
   });
 });
 

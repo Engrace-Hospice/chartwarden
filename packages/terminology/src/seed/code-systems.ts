@@ -22,8 +22,8 @@ export interface PlatformCodeSystemSeed {
 }
 
 /**
- * The eleven Phase-1 code systems (§3.9). Order is stable for deterministic seeding/tests;
- * exactly mirrors the {@link CodeSystemId} union — every member has a row, no extras.
+ * The Phase-1 code systems (§3.9) plus `cms_hope` (F-059). Order is stable for deterministic
+ * seeding/tests; exactly mirrors the {@link CodeSystemId} union — every member has a row, no extras.
  */
 export const PLATFORM_CODE_SYSTEMS: readonly PlatformCodeSystemSeed[] = [
   {
@@ -92,5 +92,12 @@ export const PLATFORM_CODE_SYSTEMS: readonly PlatformCodeSystemSeed[] = [
     name: "X12 RARC",
     licenseSource: "public",
     sourceUri: "https://x12.org/codes/remittance-advice-remark-codes",
+  },
+  {
+    id: "cms_hope",
+    name: "CMS HOPE assessment items",
+    licenseSource: "public",
+    sourceUri:
+      "https://www.cms.gov/medicare/quality/hospice/hospice-outcomes-patient-evaluation-hope",
   },
 ] as const;
