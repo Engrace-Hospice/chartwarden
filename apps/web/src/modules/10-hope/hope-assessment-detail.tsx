@@ -25,9 +25,17 @@ import {
 // J2051 real and the rest '—' (never fabricated completeness). The validation rail is no longer a
 // scaffold: `GET /validation` recomputes the CMS pre-submission rule set per request, so a blocking
 // finding here is a real one and "No findings." now means checked-and-clean rather than never-checked.
+//
+// #91 — the footer used to hold two NAVIGATION buttons and a lock chip, which is why an assessment could
+// be opened, read, judged blocked, and then left exactly as it was found. It now carries the three writes
+// the §5.2 "Actions" list names — Sign (draft), Correct (signed, append-only D7) and Request summary —
+// each offered only in the status the SERVER accepts it in, so no control here is one the server refuses.
+// Save-draft is not among them: the section payload has item definitions for four sections only (F-057)
+// and this screen renders no section EDITOR, so a `PUT` from here would send back exactly what it read.
 import { useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { type HopeAction, HopeActionModal } from "./hope-action-modal";
 import { ASSESSMENT_TONE, J2051_TONE, SEVERITY_TONE, rfaLabel, stateLabel } from "./hope-status";
 
 interface AssessmentDetail {
@@ -85,7 +93,11 @@ export function HopeAssessmentDetail(): JSX.Element {
   const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [acting, setActing] = useState<HopeAction | null>(null);
+  /** Bumped after a write so the effect below re-reads the row, its findings and the rail. */
+  const [reloadKey, setReloadKey] = useState(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is the intentional refetch trigger, not read in the body.
   useEffect(() => {
     let active = true;
     (async () => {
@@ -120,7 +132,7 @@ export function HopeAssessmentDetail(): JSX.Element {
     return () => {
       active = false;
     };
-  }, [client, id]);
+  }, [client, id, reloadKey]);
 
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (loading || !row) return <LoadingSpinner />;
@@ -367,15 +379,39 @@ export function HopeAssessmentDetail(): JSX.Element {
           <button type="button" onClick={() => navigate("/hope/submissions")} style={ghostBtn}>
             Submission worklist
           </button>
-          <button
-            type="button"
-            onClick={() => navigate(`/patients/${row.patientId}/hope`)}
-            style={primaryBtn}
-          >
-            HOPE timeline
+          <button type="button" onClick={() => setActing("summary-pdf")} style={ghostBtn}>
+            Request summary
           </button>
+          {row.status === "signed" && row.supersededByAssessmentId === null ? (
+            <button type="button" onClick={() => setActing("correct")} style={ghostBtn}>
+              Correct
+            </button>
+          ) : null}
+          {row.status === "draft" ? (
+            <button type="button" onClick={() => setActing("sign")} style={primaryBtn}>
+              Sign
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => navigate(`/patients/${row.patientId}/hope`)}
+              style={primaryBtn}
+            >
+              HOPE timeline
+            </button>
+          )}
         </div>
       </div>
+      {acting !== null ? (
+        <HopeActionModal
+          open
+          action={acting}
+          targetId={row.id}
+          authorDiscipline={row.authorDiscipline}
+          onClose={() => setActing(null)}
+          onDone={() => setReloadKey((k) => k + 1)}
+        />
+      ) : null}
     </PatientWorkspaceLayout>
   );
 }

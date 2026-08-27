@@ -14,6 +14,14 @@ import {
 // A row drills into the submission detail (per-item outcomes + retry). Reads GET /api/v1/hope/submissions
 // via the typed client; the server enforces every scope incl. PE scope (ADR-0030 — no authz on the
 // frontend). Leaves only (@wardenx/ui).
+//
+// #91 / #150 — this screen offers NO write, and that is the finding rather than an omission. Both M10
+// submission routes are mounted and reachable, and neither does what its summary says: `assemble`
+// inserts a batch with `itemCount: 0` and no `hope_submission_item` rows (ignoring
+// `planAssembleSubmissions`), and `retry` flips a status nothing downstream consumes. The pipeline
+// behind them is unreachable end to end — no writer for `hope_submission_item`, no caller for
+// `submitBatch`, no emitter for `m10.hope.submission_transmitted`. An Assemble button here would report
+// success for work the server does not do. The banner below says so to the reader instead.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
@@ -107,6 +115,10 @@ export function SubmissionWorklist(): JSX.Element {
       }
       filters={
         <div style={filterShellStyle}>
+          <div style={pipelineNoticeStyle}>
+            Batches are listed read-only. Automated iQIES assembly and transmission are not yet
+            enabled in this deployment, so batches do not progress beyond <strong>queued</strong>.
+          </div>
           {error ? (
             <div role="alert" style={errorBannerStyle}>
               <span>{error}</span>
@@ -296,6 +308,15 @@ export function SubmissionWorklist(): JSX.Element {
     />
   );
 }
+
+const pipelineNoticeStyle = {
+  fontSize: "0.75rem",
+  color: "var(--color-on-surface-variant)",
+  background: "var(--color-surface-variant)",
+  borderRadius: "0.375rem",
+  padding: "0.5rem 0.625rem",
+  marginBottom: "0.5rem",
+} as const;
 
 const HOPE_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 

@@ -17451,9 +17451,40 @@
                                   ],
                                   "properties": {
                                     "symptomCode": {
-                                      "minLength": 1,
-                                      "maxLength": 64,
-                                      "type": "string"
+                                      "anyOf": [
+                                        {
+                                          "const": "pain",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "shortness_of_breath",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "anxiety",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "agitation",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "nausea_vomiting",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "constipation",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "restlessness",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "other",
+                                          "type": "string"
+                                        }
+                                      ]
                                     },
                                     "severity": {
                                       "anyOf": [
@@ -17946,9 +17977,40 @@
                                   ],
                                   "properties": {
                                     "symptomCode": {
-                                      "minLength": 1,
-                                      "maxLength": 64,
-                                      "type": "string"
+                                      "anyOf": [
+                                        {
+                                          "const": "pain",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "shortness_of_breath",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "anxiety",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "agitation",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "nausea_vomiting",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "constipation",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "restlessness",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "other",
+                                          "type": "string"
+                                        }
+                                      ]
                                     },
                                     "severity": {
                                       "anyOf": [
@@ -83856,9 +83918,40 @@
                                   ],
                                   "properties": {
                                     "symptomCode": {
-                                      "minLength": 1,
-                                      "maxLength": 64,
-                                      "type": "string"
+                                      "anyOf": [
+                                        {
+                                          "const": "pain",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "shortness_of_breath",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "anxiety",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "agitation",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "nausea_vomiting",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "constipation",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "restlessness",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "other",
+                                          "type": "string"
+                                        }
+                                      ]
                                     },
                                     "severity": {
                                       "anyOf": [
@@ -84265,9 +84358,40 @@
                                   ],
                                   "properties": {
                                     "symptomCode": {
-                                      "minLength": 1,
-                                      "maxLength": 64,
-                                      "type": "string"
+                                      "anyOf": [
+                                        {
+                                          "const": "pain",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "shortness_of_breath",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "anxiety",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "agitation",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "nausea_vomiting",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "constipation",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "restlessness",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "other",
+                                          "type": "string"
+                                        }
+                                      ]
                                     },
                                     "severity": {
                                       "anyOf": [
@@ -85360,6 +85484,7 @@
                         "required": [
                           "id",
                           "patientId",
+                          "admissionId",
                           "triggeringAssessmentId",
                           "status",
                           "triggeredAt",
@@ -85371,6 +85496,9 @@
                             "type": "string"
                           },
                           "patientId": {
+                            "type": "string"
+                          },
+                          "admissionId": {
                             "type": "string"
                           },
                           "triggeringAssessmentId": {
@@ -85456,6 +85584,7 @@
                   "required": [
                     "id",
                     "patientId",
+                    "admissionId",
                     "triggeringAssessmentId",
                     "status",
                     "triggeredAt",
@@ -85467,6 +85596,9 @@
                       "type": "string"
                     },
                     "patientId": {
+                      "type": "string"
+                    },
+                    "admissionId": {
                       "type": "string"
                     },
                     "triggeringAssessmentId": {

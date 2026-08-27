@@ -11,7 +11,7 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { LATE_COMPLETION_REASON_CODES } from "@wardenx/hope";
-import { HOPE_RFA_KINDS } from "@wardenx/types";
+import { HOPE_J2051_SYMPTOM_CODES, HOPE_RFA_KINDS } from "@wardenx/types";
 import { ValidationError } from "@wardenx/types";
 import type {
   HopeAssessmentView as ServiceAssessmentView,
@@ -53,7 +53,12 @@ const LATE_COMPLETION_REASON = lit(LATE_COMPLETION_REASON_CODES);
 
 /** §4.3 Section-J J2051 entries — the symptom-impact readings the D4 trigger evaluates. */
 const J2051Entry = Type.Object({
-  symptomCode: Type.String({ minLength: 1, maxLength: 64 }),
+  // Closed to the §2.1 CMS roster (`HOPE_J2051_SYMPTOM_CODES`). It was `Type.String({maxLength: 64})`,
+  // while `j2051.ts`'s header described it as "the closed CMS list at the route boundary" — so the list
+  // was closed in prose and open in code, and the emitted contract enumerated nothing a client could
+  // pick from. Every symptomCode literal in the repo is already a member, so this closes a gap rather
+  // than narrowing behaviour.
+  symptomCode: lit(HOPE_J2051_SYMPTOM_CODES),
   severity: J2051_SEVERITY,
   otherSymptomLabel: Type.Optional(Type.String({ maxLength: 100 })),
 });
@@ -261,6 +266,11 @@ export const HopeScheduleResponseSchema = Type.Object({
 export const HopeSfvResponseSchema = Type.Object({
   id: Type.String(),
   patientId: Type.String(),
+  // #91 — the SFV worklist is the queue whose reason to exist is COMPLETING the follow-up, and
+  // `POST /admissions/:admissionId/hope/sfv` is keyed by admission. The column has always been on the
+  // row (`symptom_follow_up_visit.admission_id`); it just never reached the wire, so the one screen
+  // that must act on an SFV had no way to name the admission it belongs to.
+  admissionId: Type.String(),
   triggeringAssessmentId: Type.String(),
   status: SFV_STATUS,
   triggeredAt: Type.String(),

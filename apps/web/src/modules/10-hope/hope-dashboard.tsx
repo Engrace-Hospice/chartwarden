@@ -18,9 +18,18 @@ import {
 // schedules, each clickable to filter, above the schedule worklist sorted by window-close. Window state
 // (green/amber/red/grey) is derived client-side as a UX cue only — the SERVER is authoritative for status
 // (ADR-0030, no frontend authz). Reads GET /api/v1/hope/schedules via the typed client. Leaves only (@wardenx/ui).
+//
+// #91 — this worklist is where a HOPE window is ACTED on, and it used to offer no action at all: a
+// clinician could see "closes in 6 hours" and had no way to record the timepoint that closes it. Each
+// OPEN row now carries Record (the §5.2 capture modal, pinned to that window's RFA and schedule id) and
+// Skip (the §4.1 route-3 ceremony). A terminal row (completed / skipped / expired) offers neither,
+// because the server refuses both — offering a control the server will refuse is the F-007 rule.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { type HopeAction, HopeActionModal } from "./hope-action-modal";
+import type { RfaKind } from "./hope-api";
+import { HopeRecordModal, type RecordWindow } from "./hope-record-modal";
 import { BUCKET_TONE, rfaLabel, stateLabel } from "./hope-status";
 
 interface ScheduleRow {
@@ -59,6 +68,8 @@ export function HopeDashboard(): JSX.Element {
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [recording, setRecording] = useState<ScheduleRow | null>(null);
+  const [acting, setActing] = useState<{ action: HopeAction; row: ScheduleRow } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -136,249 +147,310 @@ export function HopeDashboard(): JSX.Element {
     setPage(1);
   };
 
+  const recordWindow: RecordWindow | null =
+    recording === null
+      ? null
+      : {
+          id: recording.id,
+          rfaKind: recording.rfaKind,
+          windowOpensAt: recording.windowOpensAt,
+          windowClosesAt: recording.windowClosesAt,
+          lateDeadlineAt: recording.lateDeadlineAt,
+        };
+
   return (
-    <DashboardLayout
-      header={
-        <PageHeader title="HOPE Timepoints" breadcrumb="Clinical Quality — HOPE schedules">
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Track open HOPE timepoint windows, closing deadlines, late schedules, and expired items
-            by RFA.
-          </div>
-        </PageHeader>
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard
-            label="Open"
-            value={loading || error ? "—" : counts.open}
-            detail="Outside final 48h"
-            tone="info"
-            accentColor="var(--color-primary)"
-            selected={filter === "open"}
-            onSelect={() => {
-              setFilter("open");
-              setPage(1);
-            }}
-          />
-          <KpiCard
-            label="Closing 48h"
-            value={loading || error ? "—" : counts.closing}
-            detail="Needs attention"
-            tone={counts.closing > 0 ? "warning" : "neutral"}
-            accentColor={
-              counts.closing > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
-            }
-            selected={filter === "closing"}
-            onSelect={() => {
-              setFilter("closing");
-              setPage(1);
-            }}
-          />
-          <KpiCard
-            label="Late"
-            value={loading || error ? "—" : counts.late}
-            detail="Window closed"
-            tone={counts.late > 0 ? "danger" : "neutral"}
-            accentColor={counts.late > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
-            selected={filter === "late"}
-            onSelect={() => {
-              setFilter("late");
-              setPage(1);
-            }}
-          />
-          <KpiCard
-            label="Expired"
-            value={loading || error ? "—" : counts.expired}
-            detail="Terminal schedule"
-            tone="neutral"
-            accentColor="var(--color-outline-variant)"
-            selected={filter === "expired"}
-            onSelect={() => {
-              setFilter("expired");
-              setPage(1);
-            }}
-          />
-        </KpiStrip>
-      }
-      charts={
-        <div style={filterPanelStyle}>
-          {error ? (
-            <div role="alert" style={errorBannerStyle}>
-              <Glyph name="alert" size={16} />
-              <span>{error}</span>
+    <>
+      <DashboardLayout
+        header={
+          <PageHeader title="HOPE Timepoints" breadcrumb="Clinical Quality — HOPE schedules">
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Track open HOPE timepoint windows, closing deadlines, late schedules, and expired
+              items by RFA.
             </div>
-          ) : null}
-          <div style={filterRowStyle}>
-            <div style={{ position: "relative", minWidth: "17rem" }}>
-              <input
-                type="search"
-                placeholder="Search schedule, patient, admission..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setPage(1);
-                }}
-                aria-label="Search HOPE schedules"
-                style={searchInputStyle}
-              />
-              <div style={searchIconStyle}>
-                <Glyph name="eye" size={14} />
-              </div>
-            </div>
-            <label style={filterLabelStyle}>
-              <span style={mutedStyle}>State</span>
-              <select
-                aria-label="Filter by state"
-                value={filter}
-                onChange={(e) => {
-                  setFilter(e.target.value as Bucket);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Any state</option>
-                <option value="open">Open</option>
-                <option value="closing">Closing 48h</option>
-                <option value="late">Late</option>
-                <option value="expired">Expired</option>
-              </select>
-            </label>
-            <label style={filterLabelStyle}>
-              <span style={mutedStyle}>RFA</span>
-              <select
-                aria-label="Filter by RFA"
-                value={rfaFilter}
-                onChange={(e) => {
-                  setRfaFilter(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                {rfaOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {hasActiveFilters ? (
-              <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                Clear
-              </Button>
-            ) : null}
-            <span style={mutedStyle}>
-              {rows.length} of {items.length} schedules
-            </span>
-          </div>
-        </div>
-      }
-      table={
-        error ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState title="Unavailable" description={error} />
-          </div>
-        ) : loading && items.length === 0 ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : rows.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState
-              title="No HOPE schedules"
-              description={
-                hasActiveFilters
-                  ? "No timepoint windows match the current filters."
-                  : "No HOPE schedules are currently open."
-              }
-              action={
-                hasActiveFilters ? (
-                  <Button tone="secondary" size="sm" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                ) : undefined
-              }
-            />
-          </div>
-        ) : (
-          <>
-            <div style={tableViewportStyle}>
-              <table style={tableStyle}>
-                <colgroup>
-                  <col style={{ width: "26%" }} />
-                  <col style={{ width: "18%" }} />
-                  <col style={{ width: "20%" }} />
-                  <col style={{ width: "16%" }} />
-                  <col style={{ width: "20%" }} />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th>RFA</th>
-                    <th>Window closes</th>
-                    <th>State</th>
-                    <th>Patient</th>
-                    <th>Admission</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagedRows.map(({ row, bucket }) => (
-                    <tr
-                      key={row.id}
-                      // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => navigate(`/patients/${row.patientId}/hope`)}
-                      onKeyDown={(ev) => {
-                        if (ev.key === "Enter" || ev.key === " ") {
-                          ev.preventDefault();
-                          navigate(`/patients/${row.patientId}/hope`);
-                        }
-                      }}
-                      style={{ cursor: "pointer" }}
-                    >
-                      <td>
-                        <div style={primaryCellStyle}>
-                          <span style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
-                            {rfaLabel(row.rfaKind)}
-                          </span>
-                          <span style={monoMutedStyle}>{row.id.slice(0, 8)}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <CountdownChip
-                          dueAt={row.windowClosesAt}
-                          warnWithinHours={48}
-                          label="Closes"
-                        />
-                      </td>
-                      <td>
-                        <StatusPill
-                          label={stateLabel(bucket)}
-                          tone={BUCKET_TONE[bucket] ?? "neutral"}
-                        />
-                      </td>
-                      <td style={monoMutedStyle}>{row.patientId.slice(0, 8)}</td>
-                      <td style={monoMutedStyle}>{row.admissionId.slice(0, 8)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <OffsetPagination
-              page={activePage}
-              pageSize={pageSize}
-              totalItems={rows.length}
-              onPageChange={setPage}
-              onPageSizeChange={(size) => {
-                setPageSize(size);
+          </PageHeader>
+        }
+        kpis={
+          <KpiStrip>
+            <KpiCard
+              label="Open"
+              value={loading || error ? "—" : counts.open}
+              detail="Outside final 48h"
+              tone="info"
+              accentColor="var(--color-primary)"
+              selected={filter === "open"}
+              onSelect={() => {
+                setFilter("open");
                 setPage(1);
               }}
-              pageSizeOptions={PAGE_SIZES}
-              noun="schedules"
             />
-          </>
-        )
-      }
-    />
+            <KpiCard
+              label="Closing 48h"
+              value={loading || error ? "—" : counts.closing}
+              detail="Needs attention"
+              tone={counts.closing > 0 ? "warning" : "neutral"}
+              accentColor={
+                counts.closing > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
+              }
+              selected={filter === "closing"}
+              onSelect={() => {
+                setFilter("closing");
+                setPage(1);
+              }}
+            />
+            <KpiCard
+              label="Late"
+              value={loading || error ? "—" : counts.late}
+              detail="Window closed"
+              tone={counts.late > 0 ? "danger" : "neutral"}
+              accentColor={counts.late > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
+              selected={filter === "late"}
+              onSelect={() => {
+                setFilter("late");
+                setPage(1);
+              }}
+            />
+            <KpiCard
+              label="Expired"
+              value={loading || error ? "—" : counts.expired}
+              detail="Terminal schedule"
+              tone="neutral"
+              accentColor="var(--color-outline-variant)"
+              selected={filter === "expired"}
+              onSelect={() => {
+                setFilter("expired");
+                setPage(1);
+              }}
+            />
+          </KpiStrip>
+        }
+        charts={
+          <div style={filterPanelStyle}>
+            {error ? (
+              <div role="alert" style={errorBannerStyle}>
+                <Glyph name="alert" size={16} />
+                <span>{error}</span>
+              </div>
+            ) : null}
+            <div style={filterRowStyle}>
+              <div style={{ position: "relative", minWidth: "17rem" }}>
+                <input
+                  type="search"
+                  placeholder="Search schedule, patient, admission..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setPage(1);
+                  }}
+                  aria-label="Search HOPE schedules"
+                  style={searchInputStyle}
+                />
+                <div style={searchIconStyle}>
+                  <Glyph name="eye" size={14} />
+                </div>
+              </div>
+              <label style={filterLabelStyle}>
+                <span style={mutedStyle}>State</span>
+                <select
+                  aria-label="Filter by state"
+                  value={filter}
+                  onChange={(e) => {
+                    setFilter(e.target.value as Bucket);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="">Any state</option>
+                  <option value="open">Open</option>
+                  <option value="closing">Closing 48h</option>
+                  <option value="late">Late</option>
+                  <option value="expired">Expired</option>
+                </select>
+              </label>
+              <label style={filterLabelStyle}>
+                <span style={mutedStyle}>RFA</span>
+                <select
+                  aria-label="Filter by RFA"
+                  value={rfaFilter}
+                  onChange={(e) => {
+                    setRfaFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  {rfaOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {hasActiveFilters ? (
+                <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                  Clear
+                </Button>
+              ) : null}
+              <span style={mutedStyle}>
+                {rows.length} of {items.length} schedules
+              </span>
+            </div>
+          </div>
+        }
+        table={
+          error ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState title="Unavailable" description={error} />
+            </div>
+          ) : loading && items.length === 0 ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : rows.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title="No HOPE schedules"
+                description={
+                  hasActiveFilters
+                    ? "No timepoint windows match the current filters."
+                    : "No HOPE schedules are currently open."
+                }
+                action={
+                  hasActiveFilters ? (
+                    <Button tone="secondary" size="sm" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : (
+            <>
+              <div style={tableViewportStyle}>
+                <table style={tableStyle}>
+                  <colgroup>
+                    <col style={{ width: "22%" }} />
+                    <col style={{ width: "16%" }} />
+                    <col style={{ width: "16%" }} />
+                    <col style={{ width: "13%" }} />
+                    <col style={{ width: "15%" }} />
+                    <col style={{ width: "18%" }} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th>RFA</th>
+                      <th>Window closes</th>
+                      <th>State</th>
+                      <th>Patient</th>
+                      <th>Admission</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedRows.map(({ row, bucket }) => (
+                      <tr
+                        key={row.id}
+                        // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate(`/patients/${row.patientId}/hope`)}
+                        onKeyDown={(ev) => {
+                          if (ev.key === "Enter" || ev.key === " ") {
+                            ev.preventDefault();
+                            navigate(`/patients/${row.patientId}/hope`);
+                          }
+                        }}
+                        style={{ cursor: "pointer" }}
+                      >
+                        <td>
+                          <div style={primaryCellStyle}>
+                            <span style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
+                              {rfaLabel(row.rfaKind)}
+                            </span>
+                            <span style={monoMutedStyle}>{row.id.slice(0, 8)}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <CountdownChip
+                            dueAt={row.windowClosesAt}
+                            warnWithinHours={48}
+                            label="Closes"
+                          />
+                        </td>
+                        <td>
+                          <StatusPill
+                            label={stateLabel(bucket)}
+                            tone={BUCKET_TONE[bucket] ?? "neutral"}
+                          />
+                        </td>
+                        <td style={monoMutedStyle}>{row.patientId.slice(0, 8)}</td>
+                        <td style={monoMutedStyle}>{row.admissionId.slice(0, 8)}</td>
+                        <td>
+                          {row.status === "open" ? (
+                            // The row itself navigates; a click on an action must not also do that.
+                            <div
+                              style={{ display: "flex", gap: "0.375rem" }}
+                              onClick={(ev) => ev.stopPropagation()}
+                              onKeyDown={(ev) => ev.stopPropagation()}
+                            >
+                              <Button size="sm" onClick={() => setRecording(row)}>
+                                Record
+                              </Button>
+                              <Button
+                                size="sm"
+                                tone="tertiary"
+                                onClick={() => setActing({ action: "skip", row })}
+                              >
+                                Skip
+                              </Button>
+                            </div>
+                          ) : (
+                            <span style={mutedStyle}>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <OffsetPagination
+                page={activePage}
+                pageSize={pageSize}
+                totalItems={rows.length}
+                onPageChange={setPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size);
+                  setPage(1);
+                }}
+                pageSizeOptions={PAGE_SIZES}
+                noun="schedules"
+              />
+            </>
+          )
+        }
+      />
+      {recording !== null ? (
+        <HopeRecordModal
+          open
+          admissionId={recording.admissionId}
+          window={recordWindow}
+          defaultRfaKind={recording.rfaKind as RfaKind}
+          onClose={() => setRecording(null)}
+          onDone={() => {
+            void load();
+          }}
+        />
+      ) : null}
+      {acting !== null ? (
+        <HopeActionModal
+          open
+          action={acting.action}
+          targetId={acting.row.id}
+          onClose={() => setActing(null)}
+          onDone={() => {
+            void load();
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
