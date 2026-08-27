@@ -10,6 +10,7 @@
 //     │                          │  └withdraw→ discontinued                (epcs_identity_pending
 //     └discardDraft→ discontinued└                                          ─secondFactorFailed→ pending_signature)
 //   queued_for_transmission ─transmissionSucceeded→ transmitted ─pharmacyAck→ ack_received ─activate→ active
+//   signed ─activate→ active                     (F-058: only when `dosespot_send_state = not_required`)
 //     └transmissionExhausted→ transmission_failed   transmitted ─pharmacyNack→ nack_received ─discontinue→ …
 //   active ─complete→ completed ;  active ─discontinue→ discontinued
 //   {pending_signature|epcs_identity_pending|queued_for_transmission|active} ─cascadeDiscontinue→ discontinued (D13)
@@ -159,6 +160,30 @@ export type MedicationOrderEvent =
       readonly type: "activate";
       /** §2.2 — the immediate `ack_received → active` system transition (no other gate). */
       readonly isSystemActor: boolean;
+      /**
+       * §2.2 / §4.10 (F-058) — does this order require a DoseSpot NewRx transmission at all?
+       *
+       * `medication_order.dosespot_send_state` has carried `not_required` as its DEFAULT since M12-T02,
+       * and it means what it says: nothing is being e-prescribed for this order, so there is no NewRx to
+       * send, no pharmacy to acknowledge it, and nothing to wait for. A hospice supplies a great many
+       * medications this way — from a comfort kit already in the home, from IPU stock, from what the
+       * family already has — and this spec says so itself when it notes that during the signature window
+       * "the pharmacy is supplying from the hospice's own comfort kit".
+       *
+       * The graph nevertheless gave `signed` exactly ONE exit, `enqueueTransmission`, as if transmission
+       * were mandatory. Since no transmission worker or webhook handler exists, every order the platform
+       * has ever produced stopped dead at `signed`: never activated, and — because `complete`,
+       * `discontinue` and `cascadeDiscontinue` are all legal only from `active` — never completable,
+       * never discontinuable, and untouched by the discharge cascade. `signed` was a terminal state
+       * wearing an in-flight state's name.
+       *
+       * So `activate` now has two arms. From `ack_received` it is the system transition it always was
+       * (the webhook path, unchanged, `isSystemActor` required). From `signed` it is legal only when
+       * transmission is NOT required — which is the honest reading: there is nothing left to happen to
+       * this order before it can be given. It is NOT a way to skip a transmission that is owed; an order
+       * queued, in flight, nacked or failed still has to travel its own path.
+       */
+      readonly transmissionRequired: boolean;
     }
   | {
       readonly type: "complete";
@@ -188,7 +213,7 @@ export const MEDICATION_ORDER_GRAPH: Readonly<
   pending_signature: ["sign", "signControlled", "recordVerbal", "withdraw", "cascadeDiscontinue"],
   epcs_identity_pending: ["completeSecondFactor", "secondFactorFailed", "cascadeDiscontinue"],
   verbal_pending: ["sign", "signControlled", "expire", "cascadeDiscontinue"],
-  signed: ["enqueueTransmission"],
+  signed: ["enqueueTransmission", "activate"],
   queued_for_transmission: ["transmissionSucceeded", "transmissionExhausted", "cascadeDiscontinue"],
   transmitted: ["pharmacyAck", "pharmacyNack", "transmissionExhausted"],
   ack_received: ["activate"],
@@ -534,11 +559,22 @@ export function transitionMedicationOrder(
     }
 
     case "activate": {
-      require_(
-        event.isSystemActor,
-        "NOT_SYSTEM_ACTOR",
-        "the activate transition is a system-actor operation",
-      );
+      if (from === "ack_received") {
+        require_(
+          event.isSystemActor,
+          "NOT_SYSTEM_ACTOR",
+          "activating an acknowledged order is a system-actor operation (the webhook path)",
+        );
+      } else {
+        // The `signed` arm (F-058). Guarded on the transmission state, not on the actor: the clinician
+        // who signed an order for a drug already in the home is the right actor, and an order that DOES
+        // owe a transmission must not reach `active` by declaring it doesn't.
+        require_(
+          !event.transmissionRequired,
+          "MEDICATION_ORDER_TRANSMISSION_PENDING",
+          "a signed order that requires DoseSpot transmission activates on the pharmacy acknowledgment, not before",
+        );
+      }
       // §2.2 — the downstream-relevant event: M13 eMAR may now record administrations against this order.
       return result(from, event.type, "active", [
         { kind: "set_timestamp", field: "activated_at" },

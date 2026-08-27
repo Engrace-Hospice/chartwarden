@@ -274,6 +274,46 @@ export function createDbDoseSpotBackend(
    * resolve. `patientId` rides inside `renderPayload` (catalog schema `Type.Unknown()`, so no payload-schema
    * change) because the rendered `document` files against the patient's chart.
    */
+  /**
+   * F-058 — a signed order that is not being e-prescribed is ready to give, and nothing else is going to
+   * happen to it first.
+   *
+   * `medication_order.dosespot_send_state` has carried `not_required` as its DEFAULT since M12-T02, and
+   * with no transmission worker and no webhook handler in this build that is the state of every order
+   * the platform has ever produced. The §2.2 graph nevertheless gave `signed` exactly one exit
+   * (`enqueueTransmission`), so those orders stopped there forever: never `active`, and — because
+   * `complete`, `discontinue` and `cascadeDiscontinue` are all legal only from `active` — never
+   * completable, never discontinuable, and untouched by the discharge cascade. They were also invisible
+   * to `GET /patients/:id/medications/active` (which filters `status = 'active'`) and refused by M13's
+   * §2.9 D6 administrability gate. `signed` was a terminal state wearing an in-flight state's name.
+   *
+   * Run in the SAME transaction as the signature rather than behind a second button: a nurse pressing
+   * "yes, really" for a drug already in the patient's home is a step with no decision in it, and
+   * forgetting it is precisely the failure being fixed. An order that DOES owe a transmission is
+   * untouched — the machine refuses the arm, and this never reaches it.
+   */
+  async function activateIfNotTransmitting(
+    tx: DbClient,
+    organizationId: string,
+    row: MoRow,
+    at: Date,
+  ): Promise<void> {
+    if (row.dosespotSendState !== "not_required") return;
+    transitionMedicationOrder("signed", {
+      type: "activate",
+      isSystemActor: false,
+      transmissionRequired: false,
+    });
+    await tx
+      .update(MO)
+      .set({ status: "active", activatedAt: at, version: row.version + 2, updatedAt: at })
+      .where(eq(MO.id, row.id));
+    await emit(tx, organizationId, "m12.medication_order.active", "medication_order", row.id, {
+      orderId: row.id,
+      fullDto: null,
+    });
+  }
+
   async function emitDocumentRequest(
     tx: DbClient,
     organizationId: string,
@@ -520,6 +560,7 @@ export function createDbDoseSpotBackend(
           viaVerbal: fromVerbal,
         });
         await emitDocumentRequest(tx, organizationId, r, at);
+        await activateIfNotTransmitting(tx, organizationId, r, at);
         return readOrder(tx, id);
       });
     },
@@ -562,6 +603,7 @@ export function createDbDoseSpotBackend(
           secondFactorType: "totp",
         });
         await emitDocumentRequest(tx, organizationId, r, at);
+        await activateIfNotTransmitting(tx, organizationId, r, at);
         return readOrder(tx, id);
       });
     },

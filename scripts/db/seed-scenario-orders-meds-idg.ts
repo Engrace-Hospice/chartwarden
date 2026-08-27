@@ -343,12 +343,16 @@ async function main(): Promise<void> {
     if (sign.error) throw new Error(`medication order sign failed: ${JSON.stringify(sign.error)}`);
     signedMedOrderId = draftData.id;
 
-    log.ok("DoseSpot: standard comfort-medication order drafted + signed (no EPCS)");
+    // F-058 — the signature ACTIVATES this order, because `dosespot_send_state` is `not_required`:
+    // nothing is being e-prescribed, so there is no NewRx to send and no pharmacy ack to wait for. It
+    // used to stop at `signed`, where it was invisible to `/medications/active`, refused by M13's D6
+    // administrability gate, and impossible to complete or discontinue.
+    log.ok("DoseSpot: standard comfort-medication order drafted + signed → active (no EPCS)");
   } catch (err) {
     log.fail(`M12 DoseSpot: ${String(err)}`);
   }
 
-  // ── M13 — eMAR (administration against the signed standard medication order) ─────────────────
+  // ── M13 — eMAR (administration against the now-ACTIVE standard medication order) ──────────────
   try {
     if (!signedMedOrderId) throw new Error("no signed medication order to administer against");
     const admin = await rn.client.POST("/api/v1/administrations", {

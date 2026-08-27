@@ -32,15 +32,17 @@
 //       the §2.9 D6 note below was already written against — and an order that resolves to nothing is
 //       REFUSED rather than filed under a sentinel: without the order there is no answer to "which patient
 //       received this dose", and inventing one is worse than declining to record;
-//   (3) the M12 `MedicationOrderProvider` seam is threaded for the identity facts only (see (2)). The §2.9
-//       D6 order-context GATES (`allowAdministration`/`blockedReasons` — not_active / discontinued /
-//       replaced / expired_unsigned / transmission_failed) are still NOT applied, deliberately and
-//       separately: only `status = "active"` clears that gate, and nothing in this repo activates an order
-//       (`db:seed:scenario-orders-meds-idg` administers against a `signed` one), so switching it on here
-//       would refuse every administration the platform can currently produce. Threading the reader and
-//       arming the gate are two changes; this is the first. A supplied barcodeScan is still evaluated +
-//       persisted against a permissive order context (an honest scan reads `match`; an expired scan still
-//       hard-blocks);
+//   (3) [CLOSED, F-058] the M12 `MedicationOrderProvider` seam is threaded and the §2.9 D6 order-context
+//       gate (`allowAdministration`/`blockedReasons` — not_active / discontinued / replaced /
+//       expired_unsigned / transmission_failed) is APPLIED. It was threaded-but-unarmed for exactly one
+//       release, because only `status = "active"` cleared M12's verdict and nothing in the platform ever
+//       activated an order — arming it then would have refused every administration the system could
+//       produce. F-058 fixed the producer side (a signed order that is not being e-prescribed activates
+//       on signature; a verbal order is administrable per M12 §2.3), so the verdict now separates "ready
+//       to give" from "discontinued / replaced / never signed" instead of refusing everything. The §5.11
+//       five-rights validation against the order projection remains open. A supplied barcodeScan is
+//       evaluated + persisted against a permissive order context (an honest scan reads `match`; an
+//       expired scan still hard-blocks);
 //   (4) the M8 `SignedEncountersReader` is NOT threaded → encounter auto-linkage is skipped (the caller may
 //       still pass an explicit encounterId);
 //   (5) [CLOSED, TASK-008] the witness-attestation secret is externalized via `M13_WITNESS_SIGNING_KEY`
@@ -180,6 +182,10 @@ export interface EmarMedicationOrderPort {
      * (`IV_RATE_OUT_OF_RANGE`): an infusion rate nobody bounded is a rate nobody prescribed.
      */
     readonly ivContinuousPolicy: { readonly minRate: number; readonly maxRate: number } | null;
+    /** §2.9 D6 — may this order be administered at all? M12's `getAdministrationContext` verdict. */
+    readonly allowAdministration: boolean;
+    /** The reasons behind a `false` verdict, echoed to the caller so the refusal names itself. */
+    readonly blockedReasons: readonly string[];
   } | null>;
 }
 
@@ -734,6 +740,18 @@ export function createDbEmarBackend(
                   "no scheduled dose was named and the medication order could not be read, so the patient this dose was given to is unknown",
               },
             ],
+          );
+        // §2.9 D6 — is this order administrable at all? ARMED (F-058). It was threaded for the identity
+        // facts and deliberately left off, because only `status = "active"` clears M12's verdict and
+        // nothing in the platform activated an order — so arming it would have refused every
+        // administration the system could produce. A signed order that is not being e-prescribed now
+        // activates on signature and a verbal order is administrable per §2.3, so the verdict finally
+        // distinguishes "ready to give" from "discontinued / replaced / never signed". A caller who
+        // supplies a scheduled dose is NOT exempt: the dose was materialized from this same order.
+        if (identity && !identity.allowAdministration)
+          throw new AdministrationStateError(
+            "ADMINISTRATION_BLOCKED",
+            `the medication order is not administrable: ${identity.blockedReasons.join(", ") || "not_active"}`,
           );
         const patientId = sched?.patientId ?? identity?.patientId ?? PATIENT_SENTINEL;
         const admissionId = sched?.admissionId ?? identity?.admissionId ?? ADMISSION_SENTINEL;

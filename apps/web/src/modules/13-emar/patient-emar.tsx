@@ -38,13 +38,12 @@ import {
 //     carries only the order id; the names come from M12's `/patients/{id}/medications/active`, joined
 //     here. A caller without `prescribing.read` still sees the id — degraded, never fabricated.
 //
-// A third thing, found while running the E2E: nothing in the platform ACTIVATES a medication order
-// either (the transition runs through DoseSpot transmission + ack, which is stubbed), so every order in a
-// seeded or production database sits at `signed`. The picker therefore reads
-// `GET /api/v1/medication-orders?patientId=` and drops only the terminally dead statuses, rather than
-// `/medications/active`, which filters `status = 'active'` and returns an empty list for every patient
-// alive. It labels each option with its lifecycle status so the clinician can see what they are giving
-// against; see TERMINAL_ORDER_STATUSES in emar-api.ts.
+// The picker reads `GET /api/v1/medication-orders?patientId=` rather than `/medications/active`, and
+// keeps the statuses M13 may administer against — `active` PLUS `verbal_pending`, because M12 §2.3 says a
+// verbal order "is active for clinical execution during this window" and `/medications/active` filters
+// `status = 'active'`, which would hide exactly the 2 AM verbal order the module exists for. Each option
+// is labelled with its lifecycle status so the clinician can see what they are giving against; the
+// SERVER's §2.9 D6 gate is the enforcement. See ADMINISTRABLE_ORDER_STATUSES in emar-api.ts.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";

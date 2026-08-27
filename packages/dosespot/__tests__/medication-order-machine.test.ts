@@ -422,11 +422,56 @@ describe("§2.2 transmission chain (signed → … → active)", () => {
     const active = transitionMedicationOrder("ack_received", {
       type: "activate",
       isSystemActor: true,
+      transmissionRequired: true,
     });
     expect(active.to).toBe("active");
     expect(active.effects).toContainEqual({ kind: "set_timestamp", field: "activated_at" });
     expect(outboxEvents(active.effects)).toEqual(["m12.medication_order.active"]);
   });
+  it("F-058: signed → active when nothing is being e-prescribed", () => {
+    // `signed` used to have exactly ONE exit, `enqueueTransmission`, as if a NewRx were always owed. With
+    // no transmission worker and no webhook handler in this build, every order the platform produced
+    // stopped there forever — and since complete/discontinue/cascadeDiscontinue are all legal only from
+    // `active`, a signed order could never be completed, discontinued, or caught by the discharge
+    // cascade. `dosespot_send_state` has defaulted to `not_required` since M12-T02; this is that column
+    // finally meaning something.
+    expect(MEDICATION_ORDER_GRAPH.signed).toContain("activate");
+    const active = transitionMedicationOrder("signed", {
+      type: "activate",
+      isSystemActor: false,
+      transmissionRequired: false,
+    });
+    expect(active.to).toBe("active");
+    expect(active.effects).toContainEqual({ kind: "set_timestamp", field: "activated_at" });
+    expect(outboxEvents(active.effects)).toEqual(["m12.medication_order.active"]);
+    // …and from `active` the order can finally be finished or stopped.
+    expect(MEDICATION_ORDER_GRAPH.active).toContain("complete");
+    expect(MEDICATION_ORDER_GRAPH.active).toContain("discontinue");
+    expect(MEDICATION_ORDER_GRAPH.active).toContain("cascadeDiscontinue");
+  });
+
+  it("F-058: the signed arm is NOT a way to skip a transmission that is owed", () => {
+    expect(() =>
+      transitionMedicationOrder("signed", {
+        type: "activate",
+        isSystemActor: false,
+        transmissionRequired: true,
+      }),
+    ).toThrow(expect.objectContaining({ code: "MEDICATION_ORDER_TRANSMISSION_PENDING" }));
+  });
+
+  it("F-058: the ack_received arm still refuses a human actor", () => {
+    // The webhook path is unchanged — the new arm is guarded on the transmission state, the old one on
+    // the actor, and neither guard leaks into the other.
+    expect(() =>
+      transitionMedicationOrder("ack_received", {
+        type: "activate",
+        isSystemActor: false,
+        transmissionRequired: true,
+      }),
+    ).toThrow(expect.objectContaining({ code: "NOT_SYSTEM_ACTOR" }));
+  });
+
   it("pharmacyNack → nack_received + high-sev alert, then prescriber discontinues", () => {
     const nack = transitionMedicationOrder("transmitted", {
       type: "pharmacyNack",

@@ -30,6 +30,26 @@ type AdministrationBlockReason =
   | "expired_unsigned"
   | "transmission_failed";
 
+/**
+ * §2.2 — the statuses M13 may record an administration against.
+ *
+ * `active` is the obvious one. `verbal_pending` is here because this module's own spec §2.3 says so in
+ * as many words: a verbal order "is **active for clinical execution** during this window for
+ * non-controlled substances (per CMS — verbal orders are valid orders pending signature) but visibly
+ * marked as 'pending prescriber signature'", and "M13 eMAR may record administrations". The
+ * implementation blocked it anyway (F-058) — which is the 2 AM verbal-order workflow this module's own
+ * §1 names as the thing it exists for, refused by the gate meant to protect it. A CONTROLLED verbal
+ * order cannot exist in Phase 1 (D18 feature-flag-OFF, `EPCS_VERBAL_NOT_PERMITTED` at `recordVerbal`),
+ * so admitting `verbal_pending` here cannot admit an unwitnessed controlled substance.
+ *
+ * Everything else stays blocked, `signed` included: a signed order that is not being e-prescribed now
+ * ACTIVATES on signature (F-058), and one that owes a transmission is genuinely not ready to give.
+ */
+const ADMINISTRABLE_STATUSES: ReadonlySet<MedicationOrderStatus> = new Set<MedicationOrderStatus>([
+  "active",
+  "verbal_pending",
+]);
+
 /** The M13 administration-context block reasons for a non-administrable medication order (empty ⇒ allowed). */
 function blockedReasonsFor(
   order: MedicationOrderDto,
@@ -40,7 +60,7 @@ function blockedReasonsFor(
   else if (order.status === "expired_unsigned") reasons.push("expired_unsigned");
   else if (order.status === "transmission_failed" || order.status === "nack_received")
     reasons.push("transmission_failed");
-  else if (order.status !== "active") reasons.push("not_active");
+  else if (!ADMINISTRABLE_STATUSES.has(order.status)) reasons.push("not_active");
   // An order superseded by a newer one (a sibling pointing at it via `replacesMedicationOrderId`) is blocked
   // even if its own status is still active — M13 must administer the replacement, not the stale row.
   if (isReplaced) reasons.push("replaced");
