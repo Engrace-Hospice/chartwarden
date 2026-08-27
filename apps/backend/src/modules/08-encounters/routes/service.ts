@@ -20,6 +20,7 @@ import {
   type F2fAttestationWrite,
   type MileageInput,
   type VitalsInput,
+  deriveAbnormalFlags,
   planF2fDualWrite,
   planMileageCapture,
   planVitalsCapture,
@@ -86,6 +87,45 @@ export interface VitalsResult {
   readonly bmi: string | null;
 }
 
+/**
+ * One stored vitals set, read back (§2.2, §3.3 `vitals`). The write path returns only the DERIVED
+ * facts (`VitalsResult`: ids + flags + BMI) and the measured values were then unreadable through any
+ * caller-facing route — a clinician could record a blood pressure and never see it again (#92).
+ *
+ * `abnormalFlags` is re-derived on read with `deriveAbnormalFlags`, the same pure function the write
+ * path uses, so the two cannot disagree about which value is out of range. It deliberately does NOT
+ * call `planVitalsCapture`: that validates, and a stored row is a signed clinical record — a read
+ * that can throw because a plausibility envelope was tightened after the write would make the record
+ * unretrievable, which is the opposite of what 42 CFR 418.104 requires.
+ *
+ * `loincReferences` is not surfaced: it is per-field FHIR mapping metadata, not a clinician-facing
+ * measurement, and M28 maps it from the table directly.
+ */
+export interface VitalsView {
+  readonly id: string;
+  readonly encounterId: string;
+  readonly capturedAt: string;
+  readonly bpSystolic: number | null;
+  readonly bpDiastolic: number | null;
+  readonly heartRate: number | null;
+  readonly respiratoryRate: number | null;
+  readonly temperature: string | null;
+  readonly temperatureUnit: string | null;
+  readonly spo2: number | null;
+  readonly painScore: number | null;
+  readonly painScale: string | null;
+  readonly weight: string | null;
+  readonly weightUnit: string | null;
+  readonly height: string | null;
+  readonly heightUnit: string | null;
+  readonly bmi: string | null;
+  readonly bloodGlucose: number | null;
+  readonly bloodGlucoseUnit: string | null;
+  readonly clinicallyNotIndicatedFields: readonly string[] | null;
+  readonly clinicallyNotIndicatedReason: string | null;
+  readonly abnormalFlags: readonly string[];
+}
+
 /** Route result for a mileage capture/edit — the authoritative figure (D10). */
 export interface MileageResult {
   readonly mileageId: string;
@@ -135,6 +175,11 @@ export interface EncounterRouteService {
     vitalsId: string,
     input: VitalsInput,
   ): Promise<VitalsResult>;
+  /** Read back every vitals set recorded on one encounter, newest capture first (#92). */
+  listVitals(
+    organizationId: string,
+    encounterId: string,
+  ): Promise<{ encounterId: string; vitals: VitalsView[] }>;
   captureMileage(
     organizationId: string,
     encounterId: string,
@@ -264,8 +309,53 @@ interface EncounterRecord {
   cosignedAt: string | null;
   cosignature: CosignatureState | null;
   addenda: Map<string, { id: string; status: AddendumState; version: number }>;
-  vitals: Map<string, VitalsInput>;
+  vitals: Map<string, { capturedAt: string; bmi: string | null; input: VitalsInput }>;
   mileage: { id: string; milesDriven: string; source: string } | null;
+}
+
+/**
+ * Project one stored vitals set into its read view (#92). Exported so the Drizzle adapter reuses the
+ * exact same projection and ordering as the in-memory slice — the read DTO is a published contract,
+ * and two hand-written projections of it would eventually disagree about a null.
+ */
+export function toVitalsView(
+  id: string,
+  encounterId: string,
+  stored: { capturedAt: string; bmi: string | null; input: VitalsInput },
+): VitalsView {
+  const { input } = stored;
+  return {
+    id,
+    encounterId,
+    capturedAt: stored.capturedAt,
+    bpSystolic: input.bpSystolic ?? null,
+    bpDiastolic: input.bpDiastolic ?? null,
+    heartRate: input.heartRate ?? null,
+    respiratoryRate: input.respiratoryRate ?? null,
+    temperature: input.temperature ?? null,
+    temperatureUnit: input.temperatureUnit ?? null,
+    spo2: input.spo2 ?? null,
+    painScore: input.painScore ?? null,
+    painScale: input.painScale ?? null,
+    weight: input.weight ?? null,
+    weightUnit: input.weightUnit ?? null,
+    height: input.height ?? null,
+    heightUnit: input.heightUnit ?? null,
+    bmi: stored.bmi,
+    bloodGlucose: input.bloodGlucose ?? null,
+    bloodGlucoseUnit: input.bloodGlucoseUnit ?? null,
+    clinicallyNotIndicatedFields: input.clinicallyNotIndicatedFields
+      ? [...input.clinicallyNotIndicatedFields]
+      : null,
+    clinicallyNotIndicatedReason: input.clinicallyNotIndicatedReason ?? null,
+    abnormalFlags: deriveAbnormalFlags(input),
+  };
+}
+
+/** Newest capture first, id as the tiebreak so two sets captured in the same instant still order. */
+export function byCapturedAtDesc(a: VitalsView, b: VitalsView): number {
+  if (a.capturedAt !== b.capturedAt) return a.capturedAt < b.capturedAt ? 1 : -1;
+  return a.id < b.id ? 1 : -1;
 }
 
 /** Deterministic, I/O-free seed for the in-memory route service (slice + smoke tests). */
@@ -426,7 +516,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       checkMutableForEdit({ status: r.status });
       const plan = planVitalsCapture(input); // validates envelopes + CNI reason (§2.2)
       const vitalsId = subId();
-      r.vitals.set(vitalsId, input);
+      r.vitals.set(vitalsId, { capturedAt: now(), bmi: plan.bmi, input });
       recordOutbox(r.id, plan.effects);
       return {
         vitalsId,
@@ -438,15 +528,25 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     async editVitals(organizationId, encounterId, vitalsId, input) {
       const r = load(organizationId, encounterId);
       checkMutableForEdit({ status: r.status });
-      if (!r.vitals.has(vitalsId)) throw new NotFoundError("vitals");
+      const prior = r.vitals.get(vitalsId);
+      if (!prior) throw new NotFoundError("vitals");
       const plan = planVitalsCapture(input);
-      r.vitals.set(vitalsId, input);
+      r.vitals.set(vitalsId, { capturedAt: prior.capturedAt, bmi: plan.bmi, input });
       recordOutbox(r.id, plan.effects);
       return {
         vitalsId,
         fieldsCaptured: plan.fieldsCaptured,
         abnormalFlags: plan.abnormalFlags,
         bmi: plan.bmi,
+      };
+    },
+    async listVitals(organizationId, encounterId) {
+      const r = load(organizationId, encounterId);
+      return {
+        encounterId: r.id,
+        vitals: [...r.vitals.entries()]
+          .map(([id, v]) => toVitalsView(id, r.id, v))
+          .sort(byCapturedAtDesc),
       };
     },
     async captureMileage(organizationId, encounterId, input) {

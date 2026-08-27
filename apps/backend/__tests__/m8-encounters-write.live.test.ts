@@ -340,6 +340,75 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     });
   });
 
+  // #92 — the vitals read-back, against real rows under the NOBYPASSRLS `wardenx_app` role. The pure
+  // suite proves the projection over in-memory Maps; only this proves the SELECT returns the columns
+  // the write actually persisted, that `captured_at` orders them, and that RLS scopes them by tenant.
+  it("#92 listVitals round-trips the persisted measurements, newest capture first", async () => {
+    const id = await draft("routine_visit", "rn");
+    const first = await svc.captureVitals(ORG_A, id, {
+      heartRate: 60,
+      temperature: "37.1",
+      temperatureUnit: "c",
+    });
+    // A distinct `captured_at` — the ordering claim is about the real clock, not an id tiebreak.
+    await new Promise((r) => setTimeout(r, 25));
+    const second = await svc.captureVitals(ORG_A, id, {
+      bpSystolic: 150,
+      bpDiastolic: 95,
+      spo2: 97,
+      painScore: 4,
+      painScale: "nrs_0_10",
+      weight: "80",
+      weightUnit: "kg",
+      height: "180",
+      heightUnit: "cm",
+      bloodGlucose: 110,
+      bloodGlucoseUnit: "mg_dl",
+    });
+
+    const read = await svc.listVitals(ORG_A, id);
+    expect(read.encounterId).toBe(id);
+    expect(read.vitals.map((v) => v.id)).toEqual([second.vitalsId, first.vitalsId]);
+
+    const [newest, oldest] = read.vitals;
+    if (!newest || !oldest) throw new Error("expected two vitals sets");
+    expect(newest.bpSystolic).toBe(150);
+    expect(newest.bpDiastolic).toBe(95);
+    expect(newest.spo2).toBe(97);
+    expect(newest.painScore).toBe(4);
+    expect(newest.painScale).toBe("nrs_0_10");
+    expect(newest.weight).toBe("80");
+    expect(newest.height).toBe("180");
+    expect(newest.bloodGlucose).toBe(110);
+    expect(newest.bloodGlucoseUnit).toBe("mg_dl");
+    // Stored BMI comes back as stored; flags re-derive to the same answer the write returned.
+    expect(newest.bmi).toBe(second.bmi);
+    expect(newest.abnormalFlags).toEqual(second.abnormalFlags);
+    // A measurement nobody took reads as null on a row that exists — not as a missing key.
+    expect(oldest.heartRate).toBe(60);
+    expect(oldest.temperature).toBe("37.1");
+    expect(oldest.spo2).toBeNull();
+    expect(oldest.bmi).toBeNull();
+  });
+
+  it("#92 listVitals survives the encounter being signed (the record stays retrievable)", async () => {
+    const id = await draft("routine_visit", "rn");
+    const written = await svc.captureVitals(ORG_A, id, { heartRate: 72 });
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    // Writing is refused after signing (§2.7); READING must not be — 42 CFR 418.104 requires the
+    // signed record be retrievable, and it is the signed state the record exists in.
+    const read = await svc.listVitals(ORG_A, id);
+    expect(read.vitals.map((v) => v.id)).toEqual([written.vitalsId]);
+    expect(read.vitals[0]?.heartRate).toBe(72);
+  });
+
+  it("#92 RLS — org B cannot read org A's vitals, and gets a non-leaking 404 not an empty list", async () => {
+    const id = await draft("routine_visit", "rn");
+    await svc.captureVitals(ORG_A, id, { heartRate: 72 });
+    await expect(svc.listVitals(ORG_B, id)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
   it("RLS — org B cannot read or write org A's encounter (non-leaking 404)", async () => {
     const id = await draft("routine_visit", "rn");
     await expect(svc.getEncounter(ORG_B, id)).rejects.toMatchObject({ statusCode: 404 });

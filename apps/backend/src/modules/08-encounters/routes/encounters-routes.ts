@@ -1,5 +1,5 @@
 // apps/backend/src/modules/08-encounters/routes/encounters-routes.ts — M8-T09 the §4.1 route inventory
-// (31 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth,
+// (32 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth,
 // M3) on the §4.5 keys M8 registers into M3's catalog (M8_CONTRIBUTED_PERMISSIONS). Org binding is
 // server-side (`request.context`, never the body). Handlers compose over the injected EncounterRouteService
 // (in-memory slice; Drizzle in prod under `withOrgContext` so RLS backstops).
@@ -247,6 +247,43 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       const { encounterId, vitalId } = parse(VitalParamsSchema, request.params);
       const body = parse(CaptureVitalsSchema, request.body);
       return service.editVitals(organizationId, encounterId, vitalId, body);
+    },
+  );
+
+  // 5b — read back the encounter's vitals (#92).
+  //
+  // A SIBLING read rather than an expansion of the encounter DTO: `GET /encounters` and the two work
+  // queues return `EncounterView[]` through the same projection, so folding vitals into the view would
+  // ship every clinician's full measurement set on every list page — a PHI over-fetch to solve a
+  // single-chart problem. `encounter.read` + the same `encounter.scope` caseload predicate the
+  // encounter read carries, so the vitals of an encounter are exactly as reachable as the encounter.
+  app.get(
+    "/api/v1/encounters/:encounterId/vitals",
+    {
+      preHandler: [READ, SCOPE_FOR("encounter.read")],
+      config: {
+        auditRead: {
+          resourceKind: "vitals",
+          resourceIdParam: "encounterId",
+          fields: [
+            "bpSystolic",
+            "bpDiastolic",
+            "heartRate",
+            "respiratoryRate",
+            "temperature",
+            "spo2",
+            "painScore",
+            "weight",
+            "height",
+            "bmi",
+            "bloodGlucose",
+          ],
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.listVitals(organizationId, encounterIdOf(request));
     },
   );
 
