@@ -250,11 +250,11 @@ describe.skipIf(!DB_URL)(
       expect(r.rows[0].n).toBeGreaterThan(0);
     });
 
-    // #117 / migration 0224 — the suspend/reinstate reason the API demanded and discarded now lands here.
+    // #117 / migration 0228 — the suspend/reinstate reason the API demanded and discarded now lands here.
     // `check-audit-denylist-sync` proves the CONSTANT and the SQL agree; only an executed trigger proves the
-    // scrub actually happens, and 0224 replaces a function 0139 defined, so this also proves the replacement
+    // scrub actually happens, and 0228 replaces a function 0139 defined, so this also proves the replacement
     // took (a CREATE OR REPLACE that silently missed would leave the old three-column array in place).
-    it("a status-change reason is stored on the row and SCRUBBED from the audit trail (0224)", async () => {
+    it("a status-change reason is stored on the row and SCRUBBED from the audit trail (0228)", async () => {
       const sealed = "v1.k1.NONCE.TAG.SEALEDBLOB";
       const res = await withOrg(ORG_A, () =>
         db.query(

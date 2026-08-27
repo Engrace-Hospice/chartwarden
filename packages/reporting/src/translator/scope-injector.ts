@@ -20,7 +20,7 @@
 // that emits no predicate (F-059's other half). Two dead halves that only fail when joined.
 //
 // The column is now DECLARED PER BASE (`report_base_catalog.scope_membership_column` /
-// `scope_location_column`, migration 0224) and passed in, because which column carries the scope is a
+// `scope_location_column`, migration 0227) and passed in, because which column carries the scope is a
 // property of the MV, not of the platform. A base that declares NO column for the requested scope kind
 // compiles to `FALSE` — an org-grain aggregate genuinely cannot be narrowed to one clinician, and the
 // choice there is between denying and serving the whole org to a `self`-scoped actor. That is the same
