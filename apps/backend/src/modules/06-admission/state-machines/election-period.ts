@@ -49,8 +49,19 @@ export type ElectionPeriodTransition = TransitionResult<
 export const ELECTION_PERIOD_GRAPH: Readonly<
   Record<ElectionPeriodState, ReadonlyArray<ElectionPeriodEvent["type"]>>
 > = {
-  pending: ["signElectionStatement"],
-  signed: ["setActive"],
+  // `setActive` is legal from `pending` as well as from `signed`, because a RECERTIFICATION period is
+  // certified rather than re-elected: 42 CFR 418.21(a) has the patient elect hospice ONCE, and every
+  // later benefit period continues that election on a new CTI with no second election statement. Only
+  // period 1 passes through `signed`. What stops an UNELECTED period 1 activating is R-AC-01's
+  // `election_signed` precondition (intake/activation-gate.ts), which is the gate that names the rule —
+  // the graph would have said `ILLEGAL_TRANSITION`, which is true but tells the caller nothing.
+  pending: ["signElectionStatement", "setActive"],
+  // `signElectionStatement` is a SELF-LOOP here, not a second edge to a new state: an election statement
+  // can be voided and replaced, and signing the replacement must still run the §2.4 election validators
+  // even though the period is already elected. Without it, void → re-draft → re-sign would 409 on a
+  // legitimate correction. From `active` it stays illegal — a period already running is not re-elected by
+  // a new statement, and a silent regress to `signed` would be worse than a refusal.
+  signed: ["signElectionStatement", "setActive"],
   active: ["complete"],
   completed: [],
 };

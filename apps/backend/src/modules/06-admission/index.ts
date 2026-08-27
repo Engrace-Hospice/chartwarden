@@ -6,9 +6,11 @@
 // recert CTI sign + F2F window math + window override — the pure org-TZ window math (certification/).
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
+import { getSeam } from "../../bootstrap/index";
 import { registerAdmissionAbacPredicates as _registerM6Abac } from "./abac-predicates";
 import {
   type AdmissionWriteOutboxPort,
+  type DpoaConsentCheckPort,
   type IpuBedAssignmentReaderPort,
   type ProviderEntityLocationPort,
   type ProviderEntityOrgCheckPort,
@@ -42,8 +44,48 @@ export function mountAdmissionRoutes(
       ipuBedAssignmentReader,
       providerEntityOrgCheck,
       providerEntityLocations,
+      dpoaConsentCheck(),
     ),
   });
+}
+
+/** The narrow slice of M39's `ConsentEvaluator` the R-EL-01 representative-authority guard needs. */
+interface ConsentEvaluatorPort {
+  evaluate(args: {
+    organizationId: string;
+    patientId: string;
+    consentType: "dpoa_healthcare";
+    sessionContext: { sessionClass: string };
+    callerModule: string;
+  }): Promise<{ allowed: boolean }>;
+}
+
+/**
+ * R-EL-01's DPOA fact, resolved through M39's registered `ConsentEvaluator` seam rather than a second
+ * reading of `consent_record` — the evaluator already applies the status / effective-at / expiry /
+ * post-death rules, and re-deriving "is there an active DPOA" in M6 would be a fork of them.
+ *
+ * `getSeam` opaquely + a locally-declared narrow port is the M22 `consent-gate.ts` / M12
+ * `seams/index.ts` convention (no `@wardenx/consent` import edge from M6). Resolved as a THUNK per call
+ * so it binds after `wireModuleSeams()`, and the M1 registry fails closed on an unregistered seam.
+ */
+function dpoaConsentCheck(): DpoaConsentCheckPort {
+  return {
+    async hasActiveDpoaHealthcareConsent(organizationId, patientId) {
+      const evaluator = getSeam("ConsentEvaluator") as ConsentEvaluatorPort;
+      const verdict = await evaluator.evaluate({
+        organizationId,
+        patientId,
+        consentType: "dpoa_healthcare",
+        // The election statement is signed on a STAFF-driven route (the clinician records the
+        // representative's wet-ink or witnessed signature); the question is whether the consent EXISTS,
+        // not whether a portal session may read it.
+        sessionContext: { sessionClass: "staff" },
+        callerModule: "m6",
+      });
+      return verdict.allowed;
+    },
+  };
 }
 
 // M6-T05 — the six §4.7 reader seams (ElectionPeriod/Certification/FaceToFace/LevelOfCare/

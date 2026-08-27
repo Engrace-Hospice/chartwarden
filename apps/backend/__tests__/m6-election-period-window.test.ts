@@ -8,9 +8,11 @@
 // derivation now runs through; the live suite proves the write path calls them.
 import { describe, expect, it } from "vitest";
 import {
+  ELECTION_PERIOD_GRAPH,
   ELECTION_PERIOD_LENGTH_DAYS,
   electionPeriodKindForSequence,
   electionPeriodScheduledEnd,
+  transitionElectionPeriod,
 } from "../src/modules/06-admission/state-machines/index";
 
 describe("electionPeriodKindForSequence — 42 CFR 418.21(a)", () => {
@@ -61,5 +63,65 @@ describe("electionPeriodScheduledEnd — the INCLUSIVE last covered day", () => 
     } finally {
       process.env.TZ = original;
     }
+  });
+});
+
+describe("ELECTION_PERIOD_GRAPH — the two edges F-062 corrected", () => {
+  it("lets a RECERT period activate straight from pending", () => {
+    // 42 CFR 418.21(a) has the patient elect hospice ONCE. Every later benefit period continues that
+    // election on a new CTI with no second election statement, so it never passes through `signed`.
+    // Requiring `signed` here would have refused every recertification the platform ever performs.
+    expect(ELECTION_PERIOD_GRAPH.pending).toContain("setActive");
+    const t = transitionElectionPeriod("pending", {
+      type: "setActive",
+      certificationSigned: true,
+      admissionActivated: true,
+      sequence: 4,
+      f2fAttested: true,
+      effectiveAt: "2026-01-01",
+    });
+    expect(t.to).toBe("active");
+  });
+
+  it("lets a REPLACEMENT election statement be signed for an already-signed period", () => {
+    // A statement can be voided and replaced; signing the replacement must still run the §2.4
+    // validators. It is a self-loop, not a state change.
+    const t = transitionElectionPeriod("signed", {
+      type: "signElectionStatement",
+      signerKind: "patient",
+      hasActiveDpoaConsent: false,
+      curativeCareAcknowledgment: true,
+      existingActiveElectionElsewhere: false,
+      wouldOverlap: false,
+    });
+    expect(t.to).toBe("signed");
+  });
+
+  it("still refuses to re-elect a RUNNING period", () => {
+    // A period already active is not re-elected by a new statement, and silently regressing it to
+    // `signed` would be worse than the refusal.
+    expect(() =>
+      transitionElectionPeriod("active", {
+        type: "signElectionStatement",
+        signerKind: "patient",
+        hasActiveDpoaConsent: false,
+        curativeCareAcknowledgment: true,
+        existingActiveElectionElsewhere: false,
+        wouldOverlap: false,
+      }),
+    ).toThrow(/cannot signElectionStatement from 'active'/);
+  });
+
+  it("refuses a sequence-3 activation with no attested F2F — 42 CFR 418.22(a)(4)", () => {
+    expect(() =>
+      transitionElectionPeriod("pending", {
+        type: "setActive",
+        certificationSigned: true,
+        admissionActivated: true,
+        sequence: 3,
+        f2fAttested: false,
+        effectiveAt: "2026-01-01",
+      }),
+    ).toThrow(/recert period requires an attested F2F/);
   });
 });

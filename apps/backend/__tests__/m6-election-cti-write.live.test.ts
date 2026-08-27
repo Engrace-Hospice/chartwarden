@@ -42,6 +42,8 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbAdmissionRouteService>;
+  /** The same service with a DPOA-consent port that answers yes — for the representative-signature case. */
+  let svcWithDpoa: ReturnType<typeof createDbAdmissionRouteService>;
 
   async function resetSchema() {
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -108,15 +110,28 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
     });
     // The composition root binds this over `provider_entity` (M1's table, which M6 may not import).
     // Here it is the real predicate against the two rows seeded above.
-    svc = createDbAdmissionRouteService(handle.db, undefined, undefined, {
-      async belongsToOrg(organizationId, providerEntityId) {
+    const providerEntityOrgCheck = {
+      async belongsToOrg(organizationId: string, providerEntityId: string) {
         const { rows } = await admin.query(
           "SELECT 1 FROM provider_entity WHERE id=$1 AND organization_id=$2",
           [providerEntityId, organizationId],
         );
         return rows.length > 0;
       },
-    });
+    };
+    svc = createDbAdmissionRouteService(handle.db, undefined, undefined, providerEntityOrgCheck);
+    svcWithDpoa = createDbAdmissionRouteService(
+      handle.db,
+      undefined,
+      undefined,
+      providerEntityOrgCheck,
+      undefined,
+      {
+        async hasActiveDpoaHealthcareConsent() {
+          return true;
+        },
+      },
+    );
   }, 120_000);
 
   afterAll(async () => {
@@ -167,12 +182,19 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
         ...DRAFT,
         waiverAcknowledged: false,
       });
-      await svc.signElection(ORG_A, es.id, es.version, USER, SIGN);
       const { rows } = await admin.query(
         "SELECT curative_care_acknowledgment FROM election_statement WHERE id = $1",
         [es.id],
       );
       expect(rows[0].curative_care_acknowledgment).toBe(false);
+      // F-062: and it can no longer be SIGNED. R-EL-04 lived only inside the state machine nothing
+      // called, so a declined waiver used to produce a signed election statement that asserts the
+      // patient waived curative care — the legal record CMS requires the acknowledgment for. The
+      // original half of this test (the draft persists `false` rather than being stamped `true` at
+      // signing) is unchanged above; the refusal is the half that was missing.
+      await expect(svc.signElection(ORG_A, es.id, es.version, USER, SIGN)).rejects.toMatchObject({
+        code: "CURATIVE_CARE_ACK_REQUIRED",
+      });
     });
 
     it("records WHO signed and in what capacity", async () => {
@@ -180,7 +202,10 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
       // NULL and `signer_kind` kept the draft's hardcoded "patient" even for a representative.
       const { admissionId, periodId } = await admitFor(randomUUID());
       const es = await svc.draftElectionStatement(ORG_A, admissionId, periodId, DRAFT);
-      await svc.signElection(ORG_A, es.id, es.version, USER, {
+      // F-062: a representative signature now needs an active M39 `dpoa_healthcare` consent (R-EL-01).
+      // `svcWithDpoa` is this suite's stand-in for the ConsentEvaluator seam the composition root binds;
+      // the refusal arm is covered in `m6-election-period-guards.live.test.ts`.
+      await svcWithDpoa.signElection(ORG_A, es.id, es.version, USER, {
         signingPatientName: "Rep Representative",
         signingRole: "legal_representative",
       });

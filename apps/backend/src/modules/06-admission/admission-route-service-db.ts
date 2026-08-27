@@ -16,7 +16,18 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
 import type { LevelOfCare } from "@wardenx/types";
-import { type AnyColumn, type SQL, and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import {
+  type AnyColumn,
+  type SQL,
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  sql,
+} from "drizzle-orm";
 import { decideRecertSign } from "./certification/recert";
 import { computeWrittenCertDeadline } from "./certification/window-math";
 import { resolveForCauseDischarge } from "./discharge/for-cause";
@@ -60,8 +71,11 @@ import {
 import { planDischarge, planRevocation, planTransferOut } from "./state-machines/commands";
 import type { SideEffect } from "./state-machines/effects";
 import {
+  type ElectionPeriodState,
+  RECERT_SEQUENCE_FLOOR,
   electionPeriodKindForSequence,
   electionPeriodScheduledEnd,
+  transitionElectionPeriod,
 } from "./state-machines/election-period";
 import { AdmissionStateError } from "./state-machines/errors";
 import { type FaceToFaceState, transitionFaceToFace } from "./state-machines/face-to-face";
@@ -128,6 +142,24 @@ export interface ProviderEntityOrgCheckPort {
  */
 export interface ProviderEntityLocationPort {
   activeLocationsFor(organizationId: string, providerEntityId: string): Promise<readonly string[]>;
+}
+
+/**
+ * R-EL-01 — does this patient have an ACTIVE M39 `dpoa_healthcare` consent right now?
+ *
+ * The one fact `transitionElectionPeriod`'s `signElectionStatement` guard needs that M6 cannot resolve
+ * itself: the consent record lives in M39's tables, which M6 must not import (§2.5). Bound at the
+ * composition root over M39's `ConsentStore`, the same way {@link ProviderEntityOrgCheckPort} is bound
+ * over M1's `provider_entity`.
+ *
+ * Absent binding DENIES a representative-signed election rather than allowing it. That is the opposite
+ * default from {@link ProviderEntityLocationPort} on purpose: an unsited admission is a data gap, while
+ * an unverified representative signature is a legal record asserting an authority nobody checked — and
+ * the rule this port exists for has been unenforced since M6 shipped, so "allow when unbound" is the
+ * exact state being fixed. A PATIENT-signed election never reaches this port.
+ */
+export interface DpoaConsentCheckPort {
+  hasActiveDpoaHealthcareConsent(organizationId: string, patientId: string): Promise<boolean>;
 }
 
 export interface IpuBedAssignmentReaderPort {
@@ -237,6 +269,7 @@ export function createDbAdmissionRouteService(
   ipuBedAssignmentReader?: IpuBedAssignmentReaderPort,
   providerEntityOrgCheck?: ProviderEntityOrgCheckPort,
   providerEntityLocations?: ProviderEntityLocationPort,
+  dpoaConsent?: DpoaConsentCheckPort,
 ): AdmissionRouteService {
   const now = () => new Date();
 
@@ -374,19 +407,144 @@ export function createDbAdmissionRouteService(
         // actual end is unknown makes the period's real length unrecoverable — which is the whole
         // question HCI indicator 2 and M28's benefit-period projection ask of this row. Only ever SET
         // on the transition, never recomputed, so a period completed earlier keeps its own date.
-        await tx
-          .update(EP)
-          .set({
-            status: "completed",
-            actualEndAt: isoDay(now()),
-            version: sql`${EP.version} + 1`,
-            updatedAt: now(),
-          })
+        //
+        // §2.3.2 `complete` runs per ROW rather than as one blanket UPDATE, because the graph accepts
+        // `complete` only from `active`: a period still `pending` or `signed` when its admission is
+        // discharged never started, and completing it would record an election that never ran. Those
+        // rows are left where they are — the cascade ends the ACTIVE election, which is what
+        // "end_election_period" means.
+        const openPeriods = await tx
+          .select({ id: EP.id, status: EP.status })
+          .from(EP)
           .where(and(eq(EP.admissionId, ctx.admissionId), ne(EP.status, "completed")));
+        const endedAt = isoDay(now());
+        for (const row of openPeriods) {
+          if ((row.status as ElectionPeriodState) !== "active") continue;
+          transitionElectionPeriod(row.status as ElectionPeriodState, {
+            type: "complete",
+            cause: "discharge",
+            actualEndAt: endedAt,
+          });
+          await tx
+            .update(EP)
+            .set({
+              status: "completed",
+              actualEndAt: endedAt,
+              version: sql`${EP.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(eq(EP.id, row.id));
+        }
       }
       // `audit`, `set_timestamp`, `set_flag`, `start_level_of_care` are folded into the aggregate
       // INSERT/UPDATE by the caller; `audit` is the M4 write-audit trigger (automatic).
     }
+  }
+
+  // ── the §2.3.2 election-period machine, actually reached ────────────────────────────────────────
+  //
+  // `transitionElectionPeriod` used to be called by nothing outside its own unit test: every write here
+  // set `election_period.status` with a bare UPDATE, so the graph never rejected an illegal jump and
+  // none of the guards ran. The consequences were not theoretical —
+  //
+  //   · R-F2F-04 (42 CFR 418.22(a)(4)): a third-or-later benefit period could activate through
+  //     `signCtiHospiceMd` with no attested face-to-face encounter. `decideRecertSign` has no F2F term,
+  //     and `F2F_REQUIRED_FOR_RECERT` appeared nowhere but inside the unreached machine.
+  //   · R-EL-01 / R-EL-02 / R-EL-04 and the overlap check: the three §2.4 election validators were
+  //     likewise called only from the machine, so an election statement could be signed by a
+  //     representative with no DPOA authority, for a patient already elected elsewhere, with the
+  //     curative-care acknowledgment declined.
+  //   · `election_period.status = 'signed'` was written by NOTHING. The real lifecycle was
+  //     `pending → active → completed`, so the documented graph could not have been followed even if
+  //     something had tried: `pending` accepts only `signElectionStatement`.
+  //
+  // The transitions below load each guard's facts org-scoped (never from the request body) and dispatch
+  // through the machine, which throws the typed §2.4 code the M1 error handler renders.
+
+  /** The election-period row a transition is about, plus the patient it belongs to (via its admission). */
+  async function electionPeriodFacts(
+    tx: DbClient,
+    periodId: string,
+  ): Promise<{
+    status: ElectionPeriodState;
+    sequenceNumber: number;
+    admissionId: string;
+    patientId: string;
+    providerEntityId: string | null;
+  } | null> {
+    const [row] = await tx
+      .select({
+        status: EP.status,
+        sequenceNumber: EP.sequenceNumber,
+        admissionId: EP.admissionId,
+        patientId: ADM.patientId,
+        providerEntityId: ADM.providerEntityId,
+      })
+      .from(EP)
+      .innerJoin(ADM, eq(EP.admissionId, ADM.id))
+      .where(eq(EP.id, periodId))
+      .limit(1);
+    if (!row) return null;
+    return {
+      status: row.status as ElectionPeriodState,
+      sequenceNumber: Number(row.sequenceNumber),
+      admissionId: row.admissionId,
+      patientId: row.patientId,
+      providerEntityId: row.providerEntityId,
+    };
+  }
+
+  /**
+   * R-EL-02 + the overlap guard, in one scan.
+   *
+   * Both ask about election periods for the SAME PATIENT on a DIFFERENT ADMISSION that have not been
+   * completed. Same-admission periods are excluded because they are sequential by construction — period
+   * 2 of an admission does not overlap period 1 of it, and counting them would refuse every recert.
+   *
+   * They differ by one term, and it is the term CMS cares about: `existingActiveElectionElsewhere` is
+   * restricted to a DIFFERENT provider entity (a patient may not be elected at two hospices at once),
+   * while `wouldOverlap` covers any other open election including one at this same hospice — a second
+   * concurrent admission here is equally invalid, just not the thing 42 CFR 418.24 names.
+   */
+  async function concurrentElectionFacts(
+    tx: DbClient,
+    organizationId: string,
+    facts: { patientId: string; admissionId: string; providerEntityId: string | null },
+  ): Promise<{ existingActiveElectionElsewhere: boolean; wouldOverlap: boolean }> {
+    const rows = await tx
+      .select({ providerEntityId: ADM.providerEntityId })
+      .from(EP)
+      .innerJoin(ADM, eq(EP.admissionId, ADM.id))
+      .where(
+        and(
+          eq(EP.organizationId, organizationId),
+          eq(ADM.patientId, facts.patientId),
+          ne(EP.admissionId, facts.admissionId),
+          ne(EP.status, "completed"),
+        ),
+      );
+    return {
+      wouldOverlap: rows.length > 0,
+      existingActiveElectionElsewhere: rows.some(
+        (r) => r.providerEntityId !== null && r.providerEntityId !== facts.providerEntityId,
+      ),
+    };
+  }
+
+  /** R-F2F-04 — does this period carry an ATTESTED face-to-face encounter (not merely a scheduled one)? */
+  async function hasAttestedF2f(tx: DbClient, periodId: string): Promise<boolean> {
+    const [row] = await tx
+      .select({ id: F2F.id })
+      .from(F2F)
+      .where(
+        and(
+          eq(F2F.electionPeriodId, periodId),
+          eq(F2F.status, "attested"),
+          isNotNull(F2F.attestationSignedAt),
+        ),
+      )
+      .limit(1);
+    return !!row;
   }
 
   /** A `Date` → the UTC `YYYY-MM-DD` string M6's `date` columns store. */
@@ -499,10 +657,13 @@ export function createDbAdmissionRouteService(
     let ctiHospiceMdSigned = false;
     let ctiAttendingSigned = false;
     if (period) {
+      // R-AC-01's `election_signed` precondition asked whether an election statement EXISTS, with no
+      // status filter — so a `drafted` (or `voided`) statement satisfied "signed" and the gate could
+      // not fail for the reason it names. The read-side checklist below carried the identical query.
       const [es] = await tx
         .select({ id: ES.id })
         .from(ES)
-        .where(eq(ES.electionPeriodId, period.id))
+        .where(and(eq(ES.electionPeriodId, period.id), eq(ES.status, "signed")))
         .limit(1);
       electionSigned = !!es;
       const [cti] = await tx
@@ -768,7 +929,7 @@ export function createDbAdmissionRouteService(
           const [es] = await tx
             .select({ id: ES.id })
             .from(ES)
-            .where(eq(ES.electionPeriodId, period.id))
+            .where(and(eq(ES.electionPeriodId, period.id), eq(ES.status, "signed")))
             .limit(1);
           electionSigned = !!es;
           const [cti] = await tx
@@ -1410,6 +1571,24 @@ export function createDbAdmissionRouteService(
         // exists for it, same "folded into the caller" posture as `set_timestamp`/`set_flag`), so fold
         // it in here directly, mirroring the recert path's `signCtiHospiceMd` period activation.
         if (facts.periodId) {
+          // §2.3.2 `setActive`. R-AC-01 (`computeActivationGate`, above) has already refused an
+          // admission missing its signed election / NOR / CTI signatures, so these guards are the
+          // machine's own restatement of that for the PERIOD — plus the recert F2F rule, which the
+          // admission gate does not cover and which period 1 never triggers.
+          const periodFacts = await electionPeriodFacts(tx as DbClient, facts.periodId);
+          if (periodFacts) {
+            transitionElectionPeriod(periodFacts.status, {
+              type: "setActive",
+              certificationSigned: facts.ctiHospiceMdSigned,
+              admissionActivated: true, // the ADM update above committed in this same transaction
+              sequence: periodFacts.sequenceNumber,
+              f2fAttested:
+                periodFacts.sequenceNumber >= RECERT_SEQUENCE_FLOOR
+                  ? await hasAttestedF2f(tx as DbClient, facts.periodId)
+                  : true,
+              effectiveAt: isoDay(activatedAt),
+            });
+          }
           await tx
             .update(EP)
             .set({
@@ -1548,7 +1727,12 @@ export function createDbAdmissionRouteService(
       void actorUserId;
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cur] = await tx
-          .select({ status: ES.status, version: ES.version, electionPeriodId: ES.electionPeriodId })
+          .select({
+            status: ES.status,
+            version: ES.version,
+            electionPeriodId: ES.electionPeriodId,
+            curativeCareAcknowledgment: ES.curativeCareAcknowledgment,
+          })
           .from(ES)
           .where(eq(ES.id, id))
           .limit(1);
@@ -1556,6 +1740,41 @@ export function createDbAdmissionRouteService(
         assertVersion(id, Number(cur.version), ifVersion);
         if (cur.status !== "drafted")
           throw conflict(`election statement ${id} is not draftable from '${cur.status}'`);
+
+        // §2.3.2 `signElectionStatement` — the period this statement elects advances `pending → signed`,
+        // and the three §2.4 election validators run on the way. Nothing wrote the `signed` state before,
+        // so the enum value existed and the graph's first edge had never been traversed.
+        const period = await electionPeriodFacts(tx as DbClient, cur.electionPeriodId);
+        if (!period) throw new ResourceNotFoundError(cur.electionPeriodId);
+        const signerKind = SIGNER_KIND_BY_ROLE[input.signingRole];
+        const concurrent = await concurrentElectionFacts(tx as DbClient, organizationId, period);
+        const transition = transitionElectionPeriod(period.status, {
+          type: "signElectionStatement",
+          signerKind,
+          // R-EL-01 — resolved through the composition-root port over M39, and DENIED when unbound.
+          // Only reached for a representative signer; the validator returns early for `patient`.
+          hasActiveDpoaConsent:
+            signerKind === "representative"
+              ? ((await dpoaConsent?.hasActiveDpoaHealthcareConsent(
+                  organizationId,
+                  period.patientId,
+                )) ?? false)
+              : true,
+          // R-EL-04 — read from the PERSISTED draft, not from this request. The acknowledgment is a
+          // property of the statement the patient was shown, and signing must not be able to supply it.
+          curativeCareAcknowledgment: cur.curativeCareAcknowledgment === true,
+          existingActiveElectionElsewhere: concurrent.existingActiveElectionElsewhere,
+          wouldOverlap: concurrent.wouldOverlap,
+        });
+        await tx
+          .update(EP)
+          .set({
+            status: transition.to,
+            version: sql`${EP.version} + 1`,
+            updatedAt: now(),
+          })
+          .where(and(eq(EP.id, cur.electionPeriodId), ne(EP.status, transition.to)));
+
         const signedAt = new Date().toISOString().slice(0, 10);
         const [r] = await tx
           .update(ES)
@@ -1748,6 +1967,25 @@ export function createDbAdmissionRouteService(
           .returning({ id: CTI.id, status: CTI.status, version: CTI.version });
         if (!r) throw new ResourceNotFoundError(id);
         if (outcome.activatesPeriod && cti.epId) {
+          // §2.3.2 `setActive` on the RECERT path — the one that matters. `decideRecertSign` advances
+          // any period ≥ 2 on the hospice-MD signature alone and has no face-to-face term, so a third
+          // or later benefit period activated with no attested F2F encounter: 42 CFR 418.22(a)(4)
+          // requires one before every recertification from the third period on, and
+          // `F2F_REQUIRED_FOR_RECERT` existed only inside the machine nothing called.
+          const periodFacts = await electionPeriodFacts(tx as DbClient, cti.epId);
+          if (periodFacts) {
+            transitionElectionPeriod(periodFacts.status, {
+              type: "setActive",
+              certificationSigned: true, // this call IS the hospice-MD signature
+              admissionActivated: true,
+              sequence: periodFacts.sequenceNumber,
+              f2fAttested:
+                periodFacts.sequenceNumber >= RECERT_SEQUENCE_FLOOR
+                  ? await hasAttestedF2f(tx as DbClient, cti.epId)
+                  : true,
+              effectiveAt: isoDay(now()),
+            });
+          }
           await tx
             .update(EP)
             .set({
