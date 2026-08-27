@@ -171,6 +171,7 @@
     "arch:abac-predicates": "bun run scripts/check-abac-predicates.ts",
     "arch:live-suites": "bun run scripts/check-live-suite-coverage.ts",
     "arch:outbox-bindings": "bun run scripts/check-outbox-bindings.ts",
+    "outbox:deferrals:update": "bun run scripts/check-outbox-bindings.ts --update",
     "check:boot:platform": "bun run scripts/check-boot-with-platform-credential.ts",
     "arch:org-indexes": "bun run scripts/check-org-index-coverage.ts",
     "audit:deps": "bun run scripts/check-dependency-vulnerabilities.ts",
