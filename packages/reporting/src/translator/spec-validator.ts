@@ -129,6 +129,14 @@ export interface TranslatorBaseCatalog {
   readonly measures: readonly schema.MeasureCatalog[];
   readonly maxRowLimit: number;
   readonly drilldownUrlTemplate?: string | null;
+  /**
+   * The MV column carrying the authoring/owning membership, for `self`/`team` scope narrowing (D8).
+   * `null`/absent = this base is an org-grain aggregate with no member column, so a narrowing scope
+   * DENIES rather than reading the whole org (F-059). Never tenant input — `report_base_catalog`.
+   */
+  readonly scopeMembershipColumn?: string | null;
+  /** The MV column carrying the location, for `location` scope narrowing. Same `null` rule as above. */
+  readonly scopeLocationColumn?: string | null;
 }
 
 /** The normalized outcome of semantic validation, consumed by the SQL step. */

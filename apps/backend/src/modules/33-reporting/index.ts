@@ -35,6 +35,10 @@ export {
   registerM33AbacPredicates,
   resolveReportableScope,
 } from "./abac-predicates";
+// F-044 — the PRODUCTION §4.7 resolver (Drizzle `report_view` facts under the caller's own RLS scope).
+// Without it `dashboard_visibility` ran on the deny-stub and refused every caller, a dashboard's owner
+// included.
+export { buildDrizzleReportingAbacResolver } from "./abac-resolver-db";
 
 // §4.1/§4.2 — the route surface (READ + WRITE + EXPORT/DRILLDOWN). The composition root mounts these over
 // the Drizzle-backed route services when a DB client is present (the M34 `mountTenantPlatformRoutes`

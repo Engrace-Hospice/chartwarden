@@ -71,11 +71,15 @@ describe.skipIf(!DB_URL)("GAP-051 — M33 export render, LIVE Postgres", () => {
   const memberOf: Record<string, string> = {};
   const viewOf: Record<string, string> = {};
 
+  // `org_admin` is the role key the §4.7.1 ladder reads for org-wide reporting authority — `administrator`
+  // is the CoP 418.100 clinical-leadership role and confers none. This actor used to hold only the latter
+  // and still exported org-wide, because the export path built its own `scopeKind: "org"` envelope and
+  // ignored the resolution entirely (F-059). It now resolves, so an org-wide export needs the org-wide role.
   const actorFor = (org: string) => ({
     organizationId: org,
     userId: USER,
     membershipId: memberOf[org] as string,
-    roles: ["administrator"],
+    roles: ["administrator", "org_admin"],
   });
 
   /** Every outbox row for one aggregate, with its dispatch status (the relay's own record). */

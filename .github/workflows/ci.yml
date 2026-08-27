@@ -349,6 +349,11 @@ jobs:
               name: "M33 export render",
               scripts: "test:m33:export-render:live test:m33:scheduled-jobs:live",
             }
+          # F-044 / F-059: the dashboard READ path (catalog → dashboard → tile manifest → tile → metric
+          # seam) and the D8 `reportable_scope` narrowing. Five of its eight assertions fail on the
+          # pre-fix tree, and the scope ones fail SILENTLY there — a self-scoped clinician reading the
+          # whole organization's per-clinician productivity looks exactly like a working tile.
+          - { name: "M33 read path", scripts: "test:m33:read-path:live" }
     services:
       # F-025 (#59): four of the newly-wired suites gate on `WARDENX_TEST_REDIS_URL` as well as the
       # database — `test:m30:scheduled-jobs:live`, `test:m33:scheduled-jobs:live`,
@@ -694,7 +699,7 @@ jobs:
       # `forbidOnly` is already on under CI (playwright.config.ts), so a stray `.only` fails the job
       # rather than silently shrinking the suite to one test — the browser-side version of the
       # self-skip this workflow's live jobs guard against.
-      - name: 18 critical-workflow specs + 6 axe-core WCAG 2A/AA scans (real browser, real stack)
+      - name: 20 browser specs — 13 critical-workflow + 7 axe-core WCAG 2A/AA scans (real stack)
         run: bun run test:e2e
       - name: Upload the Playwright report, traces and stack logs
         if: failure()

@@ -143993,7 +143993,7 @@
         "tags": [
           "33-reporting"
         ],
-        "summary": "Read one dashboard (share-scope visibility gate)",
+        "summary": "Read one dashboard: summary + its tile manifest (share-scope visibility gate)",
         "parameters": [
           {
             "name": "dashboardId",
@@ -144017,7 +144017,8 @@
                     "authorship",
                     "tileCount",
                     "shareScope",
-                    "isOrgDefault"
+                    "isOrgDefault",
+                    "tiles"
                   ],
                   "properties": {
                     "dashboardId": {
@@ -144059,6 +144060,28 @@
                     },
                     "isOrgDefault": {
                       "type": "boolean"
+                    },
+                    "tiles": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "tileKey",
+                          "displayName",
+                          "kind"
+                        ],
+                        "properties": {
+                          "tileKey": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        }
+                      }
                     }
                   }
                 }
