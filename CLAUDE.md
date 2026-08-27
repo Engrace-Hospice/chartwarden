@@ -446,7 +446,27 @@ analysis a gate would need is a call graph from the composition root, and the ob
   to express their event lists resolve to their real values. A binding file that yields no binding is
   an error, never a skip. The runtime half is the `outbox-boot` CI job
   (`bun run check:boot:platform`), which boots the backend with a real provisioned platform login and
-  proves the relay starts.
+  proves the relay starts. **F-043 (#103) adds the direction none of them ran**: all three
+  rules above go binding → catalog, so an event declaring `["m33","m36"]` with no consumer anywhere
+  satisfied every one of them — the catalog read as if all 599 of its consumer-declaring entries were
+  wired when **570** were not, and at (module, event) granularity **1165 of 1203** pairs were unbound.
+  Same unasked-direction shape as F-025/#59 (the live-suite gate checked `package.json` → CI and never
+  the reverse, hiding 29 suite files). Rule 4 now requires every module named in `declaredConsumers` to
+  have a live binding **or** to be named in `scripts/outbox-deferred-consumers.ts` with a reason — the
+  `deviceAttestationValid` rule again, at (module, event) granularity so the count cannot drift: a new
+  unbound pair fails, a listed pair that gains a binding fails ("outlived its reason"), an entry whose
+  event or declaration disappears fails, and an empty reason fails. `--update`
+  (`bun run outbox:deferrals:update`) regenerates the event lists but never the reasons, and writes a
+  brand-new consumer module as `kind: "unclassified"` with an EMPTY reason — so updating cannot
+  manufacture a passing state. `unclassified` groups print on every run as the standing finding (today:
+  **0**). The absence is **not silent at runtime**: `resolveRouting` marks such an event `deferred` and
+  the relay finalizes each row `pending` with `attemptCount - 1`, so it never reaches `maxAttempts`,
+  never dead-letters, and is never purged (retention touches only `dispatched` rows) — every emission
+  becomes a row re-claimed every 30 minutes for the life of the deployment, which
+  `outbox-dispatcher.live.test.ts` already proves. The two largest groups are one decision each, not
+  hundreds of forgotten consumers: **m36** (272) routes alerts through the `AlertEmitter` **seam**, and
+  **m33** (319) pulls metrics from `report_mv.*` materialized views.
+
 - `scripts/check-architecture-docs.ts` — **architecture-corpus freshness gate**
   (`bun run arch:architecture-docs`, in `arch:fitness` since 2026-08-14). The authority rule makes
   `docs/architecture/` binding, yet it was the only ungated documentation body and drifted for two
