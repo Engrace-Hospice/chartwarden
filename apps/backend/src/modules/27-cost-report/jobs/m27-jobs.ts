@@ -1190,8 +1190,17 @@ export function buildM27WorkerDeps(deps: {
 //     (parses the org id off the producer's existing dedupe-key convention; the producer call sites in
 //     write-service-drizzle.ts were not touched).
 // Still genuinely unbound (out of this slice's scope — see docs/audits/.../14-task-backlog.md WX-PR-013):
-//   • the M1 per-tenant DEK envelope-encrypt (`deps.dek`) — no platform-wide live KMS-backed provider exists
-//     yet anywhere (M34's `TenantKeyProvider` is a hard always-throw slice deny-stub); needed only for the
+//   • the M1 per-tenant DEK envelope-encrypt (`deps.dek`) — this module is wired to NO DEK source at all:
+//     the composition root simply never passes `deps.dek`, so `buildM27WorkerDeps` falls through to the
+//     typed `M27WorkerPortUnbound` stub. That is the whole gap here, and it is a LOCAL wiring one. It is
+//     NOT the platform lacking a key path: M34 binds a real `buildKeyProvider` on the production path
+//     (seam-registration.ts), whose `KekUnwrapPort` IS implemented — `createM34ProvisionGateway`'s
+//     `/dek/unwrap` client (34-saas-tenant-platform/provision-gateway.ts) — and the composition root
+//     binds it whenever `M34_PROVISION_GATEWAY_URL`/`_TOKEN`/`M34_INVITATION_ACCEPT_URL` are set, which
+//     `assertProductionEnv()` makes REQUIRED in production. The optional-looking `gateway?.kekUnwrap` at
+//     index.ts therefore cannot degrade a production boot, and the fallback it guards throws
+//     `M34InfraPortUnbound` on call rather than failing open. What genuinely does not exist is the
+//     GATEWAY SERVICE those endpoints address — see #115. Needed only for the
 //     live Xero/Gusto pull path (this slice's proven path — manual trial-balance/wage-data import — never
 //     sets `raw_payload_cipher`, so it does not need DEK). A real (non-KMS) template exists at M24's
 //     `credential-crypto.ts` if a future pass wants to unblock the live-pull path specifically.

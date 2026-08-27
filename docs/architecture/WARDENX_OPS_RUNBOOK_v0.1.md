@@ -159,9 +159,13 @@ For every deploy, however small:
 - [ ] All CI checks green — what `ci.yml` **actually** runs: build, `arch:fitness` (read the gate chain from `package.json`, never from prose),
       unit/integration tests, the live-DB jobs (`rls-live`, `lifecycle-live`, the per-module
       matrix), and the `e2e` job (a real Chromium against a migrated + seeded full stack: 18
-      critical-workflow specs and the six axe-core WCAG 2A/AA scans that are the repo's only
-      automated accessibility coverage). Note **lint is `continue-on-error: true`** — a red lint
-      does not fail CI, so read it rather than trusting the check mark.
+      critical-workflow specs and the 12 axe-core WCAG 2A/AA assertions that are the repo's only
+      automated accessibility coverage outside the lint rules — 12 scans against 290 registered
+      screens, so read that as a smoke test, not as coverage). **Lint is BLOCKING** (F-011/#33):
+      `ci.yml` runs `bun run lint` as an ordinary step and `scripts/__tests__/lint-gate.test.ts`
+      asserts it stays that way, so the check mark can be trusted. This bullet previously said
+      `continue-on-error: true`; that was true until #33 and told operators to distrust the repo's
+      main automated a11y control.
 - [ ] ~~All CI checks green (… SBOM)~~ — **SBOM NOT BUILT.** No workflow produces one. (The e2e
       half of this item is now real: `ci.yml` gained an `e2e` job — see the line above.)
 - [ ] ~~Container image signed with cosign~~ / ~~Image SBOM attached~~ — **STATUS: TARGET — NOT
@@ -483,7 +487,7 @@ by the write path that first needs them, not by a time-based rotation.
 > previously printed here also called `create_message_partition` and `create_outbox_partition`,
 > **neither of which exists** — `outbox_event` is not partitioned at all.
 >
-> What DOES exist is the per-table SQL side: **55 `create_<table>_partition(date)` SECURITY DEFINER
+> What DOES exist is the per-table SQL side: **53 `create_<table>_partition(date)` SECURITY DEFINER
 > functions** shipped by the migrations (`create_audit_partition`, `create_evv_event_partition`,
 > `create_medication_order_partition`, …). They are correct and callable; nothing calls them on a
 > schedule.
