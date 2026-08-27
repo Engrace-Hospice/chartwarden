@@ -191,13 +191,16 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
     });
 
     // Seed a signed election statement + hospice-MD-signed CTI on period 1 (as superuser), then activate.
+    // F-062: `status` is spelled out on the statement. R-AC-01's `election_signed` precondition used to
+    // ask only whether a statement EXISTED, so this fixture — which sets `signed_at` but leaves the
+    // default `drafted` status — satisfied "signed" without being it.
     const [period] = (
       await admin.query("SELECT id FROM election_period WHERE admission_id=$1", [admissionId])
     ).rows;
     await admin.query(
       `INSERT INTO election_statement (organization_id, election_period_id, patient_id, signer_kind,
-         patient_name_at_signing, hospice_name_at_signing, curative_care_acknowledgment, signed_at, signature_method)
-       VALUES ($1,$2,$3,'patient','Fred Flow','A Hospice',true, now()::date, 'electronic_witnessed')`,
+         patient_name_at_signing, hospice_name_at_signing, curative_care_acknowledgment, signed_at, signature_method, status)
+       VALUES ($1,$2,$3,'patient','Fred Flow','A Hospice',true, now()::date, 'electronic_witnessed', 'signed')`,
       [ORG_A, period.id, PATIENT2],
     );
     // R-AC-01 (intake/activation-gate.ts) requires the ATTENDING physician's CTI signature for period 1,
@@ -290,8 +293,8 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
       ).rows[0].id as string;
       await admin.query(
         `INSERT INTO election_statement (organization_id, election_period_id, patient_id, signer_kind,
-           patient_name_at_signing, hospice_name_at_signing, curative_care_acknowledgment, signed_at, signature_method)
-         VALUES ($1,$2,$3,'patient','Sited, Sam','A Hospice',true, now()::date, 'electronic_witnessed')`,
+           patient_name_at_signing, hospice_name_at_signing, curative_care_acknowledgment, signed_at, signature_method, status)
+         VALUES ($1,$2,$3,'patient','Sited, Sam','A Hospice',true, now()::date, 'electronic_witnessed', 'signed')`,
         [org, periodId, patientId],
       );
       await admin.query(

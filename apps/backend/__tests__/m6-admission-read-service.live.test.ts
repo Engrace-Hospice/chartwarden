@@ -83,8 +83,8 @@ describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", 
     ).rows[0].id;
     await admin.query(
       `INSERT INTO election_statement (organization_id, election_period_id, patient_id, signer_kind,
-         patient_name_at_signing, hospice_name_at_signing, curative_care_acknowledgment, signed_at, signature_method)
-       VALUES ($1,$2,$3,'patient','Jane Doe','M6R Hospice',true, now()::date, 'electronic_witnessed')`,
+         patient_name_at_signing, hospice_name_at_signing, curative_care_acknowledgment, signed_at, signature_method, status)
+       VALUES ($1,$2,$3,'patient','Jane Doe','M6R Hospice',true, now()::date, 'electronic_witnessed', 'signed')`,
       [org, period, PATIENT],
     );
     await admin.query(
