@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   Glyph,
   LoadingSpinner,
@@ -26,6 +27,8 @@ import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { PatientChartBail } from "../../shell/chart-module-rail";
 import { ASSESSMENT_TONE, stateLabel } from "./assessment-status";
+import { type ScaleDefinition, loadPatientAdmissions, loadScaleCatalog } from "./assessments-api";
+import { RecordAssessmentModal } from "./record-assessment-modal";
 
 interface AssessmentRow {
   id: string;
@@ -58,7 +61,26 @@ export function AssessmentTimeline(): JSX.Element {
   const [scale, setScale] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Named `catalog`, not `scales`: this screen already has a `scales` — the captured rows grouped by
+  // scale type. This one is the INSTRUMENT definitions the capture form is rendered from (F-067).
+  const [catalog, setCatalog] = useState<ScaleDefinition[]>([]);
+  const [admissionId, setAdmissionId] = useState<string | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
+  // #91 / F-067 — the instrument catalog and the admission the capture is filed against. Both are
+  // SERVER reads: the scale items were TypeScript interfaces a client cannot read, and until F-065
+  // nothing could resolve a patient's admission (see #161). With no open admission the Record control
+  // is absent rather than present-and-certain-to-fail.
+  useEffect(() => {
+    if (!patientId) return;
+    void loadScaleCatalog(client).then(setCatalog);
+    void loadPatientAdmissions(client, patientId).then((rows) =>
+      setAdmissionId(rows.find((a) => a.dischargedAt == null)?.id ?? null),
+    );
+  }, [client, patientId]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is the intentional refetch trigger a completed capture bumps, not read in the body.
   useEffect(() => {
     let active = true;
     (async () => {
@@ -82,7 +104,7 @@ export function AssessmentTimeline(): JSX.Element {
     return () => {
       active = false;
     };
-  }, [client, patientId]);
+  }, [client, patientId, reloadKey]);
 
   // One entry per distinct scale, with its captures (newest first) + latest summary — the left list.
   const scales = useMemo(() => {
@@ -119,6 +141,24 @@ export function AssessmentTimeline(): JSX.Element {
     <PatientBanner name="Assessments" />
   );
 
+  /** The capture form + its trigger, rendered on every branch below (including the empty state, which is
+   *  exactly where a clinician most needs it). */
+  const recordControls =
+    patientId && admissionId ? (
+      <>
+        <Button onClick={() => setRecording(true)}>Record assessment</Button>
+        <RecordAssessmentModal
+          open={recording}
+          patientId={patientId}
+          admissionId={admissionId}
+          scales={catalog}
+          {...(scale ? { initialScaleType: scale } : {})}
+          onClose={() => setRecording(false)}
+          onRecorded={() => setReloadKey((k) => k + 1)}
+        />
+      </>
+    ) : null;
+
   if (loading) {
     return (
       <PatientChartBail banner={banner}>
@@ -141,6 +181,7 @@ export function AssessmentTimeline(): JSX.Element {
           title="No assessments"
           description="No clinical scales have been recorded for this patient."
         />
+        <div style={{ padding: "0 1.5rem 1.5rem" }}>{recordControls}</div>
       </PatientWorkspaceLayout>
     );
   }
@@ -157,6 +198,7 @@ export function AssessmentTimeline(): JSX.Element {
         {/* Scale list */}
         <div style={scaleListStyle}>
           <span style={listHead}>Scales</span>
+          <div style={{ padding: "0 0.5rem 0.75rem" }}>{recordControls}</div>
           {scales.map((s) => {
             const active = s.scaleType === selected.scaleType;
             const needsCosign = s.latest.cosignRequired && !s.latest.cosignedAt;

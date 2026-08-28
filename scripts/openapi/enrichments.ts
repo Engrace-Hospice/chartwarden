@@ -1208,6 +1208,7 @@ import {
   LatestBatchQuerySchema as M9LatestBatchQuerySchema,
   LatestBatchResponseSchema as M9LatestBatchResponseSchema,
   RecordAssessmentSchema as M9RecordAssessmentSchema,
+  ScaleCatalogResponseSchema as M9ScaleCatalogResponseSchema,
   ScaleDeltaResponseSchema as M9ScaleDeltaResponseSchema,
   ScaleLicenseListResponseSchema as M9ScaleLicenseListResponseSchema,
   ScalePolicyListResponseSchema as M9ScalePolicyListResponseSchema,
@@ -3895,6 +3896,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "PATCH /api/v1/admin/scales/licenses/:id": {
     summary: "Admin: update a scale license (partial)",
     body: M9UpdateLicenseSchema,
+  },
+  "GET /api/v1/scales": {
+    summary:
+      "The instrument catalog (F-067) — per scale: label, family, license requirement, whether it is RECORDABLE at all, its published score range, and the item definitions a capture form is built from. Ten of the fourteen have no scorer and raise a 500 on capture; `recordable` is what says so",
+    response: M9ScaleCatalogResponseSchema,
   },
   "GET /api/v1/admin/scales/policies": {
     summary: "Admin: scale-policy registry",

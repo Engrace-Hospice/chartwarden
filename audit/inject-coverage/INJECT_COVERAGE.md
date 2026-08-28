@@ -4,7 +4,7 @@
 
 A module's pure-function permission/ABAC tests prove its DECISIONS are correct; they prove nothing about the route wiring, schema validation, or service composition around them (the M30 dead-`inOrg` class, the Claim Workbench 404). `covered` requires a real Fastify `.inject()` call through the module's route registrar.
 
-**Totals:** 39/39 modules covered (100%) · 1256/1256 route defs sit behind a covered module · 1197/1256 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
+**Totals:** 39/39 modules covered (100%) · 1257/1257 route defs sit behind a covered module · 1198/1257 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
 
 | Module | Routes | Covered | Direct refs | Suite file(s) |
 |---|--:|:--:|--:|---|
@@ -15,7 +15,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 06-admission | 49 | ✅ | 49/49 | apps/backend/__tests__/admission-certification.test.ts, apps/backend/__tests__/admission-discharge.test.ts, apps/backend/__tests__/admission-intake.test.ts, apps/backend/__tests__/admission-routes.test.ts |
 | 07-care-plan | 19 | ✅ | 18/19 | apps/backend/__tests__/assessment-routes.test.ts, apps/backend/__tests__/care-plan-conformance.live.test.ts, apps/backend/__tests__/care-plan-routes.test.ts, apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts |
 | 08-encounters | 36 | ✅ | 32/36 | apps/backend/__tests__/encounter-authoring.test.ts, apps/backend/__tests__/encounter-routes.test.ts |
-| 09-assessments | 18 | ✅ | 13/18 | apps/backend/__tests__/assessment-routes.test.ts, apps/backend/__tests__/m9-assessments-write.live.test.ts |
+| 09-assessments | 19 | ✅ | 14/19 | apps/backend/__tests__/assessment-routes.test.ts, apps/backend/__tests__/m9-assessments-write.live.test.ts |
 | 10-hope | 20 | ✅ | 18/20 | apps/backend/__tests__/hope-presubmission-validation.test.ts, apps/backend/__tests__/hope-routes.test.ts |
 | 11-orders | 28 | ✅ | 22/28 | apps/backend/__tests__/orders-routes.test.ts |
 | 12-dosespot | 31 | ✅ | 19/31 | apps/backend/__tests__/dosespot-routes.test.ts |
