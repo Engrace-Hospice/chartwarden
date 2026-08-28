@@ -29,10 +29,10 @@
 //   (3) gps-quality / geofence decision is the in-mem slice's accuracy-band model (accuracy vs the effective
 //       policy `max_accuracy_m`) — the full haversine-vs-baseline pipeline needs the address-coordinate + DEK
 //       decrypt, deferred; `computed_distance_m` is recorded NULL;
-//   (4) the device-admin + geofence-policy routes do NOT thread the acting membership to the service
-//       (`approveDevice(orgId, id)` etc.), so the FK-required `set_by_membership_id` / the outbox `*ByMembershipId`
-//       actor is resolved as the org's first membership (`actingMembership`) — a documented placeholder until the
-//       route contract carries the actor;
+//   (4) RESOLVED (F-068 §4). The device-admin + geofence-policy routes used to drop the acting membership,
+//       so `approved_by_membership_id` / `rejected_by_membership_id` / `set_by_membership_id` were filled from
+//       an arbitrary `LIMIT 1` membership in the org — a row naming a colleague who did not do it. Every one
+//       of those methods now takes the caller's membership and writes it;
 //   (5) the M17 visit-state advance the capture drives (published → en_route → in_visit → completed, D14) is the
 //       M17 consumer of `m18.evv.check_*_recorded`, not a write here.
 import { randomUUID } from "node:crypto";
@@ -61,12 +61,14 @@ import {
 } from "./abac-predicates";
 import { decodeStoredCoords, encodeStoredCoords } from "./coords";
 import { transitionAggregatorSubmission } from "./domain/aggregator-submission";
+import type { EvvSideEffect } from "./domain/effects";
+import { correctEvent } from "./domain/event-lifecycle";
 import { transitionMissingResolution } from "./domain/missing-resolution";
 import type {
   ArrivalView,
   CheckResultView,
   DeviceView,
-  EvvRouteService,
+  EvvRoutePort,
   GeofencePolicyView,
   LocationView,
   MetricsView,
@@ -157,13 +159,13 @@ const NOOP_OUTBOX: EvvWriteOutboxPort = { async publish() {} };
 
 /**
  * The production, RLS-backed EVV backend (M18L reads + the write lifecycle). Implements BOTH the
- * {@link EvvRouteService} surface and its {@link EvvAbacResolver} (the same object is passed to
+ * {@link EvvRoutePort} surface and its {@link EvvAbacResolver} (the same object is passed to
  * `registerEvvRoutes` and `registerEvvAbacPredicates`).
  */
 export function createDbEvvBackend(
   db: DbClient,
   outbox: EvvWriteOutboxPort = NOOP_OUTBOX,
-): EvvRouteService {
+): EvvRoutePort {
   async function emit(
     tx: unknown,
     orgId: string,
@@ -235,19 +237,15 @@ export function createDbEvvBackend(
 
   /** The org's first membership — the placeholder actor for the device/policy admin routes that do not thread
    * the acting membership to the service (compromise #4). */
-  async function actingMembership(tx: DbClient, orgId: string): Promise<string> {
-    const [m] = await tx
-      .select({ id: MEM.id })
-      .from(MEM)
-      .where(eq(MEM.organizationId, orgId))
-      .limit(1);
-    if (!m)
-      throw new ValidationError(
-        "no membership exists in the organization to attribute the action to",
-        [],
-      );
-    return m.id;
-  }
+  /**
+   * F-068 §4 — `actingMembership(tx, orgId)` used to live here: a `LIMIT 1` over the org's memberships
+   * with no ORDER BY, used to fill `approved_by_membership_id`, `rejected_by_membership_id` and
+   * `set_by_membership_id` on all six device-admin and geofence-policy writes. The routes always knew
+   * the caller — `actorOf` resolves the acting membership on the line above — and simply did not pass
+   * it. That is worse than a NULL: the row ASSERTS that a specific, named person approved the device or
+   * loosened the geofence, and it was whoever Postgres happened to return. Every one of those methods
+   * now takes `userId` and writes it.
+   */
 
   /** Build the geofence-policy view from the active rows WITHIN the given tx (so a policy write reads its own
    * uncommitted changes — calling the top-level `getGeofencePolicy` would open a separate tx and read stale
@@ -274,6 +272,169 @@ export function createDbEvvBackend(
         maxAccuracyM: r.maxAccuracyM,
       }));
     return { tenant, perAddress };
+  }
+
+  /**
+   * The capture write, WITHIN a caller-provided transaction.
+   *
+   * Extracted from `recordCapture` so `correctEvent` can insert the corrected event, supersede the
+   * original, emit and reopen the resolution under ONE commit — the §2.4 rule that the event row, the
+   * evaluation snapshot, the audit row and the outbox row bind atomically. Two `withOrgContext` calls
+   * would be two transactions and the "DB updated but the event never went out" window back open.
+   */
+  async function captureInTx(
+    tx: DbClient,
+    orgId: string,
+    userId: string,
+    kind: EvvEventKind,
+    input: {
+      visitId: string;
+      coords: { lat: number; lng: number };
+      accuracyM: number;
+      capturedAt: string;
+      gpsQualityAttested?: "degraded_attested";
+      /** §7.7 — the event this capture supersedes, and why, when it is a correction-of-record. */
+      replacesEventId?: string;
+      correctionReason?: string;
+    },
+  ): Promise<CheckResultView> {
+    const visit = await resolveVisit(tx, input.visitId);
+    const device = await resolveApprovedDevice(tx, userId);
+    const policy = await effectivePolicy(tx);
+
+    // gps-quality / geofence decision — the in-mem accuracy-band model (compromise #3).
+    let gpsQuality: EvvEventGpsQuality;
+    let decision: CheckResultView["geofenceDecision"];
+    if (input.accuracyM > policy.maxAccuracyM) {
+      gpsQuality = input.gpsQualityAttested ?? "outside_geofence";
+      decision = input.gpsQualityAttested ? "pass" : "fail_accuracy";
+    } else {
+      gpsQuality = input.accuracyM <= policy.maxAccuracyM / 2 ? "high" : "acceptable";
+      decision = "pass";
+    }
+    // GAP-032 — through the shared codec, so the read path recovers exactly what this wrote.
+    const coordsCipher = encodeStoredCoords(input.coords);
+    const capturedAt = new Date(input.capturedAt);
+
+    const [ins] = await tx
+      .insert(EVENT)
+      .values({
+        organizationId: orgId,
+        providerEntityId: visit.providerEntityId,
+        locationId: visit.locationId,
+        visitId: input.visitId,
+        patientId: visit.patientId,
+        patientAddressId: visit.patientAddressId,
+        kind,
+        serviceTypeCode: "",
+        postingMembershipId: userId,
+        postingDisciplineAtRecording: "",
+        evvDeviceId: device.id,
+        capturedAt,
+        eventAt: capturedAt,
+        coordsCipher,
+        coordsDekVersion: 1,
+        accuracyM: input.accuracyM,
+        gpsQuality,
+        deviceAttestationIdAtRecord: device.attestation,
+        // §7.7 — present only on a correction; NULL on an ordinary capture.
+        replacesEventId: input.replacesEventId ?? null,
+        correctionReason: input.correctionReason ?? null,
+      })
+      .returning({ id: EVENT.id });
+    if (!ins) throw new Error("evv_event insert returned no row");
+    const eventId = ins.id;
+
+    // §2.2.6 informational geofence-evaluation snapshot.
+    await tx.insert(GEVAL).values({
+      organizationId: orgId,
+      evvEventId: eventId,
+      appliedPolicyId: policy.policyId ?? PLATFORM_POLICY_SENTINEL,
+      appliedPolicyScope: policy.policyId ? "tenant" : "platform",
+      appliedRadiusM: policy.radiusM,
+      appliedMaxAccuracyM: policy.maxAccuracyM,
+      deviceCoordsCipher: coordsCipher,
+      computedDistanceM: null,
+      decision,
+    });
+
+    const recordedAt = new Date().toISOString();
+    if (kind === "check_in") {
+      await emit(tx, orgId, "m18.evv.check_in_recorded", "evv_event", eventId, {
+        eventId,
+        visitId: input.visitId,
+        patientId: visit.patientId,
+        postingMembershipId: userId,
+        capturedAt: toIso(capturedAt),
+        recordedAt,
+        gpsQuality,
+        geofenceDecision: decision,
+      });
+      if (decision === "pass") {
+        await emit(tx, orgId, "m18.evv.at_patient_address", "evv_event", eventId, {
+          eventId,
+          visitId: input.visitId,
+          patientId: visit.patientId,
+          postingMembershipId: userId,
+          computedDistanceM: 0,
+          appliedRadiusM: policy.radiusM,
+          confirmedAt: recordedAt,
+        });
+      } else {
+        await emit(tx, orgId, "m18.evv.geofence_breach_recorded", "evv_event", eventId, {
+          eventId,
+          visitId: input.visitId,
+          computedDistanceM: 0,
+          appliedRadiusM: policy.radiusM,
+          kind: "check_in",
+        });
+      }
+    } else {
+      const [priorCheckIn] = await tx
+        .select({ id: EVENT.id, capturedAt: EVENT.capturedAt })
+        .from(EVENT)
+        .where(
+          and(
+            eq(EVENT.visitId, input.visitId),
+            eq(EVENT.kind, "check_in"),
+            isNull(EVENT.supersededByEventId),
+          ),
+        )
+        .orderBy(desc(EVENT.eventAt))
+        .limit(1);
+      const serviceDurationMinutes = priorCheckIn
+        ? Math.max(0, (capturedAt.getTime() - new Date(priorCheckIn.capturedAt).getTime()) / 60_000)
+        : 0;
+      await emit(tx, orgId, "m18.evv.check_out_recorded", "evv_event", eventId, {
+        eventId,
+        visitId: input.visitId,
+        patientId: visit.patientId,
+        postingMembershipId: userId,
+        capturedAt: toIso(capturedAt),
+        recordedAt,
+        gpsQuality,
+        geofenceDecision: decision,
+        pairedCheckInEventId: priorCheckIn?.id ?? null,
+        serviceDurationMinutes,
+      });
+      if (decision !== "pass") {
+        await emit(tx, orgId, "m18.evv.geofence_breach_recorded", "evv_event", eventId, {
+          eventId,
+          visitId: input.visitId,
+          computedDistanceM: 0,
+          appliedRadiusM: policy.radiusM,
+          kind: "check_out",
+        });
+      }
+    }
+
+    return {
+      eventId,
+      kind,
+      gpsQuality,
+      geofenceDecision: decision,
+      visitStateAfterEvent: kind === "check_in" ? "in_visit" : "completed",
+    };
   }
 
   const backend = {
@@ -346,145 +507,140 @@ export function createDbEvvBackend(
         gpsQualityAttested?: "degraded_attested";
       },
     ): Promise<CheckResultView> {
+      return withOrgContext(db, { organizationId: orgId, userId: "" }, (txRaw) =>
+        captureInTx(txRaw as DbClient, orgId, userId, kind, input),
+      );
+    },
+
+    /**
+     * §7.7 correction-of-record — the route's `:eventId` and its ≥60-char `correctionReason` used to be
+     * parsed and dropped, and the handler called plain `recordCapture` (F-068 §1). Against the real
+     * per-leaf `UNIQUE (organization_id, visit_id, kind) WHERE superseded_by_event_id IS NULL` that could
+     * not even succeed: the original stayed live, so a same-day correction — the same visit, the same
+     * kind, the same monthly partition — hit the index, and one filed across a month boundary landed in
+     * a different leaf, missed the backstop, and left two live events for one leg of the bracket.
+     *
+     * The decision is the pure `correctEvent` machine in `domain/event-lifecycle.ts`, which has been
+     * complete and uncalled since M18-T03. This applies the five §2.4 effects it declares, in the order
+     * it declares them, inside one transaction:
+     *   supersede_event → capture_reason → outbox(event_corrected) → open_missing_resolution → audit.
+     */
+    async correctEvent(
+      orgId: string,
+      userId: string,
+      originalEventId: string,
+      input: {
+        kind: EvvEventKind;
+        visitId: string;
+        coords: { lat: number; lng: number };
+        accuracyM: number;
+        capturedAt: string;
+        gpsQualityAttested?: "degraded_attested";
+        correctionReason: string;
+        stepUpVerified: boolean;
+      },
+    ): Promise<CheckResultView> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
-        const visit = await resolveVisit(tx, input.visitId);
-        const device = await resolveApprovedDevice(tx, userId);
-        const policy = await effectivePolicy(tx);
-
-        // gps-quality / geofence decision — the in-mem accuracy-band model (compromise #3).
-        let gpsQuality: EvvEventGpsQuality;
-        let decision: CheckResultView["geofenceDecision"];
-        if (input.accuracyM > policy.maxAccuracyM) {
-          gpsQuality = input.gpsQualityAttested ?? "outside_geofence";
-          decision = input.gpsQualityAttested ? "pass" : "fail_accuracy";
-        } else {
-          gpsQuality = input.accuracyM <= policy.maxAccuracyM / 2 ? "high" : "acceptable";
-          decision = "pass";
-        }
-        // GAP-032 — through the shared codec, so the read path recovers exactly what this wrote.
-        const coordsCipher = encodeStoredCoords(input.coords);
-        const capturedAt = new Date(input.capturedAt);
-
-        const [ins] = await tx
-          .insert(EVENT)
-          .values({
-            organizationId: orgId,
-            providerEntityId: visit.providerEntityId,
-            locationId: visit.locationId,
-            visitId: input.visitId,
-            patientId: visit.patientId,
-            patientAddressId: visit.patientAddressId,
-            kind,
-            serviceTypeCode: "",
-            postingMembershipId: userId,
-            postingDisciplineAtRecording: "",
-            evvDeviceId: device.id,
-            capturedAt,
-            eventAt: capturedAt,
-            coordsCipher,
-            coordsDekVersion: 1,
-            accuracyM: input.accuracyM,
-            gpsQuality,
-            deviceAttestationIdAtRecord: device.attestation,
+        const [original] = await tx
+          .select({
+            id: EVENT.id,
+            kind: EVENT.kind,
+            eventAt: EVENT.eventAt,
+            visitId: EVENT.visitId,
+            supersededByEventId: EVENT.supersededByEventId,
           })
-          .returning({ id: EVENT.id });
-        if (!ins) throw new Error("evv_event insert returned no row");
-        const eventId = ins.id;
+          .from(EVENT)
+          .where(eq(EVENT.id, originalEventId))
+          .limit(1);
+        if (!original) throw new NotFoundError("evv_event", originalEventId);
 
-        // §2.2.6 informational geofence-evaluation snapshot.
-        await tx.insert(GEVAL).values({
-          organizationId: orgId,
-          evvEventId: eventId,
-          appliedPolicyId: policy.policyId ?? PLATFORM_POLICY_SENTINEL,
-          appliedPolicyScope: policy.policyId ? "tenant" : "platform",
-          appliedRadiusM: policy.radiusM,
-          appliedMaxAccuracyM: policy.maxAccuracyM,
-          deviceCoordsCipher: coordsCipher,
-          computedDistanceM: null,
-          decision,
+        // Throws EVV_CORRECTION_STEP_UP_REQUIRED / _REASON_TOO_SHORT / EVV_EVENT_ALREADY_SUPERSEDED /
+        // _KIND_MISMATCH. All four are refusals the route simply did not have.
+        const { effects } = correctEvent({
+          originalEventId,
+          originalKind: original.kind as EvvEventKind,
+          originalSupersededByEventId: original.supersededByEventId,
+          newKind: input.kind,
+          correctionReason: input.correctionReason,
+          stepUpVerified: input.stepUpVerified,
         });
 
-        const recordedAt = new Date().toISOString();
-        if (kind === "check_in") {
-          await emit(tx, orgId, "m18.evv.check_in_recorded", "evv_event", eventId, {
-            eventId,
-            visitId: input.visitId,
-            patientId: visit.patientId,
-            postingMembershipId: userId,
-            capturedAt: toIso(capturedAt),
-            recordedAt,
-            gpsQuality,
-            geofenceDecision: decision,
-          });
-          if (decision === "pass") {
-            await emit(tx, orgId, "m18.evv.at_patient_address", "evv_event", eventId, {
-              eventId,
-              visitId: input.visitId,
-              patientId: visit.patientId,
-              postingMembershipId: userId,
-              computedDistanceM: 0,
-              appliedRadiusM: policy.radiusM,
-              confirmedAt: recordedAt,
-            });
-          } else {
-            await emit(tx, orgId, "m18.evv.geofence_breach_recorded", "evv_event", eventId, {
-              eventId,
-              visitId: input.visitId,
-              computedDistanceM: 0,
-              appliedRadiusM: policy.radiusM,
-              kind: "check_in",
-            });
-          }
-        } else {
-          const [priorCheckIn] = await tx
-            .select({ id: EVENT.id, capturedAt: EVENT.capturedAt })
-            .from(EVENT)
+        // `supersede_event` FIRST: the partial unique index counts only rows with a NULL
+        // `superseded_by_event_id`, so the original must stop being live before the correction is
+        // inserted. Both statements are in this transaction, so the index never sees two live rows.
+        const supersede = effects.find(
+          (e): e is Extract<EvvSideEffect, { kind: "supersede_event" }> =>
+            e.kind === "supersede_event",
+        );
+        const openMarker = effects.find(
+          (e): e is Extract<EvvSideEffect, { kind: "open_missing_resolution" }> =>
+            e.kind === "open_missing_resolution",
+        );
+        const reason = effects.find(
+          (e): e is Extract<EvvSideEffect, { kind: "capture_reason" }> =>
+            e.kind === "capture_reason" && e.field === "correction_reason",
+        );
+        if (!supersede) throw new Error("correctEvent declared no supersede_event effect");
+
+        const supersededAt = new Date();
+        // The composite PK is (id, event_at) — the partition key must be in the predicate, so the
+        // UPDATE is pinned by both rather than by id alone.
+        await tx
+          .update(EVENT)
+          .set({ supersededAt })
+          .where(and(eq(EVENT.id, supersede.originalEventId), eq(EVENT.eventAt, original.eventAt)));
+
+        const created = await captureInTx(tx, orgId, userId, input.kind, {
+          visitId: input.visitId,
+          coords: input.coords,
+          accuracyM: input.accuracyM,
+          capturedAt: input.capturedAt,
+          gpsQualityAttested: input.gpsQualityAttested,
+          replacesEventId: supersede.originalEventId,
+          correctionReason: reason?.value ?? input.correctionReason,
+        });
+
+        await tx
+          .update(EVENT)
+          .set({ supersededByEventId: created.eventId })
+          .where(and(eq(EVENT.id, supersede.originalEventId), eq(EVENT.eventAt, original.eventAt)));
+
+        await emit(tx, orgId, "m18.evv.event_corrected", "evv_event", created.eventId, {
+          supersededEventId: supersede.originalEventId,
+          newEventId: created.eventId,
+          visitId: input.visitId,
+          correctedByMembershipId: userId,
+          correctionReason: input.correctionReason,
+        });
+
+        // The visit reverts to attestation-pending: a corrected leg is an unverified leg until someone
+        // says otherwise. `evv_missing_resolution_open_uidx` admits one OPEN row per (visit, kind), so a
+        // second correction of the same leg reuses the row already open rather than colliding.
+        if (openMarker) {
+          const [existing] = await tx
+            .select({ id: MR.id })
+            .from(MR)
             .where(
               and(
-                eq(EVENT.visitId, input.visitId),
-                eq(EVENT.kind, "check_in"),
-                isNull(EVENT.supersededByEventId),
+                eq(MR.visitId, input.visitId),
+                eq(MR.kind, openMarker.resolutionKind),
+                eq(MR.status, "open"),
               ),
             )
-            .orderBy(desc(EVENT.eventAt))
             .limit(1);
-          const serviceDurationMinutes = priorCheckIn
-            ? Math.max(
-                0,
-                (capturedAt.getTime() - new Date(priorCheckIn.capturedAt).getTime()) / 60_000,
-              )
-            : 0;
-          await emit(tx, orgId, "m18.evv.check_out_recorded", "evv_event", eventId, {
-            eventId,
-            visitId: input.visitId,
-            patientId: visit.patientId,
-            postingMembershipId: userId,
-            capturedAt: toIso(capturedAt),
-            recordedAt,
-            gpsQuality,
-            geofenceDecision: decision,
-            pairedCheckInEventId: priorCheckIn?.id ?? null,
-            serviceDurationMinutes,
-          });
-          if (decision !== "pass") {
-            await emit(tx, orgId, "m18.evv.geofence_breach_recorded", "evv_event", eventId, {
-              eventId,
+          if (!existing) {
+            await tx.insert(MR).values({
+              organizationId: orgId,
               visitId: input.visitId,
-              computedDistanceM: 0,
-              appliedRadiusM: policy.radiusM,
-              kind: "check_out",
+              kind: openMarker.resolutionKind,
+              detectedBySource: "correction_of_record",
+              status: "open",
             });
           }
         }
 
-        return {
-          eventId,
-          kind,
-          gpsQuality,
-          geofenceDecision: decision,
-          visitStateAfterEvent: kind === "check_in" ? "in_visit" : "completed",
-        };
+        return created;
       });
     },
 
@@ -497,10 +653,13 @@ export function createDbEvvBackend(
           .where(eq(VISIT.id, visitId))
           .limit(1);
         if (!visitRow) throw new NotFoundError("visit", visitId);
+        // Only the LIVE leg of each chain — `seams/drizzle-store.ts` has always read it this way and
+        // this copy did not. It was inert while nothing superseded anything; the moment corrections work
+        // it would hand M8's `EvvBracketResolver` the event that was corrected AWAY.
         const events = await tx
           .select()
           .from(EVENT)
-          .where(eq(EVENT.visitId, visitId))
+          .where(and(eq(EVENT.visitId, visitId), isNull(EVENT.supersededByEventId)))
           .orderBy(desc(EVENT.eventAt));
         const checkIn = events.find((e) => e.kind === "check_in") ?? null;
         const checkOut = events.find((e) => e.kind === "check_out") ?? null;
@@ -549,6 +708,16 @@ export function createDbEvvBackend(
             platform: body.platform,
             modelDescription: body.modelDescription,
             deviceKeyFingerprint: `sr-${randomUUID()}`,
+            // KNOWN GAP (F-068, stated rather than papered over). `m2_device_attestation_id` is the D8
+            // logical FK to M2's `device_attestation`, which migration 0222 finally created — but the
+            // attestation's ID is not reachable here: the authenticate hook stamps `{ valid, verifiedAt }`
+            // on the request and `ResolvedActor` carries no id, so binding it needs an M2 seam change.
+            // The route's `attestationId` body field was removed rather than threaded, because a
+            // client-supplied attestation id is the F-028 shape — an authorization-relevant fact taken
+            // unverified from the party being gated — and would be strictly worse than this placeholder.
+            // Requiring a live attestation today would refuse every caller: there is no attested mobile
+            // client to self-register from yet (ADR-0035), and a route that always denies is the same
+            // fail-closed invisibility F-068 is about.
             m2DeviceAttestationId: randomUUID(),
             status: "pending_approval",
           })
@@ -563,12 +732,12 @@ export function createDbEvvBackend(
       });
     },
 
-    async approveDevice(orgId: string, id: string): Promise<DeviceView> {
+    async approveDevice(orgId: string, userId: string, id: string): Promise<DeviceView> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const [d] = await tx.select().from(DEVICE).where(eq(DEVICE.id, id)).limit(1);
         if (!d) throw new NotFoundError("evv_device", id);
-        const approver = await actingMembership(tx, orgId);
+        const approver = userId;
         const [updated] = await tx
           .update(DEVICE)
           .set({
@@ -588,18 +757,23 @@ export function createDbEvvBackend(
       });
     },
 
-    async rejectDevice(orgId: string, id: string): Promise<DeviceView> {
+    async rejectDevice(
+      orgId: string,
+      userId: string,
+      id: string,
+      reason: string,
+    ): Promise<DeviceView> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const [d] = await tx.select().from(DEVICE).where(eq(DEVICE.id, id)).limit(1);
         if (!d) throw new NotFoundError("evv_device", id);
-        const actor = await actingMembership(tx, orgId);
         const [updated] = await tx
           .update(DEVICE)
           .set({
             status: "rejected",
-            rejectedByMembershipId: actor,
+            rejectedByMembershipId: userId,
             rejectedAt: new Date(),
+            denialReason: reason,
             updatedAt: new Date(),
           })
           .where(eq(DEVICE.id, id))
@@ -608,26 +782,44 @@ export function createDbEvvBackend(
       });
     },
 
-    async suspendDevice(orgId: string, id: string): Promise<DeviceView> {
+    async suspendDevice(
+      orgId: string,
+      _userId: string,
+      id: string,
+      reason: string,
+    ): Promise<DeviceView> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const [d] = await tx.select().from(DEVICE).where(eq(DEVICE.id, id)).limit(1);
         if (!d) throw new NotFoundError("evv_device", id);
         const [updated] = await tx
           .update(DEVICE)
-          .set({ status: "suspended", suspendedAt: new Date(), updatedAt: new Date() })
+          .set({
+            status: "suspended",
+            suspendedAt: new Date(),
+            suspendReason: reason,
+            updatedAt: new Date(),
+          })
           .where(eq(DEVICE.id, id))
           .returning();
         await emit(tx, orgId, "m18.evv.device_suspended", "evv_device", id, {
           deviceId: id,
           membershipId: d.membershipId,
-          reason: "",
+          reason,
         });
         return toDeviceView(updated ?? d);
       });
     },
 
-    async retireDevice(orgId: string, id: string): Promise<DeviceView> {
+    // `evv_device` carries `denial_reason` and `suspend_reason` but no retire reason, so the optional
+    // one the contract accepts has nowhere to land. Named here rather than silently dropped — that is
+    // the habit this whole change is about.
+    async retireDevice(
+      orgId: string,
+      _userId: string,
+      id: string,
+      _reason?: string,
+    ): Promise<DeviceView> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const [d] = await tx.select().from(DEVICE).where(eq(DEVICE.id, id)).limit(1);
@@ -671,6 +863,7 @@ export function createDbEvvBackend(
     /** §2.2.2 tighten-only: the tenant may NARROW below the platform floor, never loosen above it. */
     async editTenantPolicy(
       orgId: string,
+      userId: string,
       body: { radiusM: number; maxAccuracyM: number },
     ): Promise<GeofencePolicyView> {
       if (
@@ -684,7 +877,7 @@ export function createDbEvvBackend(
       }
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
-        const setter = await actingMembership(tx, orgId);
+        const setter = userId;
         const [prior] = await tx
           .select({ id: POLICY.id, radiusM: POLICY.radiusM, maxAccuracyM: POLICY.maxAccuracyM })
           .from(POLICY)
@@ -724,11 +917,17 @@ export function createDbEvvBackend(
 
     async createPerAddressOverride(
       orgId: string,
-      body: { patientAddressId: string; radiusM: number; maxAccuracyM: number },
+      userId: string,
+      body: {
+        patientAddressId: string;
+        radiusM: number;
+        maxAccuracyM: number;
+        overrideReason: string;
+      },
     ): Promise<GeofencePolicyView> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
-        const setter = await actingMembership(tx, orgId);
+        const setter = userId;
         const [prior] = await tx
           .select({ id: POLICY.id, radiusM: POLICY.radiusM, maxAccuracyM: POLICY.maxAccuracyM })
           .from(POLICY)
@@ -750,6 +949,7 @@ export function createDbEvvBackend(
             patientAddressId: body.patientAddressId,
             radiusM: body.radiusM,
             maxAccuracyM: body.maxAccuracyM,
+            overrideReason: body.overrideReason,
             effectiveFrom: today(),
             setByMembershipId: setter,
           })
@@ -911,10 +1111,13 @@ export function createDbEvvBackend(
     },
 
     /** §7.9 operator-initiated resubmit (rejected/timeout → queued; attempt_count++). */
+    // `evv_aggregator_submission` has `cancellation_reason` but no resubmit reason; the optional one
+    // the contract accepts has nowhere to land (see `retireDevice`).
     async resubmitSubmission(
       orgId: string,
       userId: string,
       id: string,
+      _reason?: string,
     ): Promise<EvvAggregatorSubmissionDto> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
@@ -945,6 +1148,7 @@ export function createDbEvvBackend(
       orgId: string,
       userId: string,
       id: string,
+      reason: string,
     ): Promise<EvvAggregatorSubmissionDto> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
@@ -960,6 +1164,7 @@ export function createDbEvvBackend(
             status: transition.status,
             cancelledByMembershipId: userId || null,
             cancelledAt: new Date(),
+            cancellationReason: reason,
             version: (s.version as number) + 1,
             updatedAt: new Date(),
           })
@@ -970,7 +1175,7 @@ export function createDbEvvBackend(
           visitId: s.visitId,
           stateCode: s.stateCode,
           cancelledByMembershipId: userId,
-          reason: "",
+          reason,
         });
         return toSubmissionDto(updated ?? s);
       });
@@ -1038,7 +1243,7 @@ export function createDbEvvBackend(
         const events = await tx
           .select({ kind: EVENT.kind, capturedAt: EVENT.capturedAt })
           .from(EVENT)
-          .where(eq(EVENT.visitId, visitId))
+          .where(and(eq(EVENT.visitId, visitId), isNull(EVENT.supersededByEventId)))
           .orderBy(desc(EVENT.eventAt));
         return {
           visitId,
@@ -1055,5 +1260,12 @@ export function createDbEvvBackend(
     },
   };
 
-  return backend as unknown as EvvRouteService;
+  // No `as unknown as EvvRouteService` (F-068 §5). `EvvRoutePort` widens exactly one thing — the return
+  // types, so an async implementation satisfies a synchronous slice — and the assignment is checked again.
+  // A missing method, a renamed one, or one returning the wrong shape is a compile error now; a method
+  // that quietly IGNORES a trailing parameter still is not, because TypeScript accepts a function of
+  // fewer parameters wherever one of more is expected. That is the residual hole, and it is the exact
+  // shape four of this module's writes were in — so the parameters being dropped is what the tests below
+  // assert on, not the types.
+  return backend;
 }

@@ -43,10 +43,15 @@ export const CheckInRequest = Type.Object({
   evvDeviceId: Type.String({ format: "uuid" }),
   offlineCapture: Type.Optional(Type.Boolean()),
   localId: Type.Optional(Type.String({ format: "uuid" })),
-  expectedAttestationId: Type.String({ format: "uuid" }),
   gpsQualityAttested: Type.Optional(Type.Literal("degraded_attested")),
 });
 
+// No `expectedAttestationId` on either capture body (F-068 §3 — the third instance of the same shape,
+// removed with the other two rather than left as the odd one out). It was a required uuid the client
+// could not obtain: `DeviceView` — the only device projection there is — carries no attestation id, so
+// self-register never handed one back. Nothing compared it either; `device_attestation_id_at_record` is
+// written from the SERVER's own `evv_device` row. A re-attestation consistency check is a real thing to
+// want, and it needs a value the client can hold and a server that reads it — neither existed.
 export const CheckOutRequest = Type.Object({
   visitId: Type.String({ format: "uuid" }),
   capturedAt: Type.String({ format: "date-time" }),
@@ -55,7 +60,6 @@ export const CheckOutRequest = Type.Object({
   evvDeviceId: Type.String({ format: "uuid" }),
   offlineCapture: Type.Optional(Type.Boolean()),
   localId: Type.Optional(Type.String({ format: "uuid" })),
-  expectedAttestationId: Type.String({ format: "uuid" }),
   gpsQualityAttested: Type.Optional(Type.Literal("degraded_attested")),
 });
 
@@ -80,9 +84,14 @@ export const ClinicianAttestResolutionRequest = Type.Object({
   reason: Type.String({ minLength: 40 }),
 });
 
+// No `stepUpAuthRefId` (F-068 §3). It was a REQUIRED uuid, and no caller could obtain one: the column it
+// was meant to fill is annotated "M2 `step_up_session` (app-validated)" and there is no `step_up_session`
+// table — the platform's step-up state is `session.last_step_up_at`, on a row whose `id` is `text`. No
+// route anywhere returns a step-up assertion id, so satisfying the field meant inventing a uuid, and the
+// route discarded it anyway. The step-up itself is unaffected: it is resolved server-side through
+// `requestStepUpFresh` → M2's `SessionContextResolver`, which is the only reading that was ever real.
 export const SupervisorOverrideResolutionRequest = Type.Object({
   reason: Type.String({ minLength: 60 }),
-  stepUpAuthRefId: Type.String({ format: "uuid" }),
 });
 
 // ── §4.2 geofence-policy bodies ───────────────────────────────────────────────────────────────────────
@@ -99,10 +108,15 @@ export const CreatePerAddressOverrideRequest = Type.Object({
 });
 
 // ── device bodies ─────────────────────────────────────────────────────────────────────────────────────
+// No `attestationId` (F-068 §3), for the same reason and one more: it was required, unobtainable, and
+// discarded — and a client-SUPPLIED attestation id would be the F-028 shape, an authorization-relevant
+// fact taken unverified from the party being gated. The D8 binding of `evv_device.m2_device_attestation_id`
+// to a real M2 `device_attestation` row (migration 0222) needs the attestation's id on `ResolvedActor`,
+// which today carries only `{ valid, verifiedAt }`; until then the column keeps its minted placeholder and
+// the gap is named at the write site rather than papered over with a field nobody can fill.
 export const SelfRegisterDeviceRequest = Type.Object({
   platform: Type.Union([Type.Literal("ios"), Type.Literal("android")]),
   modelDescription: Type.String({ minLength: 1 }),
-  attestationId: Type.String({ format: "uuid" }),
 });
 export const RejectDeviceRequest = Type.Object({ reason: Type.String({ minLength: 1 }) });
 export const SuspendDeviceRequest = Type.Object({ reason: Type.String({ minLength: 1 }) });

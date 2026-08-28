@@ -39307,8 +39307,6 @@ export interface operations {
                     offlineCapture?: boolean;
                     /** Format: uuid */
                     localId?: string;
-                    /** Format: uuid */
-                    expectedAttestationId: string;
                     /** @constant */
                     gpsQualityAttested?: "degraded_attested";
                 };
@@ -39358,8 +39356,6 @@ export interface operations {
                     offlineCapture?: boolean;
                     /** Format: uuid */
                     localId?: string;
-                    /** Format: uuid */
-                    expectedAttestationId: string;
                     /** @constant */
                     gpsQualityAttested?: "degraded_attested";
                 };
@@ -39597,8 +39593,6 @@ export interface operations {
                 "application/json": {
                     platform: "ios" | "android";
                     modelDescription: string;
-                    /** Format: uuid */
-                    attestationId: string;
                 };
             };
         };
@@ -39739,8 +39733,6 @@ export interface operations {
                         offlineCapture?: boolean;
                         /** Format: uuid */
                         localId?: string;
-                        /** Format: uuid */
-                        expectedAttestationId: string;
                         /** @constant */
                         gpsQualityAttested?: "degraded_attested";
                     } | {
@@ -39758,8 +39750,6 @@ export interface operations {
                         offlineCapture?: boolean;
                         /** Format: uuid */
                         localId?: string;
-                        /** Format: uuid */
-                        expectedAttestationId: string;
                         /** @constant */
                         gpsQualityAttested?: "degraded_attested";
                     };
@@ -40012,8 +40002,6 @@ export interface operations {
             content: {
                 "application/json": {
                     reason: string;
-                    /** Format: uuid */
-                    stepUpAuthRefId: string;
                 };
             };
         };
@@ -40068,8 +40056,6 @@ export interface operations {
                         offlineCapture?: boolean;
                         /** Format: uuid */
                         localId?: string;
-                        /** Format: uuid */
-                        expectedAttestationId: string;
                         /** @constant */
                         gpsQualityAttested?: "degraded_attested";
                     }) | ({
@@ -40090,8 +40076,6 @@ export interface operations {
                         offlineCapture?: boolean;
                         /** Format: uuid */
                         localId?: string;
-                        /** Format: uuid */
-                        expectedAttestationId: string;
                         /** @constant */
                         gpsQualityAttested?: "degraded_attested";
                     }))[];

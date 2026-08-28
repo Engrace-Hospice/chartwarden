@@ -36,6 +36,7 @@ import {
   type EvvAggregatorSubmissionEvent,
   transitionAggregatorSubmission,
 } from "../domain/aggregator-submission";
+import { type CorrectionInput, correctEvent } from "../domain/event-lifecycle";
 import {
   type EvvMissingResolutionEvent,
   transitionMissingResolution,
@@ -165,6 +166,9 @@ interface EventRow {
   lat: number;
   lng: number;
   accuracyM: number;
+  /** §7.7 correction chain. `replacesEventId` on the correction, `supersededByEventId` on the original. */
+  replacesEventId: string | null;
+  supersededByEventId: string | null; // stamped in place when a correction supersedes this row
 }
 
 /** A monotonic in-memory id minter (deterministic per prefix; production mints uuids). */
@@ -264,6 +268,8 @@ export class EvvRouteService implements EvvAbacResolver {
       accuracyM: number;
       capturedAt: string;
       gpsQualityAttested?: "degraded_attested";
+      /** Set only by {@link EvvRouteService.correctEvent} — the event this one supersedes (§7.7). */
+      replacesEventId?: string;
     },
   ): CheckResultView {
     const visit = this.requireVisit(orgId, input.visitId);
@@ -290,6 +296,8 @@ export class EvvRouteService implements EvvAbacResolver {
       lat: input.coords.lat,
       lng: input.coords.lng,
       accuracyM: input.accuracyM,
+      replacesEventId: input.replacesEventId ?? null,
+      supersededByEventId: null,
     });
     return {
       eventId: id,
@@ -319,6 +327,61 @@ export class EvvRouteService implements EvvAbacResolver {
     return this.toEventDto(e);
   }
 
+  /**
+   * §7.7 correction-of-record — supersede one event with a corrected one.
+   *
+   * The route used to call {@link recordCapture} directly and throw the `:eventId` param and the
+   * `correctionReason` away (F-068 §1), so a "correction" was an ordinary second capture: it linked to
+   * nothing, superseded nothing, emitted no `m18.evv.event_corrected`, reopened no resolution, and
+   * accepted both a correction of an already-corrected event and a check-out offered as the correction
+   * of a check-in. Against the real per-leaf `UNIQUE (organization_id, visit_id, kind) WHERE
+   * superseded_by_event_id IS NULL` it also could not succeed — two live events for one leg.
+   *
+   * The decision is the pure {@link correctEvent} machine, which has been sitting in
+   * `domain/event-lifecycle.ts` complete and uncalled; this method applies the effects it declares.
+   */
+  correctEvent(
+    orgId: string,
+    userId: string,
+    originalEventId: string,
+    input: {
+      kind: EvvEventKind;
+      visitId: string;
+      coords: { lat: number; lng: number };
+      accuracyM: number;
+      capturedAt: string;
+      gpsQualityAttested?: "degraded_attested";
+      correctionReason: string;
+      stepUpVerified: boolean;
+    },
+  ): CheckResultView {
+    const original = this.events.find(
+      (e) => e.organizationId === orgId && e.id === originalEventId,
+    );
+    if (!original) throw new NotFoundError("evv_event", originalEventId);
+    const decision: CorrectionInput = {
+      originalEventId,
+      originalKind: original.kind,
+      originalSupersededByEventId: original.supersededByEventId,
+      newKind: input.kind,
+      correctionReason: input.correctionReason,
+      stepUpVerified: input.stepUpVerified,
+    };
+    // Throws EVV_CORRECTION_STEP_UP_REQUIRED / _REASON_TOO_SHORT / EVV_EVENT_ALREADY_SUPERSEDED /
+    // _KIND_MISMATCH — the four refusals the route never had.
+    correctEvent(decision);
+    const result = this.recordCapture(orgId, userId, input.kind, {
+      visitId: input.visitId,
+      coords: input.coords,
+      accuracyM: input.accuracyM,
+      capturedAt: input.capturedAt,
+      gpsQualityAttested: input.gpsQualityAttested,
+      replacesEventId: originalEventId,
+    });
+    original.supersededByEventId = result.eventId;
+    return result;
+  }
+
   private toEventDto(e: EventRow): EvvEventDto {
     return {
       id: e.id,
@@ -334,14 +397,16 @@ export class EvvRouteService implements EvvAbacResolver {
       recordedAt: e.capturedAt,
       gpsQuality: e.gpsQuality,
       offlineCapture: false,
-      replacesEventId: null,
-      supersededByEventId: null,
+      replacesEventId: e.replacesEventId,
+      supersededByEventId: e.supersededByEventId,
     };
   }
 
   bracketForVisit(orgId: string, visitId: string): EvvBracketDto {
     this.requireVisit(orgId, visitId);
-    const evts = this.events.filter((e) => e.organizationId === orgId && e.visitId === visitId);
+    const evts = this.events.filter(
+      (e) => e.organizationId === orgId && e.visitId === visitId && e.supersededByEventId === null,
+    );
     const checkIn = evts.find((e) => e.kind === "check_in") ?? null;
     const checkOut = evts.find((e) => e.kind === "check_out") ?? null;
     const open = [...this.resolutions.values()].find(
@@ -389,16 +454,22 @@ export class EvvRouteService implements EvvAbacResolver {
     const { organizationId: _o, ...v } = d;
     return v;
   }
-  approveDevice(orgId: string, id: string): DeviceView {
+  // The four device-lifecycle transitions take the ACTING membership and (where the schema has a column
+  // for it) the reason. Both used to stop at the route: `reason` was validated by typebox and dropped,
+  // and the production service filled `approved_by_membership_id` / `rejected_by_membership_id` from an
+  // arbitrary `LIMIT 1` membership in the org (F-068 §4) — a row asserting that a NAMED colleague
+  // approved the device. The slice keeps neither, but it carries both so the signature the Drizzle
+  // implementation must satisfy is the one that has somewhere to put them.
+  approveDevice(orgId: string, _userId: string, id: string): DeviceView {
     return this.transitionDevice(orgId, id, "approved");
   }
-  rejectDevice(orgId: string, id: string): DeviceView {
+  rejectDevice(orgId: string, _userId: string, id: string, _reason: string): DeviceView {
     return this.transitionDevice(orgId, id, "rejected");
   }
-  suspendDevice(orgId: string, id: string): DeviceView {
+  suspendDevice(orgId: string, _userId: string, id: string, _reason: string): DeviceView {
     return this.transitionDevice(orgId, id, "suspended");
   }
-  retireDevice(orgId: string, id: string): DeviceView {
+  retireDevice(orgId: string, _userId: string, id: string, _reason?: string): DeviceView {
     return this.transitionDevice(orgId, id, "retired");
   }
 
@@ -415,6 +486,7 @@ export class EvvRouteService implements EvvAbacResolver {
    * never loosen above it. */
   editTenantPolicy(
     orgId: string,
+    _userId: string,
     body: { radiusM: number; maxAccuracyM: number },
   ): GeofencePolicyView {
     if (body.radiusM > PLATFORM_FLOOR.radiusM || body.maxAccuracyM > PLATFORM_FLOOR.maxAccuracyM) {
@@ -427,7 +499,14 @@ export class EvvRouteService implements EvvAbacResolver {
   }
   createPerAddressOverride(
     orgId: string,
-    body: { patientAddressId: string; radiusM: number; maxAccuracyM: number },
+    _userId: string,
+    body: {
+      patientAddressId: string;
+      radiusM: number;
+      maxAccuracyM: number;
+      /** ≥30 chars, `evv_geofence_policy.override_reason`; DENYLISTED from audit (§3.6). */
+      overrideReason: string;
+    },
   ): GeofencePolicyView {
     const existing = this.perAddress.findIndex(
       (p) => p.organizationId === orgId && p.patientAddressId === body.patientAddressId,
@@ -531,12 +610,24 @@ export class EvvRouteService implements EvvAbacResolver {
     return s;
   }
   /** §7.9 operator-initiated resubmit (valid only from rejected/timeout → queued; attempt_count++). */
-  resubmitSubmission(orgId: string, _userId: string, id: string): EvvAggregatorSubmissionDto {
+  resubmitSubmission(
+    orgId: string,
+    _userId: string,
+    id: string,
+    _reason?: string,
+  ): EvvAggregatorSubmissionDto {
     const s = this.requireSubmission(orgId, id);
     return this.applySubmissionEvent(s, { type: "resubmit" });
   }
-  /** §4.1 operator-initiated cancel (valid only from a non-terminal status → cancelled). */
-  cancelSubmission(orgId: string, _userId: string, id: string): EvvAggregatorSubmissionDto {
+  /** §4.1 operator-initiated cancel (valid only from a non-terminal status → cancelled). The reason
+   * lands in `evv_aggregator_submission.cancellation_reason` and in the `aggregator_cancelled` outbox
+   * payload, which used to carry a literal `""` (F-068). */
+  cancelSubmission(
+    orgId: string,
+    _userId: string,
+    id: string,
+    _reason: string,
+  ): EvvAggregatorSubmissionDto {
     const s = this.requireSubmission(orgId, id);
     return this.applySubmissionEvent(s, { type: "cancel" });
   }
@@ -609,3 +700,25 @@ export class EvvRouteService implements EvvAbacResolver {
       throw new ForbiddenError("A correction-of-record requires fresh M2 step-up auth.");
   }
 }
+
+/**
+ * The surface `registerEvvRoutes` composes over: every public method of {@link EvvRouteService}, with its
+ * return type widened to allow a Promise.
+ *
+ * The two implementations differ in exactly one way — the in-memory slice is synchronous and the Drizzle
+ * one is not — and `createDbEvvBackend` used to bridge that with `return backend as unknown as
+ * EvvRouteService`. A double assertion takes EVERY divergence with it, not just the async one, and that
+ * is how the production implementation came to accept fewer parameters than the routes had to give it: a
+ * `reason` the route validated and dropped, an acting membership resolved on the line above and never
+ * passed, a correction-of-record calling plain capture (F-068 §5).
+ *
+ * What naming the widening buys, precisely: a missing or renamed method and a wrong return shape become
+ * compile errors. It does NOT catch an implementation that ignores a trailing parameter — TypeScript
+ * accepts a function of fewer parameters wherever one of more is expected, and that is the shape the
+ * dropped reasons were in. The compiler closes the half it can; the suite closes the other.
+ */
+export type EvvRoutePort = {
+  [K in keyof EvvRouteService]: EvvRouteService[K] extends (...args: infer A) => infer R
+    ? (...args: A) => R | Promise<Awaited<R>>
+    : EvvRouteService[K];
+};
