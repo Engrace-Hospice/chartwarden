@@ -28,6 +28,8 @@ export const M8_ERROR_STATUS = {
   VITALS_CNI_REASON_REQUIRED: 422,
   MILEAGE_ODOMETER_ORDER: 422,
   MILEAGE_OVERRIDE_REASON_REQUIRED: 422,
+  // §3.3 care-plan link authoring (F-064 / #159 — mirrors the `at_least_one` DB CHECK)
+  CARE_PLAN_LINK_REF_REQUIRED: 422,
   // §2.4 D3 cosignature-request lifecycle (T06)
   COSIGNATURE_LOCKED: 409,
   SUPERVISOR_RELEASE_NOT_PERMITTED: 403,

@@ -36,9 +36,14 @@ import {
   STEP_UP_POLICY,
   type StepUpFactor,
 } from "@wardenx/types";
-import { and, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
-import { planF2fDualWrite, planMileageCapture, planVitalsCapture } from "./authoring/index";
+import {
+  assertAtLeastOneCarePlanRef,
+  planF2fDualWrite,
+  planMileageCapture,
+  planVitalsCapture,
+} from "./authoring/index";
 import { transitionCosignature } from "./cosignature/index";
 import type { CosignatureState } from "./cosignature/index";
 import {
@@ -62,6 +67,7 @@ import {
 } from "./lifecycle/validation";
 import { toVitalsView } from "./routes/service";
 import type {
+  CarePlanLinkView,
   EncounterAbacFacts,
   EncounterAbacResolver,
   EncounterRouteService,
@@ -72,6 +78,7 @@ import { assembleSelections, buildTemplateMenu } from "./routes/service";
 import { getCarePlanReader, getCareTeamProvider } from "./seams/index";
 
 const ENC = schema.encounters;
+const LINK = schema.encounterCarePlanLinks;
 const COSIGN = schema.cosignatureRequests;
 const ADDENDUM = schema.encounterAddenda;
 const VITALS = schema.vitals;
@@ -252,6 +259,46 @@ export interface EncounterWriteOutboxPort {
 const NOOP_OUTBOX: EncounterWriteOutboxPort = { async publish() {} };
 
 /** First row of a RETURNING/SELECT, or a 500 (unreachable after a successful write). */
+/**
+ * F-064 (#159) — the encounter's PE/location siting, through M6's `AdmissionStatusReader`.
+ *
+ * `encounter.provider_entity_id` / `location_id` are the ARCH-011 three-column denormalization, and
+ * nothing had ever written either: migration 0128 relaxed both to nullable because "the draft route
+ * captures neither and the M6 admission may itself be unsited", and recorded that "the siting backfills
+ * when the admission has it". This is that backfill. M6 is already an M8 `dependsOn`, and the encounter
+ * carries the `admissionId` the seam is keyed on.
+ *
+ * Fails OPEN, unlike M10's equivalent: the subject of the record is the `patientId` the caller supplies
+ * and the admission FK carries, so an unresolvable admission costs the encounter its siting and not its
+ * identity. §7.13 — no external dependency blocks a clinical write.
+ */
+async function encounterSiting(
+  organizationId: string,
+  admissionId: string,
+): Promise<{ providerEntityId: string | null; locationId: string | null }> {
+  try {
+    const summary = await getSeam("AdmissionStatusReader").getAdmissionSummary(admissionId);
+    if (summary.organizationId !== organizationId)
+      return { providerEntityId: null, locationId: null };
+    return {
+      providerEntityId: summary.providerEntityId ?? null,
+      locationId: summary.locationId ?? null,
+    };
+  } catch {
+    return { providerEntityId: null, locationId: null };
+  }
+}
+
+/** F-064 — one live care-plan link, as the route projects it. */
+const toCarePlanLinkView = (r: typeof LINK.$inferSelect): CarePlanLinkView => ({
+  id: r.id,
+  encounterId: r.encounterId,
+  problemId: r.problemId,
+  goalId: r.goalId,
+  interventionId: r.interventionId,
+  createdAt: r.createdAt.toISOString(),
+});
+
 function firstOrThrow<T>(rows: readonly T[], msg: string): T {
   const r = rows[0];
   if (!r) throw new EncounterStateError("ILLEGAL_TRANSITION", msg);
@@ -888,6 +935,10 @@ export function createDbEncounterRouteService(
 
     // ── Draft creation (§2.3 genesis; route 1) ───────────────────────────────────────────────────────
     async createDraft(organizationId, actorUserId, args) {
+      // Resolved BEFORE the write transaction: the seam's Drizzle store opens its own tenant context,
+      // and nesting that inside an open `withOrgContext` would set the GUC on an already-bound
+      // connection (M10's `admissionSiting` records the same rule).
+      const siting = await encounterSiting(organizationId, args.admissionId);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // §2.7 pre-write guards (the rest — volunteer assignment, service-date-after-admission — thread
@@ -907,6 +958,9 @@ export function createDbEncounterRouteService(
               organizationId,
               patientId: args.patientId,
               admissionId: args.admissionId,
+              // F-064 — the ARCH-011 siting 0128 deferred. See `encounterSiting`.
+              providerEntityId: siting.providerEntityId,
+              locationId: siting.locationId,
               visitId: args.visitId ?? null,
               encounterType: args.encounterType,
               discipline: args.discipline,
@@ -1221,24 +1275,97 @@ export function createDbEncounterRouteService(
     },
 
     // ── Care-plan links / EVV-missing (§2.3 draft-time edits) ──────────────────────────────────────────
-    async addCarePlanLink(organizationId, encounterId) {
+    /**
+     * F-064 (#159) — persist the link.
+     *
+     * This used to parse the body in the route, discard it, insert nothing, and return the ENCOUNTER's
+     * own id as `linkId` with a 201. Two things were missing and only one was written down: the route
+     * did not thread the M7 refs, AND `encounter_care_plan_link.provider_entity_id` / `location_id`
+     * were NOT NULL while the encounter they would be copied from carried null in both — migration 0128
+     * relaxed that pair on every other encounter satellite and left this table out. Migration 0231
+     * finishes that list, and `createDraft` now stamps the encounter's siting from M6.
+     */
+    async addCarePlanLink(organizationId, actorMembershipId, encounterId, input) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
         checkMutableForEdit({ status: r.status });
-        // The encounter_care_plan_link `problem_id`/`goal_id`/`interventionId` (the M7 refs) are not
-        // carried by this route; the slice returns a link id without persisting a bare row (the row's
-        // `at_least_one` CHECK requires a ref). Persistence lands when the route body threads the M7 ids.
-        return { linkId: r.id };
+        // 422 naming the field, rather than the raw `23514` the `at_least_one` CHECK would raise.
+        assertAtLeastOneCarePlanRef(input);
+        const row = firstOrThrow(
+          await t
+            .insert(LINK)
+            .values({
+              organizationId,
+              providerEntityId: r.providerEntityId,
+              locationId: r.locationId,
+              encounterId,
+              problemId: input.problemId ?? null,
+              goalId: input.goalId ?? null,
+              interventionId: input.interventionId ?? null,
+            })
+            .returning(),
+          "encounter_care_plan_link insert returned no row",
+        );
+        return toCarePlanLinkView(row);
       });
     },
-    async removeCarePlanLink(organizationId, encounterId) {
+    /**
+     * F-064 — a SOFT invalidate, and a real 404.
+     *
+     * The route loaded the encounter, checked it was mutable, and returned 204 having removed nothing:
+     * `wardenx_app` holds DELETE on no M8 table (§3.6 append-only, uniform across all ten) and there was
+     * no column to mark instead. Migration 0231 adds the `removed_at` / `removed_by_membership_id`
+     * pair, so the row survives for the M4 write-audit trail while the link stops counting.
+     *
+     * A link that is absent or already removed is a 404. The old 204 was indistinguishable from a
+     * working delete, which is the whole defect.
+     */
+    async removeCarePlanLink(organizationId, actorMembershipId, encounterId, linkId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
         checkMutableForEdit({ status: r.status });
-        // No-op: wardenx_app holds DELETE on NO M8 table (§3.6 append-only) and no link row is persisted
-        // by addCarePlanLink; removal becomes a soft-invalidate when links persist (route ids threaded).
+        const rows = await t
+          .update(LINK)
+          .set({ removedAt: new Date(), removedByMembershipId: actorMembershipId })
+          .where(
+            and(
+              eq(LINK.id, linkId),
+              eq(LINK.encounterId, encounterId),
+              eq(LINK.organizationId, organizationId),
+              isNull(LINK.removedAt),
+            ),
+          )
+          .returning({ id: LINK.id });
+        if (rows.length === 0) {
+          throw new NotFoundError(`Care-plan link ${linkId} not found on encounter ${encounterId}`);
+        }
+      });
+    },
+    /**
+     * F-064 — the read that never existed.
+     *
+     * Even once links persist, `encounter_care_plan_link` would be write-only without this: there was
+     * no `GET`, and `GET /api/v1/encounters/{id}` does not project the links. The same shape #92 fixed
+     * for vitals and F-063 for mileage.
+     */
+    async listCarePlanLinks(organizationId, encounterId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        await loadEnc(t, encounterId); // 404 before the read if absent / cross-tenant
+        const rows = await t
+          .select()
+          .from(LINK)
+          .where(
+            and(
+              eq(LINK.encounterId, encounterId),
+              eq(LINK.organizationId, organizationId),
+              isNull(LINK.removedAt),
+            ),
+          )
+          .orderBy(asc(LINK.createdAt), asc(LINK.id));
+        return { links: rows.map(toCarePlanLinkView) };
       });
     },
     async documentEvvMissing(organizationId, encounterId) {

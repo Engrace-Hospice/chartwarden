@@ -73734,12 +73734,12 @@
       }
     },
     "/api/v1/encounters/{encounterId}/care-plan-links": {
-      "post": {
-        "operationId": "postApiV1EncountersByEncounterIdCareplanlinks",
+      "get": {
+        "operationId": "getApiV1EncountersByEncounterIdCareplanlinks",
         "tags": [
           "08-encounters"
         ],
-        "summary": "Link the encounter to care-plan elements",
+        "summary": "The live care-plan links on an encounter",
         "parameters": [
           {
             "name": "encounterId",
@@ -73758,10 +73758,146 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "linkId"
+                    "links"
                   ],
                   "properties": {
-                    "linkId": {
+                    "links": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "encounterId",
+                          "problemId",
+                          "goalId",
+                          "interventionId",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "encounterId": {
+                            "type": "string"
+                          },
+                          "problemId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "goalId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "interventionId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdCareplanlinks",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Link the encounter to care-plan elements",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "encounterId",
+                    "problemId",
+                    "goalId",
+                    "interventionId",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "encounterId": {
+                      "type": "string"
+                    },
+                    "problemId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "goalId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "interventionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
                       "type": "string"
                     }
                   }
@@ -73808,7 +73944,7 @@
         "tags": [
           "08-encounters"
         ],
-        "summary": "Remove a care-plan link while draft",
+        "summary": "Remove a care-plan link while draft (soft invalidate)",
         "parameters": [
           {
             "name": "encounterId",

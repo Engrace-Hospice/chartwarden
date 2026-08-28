@@ -29,6 +29,7 @@ import {
   type F2fAttestationWrite,
   type MileageInput,
   type VitalsInput,
+  assertAtLeastOneCarePlanRef,
   deriveAbnormalFlags,
   planF2fDualWrite,
   planMileageCapture,
@@ -434,6 +435,33 @@ export function assembleSelections(
 }
 
 /** The route service the §4.1 handlers compose over. Every method is org-scoped (RLS in prod). */
+/**
+ * The M7 element refs a care-plan link records (F-064 / #159).
+ *
+ * The route parsed exactly this shape and then discarded it — `addCarePlanLink(organizationId,
+ * encounterId)` took no third argument — so the link that says *this visit addressed this problem /
+ * worked this goal / delivered this intervention* was never written for any encounter the platform has
+ * recorded. The 201 it answered carried the ENCOUNTER's own id under the name `linkId`.
+ *
+ * At least one ref is required. That is the table's `at_least_one` CHECK, enforced here as well so the
+ * caller gets a 422 naming the field rather than a raw `23514`.
+ */
+export interface CarePlanLinkInput {
+  readonly problemId?: string;
+  readonly goalId?: string;
+  readonly interventionId?: string;
+}
+
+/** One live care-plan link on an encounter. */
+export interface CarePlanLinkView {
+  readonly id: string;
+  readonly encounterId: string;
+  readonly problemId: string | null;
+  readonly goalId: string | null;
+  readonly interventionId: string | null;
+  readonly createdAt: string;
+}
+
 export interface EncounterRouteService {
   createDraft(
     organizationId: string,
@@ -486,8 +514,22 @@ export interface EncounterRouteService {
     encounterId: string,
     input: MileageInput,
   ): Promise<MileageResult>;
-  addCarePlanLink(organizationId: string, encounterId: string): Promise<{ linkId: string }>;
-  removeCarePlanLink(organizationId: string, encounterId: string, linkId: string): Promise<void>;
+  addCarePlanLink(
+    organizationId: string,
+    actorMembershipId: string,
+    encounterId: string,
+    input: CarePlanLinkInput,
+  ): Promise<CarePlanLinkView>;
+  removeCarePlanLink(
+    organizationId: string,
+    actorMembershipId: string,
+    encounterId: string,
+    linkId: string,
+  ): Promise<void>;
+  listCarePlanLinks(
+    organizationId: string,
+    encounterId: string,
+  ): Promise<{ links: readonly CarePlanLinkView[] }>;
   documentEvvMissing(
     organizationId: string,
     encounterId: string,
@@ -597,6 +639,15 @@ export interface EncounterRouteService {
 interface EncounterRecord {
   id: string;
   organizationId: string;
+  /** F-064 — the live + removed care-plan links (the slice's stand-in for `encounter_care_plan_link`). */
+  carePlanLinks?: Array<{
+    id: string;
+    problemId: string | null;
+    goalId: string | null;
+    interventionId: string | null;
+    createdAt: string;
+    removedAt: string | null;
+  }>;
   patientId: string;
   admissionId: string;
   visitId: string | null;
@@ -992,14 +1043,52 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       recordOutbox(r.id, plan.effects);
       return { mileageId, milesDriven: plan.milesDriven, source: plan.source };
     },
-    async addCarePlanLink(organizationId, encounterId) {
+    async addCarePlanLink(organizationId, actorMembershipId, encounterId, input) {
       const r = load(organizationId, encounterId);
       checkMutableForEdit({ status: r.status });
-      return { linkId: subId() };
+      assertAtLeastOneCarePlanRef(input);
+      const link = {
+        id: subId(),
+        problemId: input.problemId ?? null,
+        goalId: input.goalId ?? null,
+        interventionId: input.interventionId ?? null,
+        createdAt: now(),
+        removedAt: null,
+      };
+      r.carePlanLinks = [...(r.carePlanLinks ?? []), link];
+      return {
+        id: link.id,
+        encounterId: r.id,
+        problemId: link.problemId,
+        goalId: link.goalId,
+        interventionId: link.interventionId,
+        createdAt: link.createdAt,
+      };
     },
-    async removeCarePlanLink(organizationId, encounterId) {
+    async removeCarePlanLink(organizationId, actorMembershipId, encounterId, linkId) {
       const r = load(organizationId, encounterId);
       checkMutableForEdit({ status: r.status });
+      const link = (r.carePlanLinks ?? []).find((l) => l.id === linkId && l.removedAt === null);
+      // 404 rather than a silent 204: the route used to return 204 having removed nothing, and a
+      // no-op that reports success is indistinguishable from a working delete.
+      if (!link)
+        throw new NotFoundError(`Care-plan link ${linkId} not found on encounter ${encounterId}`);
+      link.removedAt = now();
+    },
+    async listCarePlanLinks(organizationId, encounterId) {
+      const r = load(organizationId, encounterId);
+      return {
+        links: (r.carePlanLinks ?? [])
+          .filter((l) => l.removedAt === null)
+          .map((l) => ({
+            id: l.id,
+            encounterId: r.id,
+            problemId: l.problemId,
+            goalId: l.goalId,
+            interventionId: l.interventionId,
+            createdAt: l.createdAt,
+          })),
+      };
     },
     async documentEvvMissing(organizationId, encounterId) {
       const r = load(organizationId, encounterId);

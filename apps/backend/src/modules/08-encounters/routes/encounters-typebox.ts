@@ -443,8 +443,27 @@ export const MileageViewResponseSchema = Type.Union([
   Type.Null(),
 ]);
 
-/** Route 8 — care-plan link created. */
-export const CarePlanLinkResponseSchema = Type.Object({ linkId: Type.String() });
+/**
+ * Route 8 — the care-plan link, as created.
+ *
+ * F-064 (#159) — this was `{ linkId: string }`, and the value under that name was the ENCOUNTER's own
+ * id: nothing was inserted, so there was no link id to return. The shape is the link now, and `id`
+ * rather than `linkId` because a caller that stored the old field held an encounter id under a
+ * link-shaped name and nothing distinguished it from a working create.
+ */
+export const CarePlanLinkResponseSchema = Type.Object({
+  id: Type.String(),
+  encounterId: Type.String(),
+  problemId: NullableStr,
+  goalId: NullableStr,
+  interventionId: NullableStr,
+  createdAt: Type.String(),
+});
+
+/** Route 8b — the live care-plan links on an encounter (F-064). Removed links are not projected. */
+export const CarePlanLinkListResponseSchema = Type.Object({
+  links: Type.Array(CarePlanLinkResponseSchema),
+});
 
 /** Route 10 — EVV-missing documented (D9 bracket state). */
 export const EvvReconcileResponseSchema = Type.Object({ evvBracketState: Type.String() });
@@ -562,6 +581,10 @@ type _VitalsList = Conforms<Static<typeof VitalsListResponseSchema>, Ret<"listVi
 type _Mileage = Conforms<Static<typeof MileageResultResponseSchema>, ServiceMileageResult>;
 type _Selections = Conforms<Static<typeof SelectionsUpdateResponseSchema>, Ret<"updateSelections">>;
 type _CarePlanLink = Conforms<Static<typeof CarePlanLinkResponseSchema>, Ret<"addCarePlanLink">>;
+type _CarePlanLinks = Conforms<
+  Static<typeof CarePlanLinkListResponseSchema>,
+  Ret<"listCarePlanLinks">
+>;
 type _Evv = Conforms<Static<typeof EvvReconcileResponseSchema>, Ret<"documentEvvMissing">>;
 type _Finalize = Conforms<Static<typeof FinalizeResponseSchema>, Ret<"finalize">>;
 type _Enhance = Conforms<Static<typeof HearthnoteEnhanceResponseSchema>, Ret<"enhanceHearthnote">>;

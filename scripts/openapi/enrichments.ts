@@ -1158,6 +1158,7 @@ import {
   BillableResponseSchema as M8BillableResponseSchema,
   CaptureMileageSchema as M8CaptureMileageSchema,
   CaptureVitalsSchema as M8CaptureVitalsSchema,
+  CarePlanLinkListResponseSchema as M8CarePlanLinkListResponseSchema,
   CarePlanLinkResponseSchema as M8CarePlanLinkResponseSchema,
   CarePlanLinkSchema as M8CarePlanLinkSchema,
   CosignSignResponseSchema as M8CosignSignResponseSchema,
@@ -3718,10 +3719,15 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/encounters/:encounterId/care-plan-links": {
     summary: "Link the encounter to care-plan elements",
     body: M8CarePlanLinkSchema,
+    status: 201,
     response: M8CarePlanLinkResponseSchema,
   },
+  "GET /api/v1/encounters/:encounterId/care-plan-links": {
+    summary: "The live care-plan links on an encounter",
+    response: M8CarePlanLinkListResponseSchema,
+  },
   "DELETE /api/v1/encounters/:encounterId/care-plan-links/:linkId": {
-    summary: "Remove a care-plan link while draft",
+    summary: "Remove a care-plan link while draft (soft invalidate)",
   },
   "POST /api/v1/encounters/:encounterId/evv-reconcile": {
     summary: "Document an EVV-missing reason (D9 fallback)",

@@ -8,3 +8,5 @@
 export * from "./vitals";
 export * from "./mileage";
 export * from "./f2f";
+// F-064 — the `at_least_one` mirror for `encounter_care_plan_link`.
+export * from "./care-plan-link";

@@ -378,25 +378,57 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   );
 
   // 8 — link encounter to care-plan elements.
+  //
+  // F-064 (#159) — the body used to be parsed and DISCARDED: `addCarePlanLink(organizationId,
+  // encounterId)` took no third argument, so the M7 refs the link exists to record never reached the
+  // service, nothing was persisted, and the 201 carried the ENCOUNTER's own id under the name `linkId`.
   app.post(
     "/api/v1/encounters/:encounterId/care-plan-links",
     { preHandler: [AUTHOR, SCOPE_FOR("encounter.author")] },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
-      parse(CarePlanLinkSchema, request.body);
-      const res = await service.addCarePlanLink(organizationId, encounterIdOf(request));
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(CarePlanLinkSchema, request.body);
+      const res = await service.addCarePlanLink(
+        organizationId,
+        userId,
+        encounterIdOf(request),
+        body,
+      );
       return reply.code(201).send(res);
     },
   );
 
+  // 8b — the links on an encounter (F-064). Without this the table would be write-only even once links
+  // persist: nothing projected them, here or on `GET /api/v1/encounters/:id`.
+  app.get(
+    "/api/v1/encounters/:encounterId/care-plan-links",
+    {
+      preHandler: [READ, SCOPE_FOR("encounter.read")],
+      config: {
+        auditRead: {
+          none: "Care-plan element refs (problem/goal/intervention ids) for one encounter; no clinical content.",
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.listCarePlanLinks(organizationId, encounterIdOf(request));
+    },
+  );
+
   // 9 — remove a care-plan link while draft.
+  //
+  // F-064 — a SOFT invalidate now. This used to load the encounter, check it was mutable, and return
+  // 204 having removed nothing: `wardenx_app` holds DELETE on no M8 table (§3.6 append-only) and there
+  // was no column to mark instead. A link that is absent or already removed is a 404, because the old
+  // 204 was indistinguishable from a working delete.
   app.delete(
     "/api/v1/encounters/:encounterId/care-plan-links/:linkId",
     { preHandler: [AUTHOR] },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, userId } = actorOf(request);
       const { encounterId, linkId } = parse(CarePlanLinkParamsSchema, request.params);
-      await service.removeCarePlanLink(organizationId, encounterId, linkId);
+      await service.removeCarePlanLink(organizationId, userId, encounterId, linkId);
       return reply.code(204).send();
     },
   );
