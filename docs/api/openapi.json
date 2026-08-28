@@ -79018,8 +79018,7 @@
                   "capturedAt",
                   "coords",
                   "accuracyM",
-                  "evvDeviceId",
-                  "expectedAttestationId"
+                  "evvDeviceId"
                 ],
                 "properties": {
                   "visitId": {
@@ -79066,10 +79065,6 @@
                     "type": "boolean"
                   },
                   "localId": {
-                    "format": "uuid",
-                    "type": "string"
-                  },
-                  "expectedAttestationId": {
                     "format": "uuid",
                     "type": "string"
                   },
@@ -79203,8 +79198,7 @@
                   "capturedAt",
                   "coords",
                   "accuracyM",
-                  "evvDeviceId",
-                  "expectedAttestationId"
+                  "evvDeviceId"
                 ],
                 "properties": {
                   "visitId": {
@@ -79247,10 +79241,6 @@
                     "type": "boolean"
                   },
                   "localId": {
-                    "format": "uuid",
-                    "type": "string"
-                  },
-                  "expectedAttestationId": {
                     "format": "uuid",
                     "type": "string"
                   },
@@ -79952,8 +79942,7 @@
                 "type": "object",
                 "required": [
                   "platform",
-                  "modelDescription",
-                  "attestationId"
+                  "modelDescription"
                 ],
                 "properties": {
                   "platform": {
@@ -79970,10 +79959,6 @@
                   },
                   "modelDescription": {
                     "minLength": 1,
-                    "type": "string"
-                  },
-                  "attestationId": {
-                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -80501,8 +80486,7 @@
                           "capturedAt",
                           "coords",
                           "accuracyM",
-                          "evvDeviceId",
-                          "expectedAttestationId"
+                          "evvDeviceId"
                         ],
                         "properties": {
                           "visitId": {
@@ -80552,10 +80536,6 @@
                             "format": "uuid",
                             "type": "string"
                           },
-                          "expectedAttestationId": {
-                            "format": "uuid",
-                            "type": "string"
-                          },
                           "gpsQualityAttested": {
                             "const": "degraded_attested",
                             "type": "string"
@@ -80569,8 +80549,7 @@
                           "capturedAt",
                           "coords",
                           "accuracyM",
-                          "evvDeviceId",
-                          "expectedAttestationId"
+                          "evvDeviceId"
                         ],
                         "properties": {
                           "visitId": {
@@ -80613,10 +80592,6 @@
                             "type": "boolean"
                           },
                           "localId": {
-                            "format": "uuid",
-                            "type": "string"
-                          },
-                          "expectedAttestationId": {
                             "format": "uuid",
                             "type": "string"
                           },
@@ -81371,16 +81346,11 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "reason",
-                  "stepUpAuthRefId"
+                  "reason"
                 ],
                 "properties": {
                   "reason": {
                     "minLength": 60,
-                    "type": "string"
-                  },
-                  "stepUpAuthRefId": {
-                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -81545,8 +81515,7 @@
                                 "capturedAt",
                                 "coords",
                                 "accuracyM",
-                                "evvDeviceId",
-                                "expectedAttestationId"
+                                "evvDeviceId"
                               ],
                               "properties": {
                                 "visitId": {
@@ -81596,10 +81565,6 @@
                                   "format": "uuid",
                                   "type": "string"
                                 },
-                                "expectedAttestationId": {
-                                  "format": "uuid",
-                                  "type": "string"
-                                },
                                 "gpsQualityAttested": {
                                   "const": "degraded_attested",
                                   "type": "string"
@@ -81630,8 +81595,7 @@
                                 "capturedAt",
                                 "coords",
                                 "accuracyM",
-                                "evvDeviceId",
-                                "expectedAttestationId"
+                                "evvDeviceId"
                               ],
                               "properties": {
                                 "visitId": {
@@ -81674,10 +81638,6 @@
                                   "type": "boolean"
                                 },
                                 "localId": {
-                                  "format": "uuid",
-                                  "type": "string"
-                                },
-                                "expectedAttestationId": {
                                   "format": "uuid",
                                   "type": "string"
                                 },

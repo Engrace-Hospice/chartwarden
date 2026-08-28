@@ -368,11 +368,10 @@ async function main(): Promise<void> {
   // ── M18 — EVV ──────────────────────────────────────────────────────────────────────────────────
   try {
     const dev = await rn.client.POST("/api/v1/evv/devices/self-register", {
-      body: {
-        platform: "ios",
-        modelDescription: "Demo iPhone",
-        attestationId: crypto.randomUUID(),
-      },
+      // The `attestationId` this used to pass was `crypto.randomUUID()` — the only caller in the
+      // codebase, satisfying a REQUIRED uuid by inventing one, because no route mints a device
+      // attestation id a client can hold (F-068 §3). The field is gone from the contract.
+      body: { platform: "ios", modelDescription: "Demo iPhone" },
     });
     const devData = dev.data as unknown as { id: string } | undefined;
     if (dev.error || !devData)
