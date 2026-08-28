@@ -233,7 +233,10 @@ export function HopeAssessmentDetail(): JSX.Element {
               </span>
             </div>
             <p style={meta}>
-              {stateLabel(row.authorDiscipline)} · target{" "}
+              {/* The read projection does not carry an author discipline — `hope_assessment` has no such
+                  column (it is a request-time attribution), so this is `""` on every row. Rendering it
+                  unconditionally produced a leading " · " separating nothing. */}
+              {row.authorDiscipline !== "" ? `${stateLabel(row.authorDiscipline)} · ` : ""}target{" "}
               <span className="tabular-nums">{row.targetDate.slice(0, 10)}</span>
               {row.signedAt
                 ? ` · signed ${row.signedAt.slice(0, 10)}${row.signedBy ? ` · ${row.signedBy}` : ""}`
@@ -407,7 +410,6 @@ export function HopeAssessmentDetail(): JSX.Element {
           open
           action={acting}
           targetId={row.id}
-          authorDiscipline={row.authorDiscipline}
           onClose={() => setActing(null)}
           onDone={() => setReloadKey((k) => k + 1)}
         />

@@ -31,6 +31,23 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 //     them is unreachable end to end. A button there would report success for work the server does not
 //     do, so the Submission Worklist states the limitation on screen instead.
 //
+// F-067 (#91 AC5) — `e2e/specs/hope.spec.ts` drives the primary authored-then-signed path in a real
+// browser: record an unscheduled HUV1 from the patient timeline, open the draft, sign it, and assert the
+// server's own D4 evaluation created the 2-day SFV obligation. Writing it found that NONE of the writes
+// above had ever reached a real server. `authorDiscipline` is the one field whose wire vocabulary is not
+// the lowercase M3 role key — the route takes `RN`/`NP`/`MD` — and the recording modal offered raw role
+// keys as the select's VALUES and sent one through an `as` cast, so every capture was refused 422; the
+// correction modal took its attribution from `row.authorDiscipline`, which the read projection
+// hard-codes to `""`; and `hope.correctionAuthorAllowed` compared a membership id to a user id, so the
+// original signer was denied their own correction. Three dead writes, all green in `tsc`, the DOM suite
+// and every fitness gate. The DOM suite could not see them: it asserted `authorDiscipline === "rn"`
+// against a stub that 200s any non-GET, which encodes the defect as the expectation.
+//
+// The seed gap that spec sits on, left as a finding rather than papered over: `hope_timepoint_schedule`
+// is EMPTY on a seeded stack, because schedules are written by the M6 outbox consumer rather than by any
+// seed script. So the Timepoint Dashboard — the top-level nav surface — has no open window to record or
+// skip, and the patient timeline's unscheduled capture is the only authoring path a seeded stack offers.
+//
 // Section EDITING of an existing draft (`PUT /hope/assessments/:id`) follows the first of those: this
 // module renders no section editor, so a save-draft from here would send back exactly what it read.
 import { lazy } from "react";

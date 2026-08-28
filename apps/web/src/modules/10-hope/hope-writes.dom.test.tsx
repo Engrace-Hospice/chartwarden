@@ -62,7 +62,10 @@ const assessmentRow = {
   rfaKind: "01_admission",
   status: "draft",
   targetDate: "2026-08-20T10:00:00.000Z",
-  authorDiscipline: "rn",
+  // The read projection carries NO author discipline — `hope_assessment` has no such column, so the
+  // server sends `""` on every row (`hope-route-service-db.ts`). The fixture said `"rn"`, which is what
+  // let the correction path pass a value the route then refused (F-067).
+  authorDiscipline: "",
   j2051MaxSeverity: null as string | null,
   j2051TriggerFired: false,
   wasLate: false,
@@ -198,7 +201,12 @@ describe("#91 — the timepoint worklist can record and skip the window it displ
     // The schedule pins BOTH: a payload whose RFA does not match the window is refused server-side.
     expect(sent.scheduleId).toBe(SCHEDULE);
     expect(sent.rfaKind).toBe("02_huv1");
-    expect(sent.authorDiscipline).toBe("rn");
+    // F-067 — this asserted `"rn"`, the M3 ROLE KEY, against a stub that 200s any non-GET. The route
+    // schema is `Union([Literal("RN"), Literal("NP"), Literal("MD")])`, so the real server answered 422
+    // `authorDiscipline: Expected union value` for every capture the UI has ever sent. A mocked write
+    // path can only prove the client is self-consistent; this line is the one that has to name the
+    // CONTRACT, which is why the e2e spec (`e2e/specs/hope.spec.ts`) exists beside it.
+    expect(sent.authorDiscipline).toBe("RN");
   });
 
   it("Skip POSTs the route-3 ceremony with the reason code the server records", async () => {

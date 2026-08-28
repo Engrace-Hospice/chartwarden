@@ -13,8 +13,11 @@ import { Button, Modal, SelectField, TextAreaField, TextField, t, useApiClient }
 // may create the follow-up obligation as a consequence — none of which this modal predicts.
 import { useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
+import { useSession } from "../../shell/session";
 import {
+  type AuthorDiscipline,
   type WriteResult,
+  authorDisciplinesForRoles,
   correctTimepoint,
   regenerateSchedules,
   requestSummaryPdf,
@@ -65,8 +68,6 @@ export interface HopeActionModalProps {
   readonly action: HopeAction;
   /** The subject: a schedule id, assessment id, submission id, admission id or provider-entity id. */
   readonly targetId: string;
-  /** For `correct`: the RFA the correction inherits, needed for its author attribution. */
-  readonly authorDiscipline?: string;
   readonly onClose: () => void;
   /** Called after a successful commit so the caller can refresh without guessing at the new state. */
   readonly onDone: () => void;
@@ -76,11 +77,19 @@ export function HopeActionModal({
   open,
   action,
   targetId,
-  authorDiscipline = "RN",
   onClose,
   onDone,
 }: HopeActionModalProps): JSX.Element | null {
   const client = useApiClient();
+  const session = useSession();
+  // F-067 (#91) — the correction's author attribution is the CORRECTING clinician's discipline, resolved
+  // from their own session roles. It used to arrive as an `authorDiscipline` PROP that the assessment
+  // detail filled from `row.authorDiscipline` — a field the read projection hard-codes to `""`
+  // (`hope-route-service-db.ts`: the column does not exist, the discipline is request-time only). The
+  // `= "RN"` default could never cover it, because a default fires on `undefined` and `""` is defined,
+  // so every correction sent an empty string and was refused 422 `Expected union value`. Deriving it
+  // here rather than accepting it removes the shape that made that possible.
+  const correctionDiscipline = authorDisciplinesForRoles(session?.roles ?? [])[0];
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reasonCode, setReasonCode] = useState<string>(SKIP_REASONS[0]);
@@ -98,9 +107,13 @@ export function HopeActionModal({
 
   if (!open) return null;
 
-  const blocked = action === "correct" && correctionReason.trim() === "";
+  const blocked =
+    action === "correct" && (correctionReason.trim() === "" || correctionDiscipline === undefined);
 
   async function submit(): Promise<void> {
+    // Narrowing before the busy flag is raised — an early return after `setBusy(true)` would strand the
+    // dialog in "Working…" forever. `blocked` already disables the control; this is for the type.
+    if (action === "correct" && correctionDiscipline === undefined) return;
     setBusy(true);
     setError(null);
     let res: WriteResult<unknown>;
@@ -120,7 +133,7 @@ export function HopeActionModal({
         res = await correctTimepoint(client, targetId, {
           correctionReason: correctionReason.trim(),
           targetDate: new Date().toISOString(),
-          authorDiscipline: authorDiscipline as never,
+          authorDiscipline: correctionDiscipline as AuthorDiscipline,
           data: {},
         });
         break;

@@ -52,6 +52,8 @@ import {
   type HopeData,
   type LateReasonCode,
   type RfaKind,
+  authorDisciplineLabel,
+  authorDisciplinesForRoles,
   recordSfv,
   recordTimepoint,
 } from "./hope-api";
@@ -76,9 +78,8 @@ const SEVERITIES: readonly Severity[] = ["none", "mild", "moderate", "severe"];
 /** D4 — moderate or severe on ANY symptom creates the 2-calendar-day SFV obligation. */
 const TRIGGER_SEVERITIES: ReadonlySet<string> = new Set(["moderate", "severe"]);
 
-/** The §4.7 author vocabulary, as M3 role keys. A capture is RN/NP/MD; an SFV is RN/NP (server-enforced). */
-const AUTHOR_ROLE_KEYS = ["rn", "rn_case_manager", "np", "md", "medical_director"] as const;
-const SFV_AUTHOR_ROLE_KEYS: ReadonlySet<string> = new Set(["rn", "rn_case_manager", "np"]);
+// The §4.7 author vocabulary lives in `hope-api.ts` (`authorDisciplinesForRoles`) — it is the WIRE
+// vocabulary (RN/NP/MD), not the M3 role keys, and this modal used to conflate the two. See F-067 there.
 
 const RFA_KINDS: readonly RfaKind[] = [
   "01_admission",
@@ -173,7 +174,7 @@ export function HopeRecordModal({
 
   const [rfaKind, setRfaKind] = useState<RfaKind>("01_admission");
   const [targetLocal, setTargetLocal] = useState("");
-  const [authorDiscipline, setAuthorDiscipline] = useState("");
+  const [authorDiscipline, setAuthorDiscipline] = useState<AuthorDiscipline | "">("");
   const [dischargeReason, setDischargeReason] = useState<DischargeReason>("live_discharge");
   const [lateReason, setLateReason] = useState<LateReasonCode>("pto");
   const [adminOverride, setAdminOverride] = useState(false);
@@ -188,15 +189,12 @@ export function HopeRecordModal({
   const [scheduledBowelRegimen, setScheduledBowelRegimen] = useState(false);
   const [bowelRegimenContraindication, setBowelRegimenContraindication] = useState("");
 
-  // The caller's OWN roles, narrowed to the author vocabulary. NOT a check that they may record —
-  // §4.7 is the server's, and this is which discipline the capture is attributed to.
-  const authorRoles = useMemo(() => {
-    const held = new Set(session?.roles ?? []);
-    const vocabulary = isSfv
-      ? AUTHOR_ROLE_KEYS.filter((r) => SFV_AUTHOR_ROLE_KEYS.has(r))
-      : AUTHOR_ROLE_KEYS;
-    return vocabulary.filter((r) => held.has(r));
-  }, [session, isSfv]);
+  // The caller's OWN roles, resolved to the CMS discipline codes they may be attributed as. NOT a check
+  // that they may record — §4.7 is the server's, and this is which discipline the capture is filed under.
+  const authorRoles = useMemo(
+    () => authorDisciplinesForRoles(session?.roles ?? [], { sfv: isSfv }),
+    [session, isSfv],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -204,7 +202,7 @@ export function HopeRecordModal({
     setBusy(false);
     setRfaKind(isSfv ? "04_sfv" : (pinnedRfa ?? defaultRfaKind ?? "01_admission"));
     setTargetLocal(toLocalInput(new Date().toISOString()));
-    setAuthorDiscipline(authorRoles.length === 1 ? (authorRoles[0] as string) : "");
+    setAuthorDiscipline(authorRoles.length === 1 ? (authorRoles[0] as AuthorDiscipline) : "");
     setAdminOverride(false);
     setPrimaryDiagnosisIcd10("");
     setPainScreened(false);
@@ -272,6 +270,10 @@ export function HopeRecordModal({
   }
 
   async function submit(): Promise<void> {
+    // Narrowing, not a re-check: `blocked` already disables the control. Returning here rather than
+    // casting is what lets the two calls below pass a real `AuthorDiscipline` — the `as` that used to
+    // stand in for this is precisely what let a role key reach the wire (F-067).
+    if (authorDiscipline === "") return;
     setBusy(true);
     setError(null);
     const data = buildData();
@@ -279,14 +281,14 @@ export function HopeRecordModal({
       ? await recordSfv(client, admissionId, {
           triggeringAssessmentId: triggeringAssessmentId as string,
           targetDate: targetIso,
-          authorDiscipline: authorDiscipline as AuthorDiscipline,
+          authorDiscipline,
           data,
           ...(adminOverride ? { adminOverride: true } : {}),
         })
       : await recordTimepoint(client, admissionId, {
           rfaKind,
           targetDate: targetIso,
-          authorDiscipline: authorDiscipline as AuthorDiscipline,
+          authorDiscipline,
           data,
           ...(scheduleWindow ? { scheduleId: scheduleWindow.id } : {}),
           ...(rfaKind === "05_discharge" ? { dischargeReason } : {}),
@@ -356,10 +358,10 @@ export function HopeRecordModal({
           <SelectField
             label="Recording as"
             value={authorDiscipline}
-            onChange={(e) => setAuthorDiscipline(e.target.value)}
+            onChange={(e) => setAuthorDiscipline(e.target.value as AuthorDiscipline | "")}
             options={[
-              ...(authorRoles.length > 1 ? [{ value: "", label: "Select a role…" }] : []),
-              ...authorRoles.map((r) => ({ value: r, label: humanize(r) })),
+              ...(authorRoles.length > 1 ? [{ value: "", label: "Select a discipline…" }] : []),
+              ...authorRoles.map((d) => ({ value: d, label: authorDisciplineLabel(d) })),
             ]}
           />
         )}
