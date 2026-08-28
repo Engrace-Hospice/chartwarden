@@ -31,6 +31,24 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // OPEN admission through that read and offers "Start the care plan" — or says the patient has no open
 // admission, which is the one honest reason not to offer it.
 //
+// F-077 (#91 AC5) — `e2e/specs/care-plan.spec.ts` drives the §2 version lifecycle in a real browser and
+// through TWO logins: open an interim revision, author a problem into it, close it for signature, sign
+// as the RN — and assert the plan is still NOT active — then sign as the physician and watch it
+// activate. One signer could not tell "the quorum was met" apart from "the quorum was never checked".
+// An interim revision rather than an IDG review because `resolveRequiredSignerSet` gives the latter the
+// full four-slot quorum (RN + MSW + chaplain + MD/DO), and `db:seed:staff` creates only `primary_rn`
+// and `attending_clinician` assignments — the seeded MSW and chaplain are in nobody's caseload, so
+// `caseload_or_scope` denies them. Driving the §418.56(b)(1) authoring pair is the smallest set that is
+// still a quorum.
+//
+// The spec's axe scan found a REAL WCAG AA failure the moment it could reach this state: the quorum
+// checklist rendered its slots at `t.success` (4.33:1 on a white card) and the guard chip at `t.warning`
+// on a hand-rolled 14% tint (4.47:1). Both latent for the same reason the `requiredSignerSet` type error
+// above was — the slots are populated at FINALIZE, and until #91 nothing could finalize, so the list was
+// always empty and never scanned. The chip's deviation is the interesting half: the shared `tint()`
+// helper is 12%, which measures 4.59:1 and passes; hand-rolling 14% is what pushed it under, and it was
+// hand-rolled because `tint` was not exported from `@wardenx/ui` at all.
+//
 // STILL NOT BUILT: the IDG-review MEETING screens are M14's, not M7's (#91 lists them under M14); the
 // AI care-plan suggestion rail is M29 and renders as a stated absence.
 import { lazy } from "react";

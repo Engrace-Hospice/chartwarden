@@ -60,6 +60,12 @@
      (~3.7:1, needs 4.5:1) — this darker variant gives ~6.1:1. Text-only; the pill's background
      tint still derives from --color-success unchanged. */
   --color-success-pill-fg: #14653f;
+  /* The same shape for `warning`, found by the care-plan axe scan (F-077). At #9a5b00 on the shared
+     12% tint it measures 4.59:1 — passing, but by 0.09 — and the care-plan guard chip, which had
+     hand-rolled its own 14% tint instead of using `tint()`, measured 4.47:1 and FAILED. This darker
+     text-only variant gives ~6.3:1 on the 12% tint. Text-only; the tint still derives from
+     --color-warning unchanged. */
+  --color-warning-pill-fg: #7d4900;
 
   /* Surfaces — warm paper hierarchy */
   --color-background: #f6f5f2;
@@ -147,6 +153,9 @@
   /* Dark mode's --color-success already passes WCAG AA on its own pill tint (~7.35:1) — same value. */
   --color-success-pill-fg: #5fd6a0;
   --color-warning: #e0a24a;
+  /* Dark mode's --color-warning already passes on its own pill tint (~6.1:1) — same value, like
+     --color-success-pill-fg above. */
+  --color-warning-pill-fg: #e0a24a;
   --color-error: #f2939e;
   --color-alert: #ff6b68;
   --color-background: #15151b;

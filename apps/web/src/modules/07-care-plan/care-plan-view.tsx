@@ -10,6 +10,7 @@ import {
   cardSurface,
   ghostBorder,
   t,
+  tint,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/07-care-plan — Care Plan View (M7 §5.2, Track B / ADR-0030).
@@ -410,7 +411,13 @@ export function CarePlanView(): JSX.Element {
                           alignItems: "center",
                           gap: "0.4rem",
                           margin: "0.25rem 0",
-                          color: signed ? t.success : t.warning,
+                          // F-077 — `t.success` as small text on a white card measures 4.33:1 and
+                          // fails WCAG AA; `successPillFg` is the darker text-only variant WX-PR-022
+                          // added for exactly this. `warning` on the same white card is 5.43:1 and
+                          // needs no variant — the tint is what makes warning marginal, not the card.
+                          // Latent until #91: the slots are populated at FINALIZE, and nothing in the
+                          // product could finalize, so this list was always empty and never scanned.
+                          color: signed ? t.successPillFg : t.warning,
                         }}
                       >
                         <Glyph name={signed ? "check-circle" : "clock"} size={13} />
@@ -703,8 +710,12 @@ const guardChip: CSSProperties = {
   gap: "0.4rem",
   fontSize: "0.78rem",
   fontWeight: 600,
-  color: t.warning,
-  background: "color-mix(in srgb, var(--color-warning) 14%, transparent)",
+  // F-077 — was `t.warning` on a hand-rolled 14% tint, which measured 4.47:1 and failed WCAG AA. The
+  // shared `tint()` helper is 12% and would have measured 4.59:1 — passing by 0.09. Both numbers are
+  // too close to the line for a chip that exists to be READ, so this uses the helper AND the darker
+  // text-only variant (~6.3:1). The deviation from `tint()` was the defect; the variant is the margin.
+  color: t.warningPillFg,
+  background: tint(t.warning),
   borderRadius: "9999px",
   padding: "0.3rem 0.7rem",
 };
