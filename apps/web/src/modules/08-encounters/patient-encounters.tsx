@@ -244,6 +244,20 @@ export function PatientEncounters(): JSX.Element {
               >
                 Open encounter
               </button>
+              {/* #91 — a draft has somewhere to be finished now. Offered only on `draft`, because the
+                  composer's writes are refused on any other status by `checkMutableForEdit`, and a
+                  button whose route will always refuse is the control this issue is about. */}
+              {selected.status === "draft" ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(`/patients/${patientId}/encounters/${selected.id}/compose`)
+                  }
+                  style={{ ...primaryBtn, marginTop: "0.5rem", width: "100%" }}
+                >
+                  Compose note
+                </button>
+              ) : null}
             </div>
           ) : (
             <div style={{ ...cardSurface, padding: "1.125rem" }}>

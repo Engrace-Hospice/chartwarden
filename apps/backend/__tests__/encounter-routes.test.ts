@@ -525,6 +525,78 @@ describe("M8 §2.6 — the HearthNote selection tree round-trips (#114)", () => 
     expect(read.json().layer1Preview).toBe(patched.json().layer1Preview);
   });
 
+  it("the template route serves the MENU the tree is built from — sections AND their vocabulary (F-063)", async () => {
+    // The composer's blocker, and the reason the authoring surface did not exist: `PATCH .../selections`
+    // carries `sectionId`/`code` as free strings and rejects an unknown one (the two cases below), so a
+    // client needs to know which sections this encounter's template has and which codes each accepts.
+    // `resolveTemplate` + `entriesFor` had existed since M8-T05 and were on nobody's wire.
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/template`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().templateKey).toBe("routine_visit:rn");
+    const sections = res.json().sections as {
+      sectionId: string;
+      required: boolean;
+      entries: { code: string; slots: string[] }[];
+    }[];
+    // The menu must agree with what the write path accepts, in BOTH directions — that is the whole
+    // point of serving it rather than shipping the corpus to the browser.
+    expect(sections.map((x) => x.sectionId)).toContain("assessment");
+    const assessment = sections.find((x) => x.sectionId === "assessment");
+    expect(assessment?.required).toBe(true);
+    const codes = assessment?.entries.map((e) => e.code) ?? [];
+    expect(codes).toContain("nv.cv.stable");
+    expect(codes).toContain("nv.cv.edema");
+    // `slots` is what the client must send as `params`: the phrase's placeholders minus the two the
+    // assembly context fills. `nv.cv.edema` interpolates `${edema_grade}`, which the round-trip above
+    // sends and the assembled narrative renders as "2+ dependent edema".
+    expect(assessment?.entries.find((e) => e.code === "nv.cv.edema")?.slots).toEqual([
+      "edema_grade",
+    ]);
+    expect(assessment?.entries.find((e) => e.code === "nv.cv.stable")?.slots).toEqual([]);
+  });
+
+  it("mileage reads back the row its writes create (F-063)", async () => {
+    // `POST`/`PATCH .../mileage` wrote a real row and no route returned it — the write-only shape #92
+    // fixed for vitals, on the table beside it.
+    const { app } = makeServer();
+    const id = await draft(app);
+    const before = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/mileage`,
+      headers: RN,
+    });
+    expect(before.statusCode).toBe(200);
+    // null rather than 404: the encounter exists and has no mileage, which is an answer.
+    expect(before.json()).toBeNull();
+
+    const posted = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/mileage`,
+      headers: RN,
+      payload: {
+        milesDriven: "12.4",
+        source: "manual_override",
+        manualOverrideReason: "the vehicle odometer was unreadable at the start of the visit",
+      },
+    });
+    expect(posted.statusCode).toBe(201);
+
+    const after = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/mileage`,
+      headers: RN,
+    });
+    expect(after.statusCode).toBe(200);
+    expect(after.json().milesDriven).toBe("12.4");
+    expect(after.json().source).toBe("manual_override");
+  });
+
   it("a fresh draft reads back an EMPTY tree — absent is distinguishable from written", async () => {
     const { app } = makeServer();
     const id = await draft(app);

@@ -68,7 +68,7 @@ import type {
   EncounterView,
   SelectionSectionInput,
 } from "./routes/service";
-import { assembleSelections } from "./routes/service";
+import { assembleSelections, buildTemplateMenu } from "./routes/service";
 import { getCarePlanReader, getCareTeamProvider } from "./seams/index";
 
 const ENC = schema.encounters;
@@ -993,6 +993,52 @@ export function createDbEncounterRouteService(
             },
           });
         return { version: Number(updated.version), layer1Preview };
+      });
+    },
+
+    /**
+     * F-063 — the authoring menu. `@wardenx/narrative-vocab`'s `entriesFor` is documented as "the
+     * entries a `(encounterType, discipline)` menu surfaces … so the selection UI and the template
+     * engine see the same deterministic ordering", and no route ever surfaced it — so there was no
+     * selection UI. Derived from the encounter's OWN type/discipline (never from the caller), so the
+     * menu a client is offered and the rules `assembleSelections` enforces on the way back in cannot
+     * be different rules.
+     */
+    async getTemplate(organizationId, encounterId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadEnc(t, encounterId); // non-leaking 404 before the menu is built
+        return { encounterId, ...buildTemplateMenu(r.encounterType, r.discipline) };
+      });
+    },
+
+    /**
+     * F-063 — read the mileage row back. `POST`/`PATCH .../mileage` wrote a real row and no route
+     * returned it, so recorded travel left the clinician's screen for good — the same write-only shape
+     * #92 fixed for vitals, on the table beside it. `null` (not 404) when no mileage was recorded: the
+     * encounter exists and has none, which is an answer rather than an absence.
+     */
+    async getMileage(organizationId, encounterId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        await loadEnc(t, encounterId); // 404s on unknown/cross-tenant exactly as getEncounter does
+        const [row] = await t
+          .select()
+          .from(MILEAGE)
+          .where(eq(MILEAGE.encounterId, encounterId))
+          .limit(1);
+        if (!row) return null;
+        return {
+          mileageId: row.id,
+          encounterId,
+          odometerStart: row.odometerStart,
+          odometerEnd: row.odometerEnd,
+          milesDriven: row.milesDriven,
+          source: row.milesDrivenSource,
+          manualOverrideReason: row.manualOverrideReason,
+          routeProposedMiles: row.routeProposedMiles,
+          recordedAt: row.createdAt.toISOString(),
+        };
       });
     },
 

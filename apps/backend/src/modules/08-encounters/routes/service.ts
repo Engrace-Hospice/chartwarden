@@ -17,7 +17,7 @@ import {
   templateKey as hearthnoteTemplateKey,
   resolveTemplate,
 } from "@wardenx/hearthnote";
-import { VOCAB_VERSION, activeNarrativeVocabRelease } from "@wardenx/narrative-vocab";
+import { VOCAB_VERSION, activeNarrativeVocabRelease, entriesFor } from "@wardenx/narrative-vocab";
 import type {
   EncounterDiscipline,
   EncounterStatus,
@@ -151,6 +151,68 @@ export interface MileageResult {
   readonly source: string;
 }
 
+/** The mileage row as recorded (F-063 — `POST`/`PATCH .../mileage` had no reader). */
+export interface MileageView {
+  readonly mileageId: string;
+  readonly encounterId: string;
+  readonly odometerStart: number | null;
+  readonly odometerEnd: number | null;
+  readonly milesDriven: string;
+  readonly source: string;
+  readonly manualOverrideReason: string | null;
+  readonly routeProposedMiles: string | null;
+  readonly recordedAt: string;
+}
+
+/**
+ * One selectable vocabulary entry as the AUTHORING MENU offers it (F-063).
+ *
+ * `@wardenx/narrative-vocab`'s own header calls `entriesFor(encounterType, discipline)` "the entries a
+ * menu surfaces … so the selection UI and the template engine see the same deterministic ordering" —
+ * and no route ever surfaced it, so there was no selection UI to see anything. `PATCH .../selections`
+ * takes `sectionId` and `code` as free strings at the boundary and the server rejects an unknown one,
+ * which means an authoring client without this menu could only guess.
+ *
+ * `slots` is the phrase's `${…}` placeholders MINUS the ones the server fills from the assembly context
+ * (`patient`, `serviceDate`) — i.e. exactly the keys the client must supply as `params`. Derived here
+ * rather than published as a static list so a corpus edit cannot leave the client asking for a slot the
+ * phrase no longer has.
+ */
+export interface VocabMenuEntry {
+  readonly code: string;
+  readonly label: string;
+  readonly category: string;
+  readonly bodySystem: string | null;
+  readonly slots: readonly string[];
+}
+
+/** One template section with the entries a clinician may pick into it. */
+export interface TemplateSectionView {
+  readonly sectionId: string;
+  readonly heading: string;
+  /** A `required` section must carry ≥1 selection before the §2.6 Layer-3 gate lets the note finalize. */
+  readonly required: boolean;
+  readonly allowedCategories: readonly string[];
+  readonly entries: readonly VocabMenuEntry[];
+}
+
+/**
+ * The authoring menu for one encounter: its resolved HearthNote template, section by section, each with
+ * the vocabulary entries eligible for this (encounterType × discipline) pair.
+ *
+ * Served from the server rather than shipped to the browser as a package, deliberately: `resolveTemplate`
+ * + `entriesFor` + the `allowedCategories` scoping ARE the resolution rules `assembleSelections` enforces
+ * on the way back in, and a second copy in the client is a second copy free to disagree with them.
+ */
+export interface EncounterTemplateView {
+  readonly encounterId: string;
+  readonly templateKey: string;
+  readonly vocabVersion: string;
+  readonly encounterType: EncounterType;
+  readonly discipline: EncounterDiscipline;
+  readonly sections: readonly TemplateSectionView[];
+}
+
 export interface EncounterView {
   readonly id: string;
   readonly organizationId: string;
@@ -275,6 +337,67 @@ const ASSEMBLY_ERROR_CODE = {
  * Nothing is caught and turned into `""`. A note that cannot be assembled must say so; returning an
  * empty string for it is the defect this whole path is being fixed for.
  */
+/**
+ * Build the authoring menu for one (encounterType × discipline) pair — the pure half of `getTemplate`.
+ *
+ * The two resolution rules live HERE, beside `assembleSelections`, because they are the same rules read
+ * in the other direction: `resolveTemplate` decides which sections exist (and `assembleSelections`
+ * refuses a `sectionId` outside them), and `entriesFor` decides which vocabulary entries this pair may
+ * use (and `assemble` refuses a code outside the corpus). A section's `allowedCategories` narrows the
+ * menu further; a section that declares none accepts any entry the pair is eligible for.
+ *
+ * Slots are derived from each phrase rather than declared, minus the two the assembly context supplies
+ * (`patient`, `serviceDate`) — so the client is asked for exactly the `params` keys interpolation needs,
+ * and a corpus edit cannot leave it asking for one the phrase no longer has.
+ */
+export function buildTemplateMenu(
+  encounterType: EncounterType,
+  discipline: EncounterDiscipline,
+): Omit<EncounterTemplateView, "encounterId"> {
+  const template = resolveTemplate(encounterType, discipline);
+  if (template === undefined) {
+    throw new EncounterStateError(
+      "INVALID_ENCOUNTER_DISCIPLINE_PAIR",
+      `no HearthNote template for '${hearthnoteTemplateKey(encounterType, discipline)}'`,
+    );
+  }
+  const eligible = entriesFor(encounterType, discipline);
+  return {
+    templateKey: template.key,
+    vocabVersion: VOCAB_VERSION,
+    encounterType,
+    discipline,
+    sections: template.sections.map((section) => {
+      const allowed = section.allowedCategories;
+      return {
+        sectionId: section.id,
+        heading: section.heading,
+        required: section.required,
+        allowedCategories: allowed === undefined ? [] : [...allowed],
+        entries: eligible
+          .filter((e) => allowed === undefined || allowed.includes(e.category))
+          .map((e) => ({
+            code: e.code,
+            label: e.label,
+            category: e.category,
+            bodySystem: e.bodySystem ?? null,
+            slots: phraseSlots(e.phrase),
+          })),
+      };
+    }),
+  };
+}
+
+/** The `${…}` placeholders a phrase interpolates, minus the two the assembly context always supplies. */
+function phraseSlots(phrase: string): string[] {
+  const found = new Set<string>();
+  for (const m of phrase.matchAll(/\$\{([A-Za-z0-9_]+)\}/g)) {
+    const slot = m[1] as string;
+    if (slot !== "patient" && slot !== "serviceDate") found.add(slot);
+  }
+  return [...found];
+}
+
 export function assembleSelections(
   encounterType: EncounterType,
   discipline: EncounterDiscipline,
@@ -337,6 +460,17 @@ export interface EncounterRouteService {
     vitalsId: string,
     input: VitalsInput,
   ): Promise<VitalsResult>;
+  /**
+   * The authoring menu — the resolved template + the vocabulary each section accepts (F-063).
+   *
+   * Without it there is no note composer that is not an invention: `PATCH .../selections` carries
+   * `sectionId`/`code` as free strings and the server rejects an unknown one, so a client with no menu
+   * can only guess at both. The template registry and the vocabulary have existed as pure leaf packages
+   * since M8-T05; nothing ever put them on the wire.
+   */
+  getTemplate(organizationId: string, encounterId: string): Promise<EncounterTemplateView>;
+  /** Read back the encounter's mileage row (F-063 — `POST`/`PATCH .../mileage` had no reader). */
+  getMileage(organizationId: string, encounterId: string): Promise<MileageView | null>;
   /** Read back every vitals set recorded on one encounter, newest capture first (#92). */
   listVitals(
     organizationId: string,
@@ -763,6 +897,27 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       r.selectionsVocabVersion = VOCAB_VERSION;
       r.version += 1;
       return { version: r.version, layer1Preview };
+    },
+
+    async getTemplate(organizationId, encounterId) {
+      const r = load(organizationId, encounterId);
+      return { encounterId, ...buildTemplateMenu(r.encounterType, r.discipline) };
+    },
+
+    async getMileage(organizationId, encounterId) {
+      const r = load(organizationId, encounterId);
+      if (!r.mileage) return null;
+      return {
+        mileageId: r.mileage.id,
+        encounterId,
+        odometerStart: null,
+        odometerEnd: null,
+        milesDriven: r.mileage.milesDriven,
+        source: r.mileage.source,
+        manualOverrideReason: null,
+        routeProposedMiles: null,
+        recordedAt: r.serviceDate,
+      };
     },
 
     async getSelections(organizationId, encounterId) {

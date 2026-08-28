@@ -35,6 +35,10 @@ interface EncounterRow {
 
 const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
+/** A draft's home is the composer (#91): this queue lists notes that still need writing. */
+const draftHref = (patientId: string, encounterId: string): string =>
+  `/patients/${patientId}/encounters/${encounterId}/compose`;
+
 export function MyDrafts(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
@@ -283,11 +287,14 @@ export function MyDrafts(): JSX.Element {
                       // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
                       role="button"
                       tabIndex={0}
-                      onClick={() => navigate(`/patients/${e.patientId}/encounters/${e.id}`)}
+                      // #91 — a DRAFT opens in the composer, not the read screen. This queue's whole
+                      // reason to exist is the note that is not finished yet; until the composer existed
+                      // every row led to a read-only view of the thing the author came here to write.
+                      onClick={() => navigate(draftHref(e.patientId, e.id))}
                       onKeyDown={(ev) => {
                         if (ev.key === "Enter" || ev.key === " ") {
                           ev.preventDefault();
-                          navigate(`/patients/${e.patientId}/encounters/${e.id}`);
+                          navigate(draftHref(e.patientId, e.id));
                         }
                       }}
                       style={{ cursor: "pointer" }}

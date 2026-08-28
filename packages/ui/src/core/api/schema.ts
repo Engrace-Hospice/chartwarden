@@ -7171,7 +7171,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** The encounter's mileage row as recorded, or null (F-063: POST/PATCH .../mileage wrote a real row and nothing returned it — the write-only shape #92 fixed for vitals) */
+        get: operations["getApiV1EncountersByEncounterIdMileage"];
         put?: never;
         /** Capture per-encounter mileage (D10) */
         post: operations["postApiV1EncountersByEncounterIdMileage"];
@@ -7211,6 +7212,23 @@ export interface paths {
         put?: never;
         /** Sign the encounter (Layer-3 gate; D13 step-up) */
         post: operations["postApiV1EncountersByEncounterIdSign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The authoring menu (F-063) — the resolved HearthNote template with the vocabulary entries each section accepts for this encounter's (type × discipline) pair. Without it a note composer can only guess at `sectionId`/`code`, which the PATCH carries as free strings */
+        get: operations["getApiV1EncountersByEncounterIdTemplate"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -38278,6 +38296,42 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1EncountersByEncounterIdMileage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        mileageId: string;
+                        /** Format: uuid */
+                        encounterId: string;
+                        odometerStart: number | null;
+                        odometerEnd: number | null;
+                        milesDriven: string;
+                        source: string;
+                        manualOverrideReason: string | null;
+                        routeProposedMiles: string | null;
+                        /** Format: date-time */
+                        recordedAt: string;
+                    } | null;
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1EncountersByEncounterIdMileage: {
         parameters: {
             query?: never;
@@ -38471,6 +38525,50 @@ export interface operations {
                         status: "signed" | "cosign_pending";
                         signedAt: string;
                         cosignatureRequestId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersByEncounterIdTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        encounterId: string;
+                        templateKey: string;
+                        vocabVersion: string;
+                        encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
+                        discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                        sections: {
+                            sectionId: string;
+                            heading: string;
+                            required: boolean;
+                            allowedCategories: string[];
+                            entries: {
+                                code: string;
+                                label: string;
+                                category: string;
+                                bodySystem: string | null;
+                                slots: string[];
+                            }[];
+                        }[];
                     };
                 };
             };

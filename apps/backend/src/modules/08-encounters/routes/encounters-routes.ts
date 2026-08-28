@@ -251,6 +251,31 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
   );
 
+  // 3c — the authoring MENU (F-063). `PATCH .../selections` carries `sectionId` and `code` as free
+  // strings and the server rejects an unknown one, so a client with no menu could only guess at both —
+  // which is why there was no note composer. `resolveTemplate` + `entriesFor` have existed as pure leaf
+  // packages since M8-T05; nothing put them on the wire. Derived from the ENCOUNTER's own
+  // type/discipline, so the menu offered and the rules `assembleSelections` enforces are the same rules.
+  //
+  // Not a PHI read — the template skeleton and the shipped vocabulary corpus are the same for every
+  // patient — so it carries no `auditRead` config, unlike the selections read beside it.
+  app.get(
+    "/api/v1/encounters/:encounterId/template",
+    {
+      preHandler: [READ, SCOPE_FOR("encounter.read")],
+      config: {
+        auditRead: {
+          none: "the template skeleton and the shipped vocabulary corpus are platform data, identical for every patient — the encounter id selects which (type × discipline) menu to resolve and no patient content is returned, so there is no disclosure to account for (§164.528). The selection tree this menu is used to build IS audited, on the read beside it",
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      parse(EncounterParamsSchema, request.params);
+      return service.getTemplate(organizationId, encounterIdOf(request));
+    },
+  );
+
   // 4 — capture vitals.
   app.post(
     "/api/v1/encounters/:encounterId/vitals",
@@ -332,6 +357,23 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       const { organizationId } = actorOf(request);
       const body = parse(CaptureMileageSchema, request.body);
       return service.editMileage(organizationId, encounterIdOf(request), body);
+    },
+  );
+
+  // 7b — read the mileage row back (F-063). `POST`/`PATCH .../mileage` wrote a real row and nothing
+  // returned it — the write-only shape #92 fixed for vitals, on the table beside it. Mileage is
+  // encounter-scoped travel rather than clinical content, but it is still on a PHI-bearing row, so it
+  // audits as a read of the encounter.
+  app.get(
+    "/api/v1/encounters/:encounterId/mileage",
+    {
+      preHandler: [READ, SCOPE_FOR("encounter.read")],
+      config: { auditRead: { resourceKind: "mileage", resourceIdParam: "encounterId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      parse(EncounterParamsSchema, request.params);
+      return service.getMileage(organizationId, encounterIdOf(request));
     },
   );
 

@@ -292,6 +292,14 @@
       "app": "web",
       "module": "08-encounters",
       "moduleId": 8,
+      "id": "encounter.compose",
+      "path": "/patients/:patientId/encounters/:encounterId/compose",
+      "permission": "encounter.author"
+    },
+    {
+      "app": "web",
+      "module": "08-encounters",
+      "moduleId": 8,
       "id": "encounter.cosignature-queue",
       "path": "/work/cosignatures",
       "permission": "encounter.cosign"
