@@ -32,5 +32,6 @@ export * from "./sections/required-items";
 export * from "./validation/findings";
 export * from "./validation/value-set-oracle";
 export * from "./validation/validate-hope-assessment";
+export * from "./attention";
 // M10-T06 — the §4.9 / §4.9.1 M36 typed-alert builders + the out-of-band PHI-strip projection.
 export * from "./alerts";

@@ -200,6 +200,8 @@ export * from "./consent/consent-renewal-cycle";
 // referral-source, M39 consent, M22 document) are plain uuid app-validated, not cross-module FKs. RLS
 // + grants + M4 write-audit triggers + migration land in M6-T03 (§3.6–3.7).
 export * from "./admission/referrals";
+export * from "./admission/referral-activity";
+export * from "./admission/referral-notes";
 export * from "./admission/admissions";
 export * from "./admission/election-periods";
 export * from "./admission/election-statements";

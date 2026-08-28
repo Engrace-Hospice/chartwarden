@@ -14,8 +14,8 @@ import {
 } from "../src/index";
 
 describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
-  it("seeds the §3.10 fifteen platform-default rules, all org-less (organization_id NULL)", () => {
-    expect(PLATFORM_DEFAULT_ALERT_RULES).toHaveLength(15);
+  it("seeds the §3.10 eighteen platform-default rules, all org-less (organization_id NULL)", () => {
+    expect(PLATFORM_DEFAULT_ALERT_RULES).toHaveLength(18);
     for (const row of toNewAlertRuleRows()) {
       expect(row.organizationId).toBeNull();
     }
@@ -30,6 +30,23 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
     const sos = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === "field_safety.sos");
     expect(sos?.recipientResolver).toBe("on_call");
     expect(sos?.channelsOverride).toContain("voice");
+  });
+
+  it("seeds HOPE transition alerts using the M10 event catalog names", () => {
+    expect(PLATFORM_DEFAULT_ALERT_RULES).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          eventType: "m10.hope.sfv_created",
+          recipientResolver: "care_team",
+        }),
+        expect.objectContaining({ eventType: "m10.hope.sfv_overdue", severityFloor: "critical" }),
+        expect.objectContaining({ eventType: "m10.hope.sfv_missed", severityFloor: "critical" }),
+        expect.objectContaining({
+          eventType: "m10.hope.timepoint_expired",
+          severityFloor: "critical",
+        }),
+      ]),
+    );
   });
 });
 

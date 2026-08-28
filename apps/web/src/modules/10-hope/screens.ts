@@ -14,6 +14,15 @@ const HopeAssessmentDetail = lazy(() =>
 const HopeDashboard = lazy(() =>
   import("./hope-dashboard").then((m) => ({ default: m.HopeDashboard })),
 );
+const AdmissionHopeOverview = lazy(() =>
+  import("./admission-hope-overview").then((m) => ({ default: m.AdmissionHopeOverview })),
+);
+const HopeTimepointCapture = lazy(() =>
+  import("./hope-capture-workspace").then((m) => ({ default: m.HopeTimepointCapture })),
+);
+const HopeSfvCapture = lazy(() =>
+  import("./hope-capture-workspace").then((m) => ({ default: m.HopeSfvCapture })),
+);
 const HqrpComplianceDashboard = lazy(() =>
   import("./hqrp-compliance-dashboard").then((m) => ({ default: m.HqrpComplianceDashboard })),
 );
@@ -40,6 +49,30 @@ export const hopeScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Clinical",
       requiredPermission: "hope.schedule.read",
       screen: HopeDashboard,
+    },
+    {
+      // Admission-scoped HOPE operational workflow overview — reached from Admission Detail.
+      id: "hope.admission-overview",
+      path: "/admissions/:admissionId/hope",
+      title: "Admission HOPE",
+      requiredPermission: "hope.timepoint.read",
+      screen: AdmissionHopeOverview,
+    },
+    {
+      // Contextual fixed-RFA capture. The URL carries the RFA selected by the overview; no raw RFA picker.
+      id: "hope.timepoint-capture",
+      path: "/admissions/:admissionId/hope/timepoints/:kind",
+      title: "HOPE Capture",
+      requiredPermission: "hope.timepoint.write",
+      screen: HopeTimepointCapture,
+    },
+    {
+      // Contextual SFV capture through the real recordSfv workflow.
+      id: "hope.sfv-capture",
+      path: "/admissions/:admissionId/hope/sfv/:sfvId",
+      title: "SFV Capture",
+      requiredPermission: "hope.timepoint.write",
+      screen: HopeSfvCapture,
     },
     {
       // Patient HOPE timeline — reached from the patient chart "HOPE" tab; param path (no nav).

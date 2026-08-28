@@ -209,6 +209,15 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
 
     async persist(record: PersistedAlert): Promise<{ alertId: string }> {
       return withOrgContext(db, { organizationId: record.orgId, userId: "" }, async (tx: Tx) => {
+        const [existing] = await tx
+          .select({ id: AL.id })
+          .from(AL)
+          .where(
+            and(eq(AL.organizationId, record.orgId), eq(AL.correlationId, record.correlationId)),
+          )
+          .limit(1);
+        if (existing) return { alertId: existing.id };
+
         const [row] = await tx
           .insert(AL)
           .values({
@@ -218,8 +227,19 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
             payload: record.payload,
             correlationId: record.correlationId,
           })
+          .onConflictDoNothing({ target: [AL.organizationId, AL.correlationId] })
           .returning({ id: AL.id });
-        if (!row) throw new Error("alert insert returned no row");
+        if (!row) {
+          const [raced] = await tx
+            .select({ id: AL.id })
+            .from(AL)
+            .where(
+              and(eq(AL.organizationId, record.orgId), eq(AL.correlationId, record.correlationId)),
+            )
+            .limit(1);
+          if (raced) return { alertId: raced.id };
+          throw new Error("alert insert returned no row");
+        }
         if (record.deliveries.length > 0) {
           await tx.insert(ND).values(
             record.deliveries.map((d) => ({

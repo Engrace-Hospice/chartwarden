@@ -89,6 +89,7 @@ import type {
   OrderSignatureProvider,
   OrganizationReader,
   PatientAddressReader,
+  PatientAdmissionClearanceReader,
   PatientCaregiverReader,
   PatientCounterProvider,
   PatientCoverageReader,
@@ -248,6 +249,12 @@ export const patientAddressReaderDenyStub: PatientAddressReader = {
 export const patientPrivacyFlagReaderDenyStub: PatientPrivacyFlagReader = {
   roomingFactsFor() {
     throw new NotImplementedError("PatientPrivacyFlagReader");
+  },
+};
+
+export const patientAdmissionClearanceReaderDenyStub: PatientAdmissionClearanceReader = {
+  evaluatePatientAdmissionClearance() {
+    throw new NotImplementedError("PatientAdmissionClearanceReader");
   },
 };
 

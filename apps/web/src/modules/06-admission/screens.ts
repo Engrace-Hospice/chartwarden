@@ -32,6 +32,7 @@ const ReferralDetail = lazy(() =>
 const ReferralInbox = lazy(() =>
   import("./referral-inbox").then((m) => ({ default: m.ReferralInbox })),
 );
+const ReferralNew = lazy(() => import("./referral-new").then((m) => ({ default: m.ReferralNew })));
 
 export const admissionScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 6,
@@ -44,6 +45,13 @@ export const admissionScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admissions",
       requiredPermission: "referral.read",
       screen: ReferralInbox,
+    },
+    {
+      id: "admission.referral-new",
+      path: "/referrals/new",
+      title: "New referral",
+      requiredPermission: "referral.create",
+      screen: ReferralNew,
     },
     {
       id: "admission.census",

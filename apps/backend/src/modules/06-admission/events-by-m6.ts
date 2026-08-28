@@ -46,6 +46,56 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m6.referral.review_started",
+    moduleOwner: "m6",
+    description: "Referral review was started; lifecycle moved to under_review.",
+    payloadSchema: Type.Object({
+      referralId: Type.String({ minLength: 1 }),
+      outcome: Type.Optional(Type.Literal("eligible")),
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m6.referral.pending_information",
+    moduleOwner: "m6",
+    description: "Referral was placed in pending_information while intake waits for more data.",
+    payloadSchema: Type.Object({ referralId: Type.String({ minLength: 1 }) }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m6.referral.qualified",
+    moduleOwner: "m6",
+    description: "Referral was qualified after patient resolution and intake readiness checks.",
+    payloadSchema: Type.Object({
+      referralId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m6.referral.duplicate",
+    moduleOwner: "m6",
+    description: "Referral was marked as duplicate.",
+    payloadSchema: Type.Object({ referralId: Type.String({ minLength: 1 }) }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m6.referral.converted",
+    moduleOwner: "m6",
+    description: "A qualified referral produced exactly one pending admission.",
+    payloadSchema: Type.Object({
+      referralId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+      admissionId: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: ["m36", "m22"],
+    isOutboxOnly: true,
+  },
+  {
     // TASK-031 — was missing entirely (not even a boot-wiring gap like the others): `triageReferral`
     // (route 5) has always emitted this event name, and it has never been declared, so every triage
     // call 500'd with `unknown_event` in any DATABASE_URL boot.
@@ -133,6 +183,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       "m5",
       "m7",
       "m8",
+      "m10",
       "m11",
       "m14",
       "m16",
@@ -188,6 +239,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       "m26",
       "m27",
       "m28",
+      "m10",
       "m30",
       "m33",
       "m36",

@@ -22,13 +22,14 @@ import {
 // authoritative for status / J2051 / validation (ADR-0030). Honest gap: the per-section completion the
 // frame shows isn't exposed — the section `data` is opaque server-side except Section J (J2051). So the
 // section list is a faithful scaffold with J2051 real and the rest '—' (never fabricated completeness).
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ASSESSMENT_TONE, J2051_TONE, SEVERITY_TONE, rfaLabel, stateLabel } from "./hope-status";
 
 interface AssessmentDetail {
   id: string;
+  admissionId?: string;
   patientId: string;
   rfaKind: string;
   status: string;
@@ -82,42 +83,56 @@ export function HopeAssessmentDetail(): JSX.Element {
   const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!id) return;
+    setLoading(true);
+    setError(null);
+    const [a, v] = await Promise.all([
+      client.GET("/api/v1/hope/assessments/{id}", { params: { path: { id } } }),
+      client.GET("/api/v1/hope/assessments/{id}/validation", { params: { path: { id } } }),
+    ]);
+    if (a.error || !a.data) {
+      setError("Could not load the HOPE assessment.");
+      setLoading(false);
+      return;
+    }
+    const detail = a.data as AssessmentDetail;
+    setRow(detail);
+    setFindings((v.data?.findings ?? []) as Finding[]);
+    // The timepoint rail + banner need the patient; fetch by the assessment's patientId.
+    const [tl, pat] = await Promise.all([
+      client.GET("/api/v1/patients/{patientId}/hope/assessments", {
+        params: { path: { patientId: detail.patientId } },
+      }),
+      client.GET("/api/v1/patients/{id}", { params: { path: { id: detail.patientId } } }),
+    ]);
+    setTimeline((tl.data?.assessments ?? []) as TimepointRow[]);
+    if (pat.data) setPatient(pat.data as PatientSummary);
+    setLoading(false);
+  }, [client, id]);
 
   useEffect(() => {
-    let active = true;
-    (async () => {
-      if (!id) return;
-      setLoading(true);
-      setError(null);
-      const [a, v] = await Promise.all([
-        client.GET("/api/v1/hope/assessments/{id}", { params: { path: { id } } }),
-        client.GET("/api/v1/hope/assessments/{id}/validation", { params: { path: { id } } }),
-      ]);
-      if (!active) return;
-      if (a.error || !a.data) {
-        setError("Could not load the HOPE assessment.");
-        setLoading(false);
-        return;
-      }
-      const detail = a.data as AssessmentDetail;
-      setRow(detail);
-      setFindings((v.data?.findings ?? []) as Finding[]);
-      // The timepoint rail + banner need the patient; fetch by the assessment's patientId.
-      const [tl, pat] = await Promise.all([
-        client.GET("/api/v1/patients/{patientId}/hope/assessments", {
-          params: { path: { patientId: detail.patientId } },
-        }),
-        client.GET("/api/v1/patients/{id}", { params: { path: { id: detail.patientId } } }),
-      ]);
-      if (!active) return;
-      setTimeline((tl.data?.assessments ?? []) as TimepointRow[]);
-      if (pat.data) setPatient(pat.data as PatientSummary);
-      setLoading(false);
-    })();
-    return () => {
-      active = false;
-    };
-  }, [client, id]);
+    void load();
+  }, [load]);
+
+  const signDraft = useCallback(async () => {
+    if (!id) return;
+    setBusy(true);
+    setActionError(null);
+    const { error: err } = await client.POST("/api/v1/hope/assessments/{id}/sign", {
+      params: { path: { id } },
+      body: { attestationConfirmed: true },
+    });
+    setBusy(false);
+    if (err) {
+      setActionError("Could not sign this HOPE assessment. Check permissions and validation.");
+      return;
+    }
+    await load();
+  }, [client, id, load]);
 
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (loading || !row) return <LoadingSpinner />;
@@ -360,6 +375,32 @@ export function HopeAssessmentDetail(): JSX.Element {
           <button type="button" onClick={() => navigate("/hope/submissions")} style={ghostBtn}>
             Submission worklist
           </button>
+          {row.admissionId ? (
+            <button
+              type="button"
+              onClick={() => navigate(`/admissions/${row.admissionId}/hope`)}
+              style={ghostBtn}
+            >
+              Admission HOPE
+            </button>
+          ) : null}
+          {row.status === "draft" ? (
+            <>
+              {actionError ? (
+                <span role="alert" aria-live="assertive" style={actionErrorStyle}>
+                  {actionError}
+                </span>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void signDraft()}
+                style={busy ? disabledBtn : primaryBtn}
+                disabled={busy}
+              >
+                {busy ? "Signing..." : "Sign Assessment"}
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
             onClick={() => navigate(`/patients/${row.patientId}/hope`)}
@@ -490,6 +531,12 @@ const primaryBtn: CSSProperties = {
   fontWeight: 600,
   border: "none",
   cursor: "pointer",
+};
+const disabledBtn: CSSProperties = { ...primaryBtn, opacity: 0.55, cursor: "not-allowed" };
+const actionErrorStyle: CSSProperties = {
+  color: t.error,
+  fontSize: "0.78rem",
+  fontWeight: 600,
 };
 const meta: CSSProperties = {
   fontSize: "0.78rem",

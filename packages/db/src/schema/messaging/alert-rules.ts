@@ -24,7 +24,7 @@ export const alertRules = pgTable(
     organizationId: uuid("organization_id").references(() => organizations.id, {
       onDelete: "cascade",
     }), // null = platform default
-    eventType: text("event_type").notNull(), // 'hope.sfv_triggered' etc.
+    eventType: text("event_type").notNull(), // e.g. 'm10.hope.sfv_created'
     category: alertCategory("category").notNull(),
     severityFloor: alertSeverity("severity_floor").notNull(),
     recipientResolver: alertRecipientResolver("recipient_resolver").notNull(),

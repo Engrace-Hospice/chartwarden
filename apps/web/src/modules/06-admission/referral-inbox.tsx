@@ -11,232 +11,185 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@wardenx/ui";
-// apps/web/src/modules/06-admission — Referral Inbox (M6 §5.2.1, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md — "Use Work Queue."
-// The queue of inbound referrals across sources, read from GET /api/v1/referrals via the generated
-// typed client. A row opens the referral's admission (built later); the server enforces every scope
-// (no authz on the frontend — ADR-0030). Reconciled to Lantern (R1): §6.6 status pills, mono ids,
-// No-Line table. Imports only leaves (@wardenx/ui).
-import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { REFERRAL_TONE, stateLabel } from "./admission-status";
+import { useSession } from "../../shell/session";
+import {
+  PATIENT_RESOLUTION_LABEL,
+  PATIENT_RESOLUTION_TONE,
+  PRIORITY_LABEL,
+  REFERRAL_TONE,
+  stateLabel,
+} from "./admission-status";
+import { type ReferralListQuery, type ReferralView, listReferrals } from "./referrals-api";
 
-interface ReferralRow {
-  id: string;
-  state: string;
-  version: number;
-}
+const FILTERS = [
+  ["", "All"],
+  ["received", "New"],
+  ["mine", "My referrals"],
+  ["unassigned", "Unassigned"],
+  ["pending_information", "Pending information"],
+  ["qualified", "Ready"],
+  ["declined", "Declined"],
+] as const;
 
-const REFERRAL_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
+const PAGE_SIZES = [10, 15, 20, 30, 50] as const;
 
 export function ReferralInbox(): JSX.Element {
   const client = useApiClient();
+  const session = useSession();
   const navigate = useNavigate();
-  const [state, setState] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [items, setItems] = useState<ReferralRow[]>([]);
+  const [items, setItems] = useState<ReferralView[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [priority, setPriority] = useState("");
+  const [resolution, setResolution] = useState("");
+  const [source, setSource] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(15);
+
+  const query = useMemo<ReferralListQuery>(() => {
+    const q: ReferralListQuery = { limit: 100 };
+    if (filter === "mine") q.assigned = "mine";
+    else if (filter === "unassigned") q.assigned = "unassigned";
+    else if (filter) q.status = filter;
+    if (search.trim()) q.q = search.trim();
+    if (priority) q.priority = priority;
+    if (resolution) q.patientResolutionStatus = resolution;
+    if (source) q.source = source;
+    return q;
+  }, [filter, priority, resolution, search, source]);
 
   const load = useCallback(
     async (cursor?: string) => {
       setLoading(true);
       setError(null);
-      const query: { cursor?: string; limit?: number } = { limit: 50 };
-      if (cursor) query.cursor = cursor;
-      const { data, error: err } = await client.GET("/api/v1/referrals", { params: { query } });
-      if (err) {
-        setError("Could not load the referral inbox.");
+      try {
+        const data = await listReferrals(client, { ...query, ...(cursor ? { cursor } : {}) });
+        setItems((prev) => (cursor ? [...prev, ...data.items] : data.items));
+        setNextCursor(data.nextCursor);
+      } catch (err) {
+        setError(errorMessage(err, "Could not load the referral inbox."));
+      } finally {
         setLoading(false);
-        return;
       }
-      const page = data?.items ?? [];
-      setItems((prev) => (cursor ? [...prev, ...page] : page));
-      setNextCursor(data?.nextCursor ?? null);
-      setLoading(false);
     },
-    [client],
+    [client, query],
   );
 
   useEffect(() => {
+    setPage(1);
     void load();
   }, [load]);
 
-  // Faceted state filter is applied client-side over the loaded page (server stays the source of truth).
-  const filtered = items.filter((r) => {
-    const q = searchQuery.trim().toLowerCase();
-    const matchesSearch = !q || r.id.toLowerCase().includes(q) || r.state.toLowerCase().includes(q);
-    const matchesState = !state || r.state === state;
-    return matchesSearch && matchesState;
-  });
-  const openCount = items.filter((r) => r.state === "received" || r.state === "evaluated").length;
-  const evaluatedCount = items.filter((r) => r.state === "evaluated").length;
-  const acceptedCount = items.filter((r) => r.state === "accepted").length;
-  const admittedCount = items.filter((r) => r.state === "admitted").length;
-  const hasActiveFilters = searchQuery !== "" || state !== "";
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const counts = useMemo(
+    () => ({
+      received: items.filter((r) => r.status === "received").length,
+      unassigned: items.filter((r) => !r.assignedToUserId).length,
+      mine: items.filter((r) => r.assignedToUserId === session?.userId).length,
+      pending: items.filter((r) => r.status === "pending_information").length,
+      ready: items.filter((r) => r.status === "qualified").length,
+    }),
+    [items, session?.userId],
+  );
+  const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
   const activePage = Math.min(page, pageCount);
-  const pagedItems = filtered.slice((activePage - 1) * pageSize, activePage * pageSize);
+  const paged = items.slice((activePage - 1) * pageSize, activePage * pageSize);
+  const filtered = filter || search || priority || resolution || source;
 
   function clearFilters(): void {
-    setSearchQuery("");
-    setState("");
+    setFilter("");
+    setSearch("");
+    setPriority("");
+    setResolution("");
+    setSource("");
     setPage(1);
   }
 
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Referral Inbox" breadcrumb="Admissions / Intake">
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Review inbound hospice referrals, triage readiness, and admission handoff status.
-          </div>
+        <PageHeader
+          title="Referral Inbox"
+          breadcrumb="Admissions / Intake"
+          actions={
+            <Button tone="primary" onClick={() => navigate("/referrals/new")}>
+              New Referral
+            </Button>
+          }
+        >
+          <div style={muted}>Review and manage incoming referrals before admission.</div>
         </PageHeader>
       }
       kpis={
         <KpiStrip>
-          <KpiCard
-            label="Open referrals"
-            value={openCount}
-            detail="Received or evaluated"
-            tone="info"
-            accentColor="var(--color-primary)"
-          />
-          <KpiCard
-            label="Ready to decide"
-            value={evaluatedCount}
-            detail="Evaluated referrals"
-            tone={evaluatedCount > 0 ? "warning" : "neutral"}
-            accentColor={
-              evaluatedCount > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
-            }
-          />
-          <KpiCard
-            label="Accepted"
-            value={acceptedCount}
-            detail="Pending admission"
-            tone="success"
-            accentColor="var(--color-success)"
-          />
-          <KpiCard
-            label="Admitted"
-            value={admittedCount}
-            detail="Converted referrals"
-            tone="neutral"
-            accentColor="var(--color-outline-variant)"
-          />
-          <KpiCard
-            label="In view"
-            value={filtered.length}
-            detail="After filters"
-            tone="neutral"
-            accentColor="var(--color-outline-variant)"
-          />
+          <KpiCard label="New" value={counts.received} detail="Awaiting review" tone="info" />
+          <KpiCard label="Unassigned" value={counts.unassigned} detail="Needs owner" tone="warning" />
+          <KpiCard label="My referrals" value={counts.mine} detail="Assigned to you" tone="neutral" />
+          <KpiCard label="Pending information" value={counts.pending} detail="Waiting on source" tone="warning" />
+          <KpiCard label="Ready" value={counts.ready} detail="Qualified for admission" tone="success" />
         </KpiStrip>
       }
       filters={
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.75rem",
-            padding: "0 1.5rem 0.75rem",
-          }}
-        >
-          {error ? (
-            <div
-              role="alert"
-              style={{
-                padding: "0.625rem 1rem",
-                borderRadius: "var(--radius-md)",
-                background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
-                border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-                color: "var(--color-error)",
-                fontSize: "0.85rem",
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-              }}
-            >
-              <Glyph name="alert" size={16} />
-              <span>{error}</span>
+        <div style={filtersStyle}>
+          {error ? <div role="alert" style={alert}>{error}</div> : null}
+          <div style={filterRow}>
+            <div style={tabs}>
+              {FILTERS.map(([value, label]) => (
+                <button
+                  key={value || "all"}
+                  type="button"
+                  onClick={() => setFilter(value)}
+                  style={tab(filter === value)}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
-          ) : null}
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "1rem",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                gap: "0.25rem",
-                background: "var(--color-surface-container)",
-                padding: "0.2rem",
-                borderRadius: "var(--radius-md)",
-              }}
-            >
-              <button type="button" style={tabButtonStyle(true)}>
-                Referrals ({items.length})
-              </button>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-              <div style={{ position: "relative", minWidth: "15rem" }}>
+            <div style={tools}>
+              <div style={{ position: "relative", minWidth: "18rem" }}>
                 <input
                   type="search"
-                  placeholder="Search referrals by ID or state..."
-                  value={searchQuery}
-                  onChange={(event) => {
-                    setSearchQuery(event.target.value);
-                    setPage(1);
-                  }}
+                  value={search}
+                  onChange={(ev) => setSearch(ev.target.value)}
+                  placeholder="Search patient, source, referrer, diagnosis..."
                   aria-label="Search referrals"
-                  style={{
-                    width: "100%",
-                    paddingLeft: "2rem",
-                    height: "2.25rem",
-                    fontSize: "0.85rem",
-                  }}
+                  style={{ width: "100%", paddingLeft: "2rem" }}
                 />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: "0.625rem",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    color: "var(--color-on-surface-variant)",
-                    pointerEvents: "none",
-                  }}
-                >
-                  <Glyph name="search" size={14} />
-                </div>
+                <span style={searchIcon}><Glyph name="search" size={14} /></span>
               </div>
-              <select
-                aria-label="Referral state"
-                value={state}
-                onChange={(event) => {
-                  setState(event.target.value);
-                  setPage(1);
-                }}
-                style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
-              >
-                <option value="">State: All</option>
-                <option value="received">Received</option>
-                <option value="evaluated">Evaluated</option>
-                <option value="accepted">Accepted</option>
-                <option value="rejected">Rejected</option>
-                <option value="withdrawn">Withdrawn</option>
-                <option value="admitted">Admitted</option>
+              <select aria-label="Priority" value={priority} onChange={(ev) => setPriority(ev.target.value)}>
+                <option value="">Priority: All</option>
+                <option value="routine">Routine</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
               </select>
-              {hasActiveFilters ? (
+              <select
+                aria-label="Patient resolution"
+                value={resolution}
+                onChange={(ev) => setResolution(ev.target.value)}
+              >
+                <option value="">Patient match: All</option>
+                <option value="unresolved">Not resolved</option>
+                <option value="possible_match">Review match</option>
+                <option value="matched">Matched</option>
+                <option value="created">New patient</option>
+              </select>
+              <select aria-label="Source" value={source} onChange={(ev) => setSource(ev.target.value)}>
+                <option value="">Source: All</option>
+                <option value="phone">Phone</option>
+                <option value="fax">Fax</option>
+                <option value="portal">Portal</option>
+                <option value="walk_in">Walk-in</option>
+                <option value="self_referral">Self referral</option>
+                <option value="physician_office">Physician office</option>
+                <option value="hospital_discharge_planner">Hospital discharge planner</option>
+              </select>
+              {filtered ? (
                 <Button size="sm" tone="tertiary" onClick={clearFilters}>
                   Clear
                 </Button>
@@ -247,65 +200,38 @@ export function ReferralInbox(): JSX.Element {
       }
       table={
         loading && items.length === 0 ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : filtered.length === 0 ? (
+          <div style={loadingBox}><LoadingSpinner /></div>
+        ) : items.length === 0 ? (
           <div style={{ padding: "2rem 1.5rem" }}>
             <EmptyState
-              title={hasActiveFilters ? "No matching referrals found" : "No active referrals"}
+              title={filtered ? "No referrals match these filters." : "No referrals yet."}
               description={
-                hasActiveFilters
-                  ? "Try adjusting the search or state filter."
-                  : "Referrals from HearthNote, phone, or fax appear here."
-              }
-              action={
-                hasActiveFilters ? (
-                  <Button tone="secondary" size="sm" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                ) : undefined
+                filtered ? "Try another search or filter." : "Create a referral to begin the intake process."
               }
             />
           </div>
         ) : (
           <>
-            <ReferralTable
-              items={pagedItems}
-              loading={loading}
-              onOpen={(id) => navigate(`/referrals/${id}`)}
-            />
-            <OffsetPagination
-              page={activePage}
-              pageSize={pageSize}
-              totalItems={filtered.length}
-              onPageChange={setPage}
-              onPageSizeChange={(size) => {
-                setPageSize(size);
-                setPage(1);
-              }}
-              pageSizeOptions={REFERRAL_PAGE_SIZES}
-              noun="referrals"
-            />
-            {nextCursor ? (
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  padding: "0 1.5rem 1.5rem",
+            <ReferralTable items={paged} onOpen={(id) => navigate(`/referrals/${id}`)} />
+            <div style={pager}>
+              <OffsetPagination
+                page={activePage}
+                pageSize={pageSize}
+                pageSizeOptions={[...PAGE_SIZES]}
+                totalItems={items.length}
+                noun="referrals"
+                onPageChange={setPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size);
+                  setPage(1);
                 }}
-              >
-                <Button
-                  type="button"
-                  tone="secondary"
-                  size="sm"
-                  onClick={() => load(nextCursor)}
-                  loading={loading}
-                >
-                  Load more referrals
+              />
+              {nextCursor ? (
+                <Button size="sm" tone="secondary" onClick={() => void load(nextCursor)} disabled={loading}>
+                  Load more
                 </Button>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </>
         )
       }
@@ -313,104 +239,47 @@ export function ReferralInbox(): JSX.Element {
   );
 }
 
-function ReferralTable({
-  items,
-  loading,
-  onOpen,
-}: {
-  items: ReferralRow[];
-  loading: boolean;
-  onOpen: (id: string) => void;
-}): JSX.Element {
+function ReferralTable({ items, onOpen }: { items: ReferralView[]; onOpen: (id: string) => void }): JSX.Element {
   return (
-    <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem" }}>
-      <table
-        style={{
-          display: "table",
-          width: "100%",
-          borderCollapse: "collapse",
-          fontSize: "0.875rem",
-        }}
-      >
+    <div style={{ overflowX: "auto" }}>
+      <table style={table}>
         <thead>
-          <tr
-            style={{
-              textAlign: "left",
-              color: "var(--color-on-surface-variant)",
-              borderBottom:
-                "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-              background: "var(--color-surface-low)",
-            }}
-          >
-            <th style={{ ...thStyle, width: "48%" }}>Referral</th>
-            <th style={{ ...thStyle, width: "18%" }}>State</th>
-            <th style={{ ...thStyle, width: "18%" }}>Version</th>
-            <th style={{ ...thStyle, width: "16%", textAlign: "right" }}>Action</th>
+          <tr>
+            <th style={th}>Patient</th>
+            <th style={th}>Source</th>
+            <th style={th}>Received</th>
+            <th style={th}>Diagnosis / reason</th>
+            <th style={th}>Priority</th>
+            <th style={th}>Owner</th>
+            <th style={th}>Status</th>
+            <th style={th}>Patient match</th>
           </tr>
         </thead>
         <tbody>
           {items.map((r) => (
-            <tr
-              key={r.id}
-              // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-              role="button"
-              tabIndex={0}
-              onClick={() => onOpen(r.id)}
-              onKeyDown={(ev) => {
-                if (ev.key === "Enter" || ev.key === " ") {
-                  ev.preventDefault();
-                  onOpen(r.id);
-                }
-              }}
-              style={{ cursor: "pointer" }}
-            >
-              <td style={tdStyle}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", minWidth: 0 }}>
-                  <div
-                    style={{
-                      width: "2rem",
-                      height: "2rem",
-                      borderRadius: "var(--radius-md)",
-                      background: "var(--color-primary-tint)",
-                      color: "var(--color-primary)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Glyph name="file-text" size={16} />
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="wx-data-md" style={{ fontWeight: 650 }}>
-                      {r.id}
-                    </div>
-                    <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.75rem" }}>
-                      Referral intake record
-                    </div>
-                  </div>
-                </div>
+            <tr key={r.id} style={tr} onClick={() => onOpen(r.id)}>
+              <td style={td}>
+                <button type="button" style={linkButton} onClick={() => onOpen(r.id)}>
+                  {r.patientNameAtReceipt}
+                </button>
+                <div style={subtext}>{r.patientDobAtReceipt ? `DOB ${formatDate(r.patientDobAtReceipt)}` : "DOB not provided"}</div>
               </td>
-              <td style={tdStyle}>
+              <td style={td}>
+                <div>{r.referrerOrganization || sourceLabel(r.source)}</div>
+                <div style={subtext}>{sourceLabel(r.source)}</div>
+              </td>
+              <td style={td}>{formatDateTime(r.receivedAt)}</td>
+              <td style={{ ...td, maxWidth: "18rem" }}>{r.referringDxText || r.externalReferralId || "Not provided"}</td>
+              <td style={td}><PriorityBadge value={r.priority} /></td>
+              <td style={td}>{r.assignedToUserId ? `Assigned to ${shortId(r.assignedToUserId)}` : "Unassigned"}</td>
+              <td style={td}>
+                <StatusPill label={stateLabel(r.status)} tone={REFERRAL_TONE[r.status] ?? "neutral"} />
+              </td>
+              <td style={td}>
                 <StatusPill
-                  label={stateLabel(r.state)}
-                  tone={REFERRAL_TONE[r.state] ?? "neutral"}
+                  label={PATIENT_RESOLUTION_LABEL[r.patientResolutionStatus] ?? r.patientResolutionStatus}
+                  tone={PATIENT_RESOLUTION_TONE[r.patientResolutionStatus] ?? "neutral"}
                 />
-              </td>
-              <td className="wx-data-md" style={tdStyle}>
-                v{r.version}
-              </td>
-              <td style={{ ...tdStyle, textAlign: "right" }}>
-                <Button
-                  size="sm"
-                  tone="secondary"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onOpen(r.id);
-                  }}
-                  disabled={loading}
-                >
-                  Open
-                </Button>
               </td>
             </tr>
           ))}
@@ -420,30 +289,80 @@ function ReferralTable({
   );
 }
 
-function tabButtonStyle(active: boolean): CSSProperties {
-  return {
-    border: "none",
-    borderRadius: "calc(var(--radius-md) - 2px)",
-    background: active ? "var(--color-surface-lowest)" : "transparent",
-    color: active ? "var(--color-on-surface)" : "var(--color-on-surface-variant)",
-    padding: "0.4rem 0.8rem",
-    fontSize: "0.85rem",
-    fontWeight: active ? 650 : 500,
-    cursor: "pointer",
-    boxShadow: active ? "var(--shadow-soft)" : "none",
-  };
+function PriorityBadge({ value }: { value: string }): JSX.Element {
+  const urgent = value === "urgent";
+  return (
+    <span style={{ ...priorityBadge, ...(urgent ? urgentBadge : {}) }}>
+      {PRIORITY_LABEL[value] ?? value}
+    </span>
+  );
 }
 
-const thStyle: CSSProperties = {
-  padding: "0.75rem 1rem",
-  fontSize: "0.75rem",
-  fontWeight: 650,
-  letterSpacing: "0.03em",
-  textTransform: "uppercase",
-};
+function sourceLabel(value: string): string {
+  return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
-const tdStyle: CSSProperties = {
-  padding: "0.875rem 1rem",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-  verticalAlign: "middle",
+function shortId(id: string): string {
+  return id.length > 8 ? id.slice(0, 8) : id;
+}
+
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
+}
+
+function formatDateTime(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function errorMessage(err: unknown, fallback: string): string {
+  const e = err as { error?: { message?: string }; message?: string };
+  return e.error?.message ?? e.message ?? fallback;
+}
+
+const muted: CSSProperties = { color: "var(--color-on-surface-variant)", fontSize: "0.875rem" };
+const filtersStyle: CSSProperties = { padding: "0 1.5rem 0.75rem", display: "grid", gap: "0.75rem" };
+const filterRow: CSSProperties = { display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" };
+const tabs: CSSProperties = { display: "flex", flexWrap: "wrap", gap: "0.25rem" };
+const tools: CSSProperties = { display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" };
+const tab = (active: boolean): CSSProperties => ({
+  border: "1px solid var(--color-outline-variant)",
+  background: active ? "var(--color-primary-container)" : "var(--color-surface)",
+  color: active ? "var(--color-on-primary-container)" : "var(--color-on-surface)",
+  borderRadius: "8px",
+  padding: "0.45rem 0.7rem",
+  cursor: "pointer",
+});
+const searchIcon: CSSProperties = {
+  position: "absolute",
+  left: "0.625rem",
+  top: "50%",
+  transform: "translateY(-50%)",
+  color: "var(--color-on-surface-variant)",
 };
+const alert: CSSProperties = {
+  padding: "0.65rem 0.85rem",
+  borderRadius: "8px",
+  border: "1px solid color-mix(in srgb, var(--color-error) 35%, transparent)",
+  color: "var(--color-error)",
+};
+const loadingBox: CSSProperties = { padding: "3rem 1.5rem", textAlign: "center" };
+const table: CSSProperties = { width: "100%", borderCollapse: "collapse", minWidth: "72rem" };
+const th: CSSProperties = {
+  textAlign: "left",
+  padding: "0.75rem",
+  borderBottom: "1px solid var(--color-outline-variant)",
+  fontSize: "0.78rem",
+  color: "var(--color-on-surface-variant)",
+};
+const td: CSSProperties = { padding: "0.85rem 0.75rem", borderBottom: "1px solid var(--color-outline-variant)", verticalAlign: "top" };
+const tr: CSSProperties = { cursor: "pointer" };
+const subtext: CSSProperties = { color: "var(--color-on-surface-variant)", fontSize: "0.78rem", marginTop: "0.2rem" };
+const linkButton: CSSProperties = { border: 0, background: "transparent", color: "var(--color-primary)", padding: 0, font: "inherit", fontWeight: 700, cursor: "pointer" };
+const priorityBadge: CSSProperties = { border: "1px solid var(--color-outline-variant)", borderRadius: "999px", padding: "0.18rem 0.5rem", fontSize: "0.78rem" };
+const urgentBadge: CSSProperties = { borderColor: "var(--color-error)", color: "var(--color-error)", fontWeight: 700 };
+const pager: CSSProperties = { padding: "1rem 1.5rem", display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" };

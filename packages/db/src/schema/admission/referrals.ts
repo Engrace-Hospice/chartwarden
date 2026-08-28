@@ -5,8 +5,14 @@
 // activates them). Cross-module refs (M5 patient, M40 referral-source) are plain uuid app-validated,
 // NOT cross-module FKs. `external_message_ref` carries the M29 HL7 provenance for the consumer path
 // (§3.4). RLS + the M4 write-audit trigger land in M6-T03 (§3.6–3.7).
-import { bigint, date, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { referralSourceChannel, referralStatus } from "../../enums";
+import { sql } from "drizzle-orm";
+import { bigint, date, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  referralPatientResolutionStatus,
+  referralPriority,
+  referralSourceChannel,
+  referralStatus,
+} from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
@@ -27,16 +33,28 @@ export const referrals = pgTable(
     referralSourceId: uuid("referral_source_id"), // M40 referral-source (app-validated; no cross-module FK)
     referrerName: text("referrer_name"),
     referrerPhone: text("referrer_phone"),
+    referrerOrganization: text("referrer_organization"),
+    externalReferralId: text("external_referral_id"),
     patientNameAtReceipt: text("patient_name_at_receipt").notNull(),
     patientDobAtReceipt: date("patient_dob_at_receipt"),
     referringDxText: text("referring_dx_text"),
     icd10TerminalPrimary: text("icd10_terminal_primary"),
     sourceChannel: referralSourceChannel("source_channel").notNull(),
     status: referralStatus("status").notNull().default("received"),
+    patientResolutionStatus: referralPatientResolutionStatus("patient_resolution_status")
+      .notNull()
+      .default("unresolved"),
+    priority: referralPriority("priority").notNull().default("routine"),
+    assignedToUserId: uuid("assigned_to_user_id").references(() => users.id, { onDelete: "set null" }),
     rejectionReason: text("rejection_reason"),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
-    evaluatedAt: timestamp("evaluated_at", { withTimezone: true }),
-    evaluatedBy: uuid("evaluated_by").references(() => users.id, { onDelete: "set null" }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    reviewedBy: uuid("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+    qualifiedAt: timestamp("qualified_at", { withTimezone: true }),
+    qualifiedBy: uuid("qualified_by").references(() => users.id, { onDelete: "set null" }),
+    declinedAt: timestamp("declined_at", { withTimezone: true }),
+    convertedAt: timestamp("converted_at", { withTimezone: true }),
+    convertedAdmissionId: uuid("converted_admission_id"),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     externalMessageRef: jsonb("external_message_ref").$type<{
       source: "m29";
@@ -56,6 +74,9 @@ export const referrals = pgTable(
       t.receivedAt,
     ),
     patientIdx: index("referral_patient_idx").on(t.patientId),
+    externalReferralIdx: uniqueIndex("referral_org_external_referral_uidx")
+      .on(t.organizationId, t.externalReferralId)
+      .where(sql`external_referral_id IS NOT NULL`),
   }),
 );
 

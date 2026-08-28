@@ -11,12 +11,12 @@
 // executes the §2.5 declarative effects (windows open/close, LOC + election-period end cascades), and
 // emits `m6.*` on the transactional outbox. T05 (compliance-window close/override) completes the surface:
 // the WHOLE M6 write lifecycle is now real Drizzle — no route left at 501.
-import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { WardenXError, type PatientAdmissionClearanceReader, type PatientIntakeResolver } from "@wardenx/types";
 import type { LevelOfCare } from "@wardenx/types";
-import { type AnyColumn, type SQL, and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { type AnyColumn, type SQL, and, desc, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { getSeam } from "../../bootstrap/index";
 import { decideRecertSign } from "./certification/recert";
 import { computeWrittenCertDeadline } from "./certification/window-math";
 import { resolveForCauseDischarge } from "./discharge/for-cause";
@@ -26,19 +26,31 @@ import {
   dischargeRequiresCosign,
 } from "./discharge/permission-map";
 import { type TransferInInput, planTransferIn } from "./discharge/transfer-in";
-import { computeActivationGate } from "./intake";
+import {
+  type AdmissionReadinessFacts,
+  type AdmissionReadinessResult,
+  computeActivationGate,
+  evaluateAdmissionReadiness,
+} from "./intake";
 import type {
   CosignDischargeInput,
   CtiDraftInput,
   DischargeInput,
   DischargeResult,
   RevocationInput,
+  ReferralActivityView,
+  ReferralReadView,
+  ReferralNoteView,
   TransferOutInput,
 } from "./routes/service";
 import {
   ActivationPreconditionError,
+  ExternalReferralAlreadyIngestedError,
   InvalidReferralStateError,
+  ReferralAdmissionPathError,
+  ReferralAlreadyConvertedError,
   ReferralNotTriagedError,
+  ReferralNotReadyError,
   ResourceNotFoundError,
   VersionMismatchError,
 } from "./routes/service";
@@ -123,6 +135,8 @@ const CW = schema.complianceWindows;
 const DE = schema.dischargeEvents;
 const TE = schema.transferEvents;
 const RE = schema.revocationEvents;
+const RA = schema.referralActivities;
+const RN = schema.referralNotes;
 
 /** §4.2.7 discharge reason → the §2.3.1 `executeDischarge` discriminator the pure state machine reads. */
 const REASON_TO_SM_TYPE: Record<
@@ -170,6 +184,63 @@ const toSummary = (r: { id: string; state: string; version: number }): SummaryRo
   state: r.state,
   version: Number(r.version),
 });
+
+function toReferralReadView(
+  r: {
+    id: string;
+    status: string;
+    version: number;
+    patientId: string | null;
+    patientResolutionStatus: string;
+    patientNameAtReceipt: string;
+    patientDobAtReceipt: string | null;
+    referringDxText: string | null;
+    icd10TerminalPrimary: string | null;
+    sourceChannel: string;
+    referrerName: string | null;
+    referrerOrganization: string | null;
+    referrerPhone: string | null;
+    externalReferralId: string | null;
+    priority: string;
+    assignedToUserId: string | null;
+    receivedAt: Date;
+    reviewedAt: Date | null;
+    qualifiedAt: Date | null;
+    declinedAt: Date | null;
+    convertedAt: Date | null;
+    convertedAdmissionId: string | null;
+    rejectionReason: string | null;
+  },
+  qualificationBlockers: readonly { code: string; message: string }[],
+): ReferralReadView {
+  return {
+    id: r.id,
+    state: r.status,
+    status: r.status,
+    version: Number(r.version),
+    patientId: r.patientId,
+    patientResolutionStatus: r.patientResolutionStatus,
+    patientNameAtReceipt: r.patientNameAtReceipt,
+    patientDobAtReceipt: r.patientDobAtReceipt,
+    referringDxText: r.referringDxText,
+    icd10TerminalPrimary: r.icd10TerminalPrimary,
+    source: r.sourceChannel,
+    referrerName: r.referrerName,
+    referrerOrganization: r.referrerOrganization,
+    referrerPhone: r.referrerPhone,
+    externalReferralId: r.externalReferralId,
+    priority: r.priority,
+    assignedToUserId: r.assignedToUserId,
+    receivedAt: r.receivedAt.toISOString(),
+    reviewedAt: r.reviewedAt?.toISOString() ?? null,
+    qualifiedAt: r.qualifiedAt?.toISOString() ?? null,
+    declinedAt: r.declinedAt?.toISOString() ?? null,
+    convertedAt: r.convertedAt?.toISOString() ?? null,
+    convertedAdmissionId: r.convertedAdmissionId,
+    rejectionReason: r.rejectionReason,
+    qualificationBlockers,
+  };
+}
 
 /** Org-TZ for the D4 written-cert deadline until a per-org TZ is threaded through the write path. */
 const DEFAULT_ORG_TZ = "America/Los_Angeles";
@@ -286,15 +357,111 @@ export function createDbAdmissionRouteService(
   async function loadRef(
     tx: DbClient,
     id: string,
-  ): Promise<{ status: string; version: number; patientId: string | null }> {
+  ): Promise<{
+    status: string;
+    version: number;
+    patientId: string | null;
+    patientResolutionStatus: string;
+    patientNameAtReceipt: string;
+    patientDobAtReceipt: string | null;
+    referringDxText: string | null;
+    referrerName: string | null;
+    referrerOrganization: string | null;
+    externalReferralId: string | null;
+  }> {
     const [r] = await tx
-      .select({ status: REF.status, version: REF.version, patientId: REF.patientId })
+      .select({
+        status: REF.status,
+        version: REF.version,
+        patientId: REF.patientId,
+        patientResolutionStatus: REF.patientResolutionStatus,
+        patientNameAtReceipt: REF.patientNameAtReceipt,
+        patientDobAtReceipt: REF.patientDobAtReceipt,
+        referringDxText: REF.referringDxText,
+        referrerName: REF.referrerName,
+        referrerOrganization: REF.referrerOrganization,
+        externalReferralId: REF.externalReferralId,
+      })
       .from(REF)
       .where(eq(REF.id, id))
       .limit(1);
     if (!r) throw new ResourceNotFoundError(id);
-    return { status: r.status, version: Number(r.version), patientId: r.patientId ?? null };
+    return { ...r, version: Number(r.version), patientId: r.patientId ?? null };
   }
+
+  const patientResolver = (): PatientIntakeResolver => getSeam("PatientIntakeResolver");
+  const patientClearanceReader = (): PatientAdmissionClearanceReader =>
+    getSeam("PatientAdmissionClearanceReader");
+
+  async function recordReferralActivity(
+    tx: DbClient,
+    organizationId: string,
+    referralId: string,
+    actorId: string,
+    action: string,
+    fromStatus: string | null,
+    toStatus: string | null,
+    metadata: Record<string, unknown> = {},
+  ): Promise<void> {
+    await tx.insert(RA).values({
+      organizationId,
+      referralId,
+      actorId: actorId || null,
+      action,
+      fromStatus,
+      toStatus,
+      metadata,
+    });
+  }
+
+  function qualificationBlockers(ref: Awaited<ReturnType<typeof loadRef>>) {
+    const blockers: Array<{ code: string; message: string }> = [];
+    if (!ref.patientId || !["matched", "created"].includes(ref.patientResolutionStatus)) {
+      blockers.push({
+        code: "PATIENT_UNRESOLVED",
+        message: "A patient must be confirmed or created before qualification.",
+      });
+    }
+    if (!ref.referringDxText && !ref.externalReferralId) {
+      blockers.push({
+        code: "CLINICAL_INDICATION_MISSING",
+        message: "A referral reason or clinical indication is required before qualification.",
+      });
+    }
+    if (!ref.referrerName && !ref.referrerOrganization && !ref.externalReferralId) {
+      blockers.push({
+        code: "SOURCE_INFORMATION_MISSING",
+        message: "Referral source information is required before qualification.",
+      });
+    }
+    return blockers;
+  }
+
+  const referralProjection = {
+    id: REF.id,
+    status: REF.status,
+    version: REF.version,
+    patientId: REF.patientId,
+    patientResolutionStatus: REF.patientResolutionStatus,
+    patientNameAtReceipt: REF.patientNameAtReceipt,
+    patientDobAtReceipt: REF.patientDobAtReceipt,
+    referringDxText: REF.referringDxText,
+    icd10TerminalPrimary: REF.icd10TerminalPrimary,
+    sourceChannel: REF.sourceChannel,
+    referrerName: REF.referrerName,
+    referrerOrganization: REF.referrerOrganization,
+    referrerPhone: REF.referrerPhone,
+    externalReferralId: REF.externalReferralId,
+    priority: REF.priority,
+    assignedToUserId: REF.assignedToUserId,
+    receivedAt: REF.receivedAt,
+    reviewedAt: REF.reviewedAt,
+    qualifiedAt: REF.qualifiedAt,
+    declinedAt: REF.declinedAt,
+    convertedAt: REF.convertedAt,
+    convertedAdmissionId: REF.convertedAdmissionId,
+    rejectionReason: REF.rejectionReason,
+  };
 
   /** Load an admission's lock/state facts, or 404. */
   async function loadAdm(
@@ -365,7 +532,9 @@ export function createDbAdmissionRouteService(
       const [es] = await tx
         .select({ id: ES.id })
         .from(ES)
-        .where(eq(ES.electionPeriodId, period.id))
+        .where(
+          and(eq(ES.electionPeriodId, period.id), eq(ES.status, "signed"), sql`${ES.signedAt} is not null`),
+        )
         .limit(1);
       electionSigned = !!es;
       const [cti] = await tx
@@ -391,6 +560,155 @@ export function createDbAdmissionRouteService(
       periodEffectiveAt: period?.effectiveAt ?? null,
       periodScheduledEndAt: period?.scheduledEndAt ?? null,
     };
+  }
+
+  async function readinessForAdmission(
+    tx: DbClient,
+    organizationId: string,
+    admissionId: string,
+  ): Promise<AdmissionReadinessResult | null> {
+    const [adm] = await tx
+      .select({
+        id: ADM.id,
+        patientId: ADM.patientId,
+        referralId: ADM.referralId,
+        admissionAt: ADM.admissionAt,
+        providerEntityId: ADM.providerEntityId,
+        locationId: ADM.locationId,
+        attendingPhysicianId: ADM.attendingPhysicianId,
+      })
+      .from(ADM)
+      .where(eq(ADM.id, admissionId))
+      .limit(1);
+    if (!adm) return null;
+
+    const [ref] = adm.referralId
+      ? await tx
+          .select({
+            patientId: REF.patientId,
+            patientResolutionStatus: REF.patientResolutionStatus,
+            primaryDiagnosis: REF.icd10TerminalPrimary,
+          })
+          .from(REF)
+          .where(eq(REF.id, adm.referralId))
+          .limit(1)
+      : [null];
+
+    const [period] = await tx
+      .select({
+        id: EP.id,
+        sequenceNumber: EP.sequenceNumber,
+        effectiveAt: EP.effectiveAt,
+      })
+      .from(EP)
+      .where(eq(EP.admissionId, admissionId))
+      .orderBy(EP.sequenceNumber)
+      .limit(1);
+
+    const [es] = period
+      ? await tx
+          .select({ status: ES.status, signedAt: ES.signedAt, electionPeriodId: ES.electionPeriodId })
+          .from(ES)
+          .where(eq(ES.electionPeriodId, period.id))
+          .limit(1)
+      : [null];
+    const [cti] = period
+      ? await tx
+          .select({
+            status: CTI.status,
+            hospiceMdId: CTI.hospiceMdId,
+            hospiceMdSignedAt: CTI.hospiceMdSignedAt,
+            attendingMdId: CTI.attendingMdId,
+            attendingMdSignedAt: CTI.attendingMdSignedAt,
+            terminalDiagnosisIcd10: CTI.terminalDiagnosisIcd10,
+          })
+          .from(CTI)
+          .where(and(eq(CTI.electionPeriodId, period.id), ne(CTI.status, "voided")))
+          .limit(1)
+      : [null];
+    const [nor] = await tx
+      .select({
+        id: NOR.id,
+        signerKind: NOR.signerKind,
+        acknowledgedAt: NOR.acknowledgedAt,
+        acknowledgmentMethod: NOR.acknowledgmentMethod,
+      })
+      .from(NOR)
+      .where(eq(NOR.admissionId, admissionId))
+      .limit(1);
+    const [f2f] = period
+      ? await tx
+          .select({
+            status: F2F.status,
+            encounterDate: F2F.encounterDate,
+            attestationSignedAt: F2F.attestationSignedAt,
+            windowOverride: F2F.windowOverride,
+          })
+          .from(F2F)
+          .where(eq(F2F.electionPeriodId, period.id))
+          .orderBy(desc(F2F.createdAt))
+          .limit(1)
+      : [null];
+
+    let clearance;
+    try {
+      clearance = await patientClearanceReader().evaluatePatientAdmissionClearance({
+        organizationId,
+        patientId: adm.patientId,
+      });
+    } catch {
+      clearance = { allowed: false, reason: "PRIVACY_CLEARANCE_UNAVAILABLE" as const };
+    }
+
+    const facts: AdmissionReadinessFacts = {
+      admissionId,
+      patientIdentity: {
+        patientId: adm.patientId,
+        referralPatientId: ref?.patientId ?? undefined,
+        referralPatientResolutionStatus: ref?.patientResolutionStatus ?? undefined,
+      },
+      admissionDetails: {
+        admissionDatePresent: !!adm.admissionAt || !!period?.effectiveAt,
+        primaryDiagnosisPresent: !!(cti?.terminalDiagnosisIcd10 ?? ref?.primaryDiagnosis),
+        hospiceMedicalDirectorPresent: !!cti?.hospiceMdId,
+        providerEntityPresent: true,
+        locationPresent: true,
+      },
+      patientPrivacy: {
+        allowed: clearance.allowed,
+        reason: clearance.reason,
+        overrideAllowed: clearance.overrideAllowed,
+      },
+      noticeOfRights: {
+        acknowledged: !!nor,
+        acknowledgedAtPresent: !!nor?.acknowledgedAt,
+        signerValid: nor?.signerKind === "patient" || nor?.signerKind === "representative",
+        methodValid: !!nor?.acknowledgmentMethod,
+      },
+      electionStatement: {
+        exists: !!es,
+        status: es?.status ?? null,
+        signedAtPresent: !!es?.signedAt,
+        belongsToCurrentPeriod: !!es && !!period && es.electionPeriodId === period.id,
+      },
+      cti: {
+        exists: !!cti,
+        status: cti?.status ?? null,
+        hospiceMdSigned: !!cti?.hospiceMdSignedAt,
+        attendingRequired: (period?.sequenceNumber ?? 1) === 1 && !!cti?.attendingMdId,
+        attendingSigned: !!cti?.attendingMdSignedAt,
+      },
+      f2f: {
+        required: (period?.sequenceNumber ?? 1) >= 3,
+        exists: !!f2f,
+        status: f2f?.status ?? null,
+        completed: f2f?.status === "completed" || f2f?.status === "attested",
+        attestationRequired: (period?.sequenceNumber ?? 1) >= 3,
+        attested: !!f2f?.attestationSignedAt || f2f?.status === "attested",
+        satisfiedBy: f2f?.windowOverride ? "override" : undefined,
+      },
+    };
+    return evaluateAdmissionReadiness(facts);
   }
 
   /** Drive a state-machine admission event: load → assertVersion → transition → UPDATE + effects. */
@@ -586,17 +904,81 @@ export function createDbAdmissionRouteService(
 
   return {
     // ── Referral reads ───────────────────────────────────────────────────────────────────────────
-    async listReferrals(organizationId, query) {
-      return pageByStatus(organizationId, REF, REF.receivedAt, query);
+    async listReferrals(organizationId, query, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const limit = clampLimit(query.limit);
+        const offset = parseOffset(query.cursor);
+        const filters: SQL[] = [];
+        const status = query.status ?? query.state;
+        if (status) filters.push(eq(REF.status, status as never));
+        if (query.source) filters.push(eq(REF.sourceChannel, query.source as never));
+        if (query.patientResolutionStatus)
+          filters.push(eq(REF.patientResolutionStatus, query.patientResolutionStatus as never));
+        if (query.priority) filters.push(eq(REF.priority, query.priority as never));
+        if (query.assigned === "unassigned") filters.push(isNull(REF.assignedToUserId));
+        if (query.assigned === "mine" && actorUserId) filters.push(eq(REF.assignedToUserId, actorUserId));
+        if (query.q?.trim()) {
+          const q = `%${query.q.trim()}%`;
+          filters.push(
+            or(
+              ilike(REF.patientNameAtReceipt, q),
+              ilike(REF.referrerName, q),
+              ilike(REF.referrerOrganization, q),
+              ilike(REF.externalReferralId, q),
+              ilike(REF.referringDxText, q),
+            ) as SQL,
+          );
+        }
+        const where = filters.length ? and(...filters) : undefined;
+        const rows = await tx
+          .select(referralProjection)
+          .from(REF)
+          .where(where)
+          .orderBy(desc(REF.receivedAt), desc(REF.id))
+          .limit(limit + 1)
+          .offset(offset);
+        const items = rows
+          .slice(0, limit)
+          .map((r) =>
+            toReferralReadView(
+              r,
+              qualificationBlockers({
+                status: r.status,
+                version: Number(r.version),
+                patientId: r.patientId,
+                patientResolutionStatus: r.patientResolutionStatus,
+                patientNameAtReceipt: r.patientNameAtReceipt,
+                patientDobAtReceipt: r.patientDobAtReceipt,
+                referringDxText: r.referringDxText,
+                referrerName: r.referrerName,
+                referrerOrganization: r.referrerOrganization,
+                externalReferralId: r.externalReferralId,
+              }),
+            ),
+          );
+        return { items, nextCursor: rows.length > limit ? String(offset + limit) : null };
+      });
     },
     async getReferral(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const [r] = await tx
-          .select({ id: REF.id, state: REF.status, version: REF.version })
-          .from(REF)
-          .where(eq(REF.id, id))
-          .limit(1);
-        return r ? toSummary(r) : null;
+        const [r] = await tx.select(referralProjection).from(REF).where(eq(REF.id, id)).limit(1);
+        return r
+          ? toReferralReadView(
+              r,
+              qualificationBlockers({
+                status: r.status,
+                version: Number(r.version),
+                patientId: r.patientId,
+                patientResolutionStatus: r.patientResolutionStatus,
+                patientNameAtReceipt: r.patientNameAtReceipt,
+                patientDobAtReceipt: r.patientDobAtReceipt,
+                referringDxText: r.referringDxText,
+                referrerName: r.referrerName,
+                referrerOrganization: r.referrerOrganization,
+                externalReferralId: r.externalReferralId,
+              }),
+            )
+          : null;
       });
     },
 
@@ -607,49 +989,39 @@ export function createDbAdmissionRouteService(
     async getAdmission(organizationId, id): Promise<AdmissionDetail | null> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [adm] = await tx
-          .select({ id: ADM.id, status: ADM.status, version: ADM.version })
+          .select({
+            id: ADM.id,
+            status: ADM.status,
+            version: ADM.version,
+            patientId: ADM.patientId,
+            referralId: ADM.referralId,
+            admissionAt: ADM.admissionAt,
+            activatedAt: ADM.activatedAt,
+          })
           .from(ADM)
           .where(eq(ADM.id, id))
           .limit(1);
         if (!adm) return null;
-        // R-AC-01 activation gate — computed from the period-1 bundle (§5.2.5). Loaded org-scoped.
-        const [period] = await tx
-          .select({ id: EP.id, sequenceNumber: EP.sequenceNumber })
-          .from(EP)
-          .where(and(eq(EP.admissionId, id), eq(EP.sequenceNumber, 1)))
-          .limit(1);
-        let electionSigned = false;
-        let ctiHospiceMdSigned = false;
-        let ctiAttendingSigned = false;
-        if (period) {
-          const [es] = await tx
-            .select({ id: ES.id })
-            .from(ES)
-            .where(eq(ES.electionPeriodId, period.id))
-            .limit(1);
-          electionSigned = !!es;
-          const [cti] = await tx
-            .select({ h: CTI.hospiceMdSignedAt, a: CTI.attendingMdSignedAt })
-            .from(CTI)
-            .where(eq(CTI.electionPeriodId, period.id))
-            .limit(1);
-          ctiHospiceMdSigned = !!cti?.h;
-          ctiAttendingSigned = !!cti?.a;
-        }
-        const [nor] = await tx
-          .select({ id: NOR.id })
-          .from(NOR)
-          .where(eq(NOR.admissionId, id))
-          .limit(1);
-        const activationGate = computeActivationGate({
-          periodSequence: period?.sequenceNumber ?? 1,
-          electionSigned,
-          norAcknowledged: !!nor,
-          ctiHospiceMdSigned,
-          ctiAttendingSigned,
-        });
-        return { id: adm.id, state: adm.status, version: Number(adm.version), activationGate };
+        const readiness = await readinessForAdmission(tx, organizationId, id);
+        const legacy = await gateFacts(tx, id);
+        const activationGate = computeActivationGate(legacy);
+        return {
+          id: adm.id,
+          state: adm.status,
+          version: Number(adm.version),
+          patientId: adm.patientId,
+          referralId: adm.referralId,
+          admissionAt: adm.admissionAt?.toISOString() ?? null,
+          activatedAt: adm.activatedAt?.toISOString() ?? null,
+          activationGate,
+          readiness: readiness ?? undefined,
+        };
       });
+    },
+    async getAdmissionReadiness(organizationId, id) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
+        readinessForAdmission(tx, organizationId, id),
+      );
     },
     async getPatientElectionCertification(
       organizationId,
@@ -897,17 +1269,40 @@ export function createDbAdmissionRouteService(
     // ── Writes — the M6L-T02+ Drizzle lifecycle. Fail-closed 501 until then. ───────────────────────
     // ── M6L-T02: referral intake ───────────────────────────────────────────────────────────────
     async createReferral(organizationId, input, actorUserId): Promise<MutationResult> {
-      void actorUserId;
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        if (input.externalReferralId) {
+          const existing = await tx
+            .select({ id: REF.id })
+            .from(REF)
+            .where(
+              and(
+                eq(REF.organizationId, organizationId),
+                eq(REF.externalReferralId, input.externalReferralId),
+              ),
+            )
+            .limit(1);
+          if (existing.length > 0) {
+            throw new ExternalReferralAlreadyIngestedError(input.externalReferralId);
+          }
+        }
+
         const rows = await tx
           .insert(REF)
           .values({
             organizationId,
             patientNameAtReceipt: input.patientNameAtReceipt,
+            patientDobAtReceipt: input.patientDobAtReceipt ?? null,
+            referringDxText: input.referringDxText ?? null,
+            referrerName: input.referrerName ?? null,
+            referrerOrganization: input.referrerOrganization ?? null,
+            referrerPhone: input.referrerPhone ?? null,
+            externalReferralId: input.externalReferralId ?? null,
+            receivedAt: input.receivedAt ? new Date(input.receivedAt) : now(),
             sourceChannel: input.source as ReferralSourceChannel,
           })
           .returning({ id: REF.id, status: REF.status, version: REF.version });
         const r = firstOrThrow(rows, "referral insert returned no row");
+        await recordReferralActivity(tx, organizationId, r.id, actorUserId, "referral_received", null, r.status);
         await outbox.publish(tx, {
           eventName: "m6.referral.received",
           payload: { referralId: r.id, source: input.source, receivedAt: input.receivedAt },
@@ -918,12 +1313,19 @@ export function createDbAdmissionRouteService(
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
-    async updateReferral(organizationId, id, ifVersion): Promise<MutationResult> {
+    async updateReferral(organizationId, id, input, ifVersion): Promise<MutationResult> {
       // Metadata edit — no state change; still optimistic-locked (§7.1 concurrency).
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = await tx
           .update(REF)
-          .set({ version: sql`${REF.version} + 1`, updatedAt: now() })
+          .set({
+            referringDxText: input.referringDxText,
+            referrerName: input.referrerName,
+            referrerOrganization: input.referrerOrganization,
+            referrerPhone: input.referrerPhone,
+            version: sql`${REF.version} + 1`,
+            updatedAt: now(),
+          })
           .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
           .returning({ id: REF.id, status: REF.status, version: REF.version });
         if (!r) return failStale(tx, REF, id, ifVersion);
@@ -936,14 +1338,15 @@ export function createDbAdmissionRouteService(
         assertVersion(id, cur.version, ifVersion);
         if (cur.status !== "received")
           throw new InvalidReferralStateError(id, cur.status, "triage");
-        // §7.1: eligible → evaluated; ineligible → rejected (DB enum, not the in-memory `triaged`).
-        const next = outcome === "eligible" ? "evaluated" : "rejected";
+        const next = outcome === "eligible" ? "under_review" : "declined";
         const r = firstOrThrow(
           await tx
             .update(REF)
             .set({
               status: next,
-              evaluatedAt: now(),
+              reviewedAt: outcome === "eligible" ? now() : null,
+              declinedAt: outcome === "ineligible" ? now() : null,
+              decidedAt: outcome === "ineligible" ? now() : null,
               version: sql`${REF.version} + 1`,
               updatedAt: now(),
             })
@@ -951,9 +1354,18 @@ export function createDbAdmissionRouteService(
             .returning({ id: REF.id, status: REF.status, version: REF.version }),
           "row not found",
         );
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          "",
+          outcome === "eligible" ? "review_started" : "declined",
+          cur.status,
+          r.status,
+        );
         await outbox.publish(tx, {
-          eventName: "m6.referral.triaged",
-          payload: { referralId: id, outcome },
+          eventName: outcome === "eligible" ? "m6.referral.review_started" : "m6.referral.declined",
+          payload: outcome === "eligible" ? { referralId: id, outcome } : { referralId: id, reason: "ineligible" },
           organizationId,
           aggregateKind: "referral",
           aggregateId: id,
@@ -968,11 +1380,184 @@ export function createDbAdmissionRouteService(
       ifVersion,
       actorUserId,
     ): Promise<MutationResult & { admissionId: string }> {
+      return this.convertReferral(organizationId, id, input, ifVersion, actorUserId);
+    },
+    async startReferralReview(organizationId, id, ifVersion, actorUserId): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const cur = await loadRef(tx, id);
         assertVersion(id, cur.version, ifVersion);
-        if (cur.status !== "evaluated") throw new ReferralNotTriagedError(id); // W-RF-04
-        const patientId = input.patientId ?? cur.patientId ?? randomUUID();
+        if (cur.status !== "received" && cur.status !== "pending_information") {
+          throw new InvalidReferralStateError(id, cur.status, "start review");
+        }
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
+              status: "under_review",
+              reviewedAt: now(),
+              reviewedBy: actorUserId || null,
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({ id: REF.id, status: REF.status, version: REF.version }),
+          "row not found",
+        );
+        await recordReferralActivity(tx, organizationId, id, actorUserId, cur.status === "pending_information" ? "returned_to_review" : "review_started", cur.status, r.status);
+        await outbox.publish(tx, {
+          eventName: "m6.referral.review_started",
+          payload: { referralId: id },
+          organizationId,
+          aggregateKind: "referral",
+          aggregateId: id,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async runReferralPatientMatching(organizationId, id, ifVersion, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        if (!["under_review", "pending_information"].includes(cur.status)) {
+          throw new InvalidReferralStateError(id, cur.status, "match patient");
+        }
+        const result = await patientResolver().findPatientCandidates({
+          organizationId,
+          patientNameAtReceipt: cur.patientNameAtReceipt,
+          patientDobAtReceipt: cur.patientDobAtReceipt,
+        });
+        const nextResolution = result.outcome === "no_match" ? "unresolved" : "possible_match";
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
+              patientResolutionStatus: nextResolution,
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({ id: REF.id, status: REF.status, version: REF.version }),
+          "row not found",
+        );
+        if (result.outcome !== "no_match") {
+          await recordReferralActivity(tx, organizationId, id, actorUserId, "patient_match_suggested", cur.status, r.status, {
+            candidateCount: result.candidates.length,
+          });
+        }
+        return { id: r.id, state: r.status, version: Number(r.version), candidates: result.candidates };
+      });
+    },
+    async confirmReferralPatient(organizationId, id, patientId, ifVersion, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        const patient = await patientResolver().confirmPatient({ organizationId, patientId });
+        if (!patient) throw new WardenXError("PATIENT_NOT_FOUND", "patient was not found in M5", 404);
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
+              patientId: patient.id,
+              patientResolutionStatus: "matched",
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({ id: REF.id, status: REF.status, version: REF.version }),
+          "row not found",
+        );
+        await recordReferralActivity(tx, organizationId, id, actorUserId, "patient_match_confirmed", cur.status, r.status, {
+          patientId: patient.id,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async createReferralPatient(organizationId, id, ifVersion, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        const patient = await patientResolver().createPatientFromIntake({
+          organizationId,
+          patientNameAtReceipt: cur.patientNameAtReceipt,
+          patientDobAtReceipt: cur.patientDobAtReceipt,
+        });
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
+              patientId: patient.id,
+              patientResolutionStatus: "created",
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({ id: REF.id, status: REF.status, version: REF.version }),
+          "row not found",
+        );
+        await recordReferralActivity(tx, organizationId, id, actorUserId, "patient_created", cur.status, r.status, {
+          patientId: patient.id,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version), patientId: patient.id };
+      });
+    },
+    async qualifyReferral(organizationId, id, ifVersion, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        if (cur.status !== "under_review") throw new InvalidReferralStateError(id, cur.status, "qualify");
+        const blockers = qualificationBlockers(cur);
+        if (blockers.length > 0) throw new ReferralNotReadyError(blockers);
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
+              status: "qualified",
+              qualifiedAt: now(),
+              qualifiedBy: actorUserId || null,
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({ id: REF.id, status: REF.status, version: REF.version }),
+          "row not found",
+        );
+        await recordReferralActivity(tx, organizationId, id, actorUserId, "qualified", cur.status, r.status);
+        await outbox.publish(tx, {
+          eventName: "m6.referral.qualified",
+          payload: { referralId: id, patientId: cur.patientId },
+          organizationId,
+          aggregateKind: "referral",
+          aggregateId: id,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async convertReferral(
+      organizationId,
+      id,
+      input,
+      ifVersion,
+      actorUserId,
+    ): Promise<MutationResult & { admissionId: string }> {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        if (cur.status === "converted") {
+          const [existing] = await tx
+            .select({ id: ADM.id, version: ADM.version })
+            .from(ADM)
+            .where(and(eq(ADM.organizationId, organizationId), eq(ADM.referralId, id)))
+            .limit(1);
+          if (existing) return { id, state: "converted", version: cur.version, admissionId: existing.id };
+          throw new ReferralAlreadyConvertedError(id);
+        }
+        if (cur.status !== "qualified") throw new ReferralNotTriagedError(id);
+        if (!cur.patientId || !["matched", "created"].includes(cur.patientResolutionStatus)) {
+          throw new ReferralNotReadyError(qualificationBlockers(cur));
+        }
+        const patientId = cur.patientId;
+        const confirmed = await patientResolver().confirmPatient({ organizationId, patientId });
+        if (!confirmed) throw new WardenXError("PATIENT_NOT_FOUND", "resolved M5 patient no longer exists", 409);
         // §2.3.1 no double-election: block if the patient already has an open admission.
         const [open] = await tx
           .select({ id: ADM.id })
@@ -1013,12 +1598,15 @@ export function createDbAdmissionRouteService(
           sequenceNumber: 1,
           periodKind: "ninety_day",
         });
-        // Advance the referral to accepted.
+        // Advance the referral to converted.
         const r = firstOrThrow(
           await tx
             .update(REF)
             .set({
-              status: "accepted",
+              status: "converted",
+              icd10TerminalPrimary: input.primaryDiagnosisIcd10,
+              convertedAt: now(),
+              convertedAdmissionId: adm.id,
               decidedAt: now(),
               version: sql`${REF.version} + 1`,
               updatedAt: now(),
@@ -1027,8 +1615,11 @@ export function createDbAdmissionRouteService(
             .returning({ id: REF.id, status: REF.status, version: REF.version }),
           "row not found",
         );
+        await recordReferralActivity(tx, organizationId, id, actorUserId, "converted", cur.status, r.status, {
+          admissionId: adm.id,
+        });
         await outbox.publish(tx, {
-          eventName: "m6.referral.accepted",
+          eventName: "m6.referral.converted",
           payload: { referralId: id, patientId, admissionId: adm.id },
           organizationId,
           aggregateKind: "referral",
@@ -1038,7 +1629,6 @@ export function createDbAdmissionRouteService(
       });
     },
     async declineReferral(organizationId, id, reason, ifVersion): Promise<MutationResult> {
-      void reason;
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const cur = await loadRef(tx, id);
         assertVersion(id, cur.version, ifVersion);
@@ -1046,7 +1636,9 @@ export function createDbAdmissionRouteService(
           await tx
             .update(REF)
             .set({
-              status: "rejected",
+              status: "declined",
+              rejectionReason: reason,
+              declinedAt: now(),
               decidedAt: now(),
               version: sql`${REF.version} + 1`,
               updatedAt: now(),
@@ -1057,10 +1649,218 @@ export function createDbAdmissionRouteService(
         );
         await outbox.publish(tx, {
           eventName: "m6.referral.declined",
-          payload: { referralId: id },
+          payload: { referralId: id, reason },
           organizationId,
           aggregateKind: "referral",
           aggregateId: id,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async addReferralNote(organizationId, id, input, actorUserId): Promise<ReferralNoteView> {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        await loadRef(tx, id);
+        const r = firstOrThrow(
+          await tx
+            .insert(RN)
+            .values({
+              organizationId,
+              referralId: id,
+              authorId: actorUserId || null,
+              content: input.content,
+            })
+            .returning({
+              id: RN.id,
+              referralId: RN.referralId,
+              authorId: RN.authorId,
+              content: RN.content,
+              createdAt: RN.createdAt,
+              updatedAt: RN.updatedAt,
+            }),
+          "referral note insert returned no row",
+        );
+        await recordReferralActivity(tx, organizationId, id, actorUserId, "note_added", null, null);
+        return {
+          id: r.id,
+          referralId: r.referralId,
+          authorId: r.authorId ?? null,
+          content: r.content,
+          createdAt: r.createdAt.toISOString(),
+          updatedAt: r.updatedAt.toISOString(),
+        };
+      });
+    },
+    async listReferralNotes(organizationId, id): Promise<readonly ReferralNoteView[]> {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        await loadRef(tx, id);
+        const rows = await tx
+          .select({
+            id: RN.id,
+            referralId: RN.referralId,
+            authorId: RN.authorId,
+            content: RN.content,
+            createdAt: RN.createdAt,
+            updatedAt: RN.updatedAt,
+          })
+          .from(RN)
+          .where(eq(RN.referralId, id))
+          .orderBy(desc(RN.createdAt));
+        return rows.map((r) => ({
+          id: r.id,
+          referralId: r.referralId,
+          authorId: r.authorId ?? null,
+          content: r.content,
+          createdAt: r.createdAt.toISOString(),
+          updatedAt: r.updatedAt.toISOString(),
+        }));
+      });
+    },
+    async listReferralActivity(organizationId, id): Promise<readonly ReferralActivityView[]> {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        await loadRef(tx, id);
+        const rows = await tx
+          .select({
+            id: RA.id,
+            referralId: RA.referralId,
+            actorId: RA.actorId,
+            action: RA.action,
+            fromStatus: RA.fromStatus,
+            toStatus: RA.toStatus,
+            metadata: RA.metadata,
+            createdAt: RA.createdAt,
+          })
+          .from(RA)
+          .where(eq(RA.referralId, id))
+          .orderBy(desc(RA.createdAt));
+        return rows.map((r) => ({
+          id: r.id,
+          referralId: r.referralId,
+          actorId: r.actorId ?? null,
+          action: r.action,
+          fromStatus: r.fromStatus ?? null,
+          toStatus: r.toStatus ?? null,
+          metadata: r.metadata,
+          createdAt: r.createdAt.toISOString(),
+        }));
+      });
+    },
+    async updateReferralPriority(organizationId, id, priority, ifVersion, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({ priority, version: sql`${REF.version} + 1`, updatedAt: now() })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({ id: REF.id, status: REF.status, version: REF.version }),
+          "row not found",
+        );
+        await recordReferralActivity(tx, organizationId, id, actorUserId, "priority_updated", null, null, {
+          priority,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async assignReferral(organizationId, id, assignedToUserId, ifVersion, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
+              assignedToUserId: assignedToUserId ?? null,
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({ id: REF.id, status: REF.status, version: REF.version }),
+          "row not found",
+        );
+        await recordReferralActivity(tx, organizationId, id, actorUserId, "assigned", null, null, {
+          assignedToUserId: assignedToUserId ?? null,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async markReferralPendingInformation(organizationId, id, reason, ifVersion, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        if (cur.status !== "under_review") {
+          throw new InvalidReferralStateError(id, cur.status, "mark pending information");
+        }
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
+              status: "pending_information",
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({ id: REF.id, status: REF.status, version: REF.version }),
+          "row not found",
+        );
+        await recordReferralActivity(tx, organizationId, id, actorUserId, "pending_information_requested", cur.status, r.status, {
+          reason,
+        });
+        await tx.insert(RN).values({
+          organizationId,
+          referralId: id,
+          authorId: actorUserId || null,
+          content: `Pending information requested: ${reason}`,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async markReferralDuplicate(organizationId, id, reason, ifVersion, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        if (cur.status === "converted") throw new InvalidReferralStateError(id, cur.status, "mark duplicate");
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
+              status: "duplicate",
+              rejectionReason: reason ?? "Duplicate referral",
+              decidedAt: now(),
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({ id: REF.id, status: REF.status, version: REF.version }),
+          "row not found",
+        );
+        await recordReferralActivity(tx, organizationId, id, actorUserId, "duplicate", cur.status, r.status, {
+          reason: reason ?? null,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async withdrawReferral(organizationId, id, reason, ifVersion, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        if (cur.status === "converted") throw new InvalidReferralStateError(id, cur.status, "withdraw");
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
+              status: "withdrawn",
+              rejectionReason: reason ?? "Referral withdrawn",
+              decidedAt: now(),
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({ id: REF.id, status: REF.status, version: REF.version }),
+          "row not found",
+        );
+        await recordReferralActivity(tx, organizationId, id, actorUserId, "withdrawn", cur.status, r.status, {
+          reason: reason ?? null,
         });
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
@@ -1078,6 +1878,7 @@ export function createDbAdmissionRouteService(
     async createAdmission(organizationId, input, actorUserId): Promise<MutationResult> {
       void actorUserId;
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        if (input.referralId) throw new ReferralAdmissionPathError();
         // §2.3.1 no double-election: same rule acceptReferral enforces — direct intake is a second
         // entry path into the same admission lifecycle, not an exemption from it.
         const [open] = await tx
@@ -1204,6 +2005,8 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const cur = await loadAdm(tx, id);
         assertVersion(id, cur.version, ifVersion);
+        const readiness = await readinessForAdmission(tx, organizationId, id);
+        if (!readiness) throw new ResourceNotFoundError(id);
         const facts = await gateFacts(tx, id);
         // TASK-031 fix: `computeActivationGate` is the declared single source of truth for BOTH this
         // write-path guard and the read-side checklist (getAdmission/route 10) — call it here instead
@@ -1211,7 +2014,9 @@ export function createDbAdmissionRouteService(
         // which never checked `ctiAttendingSigned` at all. A caller that bypasses the UI and posts
         // directly now gets the SAME 412 PRECONDITION_FAILED { missing } the checklist would have shown.
         const gate = computeActivationGate(facts);
-        if (!gate.ready) throw new ActivationPreconditionError(gate.missing);
+        if (!readiness.canActivate) {
+          throw new ActivationPreconditionError(gate.missing, readiness.requirements);
+        }
         const t = transitionAdmission(cur.status, {
           type: "activate",
           electionStatementSigned: facts.electionSigned,

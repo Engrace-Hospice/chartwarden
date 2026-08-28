@@ -18,6 +18,7 @@ import type {
   HopeScheduleView as ServiceScheduleView,
   HopeSfvView as ServiceSfvView,
   HopeSubmissionView as ServiceSubmissionView,
+  HopeWorkflowStateView as ServiceWorkflowStateView,
 } from "./service";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -97,6 +98,8 @@ export const RecordTimepointSchema = Type.Object({
   authorDiscipline: AUTHOR_DISCIPLINE,
   sourceEncounterId: Type.Optional(Type.String({ format: "uuid" })),
   dischargeReason: Type.Optional(DISCHARGE_REASON),
+  lateCompletionReasonCode: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
+  adminOverride: Type.Optional(Type.Boolean()),
   data: HopeData,
 });
 export const RecordSfvSchema = Type.Object({
@@ -160,6 +163,16 @@ const SCHEDULE_GENERATED_BY = lit([
   "auto_discharge",
   "sfv_trigger",
   "manual_admin",
+] as const);
+const WORKFLOW_ITEM_STATUS = lit([
+  "upcoming",
+  "open",
+  "late",
+  "completed",
+  "expired",
+  "skipped",
+  "not_applicable",
+  "workflow_not_initialized",
 ] as const);
 const NullableString = () => Type.Union([Type.String(), Type.Null()]);
 
@@ -227,6 +240,116 @@ export const HopeComplianceResponseSchema = Type.Object({
   sfvOnTimeRate: Type.Number(),
   submissionAcceptanceRate: Type.Number(),
 });
+const HopeWorkflowTimepointResponseSchema = Type.Object({
+  kind: Type.Union([
+    Type.Literal("01_admission"),
+    Type.Literal("02_huv1"),
+    Type.Literal("03_huv2"),
+    Type.Literal("05_discharge"),
+  ]),
+  status: WORKFLOW_ITEM_STATUS,
+  scheduleId: NullableString(),
+  windowStart: NullableString(),
+  windowEnd: NullableString(),
+  lateDeadline: NullableString(),
+  completedAt: NullableString(),
+  assessmentId: NullableString(),
+  attention: Type.Object({
+    state: Type.Union([
+      Type.Literal("none"),
+      Type.Literal("upcoming"),
+      Type.Literal("due_soon"),
+      Type.Literal("due"),
+      Type.Literal("overdue"),
+      Type.Literal("window_expired"),
+      Type.Literal("missed"),
+      Type.Literal("workflow_issue"),
+    ]),
+    severity: Type.Union([
+      Type.Literal("none"),
+      Type.Literal("info"),
+      Type.Literal("warn"),
+      Type.Literal("critical"),
+    ]),
+    action: Type.Union([
+      Type.Literal("COMPLETE_ADMISSION_RFA"),
+      Type.Literal("COMPLETE_HUV1"),
+      Type.Literal("COMPLETE_HUV2"),
+      Type.Literal("COMPLETE_DISCHARGE_RFA"),
+      Type.Literal("OPEN_SFV"),
+      Type.Literal("REPAIR_WORKFLOW"),
+      Type.Literal("NONE"),
+    ]),
+    message: NullableString(),
+    deadline: NullableString(),
+  }),
+});
+const HopeWorkflowSfvResponseSchema = Type.Object({
+  id: Type.String(),
+  status: SFV_STATUS,
+  triggeringAssessmentId: Type.String(),
+  triggeringRfaKind: Type.Union([RFA_KIND, Type.Null()]),
+  dueAt: Type.String(),
+  triggeredAt: Type.String(),
+  completedAt: NullableString(),
+  completingAssessmentId: NullableString(),
+  attention: Type.Object({
+    state: Type.Union([
+      Type.Literal("none"),
+      Type.Literal("upcoming"),
+      Type.Literal("due_soon"),
+      Type.Literal("due"),
+      Type.Literal("overdue"),
+      Type.Literal("window_expired"),
+      Type.Literal("missed"),
+      Type.Literal("workflow_issue"),
+    ]),
+    severity: Type.Union([
+      Type.Literal("none"),
+      Type.Literal("info"),
+      Type.Literal("warn"),
+      Type.Literal("critical"),
+    ]),
+    action: Type.Union([
+      Type.Literal("COMPLETE_ADMISSION_RFA"),
+      Type.Literal("COMPLETE_HUV1"),
+      Type.Literal("COMPLETE_HUV2"),
+      Type.Literal("COMPLETE_DISCHARGE_RFA"),
+      Type.Literal("OPEN_SFV"),
+      Type.Literal("REPAIR_WORKFLOW"),
+      Type.Literal("NONE"),
+    ]),
+    message: NullableString(),
+    deadline: NullableString(),
+  }),
+});
+export const HopeWorkflowStateResponseSchema = Type.Object({
+  admissionId: Type.String(),
+  patientId: NullableString(),
+  admissionStatus: NullableString(),
+  admissionAt: NullableString(),
+  activatedAt: NullableString(),
+  dischargedAt: NullableString(),
+  admissionAssessment: HopeWorkflowTimepointResponseSchema,
+  huv1: HopeWorkflowTimepointResponseSchema,
+  huv2: HopeWorkflowTimepointResponseSchema,
+  sfvs: Type.Array(HopeWorkflowSfvResponseSchema),
+  dischargeAssessment: HopeWorkflowTimepointResponseSchema,
+  summary: Type.Object({
+    actionableCount: Type.Integer(),
+    overdueCount: Type.Integer(),
+    completedCount: Type.Integer(),
+    nextDeadline: NullableString(),
+    highestSeverity: Type.Union([
+      Type.Literal("none"),
+      Type.Literal("info"),
+      Type.Literal("warn"),
+      Type.Literal("critical"),
+    ]),
+    dueSoonCount: Type.Integer(),
+    workflowIssueCount: Type.Integer(),
+  }),
+});
 
 // List / envelope responses (the service returns keyed wrappers, never bare arrays).
 export const HopeScheduleListResponseSchema = Type.Object({
@@ -271,6 +394,10 @@ type _Schedule = Conforms<Static<typeof HopeScheduleResponseSchema>, ServiceSche
 type _Sfv = Conforms<Static<typeof HopeSfvResponseSchema>, ServiceSfvView>;
 type _Submission = Conforms<Static<typeof HopeSubmissionResponseSchema>, ServiceSubmissionView>;
 type _Compliance = Conforms<Static<typeof HopeComplianceResponseSchema>, ServiceComplianceView>;
+type _WorkflowState = Conforms<
+  Static<typeof HopeWorkflowStateResponseSchema>,
+  ServiceWorkflowStateView
+>;
 type _ScheduleList = Conforms<
   Static<typeof HopeScheduleListResponseSchema>,
   { readonly schedules: readonly ServiceScheduleView[] }

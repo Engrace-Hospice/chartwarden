@@ -37,7 +37,7 @@ function input(over: Partial<FanOutInput> & { alert: AlertContext }): FanOutInpu
 }
 
 const CLINICAL_ROUTINE: AlertContext = {
-  eventType: "hope.sfv_triggered",
+  eventType: "m10.hope.sfv_created",
   category: "clinical_routine",
   severity: "warn",
 };

@@ -1,5 +1,5 @@
 import {
-  CeremonyModal,
+  Button,
   DetailPageLayout,
   EmptyState,
   LoadingSpinner,
@@ -7,296 +7,610 @@ import {
   StatusPill,
   useApiClient,
 } from "@wardenx/ui";
-// apps/web/src/modules/06-admission — Referral Detail (M6 §5.2.1/§5.2.2, Track B / ADR-0030, TASK-031).
-// Fixes the dead `/referrals/:id` route `referral-inbox.tsx` has always linked to. Reads
-// GET /api/v1/referrals/:id, whose DTO is honestly just `{id, state, version}` (the referral's intake
-// facts — source, patient-at-receipt, referring dx — aren't on this read yet); this view renders exactly
-// what the read exposes, the same convention as encounter-read.tsx's SOAP placeholder.
-//
-// Two ceremonies, gated on server-truth `state` only (the server is the only enforcement point — ADR-0030).
-// Real DB enum (packages/db/src/schema/admission/referrals.ts): received, evaluated, accepted, rejected,
-// withdrawn, admitted — NOT the in-memory reference service's `triaged`/`ineligible` naming.
-//   Triage (`received` → `evaluated`/`rejected`) — without it `accepted` is unreachable through the UI,
-//   since `POST /referrals/:id/accept` requires `state === "evaluated"` (ReferralNotTriagedError).
-//   Accept (`evaluated` → `accepted`) — seeds the draft admission server-side and returns its id
-//   (`admission.draft_from_referral`); this ceremony navigates straight into the new Admission Detail.
-import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { MdmEntityLookupField, PatientLookupField } from "../../shared/entity-lookups";
-import { REFERRAL_TONE, stateLabel } from "./admission-status";
-import { authFailureRedirect } from "./write-workflow";
-
-interface Referral {
-  id: string;
-  state: string;
-  version: number;
-}
-
-type CeremonyMode = "triage" | "accept" | null;
+import { PatientLookupField } from "../../shared/entity-lookups";
+import { useSession } from "../../shell/session";
+import {
+  PATIENT_RESOLUTION_LABEL,
+  PATIENT_RESOLUTION_TONE,
+  PRIORITY_LABEL,
+  REFERRAL_TONE,
+  stateLabel,
+} from "./admission-status";
+import {
+  type ReferralActivity,
+  type ReferralCandidate,
+  type ReferralNote,
+  type ReferralView,
+  getReferral,
+  listReferralActivity,
+  listReferralNotes,
+  patchReferral,
+  referralCommand,
+} from "./referrals-api";
 
 export function ReferralDetail(): JSX.Element {
   const client = useApiClient();
+  const session = useSession();
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const [referral, setReferral] = useState<Referral | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const [ceremony, setCeremony] = useState<CeremonyMode>(null);
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-
-  const [outcome, setOutcome] = useState<"eligible" | "ineligible">("eligible");
-  const [notes, setNotes] = useState("");
+  const [referral, setReferral] = useState<ReferralView | null>(null);
+  const [notes, setNotes] = useState<ReferralNote[]>([]);
+  const [activity, setActivity] = useState<ReferralActivity[]>([]);
+  const [candidates, setCandidates] = useState<ReferralCandidate[]>([]);
+  const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [newNote, setNewNote] = useState("");
+  const [pendingReason, setPendingReason] = useState("");
+  const [terminalReason, setTerminalReason] = useState("");
   const [primaryDiagnosisIcd10, setPrimaryDiagnosisIcd10] = useState("");
-  const [attendingPhysicianId, setAttendingPhysicianId] = useState("");
-  const [patientId, setPatientId] = useState("");
+  const [edit, setEdit] = useState({ referrerName: "", referrerOrganization: "", referrerPhone: "", referringDxText: "" });
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     setError(null);
-    const { data, error: err } = await client.GET("/api/v1/referrals/{id}", {
-      params: { path: { id } },
-    });
-    if (err || !data) {
-      setError("Referral not found or not visible to you.");
+    try {
+      const [ref, noteRows, activityRows] = await Promise.all([
+        getReferral(client, id),
+        listReferralNotes(client, id),
+        listReferralActivity(client, id),
+      ]);
+      setReferral(ref);
+      setNotes(noteRows);
+      setActivity(activityRows);
+      setPrimaryDiagnosisIcd10(ref.icd10TerminalPrimary ?? "");
+      setEdit({
+        referrerName: ref.referrerName ?? "",
+        referrerOrganization: ref.referrerOrganization ?? "",
+        referrerPhone: ref.referrerPhone ?? "",
+        referringDxText: ref.referringDxText ?? "",
+      });
+    } catch (err) {
+      setError(errorMessage(err, "Referral not found or not visible to you."));
+    } finally {
       setLoading(false);
-      return;
     }
-    setReferral(data);
-    setLoading(false);
   }, [client, id]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const closeCeremony = useCallback(() => {
-    setCeremony(null);
-    setActionError(null);
-    setNotes("");
-  }, []);
-
-  const branchError = useCallback(
-    (status: number | undefined, code: string | undefined) => {
-      const redirect = authFailureRedirect(status, code, window.location.pathname);
-      if (redirect) {
-        navigate(redirect);
-        return true;
-      }
-      setBusy(false);
-      if (status === 412)
-        setActionError("This referral changed since you opened it — reload to retry.");
-      else if (status === 422) setActionError("Validation failed — check the values you entered.");
-      else if (status === 403) setActionError("You do not have permission for this action.");
-      else setActionError("The action could not be completed.");
-      return false;
-    },
-    [navigate],
-  );
-
-  const submitTriage = useCallback(async () => {
-    if (!id || !referral) return;
-    setBusy(true);
-    setActionError(null);
-    const { error: err, response } = await client.POST("/api/v1/referrals/{id}/triage", {
-      params: { path: { id } },
-      body: {
-        outcome,
-        ...(notes.trim() ? { notes: notes.trim() } : {}),
-        ifVersion: referral.version,
-      },
-    });
-    if (err) {
-      branchError(response?.status, err?.error?.code);
-      return;
+  async function run(label: string, fn: () => Promise<void>): Promise<void> {
+    setBusy(label);
+    setError(null);
+    try {
+      await fn();
+      await load();
+    } catch (err) {
+      setError(errorMessage(err, "The action could not be completed."));
+    } finally {
+      setBusy(null);
     }
-    setBusy(false);
-    closeCeremony();
-    void load();
-  }, [id, referral, client, outcome, notes, branchError, closeCeremony, load]);
-
-  const submitAccept = useCallback(async () => {
-    if (!id || !referral) return;
-    if (primaryDiagnosisIcd10.trim().length === 0) {
-      setActionError("Provide the primary diagnosis (ICD-10).");
-      return;
-    }
-    setBusy(true);
-    setActionError(null);
-    const {
-      data,
-      error: err,
-      response,
-    } = await client.POST("/api/v1/referrals/{id}/accept", {
-      params: { path: { id } },
-      body: {
-        primaryDiagnosisIcd10: primaryDiagnosisIcd10.trim(),
-        ...(attendingPhysicianId.trim()
-          ? { attendingPhysicianId: attendingPhysicianId.trim() }
-          : {}),
-        ...(patientId.trim() ? { patientId: patientId.trim() } : {}),
-        ifVersion: referral.version,
-      },
-    });
-    if (err || !data) {
-      branchError(response?.status, err?.error?.code);
-      return;
-    }
-    setBusy(false);
-    // Straight into the seeded admission — the accept ceremony's whole point is to open it next.
-    navigate(`/admissions/${data.admissionId}`);
-  }, [
-    id,
-    referral,
-    client,
-    primaryDiagnosisIcd10,
-    attendingPhysicianId,
-    patientId,
-    branchError,
-    navigate,
-  ]);
+  }
 
   if (loading) return <LoadingSpinner />;
-  if (error || !referral)
-    return <EmptyState title="Unavailable" description={error ?? "Not found."} />;
+  if (error && !referral) return <EmptyState title="Unavailable" description={error} />;
+  if (!referral) return <EmptyState title="Unavailable" description="Referral not found." />;
 
   const r = referral;
-  const canTriage = r.state === "received";
-  const canAccept = r.state === "evaluated";
+  const resolved = r.patientResolutionStatus === "matched" || r.patientResolutionStatus === "created";
+  const terminal = ["declined", "duplicate", "withdrawn", "converted"].includes(r.status);
+  const canReview = r.status === "received" || r.status === "pending_information";
+  const canPending = r.status === "under_review";
+  const canQualify = r.status === "under_review" && r.qualificationBlockers.length === 0;
+  const canConvert = r.status === "qualified" && resolved;
 
   return (
     <DetailPageLayout
       header={
         <PageHeader
-          title={`Referral ${r.id}`}
+          title={r.patientNameAtReceipt}
+          breadcrumb="Admissions / Referral"
           actions={
-            <StatusPill label={stateLabel(r.state)} tone={REFERRAL_TONE[r.state] ?? "neutral"} />
+            <div style={actions}>
+              <StatusPill label={stateLabel(r.status)} tone={REFERRAL_TONE[r.status] ?? "neutral"} />
+              {r.priority === "urgent" ? <span style={urgent}>Urgent</span> : null}
+              {r.status === "converted" && r.convertedAdmissionId ? (
+                <Button tone="primary" onClick={() => navigate(`/admissions/${r.convertedAdmissionId}`)}>
+                  View Admission
+                </Button>
+              ) : null}
+            </div>
           }
-        />
+        >
+          <div style={muted}>
+            Referral {r.externalReferralId || shortId(r.id)} · {sourceLabel(r.referrerOrganization || r.source)} · Received {formatDateTime(r.receivedAt)}
+          </div>
+          <div style={muted}>
+            {r.assignedToUserId ? `Assigned to ${shortId(r.assignedToUserId)}` : "Unassigned"}
+          </div>
+        </PageHeader>
       }
     >
-      <p style={meta}>
-        Version {r.version}. This read carries only the referral's summary and state — the intake
-        facts (source, patient-at-receipt, referring diagnosis) aren't exposed on this DTO yet.
-      </p>
+      {error ? <div role="alert" style={alert}>{error}</div> : null}
+      <div style={layout}>
+        <main style={main}>
+          <section style={section}>
+            <div style={sectionHead}>
+              <h2 style={heading}>Overview</h2>
+              <div style={actions}>
+                {canReview ? (
+                  <Button
+                    size="sm"
+                    tone="secondary"
+                    disabled={busy === "review"}
+                    onClick={() =>
+                      void run("review", async () => {
+                        await referralCommand(client, r.id, "review", { ifVersion: r.version });
+                      })
+                    }
+                  >
+                    Return to review
+                  </Button>
+                ) : null}
+                {canQualify ? (
+                  <Button
+                    size="sm"
+                    tone="primary"
+                    disabled={busy === "qualify"}
+                    onClick={() =>
+                      void run("qualify", async () => {
+                        await referralCommand(client, r.id, "qualify", { ifVersion: r.version });
+                      })
+                    }
+                  >
+                    Mark Qualified
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+            <div style={factsGrid}>
+              <Fact label="Status" value={stateLabel(r.status)} />
+              <Fact label="Priority" value={PRIORITY_LABEL[r.priority] ?? r.priority} />
+              <Fact label="Owner" value={r.assignedToUserId ? shortId(r.assignedToUserId) : "Unassigned"} />
+              <Fact label="Patient match" value={PATIENT_RESOLUTION_LABEL[r.patientResolutionStatus] ?? r.patientResolutionStatus} />
+              <Fact label="Source" value={sourceLabel(r.referrerOrganization || r.source)} />
+              <Fact label="Reason" value={r.referringDxText || "Not provided"} />
+            </div>
+            {!terminal ? (
+              <div style={inlineControls}>
+                <label style={labelInline}>
+                  Priority
+                  <select
+                    value={r.priority}
+                    onChange={(ev) =>
+                      void run("priority", async () => {
+                        await referralCommand(client, r.id, "priority", {
+                          priority: ev.target.value,
+                          ifVersion: r.version,
+                        });
+                      })
+                    }
+                  >
+                    <option value="routine">Routine</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </label>
+                <Button
+                  size="sm"
+                  tone="secondary"
+                  disabled={!session?.userId || busy === "assign"}
+                  onClick={() =>
+                    void run("assign", async () => {
+                      await referralCommand(client, r.id, "assign", {
+                        assignedToUserId: session?.userId,
+                        ifVersion: r.version,
+                      });
+                    })
+                  }
+                >
+                  Assign to me
+                </Button>
+                {r.assignedToUserId ? (
+                  <Button
+                    size="sm"
+                    tone="tertiary"
+                    onClick={() =>
+                      void run("assign", async () => {
+                        await referralCommand(client, r.id, "assign", { ifVersion: r.version });
+                      })
+                    }
+                  >
+                    Clear owner
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+          </section>
 
-      <div style={{ display: "flex", gap: "0.625rem", marginTop: "1rem" }}>
-        {canTriage ? (
-          <button type="button" onClick={() => setCeremony("triage")} style={primaryBtn}>
-            Triage
-          </button>
-        ) : null}
-        {canAccept ? (
-          <button type="button" onClick={() => setCeremony("accept")} style={primaryBtn}>
-            Accept referral
-          </button>
-        ) : null}
-      </div>
+          <section style={section}>
+            <h2 style={heading}>Patient Resolution</h2>
+            <StatusPill
+              label={PATIENT_RESOLUTION_LABEL[r.patientResolutionStatus] ?? r.patientResolutionStatus}
+              tone={PATIENT_RESOLUTION_TONE[r.patientResolutionStatus] ?? "neutral"}
+            />
+            {resolved ? (
+              <div style={resolvedBox}>
+                <strong>Patient resolved</strong>
+                <span>{r.patientId ? `M5 patient ${shortId(r.patientId)}` : "Patient link confirmed"}</span>
+                {r.patientId ? (
+                  <Button size="sm" tone="secondary" onClick={() => navigate(`/patients/${r.patientId}`)}>
+                    View patient
+                  </Button>
+                ) : null}
+              </div>
+            ) : (
+              <div style={stack}>
+                <p style={muted}>No canonical patient has been linked to this referral yet.</p>
+                <div style={actions}>
+                  <Button
+                    size="sm"
+                    tone="secondary"
+                    disabled={busy === "matches" || !["under_review", "pending_information"].includes(r.status)}
+                    onClick={() =>
+                      void run("matches", async () => {
+                        const result = await referralCommand<{ candidates: ReferralCandidate[] }>(
+                          client,
+                          r.id,
+                          "patient-matches",
+                          { ifVersion: r.version },
+                        );
+                        setCandidates(result.candidates ?? []);
+                      })
+                    }
+                  >
+                    Find patient matches
+                  </Button>
+                  <Button
+                    size="sm"
+                    tone="secondary"
+                    disabled={busy === "create-patient"}
+                    onClick={() =>
+                      void run("create-patient", async () => {
+                        await referralCommand(client, r.id, "create-patient", { ifVersion: r.version });
+                      })
+                    }
+                  >
+                    Create new patient
+                  </Button>
+                </div>
+                <PatientLookupField
+                  label="Search patients manually"
+                  value={selectedPatientId}
+                  onChange={setSelectedPatientId}
+                  clearable
+                />
+                <Button
+                  size="sm"
+                  tone="primary"
+                  disabled={!selectedPatientId || busy === "confirm-patient"}
+                  onClick={() =>
+                    void run("confirm-patient", async () => {
+                      await referralCommand(client, r.id, "confirm-patient", {
+                        patientId: selectedPatientId,
+                        ifVersion: r.version,
+                      });
+                    })
+                  }
+                >
+                  Confirm selected patient
+                </Button>
+                {candidates.length ? (
+                  <div style={candidateList}>
+                    {candidates.map((c, index) => {
+                      const patientId = c.patientId ?? c.id ?? "";
+                      return (
+                        <div key={`${patientId}-${index}`} style={candidate}>
+                          <strong>{c.displayName ?? c.name ?? `Patient ${shortId(patientId)}`}</strong>
+                          <span style={muted}>
+                            {c.dob ? `DOB ${formatDate(c.dob)}` : "DOB not shown"}
+                            {c.mrn ? ` · MRN ${c.mrn}` : ""}
+                            {c.phoneLast4 ? ` · Phone ending ${c.phoneLast4}` : ""}
+                          </span>
+                          <span style={muted}>{c.confidence ?? c.score ?? "Potential match"}</span>
+                          <Button
+                            size="sm"
+                            tone="primary"
+                            disabled={!patientId}
+                            onClick={() =>
+                              void run("confirm-patient", async () => {
+                                await referralCommand(client, r.id, "confirm-patient", {
+                                  patientId,
+                                  ifVersion: r.version,
+                                });
+                              })
+                            }
+                          >
+                            Confirm patient
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </section>
 
-      <CeremonyModal
-        open={ceremony === "triage"}
-        title="Record triage outcome"
-        attestation={
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-            <label htmlFor="triage-outcome" style={fieldLabel}>
-              Outcome
+          <section style={section}>
+            <h2 style={heading}>Referral Information</h2>
+            <div style={formGrid}>
+              <ReadOnly label="Patient name at receipt" value={r.patientNameAtReceipt} />
+              <ReadOnly label="DOB at receipt" value={r.patientDobAtReceipt ? formatDate(r.patientDobAtReceipt) : "Not provided"} />
+              <ReadOnly label="Source channel" value={sourceLabel(r.source)} />
+              <ReadOnly label="External referral ID" value={r.externalReferralId || "Not provided"} />
+              <label style={label}>Organization<input value={edit.referrerOrganization} onChange={(ev) => setEdit({ ...edit, referrerOrganization: ev.target.value })} /></label>
+              <label style={label}>Referrer<input value={edit.referrerName} onChange={(ev) => setEdit({ ...edit, referrerName: ev.target.value })} /></label>
+              <label style={label}>Phone<input value={edit.referrerPhone} onChange={(ev) => setEdit({ ...edit, referrerPhone: ev.target.value })} /></label>
+            </div>
+          </section>
+
+          <section style={section}>
+            <h2 style={heading}>Clinical Information</h2>
+            <label style={label}>
+              Referral reason or diagnosis
+              <textarea value={edit.referringDxText} rows={4} onChange={(ev) => setEdit({ ...edit, referringDxText: ev.target.value })} />
             </label>
-            <select
-              id="triage-outcome"
-              value={outcome}
-              onChange={(ev) => setOutcome(ev.target.value as "eligible" | "ineligible")}
+            <Button
+              size="sm"
+              tone="secondary"
+              disabled={terminal || busy === "save-info"}
+              onClick={() =>
+                void run("save-info", async () => {
+                  await patchReferral(client, r.id, { ...edit, ifVersion: r.version });
+                })
+              }
             >
-              <option value="eligible">Eligible</option>
-              <option value="ineligible">Ineligible</option>
-            </select>
-            <label htmlFor="triage-notes" style={fieldLabel}>
-              Notes (optional)
-            </label>
-            <textarea
-              id="triage-notes"
-              value={notes}
-              onChange={(ev) => setNotes(ev.target.value)}
-              rows={3}
-            />
-            {actionError ? (
-              <p role="alert" aria-live="assertive" style={alertStyle}>
-                {actionError}
-              </p>
-            ) : null}
-          </div>
-        }
-        signer={{ name: "Triaging clinician", role: "This session" }}
-        commitLabel={busy ? "Recording…" : "Record outcome"}
-        onCommit={() => void submitTriage()}
-        onCancel={closeCeremony}
-      />
+              Save referral information
+            </Button>
+          </section>
+        </main>
 
-      <CeremonyModal
-        open={ceremony === "accept"}
-        title="Accept referral"
-        attestation={
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-            <span style={hint}>
-              Seeds a draft admission (period-1 election period + an open Notice-of-Rights window).
-            </span>
-            <label htmlFor="accept-dx" style={fieldLabel}>
-              Primary diagnosis (ICD-10)
+        <aside style={side}>
+          <section style={section}>
+            <h2 style={heading}>Referral readiness</h2>
+            {r.qualificationBlockers.length === 0 ? (
+              <div style={ok}>Ready to proceed</div>
+            ) : (
+              <ul style={blockerList}>
+                {r.qualificationBlockers.map((b) => (
+                  <li key={b.code}>{b.message}</li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section style={section}>
+            <h2 style={heading}>Start Admission</h2>
+            {r.status === "converted" ? (
+              <Button tone="primary" onClick={() => navigate(`/admissions/${r.convertedAdmissionId}`)} disabled={!r.convertedAdmissionId}>
+                View Admission
+              </Button>
+            ) : (
+              <div style={stack}>
+                <label style={label}>
+                  Primary ICD-10
+                  <input value={primaryDiagnosisIcd10} onChange={(ev) => setPrimaryDiagnosisIcd10(ev.target.value)} placeholder="C34.90" />
+                </label>
+                <Button
+                  tone="primary"
+                  disabled={!canConvert || !primaryDiagnosisIcd10.trim() || busy === "convert"}
+                  onClick={() =>
+                    void run("convert", async () => {
+                      const result = await referralCommand<{ admissionId: string }>(client, r.id, "convert", {
+                        primaryDiagnosisIcd10: primaryDiagnosisIcd10.trim(),
+                        ifVersion: r.version,
+                      });
+                      navigate(`/admissions/${result.admissionId}`);
+                    })
+                  }
+                >
+                  Start Admission
+                </Button>
+                {!canConvert ? <p style={muted}>Resolve and qualify the referral before starting admission.</p> : null}
+              </div>
+            )}
+          </section>
+
+          <section style={section}>
+            <h2 style={heading}>Missing Information</h2>
+            <label style={label}>
+              What is missing?
+              <textarea value={pendingReason} onChange={(ev) => setPendingReason(ev.target.value)} rows={3} />
             </label>
-            <input
-              id="accept-dx"
-              value={primaryDiagnosisIcd10}
-              onChange={(ev) => setPrimaryDiagnosisIcd10(ev.target.value)}
-              placeholder="e.g. C34.90"
-            />
-            <MdmEntityLookupField
-              kind="physician"
-              label="Attending physician"
-              value={attendingPhysicianId}
-              onChange={setAttendingPhysicianId}
-              clearable
-            />
-            <PatientLookupField
-              label="Patient"
-              value={patientId}
-              onChange={setPatientId}
-              hint="Leave blank to seed a placeholder."
-              clearable
-            />
-            {actionError ? (
-              <p role="alert" aria-live="assertive" style={alertStyle}>
-                {actionError}
-              </p>
-            ) : null}
-          </div>
-        }
-        legalText="I attest this referral is accepted for hospice admission based on the information above."
-        signer={{ name: "Accepting clinician", role: "This session" }}
-        commitLabel={busy ? "Accepting…" : "Accept & seed admission"}
-        onCommit={() => void submitAccept()}
-        onCancel={closeCeremony}
-      />
+            <Button
+              size="sm"
+              tone="secondary"
+              disabled={!canPending || !pendingReason.trim() || busy === "pending"}
+              onClick={() =>
+                void run("pending", async () => {
+                  await referralCommand(client, r.id, "pending-information", {
+                    reason: pendingReason.trim(),
+                    ifVersion: r.version,
+                  });
+                  setPendingReason("");
+                })
+              }
+            >
+              Mark pending
+            </Button>
+          </section>
+
+          <section style={section}>
+            <h2 style={heading}>Notes</h2>
+            <div style={stack}>
+              {notes.map((note) => (
+                <div key={note.id} style={noteBox}>
+                  <div style={muted}>{note.authorId ? shortId(note.authorId) : "System"} · {formatTime(note.createdAt)}</div>
+                  <div>{note.content}</div>
+                </div>
+              ))}
+              <label style={label}>
+                Add note
+                <textarea value={newNote} onChange={(ev) => setNewNote(ev.target.value)} rows={3} />
+              </label>
+              <Button
+                size="sm"
+                tone="secondary"
+                disabled={!newNote.trim() || busy === "note"}
+                onClick={() =>
+                  void run("note", async () => {
+                    await referralCommand(client, r.id, "notes", { content: newNote.trim() });
+                    setNewNote("");
+                  })
+                }
+              >
+                Add note
+              </Button>
+            </div>
+          </section>
+
+          {!terminal ? (
+            <section style={section}>
+              <h2 style={heading}>Terminal actions</h2>
+              <label style={label}>
+                Reason
+                <textarea value={terminalReason} onChange={(ev) => setTerminalReason(ev.target.value)} rows={3} />
+              </label>
+              <div style={actions}>
+                <Button
+                  size="sm"
+                  tone="danger"
+                  disabled={terminalReason.trim().length < 10 || busy === "decline"}
+                  onClick={() =>
+                    void run("decline", async () => {
+                      await referralCommand(client, r.id, "decline", { reason: terminalReason.trim(), ifVersion: r.version });
+                    })
+                  }
+                >
+                  Decline Referral
+                </Button>
+                <Button
+                  size="sm"
+                  tone="secondary"
+                  onClick={() =>
+                    void run("duplicate", async () => {
+                      await referralCommand(client, r.id, "duplicate", { reason: terminalReason || undefined, ifVersion: r.version });
+                    })
+                  }
+                >
+                  Mark Duplicate
+                </Button>
+                <Button
+                  size="sm"
+                  tone="secondary"
+                  onClick={() =>
+                    void run("withdraw", async () => {
+                      await referralCommand(client, r.id, "withdraw", { reason: terminalReason || undefined, ifVersion: r.version });
+                    })
+                  }
+                >
+                  Withdraw
+                </Button>
+              </div>
+            </section>
+          ) : null}
+
+          <section style={section}>
+            <h2 style={heading}>Activity</h2>
+            <div style={timeline}>
+              {activity.map((a) => (
+                <div key={a.id} style={timelineItem}>
+                  <strong>{activityLabel(a.action)}</strong>
+                  <span style={muted}>{formatTime(a.createdAt)}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </aside>
+      </div>
     </DetailPageLayout>
   );
 }
 
-const meta: CSSProperties = { fontSize: "0.85rem", color: "var(--color-on-surface-variant)" };
-const hint: CSSProperties = { fontSize: "0.8125rem", color: "var(--color-on-surface-variant)" };
-const fieldLabel: CSSProperties = {
-  fontSize: "0.75rem",
-  fontWeight: 600,
-  color: "var(--color-on-surface-variant)",
-};
-const alertStyle: CSSProperties = { margin: 0, fontSize: "0.8rem", color: "var(--color-error)" };
-const primaryBtn: CSSProperties = {
-  padding: "0.45rem 1rem",
-  borderRadius: "9999px",
-  background: "var(--color-primary)",
-  color: "var(--color-on-primary)",
-  fontSize: "0.8125rem",
-  fontWeight: 600,
-  border: "none",
-  cursor: "pointer",
-};
+function Fact({ label, value }: { label: string; value: string }): JSX.Element {
+  return <div><div style={factLabel}>{label}</div><div>{value}</div></div>;
+}
+
+function ReadOnly({ label, value }: { label: string; value: string }): JSX.Element {
+  return <div><div style={factLabel}>{label}</div><div>{value}</div></div>;
+}
+
+function shortId(id: string): string {
+  return id.length > 8 ? id.slice(0, 8) : id;
+}
+
+function sourceLabel(value: string): string {
+  return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
+}
+
+function formatDateTime(value: string): string {
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
+}
+
+function formatTime(value: string): string {
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", month: "short", day: "numeric" }).format(new Date(value));
+}
+
+function activityLabel(value: string): string {
+  const labels: Record<string, string> = {
+    referral_received: "Referral received",
+    review_started: "Review started",
+    returned_to_review: "Returned to review",
+    patient_match_suggested: "Patient matches found",
+    patient_match_confirmed: "Patient match confirmed",
+    patient_created: "Patient created",
+    qualified: "Referral marked qualified",
+    converted: "Admission created",
+    assigned: "Assignment updated",
+    priority_updated: "Priority updated",
+    pending_information_requested: "Information requested",
+    note_added: "Note added",
+    duplicate: "Marked duplicate",
+    withdrawn: "Withdrawn",
+    declined: "Declined",
+  };
+  return labels[value] ?? sourceLabel(value);
+}
+
+function errorMessage(err: unknown, fallback: string): string {
+  const e = err as { error?: { message?: string; details?: Array<{ message?: string }> }; message?: string };
+  return e.error?.details?.[0]?.message ?? e.error?.message ?? e.message ?? fallback;
+}
+
+const layout: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(20rem, 26rem)", gap: "1rem" };
+const main: CSSProperties = { display: "grid", gap: "1rem", minWidth: 0 };
+const side: CSSProperties = { display: "grid", gap: "1rem", alignContent: "start", minWidth: 0 };
+const section: CSSProperties = { border: "1px solid var(--color-outline-variant)", borderRadius: "8px", background: "var(--color-surface)", padding: "1rem", display: "grid", gap: "0.85rem" };
+const sectionHead: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" };
+const heading: CSSProperties = { margin: 0, fontSize: "1rem" };
+const muted: CSSProperties = { color: "var(--color-on-surface-variant)", fontSize: "0.875rem" };
+const actions: CSSProperties = { display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" };
+const urgent: CSSProperties = { border: "1px solid var(--color-error)", color: "var(--color-error)", borderRadius: "999px", padding: "0.2rem 0.55rem", fontSize: "0.8rem", fontWeight: 700 };
+const alert: CSSProperties = { marginBottom: "1rem", border: "1px solid color-mix(in srgb, var(--color-error) 35%, transparent)", borderRadius: "8px", color: "var(--color-error)", padding: "0.75rem 1rem" };
+const factsGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))", gap: "0.8rem" };
+const factLabel: CSSProperties = { color: "var(--color-on-surface-variant)", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: 0 };
+const inlineControls: CSSProperties = { display: "flex", gap: "0.75rem", alignItems: "end", flexWrap: "wrap" };
+const labelInline: CSSProperties = { display: "grid", gap: "0.3rem", fontSize: "0.8rem", fontWeight: 600 };
+const label: CSSProperties = { display: "grid", gap: "0.35rem", fontSize: "0.85rem", fontWeight: 600 };
+const stack: CSSProperties = { display: "grid", gap: "0.7rem" };
+const resolvedBox: CSSProperties = { display: "grid", gap: "0.35rem", padding: "0.75rem", border: "1px solid var(--color-outline-variant)", borderRadius: "8px" };
+const candidateList: CSSProperties = { display: "grid", gap: "0.6rem" };
+const candidate: CSSProperties = { display: "grid", gap: "0.3rem", border: "1px solid var(--color-outline-variant)", borderRadius: "8px", padding: "0.75rem" };
+const formGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))", gap: "0.75rem" };
+const ok: CSSProperties = { color: "var(--color-success)", fontWeight: 700 };
+const blockerList: CSSProperties = { margin: 0, paddingLeft: "1.2rem", color: "var(--color-on-surface)" };
+const noteBox: CSSProperties = { borderBottom: "1px solid var(--color-outline-variant)", paddingBottom: "0.6rem" };
+const timeline: CSSProperties = { display: "grid", gap: "0.65rem" };
+const timelineItem: CSSProperties = { display: "grid", gap: "0.15rem", borderLeft: "2px solid var(--color-outline-variant)", paddingLeft: "0.65rem" };

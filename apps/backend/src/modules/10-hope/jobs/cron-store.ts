@@ -17,6 +17,7 @@ import type { HopeScheduleSnapshot, SfvWatchdogSnapshot } from "./index";
 
 const SCHED = schema.hopeTimepointSchedules;
 const SFV = schema.symptomFollowUpVisits;
+const HA = schema.hopeAssessments;
 
 /**
  * No per-org IANA timezone seam exists yet — `symptom_follow_up_visit` has no timezone column, and neither
@@ -38,6 +39,8 @@ export async function openHopeSchedulesForOrg(
   const rows = await tx
     .select({
       id: SCHED.id,
+      patientId: SCHED.patientId,
+      admissionId: SCHED.admissionId,
       rfaKind: SCHED.rfaKind,
       status: SCHED.status,
       windowOpensAt: SCHED.windowOpensAt,
@@ -48,6 +51,8 @@ export async function openHopeSchedulesForOrg(
     .where(and(eq(SCHED.organizationId, organizationId), eq(SCHED.status, "open")));
   return rows.map((r) => ({
     scheduleId: r.id,
+    patientId: r.patientId,
+    admissionId: r.admissionId,
     rfaKind: r.rfaKind,
     status: r.status,
     windowOpensAt: r.windowOpensAt.toISOString(),
@@ -78,11 +83,22 @@ export async function openOrOverdueSfvsForOrg(
   organizationId: string,
 ): Promise<SfvWatchdogSnapshot[]> {
   const rows = await tx
-    .select({ id: SFV.id, status: SFV.status, dueAt: SFV.dueAt })
+    .select({
+      id: SFV.id,
+      patientId: SFV.patientId,
+      triggeringAssessmentId: SFV.triggeringAssessmentId,
+      admissionId: HA.admissionId,
+      status: SFV.status,
+      dueAt: SFV.dueAt,
+    })
     .from(SFV)
+    .leftJoin(HA, eq(HA.id, SFV.triggeringAssessmentId))
     .where(and(eq(SFV.organizationId, organizationId), inArray(SFV.status, ["open", "overdue"])));
   return rows.map((r) => ({
     sfvId: r.id,
+    patientId: r.patientId,
+    admissionId: r.admissionId,
+    triggeringAssessmentId: r.triggeringAssessmentId,
     status: r.status,
     dueAt: r.dueAt.toISOString(),
     timeZone: DEFAULT_ORG_TIME_ZONE,

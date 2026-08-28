@@ -286,7 +286,7 @@ describe("§7.5 quiet hours respect severity override", () => {
 describe("§7.6 vacation forwarding works and is bounded", () => {
   const routingMap: RoutingMap = { clinical_routine: { warn: ["in_app", "sms"] } };
   const ALERT: AlertContext = {
-    eventType: "hope.sfv_triggered",
+    eventType: "m10.hope.sfv_created",
     category: "clinical_routine",
     severity: "warn",
   };

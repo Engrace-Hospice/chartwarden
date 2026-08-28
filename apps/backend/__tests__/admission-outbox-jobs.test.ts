@@ -49,7 +49,7 @@ describe("M6 outbox event contract (§4.4)", () => {
   it("the broad activation fan-out reaches the chain modules", () => {
     const activated = M6_OUTBOX_EVENTS.find((e) => e.eventName === "m6.admission.activated");
     expect(activated?.declaredConsumers).toEqual(
-      expect.arrayContaining(["m5", "m7", "m8", "m23", "m26", "m36"]),
+      expect.arrayContaining(["m5", "m7", "m8", "m10", "m23", "m26", "m36"]),
     );
   });
 

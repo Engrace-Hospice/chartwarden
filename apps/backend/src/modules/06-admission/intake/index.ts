@@ -3,8 +3,16 @@
 // triage/accept state guards and the `admission.draft_from_referral` bundle live in the in-memory
 // backend (routes/service.ts) where they own the dataset, but enforce the same §7.1/§7.2 contract.
 export {
+  type AdmissionReadinessFacts,
+  type AdmissionReadinessRequirement,
+  type AdmissionReadinessResult,
+  type AdmissionReadinessStatus,
   type ActivationGap,
   type ActivationFacts,
   type ActivationGate,
+  type RequirementAction,
+  type RequirementCode,
+  type RequirementStatus,
   computeActivationGate,
+  evaluateAdmissionReadiness,
 } from "./activation-gate";

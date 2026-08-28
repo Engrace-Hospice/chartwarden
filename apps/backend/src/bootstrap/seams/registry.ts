@@ -118,6 +118,7 @@ import {
   orderSignatureProviderDenyStub,
   organizationReaderDenyStub,
   patientAddressReaderDenyStub,
+  patientAdmissionClearanceReaderDenyStub,
   patientCaregiverReaderDenyStub,
   patientCounterProviderDenyStub,
   patientCoverageReaderDenyStub,
@@ -204,6 +205,12 @@ export const REQUIRED_SEAMS = [
     ownerModule: 5,
     phi: true,
     denyStub: patientCoverageReaderDenyStub,
+  },
+  {
+    key: "PatientAdmissionClearanceReader",
+    ownerModule: 5,
+    phi: true,
+    denyStub: patientAdmissionClearanceReaderDenyStub,
   },
   // M5 — TASK-015/ARCH-018: the M31 `portal_caregiver_is_primary_or_dpoa` ABAC read. Deny-stub only —
   // no caregiver→user schema link exists (see the interface doc in @wardenx/types).

@@ -46,6 +46,7 @@ const ATTENDING = "44444444-4444-4444-4444-444444444444";
 const WIZARD_KEYS = [
   "referral.create",
   "referral.read",
+  "referral.update",
   "referral.triage",
   "referral.accept",
   "admission.create",
@@ -131,21 +132,33 @@ async function createReferral(
   });
 }
 
-/** Drive a referral through receive → triage → accept; returns the created draft admission id. */
+/** Drive a referral through receive → review → patient resolution → qualify → convert. */
 async function acceptedAdmission(app: ReturnType<typeof makeServer>["app"]): Promise<string> {
   const created = await createReferral(app);
   const referralId = created.json().id as string;
-  const triaged = await app.inject({
+  const reviewed = await app.inject({
     method: "POST",
     url: `/api/v1/referrals/${referralId}/triage`,
     headers: SUP,
     payload: { outcome: "eligible", ifVersion: created.json().version },
   });
+  const patient = await app.inject({
+    method: "POST",
+    url: `/api/v1/referrals/${referralId}/create-patient`,
+    headers: SUP,
+    payload: { ifVersion: reviewed.json().version },
+  });
+  const qualified = await app.inject({
+    method: "POST",
+    url: `/api/v1/referrals/${referralId}/qualify`,
+    headers: SUP,
+    payload: { ifVersion: patient.json().version },
+  });
   const accepted = await app.inject({
     method: "POST",
     url: `/api/v1/referrals/${referralId}/accept`,
     headers: SUP,
-    payload: { primaryDiagnosisIcd10: "C50.9", ifVersion: triaged.json().version },
+    payload: { primaryDiagnosisIcd10: "C50.9", ifVersion: qualified.json().version },
   });
   return accepted.json().admissionId as string;
 }
@@ -264,7 +277,7 @@ describe("M6-T07 — §7.1 receive & triage referral", () => {
     await app.close();
   });
 
-  it("W-RF-03: triage `eligible` moves to `triaged` and emits m6.referral.triaged", async () => {
+  it("W-RF-03: triage `eligible` starts review and emits m6.referral.review_started", async () => {
     const { app, backend } = makeServer();
     const created = await createReferral(app);
     const res = await app.inject({
@@ -274,31 +287,44 @@ describe("M6-T07 — §7.1 receive & triage referral", () => {
       payload: { outcome: "eligible", ifVersion: created.json().version },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().state).toBe("triaged");
-    expect(backend.events).toContain("m6.referral.triaged");
+    expect(res.json().state).toBe("under_review");
+    expect(backend.events).toContain("m6.referral.review_started");
     await app.close();
   });
 
-  it("W-RF-04: accept transitions to `accepted` and drafts an admission via admission.draft_from_referral", async () => {
+  it("W-RF-04: resolved + qualified referral converts exactly once and drafts an admission", async () => {
     const { app, backend } = makeServer();
     const created = await createReferral(app);
-    const triaged = await app.inject({
+    const reviewed = await app.inject({
       method: "POST",
       url: `/api/v1/referrals/${created.json().id}/triage`,
       headers: SUP,
       payload: { outcome: "eligible", ifVersion: created.json().version },
     });
+    const patient = await app.inject({
+      method: "POST",
+      url: `/api/v1/referrals/${created.json().id}/create-patient`,
+      headers: SUP,
+      payload: { ifVersion: reviewed.json().version },
+    });
+    const qualified = await app.inject({
+      method: "POST",
+      url: `/api/v1/referrals/${created.json().id}/qualify`,
+      headers: SUP,
+      payload: { ifVersion: patient.json().version },
+    });
     const accepted = await app.inject({
       method: "POST",
       url: `/api/v1/referrals/${created.json().id}/accept`,
       headers: SUP,
-      payload: { primaryDiagnosisIcd10: "C50.9", ifVersion: triaged.json().version },
+      payload: { primaryDiagnosisIcd10: "C50.9", ifVersion: qualified.json().version },
     });
     expect(accepted.statusCode).toBe(200);
-    expect(accepted.json().state).toBe("accepted");
+    expect(accepted.json().state).toBe("converted");
     const admissionId = accepted.json().admissionId as string;
     expect(admissionId).toBeTruthy();
     expect(backend.events).toContain("m6.admission.draft_created");
+    expect(backend.events).toContain("m6.referral.converted");
 
     // The job created a pending draft admission with a draft period-1.
     const adm = await app.inject({
@@ -367,7 +393,6 @@ describe("M6-T07 — §7.2 admission wizard + R-AC-01 activation gate", () => {
       "election_signed",
       "nor_acknowledged",
       "cti_signed",
-      "attending_signed",
     ]);
     await app.close();
   });
@@ -400,7 +425,7 @@ describe("M6-T07 — §7.2 admission wizard + R-AC-01 activation gate", () => {
     await app.close();
   });
 
-  it("edge: activating with NOR missing returns 412 PRECONDITION_FAILED { missing: ['nor_acknowledged'] }", async () => {
+  it("edge: activating with NOR missing returns 412 ADMISSION_NOT_READY with structured blockers", async () => {
     const { app } = makeServer();
     const admissionId = await acceptedAdmission(app);
     await completeBundle(app, admissionId);
@@ -476,10 +501,75 @@ describe("M6-T07 — §7.2 admission wizard + R-AC-01 activation gate", () => {
       payload: { ifVersion: 1 },
     });
     expect(res.statusCode).toBe(412);
-    expect(res.json().error.code).toBe("PRECONDITION_FAILED");
+    expect(res.json().error.code).toBe("ADMISSION_NOT_READY");
     expect(res.json().error.details.map((d: { field: string }) => d.field)).toEqual([
-      "nor_acknowledged",
+      "notice_of_rights",
     ]);
+    await app.close();
+  });
+
+  it("regression: an Election Statement draft row never satisfies readiness or activation", async () => {
+    const { app } = makeServer();
+    const admissionId = await acceptedAdmission(app);
+    const periods = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions/${admissionId}/election-periods`,
+      headers: SUP,
+    });
+    const periodId = periods.json().items[0].id as string;
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${admissionId}/election-statements`,
+      headers: SUP,
+      payload: {
+        electionPeriodId: periodId,
+        effectiveDate: "2026-06-20",
+        primaryDiagnosisIcd10: "C50.9",
+        electedProviderEntityId: PROVIDER,
+        waiverAcknowledged: true,
+      },
+    });
+
+    const readiness = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions/${admissionId}/readiness`,
+      headers: SUP,
+    });
+    expect(readiness.statusCode).toBe(200);
+    expect(readiness.json().requirements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "election_statement",
+          status: "action_required",
+          blocking: true,
+        }),
+      ]),
+    );
+
+    const admission = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions/${admissionId}`,
+      headers: SUP,
+    });
+    const activated = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${admissionId}/activate`,
+      headers: SUP,
+      payload: { ifVersion: admission.json().version },
+    });
+    expect(activated.statusCode).toBe(412);
+    expect(activated.json().error.code).toBe("ADMISSION_NOT_READY");
+    expect(activated.json().error.details).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: "election_statement", code: "action_required" }),
+      ]),
+    );
+    const after = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions/${admissionId}`,
+      headers: SUP,
+    });
+    expect(after.json().state).toBe("pending");
     await app.close();
   });
 });

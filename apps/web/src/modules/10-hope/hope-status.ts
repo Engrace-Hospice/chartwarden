@@ -35,6 +35,30 @@ export const SFV_TONE: Record<string, StatusTone> = {
   missed: "error",
 };
 
+export const WORKFLOW_TONE: Record<string, StatusTone> = {
+  upcoming: "neutral",
+  open: "progress",
+  late: "warning",
+  completed: "success",
+  expired: "error",
+  skipped: "neutral",
+  not_applicable: "neutral",
+  workflow_not_initialized: "error",
+  overdue: "warning",
+  missed: "error",
+};
+
+export const ATTENTION_TONE: Record<string, StatusTone> = {
+  none: "neutral",
+  upcoming: "neutral",
+  due_soon: "warning",
+  due: "warning",
+  overdue: "error",
+  window_expired: "error",
+  missed: "error",
+  workflow_issue: "error",
+};
+
 // HopeSubmissionStatus = queued | in_flight | accepted | rejected | partially_accepted.
 export const SUBMISSION_TONE: Record<string, StatusTone> = {
   queued: "progress",
@@ -73,4 +97,12 @@ export function rfaLabel(rfa: string): string {
 /** Title-case an underscore enum value, e.g. `partially_accepted` → `Partially Accepted`. */
 export function stateLabel(s: string): string {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export function attentionLabel(s: string): string {
+  if (s === "none") return "No active attention";
+  if (s === "due_soon") return "Due soon";
+  if (s === "window_expired") return "Capture window expired";
+  if (s === "workflow_issue") return "Workflow issue";
+  return stateLabel(s);
 }

@@ -15007,6 +15007,767 @@
         }
       }
     },
+    "/api/v1/admissions/{admissionId}/hope": {
+      "get": {
+        "operationId": "getApiV1AdmissionsByAdmissionIdHope",
+        "tags": [
+          "10-hope"
+        ],
+        "summary": "Admission-scoped HOPE workflow summary",
+        "parameters": [
+          {
+            "name": "admissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "admissionId",
+                    "patientId",
+                    "admissionStatus",
+                    "admissionAt",
+                    "activatedAt",
+                    "dischargedAt",
+                    "admissionAssessment",
+                    "huv1",
+                    "huv2",
+                    "sfvs",
+                    "dischargeAssessment",
+                    "summary"
+                  ],
+                  "properties": {
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "admissionStatus": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "admissionAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dischargedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "admissionAssessment": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "status",
+                        "scheduleId",
+                        "windowStart",
+                        "windowEnd",
+                        "lateDeadline",
+                        "completedAt",
+                        "assessmentId"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "anyOf": [
+                            {
+                              "const": "01_admission",
+                              "type": "string"
+                            },
+                            {
+                              "const": "02_huv1",
+                              "type": "string"
+                            },
+                            {
+                              "const": "03_huv2",
+                              "type": "string"
+                            },
+                            {
+                              "const": "05_discharge",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "upcoming",
+                              "type": "string"
+                            },
+                            {
+                              "const": "open",
+                              "type": "string"
+                            },
+                            {
+                              "const": "late",
+                              "type": "string"
+                            },
+                            {
+                              "const": "completed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "skipped",
+                              "type": "string"
+                            },
+                            {
+                              "const": "not_applicable",
+                              "type": "string"
+                            },
+                            {
+                              "const": "workflow_not_initialized",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "scheduleId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "windowStart": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "windowEnd": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lateDeadline": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "completedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "assessmentId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "huv1": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "status",
+                        "scheduleId",
+                        "windowStart",
+                        "windowEnd",
+                        "lateDeadline",
+                        "completedAt",
+                        "assessmentId"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "anyOf": [
+                            {
+                              "const": "01_admission",
+                              "type": "string"
+                            },
+                            {
+                              "const": "02_huv1",
+                              "type": "string"
+                            },
+                            {
+                              "const": "03_huv2",
+                              "type": "string"
+                            },
+                            {
+                              "const": "05_discharge",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "upcoming",
+                              "type": "string"
+                            },
+                            {
+                              "const": "open",
+                              "type": "string"
+                            },
+                            {
+                              "const": "late",
+                              "type": "string"
+                            },
+                            {
+                              "const": "completed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "skipped",
+                              "type": "string"
+                            },
+                            {
+                              "const": "not_applicable",
+                              "type": "string"
+                            },
+                            {
+                              "const": "workflow_not_initialized",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "scheduleId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "windowStart": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "windowEnd": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lateDeadline": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "completedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "assessmentId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "huv2": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "status",
+                        "scheduleId",
+                        "windowStart",
+                        "windowEnd",
+                        "lateDeadline",
+                        "completedAt",
+                        "assessmentId"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "anyOf": [
+                            {
+                              "const": "01_admission",
+                              "type": "string"
+                            },
+                            {
+                              "const": "02_huv1",
+                              "type": "string"
+                            },
+                            {
+                              "const": "03_huv2",
+                              "type": "string"
+                            },
+                            {
+                              "const": "05_discharge",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "upcoming",
+                              "type": "string"
+                            },
+                            {
+                              "const": "open",
+                              "type": "string"
+                            },
+                            {
+                              "const": "late",
+                              "type": "string"
+                            },
+                            {
+                              "const": "completed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "skipped",
+                              "type": "string"
+                            },
+                            {
+                              "const": "not_applicable",
+                              "type": "string"
+                            },
+                            {
+                              "const": "workflow_not_initialized",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "scheduleId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "windowStart": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "windowEnd": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lateDeadline": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "completedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "assessmentId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "sfvs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "status",
+                          "triggeringAssessmentId",
+                          "triggeringRfaKind",
+                          "dueAt",
+                          "triggeredAt",
+                          "completedAt",
+                          "completingAssessmentId"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "completed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "overdue",
+                                "type": "string"
+                              },
+                              {
+                                "const": "missed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "triggeringAssessmentId": {
+                            "type": "string"
+                          },
+                          "triggeringRfaKind": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "01_admission",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "02_huv1",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "03_huv2",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "04_sfv",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "05_discharge",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "dueAt": {
+                            "type": "string"
+                          },
+                          "triggeredAt": {
+                            "type": "string"
+                          },
+                          "completedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "completingAssessmentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "dischargeAssessment": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "status",
+                        "scheduleId",
+                        "windowStart",
+                        "windowEnd",
+                        "lateDeadline",
+                        "completedAt",
+                        "assessmentId"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "anyOf": [
+                            {
+                              "const": "01_admission",
+                              "type": "string"
+                            },
+                            {
+                              "const": "02_huv1",
+                              "type": "string"
+                            },
+                            {
+                              "const": "03_huv2",
+                              "type": "string"
+                            },
+                            {
+                              "const": "05_discharge",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "upcoming",
+                              "type": "string"
+                            },
+                            {
+                              "const": "open",
+                              "type": "string"
+                            },
+                            {
+                              "const": "late",
+                              "type": "string"
+                            },
+                            {
+                              "const": "completed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "skipped",
+                              "type": "string"
+                            },
+                            {
+                              "const": "not_applicable",
+                              "type": "string"
+                            },
+                            {
+                              "const": "workflow_not_initialized",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "scheduleId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "windowStart": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "windowEnd": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lateDeadline": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "completedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "assessmentId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "summary": {
+                      "type": "object",
+                      "required": [
+                        "actionableCount",
+                        "overdueCount",
+                        "completedCount",
+                        "nextDeadline"
+                      ],
+                      "properties": {
+                        "actionableCount": {
+                          "type": "integer"
+                        },
+                        "overdueCount": {
+                          "type": "integer"
+                        },
+                        "completedCount": {
+                          "type": "integer"
+                        },
+                        "nextDeadline": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/admissions/{admissionId}/hope/sfv": {
       "post": {
         "operationId": "postApiV1AdmissionsByAdmissionIdHopeSfv",
@@ -15614,6 +16375,14 @@
                       }
                     ]
                   },
+                  "lateCompletionReasonCode": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "adminOverride": {
+                    "type": "boolean"
+                  },
                   "data": {
                     "additionalProperties": true,
                     "type": "object",
@@ -15722,6 +16491,39 @@
                     },
                     "version": {
                       "type": "integer"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "referralId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "admissionAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activatedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "activationGate": {
                       "type": "object",
@@ -16661,6 +17463,212 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/admissions/{id}/readiness": {
+      "get": {
+        "operationId": "getApiV1AdmissionsByIdReadiness",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Admission intake readiness requirements for activation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "admissionId",
+                    "status",
+                    "canActivate",
+                    "completed",
+                    "blockingRemaining",
+                    "requirements"
+                  ],
+                  "properties": {
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "blocked",
+                          "type": "string"
+                        },
+                        {
+                          "const": "action_required",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "canActivate": {
+                      "type": "boolean"
+                    },
+                    "completed": {
+                      "type": "integer"
+                    },
+                    "blockingRemaining": {
+                      "type": "integer"
+                    },
+                    "requirements": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "label",
+                          "status",
+                          "blocking"
+                        ],
+                        "properties": {
+                          "code": {
+                            "anyOf": [
+                              {
+                                "const": "patient_identity",
+                                "type": "string"
+                              },
+                              {
+                                "const": "admission_details",
+                                "type": "string"
+                              },
+                              {
+                                "const": "patient_privacy",
+                                "type": "string"
+                              },
+                              {
+                                "const": "notice_of_rights",
+                                "type": "string"
+                              },
+                              {
+                                "const": "election_statement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cti",
+                                "type": "string"
+                              },
+                              {
+                                "const": "f2f",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "complete",
+                                "type": "string"
+                              },
+                              {
+                                "const": "action_required",
+                                "type": "string"
+                              },
+                              {
+                                "const": "awaiting_signature",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "blocked",
+                                "type": "string"
+                              },
+                              {
+                                "const": "overdue",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_applicable",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "blocking": {
+                            "type": "boolean"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "action": {
+                            "anyOf": [
+                              {
+                                "const": "RESOLVE_PATIENT",
+                                "type": "string"
+                              },
+                              {
+                                "const": "COMPLETE_ADMISSION_DETAILS",
+                                "type": "string"
+                              },
+                              {
+                                "const": "REVIEW_PRIVACY",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ACKNOWLEDGE_NOR",
+                                "type": "string"
+                              },
+                              {
+                                "const": "COMPLETE_ELECTION",
+                                "type": "string"
+                              },
+                              {
+                                "const": "REVIEW_CTI",
+                                "type": "string"
+                              },
+                              {
+                                "const": "REVIEW_F2F",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "satisfiedBy": {
+                            "anyOf": [
+                              {
+                                "const": "normal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "override",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -140063,11 +141071,64 @@
             }
           },
           {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 32,
+              "type": "string"
+            }
+          },
+          {
             "name": "source",
             "in": "query",
             "required": false,
             "schema": {
               "maxLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientResolutionStatus",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "name": "priority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "name": "assigned",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "mine",
+                  "type": "string"
+                },
+                {
+                  "const": "unassigned",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
               "type": "string"
             }
           },
@@ -140175,7 +141236,6 @@
                 "required": [
                   "source",
                   "receivedAt",
-                  "receivingUserId",
                   "patientNameAtReceipt"
                 ],
                 "properties": {
@@ -140460,6 +141520,385 @@
         }
       }
     },
+    "/api/v1/referrals/{id}/activity": {
+      "get": {
+        "operationId": "getApiV1ReferralsByIdActivity",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Read the referral business activity timeline",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "referralId",
+                          "actorId",
+                          "action",
+                          "fromStatus",
+                          "toStatus",
+                          "metadata",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "referralId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "actorId": {
+                            "anyOf": [
+                              {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "action": {
+                            "type": "string"
+                          },
+                          "fromStatus": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "toStatus": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "metadata": {
+                            "additionalProperties": true,
+                            "type": "object",
+                            "properties": {}
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/referrals/{id}/assign": {
+      "post": {
+        "operationId": "postApiV1ReferralsByIdAssign",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Assign or clear a referral owner",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "state",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion"
+                ],
+                "properties": {
+                  "assignedToUserId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/referrals/{id}/confirm-patient": {
+      "post": {
+        "operationId": "postApiV1ReferralsByIdConfirmpatient",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Confirm an existing canonical M5 patient for a referral",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "patientId",
+                  "ifVersion"
+                ],
+                "properties": {
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/referrals/{id}/convert": {
+      "post": {
+        "operationId": "postApiV1ReferralsByIdConvert",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Convert a qualified referral into exactly one pending admission",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "state",
+                    "version",
+                    "admissionId"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "primaryDiagnosisIcd10",
+                  "ifVersion"
+                ],
+                "properties": {
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "primaryDiagnosisIcd10": {
+                    "pattern": "^[A-Z][0-9A-Z.]{1,7}$",
+                    "type": "string"
+                  },
+                  "attendingPhysicianId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/referrals/{id}/create-patient": {
+      "post": {
+        "operationId": "postApiV1ReferralsByIdCreatepatient",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Create a canonical M5 patient from referral intake data",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion"
+                ],
+                "properties": {
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/referrals/{id}/decline": {
       "post": {
         "operationId": "postApiV1ReferralsByIdDecline",
@@ -140504,6 +141943,580 @@
                     "maxLength": 1000,
                     "type": "string"
                   },
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/referrals/{id}/duplicate": {
+      "post": {
+        "operationId": "postApiV1ReferralsByIdDuplicate",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Mark a referral as duplicate",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "state",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 3,
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/referrals/{id}/notes": {
+      "get": {
+        "operationId": "getApiV1ReferralsByIdNotes",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "List referral notes",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "referralId",
+                          "authorId",
+                          "content",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "referralId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "authorId": {
+                            "anyOf": [
+                              {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "content": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1ReferralsByIdNotes",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Add an append-only referral note",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "referralId",
+                    "authorId",
+                    "content",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "referralId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "authorId": {
+                      "anyOf": [
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "content"
+                ],
+                "properties": {
+                  "content": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/referrals/{id}/patient-matches": {
+      "post": {
+        "operationId": "postApiV1ReferralsByIdPatientmatches",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Run M5 patient matching for a referral",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion"
+                ],
+                "properties": {
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/referrals/{id}/pending-information": {
+      "post": {
+        "operationId": "postApiV1ReferralsByIdPendinginformation",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Request missing information and move the referral to pending-information",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "state",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason",
+                  "ifVersion"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 3,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/referrals/{id}/priority": {
+      "post": {
+        "operationId": "postApiV1ReferralsByIdPriority",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Update referral priority",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "state",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "priority",
+                  "ifVersion"
+                ],
+                "properties": {
+                  "priority": {
+                    "anyOf": [
+                      {
+                        "const": "routine",
+                        "type": "string"
+                      },
+                      {
+                        "const": "high",
+                        "type": "string"
+                      },
+                      {
+                        "const": "urgent",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/referrals/{id}/qualify": {
+      "post": {
+        "operationId": "postApiV1ReferralsByIdQualify",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Qualify a referral after patient resolution and intake readiness checks",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion"
+                ],
+                "properties": {
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/referrals/{id}/review": {
+      "post": {
+        "operationId": "postApiV1ReferralsByIdReview",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Start referral review",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion"
+                ],
+                "properties": {
                   "ifVersion": {
                     "minimum": 0,
                     "type": "integer"
@@ -140568,6 +142581,83 @@
                   },
                   "notes": {
                     "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "ifVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/referrals/{id}/withdraw": {
+      "post": {
+        "operationId": "postApiV1ReferralsByIdWithdraw",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "Withdraw a referral",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "state",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 3,
+                    "maxLength": 1000,
                     "type": "string"
                   },
                   "ifVersion": {

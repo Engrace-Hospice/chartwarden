@@ -181,4 +181,15 @@ describe("decideSfvWatchdogStatus — §2.2.3 time-based decay", () => {
       }),
     ).toBe("missed");
   });
+
+  it("an already-overdue SFV remains overdue without inventing a new transition", () => {
+    expect(
+      decideSfvWatchdogStatus({
+        current: "overdue",
+        dueAt,
+        asOfInstant: "2026-06-13T10:00:00.000Z",
+        timeZone: UTC,
+      }),
+    ).toBe("overdue");
+  });
 });

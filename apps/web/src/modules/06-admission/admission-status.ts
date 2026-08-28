@@ -16,19 +16,46 @@ export const ADMISSION_TONE: Record<string, StatusTone> = {
   closed: "neutral",
 };
 
-// Referral lifecycle (M6 §5.2.1) → tone. Real DB enum (packages/db/src/schema/admission/referrals.ts):
-// received, evaluated, accepted, rejected, withdrawn, admitted — NOT the `triaged`/`declined`/
-// `ineligible` vocabulary an earlier draft of this map used (TASK-031 fix: the in-memory reference
-// service's naming leaked into this map and never matched the real Drizzle-backed status column, so
-// this map's "triaged"/"declined"/"ineligible" entries were dead and the referral-inbox.tsx state
-// filter could never select a referral past `received` in production).
 export const REFERRAL_TONE: Record<string, StatusTone> = {
   received: "progress",
-  evaluated: "progress",
-  accepted: "success",
-  rejected: "error",
+  under_review: "progress",
+  pending_information: "warning",
+  qualified: "success",
+  declined: "error",
+  duplicate: "warning",
   withdrawn: "neutral",
-  admitted: "success",
+  converted: "success",
+};
+
+export const REFERRAL_LABEL: Record<string, string> = {
+  received: "New",
+  under_review: "Under review",
+  pending_information: "Pending information",
+  qualified: "Ready",
+  declined: "Declined",
+  duplicate: "Duplicate",
+  withdrawn: "Withdrawn",
+  converted: "Converted",
+};
+
+export const PATIENT_RESOLUTION_TONE: Record<string, StatusTone> = {
+  unresolved: "warning",
+  possible_match: "progress",
+  matched: "success",
+  created: "success",
+};
+
+export const PATIENT_RESOLUTION_LABEL: Record<string, string> = {
+  unresolved: "Not resolved",
+  possible_match: "Review match",
+  matched: "Matched",
+  created: "New patient",
+};
+
+export const PRIORITY_LABEL: Record<string, string> = {
+  routine: "Routine",
+  high: "High",
+  urgent: "Urgent",
 };
 
 // Compliance-window state (M6 §5.2.11) → tone. Overdue is a deadline breach → error.
@@ -40,5 +67,5 @@ export const WINDOW_TONE: Record<string, StatusTone> = {
 
 /** Title-case an underscore enum value, e.g. `on_hold` → `On Hold`. */
 export function stateLabel(s: string): string {
-  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return REFERRAL_LABEL[s] ?? s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }

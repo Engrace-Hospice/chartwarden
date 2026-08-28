@@ -87,8 +87,10 @@ import type {
 import type { OrderProvider, OrderSignatureProvider } from "./orders";
 import type {
   PatientAddressReader,
+  PatientAdmissionClearanceReader,
   PatientCaregiverReader,
   PatientCoverageReader,
+  PatientIntakeResolver,
   PatientMutator,
   PatientPrivacyFlagReader,
   PatientReader,
@@ -151,6 +153,8 @@ export type SeamName =
   | "CredentialReader" // M17 — a membership's active clinical-license/certification rows as-of a date (§1.1 D8, GAP-093)
   | "ElevatedApprovalReader" // M2 — does a membership hold a named per-tenant approval authority (GAP-043)
   | "PatientReader" // M5 — patient identity/demographics reads (§4.8; M29 cascade)
+  | "PatientIntakeResolver" // M5 — referral-intake patient match/confirm/create orchestration
+  | "PatientAdmissionClearanceReader" // M5 — high-level privacy clearance for admission activation
   | "PatientCoverageReader" // M5 — §3.4 coverage list; M23/M24 resolve which payer a claim bills
   | "PatientCaregiverReader" // M5 — TASK-015: is a user the patient's primary caregiver (M31 portal ABAC); deny-stub only
   | "PatientAddressReader" // M5 — TASK-015: patient residence state (M31 portal two-party-recording ABAC)
@@ -556,7 +560,7 @@ export interface CredentialReader {
   }): Promise<readonly CredentialGrant[]>;
 }
 
-// M5's `PatientReader` (§4.8) + `PatientMutator` (§4.9) interfaces live in ./patient (alongside
+// M5's `PatientReader` (§4.8), intake resolver, and `PatientMutator` (§4.9) interfaces live in ./patient (alongside
 // PatientIdentity) and are imported above for the SeamContracts map.
 
 /** M22 — render a typed payload to a stored document (forward-seam for M39 etc.). */
@@ -739,6 +743,8 @@ export interface SeamContracts {
   CredentialReader: CredentialReader;
   ElevatedApprovalReader: ElevatedApprovalReader;
   PatientReader: PatientReader;
+  PatientIntakeResolver: PatientIntakeResolver;
+  PatientAdmissionClearanceReader: PatientAdmissionClearanceReader;
   PatientCoverageReader: PatientCoverageReader;
   PatientCaregiverReader: PatientCaregiverReader;
   PatientAddressReader: PatientAddressReader;

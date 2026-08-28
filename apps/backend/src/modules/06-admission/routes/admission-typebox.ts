@@ -8,6 +8,7 @@ import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
 import type {
+  AdmissionReadinessResult as ServiceAdmissionReadinessResult,
   AdmissionDetail as ServiceAdmissionDetail,
   MutationResult as ServiceMutationResult,
   Page as ServicePage,
@@ -59,7 +60,7 @@ const REFERRAL_SOURCES = [
 export const ReferralCreateSchema = Type.Object({
   source: Type.Union(REFERRAL_SOURCES.map((s) => Type.Literal(s))),
   receivedAt: Type.String({ format: "date-time" }),
-  receivingUserId: Uuid(),
+  receivingUserId: Type.Optional(Uuid()),
   patientNameAtReceipt: Type.String({ minLength: 1, maxLength: 200 }),
   patientDobAtReceipt: Type.Optional(Type.String({ format: "date" })),
   referringDxText: Type.Optional(Type.String({ maxLength: 2000 })),
@@ -71,7 +72,12 @@ export const ReferralCreateSchema = Type.Object({
 
 export const ReferralListQuerySchema = Type.Object({
   status: Type.Optional(Type.String({ maxLength: 32 })),
+  state: Type.Optional(Type.String({ maxLength: 32 })),
   source: Type.Optional(Type.String({ maxLength: 32 })),
+  patientResolutionStatus: Type.Optional(Type.String({ maxLength: 32 })),
+  priority: Type.Optional(Type.String({ maxLength: 32 })),
+  assigned: Type.Optional(Type.Union([Type.Literal("mine"), Type.Literal("unassigned")])),
+  q: Type.Optional(Type.String({ maxLength: 200 })),
   cursor: Type.Optional(Type.String({ maxLength: 64 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
 });
@@ -89,8 +95,75 @@ export const ReferralAcceptSchema = Type.Object({
   ifVersion: Version(),
 });
 
+export const ReferralReviewSchema = Type.Object({ ifVersion: Version() });
+
+export const ReferralPatientMatchSchema = Type.Object({ ifVersion: Version() });
+
+export const ReferralPatientConfirmSchema = Type.Object({
+  patientId: Uuid(),
+  ifVersion: Version(),
+});
+
+export const ReferralPatientCreateSchema = Type.Object({ ifVersion: Version() });
+
+export const ReferralQualifySchema = Type.Object({ ifVersion: Version() });
+
+export const ReferralConvertSchema = ReferralAcceptSchema;
+
+export const ReferralPrioritySchema = Type.Object({
+  priority: Type.Union([Type.Literal("routine"), Type.Literal("high"), Type.Literal("urgent")]),
+  ifVersion: Version(),
+});
+
+export const ReferralAssignSchema = Type.Object({
+  assignedToUserId: Type.Optional(Uuid()),
+  ifVersion: Version(),
+});
+
+export const ReferralNoteCreateSchema = Type.Object({
+  content: Type.String({ minLength: 1, maxLength: 4000 }),
+});
+
+export const ReferralNoteResponseSchema = Type.Object({
+  id: Type.String({ minLength: 1 }),
+  referralId: Type.String({ minLength: 1 }),
+  authorId: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+  content: Type.String(),
+  createdAt: Type.String({ format: "date-time" }),
+  updatedAt: Type.String({ format: "date-time" }),
+});
+
+export const ReferralNoteListResponseSchema = Type.Object({
+  items: Type.Array(ReferralNoteResponseSchema),
+});
+
+export const ReferralActivityListResponseSchema = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      id: Type.String({ minLength: 1 }),
+      referralId: Type.String({ minLength: 1 }),
+      actorId: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+      action: Type.String(),
+      fromStatus: Type.Union([Type.String(), Type.Null()]),
+      toStatus: Type.Union([Type.String(), Type.Null()]),
+      metadata: Type.Object({}, { additionalProperties: true }),
+      createdAt: Type.String({ format: "date-time" }),
+    }),
+  ),
+});
+
 export const ReferralDeclineSchema = Type.Object({
   reason: Reason(10, 1000),
+  ifVersion: Version(),
+});
+
+export const ReferralPendingInformationSchema = Type.Object({
+  reason: Reason(3, 2000),
+  ifVersion: Version(),
+});
+
+export const ReferralTerminalSchema = Type.Object({
+  reason: Type.Optional(Reason(3, 1000)),
   ifVersion: Version(),
 });
 
@@ -344,10 +417,67 @@ export const AdmissionDetailResponseSchema = Type.Object({
   id: Type.String(),
   state: Type.String(),
   version: Type.Integer(),
+  patientId: Type.Optional(Type.String()),
+  referralId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  admissionAt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  activatedAt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   activationGate: Type.Object({
     ready: Type.Boolean(),
     missing: Type.Array(ActivationGapSchema),
   }),
+});
+
+const RequirementStatusSchema = Type.Union([
+  Type.Literal("complete"),
+  Type.Literal("action_required"),
+  Type.Literal("awaiting_signature"),
+  Type.Literal("pending"),
+  Type.Literal("blocked"),
+  Type.Literal("overdue"),
+  Type.Literal("not_applicable"),
+]);
+
+const RequirementActionSchema = Type.Union([
+  Type.Literal("RESOLVE_PATIENT"),
+  Type.Literal("COMPLETE_ADMISSION_DETAILS"),
+  Type.Literal("REVIEW_PRIVACY"),
+  Type.Literal("ACKNOWLEDGE_NOR"),
+  Type.Literal("COMPLETE_ELECTION"),
+  Type.Literal("REVIEW_CTI"),
+  Type.Literal("REVIEW_F2F"),
+]);
+
+const RequirementCodeSchema = Type.Union([
+  Type.Literal("patient_identity"),
+  Type.Literal("admission_details"),
+  Type.Literal("patient_privacy"),
+  Type.Literal("notice_of_rights"),
+  Type.Literal("election_statement"),
+  Type.Literal("cti"),
+  Type.Literal("f2f"),
+]);
+
+export const AdmissionReadinessResponseSchema = Type.Object({
+  admissionId: Type.String(),
+  status: Type.Union([
+    Type.Literal("blocked"),
+    Type.Literal("action_required"),
+    Type.Literal("ready"),
+  ]),
+  canActivate: Type.Boolean(),
+  completed: Type.Integer(),
+  blockingRemaining: Type.Integer(),
+  requirements: Type.Array(
+    Type.Object({
+      code: RequirementCodeSchema,
+      label: Type.String(),
+      status: RequirementStatusSchema,
+      blocking: Type.Boolean(),
+      message: Type.Optional(Type.String()),
+      action: Type.Optional(RequirementActionSchema),
+      satisfiedBy: Type.Optional(Type.Union([Type.Literal("normal"), Type.Literal("override")])),
+    }),
+  ),
 });
 
 /** The cursor-paginated page the list routes return (`{ items, nextCursor }`). */
@@ -404,6 +534,10 @@ type _ReferralAccept = Conforms<
 type _AdmissionDetail = Conforms<
   Static<typeof AdmissionDetailResponseSchema>,
   ServiceAdmissionDetail
+>;
+type _AdmissionReadiness = Conforms<
+  Static<typeof AdmissionReadinessResponseSchema>,
+  ServiceAdmissionReadinessResult
 >;
 type _SummaryPage = Conforms<
   Static<typeof SummaryPageResponseSchema>,

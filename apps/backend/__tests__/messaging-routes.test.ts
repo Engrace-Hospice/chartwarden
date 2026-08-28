@@ -89,7 +89,7 @@ function makeServer(): { app: ReturnType<typeof buildServer>; service: Messaging
           userId: "rn_1",
           item: {
             alertId: "al_1",
-            eventType: "hope.sfv_triggered",
+            eventType: "m10.hope.sfv_created",
             category: "clinical_urgent",
             severity: "warn",
             summary: "SFV follow-up due",
@@ -526,7 +526,7 @@ describe("M36-T07 messaging route inventory", () => {
       const { app } = makeServer();
       const res = await app.inject({
         method: "PATCH",
-        url: "/api/v1/alert-rules/platform:hope.sfv_triggered",
+        url: "/api/v1/alert-rules/platform:m10.hope.sfv_created",
         headers: ADMIN,
         payload: { enabled: false },
       });
@@ -541,7 +541,7 @@ describe("M36-T07 messaging route inventory", () => {
       const { app } = makeServer();
       const res = await app.inject({
         method: "PATCH",
-        url: "/api/v1/alert-rules/platform:hope.sfv_triggered",
+        url: "/api/v1/alert-rules/platform:m10.hope.sfv_created",
         headers: ADMIN,
         payload: { recipientResolver: "made_up" },
       });
@@ -554,7 +554,7 @@ describe("M36-T07 messaging route inventory", () => {
       const { app } = makeServer();
       const res = await app.inject({
         method: "PATCH",
-        url: "/api/v1/alert-rules/platform:hope.sfv_triggered",
+        url: "/api/v1/alert-rules/platform:m10.hope.sfv_created",
         headers: RN1,
         payload: { enabled: false },
       });

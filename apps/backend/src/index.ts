@@ -23,6 +23,7 @@ import { type DbClient, createDbClient, schema } from "@wardenx/db";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import { registerPlatformJob, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
 import { DegradedError, WardenXError } from "@wardenx/types";
+import type { AdmissionStatusReader } from "@wardenx/types";
 import { createX12835Client } from "@wardenx/x12-835-client";
 import { type ConnectionOptions, Queue, type Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
@@ -198,6 +199,7 @@ import {
 import {
   M10_OUTBOX_EVENTS,
   M10_PLATFORM_JOB_ID,
+  buildM10AdmissionWorkflowConsumer,
   buildM10WorkerDeps,
   createDrizzleHopeEraseStore,
   mountHopeRoutes,
@@ -3827,6 +3829,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       db: dbHandle.db,
       outbox: m10OutboxPublisher,
       activeOrgs: m10ActiveOrgs,
+      alerts: getSeam("AlertEmitter") as {
+        emit(
+          orgId: string,
+          input: {
+            eventType: string;
+            payload: Record<string, unknown>;
+            severity: "info" | "warn" | "critical";
+            correlationId: string;
+          },
+        ): Promise<{ alertId: string; resolvedRecipientCount: number }>;
+      },
     });
     const m10Workers = registerM10CronWorkers(m10WorkerDeps);
     attachDlqAlertsToAll(m10Workers, "m10");
@@ -4001,6 +4014,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             outbox: m8OutboxPublisher,
             isAdmissionActive: (organizationId, admissionId) =>
               admissionIsActiveForOrg(dbHandle.db, organizationId, admissionId),
+          }),
+          buildM10AdmissionWorkflowConsumer({
+            db: dbHandle.db,
+            outbox: m10OutboxPublisher,
+            admissions: getSeam("AdmissionStatusReader") as AdmissionStatusReader,
           }),
           buildM18VisitPublishedConsumer({ db: dbHandle.db }),
           ...(m23SubmissionQueues

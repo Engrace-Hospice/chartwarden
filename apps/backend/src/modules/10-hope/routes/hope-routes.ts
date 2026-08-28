@@ -29,6 +29,7 @@ import {
   AssessmentParamsSchema,
   CorrectTimepointSchema,
   DashboardQuerySchema,
+  HopeWorkflowStateResponseSchema,
   PatientParamsSchema,
   RecordSfvSchema,
   RecordTimepointSchema,
@@ -152,6 +153,22 @@ const SCOPE_BODY_PE = (action: string): PreHandler =>
 export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): void {
   const { service } = deps;
 
+  // 0 — admission-scoped operational HOPE workflow summary. This Phase-2 read model lets the web
+  // overview render fixed RFA schedules and dynamic SFVs from one PHI-minimal M10 response.
+  app.get(
+    "/api/v1/admissions/:admissionId/hope",
+    {
+      preHandler: [READ_TIMEPOINT, SCOPE("hope.timepoint.read")],
+      config: { auditRead: { resourceKind: "hope_workflow", resourceIdParam: "admissionId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { admissionId } = parse(AdmissionParamsSchema, request.params);
+      const result = await service.getWorkflowState(organizationId, admissionId);
+      return parse(HopeWorkflowStateResponseSchema, result);
+    },
+  );
+
   // 1 — list schedules (org or filtered patient; status / RFA / window-state).
   app.get(
     "/api/v1/hope/schedules",
@@ -211,6 +228,8 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
         data: body.data,
         sourceEncounterId: body.sourceEncounterId,
         dischargeReason: body.dischargeReason,
+        lateCompletionReasonCode: body.lateCompletionReasonCode,
+        adminOverride: body.adminOverride,
       });
       return reply.code(201).send(res);
     },

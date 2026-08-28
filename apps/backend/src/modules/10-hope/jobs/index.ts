@@ -145,6 +145,8 @@ export interface PlannedHopeEvent {
 /** The minimal schedule projection the window watchdog operates over (a slice of the §3 row). */
 export interface HopeScheduleSnapshot {
   readonly scheduleId: string;
+  readonly patientId: string;
+  readonly admissionId: string;
   readonly rfaKind: HopeRfaKind;
   readonly status: HopeScheduleStatus;
   readonly windowOpensAt: string;
@@ -209,6 +211,9 @@ export function planHopeWindowWatchdog(
 /** The minimal SFV projection the watchdog operates over (a slice of the §3 row). */
 export interface SfvWatchdogSnapshot {
   readonly sfvId: string;
+  readonly patientId: string;
+  readonly admissionId: string | null;
+  readonly triggeringAssessmentId: string;
   readonly status: HopeSfvStatus;
   readonly dueAt: string;
   /** Org IANA TZ — the missed boundary is computed in org-local calendar days (§2.2.3 / D3). */
@@ -221,7 +226,7 @@ export interface SfvWatchdogTransition {
   readonly fromStatus: HopeSfvStatus;
   readonly toStatus: HopeSfvStatus;
   readonly changed: boolean;
-  /** Whole hours past `due_at` as of the scan (for the `sfv_overdue` payload / 24h cadence offset). */
+  /** Whole hours past `due_at` as of the scan (for the `sfv_overdue` transition payload). */
   readonly hoursPastDue: number;
 }
 
@@ -233,10 +238,9 @@ export interface SfvWatchdogPlan {
 
 /**
  * `sfv-watchdog` (§4.8) — decay every `open`/`overdue` SFV as of `nowInstant`: past `due_at` → `overdue`
- * (emit `m10.hope.sfv_overdue` with the 24h-bucketed hours-past-due), past 7 calendar days → `missed`
+ * (emit `m10.hope.sfv_overdue` once on the transition), past 7 calendar days → `missed`
  * (emit `m10.hope.sfv_missed`, terminal). Idempotent via `decideSfvWatchdogStatus` (the single decay
- * authority); `completed` / already-`missed` rows pass through. `overdue` re-emits per 24h bucket (§2.4
- * idempotency key `(sfvId, "overdue", floor(hours/24))`) — the runner dedups on that key.
+ * authority); `completed` / already-`missed` rows pass through.
  */
 export function planSfvWatchdog(
   sfvs: readonly SfvWatchdogSnapshot[],
@@ -257,8 +261,7 @@ export function planSfvWatchdog(
     transitions.push({ sfvId: s.sfvId, fromStatus: s.status, toStatus, changed, hoursPastDue });
     if (toStatus === "missed" && changed)
       events.push({ eventName: "m10.hope.sfv_missed", payload: { sfvId: s.sfvId } });
-    else if (toStatus === "overdue")
-      // overdue re-emits per 24h bucket even when status already overdue (escalating urgency).
+    else if (toStatus === "overdue" && changed)
       events.push({ eventName: "m10.hope.sfv_overdue", payload: { sfvId: s.sfvId, hoursPastDue } });
   }
   return { transitions, events };

@@ -70,7 +70,7 @@ describe.skipIf(!DB_URL)("GAP-096 — M36 AlertEmitter, LIVE Postgres", () => {
   async function insertRole(key: string, name: string, category: string): Promise<string> {
     return (
       await admin.query(
-        `INSERT INTO role (organization_id, key, name, category) VALUES ($1,$2,$3,$4) RETURNING id`,
+        "INSERT INTO role (organization_id, key, name, category) VALUES ($1,$2,$3,$4) RETURNING id",
         [ORG, key, name, category],
       )
     ).rows[0].id as string;
@@ -86,7 +86,7 @@ describe.skipIf(!DB_URL)("GAP-096 — M36 AlertEmitter, LIVE Postgres", () => {
       )
     ).rows[0].id as string;
     await admin.query(
-      `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)`,
+      "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
       [ORG, membershipId, roleId],
     );
     return userId;
@@ -182,6 +182,34 @@ describe.skipIf(!DB_URL)("GAP-096 — M36 AlertEmitter, LIVE Postgres", () => {
     expect(deliveryRows[0].recipient_user_id).toBe(billingManagerUserId);
     expect(deliveryRows[0].channel).toBe("in_app");
     expect(deliveryRows[0].status).toBe("pending");
+  });
+
+  it("emit() dedupes alert fan-out by organization correlation id", async () => {
+    const first = await getAlertEmitter().emit(ORG, {
+      eventType: "claim.denied",
+      payload: { claimId: "claim-dedup" },
+      severity: "warn",
+      correlationId: "corr-gap096-dedup",
+    });
+    const second = await getAlertEmitter().emit(ORG, {
+      eventType: "claim.denied",
+      payload: { claimId: "claim-dedup" },
+      severity: "warn",
+      correlationId: "corr-gap096-dedup",
+    });
+
+    expect(second.alertId).toBe(first.alertId);
+    const { rows: alertRows } = await admin.query(
+      "SELECT count(*)::int AS n FROM alert WHERE organization_id = $1 AND correlation_id = $2",
+      [ORG, "corr-gap096-dedup"],
+    );
+    expect(alertRows[0].n).toBe(1);
+
+    const { rows: deliveryRows } = await admin.query(
+      "SELECT count(*)::int AS n FROM notification_delivery WHERE alert_id = $1",
+      [first.alertId],
+    );
+    expect(deliveryRows[0].n).toBe(1);
   });
 
   it("a tenant's own alert_rule row REPLACES the platform default for that eventType, not a union", async () => {

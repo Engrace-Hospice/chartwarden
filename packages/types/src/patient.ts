@@ -190,6 +190,58 @@ export interface PatientReader {
   findById(input: { organizationId: string; id: string }): Promise<PatientIdentity | null>;
 }
 
+export interface PatientIntakeCandidate {
+  readonly patientId: string;
+  readonly confidence: "deterministic" | "probable";
+  readonly matchedOn?: string;
+  readonly score?: number;
+}
+
+export interface PatientIntakeSubject {
+  readonly organizationId: string;
+  readonly patientNameAtReceipt: string;
+  readonly patientDobAtReceipt?: string | null;
+}
+
+export interface PatientCreateFromIntakeInput extends PatientIntakeSubject {
+  readonly administrativeSex?: "M" | "F" | "U" | "O" | string;
+}
+
+/** M5-owned intake resolver seam. M6 orchestrates referrals; M5 remains patient identity authority. */
+export interface PatientIntakeResolver {
+  findPatientCandidates(input: PatientIntakeSubject): Promise<{
+    readonly outcome: "no_match" | "possible_match" | "deterministic_match";
+    readonly candidates: readonly PatientIntakeCandidate[];
+  }>;
+  confirmPatient(input: {
+    readonly organizationId: string;
+    readonly patientId: string;
+  }): Promise<PatientIdentity | null>;
+  createPatientFromIntake(input: PatientCreateFromIntakeInput): Promise<PatientIdentity>;
+}
+
+export type PatientAdmissionClearanceReason =
+  | "PATIENT_NOT_FOUND"
+  | "PRIVACY_RESTRICTION"
+  | "PRIVACY_CLEARANCE_UNAVAILABLE";
+
+export interface PatientAdmissionClearance {
+  readonly allowed: boolean;
+  readonly reason?: PatientAdmissionClearanceReason;
+  readonly overrideAllowed?: boolean;
+}
+
+/**
+ * M5-owned privacy/admission clearance seam. M6 asks for the high-level admission-readiness decision
+ * and never reads M5 privacy tables directly.
+ */
+export interface PatientAdmissionClearanceReader {
+  evaluatePatientAdmissionClearance(input: {
+    readonly organizationId: string;
+    readonly patientId: string;
+  }): Promise<PatientAdmissionClearance>;
+}
+
 // ── §4.9 PatientMutator seam (the M29 proposal-accept apply path; D12) ───────────────────────────
 
 /**

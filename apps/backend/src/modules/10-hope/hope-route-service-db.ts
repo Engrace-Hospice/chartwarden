@@ -23,6 +23,7 @@ import { type DbClient, schema } from "@wardenx/db";
 // target_date)` demands it); the DB supersede trigger flips the original.
 import {
   type J2051SymptomReading,
+  assertCaptureAllowed,
   evaluateJ2051Trigger,
   planSfvCompletion,
   planSfvCreation,
@@ -42,9 +43,11 @@ import type {
   HopeScheduleView,
   HopeSfvView,
   HopeSubmissionView,
+  HopeWorkflowStateView,
   RecordSfvArgs,
   RecordTimepointArgs,
 } from "./routes/service";
+import { buildWorkflowState } from "./routes/service";
 
 const ASSESS = schema.hopeAssessments;
 const SCHED = schema.hopeTimepointSchedules;
@@ -392,6 +395,53 @@ export function createDbHopeBackend(
         };
       });
     },
+    async getWorkflowState(organizationId, admissionId): Promise<HopeWorkflowStateView> {
+      let admission: {
+        patientId?: string | null;
+        status?: string | null;
+        admissionAt?: string | null;
+        activatedAt?: string | null;
+        dischargedAt?: string | null;
+      } | null = null;
+      try {
+        const summary = await getSeam("AdmissionStatusReader").getAdmissionSummary(admissionId);
+        if (summary.organizationId === organizationId) {
+          admission = {
+            patientId: summary.patientId,
+            status: summary.status,
+            admissionAt: summary.admissionAt,
+            activatedAt: summary.activatedAt,
+            dischargedAt: summary.dischargedAt,
+          };
+        }
+      } catch {
+        admission = null;
+      }
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const schedRows = (await tx
+          .select()
+          .from(SCHED)
+          .where(eq(SCHED.admissionId, admissionId))) as ScheduleRow[];
+        const assessmentRows = (await tx
+          .select()
+          .from(ASSESS)
+          .where(eq(ASSESS.admissionId, admissionId))) as AssessmentRow[];
+        const patientId =
+          admission?.patientId ?? schedRows[0]?.patientId ?? assessmentRows[0]?.patientId ?? null;
+        const sfvRows =
+          patientId == null
+            ? []
+            : ((await tx.select().from(SFV).where(eq(SFV.patientId, patientId))) as SfvRow[]);
+        return buildWorkflowState({
+          admissionId,
+          nowIso: new Date().toISOString(),
+          schedules: schedRows.map(toScheduleView),
+          assessments: assessmentRows.map(toAssessmentView),
+          sfvs: sfvRows.map(toSfvView),
+          admission,
+        });
+      });
+    },
 
     // ── Schedule count for an admission (read; regeneration itself is a write, deferred) ────────────
     async regenerateSchedules(organizationId, admissionId) {
@@ -485,6 +535,24 @@ export function createDbHopeBackend(
             ),
           )
           .limit(1)) as ScheduleRow[];
+        let capture: { wasLate: boolean; lateReasonCode: string | null } = {
+          wasLate: false,
+          lateReasonCode: null,
+        };
+        if (sched) {
+          capture = assertCaptureAllowed(
+            args.targetDate,
+            {
+              windowOpensAt: sched.windowOpensAt.toISOString(),
+              windowClosesAt: sched.windowClosesAt.toISOString(),
+              lateDeadlineAt: sched.lateDeadlineAt.toISOString(),
+            },
+            {
+              lateReasonCode: args.lateCompletionReasonCode,
+              adminOverride: args.adminOverride,
+            },
+          );
+        }
         const row = firstOrThrow(
           await t
             .insert(ASSESS)
@@ -498,6 +566,8 @@ export function createDbHopeBackend(
               data: args.data,
               targetDate: new Date(args.targetDate),
               sourceEncounterId: args.sourceEncounterId ?? null,
+              wasLate: capture.wasLate,
+              lateCompletionReasonCode: capture.lateReasonCode,
               createdByMembershipId: userId,
             })
             .returning(),

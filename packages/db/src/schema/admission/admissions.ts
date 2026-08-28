@@ -65,6 +65,9 @@ export const admissions = pgTable(
     ),
     peStatusIdx: index("admission_pe_status_idx").on(t.providerEntityId, t.status),
     attendingIdx: index("admission_attending_idx").on(t.attendingPhysicianId),
+    referralOnceIdx: uniqueIndex("admission_org_referral_once_uidx")
+      .on(t.organizationId, t.referralId)
+      .where(sql`referral_id IS NOT NULL`),
   }),
 );
 

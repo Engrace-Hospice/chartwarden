@@ -99,6 +99,7 @@ import {
   AdmissionDetailResponseSchema,
   AdmissionHoldSchema,
   AdmissionListQuerySchema,
+  AdmissionReadinessResponseSchema,
   AdmissionResumeSchema,
   AdmissionUpdateSchema,
   CtiDraftSchema,
@@ -129,9 +130,23 @@ import {
   PatientElectionCertificationResponseSchema,
   ReferralAcceptResponseSchema,
   ReferralAcceptSchema,
+  ReferralConvertSchema,
   ReferralCreateSchema,
   ReferralDeclineSchema,
+  ReferralActivityListResponseSchema,
+  ReferralPatientConfirmSchema,
+  ReferralPatientCreateSchema,
+  ReferralPatientMatchSchema,
   ReferralListQuerySchema,
+  ReferralNoteCreateSchema,
+  ReferralNoteListResponseSchema,
+  ReferralNoteResponseSchema,
+  ReferralPendingInformationSchema,
+  ReferralPrioritySchema,
+  ReferralQualifySchema,
+  ReferralReviewSchema,
+  ReferralAssignSchema,
+  ReferralTerminalSchema,
   ReferralTriageSchema,
   ReferralUpdateSchema,
   RevocationCreateSchema,
@@ -1423,6 +1438,7 @@ import {
   HopeSubmissionResponseSchema as M10HopeSubmissionResponseSchema,
   HopeSummaryRequestedResponseSchema as M10HopeSummaryRequestedResponseSchema,
   HopeValidationResponseSchema as M10HopeValidationResponseSchema,
+  HopeWorkflowStateResponseSchema as M10HopeWorkflowStateResponseSchema,
   RecordSfvSchema as M10RecordSfvSchema,
   RecordTimepointSchema as M10RecordTimepointSchema,
   RegenerateSchedulesSchema as M10RegenerateSchedulesSchema,
@@ -5519,6 +5535,26 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M6SummaryRowResponseSchema,
   },
   "PATCH /api/v1/referrals/:id": { summary: "Update a referral", body: ReferralUpdateSchema },
+  "POST /api/v1/referrals/:id/review": {
+    summary: "Start referral review",
+    body: ReferralReviewSchema,
+  },
+  "POST /api/v1/referrals/:id/patient-matches": {
+    summary: "Run M5 patient matching for a referral",
+    body: ReferralPatientMatchSchema,
+  },
+  "POST /api/v1/referrals/:id/confirm-patient": {
+    summary: "Confirm an existing canonical M5 patient for a referral",
+    body: ReferralPatientConfirmSchema,
+  },
+  "POST /api/v1/referrals/:id/create-patient": {
+    summary: "Create a canonical M5 patient from referral intake data",
+    body: ReferralPatientCreateSchema,
+  },
+  "POST /api/v1/referrals/:id/qualify": {
+    summary: "Qualify a referral after patient resolution and intake readiness checks",
+    body: ReferralQualifySchema,
+  },
   "POST /api/v1/referrals/:id/triage": {
     summary: "Record a triage outcome (eligible/ineligible)",
     body: ReferralTriageSchema,
@@ -5528,9 +5564,52 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: ReferralAcceptSchema,
     response: ReferralAcceptResponseSchema,
   },
+  "POST /api/v1/referrals/:id/convert": {
+    summary: "Convert a qualified referral into exactly one pending admission",
+    body: ReferralConvertSchema,
+    response: ReferralAcceptResponseSchema,
+  },
   "POST /api/v1/referrals/:id/decline": {
     summary: "Decline a referral",
     body: ReferralDeclineSchema,
+  },
+  "POST /api/v1/referrals/:id/notes": {
+    summary: "Add an append-only referral note",
+    body: ReferralNoteCreateSchema,
+    response: ReferralNoteResponseSchema,
+  },
+  "GET /api/v1/referrals/:id/notes": {
+    summary: "List referral notes",
+    response: ReferralNoteListResponseSchema,
+  },
+  "GET /api/v1/referrals/:id/activity": {
+    summary: "Read the referral business activity timeline",
+    response: ReferralActivityListResponseSchema,
+  },
+  "POST /api/v1/referrals/:id/priority": {
+    summary: "Update referral priority",
+    body: ReferralPrioritySchema,
+    response: M6SummaryRowResponseSchema,
+  },
+  "POST /api/v1/referrals/:id/assign": {
+    summary: "Assign or clear a referral owner",
+    body: ReferralAssignSchema,
+    response: M6SummaryRowResponseSchema,
+  },
+  "POST /api/v1/referrals/:id/pending-information": {
+    summary: "Request missing information and move the referral to pending-information",
+    body: ReferralPendingInformationSchema,
+    response: M6SummaryRowResponseSchema,
+  },
+  "POST /api/v1/referrals/:id/duplicate": {
+    summary: "Mark a referral as duplicate",
+    body: ReferralTerminalSchema,
+    response: M6SummaryRowResponseSchema,
+  },
+  "POST /api/v1/referrals/:id/withdraw": {
+    summary: "Withdraw a referral",
+    body: ReferralTerminalSchema,
+    response: M6SummaryRowResponseSchema,
   },
   // Admission (routes 8–14)
   "POST /api/v1/admissions": {
@@ -5546,6 +5625,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/admissions/:id": {
     summary: "The admission aggregate + R-AC-01 activation gate (§5.2.5)",
     response: AdmissionDetailResponseSchema,
+  },
+  "GET /api/v1/admissions/:id/readiness": {
+    summary: "Admission intake readiness requirements for activation",
+    response: AdmissionReadinessResponseSchema,
   },
   "PATCH /api/v1/admissions/:id": { summary: "Update an admission", body: AdmissionUpdateSchema },
   "POST /api/v1/admissions/:id/hold": {
@@ -6030,6 +6113,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
 
 // ── M10 HOPE Engine (20 routes) ───────────────────────────────────────────────────────────────────
 Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/admissions/:admissionId/hope": {
+    summary: "Admission-scoped HOPE workflow summary",
+    response: M10HopeWorkflowStateResponseSchema,
+  },
   "GET /api/v1/hope/schedules": {
     summary: "List HOPE timepoint schedules (filter by patient / status / RFA)",
     query: M10ScheduleListQuerySchema,

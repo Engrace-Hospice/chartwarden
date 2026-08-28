@@ -1,6 +1,6 @@
 // apps/backend/src/modules/06-admission/state-machines/admission.ts — M6-T04 (§2.3.1).
 //
-// The Admission lifecycle: referred → pending → notice_of_rights_acknowledged → active ⇄ on_hold →
+// The Admission lifecycle: referred → pending → active ⇄ on_hold →
 // discharged|bereavement → closed. Pure transition function: it validates the event is legal from the
 // current state (§2.3 graph — nothing transitions on a string match), runs the enumerated guards
 // (failures raise the §2.4 code via AdmissionStateError), and returns the new state + the §2.5
@@ -60,7 +60,7 @@ export const ADMISSION_GRAPH: Readonly<
   Record<AdmissionState, ReadonlyArray<AdmissionEvent["type"]>>
 > = {
   referred: ["createAdmission"],
-  pending: ["acknowledgeNoticeOfRights"],
+  pending: ["acknowledgeNoticeOfRights", "activate"],
   notice_of_rights_acknowledged: ["activate"],
   active: ["placeOnHold", "executeDischarge"],
   on_hold: ["releaseFromHold", "executeDischarge"],
@@ -119,7 +119,7 @@ export function transitionAdmission(
       ]);
     }
     case "activate": {
-      // R-ADM-01 / activation guards (§2.3.1): ES + CTI + NOR + no privacy block + 48h not overdue.
+      // R-ADM-01 / activation guards (§2.3.1): ES + CTI + NOR + no privacy block.
       require_(
         event.noticeOfRightsAcknowledged,
         "NOTICE_OF_RIGHTS_REQUIRED",
@@ -135,11 +135,6 @@ export function transitionAdmission(
         !event.privacyFlagBlock,
         "PRIVACY_FLAG_BLOCK",
         "an M5 privacy flag blocks activation",
-      );
-      require_(
-        !event.initialAssessment48hOverdue || event.donOverride,
-        "INITIAL_ASSESSMENT_OVERDUE",
-        "initial 48h assessment is overdue (requires DON override)",
       );
       const effects: AdmissionTransition["effects"] = [
         { kind: "set_timestamp", field: "activated_at", at: event.at },

@@ -1873,6 +1873,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admissions/{admissionId}/hope": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admission-scoped HOPE workflow summary */
+        get: operations["getApiV1AdmissionsByAdmissionIdHope"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admissions/{admissionId}/hope/sfv": {
         parameters: {
             query?: never;
@@ -2075,6 +2092,23 @@ export interface paths {
         put?: never;
         /** Acknowledge the notice of rights */
         post: operations["postApiV1AdmissionsByIdNor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admissions/{id}/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admission intake readiness requirements for activation */
+        get: operations["getApiV1AdmissionsByIdReadiness"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -14776,6 +14810,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/referrals/{id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the referral business activity timeline */
+        get: operations["getApiV1ReferralsByIdActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/{id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign or clear a referral owner */
+        post: operations["postApiV1ReferralsByIdAssign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/{id}/confirm-patient": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm an existing canonical M5 patient for a referral */
+        post: operations["postApiV1ReferralsByIdConfirmpatient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/{id}/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Convert a qualified referral into exactly one pending admission */
+        post: operations["postApiV1ReferralsByIdConvert"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/{id}/create-patient": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a canonical M5 patient from referral intake data */
+        post: operations["postApiV1ReferralsByIdCreatepatient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/referrals/{id}/decline": {
         parameters: {
             query?: never;
@@ -14793,6 +14912,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/referrals/{id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a referral as duplicate */
+        post: operations["postApiV1ReferralsByIdDuplicate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/{id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List referral notes */
+        get: operations["getApiV1ReferralsByIdNotes"];
+        put?: never;
+        /** Add an append-only referral note */
+        post: operations["postApiV1ReferralsByIdNotes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/{id}/patient-matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run M5 patient matching for a referral */
+        post: operations["postApiV1ReferralsByIdPatientmatches"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/{id}/pending-information": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request missing information and move the referral to pending-information */
+        post: operations["postApiV1ReferralsByIdPendinginformation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/{id}/priority": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update referral priority */
+        post: operations["postApiV1ReferralsByIdPriority"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/{id}/qualify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Qualify a referral after patient resolution and intake readiness checks */
+        post: operations["postApiV1ReferralsByIdQualify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/{id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start referral review */
+        post: operations["postApiV1ReferralsByIdReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/referrals/{id}/triage": {
         parameters: {
             query?: never;
@@ -14804,6 +15043,23 @@ export interface paths {
         put?: never;
         /** Record a triage outcome (eligible/ineligible) */
         post: operations["postApiV1ReferralsByIdTriage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/{id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw a referral */
+        post: operations["postApiV1ReferralsByIdWithdraw"];
         delete?: never;
         options?: never;
         head?: never;
@@ -23440,6 +23696,93 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1AdmissionsByAdmissionIdHope: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                admissionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        admissionId: string;
+                        patientId: string | null;
+                        admissionStatus: string | null;
+                        admissionAt: string | null;
+                        activatedAt: string | null;
+                        dischargedAt: string | null;
+                        admissionAssessment: {
+                            kind: "01_admission" | "02_huv1" | "03_huv2" | "05_discharge";
+                            status: "upcoming" | "open" | "late" | "completed" | "expired" | "skipped" | "not_applicable" | "workflow_not_initialized";
+                            scheduleId: string | null;
+                            windowStart: string | null;
+                            windowEnd: string | null;
+                            lateDeadline: string | null;
+                            completedAt: string | null;
+                            assessmentId: string | null;
+                        };
+                        huv1: {
+                            kind: "01_admission" | "02_huv1" | "03_huv2" | "05_discharge";
+                            status: "upcoming" | "open" | "late" | "completed" | "expired" | "skipped" | "not_applicable" | "workflow_not_initialized";
+                            scheduleId: string | null;
+                            windowStart: string | null;
+                            windowEnd: string | null;
+                            lateDeadline: string | null;
+                            completedAt: string | null;
+                            assessmentId: string | null;
+                        };
+                        huv2: {
+                            kind: "01_admission" | "02_huv1" | "03_huv2" | "05_discharge";
+                            status: "upcoming" | "open" | "late" | "completed" | "expired" | "skipped" | "not_applicable" | "workflow_not_initialized";
+                            scheduleId: string | null;
+                            windowStart: string | null;
+                            windowEnd: string | null;
+                            lateDeadline: string | null;
+                            completedAt: string | null;
+                            assessmentId: string | null;
+                        };
+                        sfvs: {
+                            id: string;
+                            status: "open" | "completed" | "overdue" | "missed";
+                            triggeringAssessmentId: string;
+                            triggeringRfaKind: ("01_admission" | "02_huv1" | "03_huv2" | "04_sfv" | "05_discharge") | null;
+                            dueAt: string;
+                            triggeredAt: string;
+                            completedAt: string | null;
+                            completingAssessmentId: string | null;
+                        }[];
+                        dischargeAssessment: {
+                            kind: "01_admission" | "02_huv1" | "03_huv2" | "05_discharge";
+                            status: "upcoming" | "open" | "late" | "completed" | "expired" | "skipped" | "not_applicable" | "workflow_not_initialized";
+                            scheduleId: string | null;
+                            windowStart: string | null;
+                            windowEnd: string | null;
+                            lateDeadline: string | null;
+                            completedAt: string | null;
+                            assessmentId: string | null;
+                        };
+                        summary: {
+                            actionableCount: number;
+                            overdueCount: number;
+                            completedCount: number;
+                            nextDeadline: string | null;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1AdmissionsByAdmissionIdHopeSfv: {
         parameters: {
             query?: never;
@@ -23527,6 +23870,8 @@ export interface operations {
                     /** Format: uuid */
                     sourceEncounterId?: string;
                     dischargeReason?: "death" | "revocation" | "transfer_to_hospice" | "live_discharge";
+                    lateCompletionReasonCode?: string;
+                    adminOverride?: boolean;
                     data: {
                         J?: {
                             J2051?: {
@@ -23599,6 +23944,10 @@ export interface operations {
                         id: string;
                         state: string;
                         version: number;
+                        patientId?: string;
+                        referralId?: string | null;
+                        admissionAt?: string | null;
+                        activatedAt?: string | null;
                         activationGate: {
                             ready: boolean;
                             missing: ("election_signed" | "nor_acknowledged" | "cti_signed" | "attending_signed")[];
@@ -24018,6 +24367,45 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdmissionsByIdReadiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        admissionId: string;
+                        status: "blocked" | "action_required" | "ready";
+                        canActivate: boolean;
+                        completed: number;
+                        blockingRemaining: number;
+                        requirements: {
+                            code: "patient_identity" | "admission_details" | "patient_privacy" | "notice_of_rights" | "election_statement" | "cti" | "f2f";
+                            label: string;
+                            status: "complete" | "action_required" | "awaiting_signature" | "pending" | "blocked" | "overdue" | "not_applicable";
+                            blocking: boolean;
+                            message?: string;
+                            action?: "RESOLVE_PATIENT" | "COMPLETE_ADMISSION_DETAILS" | "REVIEW_PRIVACY" | "ACKNOWLEDGE_NOR" | "COMPLETE_ELECTION" | "REVIEW_CTI" | "REVIEW_F2F";
+                            satisfiedBy?: "normal" | "override";
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -57421,7 +57809,12 @@ export interface operations {
         parameters: {
             query?: {
                 status?: string;
+                state?: string;
                 source?: string;
+                patientResolutionStatus?: string;
+                priority?: string;
+                assigned?: "mine" | "unassigned";
+                q?: string;
                 cursor?: string;
                 limit?: number;
             };
@@ -57465,7 +57858,7 @@ export interface operations {
                     /** Format: date-time */
                     receivedAt: string;
                     /** Format: uuid */
-                    receivingUserId: string;
+                    receivingUserId?: string;
                     patientNameAtReceipt: string;
                     /** Format: date */
                     patientDobAtReceipt?: string;
@@ -57589,6 +57982,178 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1ReferralsByIdActivity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            referralId: string;
+                            actorId: string | null;
+                            action: string;
+                            fromStatus: string | null;
+                            toStatus: string | null;
+                            metadata: {
+                                [key: string]: unknown;
+                            };
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReferralsByIdAssign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    assignedToUserId?: string;
+                    ifVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReferralsByIdConfirmpatient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    ifVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReferralsByIdConvert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId?: string;
+                    primaryDiagnosisIcd10: string;
+                    /** Format: uuid */
+                    attendingPhysicianId?: string;
+                    ifVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                        admissionId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReferralsByIdCreatepatient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1ReferralsByIdDecline: {
         parameters: {
             query?: never;
@@ -57602,6 +58167,269 @@ export interface operations {
             content: {
                 "application/json": {
                     reason: string;
+                    ifVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReferralsByIdDuplicate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                    ifVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1ReferralsByIdNotes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            referralId: string;
+                            authorId: string | null;
+                            content: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReferralsByIdNotes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    content: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        referralId: string;
+                        authorId: string | null;
+                        content: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReferralsByIdPatientmatches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReferralsByIdPendinginformation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    ifVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReferralsByIdPriority: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    priority: "routine" | "high" | "urgent";
+                    ifVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReferralsByIdQualify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReferralsByIdReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
                     ifVersion: number;
                 };
             };
@@ -57643,6 +58471,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReferralsByIdWithdraw: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                    ifVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

@@ -2,10 +2,8 @@
 // (TASK-040D, the M25 `25-remittance/jobs/cron-workers.ts` template). Wires EXACTLY TWO of M10's seven §4.8
 // queues into live Workers + repeatable Queues: `windows` (`hope-window-watchdog`) and `sfv`
 // (`sfv-watchdog`) — the clinical-path regulatory-clock watchdogs (HOPE timepoint window expiry, Symptom
-// Follow-up Visit deadlines). `alerts` (`hope-alert-dispatcher`) and `scheduling`/`validation`/
-// `submission`/`retention` are DELIBERATELY NOT wired here: they need infrastructure that doesn't exist yet
-// (a cadence-dispatch-tracking store, patient-display-name + CTA-URL resolution, the multi-stage iQIES
-// submission pipeline) — out of scope for this pass, not silently dropped.
+// Follow-up Visit deadlines). Phase 3 also bridges the transition edges into M36 through an injected
+// AlertEmitter seam; no M36 internals are imported here.
 //
 // Each cron fans out over the active orgs, opens ONE per-org `withOrgContext` RLS envelope, reads via
 // ./cron-store, runs the PURE planner (planHopeWindowWatchdog / planSfvWatchdog from ./index), persists the
@@ -27,11 +25,13 @@ import {
   updateSfvStatus,
 } from "./cron-store";
 import {
+  type HopeScheduleSnapshot,
   type M10QueueName,
   M10_JOB_PARAMS,
   M10_JOB_SCHEDULES,
   M10_QUEUES,
   type PlannedHopeEvent,
+  type SfvWatchdogSnapshot,
   planHopeWindowWatchdog,
   planSfvWatchdog,
 } from "./index";
@@ -67,6 +67,25 @@ export interface ActiveOrgListPort {
   listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;
 }
 
+export interface HopeAlertEmitPort {
+  emit(
+    orgId: string,
+    input: {
+      readonly eventType: string;
+      readonly payload: Record<string, unknown>;
+      readonly severity: "info" | "warn" | "critical";
+      readonly correlationId: string;
+    },
+  ): Promise<{ alertId: string; resolvedRecipientCount: number }>;
+}
+
+export interface PlannedM10AlertEmission {
+  readonly eventType: PlannedHopeEvent["eventName"];
+  readonly severity: "info" | "warn" | "critical";
+  readonly correlationId: string;
+  readonly payload: Record<string, unknown>;
+}
+
 /** The dep bag the composition root injects. `outbox` is required; `activeOrgs` defaults to a fail-closed
  * thunk until the integrator binds it (the M25 pattern). */
 export interface M10WorkerDeps {
@@ -74,6 +93,7 @@ export interface M10WorkerDeps {
   readonly db: DbClient;
   readonly outbox: HopeOutboxPublishPort;
   readonly activeOrgs?: ActiveOrgListPort;
+  readonly alerts?: HopeAlertEmitPort;
   now?: () => Date;
 }
 
@@ -100,12 +120,14 @@ export function buildM10WorkerDeps(deps: {
   db: DbClient;
   outbox: HopeOutboxPublishPort;
   activeOrgs?: ActiveOrgListPort;
+  alerts?: HopeAlertEmitPort;
 }): M10WorkerDeps {
   return {
     connection: deps.connection,
     db: deps.db,
     outbox: deps.outbox,
     activeOrgs: deps.activeOrgs,
+    alerts: deps.alerts,
     now: () => new Date(),
   };
 }
@@ -123,6 +145,64 @@ function outboxTargetFor(event: PlannedHopeEvent): { aggregateKind: string; aggr
     case "m10.hope.sfv_missed":
       return { aggregateKind: "symptom_follow_up_visit", aggregateId: String(event.payload.sfvId) };
   }
+}
+
+export function planM10AlertEmissions(input: {
+  readonly organizationId: string;
+  readonly schedules: readonly HopeScheduleSnapshot[];
+  readonly sfvs: readonly SfvWatchdogSnapshot[];
+  readonly events: readonly PlannedHopeEvent[];
+}): PlannedM10AlertEmission[] {
+  const bySchedule = new Map(input.schedules.map((s) => [s.scheduleId, s]));
+  const bySfv = new Map(input.sfvs.map((s) => [s.sfvId, s]));
+  const emissions: PlannedM10AlertEmission[] = [];
+
+  for (const event of input.events) {
+    if (event.eventName === "m10.hope.timepoint_expired") {
+      const schedule = bySchedule.get(String(event.payload.scheduleId));
+      if (!schedule) continue;
+      emissions.push({
+        eventType: event.eventName,
+        severity: "critical",
+        correlationId: `${input.organizationId}:${event.eventName}:${schedule.scheduleId}:window_expired`,
+        payload: {
+          patientId: schedule.patientId,
+          admissionId: schedule.admissionId,
+          workflowType: schedule.rfaKind,
+          workflowItemId: schedule.scheduleId,
+          attentionState: "window_expired",
+          deadline: schedule.lateDeadlineAt,
+          actionTarget: `/admissions/${schedule.admissionId}/hope`,
+        },
+      });
+      continue;
+    }
+
+    const sfv = bySfv.get(String(event.payload.sfvId));
+    if (!sfv) continue;
+    const missed = event.eventName === "m10.hope.sfv_missed";
+    emissions.push({
+      eventType: event.eventName,
+      severity: "critical",
+      correlationId: `${input.organizationId}:${event.eventName}:${sfv.sfvId}:${
+        missed ? "missed" : "overdue"
+      }`,
+      payload: {
+        patientId: sfv.patientId,
+        admissionId: sfv.admissionId,
+        workflowType: "04_sfv",
+        workflowItemId: sfv.sfvId,
+        triggeringAssessmentId: sfv.triggeringAssessmentId,
+        attentionState: missed ? "missed" : "overdue",
+        deadline: sfv.dueAt,
+        actionTarget: sfv.admissionId
+          ? `/admissions/${sfv.admissionId}/hope/sfv/${sfv.sfvId}`
+          : "/hope/sfv",
+      },
+    });
+  }
+
+  return emissions;
 }
 
 // ── the per-org cron runners (fan out over active orgs, RLS-scoped, outbox-publishing) ─────────────────────
@@ -153,15 +233,22 @@ export async function runHopeWindowWatchdogCron(deps: M10WorkerDeps): Promise<vo
             ...outboxTargetFor(event),
           });
         }
+        if (deps.alerts)
+          for (const alert of planM10AlertEmissions({
+            organizationId,
+            schedules,
+            sfvs: [],
+            events: plan.events,
+          }))
+            await deps.alerts.emit(organizationId, alert);
       },
     );
   }
 }
 
 /** `sfv-watchdog` (§4.8, every 15 min) — per org, decay every `open`/`overdue` SFV (→ `overdue`/`missed`)
- * and publish `m10.hope.sfv_overdue` (re-emitted every tick it stays overdue) / `m10.hope.sfv_missed`
- * (terminal edge). Only writes the row when `changed===true` — an unchanged `overdue` re-emit fires the
- * event without a redundant UPDATE. */
+ * and publish `m10.hope.sfv_overdue` / `m10.hope.sfv_missed` only on the transition edge. Only writes the
+ * row when `changed===true`. */
 export async function runSfvWatchdogCron(deps: M10WorkerDeps): Promise<void> {
   const now = (deps.now ?? (() => new Date()))();
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
@@ -186,6 +273,14 @@ export async function runSfvWatchdogCron(deps: M10WorkerDeps): Promise<void> {
             ...outboxTargetFor(event),
           });
         }
+        if (deps.alerts)
+          for (const alert of planM10AlertEmissions({
+            organizationId,
+            schedules: [],
+            sfvs,
+            events: plan.events,
+          }))
+            await deps.alerts.emit(organizationId, alert);
       },
     );
   }

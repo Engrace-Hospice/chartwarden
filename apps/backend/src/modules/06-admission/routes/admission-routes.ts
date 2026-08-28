@@ -20,6 +20,7 @@ import {
   AdmissionCreateSchema,
   AdmissionHoldSchema,
   AdmissionListQuerySchema,
+  AdmissionReadinessResponseSchema,
   AdmissionResumeSchema,
   AdmissionUpdateSchema,
   ComplianceCloseSchema,
@@ -47,9 +48,20 @@ import {
   NorAcknowledgeSchema,
   PatientIdParamsSchema,
   ReferralAcceptSchema,
+  ReferralAssignSchema,
+  ReferralConvertSchema,
   ReferralCreateSchema,
   ReferralDeclineSchema,
   ReferralListQuerySchema,
+  ReferralNoteCreateSchema,
+  ReferralPendingInformationSchema,
+  ReferralPatientConfirmSchema,
+  ReferralPatientCreateSchema,
+  ReferralPatientMatchSchema,
+  ReferralPrioritySchema,
+  ReferralQualifySchema,
+  ReferralReviewSchema,
+  ReferralTerminalSchema,
   ReferralTriageSchema,
   ReferralUpdateSchema,
   RevocationCreateSchema,
@@ -210,9 +222,9 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
       config: { auditRead: { resourceKind: "referral", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, userId } = actorOf(request);
       const q = parse(ReferralListQuerySchema, request.query);
-      return service.listReferrals(organizationId, q);
+      return service.listReferrals(organizationId, q, userId);
     },
   );
 
@@ -235,7 +247,63 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(ReferralUpdateSchema, request.body);
-      return service.updateReferral(organizationId, idOf(request), body.ifVersion);
+      return service.updateReferral(organizationId, idOf(request), body, body.ifVersion);
+    },
+  );
+
+  app.post(
+    "/api/v1/referrals/:id/review",
+    { preHandler: [REFERRAL_TRIAGE, referralScope("referral.triage")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(ReferralReviewSchema, request.body);
+      return service.startReferralReview(organizationId, idOf(request), body.ifVersion, userId);
+    },
+  );
+
+  app.post(
+    "/api/v1/referrals/:id/patient-matches",
+    { preHandler: [REFERRAL_UPDATE, referralScope("referral.update")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(ReferralPatientMatchSchema, request.body);
+      return service.runReferralPatientMatching(organizationId, idOf(request), body.ifVersion, userId);
+    },
+  );
+
+  app.post(
+    "/api/v1/referrals/:id/confirm-patient",
+    { preHandler: [REFERRAL_UPDATE, referralScope("referral.update")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(ReferralPatientConfirmSchema, request.body);
+      return service.confirmReferralPatient(
+        organizationId,
+        idOf(request),
+        body.patientId,
+        body.ifVersion,
+        userId,
+      );
+    },
+  );
+
+  app.post(
+    "/api/v1/referrals/:id/create-patient",
+    { preHandler: [REFERRAL_UPDATE, referralScope("referral.update")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(ReferralPatientCreateSchema, request.body);
+      return service.createReferralPatient(organizationId, idOf(request), body.ifVersion, userId);
+    },
+  );
+
+  app.post(
+    "/api/v1/referrals/:id/qualify",
+    { preHandler: [REFERRAL_ACCEPT, referralScope("referral.accept")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(ReferralQualifySchema, request.body);
+      return service.qualifyReferral(organizationId, idOf(request), body.ifVersion, userId);
     },
   );
 
@@ -270,12 +338,147 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   );
 
   app.post(
+    "/api/v1/referrals/:id/convert",
+    { preHandler: [REFERRAL_ACCEPT, referralScope("referral.accept")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(ReferralConvertSchema, request.body);
+      return service.convertReferral(
+        organizationId,
+        idOf(request),
+        {
+          patientId: body.patientId,
+          primaryDiagnosisIcd10: body.primaryDiagnosisIcd10,
+          attendingPhysicianId: body.attendingPhysicianId,
+        },
+        body.ifVersion,
+        userId,
+      );
+    },
+  );
+
+  app.post(
     "/api/v1/referrals/:id/decline",
     { preHandler: [REFERRAL_DECLINE, referralScope("referral.decline")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(ReferralDeclineSchema, request.body);
       return service.declineReferral(organizationId, idOf(request), body.reason, body.ifVersion);
+    },
+  );
+
+  app.post(
+    "/api/v1/referrals/:id/notes",
+    { preHandler: [REFERRAL_UPDATE, referralScope("referral.update")] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(ReferralNoteCreateSchema, request.body);
+      const res = await service.addReferralNote(organizationId, idOf(request), body, userId);
+      return reply.code(201).send(res);
+    },
+  );
+
+  app.get(
+    "/api/v1/referrals/:id/notes",
+    {
+      preHandler: [REFERRAL_READ, referralScope("referral.read")],
+      config: { auditRead: { resourceKind: "referral_note", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return { items: await service.listReferralNotes(organizationId, idOf(request)) };
+    },
+  );
+
+  app.get(
+    "/api/v1/referrals/:id/activity",
+    {
+      preHandler: [REFERRAL_READ, referralScope("referral.read")],
+      config: { auditRead: { resourceKind: "referral_activity", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return { items: await service.listReferralActivity(organizationId, idOf(request)) };
+    },
+  );
+
+  app.post(
+    "/api/v1/referrals/:id/priority",
+    { preHandler: [REFERRAL_UPDATE, referralScope("referral.update")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(ReferralPrioritySchema, request.body);
+      return service.updateReferralPriority(
+        organizationId,
+        idOf(request),
+        body.priority,
+        body.ifVersion,
+        userId,
+      );
+    },
+  );
+
+  app.post(
+    "/api/v1/referrals/:id/assign",
+    { preHandler: [REFERRAL_UPDATE, referralScope("referral.update")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(ReferralAssignSchema, request.body);
+      return service.assignReferral(
+        organizationId,
+        idOf(request),
+        body.assignedToUserId,
+        body.ifVersion,
+        userId,
+      );
+    },
+  );
+
+  app.post(
+    "/api/v1/referrals/:id/pending-information",
+    { preHandler: [REFERRAL_UPDATE, referralScope("referral.update")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(ReferralPendingInformationSchema, request.body);
+      return service.markReferralPendingInformation(
+        organizationId,
+        idOf(request),
+        body.reason,
+        body.ifVersion,
+        userId,
+      );
+    },
+  );
+
+  app.post(
+    "/api/v1/referrals/:id/duplicate",
+    { preHandler: [REFERRAL_DECLINE, referralScope("referral.decline")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(ReferralTerminalSchema, request.body);
+      return service.markReferralDuplicate(
+        organizationId,
+        idOf(request),
+        body.reason,
+        body.ifVersion,
+        userId,
+      );
+    },
+  );
+
+  app.post(
+    "/api/v1/referrals/:id/withdraw",
+    { preHandler: [REFERRAL_DECLINE, referralScope("referral.decline")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(ReferralTerminalSchema, request.body);
+      return service.withdrawReferral(
+        organizationId,
+        idOf(request),
+        body.reason,
+        body.ifVersion,
+        userId,
+      );
     },
   );
 
@@ -309,6 +512,20 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const row = await service.getAdmission(organizationId, idOf(request));
+      return row ?? notFound(idOf(request));
+    },
+  );
+
+  app.get(
+    "/api/v1/admissions/:id/readiness",
+    {
+      preHandler: [ADMISSION_READ, admissionScope("admission.read")],
+      schema: { response: { 200: AdmissionReadinessResponseSchema } },
+      config: { auditRead: { resourceKind: "admission_readiness", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const row = await service.getAdmissionReadiness(organizationId, idOf(request));
       return row ?? notFound(idOf(request));
     },
   );

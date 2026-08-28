@@ -16,7 +16,7 @@ const ORG = "org_a";
 const ORG_B = "org_b";
 const U = "user_1";
 
-/** Drive an accepted referral → a fully activatable admission (election + NOR + period-1 CTI signed). */
+/** Drive a converted referral → a fully activatable admission (election + NOR + period-1 CTI signed). */
 async function activatableAdmission() {
   const backend = createInMemoryAdmissionBackend();
   const svc = backend.service;
@@ -31,18 +31,25 @@ async function activatableAdmission() {
     U,
   );
   const tri = await svc.triageReferral(ORG, ref.id, "eligible", ref.version);
+  const patient = await svc.createReferralPatient(ORG, ref.id, tri.version, U);
+  const qualified = await svc.qualifyReferral(ORG, ref.id, patient.version, U);
   const acc = await svc.acceptReferral(
     ORG,
     ref.id,
     { primaryDiagnosisIcd10: "C00", attendingPhysicianId: "doc_1" },
-    tri.version,
+    qualified.version,
     U,
   );
   const periods = (await svc.listElectionPeriods(ORG, acc.admissionId)) ?? [];
   const period1 = periods[0]!;
   const es = await svc.draftElectionStatement(ORG, acc.admissionId, period1.id);
   await svc.signElection(ORG, es.id, es.version, U);
-  await svc.acknowledgeNor(ORG, acc.admissionId, U);
+  await svc.acknowledgeNor(
+    ORG,
+    acc.admissionId,
+    { deliveryMethod: "electronic_witnessed", acknowledgedByRole: "patient" },
+    U,
+  );
   const cti = await svc.draftCti(
     ORG,
     {
@@ -74,23 +81,26 @@ describe("M6-T12 §7.1 — receive & triage referral (W-RF)", () => {
     );
     expect(ref.state).toBe("received");
     const tri = await svc.triageReferral(ORG, ref.id, "eligible", ref.version);
-    expect(tri.state).toBe("triaged");
+    expect(tri.state).toBe("under_review");
+    const patient = await svc.createReferralPatient(ORG, ref.id, tri.version, U);
+    const qualified = await svc.qualifyReferral(ORG, ref.id, patient.version, U);
     const acc = await svc.acceptReferral(
       ORG,
       ref.id,
       { primaryDiagnosisIcd10: "C00" },
-      tri.version,
+      qualified.version,
       U,
     );
-    expect(acc.state).toBe("accepted");
+    expect(acc.state).toBe("converted");
     expect(acc.admissionId).toBeTruthy();
     // the draft bundle: a period-1 + an open NOR compliance window exist on the new admission.
     expect((await svc.listElectionPeriods(ORG, acc.admissionId))?.length).toBe(1);
     expect(backend.events).toEqual(
       expect.arrayContaining([
         "m6.referral.received",
-        "m6.referral.triaged",
-        "m6.referral.accepted",
+        "m6.referral.review_started",
+        "m6.referral.qualified",
+        "m6.referral.converted",
         "m6.admission.draft_created",
       ]),
     );
@@ -133,7 +143,7 @@ describe("M6-T12 §7.2 — admission wizard + activation gate (W-AD)", () => {
     expect(backend.events).toContain("m6.admission.activated");
   });
 
-  it("W-AD-05 edge: activation blocked surfaces the missing[] gate codes (412 PRECONDITION_FAILED)", async () => {
+  it("W-AD-05 edge: activation blocked surfaces structured readiness blockers", async () => {
     const svc = createInMemoryAdmissionBackend().service;
     const adm = await svc.createAdmission(
       ORG,
@@ -141,7 +151,7 @@ describe("M6-T12 §7.2 — admission wizard + activation gate (W-AD)", () => {
       U,
     );
     await expect(svc.activateAdmission(ORG, adm.id, adm.version)).rejects.toMatchObject({
-      code: "PRECONDITION_FAILED",
+      code: "ADMISSION_NOT_READY",
     });
     await expect(svc.activateAdmission(ORG, adm.id, adm.version)).rejects.toBeInstanceOf(
       ActivationPreconditionError,

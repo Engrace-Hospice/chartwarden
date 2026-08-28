@@ -764,12 +764,23 @@ export const consentDelegatedAccessScope = pgEnum("consent_delegated_access_scop
 /** `referral_status` — the §3.2 referral lifecycle; `withdrawn` backs the cancel-admit path (D16). */
 export const referralStatus = pgEnum("referral_status", [
   "received",
-  "evaluated",
-  "accepted",
-  "rejected",
+  "under_review",
+  "pending_information",
+  "qualified",
+  "declined",
+  "duplicate",
   "withdrawn",
-  "admitted",
+  "converted",
 ]);
+
+export const referralPatientResolutionStatus = pgEnum("referral_patient_resolution_status", [
+  "unresolved",
+  "possible_match",
+  "matched",
+  "created",
+]);
+
+export const referralPriority = pgEnum("referral_priority", ["routine", "high", "urgent"]);
 
 /** `referral_source_channel` — how a referral arrived (§3.2). */
 export const referralSourceChannel = pgEnum("referral_source_channel", [

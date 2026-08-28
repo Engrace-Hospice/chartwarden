@@ -93,6 +93,7 @@ export type {
   IntakeMetricsProvider,
   ExternalGriefResourceReader,
   PatientAddressReader,
+  PatientAdmissionClearanceReader,
   PatientCaregiverReader,
   PatientCoverageReader,
   PatientPrivacyFlagReader,

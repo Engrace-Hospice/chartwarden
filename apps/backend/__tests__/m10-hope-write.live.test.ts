@@ -22,6 +22,7 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 import {
   type HopeWriteOutboxPort,
   M10_OUTBOX_EVENTS,
+  buildM10AdmissionWorkflowConsumer,
   createDbHopeBackend,
 } from "../src/modules/10-hope/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
@@ -87,14 +88,31 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     org: string,
     admissionId: string,
     rfaKind = "01_admission",
+    window: {
+      opensAt?: string;
+      closesAt?: string;
+      lateDeadlineAt?: string;
+      generatedBy?: string;
+    } = {},
   ): Promise<string> {
     return (
       await admin.query(
         `INSERT INTO hope_timepoint_schedule (organization_id, provider_entity_id, location_id, patient_id,
            admission_id, rfa_kind, window_opens_at, window_closes_at, late_deadline_at, alert_cadence, generated_by)
-         VALUES ($1,$2,$3,$4,$5,$6, now(), now() + interval '5 days', now() + interval '10 days', '{}'::jsonb, 'auto_admission')
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'{}'::jsonb,$10)
          RETURNING id`,
-        [org, providerOf[org], locationOf[org], PATIENT, admissionId, rfaKind],
+        [
+          org,
+          providerOf[org],
+          locationOf[org],
+          PATIENT,
+          admissionId,
+          rfaKind,
+          window.opensAt ?? new Date(Date.now() - 1_000).toISOString(),
+          window.closesAt ?? new Date(Date.now() + 5 * 86_400_000).toISOString(),
+          window.lateDeadlineAt ?? new Date(Date.now() + 10 * 86_400_000).toISOString(),
+          window.generatedBy ?? "auto_admission",
+        ],
       )
     ).rows[0].id as string;
   }
@@ -159,6 +177,78 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     data,
   });
 
+  it("M6 activation/discharge consumer materializes HOPE schedules idempotently", async () => {
+    const adm = nextAdmission();
+    const published: string[] = [];
+    const consumer = buildM10AdmissionWorkflowConsumer({
+      db: handle.db,
+      outbox: {
+        async publish(_tx, input) {
+          published.push(`${input.eventName}:${input.payload.rfaKind as string}`);
+        },
+      },
+      admissions: {
+        async getAdmissionSummary(admissionId: string) {
+          return {
+            admissionId,
+            patientId: PATIENT,
+            organizationId: ORG_A,
+            providerEntityId: providerOf[ORG_A],
+            locationId: locationOf[ORG_A],
+            status: "active",
+            admissionAt: "2026-06-01",
+            activatedAt: "2026-06-01",
+            dischargedAt: null,
+            currentElectionPeriodId: null,
+            currentLevelOfCare: "routine_home_care",
+          };
+        },
+      },
+    });
+
+    const activated = {
+      id: "evt-activation-1",
+      organizationId: ORG_A,
+      eventType: "m6.admission.activated",
+      payload: { admissionId: adm, patientId: PATIENT, activatedAt: "2026-06-01T12:00:00.000Z" },
+    };
+    await consumer.handle(activated);
+    await consumer.handle(activated);
+
+    let { rows } = await admin.query(
+      "SELECT rfa_kind FROM hope_timepoint_schedule WHERE admission_id=$1 ORDER BY rfa_kind",
+      [adm],
+    );
+    expect(rows.map((r) => r.rfa_kind)).toEqual(["01_admission", "02_huv1", "03_huv2"]);
+
+    const discharged = {
+      id: "evt-discharge-1",
+      organizationId: ORG_A,
+      eventType: "m6.admission.discharged",
+      payload: { admissionId: adm, reason: "death", dischargeDate: "2026-06-20" },
+    };
+    await consumer.handle(discharged);
+    await consumer.handle(discharged);
+    rows = (
+      await admin.query(
+        "SELECT rfa_kind FROM hope_timepoint_schedule WHERE admission_id=$1 ORDER BY rfa_kind",
+        [adm],
+      )
+    ).rows;
+    expect(rows.map((r) => r.rfa_kind)).toEqual([
+      "01_admission",
+      "02_huv1",
+      "03_huv2",
+      "05_discharge",
+    ]);
+    expect(published).toEqual([
+      "m10.hope.timepoint_scheduled:01_admission",
+      "m10.hope.timepoint_scheduled:02_huv1",
+      "m10.hope.timepoint_scheduled:03_huv2",
+      "m10.hope.timepoint_scheduled:05_discharge",
+    ]);
+  });
+
   it("record → sign (no J2051) closes the linked schedule and emits timepoint_signed", async () => {
     const adm = nextAdmission();
     const sched = await seedSchedule(ORG_A, adm);
@@ -171,6 +261,49 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     const back = await svc.getSchedule(ORG_A, sched);
     expect(back.status).toBe("completed");
     expect(await eventsFor(draft.id)).toContain("m10.hope.timepoint_signed");
+  });
+
+  it("recordTimepoint enforces the linked schedule window and persists late capture facts", async () => {
+    const beforeAdm = nextAdmission();
+    await seedSchedule(ORG_A, beforeAdm, "01_admission", {
+      opensAt: "2026-06-10T00:00:00.000Z",
+      closesAt: "2026-06-14T23:59:59.999Z",
+      lateDeadlineAt: "2026-06-21T23:59:59.999Z",
+    });
+    await expect(
+      svc.recordTimepoint(ORG_A, memberOf[ORG_A], beforeAdm, {
+        ...recordArgs(QUIET_DATA),
+        targetDate: "2026-06-09T23:59:59.999Z",
+      }),
+    ).rejects.toMatchObject({ code: "M10_TIMEPOINT_NOT_OPEN", statusCode: 409 });
+
+    const lateAdm = nextAdmission();
+    await seedSchedule(ORG_A, lateAdm, "01_admission", {
+      opensAt: "2026-06-10T00:00:00.000Z",
+      closesAt: "2026-06-14T23:59:59.999Z",
+      lateDeadlineAt: "2026-06-21T23:59:59.999Z",
+    });
+    await expect(
+      svc.recordTimepoint(ORG_A, memberOf[ORG_A], lateAdm, {
+        ...recordArgs(QUIET_DATA),
+        targetDate: "2026-06-16T12:00:00.000Z",
+      }),
+    ).rejects.toMatchObject({ code: "M10_LATE_REASON_REQUIRED", statusCode: 400 });
+
+    const late = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], lateAdm, {
+      ...recordArgs(QUIET_DATA),
+      targetDate: "2026-06-16T12:00:00.000Z",
+      lateCompletionReasonCode: "hospitalization",
+    });
+    expect(late.wasLate).toBe(true);
+    const { rows } = await admin.query(
+      "SELECT was_late, late_completion_reason_code FROM hope_assessment WHERE id=$1",
+      [late.id],
+    );
+    expect(rows[0]).toMatchObject({
+      was_late: true,
+      late_completion_reason_code: "hospitalization",
+    });
   });
 
   it("sign with a J2051 moderate trigger opens the SFV; recordSfv completes it", async () => {

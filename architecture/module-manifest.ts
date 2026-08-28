@@ -386,6 +386,8 @@ export const MODULES: ModuleDef[] = [
       "discharge_event",
       "transfer_event",
       "referral",
+      "referral_activity",
+      "referral_note",
       "notice_of_rights_acknowledgment",
       "compliance_window",
     ],

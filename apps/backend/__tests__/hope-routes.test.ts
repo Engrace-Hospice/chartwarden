@@ -216,6 +216,41 @@ afterEach(() => {
 });
 
 describe("M10-T06 — §4.6 RBAC gating", () => {
+  it("serves the admission-scoped HOPE workflow summary without table-by-table reconstruction", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions/${ADMISSION}/hope`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.admissionId).toBe(ADMISSION);
+    expect(body.patientId).toBe(PATIENT);
+    expect(body.admissionAssessment.status).toBe("completed");
+    expect(body.admissionAssessment.assessmentId).toBe(SIGNED_A);
+    expect(body.huv1.status).toBe("open");
+    expect(body.huv1.windowStart).toBe("2026-06-06T00:00:00.000Z");
+    expect(body.huv1.attention.state).toBe("none");
+    expect(body.huv2.status).toBe("workflow_not_initialized");
+    expect(body.huv2.attention.state).toBe("workflow_issue");
+    expect(body.dischargeAssessment.status).toBe("not_applicable");
+    expect(body.dischargeAssessment.attention.state).toBe("none");
+    expect(body.sfvs).toHaveLength(1);
+    expect(body.sfvs[0]).toMatchObject({
+      id: SFV_SEEDED,
+      status: "missed",
+      triggeringAssessmentId: SIGNED_A,
+      triggeringRfaKind: "01_admission",
+      attention: { state: "missed", severity: "critical" },
+    });
+    expect(body.summary.actionableCount).toBe(1);
+    expect(body.summary.overdueCount).toBe(1);
+    expect(body.summary.workflowIssueCount).toBe(1);
+    expect(body.summary.highestSeverity).toBe("critical");
+    await app.close();
+  });
+
   it("RN with hope.schedule.read lists schedules; a viewer without the key is 403 only on protected routes", async () => {
     const { app } = makeServer();
     // Names the patient: an UNFILTERED list is an org-wide read that `hope.scope` now reserves for

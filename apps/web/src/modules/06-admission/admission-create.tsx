@@ -8,7 +8,6 @@ import {
   SelectField,
   StepperWorkflowLayout,
   StickyFooterActions,
-  TextField,
   WorkflowStepper,
   t,
   useApiClient,
@@ -18,7 +17,7 @@ import type { WorkflowStep } from "@wardenx/ui";
 // storage would be inappropriate for referral/admission data, and no durable draft endpoint exists.
 import { useCallback, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { MdmEntityLookupField, PatientLookupField } from "../../shared/entity-lookups";
 import { authFailureRedirect } from "./write-workflow";
 
@@ -34,10 +33,8 @@ const STEP_IDS: readonly StepId[] = ["intake", "clinical", "review"];
 export function AdmissionCreate(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
-  const [params] = useSearchParams();
   const [step, setStep] = useState<StepId>("intake");
   const [patientId, setPatientId] = useState("");
-  const [referralId, setReferralId] = useState(params.get("referralId") ?? "");
   const [intakeMethod, setIntakeMethod] = useState<IntakeMethod>("in_person");
   const [attendingPhysicianId, setAttendingPhysicianId] = useState("");
   const [hospiceMedicalDirectorId, setHospiceMedicalDirectorId] = useState("");
@@ -85,7 +82,6 @@ export function AdmissionCreate(): JSX.Element {
     } = await client.POST("/api/v1/admissions", {
       body: {
         patientId: patientId.trim(),
-        ...(referralId.trim() ? { referralId: referralId.trim() } : {}),
         intakeMethod,
         ...(attendingPhysicianId.trim()
           ? { attendingPhysicianId: attendingPhysicianId.trim() }
@@ -119,7 +115,6 @@ export function AdmissionCreate(): JSX.Element {
     intakeMethod,
     navigate,
     patientId,
-    referralId,
   ]);
 
   function next(): void {
@@ -153,7 +148,7 @@ export function AdmissionCreate(): JSX.Element {
           <WorkflowStepper steps={steps} activeId={step} onSelect={(id) => setStep(id as StepId)} />
         </LeftNavRail>
       }
-      context={<AdmissionContext referralId={referralId} intakeMethod={intakeMethod} />}
+      context={<AdmissionContext intakeMethod={intakeMethod} />}
       footer={
         <StickyFooterActions>
           {currentIndex > 0 ? (
@@ -211,12 +206,6 @@ export function AdmissionCreate(): JSX.Element {
                 error={patientId.trim() ? undefined : "Select a patient before continuing."}
                 required
               />
-              <TextField
-                label="Referral ID"
-                value={referralId}
-                onChange={(event) => setReferralId(event.target.value)}
-                hint="Optional for direct walk-in, phone or transfer intake."
-              />
               <SelectField
                 label="Intake method"
                 value={intakeMethod}
@@ -266,7 +255,6 @@ export function AdmissionCreate(): JSX.Element {
               }}
             >
               <ReviewRow label="Patient ID" value={patientId} />
-              <ReviewRow label="Referral ID" value={referralId || "Not provided"} />
               <ReviewRow
                 label="Intake method"
                 value={INTAKE_METHODS.find((item) => item.value === intakeMethod)?.label ?? "—"}
@@ -284,10 +272,7 @@ export function AdmissionCreate(): JSX.Element {
   );
 }
 
-function AdmissionContext({
-  referralId,
-  intakeMethod,
-}: { referralId: string; intakeMethod: IntakeMethod }): JSX.Element {
+function AdmissionContext({ intakeMethod }: { intakeMethod: IntakeMethod }): JSX.Element {
   return (
     <aside
       className="wx-stepper-context"
@@ -299,10 +284,13 @@ function AdmissionContext({
           <h2 style={{ margin: 0, fontSize: "1rem" }}>Intake context</h2>
         </div>
         <p style={{ margin: 0, color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
-          Direct intake is for walk-in, phone or transfer-in patients. A triaged referral creates
-          its own admission.
+          Direct intake is for walk-in, phone or transfer-in patients. Referrals start from the
+          Referral Inbox and create admissions through the referral conversion command.
         </p>
-        <ContextRow label="Referral" value={referralId || "No referral linked"} />
+        <Link to="/referrals" style={backLinkStyle}>
+          <Glyph name="arrow-right" size={14} />
+          <span>Start from referral</span>
+        </Link>
         <ContextRow
           label="Method"
           value={INTAKE_METHODS.find((item) => item.value === intakeMethod)?.label ?? "—"}

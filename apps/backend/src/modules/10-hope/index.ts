@@ -77,9 +77,15 @@ export {
   type HopeScheduleView,
   type HopeSfvView,
   type HopeSubmissionView,
+  type HopeWorkflowItemStatus,
+  type HopeWorkflowSfvView,
+  type HopeWorkflowStateView,
+  type HopeWorkflowSummaryView,
+  type HopeWorkflowTimepointView,
   type RecordSfvArgs,
   type RecordTimepointArgs,
   type RecordedHopeEvent,
+  buildWorkflowState,
   createInMemoryHopeBackend,
 } from "./routes/service";
 // M10-T06 — the §2.4 outbox contract (the full `m10.hope.*` taxonomy; check-fitness-gaps.ts scans
@@ -112,13 +118,20 @@ export {
   type ActiveOrgListPort as M10ActiveOrgListPort,
   type HopeOutboxPublishPort,
   type M10WorkerDeps,
+  type PlannedM10AlertEmission,
   buildM10WorkerDeps,
+  planM10AlertEmissions,
   registerM10CronWorkers,
   runHopeWindowWatchdogCron,
   runSfvWatchdogCron,
   scheduleM10Jobs,
 } from "./jobs/cron-workers";
 export { M10_PLATFORM_JOB_ID, wireM10Tenancy } from "./wiring";
+export {
+  M10_M6_ADMISSION_WORKFLOW_CONSUMER,
+  type M10AdmissionWorkflowOutboxPort,
+  buildM10AdmissionWorkflowConsumer,
+} from "./outbox-consumers/m6-admission-workflow";
 // M10-T07 — the §4.10 iQIES submission worker loop: the pure assemble / submit-readiness / transmit /
 // reconcile / correction-RFA processors over the `hope:submission` queue (the adapter call + MinIO put +
 // SHA-256 are the boot-bound driver's only IO; the @wardenx/iqies-client adapter is the D6 boundary).

@@ -12,6 +12,7 @@ import { getSeam, registerSeam } from "../../../bootstrap/index";
 // (§4.1, T07 — also wires the `caseload_membership` ABAC predicate), PatientReader (§4.8, T08), and
 // PatientMutator (§4.9, T08). `registerPatientSeams` registers them all from the composition root.
 import { buildPatientAddressReader } from "../address-reader";
+import { buildPatientAdmissionClearanceReader } from "../admission-clearance-reader";
 import { buildPatientCoverageReader } from "../coverage-reader";
 import { buildPatientPrivacyFlagReader } from "../privacy-flag-reader";
 import { type CareTeamSeamDeps, registerCareTeamSeam } from "./care-team-provider";
@@ -26,6 +27,7 @@ import {
   createInMemoryPatientReaderStore,
   createPatientReader,
 } from "./patient-reader";
+import { createDbPatientIntakeResolver } from "./patient-intake-resolver";
 
 export {
   type CaseloadStore,
@@ -65,6 +67,7 @@ export {
   createDrizzlePatientMutatorStore,
   createDrizzlePatientReaderStore,
 } from "./drizzle-stores";
+export { createDbPatientIntakeResolver } from "./patient-intake-resolver";
 
 /** Deps for M5's seam registration (slice defaults to in-memory stores). */
 export interface PatientSeamDeps {
@@ -99,6 +102,9 @@ export function registerPatientSeams(deps: PatientSeamDeps = {}): void {
   // posture again: registered only with a db present. The deny-stub's throw is the honest answer for a
   // db-less boot, and M37 refuses the bed assignment on it rather than reading "no roommates".
   if (deps.db) registerSeam("PatientPrivacyFlagReader", buildPatientPrivacyFlagReader(deps.db));
+  if (deps.db)
+    registerSeam("PatientAdmissionClearanceReader", buildPatientAdmissionClearanceReader(deps.db));
+  if (deps.db) registerSeam("PatientIntakeResolver", createDbPatientIntakeResolver(deps.db));
   registerSeam(
     "PatientReader",
     createPatientReader(deps.readerStore ?? createInMemoryPatientReaderStore().store),

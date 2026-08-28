@@ -4,7 +4,7 @@
 // the §4.7 sanitization wrapper is the only path to out-of-band channels (§7.2). The table
 // itself carries no patient column, so the three-column PE/location rule does not apply. RLS
 // + the M4 write-audit trigger land in M36-T03.
-import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { alertOutcome, alertSeverity } from "../../enums";
 import { organizations } from "../organizations";
 
@@ -25,6 +25,10 @@ export const alerts = pgTable(
   (t) => ({
     byOrgCreated: index("alert_org_created_idx").on(t.organizationId, t.createdAt),
     byEventType: index("alert_event_type_idx").on(t.eventType),
+    uniqueCorrelation: uniqueIndex("alert_org_correlation_unique").on(
+      t.organizationId,
+      t.correlationId,
+    ),
   }),
 );
 
