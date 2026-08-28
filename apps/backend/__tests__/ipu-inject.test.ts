@@ -394,7 +394,16 @@ function createIpuTestBackend(): IpuRouteService {
       return row;
     },
     async listShifts(actor) {
-      return [...shifts.values()].filter((s) => s.organizationId === actor.organizationId);
+      // F-070 — the list carries each shift's assignments, so an `assignmentId` is reachable by
+      // somebody other than the session that created it.
+      return [...shifts.values()]
+        .filter((s) => s.organizationId === actor.organizationId)
+        .map((s) => ({
+          ...s,
+          assignments: [...staffAssignments.values()]
+            .filter((a) => a.shiftId === s.id && a.organizationId === actor.organizationId)
+            .map(({ organizationId: _o, ...a }) => a),
+        }));
     },
     async createShift(actor, body) {
       const id = randomUUID();
@@ -405,6 +414,7 @@ function createIpuTestBackend(): IpuRouteService {
         shiftStartAt: body.shiftStartAt,
         shiftEndAt: body.shiftEndAt,
         displayLabel: body.displayLabel ?? null,
+        assignments: [],
         version: 1,
       };
       shifts.set(id, row);
@@ -424,9 +434,9 @@ function createIpuTestBackend(): IpuRouteService {
       return row;
     },
     async unassignStaff(actor, shiftId, body) {
-      void shiftId;
       const row = staffAssignments.get(body.assignmentId);
-      if (!row || row.organizationId !== actor.organizationId) {
+      // F-070 — the path's shift id is part of the identity of what is being cancelled.
+      if (!row || row.organizationId !== actor.organizationId || row.shiftId !== shiftId) {
         throw new NotFoundError("ipu_staff_assignment", body.assignmentId);
       }
       const updated = { ...row, state: "unassigned" };
@@ -577,14 +587,31 @@ function createIpuTestBackend(): IpuRouteService {
       visitors.set(visitorId, updated);
       return updated;
     },
+    async listVisitorRestrictions(actor, query) {
+      // F-070 — the read that makes `restrictionId` obtainable. `active` defaults to true.
+      return [...visitorRestrictions.values()]
+        .filter((r) => r.organizationId === actor.organizationId)
+        .filter((r) => (query.active === "false" ? true : r.liftedAt === null))
+        .filter((r) => (query.unitId ? r.unitId === query.unitId : true))
+        .filter((r) => (query.patientId ? r.patientId === query.patientId : true))
+        .map(({ organizationId: _o, ...r }) => r);
+    },
     async applyVisitorRestriction(actor, body) {
       const id = randomUUID();
       const row = {
         organizationId: actor.organizationId,
         id,
         scope: body.scope,
+        unitId: body.unitId ?? null,
+        patientId: body.patientId ?? null,
         restrictionKind: body.restrictionKind,
-        liftedAt: null,
+        rationale: body.rationale,
+        sourceKind: body.sourceKind,
+        appliedAt: NOW,
+        appliedBy: actor.membershipId,
+        appliedUntil: null,
+        liftedAt: null as string | null,
+        version: 1,
       };
       visitorRestrictions.set(id, row);
       return row;
@@ -1082,7 +1109,7 @@ describe("M37-T11 §4.1 admission-adjacent routes (routes 9, 10, 12, 15, 17-21)"
       method: "POST",
       url: `/api/v1/ipu-admissions/${admission.id}/discharge`,
       headers: SUPER,
-      payload: { reason: "to_home", dischargeEventExists: true },
+      payload: { reason: "to_home" },
     });
     expect(discharged.statusCode).toBe(200);
     expect(discharged.json().state).toBe("discharged");
@@ -1489,6 +1516,144 @@ describe("M37 §4.1 bedside reads (F-069)", () => {
       expect(res.statusCode).toBe(200);
       expect(Array.isArray(res.json().items)).toBe(true);
     }
+    await app.close();
+  });
+
+  // ── F-070 ────────────────────────────────────────────────────────────────────────────────────────
+
+  it("discharge no longer asks the caller whether the M6 discharge happened", async () => {
+    const { app } = makeServer();
+    const open = async () =>
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/v1/ipu-admissions",
+          headers: SUPER,
+          payload: {
+            patientId: randomUUID(),
+            admissionId: randomUUID(),
+            levelOfCarePeriodId: randomUUID(),
+            providerEntityId: randomUUID(),
+            kind: "gip",
+          },
+        })
+      ).json().id as string;
+
+    // `dischargeEventExists` was a REQUIRED boolean, so this exact payload was a 422 before F-070.
+    const withoutField = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-admissions/${await open()}/discharge`,
+      headers: SUPER,
+      payload: { reason: "to_home" },
+    });
+    expect(withoutField.statusCode).toBe(200);
+
+    // A stale client still sending it is IGNORED, not honoured — the schema is non-strict (the repo
+    // convention), so the property is dropped rather than rejected. Either way it reaches no gate:
+    // the real service resolves the fact from M6's `AdmissionStatusReader`, which is what
+    // `m37-ipu-write.live.test.ts` proves against a database.
+    const withField = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-admissions/${await open()}/discharge`,
+      headers: SUPER,
+      payload: { reason: "to_home", dischargeEventExists: false },
+    });
+    expect(withField.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("a shift's staff assignments are listed, and unassign is scoped to the shift in the path", async () => {
+    const { app } = makeServer();
+    const unitId = randomUUID();
+    const shift = await app.inject({
+      method: "POST",
+      url: "/api/v1/ipu-shifts",
+      headers: SUPER,
+      payload: { unitId, shiftStartAt: NOW, shiftEndAt: NOW },
+    });
+    expect(shift.statusCode).toBe(201);
+    const shiftId = shift.json().id as string;
+    const assigned = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-shifts/${shiftId}/staff`,
+      headers: SUPER,
+      payload: { membershipId: randomUUID(), role: "charge_rn" },
+    });
+    expect(assigned.statusCode).toBe(201);
+
+    // The assignment id is reachable WITHOUT the 201 body — this is the whole point.
+    const listed = await app.inject({ method: "GET", url: "/api/v1/ipu-shifts", headers: SUPER });
+    const row = (listed.json().items as { id: string; assignments: { id: string }[] }[]).find(
+      (s) => s.id === shiftId,
+    );
+    expect(row?.assignments.map((a) => a.id)).toEqual([assigned.json().id]);
+
+    // A different shift in the path must not cancel this shift's assignment.
+    const wrongShift = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/ipu-shifts/${randomUUID()}/staff`,
+      headers: SUPER,
+      payload: { assignmentId: assigned.json().id },
+    });
+    expect(wrongShift.statusCode).toBe(404);
+
+    const ok = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/ipu-shifts/${shiftId}/staff`,
+      headers: SUPER,
+      payload: { assignmentId: assigned.json().id },
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().state).toBe("unassigned");
+    await app.close();
+  });
+
+  it("an applied visitor restriction is listed, so it can be lifted by someone else's session", async () => {
+    const { app } = makeServer();
+    const unitId = randomUUID();
+    const applied = await app.inject({
+      method: "POST",
+      url: "/api/v1/ipu-visitor-restrictions",
+      headers: SUPER,
+      payload: {
+        scope: "unit",
+        unitId,
+        restrictionKind: "mask_required",
+        rationale: "Respiratory outbreak on the unit.",
+        sourceKind: "outbreak_surveillance",
+      },
+    });
+    expect(applied.statusCode).toBe(201);
+
+    const active = await app.inject({
+      method: "GET",
+      url: `/api/v1/ipu-visitor-restrictions?unitId=${unitId}`,
+      headers: SUPER,
+    });
+    expect(active.statusCode).toBe(200);
+    expect((active.json().items as { id: string }[]).map((r) => r.id)).toEqual([applied.json().id]);
+
+    const lifted = await app.inject({
+      method: "DELETE",
+      url: "/api/v1/ipu-visitor-restrictions",
+      headers: SUPER,
+      payload: { restrictionId: applied.json().id },
+    });
+    expect(lifted.statusCode).toBe(200);
+
+    // Lifted rows leave the default (in-force) board and are readable through `active=false`.
+    const afterLift = await app.inject({
+      method: "GET",
+      url: `/api/v1/ipu-visitor-restrictions?unitId=${unitId}`,
+      headers: SUPER,
+    });
+    expect(afterLift.json().items).toEqual([]);
+    const all = await app.inject({
+      method: "GET",
+      url: `/api/v1/ipu-visitor-restrictions?unitId=${unitId}&active=false`,
+      headers: SUPER,
+    });
+    expect((all.json().items as { id: string }[]).map((r) => r.id)).toEqual([applied.json().id]);
     await app.close();
   });
 });

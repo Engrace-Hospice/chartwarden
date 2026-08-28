@@ -144,8 +144,9 @@ export const DischargeBodySchema = Type.Object({
     Type.Literal("revocation"),
     Type.Literal("expired_benefit"),
   ]),
-  /** The M6 discharge_event exists (resolved via the M6 DeathEventReader/discharge seam; injected here). */
-  dischargeEventExists: Type.Boolean(),
+  // No `dischargeEventExists` (F-070). The machine refuses a discharge whose M6 side has not happened,
+  // and that boolean used to be supplied BY THE CALLER — the party the guard exists to gate, for whom
+  // `true` was the only sensible value. The service now resolves it from M6's `AdmissionStatusReader`.
 });
 export type DischargeBody = Static<typeof DischargeBodySchema>;
 
@@ -258,15 +259,6 @@ export const CreateShiftBodySchema = Type.Object({
   displayLabel: Type.Optional(Type.String({ maxLength: 80 })),
 });
 export type CreateShiftBody = Static<typeof CreateShiftBodySchema>;
-export const ShiftViewSchema = Type.Object({
-  id,
-  unitId: id,
-  shiftStartAt: Type.String(),
-  shiftEndAt: Type.String(),
-  displayLabel: Type.Union([Type.String(), Type.Null()]),
-  version: Type.Integer(),
-});
-export const ShiftListSchema = Type.Object({ items: Type.Array(ShiftViewSchema) });
 
 export const AssignStaffBodySchema = Type.Object({
   membershipId: id,
@@ -292,6 +284,25 @@ export const StaffAssignmentViewSchema = Type.Object({
   role: Type.String(),
   state: Type.String(),
 });
+
+export const ShiftViewSchema = Type.Object({
+  id,
+  unitId: id,
+  shiftStartAt: Type.String(),
+  shiftEndAt: Type.String(),
+  displayLabel: Type.Union([Type.String(), Type.Null()]),
+  /**
+   * F-070 — the shift's staff assignments. `DELETE /ipu-shifts/:id/staff` takes an `assignmentId`, and
+   * before this the only place one existed was the 201 body of the POST that created it: unassigning
+   * required BEING the browser session that assigned. Scheduling is not done in one sitting.
+   *
+   * This route's own `auditRead` config already described the response as carrying "staff assignments
+   * by membership" — a claim about a payload no schema declared and no query built.
+   */
+  assignments: Type.Array(StaffAssignmentViewSchema),
+  version: Type.Integer(),
+});
+export const ShiftListSchema = Type.Object({ items: Type.Array(ShiftViewSchema) });
 export const UnassignStaffBodySchema = Type.Object({ assignmentId: id });
 export type UnassignStaffBody = Static<typeof UnassignStaffBodySchema>;
 
@@ -446,6 +457,35 @@ export const VisitorRestrictionViewSchema = Type.Object({
   liftedAt: Type.Union([Type.String(), Type.Null()]),
 });
 export const LiftVisitorRestrictionBodySchema = Type.Object({ restrictionId: id });
+
+// F-070 (read side) — `POST` applied a restriction and `DELETE` lifted one by `restrictionId`, and there
+// was NO read route: the id existed only in the 201 of the POST. A `full_block` or `mask_required`
+// restriction persists until lifted, so this made an infection-control block liftable only by whoever
+// still had the tab that applied it. Same defect as the F-069 restraint/visitor ids, one module over.
+export const VisitorRestrictionDetailViewSchema = Type.Object({
+  id,
+  scope: Type.String(),
+  unitId: Type.Union([id, Type.Null()]),
+  patientId: Type.Union([id, Type.Null()]),
+  restrictionKind: Type.String(),
+  rationale: Type.String(),
+  sourceKind: Type.String(),
+  appliedAt: Type.String(),
+  appliedBy: id,
+  appliedUntil: Type.Union([Type.String(), Type.Null()]),
+  liftedAt: Type.Union([Type.String(), Type.Null()]),
+  version: Type.Integer(),
+});
+export const VisitorRestrictionListSchema = Type.Object({
+  items: Type.Array(VisitorRestrictionDetailViewSchema),
+});
+/** `active=true` (the default) hides lifted rows — a board of what is currently in force. */
+export const VisitorRestrictionListQuerySchema = Type.Object({
+  unitId: Type.Optional(id),
+  patientId: Type.Optional(id),
+  active: Type.Optional(Type.Union([Type.Literal("true"), Type.Literal("false")])),
+});
+export type VisitorRestrictionListQuery = Static<typeof VisitorRestrictionListQuerySchema>;
 export type LiftVisitorRestrictionBody = Static<typeof LiftVisitorRestrictionBodySchema>;
 
 // ── meal (§4.1 route 32) ───────────────────────────────────────────────────────────────────────────────

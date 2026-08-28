@@ -9621,7 +9621,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Discharge an admission; dirties the source bed + closes the irc_episode for an IRC stay (§2.2) */
+        /** Discharge an admission; dirties the source bed + closes the irc_episode for an IRC stay (§2.2). 422 unless the M6 admission is ITSELF discharged — resolved server-side through M6's AdmissionStatusReader, not asserted by the caller (F-070) */
         post: operations["postApiV1IpuadmissionsByIdDischarge"];
         delete?: never;
         options?: never;
@@ -9997,7 +9997,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List IPU shifts (§4.1) */
+        /** List IPU shifts with their staff assignments (F-070 — the assignments the route's audit config already claimed it carried, and the only source of the `assignmentId` that unassign takes) */
         get: operations["getApiV1Ipushifts"];
         put?: never;
         /** Create an IPU shift (§4.1) */
@@ -10067,7 +10067,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Visitor restrictions in force (F-070 — `DELETE` lifts by an id that no read route returned, so a restriction could be lifted only from the session that applied it). `active=false` reads the lifted trail */
+        get: operations["getApiV1Ipuvisitorrestrictions"];
         put?: never;
         /** Apply a unit/patient visitor restriction (§2.7) */
         post: operations["postApiV1Ipuvisitorrestrictions"];
@@ -44626,7 +44627,6 @@ export interface operations {
             content: {
                 "application/json": {
                     reason: "to_home" | "to_facility" | "to_other_hospice" | "revocation" | "expired_benefit";
-                    dischargeEventExists: boolean;
                 };
             };
         };
@@ -45647,6 +45647,13 @@ export interface operations {
                             shiftStartAt: string;
                             shiftEndAt: string;
                             displayLabel: string | null;
+                            assignments: {
+                                id: string;
+                                shiftId: string;
+                                membershipId: string;
+                                role: string;
+                                state: string;
+                            }[];
                             version: number;
                         }[];
                     };
@@ -45686,6 +45693,13 @@ export interface operations {
                         shiftStartAt: string;
                         shiftEndAt: string;
                         displayLabel: string | null;
+                        assignments: {
+                            id: string;
+                            shiftId: string;
+                            membershipId: string;
+                            role: string;
+                            state: string;
+                        }[];
                         version: number;
                     };
                 };
@@ -45817,6 +45831,47 @@ export interface operations {
                     "application/json": {
                         unitId: string;
                         invoked: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Ipuvisitorrestrictions: {
+        parameters: {
+            query?: {
+                unitId?: string;
+                patientId?: string;
+                active?: "true" | "false";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            scope: string;
+                            unitId: string | null;
+                            patientId: string | null;
+                            restrictionKind: string;
+                            rationale: string;
+                            sourceKind: string;
+                            appliedAt: string;
+                            appliedBy: string;
+                            appliedUntil: string | null;
+                            liftedAt: string | null;
+                            version: number;
+                        }[];
                     };
                 };
             };

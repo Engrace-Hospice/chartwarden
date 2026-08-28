@@ -53,6 +53,7 @@ import {
   UpdateRoomBodySchema,
   UpdateUnitBodySchema,
   VisitorListQuerySchema,
+  VisitorRestrictionListQuerySchema,
   parse,
 } from "./ipu-typebox";
 import type { IpuRouteService } from "./service";
@@ -529,7 +530,28 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
     },
   );
 
-  // 31. POST/DELETE /ipu-visitor-restrictions — apply / lift a restriction. §4.1.
+  // 31. GET/POST/DELETE /ipu-visitor-restrictions — list / apply / lift a restriction. §4.1.
+  //
+  // F-070 — the GET is new. `DELETE` lifts by `restrictionId` and nothing returned one, so a
+  // `full_block` or `mask_required` restriction could be lifted only from the browser session that
+  // applied it. Gated on `m37.visitor_restriction.apply` rather than a new `.read` key, for the F-069
+  // reason: no template grants a key that does not exist yet, so minting one would make this route deny
+  // every caller — the fail-closed invisibility this audit is about. `.apply` is the audience that
+  // manages restrictions; a tenant that wants a read-only viewer role is a policy decision to take
+  // deliberately, not one to take silently here.
+  app.get(
+    "/api/v1/ipu-visitor-restrictions",
+    {
+      preHandler: [P("m37.visitor_restriction.apply")],
+      config: { auditRead: { resourceKind: "ipu_visitor_restriction", list: true } },
+    },
+    async (request) => ({
+      items: await service.listVisitorRestrictions(
+        actorOf(request),
+        parse(VisitorRestrictionListQuerySchema, request.query ?? {}),
+      ),
+    }),
+  );
   app.post(
     "/api/v1/ipu-visitor-restrictions",
     { preHandler: [P("m37.visitor_restriction.apply")] },

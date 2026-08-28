@@ -8075,6 +8075,8 @@ import {
   UpdateUnitBodySchema as M37UpdateUnitBodySchema,
   VisitorListQuerySchema as M37VisitorListQuerySchema,
   VisitorListSchema as M37VisitorListSchema,
+  VisitorRestrictionListQuerySchema as M37VisitorRestrictionListQuerySchema,
+  VisitorRestrictionListSchema as M37VisitorRestrictionListSchema,
   VisitorRestrictionViewSchema as M37VisitorRestrictionViewSchema,
   VisitorViewSchema as M37VisitorViewSchema,
 } from "../../apps/backend/src/modules/37-ipu/routes/ipu-typebox";
@@ -8162,7 +8164,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M37DischargeBodySchema,
     response: M37AdmissionViewSchema,
     summary:
-      "Discharge an admission; dirties the source bed + closes the irc_episode for an IRC stay (§2.2)",
+      "Discharge an admission; dirties the source bed + closes the irc_episode for an IRC stay (§2.2). 422 unless the M6 admission is ITSELF discharged — resolved server-side through M6's AdmissionStatusReader, not asserted by the caller (F-070)",
   },
   "POST /api/v1/ipu-admissions/:id/confirm": {
     body: M37ConfirmBodySchema,
@@ -8234,7 +8236,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M37RestraintViewSchema,
     summary: "Release a restraint (§2.10)",
   },
-  "GET /api/v1/ipu-shifts": { response: M37ShiftListSchema, summary: "List IPU shifts (§4.1)" },
+  "GET /api/v1/ipu-shifts": {
+    response: M37ShiftListSchema,
+    summary:
+      "List IPU shifts with their staff assignments (F-070 — the assignments the route's audit config already claimed it carried, and the only source of the `assignmentId` that unassign takes)",
+  },
   "POST /api/v1/ipu-shifts": {
     body: M37CreateShiftBodySchema,
     response: M37ShiftViewSchema,
@@ -8266,6 +8272,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/ipu-visitors/:id/check-out": {
     response: M37VisitorViewSchema,
     summary: "Check out a visitor (§4.1)",
+  },
+  "GET /api/v1/ipu-visitor-restrictions": {
+    query: M37VisitorRestrictionListQuerySchema,
+    response: M37VisitorRestrictionListSchema,
+    summary:
+      "Visitor restrictions in force (F-070 — `DELETE` lifts by an id that no read route returned, so a restriction could be lifted only from the session that applied it). `active=false` reads the lifted trail",
   },
   "POST /api/v1/ipu-visitor-restrictions": {
     body: M37ApplyVisitorRestrictionBodySchema,

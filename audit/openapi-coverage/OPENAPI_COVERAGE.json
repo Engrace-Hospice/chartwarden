@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1272,
-    "enriched": 1267,
+    "routes": 1273,
+    "enriched": 1268,
     "deficit": 5,
     "mutating": 715,
     "mutatingNoBody": 1,
-    "gets": 524,
+    "gets": 525,
     "getsNoResponse": 7
   },
   "modules": [
@@ -361,12 +361,12 @@
     },
     {
       "module": "37-ipu",
-      "routes": 49,
-      "enriched": 49,
+      "routes": 50,
+      "enriched": 50,
       "deficit": 0,
       "mutating": 33,
       "mutatingNoBody": 0,
-      "gets": 14,
+      "gets": 15,
       "getsNoResponse": 0
     },
     {

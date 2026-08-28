@@ -22,7 +22,7 @@
       "mutatingNoBody": 0
     },
     "06-admission": {
-      "routes": 48,
+      "routes": 49,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -32,12 +32,12 @@
       "mutatingNoBody": 0
     },
     "08-encounters": {
-      "routes": 33,
+      "routes": 36,
       "deficit": 0,
       "mutatingNoBody": 0
     },
     "09-assessments": {
-      "routes": 18,
+      "routes": 19,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -62,7 +62,7 @@
       "mutatingNoBody": 0
     },
     "14-idg": {
-      "routes": 27,
+      "routes": 30,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -177,7 +177,7 @@
       "mutatingNoBody": 0
     },
     "37-ipu": {
-      "routes": 45,
+      "routes": 50,
       "deficit": 0,
       "mutatingNoBody": 0
     },

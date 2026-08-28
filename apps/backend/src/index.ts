@@ -675,6 +675,7 @@ import {
   type IpuAiPromptRegistryPort,
   M37_OUTBOX_EVENTS,
   buildDrizzleIpuRouteService,
+  getIpuAdmissionStatusReader,
   getIpuOrderReader,
   getIpuRoomingFactsReader,
   getIpuVisitorConsentGate,
@@ -2811,6 +2812,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               // F-069 — the §2.10 restraint gate's M11 order read (same thunk reason). Without it the
               // CoP 418.110 physician-order requirement was satisfied by any non-empty string.
               orders: getIpuOrderReader,
+              // F-070 — the §2.2 discharge gate's M6 admission-state read (same thunk reason). Without
+              // it the "the M6 discharge has happened" precondition was a boolean the client sent.
+              admissions: getIpuAdmissionStatusReader,
             }),
           });
           // M23 (Billing — Medicare) — mount the §4.1 route plugins over the Drizzle READ + WRITE services +

@@ -34,6 +34,7 @@ import type {
   UpdateBedBody,
   UpdateRoomBody,
   UpdateUnitBody,
+  VisitorRestrictionListQuery,
 } from "./ipu-typebox";
 
 export interface UnitView {
@@ -108,6 +109,21 @@ export interface VisitorRestrictionView {
   readonly restrictionKind: string;
   readonly liftedAt: string | null;
 }
+/** One restriction with enough context to decide whether to lift it (F-070). */
+export interface VisitorRestrictionDetailView {
+  readonly id: string;
+  readonly scope: string;
+  readonly unitId: string | null;
+  readonly patientId: string | null;
+  readonly restrictionKind: string;
+  readonly rationale: string;
+  readonly sourceKind: string;
+  readonly appliedAt: string;
+  readonly appliedBy: string;
+  readonly appliedUntil: string | null;
+  readonly liftedAt: string | null;
+  readonly version: number;
+}
 export interface MealView {
   readonly id: string;
   readonly ipuAdmissionId: string;
@@ -173,20 +189,23 @@ export interface RestraintView {
   readonly version: number;
 }
 
-export interface ShiftView {
-  readonly id: string;
-  readonly unitId: string;
-  readonly shiftStartAt: string;
-  readonly shiftEndAt: string;
-  readonly displayLabel: string | null;
-  readonly version: number;
-}
 export interface StaffAssignmentView {
   readonly id: string;
   readonly shiftId: string;
   readonly membershipId: string;
   readonly role: string;
   readonly state: string;
+}
+export interface ShiftView {
+  readonly id: string;
+  readonly unitId: string;
+  readonly shiftStartAt: string;
+  readonly shiftEndAt: string;
+  readonly displayLabel: string | null;
+  /** F-070 — the shift's staff assignments. Without them an `assignmentId` existed only in the 201 of
+   *  the POST that created it, so nobody but that session could unassign. */
+  readonly assignments: readonly StaffAssignmentView[];
+  readonly version: number;
 }
 export interface RnCoverageView {
   readonly unitId: string;
@@ -290,6 +309,10 @@ export interface IpuRouteService {
     admissionId: string,
   ): Promise<readonly GipCriteriaDetailView[]>;
   listIrcEpisodes(actor: IpuReadActor, admissionId: string): Promise<readonly IrcEpisodeView[]>;
+  listVisitorRestrictions(
+    actor: IpuReadActor,
+    query: VisitorRestrictionListQuery,
+  ): Promise<readonly VisitorRestrictionDetailView[]>;
   listVisitors(actor: IpuReadActor, admissionId: string): Promise<readonly VisitorView[]>;
   reassessRestraint(
     actor: IpuWriteActor,
