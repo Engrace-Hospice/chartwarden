@@ -22,7 +22,7 @@
  * Run:     bun run db:seed:scenario-field-ops
  */
 import { Client } from "pg";
-import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
+import { ScenarioLog, type WxSession, findPatientIdByLastName, signIn } from "./lib/api-session";
 import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
@@ -99,49 +99,46 @@ async function ensureAdmissionSited(admissionId: string): Promise<void> {
 }
 
 /**
- * GENUINE GAP, confirmed by reading the code, not assumed: `POST /api/v1/visits` is unconditionally
- * unreachable in production. `scheduling-route-service-db.ts`'s `SchedulingAbacResolver` implementation
- * hard-codes `credentialsActiveForPurpose`→`false`, `resolveDiscipline`→`null`, `isInCaseload`→`false`,
- * `allowsUnassignedPool`→`false` ("cross-module facts fail closed (compromise #3)") — there is no live
- * input that can ever satisfy `clinician_credentials_active` / `discipline_matches_visit` /
- * `within_caseload_or_unassigned_pool`, so every visit-create call gets FORBIDDEN regardless of caller or
- * data. This is the SAME class of deliberate Phase-1 stub as M20's unbound DEK (not a bug to route
- * around quietly) — DB-seeds the row directly instead, matching this file's other documented workarounds.
+ * F-079 — THIS NO LONGER DB-SEEDS, and the header it replaces is worth keeping in the history. It read:
+ * "GENUINE GAP … `POST /api/v1/visits` is unconditionally unreachable in production" because
+ * `SchedulingAbacResolver` hard-coded `credentialsActiveForPurpose`→`false`, `resolveDiscipline`→`null`,
+ * `isInCaseload`→`false` and `allowsUnassignedPool`→`false`. That was true when it was written. GAP-093
+ * and GAP-031 since replaced all four with real reads — role grants, org settings, and the boot-registered
+ * `CaseloadProvider` / `CredentialReader` seams — and nobody came back to the workaround.
+ *
+ * One cause remained, and it was not in the platform: `membership_credential` was EMPTY on every seeded
+ * stack, so `clinician_credentials_active` correctly refused every assignee for want of a licence.
+ * `seed-staff-personas.ts` now issues one per licensable discipline, and this schedules through the real
+ * route — which is the only way to keep the claim honest, because a DB-seeded row proves nothing about
+ * whether a clinician could have booked it.
  */
 async function seedPublishedVisit(
-  organizationId: string,
+  rn: WxSession,
   patientId: string,
   admissionId: string,
   assignedMembershipId: string,
+  patientAddressId: string | null,
   startsAt: string,
   endsAt: string,
 ): Promise<string> {
-  if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
-  const db = new Client({ connectionString: ADMIN_URL });
-  await db.connect();
-  await db.query("SET session_replication_role = replica");
-  const serviceDate = startsAt.slice(0, 10);
-  const r = await db.query<{ id: string }>(
-    `INSERT INTO visit
-       (organization_id, provider_entity_id, location_id, patient_id, admission_id,
-        assigned_membership_id, assigned_discipline_at_assignment, visit_purpose, visit_setting,
-        scheduled_started_at, scheduled_ended_at, service_date, status)
-     VALUES ($1,$2,$3,$4,$5,$6,'rn','routine_visit','patient_home',$7,$8,$9,'published')
-     RETURNING id`,
-    [
-      organizationId,
-      PROVIDER_ENTITY_ID,
-      LOCATION_MAIN_ID,
+  const res = await rn.client.POST("/api/v1/visits", {
+    body: {
       patientId,
       admissionId,
+      // A home visit must be sited; without a recorded address the server refuses it, so fall back to
+      // the telephonic setting rather than inventing an address for the demo patient.
+      patientAddressId,
+      externalFacilityId: null,
       assignedMembershipId,
-      startsAt,
-      endsAt,
-      serviceDate,
-    ],
-  );
-  await db.end();
-  return firstRow(r, "seed-scenario-field-ops: id lookup").id;
+      visitPurpose: "routine_visit",
+      visitSetting: patientAddressId === null ? "telephonic" : "patient_home",
+      scheduledStartedAt: startsAt,
+      scheduledEndedAt: endsAt,
+    },
+  });
+  const data = res.data as unknown as { id: string } | undefined;
+  if (res.error || !data) throw new Error(`visit create failed: ${JSON.stringify(res.error)}`);
+  return data.id;
 }
 
 /**
@@ -351,15 +348,17 @@ async function main(): Promise<void> {
   try {
     const ritaId = await membershipIdFor("rita@wardenx.local");
     visitId = await seedPublishedVisit(
-      rn.organizationId,
+      rn,
       patientId,
       admissionId,
       ritaId,
+      null,
       addHours(24),
       addHours(25),
     );
     log.ok(
-      "Scheduling: 1 visit published (tomorrow, Rita RN) — DB-seeded, POST /visits is unreachable in prod (see file header)",
+      "Scheduling: 1 visit published (tomorrow, Rita RN) — through POST /api/v1/visits, which the D8 " +
+        "licence gate now admits (F-079)",
     );
   } catch (err) {
     log.fail(`M17 scheduling: ${String(err)}`);

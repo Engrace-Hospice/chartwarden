@@ -54,6 +54,34 @@ interface Persona {
   roleName: string;
 }
 
+/** The `credential_discipline` vocabulary — the disciplines a LICENCE can be issued for. Role keys
+ *  outside this set are authority grants, not licences. */
+const CREDENTIAL_DISCIPLINES = new Set([
+  "rn",
+  "lpn",
+  "chha",
+  "msw",
+  "chaplain",
+  "volunteer",
+  "md",
+  "np",
+  "pa",
+]);
+
+/** Plausible issuing bodies, so the seeded roster reads like a real credential file rather than a
+ *  column full of the same placeholder. Demo data — no real board is being asserted. */
+const ISSUING_BODY: Record<string, string> = {
+  rn: "NC Board of Nursing",
+  lpn: "NC Board of Nursing",
+  np: "NC Board of Nursing",
+  md: "NC Medical Board",
+  pa: "NC Medical Board",
+  msw: "NC Social Work Certification and Licensure Board",
+  chha: "NC Nurse Aide Registry",
+  chaplain: "Board of Chaplaincy Certification Inc.",
+  volunteer: "Agency volunteer onboarding",
+};
+
 const PERSONAS: Persona[] = [
   {
     email: "rita@wardenx.local",
@@ -319,8 +347,36 @@ async function main(): Promise<void> {
         [orgId, membershipId, roleId],
       );
     }
+    // F-079 — the §1.1 D8 CLINICAL LICENCE, without which `POST /api/v1/visits` refuses every caller.
+    // `clinician_credentials_active` resolves the assignee's scheduling disciplines from their role
+    // grants, intersects them with the visit purpose's required set, and asks M17's `CredentialReader`
+    // seam for an ACTIVE `membership_credential` in one of them. That seam is real and boot-registered
+    // (GAP-093), the predicate is correct, and `membership_credential` was EMPTY on every seeded stack —
+    // so the gate denied every scheduling attempt, and `seed-scenario-field-ops.ts` worked around it by
+    // inserting the visit row directly, under a header calling the route "unconditionally unreachable in
+    // production". That diagnosis was true when written and had stopped being true; the remaining cause
+    // was that nobody had ever been issued a licence.
+    //
+    // Deliberately only the disciplines the CREDENTIAL vocabulary defines (`credential_discipline`:
+    // rn/lpn/chha/msw/chaplain/volunteer/md/np/pa). A role key that is not one of those — `rn_case_
+    // manager`, `hospice_physician`, `clinical_supervisor` — is an AUTHORITY grant, not a licence, and
+    // issuing a licence for it would assert a credential no board issues.
+    const licensable = p.roleKeys.filter((k) => CREDENTIAL_DISCIPLINES.has(k));
+    for (const discipline of licensable) {
+      await db.query(
+        `INSERT INTO membership_credential
+           (organization_id, membership_id, credential_type, status, effective_at, issuing_body,
+            granted_by_membership_id)
+         VALUES ($1,$2,$3,'active', now() - interval '1 year', $4, $2)`,
+        [orgId, membershipId, discipline, ISSUING_BODY[discipline] ?? "Demo credentialing body"],
+      );
+    }
+
     creds.push({ persona: p, password });
-    console.log(`  ✓ ${p.email} (${p.roleKeys.join("+")}, ${clinicalKeys.length} perms per role)`);
+    console.log(
+      `  ✓ ${p.email} (${p.roleKeys.join("+")}, ${clinicalKeys.length} perms per role` +
+        `${licensable.length > 0 ? `, licensed: ${licensable.join("+")}` : ""})`,
+    );
     userIdByEmail.set(p.email, userId);
   }
 
