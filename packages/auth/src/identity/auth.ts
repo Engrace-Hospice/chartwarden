@@ -102,9 +102,48 @@ export function resolvePasskeyRpId(): string {
   return "localhost";
 }
 
-/** The origin passkeys are enrolled under — same argument as {@link resolvePasskeyRpId}. */
-export function resolvePasskeyOrigin(): string {
-  return process.env.BETTER_AUTH_URL ?? "http://localhost:5173";
+/**
+ * The BROWSER origins a WebAuthn ceremony may run on — same argument as {@link resolvePasskeyRpId}, and
+ * the same value enrolment and step-up verification must both use.
+ *
+ * F-081 — this used to return `BETTER_AUTH_URL ?? "http://localhost:5173"`, which is two different
+ * things wearing one name. `BETTER_AUTH_URL` is the AUTH SERVER's base URL; WebAuthn's `expectedOrigin`
+ * is the origin of the PAGE that ran `navigator.credentials.*`, i.e. the SPA. The `:5173` fallback is
+ * the SPA origin, so the intent was right — but production REQUIRES `BETTER_AUTH_URL`, and any
+ * deployment that does not serve the SPA same-origin therefore refused every registration with
+ * `Unexpected registration response origin "<spa>", expected "<api>"`. Proven on this repo's own dev
+ * stack, where the web app is Vite on :5173 and the API is :3000.
+ *
+ * It resolves from the SAME source the CSRF layer already trusts (`TRUSTED_ORIGINS`, plus `baseURL`,
+ * which Better Auth trusts implicitly) rather than a new env var, because the two questions have one
+ * answer: an origin the browser may call this API from is exactly an origin a ceremony may run on, and
+ * a second variable is a second thing to get wrong. @simplewebauthn accepts the list.
+ */
+export function resolvePasskeyOrigins(): readonly string[] {
+  const trusted = resolveTrustedOrigins();
+  const base =
+    process.env.BETTER_AUTH_URL ??
+    (process.env.NODE_ENV === "production" ? undefined : "http://localhost:3000");
+  // `baseURL` last: a same-origin deployment names it and nothing else, and a split deployment needs
+  // the SPA origin in the list either way. Deduped so an origin present in both is not repeated in the
+  // "expected one of: …" message a genuine mismatch prints.
+  return [...new Set([...trusted, ...(base ? [base] : [])])];
+}
+
+/**
+ * The front-end origins allowed to call this auth server (Better Auth's CSRF allowlist). Shared with
+ * {@link resolvePasskeyOrigins} so the two cannot disagree about which hosts are ours.
+ */
+export function resolveTrustedOrigins(): string[] {
+  if (process.env.TRUSTED_ORIGINS) {
+    return process.env.TRUSTED_ORIGINS.split(",")
+      .map((o) => o.trim())
+      .filter(Boolean);
+  }
+  if (process.env.NODE_ENV === "production") return [];
+  // The three local-dev SPAs: web (:5173), portal (:5174), the admin/platform-ops console (:5175) —
+  // each proxies /api to this backend at a different Vite dev-server origin.
+  return ["http://localhost:5173", "http://localhost:5174", "http://localhost:5175"];
 }
 
 /**
@@ -136,15 +175,7 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
     // check rejects it (INVALID_ORIGIN). `trustedOrigins` is the additive allowlist for those front-end
     // hosts (comma-separated `TRUSTED_ORIGINS`); dev falls back to the Vite origin. `baseURL` is always
     // trusted regardless, so production that serves the SPA same-origin needs no entry here.
-    trustedOrigins: process.env.TRUSTED_ORIGINS
-      ? process.env.TRUSTED_ORIGINS.split(",")
-          .map((o) => o.trim())
-          .filter(Boolean)
-      : process.env.NODE_ENV === "production"
-        ? []
-        : // The three local-dev SPAs: web (:5173), portal (:5174), the admin/platform-ops console
-          // (:5175) — each proxies /api to this backend at a different Vite dev-server origin.
-          ["http://localhost:5173", "http://localhost:5174", "http://localhost:5175"],
+    trustedOrigins: resolveTrustedOrigins(),
     // M1's identity PKs are `uuid` (defaultRandom) — Better Auth's default id generator emits non-UUID
     // strings, which fail to insert into a uuid column (AUTH-T06 live finding). Generate UUIDs instead;
     // a UUID string is valid for the uuid PKs (user/session/account/passkey) AND for verification's
@@ -210,7 +241,7 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
       passkey({
         rpName: "WardenX",
         rpID: resolvePasskeyRpId(),
-        origin: resolvePasskeyOrigin(),
+        origin: [...resolvePasskeyOrigins()],
         // Field-map: Better Auth's `credentialID` → M1's drizzle property `credentialId` (the other
         // passkey fields — publicKey/deviceType/backedUp/transports/counter/aaguid — already match the
         // M1 bindings). The WebAuthn ceremony is browser-only, so this is e2e- (not CI-) verified.

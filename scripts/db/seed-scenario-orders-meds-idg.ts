@@ -60,39 +60,6 @@ async function membershipIdFor(email: string): Promise<string> {
   return firstRow(r, "seed-scenario-orders-meds-idg: id lookup").id;
 }
 
-/**
- * Mark the persona's newest session as having just completed a TOTP step-up (D13 / §4.2.1).
- *
- * The IDG adjourn route requires a FRESH step-up. It used to accept `X-Step-Up: fresh` — a header the
- * caller sent — so this script satisfied D13 by typing it. F-028 removed that: the route now resolves
- * the real session through M2's `SessionContextResolver`, so a client-side string cannot satisfy it,
- * and nothing should be able to. A seed cannot drive the real WebAuthn/TOTP ceremony, so it writes the
- * session fact directly — the SAME documented DB-direct shortcut this script already uses for the
- * meeting and packet rows. The difference from the old header matters: the SERVER still verifies, on
- * real session state, against the real policy. The seed sets up the fact; it does not assert it.
- *
- * `session_replication_role = replica` suppresses the M4 audit triggers, as everywhere else here.
- */
-async function grantFreshStepUp(email: string): Promise<void> {
-  if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
-  const db = new Client({ connectionString: ADMIN_URL });
-  await db.connect();
-  await db.query("SET session_replication_role = replica");
-  // Both columns together — `session_step_up_paired_write` (D8) CHECKs that they are both set or both null.
-  const r = await db.query(
-    `UPDATE session SET last_step_up_at = now(), last_step_up_factor = 'totp'
-       WHERE id = (
-         SELECT s.id FROM session s JOIN "user" u ON u.id = s.user_id
-          WHERE u.email = $1 AND s.expires_at > now()
-          ORDER BY s.created_at DESC LIMIT 1
-       )`,
-    [email],
-  );
-  await db.end();
-  if (!r.rowCount)
-    throw new Error(`no live session for ${email} — sign-in must precede the step-up`);
-}
-
 async function wipePriorOrdersMedsIdg(patientId: string): Promise<void> {
   if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
   const db = new Client({ connectionString: ADMIN_URL });
@@ -484,19 +451,22 @@ async function main(): Promise<void> {
     if (decision.error)
       throw new Error(`decision record failed: ${JSON.stringify(decision.error)}`);
 
-    // The adjourn route is the D13 commit point and requires a fresh step-up, resolved server-side
-    // from the RN's real session (F-028 — it used to read an `X-Step-Up: fresh` request header, which
-    // this caller simply asserted). Stamp the session fact, then make an ordinary call: no
-    // step-up-specific header goes on the wire at all, which is the point.
-    await grantFreshStepUp("rita@wardenx.local");
-    const adjourn = await rn.client.POST("/api/v1/idg/meetings/{id}/adjourn", {
-      params: { path: { id: meetingId } },
-      body: {},
-    });
-    if (adjourn.error) throw new Error(`adjourn failed: ${JSON.stringify(adjourn.error)}`);
-
+    // F-081 — THE MEETING IS LEFT IN SESSION, DELIBERATELY. This script used to adjourn it here, via
+    // `grantFreshStepUp` (a DB-direct stamp of `session.last_step_up_at`, because no script can perform
+    // a WebAuthn or TOTP ceremony). That left a seeded stack whose only IDG meeting was already at its
+    // terminal state, so the §2.2 D13 commit point — the one write in M14 that matters, the one that
+    // emits every open decision, freezes the packets and resets the 42 CFR 418.56(d) 15-day review
+    // floor — had nothing left to act on and no browser test could ever drive it. Same shape as
+    // #106/F-046 (a queue whose only seeded row is terminal) and as the EVV device roster this pass
+    // already fixed.
+    //
+    // It is drivable NOW because step-up itself is: `e2e/specs/idg.spec.ts` enrols a passkey through
+    // the real `/security/passkeys` screen and completes the real `/step-up` ceremony. Three defects
+    // stood in the way of that and are fixed (the passkey origin, `passkey.name` NOT NULL, and a
+    // WebAuthn challenge that was compared in a different encoding than it was signed in), which is
+    // why this shortcut can be retired rather than merely moved.
     log.ok(
-      "IDG: meeting + packet seeded (documented DB-direct workarounds), quorate attendance, 1 decision, adjourned",
+      "IDG: meeting + packet seeded (documented DB-direct workarounds), quorate attendance, 1 decision, LEFT IN SESSION for the D13 adjourn ceremony (see F-081)",
     );
   } catch (err) {
     log.fail(`M14 IDG: ${String(err)}`);

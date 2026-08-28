@@ -1,0 +1,19 @@
+-- 0234 — F-081: `passkey.name` was NOT NULL, so NO passkey could ever be enrolled.
+--
+-- The column is a USER-GIVEN LABEL ("iPhone Face ID"), and every consumer treats it as optional:
+-- Better Auth's passkey plugin takes `name` as an optional argument to `addPasskey` and inserts the
+-- column's DEFAULT when it is absent, the enrolment screen's name input is optional, and that screen's
+-- own list renders `passkey.name ?? "Passkey"` — it was written against a nullable column. The DDL was
+-- the outlier, and with no default on a NOT NULL column the plugin's insert raised 23502 and
+-- `POST /api/auth/passkey/verify-registration` answered 500 FAILED_TO_VERIFY_REGISTRATION.
+--
+-- The consequence was not a cosmetic one. A passkey is one of the platform's two step-up factors and
+-- the ONLY one with an enrolment surface (no TOTP-enrolment screen exists in any front-end), so with
+-- enrolment refused, `attributes.stepUpRecent` could never become true for any human — and the 138
+-- `requireStepUp` guards across 23 modules refused every caller, permanently. Encounter signing
+-- (CoP 418.104(c)), IDG adjourn, claim submit, cost-report submit, GIP attestation and restraint
+-- application are all behind that gate.
+--
+-- Existing rows are unaffected: dropping NOT NULL never invalidates data, and there are no rows to
+-- migrate anyway — nothing has ever been able to insert one.
+ALTER TABLE "passkey" ALTER COLUMN "name" DROP NOT NULL;

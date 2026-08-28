@@ -42,9 +42,20 @@ export function IdgSchedule(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * The window this view reads, anchored at the START OF TODAY rather than at the current instant.
+   *
+   * F-081 — `from` used to be `new Date()`, and the server filters `scheduled_start >= from`. A meeting
+   * IN SESSION started in the past by definition, so the moment a meeting went live it vanished from
+   * the schedule that is supposed to be watching it, along with everything that finished earlier today.
+   * The screen's own status filter offers `Live` and `Adjourned` — neither could ever match a row.
+   * Midnight-anchored, today's meetings stay visible for the whole of today, which is what a
+   * coordinator opening this page during an IDG expects to see.
+   */
   const range = useMemo(() => {
     const from = new Date();
-    const to = new Date(from.getTime() + 56 * 24 * 60 * 60 * 1000); // next 8 weeks
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(from.getTime() + 56 * 24 * 60 * 60 * 1000); // through the next 8 weeks
     return { from: from.toISOString(), to: to.toISOString() };
   }, []);
 

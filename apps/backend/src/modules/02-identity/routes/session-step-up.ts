@@ -15,7 +15,7 @@
 // Step-up acts on SESSION metadata, not PHI, so the three-column / RLS / eraser PHI mandates
 // do not apply here; the org-scoped audit + the context guard are the controls.
 import type { AuditContext, AuditExecutor } from "@wardenx/audit";
-import { requireSession } from "@wardenx/auth";
+import { requireSession, resolvePasskeyRpId } from "@wardenx/auth";
 import { STEP_UP_POLICY, UnauthorizedError, ValidationError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -81,25 +81,48 @@ function readFactor(body: unknown, reply: FastifyReply): StepUpQualifyingFactor 
 }
 
 /**
- * TASK-010 (SEC-005/OPS-010): `WEBAUTHN_RP_ID` unset previously fell through to a hardcoded
- * `"localhost"` regardless of `NODE_ENV` — in production that silently weakens (or outright breaks)
- * every WebAuthn ceremony instead of refusing to boot. `bootstrap/env.ts` now requires the var in
- * production too; this is the defense-in-depth twin at the point of use.
+ * The RP id this route ADVERTISES to the browser — and it must be the one enrolment used (F-081).
+ *
+ * This used to read its own env var, `WEBAUTHN_RP_ID`, while the verifier behind it resolves
+ * `PASSKEY_RP_ID` (`step-up-adapters-db.ts`, whose comment already says the two must be identical).
+ * Two variables for one fact, both REQUIRED in production, with nothing comparing them: set them
+ * differently and the browser runs the ceremony under one RP id while the server checks the asserted
+ * RP-id hash against the other, so every passkey the deployment ever issued is refused — reported as
+ * `webauthn_verification_failed`, which reads as an attack rather than as the typo it is. Dev never
+ * showed it because both fall back to "localhost".
+ *
+ * `PASSKEY_RP_ID` wins because it is the one the CREDENTIAL is bound to: an RP id is chosen at
+ * registration and baked into the key, so the verifier has no freedom and neither does this.
+ * `WEBAUTHN_RP_ID` stays a required production var (`bootstrap/env.ts`) and is now read by nothing —
+ * retiring it is a deployment-config change, not a code one, and doing it here would silently relax a
+ * production boot check while this PR is about the opposite.
  */
-function resolveWebauthnRpId(): string {
-  const configured = process.env.WEBAUTHN_RP_ID;
-  if (configured) return configured;
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("WEBAUTHN_RP_ID is required in production");
-  }
-  return "localhost";
+/**
+ * A fresh WebAuthn challenge, BASE64URL-encoded (F-081).
+ *
+ * It used to be `crypto.randomUUID().replace(/-/g, "")` — a 32-character hex string — and the browser
+ * then fed those 32 ASCII characters to `navigator.credentials.get` as the challenge BYTES. The
+ * authenticator echoes the challenge back inside `clientDataJSON` as base64url of the bytes it was
+ * given, and @simplewebauthn compares that string to `expectedChallenge` verbatim. So the server
+ * compared `163779f8…` against `MTYzNzc5Zjg…` and every assertion this platform could ever produce was
+ * rejected as `webauthn_verification_failed` — a real passkey, correctly signed, reported as a forgery.
+ *
+ * Base64url of 32 random bytes is the shape the rest of the stack already speaks: it is what Better
+ * Auth's own `/passkey/generate-register-options` returns, and it round-trips through the ceremony
+ * unchanged, so `expectedChallenge` is exactly the string that was issued. `crypto.getRandomValues` and
+ * not `randomBytes` so this stays runtime-agnostic (the routes are Web-Crypto-only elsewhere).
+ */
+function defaultWebauthnChallenge(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 export function registerSessionStepUpRoutes(app: FastifyInstance, deps: StepUpRouteDeps): void {
   const newChallengeId = deps.newChallengeId ?? (() => crypto.randomUUID());
-  const newWebauthnChallenge =
-    deps.newWebauthnChallenge ?? (() => crypto.randomUUID().replace(/-/g, ""));
-  const rpId = deps.webauthnRpId ?? resolveWebauthnRpId();
+  const newWebauthnChallenge = deps.newWebauthnChallenge ?? defaultWebauthnChallenge;
+  const rpId = deps.webauthnRpId ?? resolvePasskeyRpId();
 
   // --- Initiate a step-up challenge --------------------------------------------------------
   app.post("/api/v1/sessions/step-up/initiate", async (request, reply) => {

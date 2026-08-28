@@ -4,7 +4,8 @@
 // cross-module seams (M2-T07) in ./session-seam + ./auditor-session.
 export {
   createIdentityAuth,
-  resolvePasskeyOrigin,
+  resolvePasskeyOrigins,
+  resolveTrustedOrigins,
   resolvePasskeyRpId,
   type IdentityAuth,
   type IdentityAuthDb,
