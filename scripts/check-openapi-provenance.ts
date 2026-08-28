@@ -19,7 +19,7 @@
  * job to a tenant and none of the four `held*` fields its own `?held=true` filter selects on. Every
  * gate stayed green.
  *
- * TWO RULES
+ * THREE RULES
  *
  * 1. ALIAS UNIQUENESS — no local name may be bound by more than one import. A duplicate silently
  *    discards one schema: the last binding wins and every route naming that alias publishes it,
@@ -29,6 +29,30 @@
  *    shared from an ANCESTOR directory. It may never reach into a SIBLING surface. A route in
  *    routes/platform/ using routes/platform/platform-typebox is right; using routes/typebox (the
  *    module's shared root) is right; using routes/tenant/tenant-typebox is the #31 defect.
+ *
+ * 3. KEY UNIQUENESS (F-061 / #156) — no `METHOD /path` key may be declared by more than one entry.
+ *    This is rule 1 one level up, and it went unasked for the whole life of the registry. The file
+ *    is a base literal followed by 47 `Object.assign(ROUTE_ENRICHMENTS, {...})` blocks, so a second
+ *    entry for a key REPLACES the first wholesale — not field-by-field. 441 keys were declared
+ *    twice and 422 of the pairs DISAGREED; 62% of the original base literal was unreachable text.
+ *    Nothing could see it: `openapi:check` proves the contract was regenerated from the resolved
+ *    map, `arch:openapi-coverage` counts routes with NO enrichment, `client:check` runs downstream
+ *    of resolution, and rule 2 above reads the same collapsed Map. Every gate ran on what survived
+ *    `Object.assign` and none asked what it discarded.
+ *
+ *    It is not merely dead text. A superseded schema is worse than a wrong one — wrong somewhere a
+ *    reader will still find it, and right nowhere anything checks. M7's shadowed care-plan DTO
+ *    declared `requiredSignerSet: Type.Array(Type.String())` while the wire had always sent
+ *    `{ role, count }`; two screens were written from it and would have thrown on the first
+ *    finalized version (#155). And the shadowing silently DEGRADED the published contract 123
+ *    times, where the later block re-summarised a route it did not know was already documented.
+ *
+ *    There is deliberately NO allowlist, and the one shape that could argue for one is banned with
+ *    it: an entry that reads `...ROUTE_ENRICHMENTS["<its own key>"]` to extend an earlier entry.
+ *    Seventeen M32 routes were written that way and they worked — but they make a key's published
+ *    value depend on evaluation ORDER, which is the property that failed, and they are
+ *    indistinguishable at a glance from the 424 that were silently clobbered. With one entry per
+ *    key, extending it means editing it.
  *
  * SCOPE, STATED OUT LOUD
  *
@@ -58,7 +82,7 @@ export interface ImportBinding {
 }
 
 export interface Violation {
-  rule: "duplicate-alias" | "sibling-surface";
+  rule: "duplicate-alias" | "sibling-surface" | "duplicate-key" | "order-dependent-entry";
   message: string;
 }
 
@@ -220,6 +244,53 @@ export function duplicateAliases(bindings: ImportBinding[]): Violation[] {
   return out;
 }
 
+/**
+ * Every `"METHOD /path":` entry in enrichments.ts, with the 1-based line each is declared on.
+ *
+ * Deliberately the SAME enumeration `routeSchemaIdentifiers` uses, so the two rules cannot disagree
+ * about what an entry is: that function returns a Map and therefore reports only the survivor of a
+ * duplicated key, which is exactly the blindness rule 3 exists to remove.
+ */
+export function routeKeyOccurrences(src: string): Map<string, number[]> {
+  const out = new Map<string, number[]>();
+  for (const m of src.matchAll(/"((?:GET|POST|PUT|PATCH|DELETE) \/[^"]+)":\s*\{/g)) {
+    const key = m[1] as string;
+    const line = src.slice(0, m.index as number).split("\n").length;
+    const seen = out.get(key) ?? [];
+    seen.push(line);
+    out.set(key, seen);
+  }
+  return out;
+}
+
+/**
+ * Rule 3 — one entry per route key, and no entry whose value depends on an earlier one.
+ *
+ * `Object.assign` replaces a key's value WHOLESALE, so a second entry does not extend the first, it
+ * erases it. The spread form (`...ROUTE_ENRICHMENTS["<key>"]`) is the one way to write a second entry
+ * that keeps the first, and it is refused with the duplicates: it makes the published value a
+ * function of block order, and it reads at a glance exactly like the 424 entries that were silently
+ * clobbered.
+ */
+export function duplicateRouteKeys(src: string): Violation[] {
+  const out: Violation[] = [];
+  for (const [key, lines] of routeKeyOccurrences(src)) {
+    if (lines.length < 2) continue;
+    out.push({
+      rule: "duplicate-key",
+      message: `${key} is declared by ${lines.length} entries (lines ${lines.join(", ")}) — Object.assign replaces the value wholesale, so only the last is published and the rest are unreachable text a reader will still find`,
+    });
+  }
+  for (const m of src.matchAll(/\.\.\.ROUTE_ENRICHMENTS\[\s*"([^"]+)"\s*\]/g)) {
+    const line = src.slice(0, m.index as number).split("\n").length;
+    out.push({
+      rule: "order-dependent-entry",
+      message: `line ${line} extends the earlier entry for ${m[1]} by spreading it — write ONE entry per key instead; an entry whose published value depends on block order is the shape rule 3 exists to prevent`,
+    });
+  }
+  return out;
+}
+
 export interface ProvenanceReport {
   checked: number;
   /** pairs whose schema is a local const or a package import — not placeable by directory */
@@ -269,26 +340,35 @@ export function directoryProvenance(
   return { checked, unattributed, unattributedNames: [...unattributedNames].sort(), violations };
 }
 
-export function run(repoRoot = REPO_ROOT): { violations: Violation[]; report: ProvenanceReport } {
+export function run(repoRoot = REPO_ROOT): {
+  violations: Violation[];
+  report: ProvenanceReport;
+  routeKeys: number;
+} {
   const enrichmentsPath = join(repoRoot, "scripts/openapi/enrichments.ts");
   const src = readFileSync(enrichmentsPath, "utf8");
   const bindings = importBindings(src, enrichmentsPath);
   const dupes = duplicateAliases(bindings);
+  const dupeKeys = duplicateRouteKeys(src);
   const report = directoryProvenance(
     scanRoutes(repoRoot),
     routeSchemaIdentifiers(src),
     bindings,
     repoRoot,
   );
-  return { violations: [...dupes, ...report.violations], report };
+  return {
+    violations: [...dupes, ...dupeKeys, ...report.violations],
+    report,
+    routeKeys: routeKeyOccurrences(src).size,
+  };
 }
 
 function main(): void {
-  const { violations, report } = run();
+  const { violations, report, routeKeys } = run();
   const total = report.checked + report.unattributed;
   if (violations.length === 0) {
     console.log(
-      `OK openapi-provenance: ${report.checked}/${total} route→schema pairs attributed to a source file, all from the route's own directory or an ancestor; no duplicate aliases`,
+      `OK openapi-provenance: ${report.checked}/${total} route→schema pairs attributed to a source file, all from the route's own directory or an ancestor; no duplicate aliases; ${routeKeys} route keys each declared exactly once`,
     );
     console.log(
       `   ${report.unattributed} pair(s) not placeable by directory (${report.unattributedNames.length} distinct: local consts in enrichments.ts and @wardenx/* package imports) — reported, not silently skipped`,
@@ -301,7 +381,9 @@ function main(): void {
   }
   console.error(
     "  A route wired to the wrong schema regenerates consistently, so openapi:check and\n" +
-      "  client:check cannot see it — they compare generated output to generated output.\n",
+      "  client:check cannot see it — they compare generated output to generated output.\n" +
+      "  A route DECLARED TWICE is worse: every gate reads the map Object.assign left behind, so\n" +
+      "  the discarded entry is checked by nothing and free to drift into whatever a reader copies.\n",
   );
   process.exit(1);
 }

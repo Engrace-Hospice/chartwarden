@@ -531,6 +531,30 @@ analysis a gate would need is a call graph from the composition root, and the ob
   cross-tenant RLS suites** (M1–M14, M17, M18, M22, M27, M34, M36, M38, M39, M40, plus M4/M5/M7/
   M15/M16/M19–M21/M23–M26/M30/M32/M33). Both columns are advisory; `arch:openapi-coverage` is what
   fails the build.
+- `scripts/check-openapi-provenance.ts` — **OpenAPI schema-provenance gate** (`bun run
+  arch:openapi-provenance`, in `arch:fitness`). Three rules over `scripts/openapi/enrichments.ts`.
+  **Rule 1** — no local name bound by two imports (#31: `TenantExportJobListResponseSchema` is
+  exported by both the platform and tenant typebox files, the second binding won, and a CROSS-TENANT
+  ops list published the tenant-scoped shape). **Rule 2** — a route's schema must come from its own
+  directory or an ancestor, never a sibling surface. **Rule 3 (F-061/#156)** — one entry per
+  `METHOD /path` key. That is rule 1 one level up and it went unasked for the registry's whole life:
+  the file is a base literal plus 47 `Object.assign(ROUTE_ENRICHMENTS, {...})` blocks, so a second
+  entry REPLACES the first wholesale rather than extending it. **441 keys were declared twice, 422 of
+  the pairs disagreeing, and 62% of the base literal was unreachable text.** No gate could see it:
+  `openapi:check` regenerates from the map `Object.assign` left behind, `arch:openapi-coverage`
+  counts routes with *no* entry, `client:check` runs downstream of resolution, and rule 2 itself read
+  the same collapsed `Map` — every gate ran on what survived and none asked what was discarded. It is
+  not merely dead text. A superseded schema is worse than a wrong one — wrong somewhere a reader will
+  still find it, right nowhere anything checks: M7's shadowed care-plan DTO declared
+  `requiredSignerSet: Type.Array(Type.String())` while the wire had always sent `{ role, count }`,
+  and two screens were written from it (#155). And the shadowing quietly DEGRADED the published
+  contract 123 times, where a later block re-summarised a route it did not know was already
+  documented — those summaries were restored onto the surviving entries rather than deleted with the
+  duplicates. There is **no allowlist**, and the one shape that could argue for one is banned with
+  it: an entry that extends an earlier one via `...ROUTE_ENRICHMENTS["<its own key>"]` (17 M32 routes
+  did, and they published correctly) makes a key's value depend on block ORDER — the property that
+  failed — and is indistinguishable at a glance from the 424 that were silently clobbered. With one
+  entry per key, extending it means editing it.
 - `scripts/report-openapi-coverage.ts` — **OpenAPI enrichment-coverage report + ratchet**
   (`bun run openapi:coverage`; `arch:openapi-coverage` runs `--check`). `openapi:check` proves
   openapi.json was *regenerated* and that no enrichment targets a dead route — it says nothing
