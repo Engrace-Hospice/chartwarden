@@ -8046,6 +8046,7 @@ import {
   GipCriteriaListSchema as M37GipCriteriaListSchema,
   GipCriteriaViewSchema as M37GipCriteriaViewSchema,
   InitiateTransferBodySchema as M37InitiateTransferBodySchema,
+  InvokeRnBreakGlassBodySchema as M37InvokeRnBreakGlassBodySchema,
   IrcEpisodeListSchema as M37IrcEpisodeListSchema,
   IrcEpisodeViewSchema as M37IrcEpisodeViewSchema,
   IrcOverrideBodySchema as M37IrcOverrideBodySchema,
@@ -8261,8 +8262,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Read the unit's RN-coverage window grid (§2.3)",
   },
   "POST /api/v1/ipu-units/:id/rn-coverage/break-glass": {
+    body: M37InvokeRnBreakGlassBodySchema,
     response: M37RnBreakGlassViewSchema,
-    summary: "Invoke an RN-coverage break-glass override (step-up; max 4h; §2.3)",
+    summary:
+      "Invoke an RN-coverage break-glass override (step-up; 15m-4h; §2.3). F-071 — this WRITES an `ipu_rn_break_glass` row that the coverage gate reads; it used to publish an outbox event and persist nothing, so the documented escape hatch from an uncovered unit changed no gate's answer. A reason (>= 40 chars) is required. A second call while one is live reports it (`alreadyActive`) rather than extending the window",
   },
   "POST /api/v1/ipu-visitors": {
     body: M37CheckInVisitorBodySchema,

@@ -99648,7 +99648,7 @@
         "tags": [
           "37-ipu"
         ],
-        "summary": "Invoke an RN-coverage break-glass override (step-up; max 4h; §2.3)",
+        "summary": "Invoke an RN-coverage break-glass override (step-up; 15m-4h; §2.3). F-071 — this WRITES an `ipu_rn_break_glass` row that the coverage gate reads; it used to publish an outbox event and persist nothing, so the documented escape hatch from an uncovered unit changed no gate's answer. A reason (>= 40 chars) is required. A second call while one is live reports it (`alreadyActive`) rather than extending the window",
         "parameters": [
           {
             "name": "id",
@@ -99668,7 +99668,9 @@
                   "type": "object",
                   "required": [
                     "unitId",
-                    "invoked"
+                    "invoked",
+                    "expiresAt",
+                    "alreadyActive"
                   ],
                   "properties": {
                     "unitId": {
@@ -99676,6 +99678,19 @@
                       "type": "string"
                     },
                     "invoked": {
+                      "type": "boolean"
+                    },
+                    "expiresAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "alreadyActive": {
                       "type": "boolean"
                     }
                   }
@@ -99688,6 +99703,32 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason",
+                  "durationMinutes"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 40,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "durationMinutes": {
+                    "minimum": 15,
+                    "maximum": 240,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
           }
         }
       }

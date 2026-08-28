@@ -21,6 +21,7 @@ import type {
   CreateUnitBody,
   DischargeBody,
   InitiateTransferBody,
+  InvokeRnBreakGlassBody,
   IrcOverrideBody,
   LiftVisitorRestrictionBody,
   LogInspectionBody,
@@ -207,6 +208,15 @@ export interface ShiftView {
   readonly assignments: readonly StaffAssignmentView[];
   readonly version: number;
 }
+/** F-071 — what an override invocation returns now that it writes one. */
+export interface RnBreakGlassView {
+  readonly unitId: string;
+  readonly invoked: boolean;
+  /** When the override stops passing the coverage gate. */
+  readonly expiresAt: string | null;
+  /** True when a LIVE override already existed; the call reported it rather than stacking a second. */
+  readonly alreadyActive: boolean;
+}
 export interface RnCoverageView {
   readonly unitId: string;
   readonly items: ReadonlyArray<{ readonly hourStartAt: string; readonly isCovered: boolean }>;
@@ -291,7 +301,8 @@ export interface IpuRouteService {
   invokeRnBreakGlass(
     actor: IpuWriteActor,
     unitId: string,
-  ): Promise<{ unitId: string; invoked: boolean }>;
+    body: InvokeRnBreakGlassBody,
+  ): Promise<RnBreakGlassView>;
   transitionBed(actor: IpuWriteActor, bedId: string, body: BedCleaningBody): Promise<BedView>;
   getCensus(actor: IpuReadActor, serviceDate: string): Promise<CensusView>;
   applyRestraint(

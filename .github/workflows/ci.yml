@@ -287,6 +287,7 @@ jobs:
           - { name: "M34 tenant key provider", scripts: "test:m34:tenant-key-provider:live" }
           - { name: "M37 IPU", scripts: "test:m37:write:live" }
           - { name: "M37 privacy gates", scripts: "test:m37:privacy-gates:live" }
+          - { name: "M37 RN coverage", scripts: "test:m37:coverage:live" }
           # AC-01: the §7.4 break-glass co-signature as a real TWO-PERSON control. `cosign` matched on
           # the event id alone, so the invoker could approve their own emergency PHI grant and a
           # co-signature could resurrect a REVOKED one. Both guards are conjuncts in the UPDATE (a

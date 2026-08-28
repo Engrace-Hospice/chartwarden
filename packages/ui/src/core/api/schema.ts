@@ -10052,7 +10052,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Invoke an RN-coverage break-glass override (step-up; max 4h; §2.3) */
+        /** Invoke an RN-coverage break-glass override (step-up; 15m-4h; §2.3). F-071 — this WRITES an `ipu_rn_break_glass` row that the coverage gate reads; it used to publish an outbox event and persist nothing, so the documented escape hatch from an uncovered unit changed no gate's answer. A reason (>= 40 chars) is required. A second call while one is live reports it (`alreadyActive`) rather than extending the window */
         post: operations["postApiV1IpuunitsByIdRncoverageBreakglass"];
         delete?: never;
         options?: never;
@@ -45820,7 +45820,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    durationMinutes: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -45831,6 +45838,8 @@ export interface operations {
                     "application/json": {
                         unitId: string;
                         invoked: boolean;
+                        expiresAt: string | null;
+                        alreadyActive: boolean;
                     };
                 };
             };
