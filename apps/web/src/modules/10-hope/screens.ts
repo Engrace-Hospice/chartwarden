@@ -31,7 +31,7 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 //     them is unreachable end to end. A button there would report success for work the server does not
 //     do, so the Submission Worklist states the limitation on screen instead.
 //
-// F-067 (#91 AC5) — `e2e/specs/hope.spec.ts` drives the primary authored-then-signed path in a real
+// F-074 (#91 AC5) — `e2e/specs/hope.spec.ts` drives the primary authored-then-signed path in a real
 // browser: record an unscheduled HUV1 from the patient timeline, open the draft, sign it, and assert the
 // server's own D4 evaluation created the 2-day SFV obligation. Writing it found that NONE of the writes
 // above had ever reached a real server. `authorDiscipline` is the one field whose wire vocabulary is not

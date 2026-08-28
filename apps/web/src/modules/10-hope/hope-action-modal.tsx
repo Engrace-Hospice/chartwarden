@@ -82,7 +82,7 @@ export function HopeActionModal({
 }: HopeActionModalProps): JSX.Element | null {
   const client = useApiClient();
   const session = useSession();
-  // F-067 (#91) — the correction's author attribution is the CORRECTING clinician's discipline, resolved
+  // F-074 (#91) — the correction's author attribution is the CORRECTING clinician's discipline, resolved
   // from their own session roles. It used to arrive as an `authorDiscipline` PROP that the assessment
   // detail filled from `row.authorDiscipline` — a field the read projection hard-codes to `""`
   // (`hope-route-service-db.ts`: the column does not exist, the discipline is request-time only). The

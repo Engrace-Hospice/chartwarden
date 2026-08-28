@@ -23,7 +23,7 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 //     the read M07 declined to build a create without, and the one M24's claim wizard works around by
 //     asking a clerk to type the uuid.
 //
-// F-068 (#91 AC5) — `e2e/specs/prescribing.spec.ts` drives the primary path in a real browser: search
+// F-075 (#91 AC5) — `e2e/specs/prescribing.spec.ts` drives the primary path in a real browser: search
 // M38 for the drug, resolve its NDC, create the draft, send it for signature, sign it, and assert the
 // order reaches the patient's ACTIVE list — the state M13's eMAR administers against. Writing it found
 // that "PRESCRIBING WORKS NOW" was not true on any seeded stack, for a reason outside M12: `code_system`,
