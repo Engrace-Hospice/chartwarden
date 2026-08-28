@@ -58,6 +58,7 @@
         "apps/backend/__tests__/auth.live.test.ts",
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
         "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
+        "apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
       "directRoutesReferenced": 14
@@ -281,7 +282,8 @@
       "routes": 35,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/fhir-inject.test.ts"
+        "apps/backend/__tests__/fhir-inject.test.ts",
+        "apps/backend/__tests__/m28-fhir-gateway.live.test.ts"
       ],
       "directRoutesReferenced": 35
     },

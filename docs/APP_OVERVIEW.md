@@ -157,7 +157,7 @@ reads the same way.
 ### 1. The manifest is the single source of truth
 
 `architecture/module-manifest.ts` declares, per module: its code paths, its `dependsOn` list, and
-the Postgres tables it owns (460 tables across 40 modules). The `apps/` + `packages/` tree is
+the Postgres tables it owns (461 tables across 40 modules). The `apps/` + `packages/` tree is
 **generated from this manifest** via `bun run scaffold`; `arch:parity` fails the build if the tree
 and manifest drift apart. A module boundary violation (importing another module's internals
 directly) is caught by `dependency-cruiser` (`architecture/.dependency-cruiser.cjs`), not just by

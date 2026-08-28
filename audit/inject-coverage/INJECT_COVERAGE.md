@@ -11,7 +11,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 02-identity | 24 | ✅ | 24/24 | apps/backend/__tests__/audit-accounting.test.ts, apps/backend/__tests__/audit-routes.test.ts, apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/authz-idor.test.ts, apps/backend/__tests__/authz-routes.test.ts, apps/backend/__tests__/authz-validation.test.ts, apps/backend/__tests__/device-attestation-routes.test.ts, apps/backend/__tests__/identity-routes.test.ts, apps/backend/__tests__/session-step-up.test.ts, apps/backend/__tests__/step-up-mount.test.ts |
 | 03-authorization | 17 | ✅ | 16/17 | apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/authz-idor.test.ts, apps/backend/__tests__/authz-routes.test.ts, apps/backend/__tests__/authz-validation.test.ts |
 | 04-audit | 13 | ✅ | 13/13 | apps/backend/__tests__/audit-accounting.test.ts, apps/backend/__tests__/audit-routes-mount.test.ts, apps/backend/__tests__/audit-routes.test.ts, apps/backend/__tests__/gap-003-compliance-routes-mount.test.ts, apps/backend/__tests__/gap-003-compliance-routes.live.test.ts |
-| 05-patient | 14 | ✅ | 14/14 | apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts, apps/backend/__tests__/gap-093-membership-credential-live.test.ts, apps/backend/__tests__/patient-routes.test.ts |
+| 05-patient | 14 | ✅ | 14/14 | apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts, apps/backend/__tests__/gap-093-membership-credential-live.test.ts, apps/backend/__tests__/m28-fhir-gateway.live.test.ts, apps/backend/__tests__/patient-routes.test.ts |
 | 06-admission | 49 | ✅ | 49/49 | apps/backend/__tests__/admission-certification.test.ts, apps/backend/__tests__/admission-discharge.test.ts, apps/backend/__tests__/admission-intake.test.ts, apps/backend/__tests__/admission-routes.test.ts |
 | 07-care-plan | 19 | ✅ | 18/19 | apps/backend/__tests__/assessment-routes.test.ts, apps/backend/__tests__/care-plan-conformance.live.test.ts, apps/backend/__tests__/care-plan-routes.test.ts, apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts |
 | 08-encounters | 37 | ✅ | 33/37 | apps/backend/__tests__/encounter-authoring.test.ts, apps/backend/__tests__/encounter-routes.test.ts |
@@ -34,7 +34,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 25-remittance | 32 | ✅ | 31/32 | apps/backend/__tests__/remittance-inject.test.ts |
 | 26-cap | 27 | ✅ | 27/27 | apps/backend/__tests__/cap-inject.test.ts, apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts |
 | 27-cost-report | 45 | ✅ | 45/45 | apps/backend/__tests__/cost-report-inject.test.ts |
-| 28-fhir | 35 | ✅ | 35/35 | apps/backend/__tests__/fhir-inject.test.ts |
+| 28-fhir | 35 | ✅ | 35/35 | apps/backend/__tests__/fhir-inject.test.ts, apps/backend/__tests__/m28-fhir-gateway.live.test.ts |
 | 29-external-interfaces | 33 | ✅ | 33/33 | apps/backend/__tests__/external-interfaces-inject.test.ts |
 | 30-quality | 60 | ✅ | 60/60 | apps/backend/__tests__/quality-inject.test.ts |
 | 31-portal | 53 | ✅ | 53/53 | apps/backend/__tests__/portal-inject.test.ts |

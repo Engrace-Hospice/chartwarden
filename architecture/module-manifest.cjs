@@ -838,6 +838,7 @@ exports.MODULES = [
       "fhir_client_credential",
       "fhir_client_session",
       "fhir_inbound_resource",
+      "fhir_read_disclosure",
       "tenant_fhir_config",
     ],
   },

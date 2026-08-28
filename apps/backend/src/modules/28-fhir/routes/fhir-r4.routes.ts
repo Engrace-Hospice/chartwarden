@@ -6,19 +6,27 @@ import { buildCapabilityStatement, isSupportedScope } from "@wardenx/fhir";
 // `allowed_scopes`, applied in the handler. Every error is a FHIR `OperationOutcome`
 // (`application/fhir+json`); the admin surface (R23-R39) uses the WardenX envelope instead.
 //
-// ── PHASE-1 POSTURE (read-only US Core R4, `fhir.write` OFF) ────────────────────────────────────────
+// ── POSTURE (read-only US Core R4, `fhir.write` OFF) ────────────────────────────────────────────────
 //
-//   · The projection pipeline (`@wardenx/fhir` mappers/search) reads through the M28 consumed seams, which
-//     are M1 fail-closed deny-stubs this wave — so a live single-resource read has no data path and R4/R6
-//     return a well-formed empty result rather than a 500 from a deny-stub throw. The SHAPE (scope
-//     enforcement, disclosure audit, OperationOutcome envelope) is real and is what the surface guarantees.
+//   · The projection pipeline is `./projection.ts`: every served resource is composed at read time from
+//     an owner module's data through the M1 seam registry, shaped by a pure `@wardenx/fhir` mapper, and
+//     put through the D3 egress consent gate before it reaches the wire. `SERVED_RESOURCES` is the single
+//     source of truth for what this gateway can answer, and BOTH the CapabilityStatement (R1) and the
+//     router read it — so the conformance claim and the behaviour cannot drift apart.
+//   · A resource type this gateway does not serve answers `not-supported`, NOT `not-found`. The
+//     difference is the whole point: `not-found` tells a partner their patient has no such record, which
+//     is a statement about their data and was false; `not-supported` is a statement about this server.
 //   · Claim / ClaimResponse / ExplanationOfBenefit / ServiceRequest / QuestionnaireResponse / Location
 //     short-circuit to 404 BEFORE reaching any reader (W-FHIR-07): they are registered as CONCRETE routes
 //     so Fastify prefers them over the generic `:resourceType` param route.
-//   · R5/R6 (FHIR R5/R6) return 415 via a wildcard.
-//   · The token endpoint (R3) validates the SMART Backend Services form and resolves the client; with no
-//     platform-bypass client-resolution path bound this wave it fails CLOSED (`invalid_client`), which is
-//     correct — no external client is provisioned yet.
+//   · R17/R18 (FHIR R5/R6) return 415 via a wildcard.
+//   · The token endpoint (R3) runs both §D2 auth paths for real (`./token-mint.ts`). It used to answer
+//     `invalid_client` unconditionally, which made every route below it unreachable by construction —
+//     not a fail-closed posture but a wall (F-035, #95).
+//   · EVERY served read writes a 45 CFR §164.528 accounting row through `store.recordDisclosure`, AFTER
+//     the body is assembled, so `resultCount` is what actually crossed. A read that 403s or 404s
+//     disclosed nothing and is deliberately not accounted for.
+import type { OperationOutcome } from "@wardenx/fhir";
 import {
   FHIR_FORWARD_SEAM_RESOURCES,
   FHIR_PHASE_1_VERSION,
@@ -40,7 +48,21 @@ import {
   parseQuery,
 } from "./m28-typebox";
 import { FHIR_JSON_CONTENT_TYPE, operationOutcome, sendOutcome } from "./operation-outcome";
+import {
+  type FhirProjectionContext,
+  SERVED_RESOURCES,
+  projectResourceById,
+  projectSearch,
+  servedResource,
+  supportsInteraction,
+} from "./projection";
 import type { FhirBearerContext, FhirGatewayStore } from "./store";
+import {
+  type FhirAssertionReplayGuard,
+  type FhirJwksFetcher,
+  createInMemoryFhirReplayGuard,
+  mintFhirToken,
+} from "./token-mint";
 
 /** A disclosure-audit sink for served FHIR reads (D15 / §164.528). Injected; defaults to a no-op. */
 export interface FhirDisclosureAuditPort {
@@ -49,26 +71,31 @@ export interface FhirDisclosureAuditPort {
 
 export interface FhirR4RouteDeps {
   readonly store: FhirGatewayStore;
-  /** Absent ⇒ disclosure reads are not persisted (db-less boot); the shape still runs. */
+  /**
+   * Where §164.528 accounting rows go. Defaults to `store.recordDisclosure` — the ledger, not a no-op:
+   * this used to default to a no-op and the composition root never overrode it, so a surface whose
+   * entire purpose is disclosing PHI to third parties accounted for nothing. A test may substitute a
+   * spy; a deployment may not substitute silence.
+   */
   readonly audit?: FhirDisclosureAuditPort;
   readonly now?: () => string;
+  /** R3 — resolves a registered client's `jwks_uri`. Absent ⇒ the SMART assertion path cannot verify. */
+  readonly jwks?: FhirJwksFetcher;
+  /** R3 — the assertion `jti` replay defence. Defaults to the per-process guard (see its own header). */
+  readonly replay?: FhirAssertionReplayGuard;
+  /** R3 — this endpoint's absolute URL, the `aud` an assertion must carry. */
+  readonly tokenEndpointUrl?: string;
 }
 
-/** The resource types the Phase-1 CapabilityStatement advertises `read` + `search-type` on. */
-const ADVERTISED_RESOURCES = [
-  "Patient",
-  "Encounter",
-  "Condition",
-  "Observation",
-  "MedicationRequest",
-  "MedicationStatement",
-  "MedicationAdministration",
-  "DiagnosticReport",
-  "CarePlan",
-  "Goal",
-  "DocumentReference",
-  "Coverage",
-] as const;
+/**
+ * The resource types this gateway serves — derived from `SERVED_RESOURCES`, never a second list.
+ *
+ * It used to be a hand-written literal of TWELVE types on which the CapabilityStatement claimed `read`
+ * and `search-type`, while the read handler answered 404 for all twelve and the search handler an empty
+ * Bundle for all twelve. A conformance statement is a machine-readable promise, and it was the first
+ * thing any partner's tooling fetched — anonymously, before authenticating (F-035, #95).
+ */
+const ADVERTISED_RESOURCES = SERVED_RESOURCES.map((r) => r.type);
 
 const bearerToken = (request: FastifyRequest): string | null => {
   const header = request.headers.authorization;
@@ -80,8 +107,51 @@ const bearerToken = (request: FastifyRequest): string | null => {
 export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps): void {
   const { store } = deps;
   const now = deps.now ?? (() => new Date().toISOString());
+  const replay = deps.replay ?? createInMemoryFhirReplayGuard();
   const auditRead = async (envelope: FhirReadDisclosureEnvelope): Promise<void> => {
-    if (deps.audit) await deps.audit.auditRead(envelope);
+    // Defaults to the LEDGER (F-035). A failure to record must not be swallowed silently, but neither
+    // may it un-serve a read the client is entitled to and has already been authorised for: the
+    // disclosure happened either way, so the honest failure mode is a loud log beside a served response,
+    // not a 500 that hides both.
+    try {
+      if (deps.audit) await deps.audit.auditRead(envelope);
+      else await store.recordDisclosure(envelope);
+    } catch (err) {
+      app.log.error(
+        { err, resourceType: envelope.resourceType, fhirClientId: envelope.fhirClientId },
+        "M28 §164.528: a served FHIR read could not be written to the disclosure ledger",
+      );
+    }
+  };
+
+  /**
+   * An unbound reader seam is a DEPLOYMENT fact, not a clinical one.
+   *
+   * Every projection reads through the M1 seam registry, and an unregistered seam is a fail-closed
+   * deny-stub that THROWS `NotImplementedError`. Left to propagate that is a 500 — the shape this file's
+   * original comment was avoiding when it answered a blanket 404 instead. Both are wrong for the same
+   * reason: neither tells the truth. A 503 naming the condition says "this deployment cannot answer that
+   * yet", which is what actually happened, and matches how the terminology provider two routes down
+   * already reports its own outage.
+   */
+  const unboundReader = (error: unknown): boolean =>
+    error instanceof Error && error.name === "NotImplementedError";
+
+  /**
+   * Assemble the per-request projection context. The tenant's D9 URI bases come from
+   * `tenant_fhir_config`; a tenant that has never configured them gets a `urn:`-namespaced fallback
+   * derived from its own org id, which is still tenant-private and still resolvable as an identifier
+   * system — never a shared or guessable namespace that two tenants could both mint into.
+   */
+  const projectionContext = async (ctx: FhirBearerContext): Promise<FhirProjectionContext> => {
+    const config = await store.getConfig(ctx.organizationId);
+    return {
+      organizationId: ctx.organizationId,
+      recipientClientId: ctx.clientId,
+      tenantFhirHost: config?.tenantFhirHost ?? `urn:wardenx:org:${ctx.organizationId}`,
+      identifierUriBase: config?.identifierUriBase ?? `urn:wardenx:org:${ctx.organizationId}`,
+      asOfDate: now(),
+    };
   };
 
   /** Resolve the bearer client, or send a 401 OperationOutcome and return null. */
@@ -126,10 +196,14 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
       releaseTag: "phase-1",
       publicationDate: "2026-01-01",
       baseUrl: "/fhir/r4",
-      resources: ADVERTISED_RESOURCES.map((type) => ({
-        type,
-        interactions: ["read", "search-type"] as const,
-        searchParams: type === "Patient" ? ["identifier", "name"] : ["patient"],
+      // Each resource declares the interactions it ACTUALLY supports, which is what
+      // `CapabilityStatement.rest.resource.interaction` is for. Encounter is `search-type` only —
+      // M8 publishes a patient-scoped signed-encounter read and no read-by-id, so an instance read has
+      // no data path and claiming one would be the same false promise in a smaller font.
+      resources: SERVED_RESOURCES.map((r) => ({
+        type: r.type,
+        interactions: r.interactions,
+        searchParams: r.searchParams,
       })),
       operations: [
         {
@@ -159,17 +233,49 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
     };
   });
 
-  // ── R3 — SMART Backend Services token mint ───────────────────────────────────────────────────────
+  // ── R3 — token mint (both §D2 auth paths) ────────────────────────────────────────────────────────
   app.post("/fhir/oauth2/token", async (request, reply) => {
     const body = parse(TokenFormBody, request.body);
-    void body; // shape validated; the client-assertion verification + session mint bind with the
-    // platform-bypass client-resolution path (Phase-1 fail-closed — no external client is provisioned).
-    reply.code(401).header("content-type", "application/json");
-    return {
-      error: "invalid_client",
-      error_description:
-        "the presenting client could not be resolved (Phase-1 fail-closed: no external FHIR client is provisioned)",
-    };
+    const result = await mintFhirToken(
+      {
+        store,
+        jwks: deps.jwks ?? {
+          async fetch() {
+            return null;
+          },
+        },
+        replay,
+        tokenEndpointUrl: deps.tokenEndpointUrl,
+        nowMs: () => Date.parse(now()),
+      },
+      {
+        scope: body.scope,
+        clientId: body.client_id,
+        clientAssertionType: body.client_assertion_type,
+        clientAssertion: body.client_assertion,
+        clientSecret: body.client_secret,
+        ip: request.ip,
+      },
+    );
+    // An OAuth token endpoint answers OAuth JSON, never an OperationOutcome — a SMART client's token
+    // layer parses the former and would report the latter as an unparseable response.
+    reply.header("content-type", "application/json");
+    if (!result.ok) {
+      // The precise reason is LOGGED, never sent: distinguishing "no such client" from "wrong secret"
+      // would turn this endpoint into a client-id oracle for an unauthenticated caller.
+      request.log.warn(
+        { reason: result.error.logReason, clientId: body.client_id },
+        "M28 R3: token request refused",
+      );
+      reply.code(result.error.status);
+      return result.error.body;
+    }
+    request.log.info(
+      { clientId: result.grant.clientId, scope: result.grant.body.scope },
+      "M28 R3: token minted",
+    );
+    reply.code(200);
+    return result.grant.body;
   });
 
   // ── W-FHIR-07 — forward-seam + Phase-2 resources: 404 BEFORE any reader (concrete routes win) ─────
@@ -201,17 +307,82 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
       );
     }
     const patientId = (request.params as { id: string }).id;
-    await auditRead({
-      organizationId: ctx.organizationId,
-      fhirClientId: ctx.clientId,
-      resourceType: "Patient",
-      patientId,
-      queryParameters: { $everything: "true" },
-      resultCount: 0,
-      servedAt: now(),
+    const projectionCtx = await projectionContext(ctx);
+    // `$everything` is every resource this gateway serves ABOUT one patient — which is precisely the
+    // served set, each scoped to that patient, rather than a separate aggregation. Deriving it from
+    // `SERVED_RESOURCES` is what keeps it honest as the served set grows or shrinks: a resource added to
+    // the gateway appears here automatically, and one removed cannot linger in a stale second list.
+    //
+    // A scope the client does NOT hold silently contributes nothing rather than failing the whole
+    // operation: `$everything` means "everything you may see", and refusing the entire Bundle because a
+    // partner lacks one of four scopes would make the operation unusable for every narrowly-scoped
+    // client. The Patient scope IS required, and was checked above.
+    const collected: Record<string, unknown>[] = [];
+    const warnings: OperationOutcome[] = [];
+    // An unbound reader for ONE type degrades that type only. `$everything` is a compilation, so
+    // refusing the whole Bundle because one owner module's seam is unbound would hide the three that
+    // ARE readable; the consumer is told which type was unavailable through an `OperationOutcome` entry
+    // rather than through a silent gap.
+    const collect = async (type: string, params: { _id?: string; patient?: string }) => {
+      try {
+        const projection = await projectSearch(projectionCtx, type, params);
+        if (projection === null) return;
+        collected.push(...projection.resources);
+        warnings.push(...projection.warnings);
+      } catch (error) {
+        if (!unboundReader(error)) throw error;
+        request.log.warn({ err: error, resourceType: type }, "M28 R6: reader seam unbound");
+        warnings.push({
+          resourceType: "OperationOutcome",
+          issue: [
+            {
+              severity: "warning",
+              code: "not-supported",
+              details: {
+                text: `${type} is unavailable on this deployment: its reader seam is not bound`,
+              },
+            },
+          ],
+        });
+      }
+    };
+    await collect("Patient", { _id: patientId });
+    for (const served of SERVED_RESOURCES) {
+      if (served.type === "Patient") continue;
+      if (!hasReadScope(ctx, served.type)) continue;
+      await collect(served.type, { patient: patientId });
+    }
+    // De-duplicate the advisories the same way `gateBundleForEgress` does within one resource type: a
+    // patient with no Part 2 release produces the same `suppressed` warning from every type, and four
+    // copies of it say nothing the first does not.
+    const seenWarning = new Set<string>();
+    const dedupedWarnings = warnings.filter((w) => {
+      const text = w.issue[0]?.details?.text ?? "";
+      if (seenWarning.has(text)) return false;
+      seenWarning.add(text);
+      return true;
     });
+    if (collected.length > 0) {
+      await auditRead({
+        organizationId: ctx.organizationId,
+        fhirClientId: ctx.clientId,
+        resourceType: "Patient",
+        patientId,
+        queryParameters: { $everything: "true" },
+        resultCount: collected.length,
+        servedAt: now(),
+      });
+    }
     reply.header("content-type", FHIR_JSON_CONTENT_TYPE);
-    return { resourceType: "Bundle", type: "searchset", total: 0, entry: [] };
+    return {
+      resourceType: "Bundle",
+      type: "searchset",
+      total: collected.length,
+      entry: [
+        ...collected.map((resource) => ({ resource, search: { mode: "match" } })),
+        ...dedupedWarnings.map((resource) => ({ resource, search: { mode: "outcome" } })),
+      ],
+    };
   });
 
   // ── R7 / R9 — system-level + all-patient $export ─────────────────────────────────────────────────
@@ -541,24 +712,67 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
         "FHIR_SCOPE_DENIED",
       );
     }
+    if (!supportsInteraction(resourceType, "read")) {
+      // NOT `not-found`. A 404/not-found is a statement about the TENANT'S data ("you have no such
+      // record"); this is a statement about the SERVER ("I do not serve that"). Answering the first
+      // when the second is true is how a partner concludes a patient has no medications.
+      return sendOutcome(
+        reply,
+        404,
+        "warning",
+        "not-supported",
+        servedResource(resourceType) === undefined
+          ? `${resourceType} is not served by this FHIR gateway`
+          : `${resourceType} supports search only on this FHIR gateway; read by id is not available`,
+        "FHIR_NOT_SUPPORTED",
+      );
+    }
+    let projection: Awaited<ReturnType<typeof projectResourceById>>;
+    try {
+      projection = await projectResourceById(await projectionContext(ctx), resourceType, id);
+    } catch (error) {
+      if (!unboundReader(error)) throw error;
+      request.log.warn({ err: error, resourceType }, "M28 R4: reader seam unbound");
+      return sendOutcome(
+        reply,
+        503,
+        "error",
+        "processing",
+        `${resourceType} cannot be read on this deployment: its owner module's reader seam is not bound`,
+        "FHIR_READER_UNBOUND",
+      );
+    }
+    if (projection === null || projection.resources.length === 0) {
+      // Genuinely absent, OR filtered by the D3 consent gate. Deliberately indistinguishable: telling a
+      // recipient "this exists but you may not see it" is itself a disclosure — that the patient has a
+      // record of that type — which is exactly what an absent 42 CFR Part 2 release forbids. The
+      // advisory that IS returned says content was suppressed without saying what.
+      const outcome = operationOutcome(
+        "warning",
+        "not-found",
+        `${resourceType}/${id} was not found`,
+        "FHIR_NOT_FOUND",
+      );
+      reply.code(404).header("content-type", FHIR_JSON_CONTENT_TYPE);
+      return {
+        ...outcome,
+        issue: [...outcome.issue, ...(projection?.warnings.flatMap((w) => w.issue) ?? [])],
+      };
+    }
+    const resource = projection.resources[0] as Record<string, unknown>;
+    // Accounted for AFTER the body exists, with the real count (§164.528). A refused or absent read
+    // disclosed nothing and must not appear in an accounting.
     await auditRead({
       organizationId: ctx.organizationId,
       fhirClientId: ctx.clientId,
       resourceType,
+      ...(resourceType === "Patient" ? { patientId: id } : {}),
       queryParameters: { _id: id },
-      resultCount: 0,
+      resultCount: 1,
       servedAt: now(),
     });
-    // Phase 1: the projection reader seams are fail-closed deny-stubs, so no live single-resource read
-    // has a data path — a well-formed not-found is the honest answer, never a 500 from a deny-stub throw.
-    return sendOutcome(
-      reply,
-      404,
-      "warning",
-      "not-found",
-      `${resourceType}/${id} was not found`,
-      "FHIR_NOT_FOUND",
-    );
+    reply.header("content-type", FHIR_JSON_CONTENT_TYPE);
+    return resource;
   });
 
   // ── R5 — type-level search ───────────────────────────────────────────────────────────────────────
@@ -576,18 +790,73 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
         "FHIR_SCOPE_DENIED",
       );
     }
+    if (!supportsInteraction(resourceType, "search-type")) {
+      return sendOutcome(
+        reply,
+        404,
+        "warning",
+        "not-supported",
+        `${resourceType} is not served by this FHIR gateway`,
+        "FHIR_NOT_SUPPORTED",
+      );
+    }
     const query = parseQuery(ResourceSearchQuery, request.query);
-    await auditRead({
-      organizationId: ctx.organizationId,
-      fhirClientId: ctx.clientId,
-      resourceType,
-      ...(query.patient ? { patientId: query.patient } : {}),
-      queryParameters: query.patient ? { patient: query.patient } : {},
-      resultCount: 0,
-      servedAt: now(),
-    });
+    let projection: Awaited<ReturnType<typeof projectSearch>>;
+    try {
+      projection = await projectSearch(await projectionContext(ctx), resourceType, {
+        patient: query.patient,
+        _id: query._id,
+        identifier: query.identifier,
+        _since: query._since,
+        _count: query._count,
+      });
+    } catch (error) {
+      if (!unboundReader(error)) throw error;
+      request.log.warn({ err: error, resourceType }, "M28 R5: reader seam unbound");
+      return sendOutcome(
+        reply,
+        503,
+        "error",
+        "processing",
+        `${resourceType} cannot be searched on this deployment: its owner module's reader seam is not bound`,
+        "FHIR_READER_UNBOUND",
+      );
+    }
+    const resources = projection?.resources ?? [];
+    const warnings = projection?.warnings ?? [];
+    const queryParameters: Record<string, string> = {};
+    if (query.patient) queryParameters.patient = query.patient;
+    if (query._id) queryParameters._id = query._id;
+    if (query.identifier) queryParameters.identifier = query.identifier;
+    if (query._since) queryParameters._since = query._since;
+    // A search that matched nothing is still a search, but it disclosed nothing, so it is not an
+    // accounting entry (§164.528 accounts for DISCLOSURES, not for requests).
+    if (resources.length > 0) {
+      await auditRead({
+        organizationId: ctx.organizationId,
+        fhirClientId: ctx.clientId,
+        resourceType,
+        ...(query.patient ? { patientId: query.patient } : {}),
+        queryParameters,
+        resultCount: resources.length,
+        servedAt: now(),
+      });
+    }
     reply.header("content-type", FHIR_JSON_CONTENT_TYPE);
-    return { resourceType: "Bundle", type: "searchset", total: 0, entry: [], link: [] };
+    return {
+      resourceType: "Bundle",
+      type: "searchset",
+      total: resources.length,
+      // W-FHIR-03: the `suppressed` advisories ride IN the Bundle as `OperationOutcome` entries with
+      // `search.mode = "outcome"`, which is where a FHIR consumer looks for "some results were withheld".
+      // Dropping them would make a consent-filtered search indistinguishable from an empty one, and that
+      // silent gap is the §4001 information-blocking shape the advisory exists to avoid.
+      entry: [
+        ...resources.map((resource) => ({ resource, search: { mode: "match" } })),
+        ...warnings.map((resource) => ({ resource, search: { mode: "outcome" } })),
+      ],
+      link: [],
+    };
   });
 
   // ── R17 / R18 — FHIR R5 / R6: 415 Unsupported Media Type ─────────────────────────────────────────

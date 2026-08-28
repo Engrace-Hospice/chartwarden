@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 // apps/backend/__tests__/fhir-inject.test.ts — M28 (FHIR Gateway) §4.1 route-inventory HTTP-layer smoke
 // test (TASK-050A / TEST-001). Before this file, M28 had zero `app.inject()` coverage —
 // `28-fhir/__tests__/m28-routes.test.ts` drives `registerFhirR4Routes` directly against a bare `Fastify()`
@@ -12,10 +13,11 @@
 // TWO DISTINCT AUTH MECHANISMS, ONE FILE:
 //   - The FHIR-spec bearer surface (R1-R22, `fhir-r4.routes.ts`) does NOT go through the WardenX
 //     `requirePermission`/`requireAbac` chain — it resolves a `fhir_client_session` bearer token itself
-//     and checks `scopesGranted` in the handler. So this file seeds bearer sessions directly into the
-//     in-memory store's constructor (there is no HTTP-reachable "mint a session" path in Phase 1 — R3
-//     `/fhir/oauth2/token` is an intentional fail-closed stub, see below) and drives those routes with an
-//     `Authorization: Bearer <token>` header instead of the `x-test-*` shim.
+//     and checks `scopesGranted` in the handler. Most of this file seeds bearer sessions directly into
+//     the in-memory store's constructor and drives those routes with an `Authorization: Bearer <token>`
+//     header instead of the `x-test-*` shim. The R3 block does NOT: it mints through the real endpoint
+//     and then USES the minted token, because a mint whose product is never presented proves only that
+//     the endpoint returned a string (F-035, #95).
 //   - The admin console (R23-R39, four more route files) goes through the REAL Authorization Contract —
 //     `requirePermission(key)` + `requireAbac(action, predicateName)` — exactly the `orders-routes.test.ts`
 //     (M11-T06) pattern this file clones: `buildServer()` mounts the host, a header-auth shim populates
@@ -25,15 +27,21 @@
 //     (M3 owns that predicate; a fresh registry starts empty — the M14/M19 precedent for stubbing a
 //     composed-but-not-owned predicate locally).
 //
-// KNOWN, DOCUMENTED (NOT FABRICATED) NON-2xx ROUTES — the Phase-1 posture is READ-ONLY US Core R4 with
+// KNOWN, DOCUMENTED (NOT FABRICATED) NON-2xx ROUTES — the posture is READ-ONLY US Core R4 with
 // `fhir.write` OFF, and several routes are DESIGNED to answer something other than 2xx even for a
-// fully-scoped, well-formed caller (the file header of `fhir-r4.routes.ts` says so explicitly):
-//   - R3 `/fhir/oauth2/token` always answers 401 `invalid_client` — no external client-assertion
-//     verification path is bound yet, by design ("Phase-1 fail-closed: no external client is provisioned").
-//   - R4 (generic single-resource read), R12 (`CodeSystem/:system`), R14 (`ValueSet/:vs`), and the six
-//     forward-seam/Phase-2 resources (Claim/ClaimResponse/ExplanationOfBenefit/ServiceRequest/
-//     QuestionnaireResponse/Location) all answer 404 — the projection reader seams are fail-closed
-//     deny-stubs this wave, so "not found" is the honest answer, never a fabricated 500-avoiding 200.
+// fully-scoped, well-formed caller:
+//   - R3 `/fhir/oauth2/token` is now REAL (F-035, #95). It used to answer 401 `invalid_client` for every
+//     input, and this file asserted that as correct — which made it the test that certified the wall:
+//     R4-R22 all begin with `resolveBearer`, a bearer is only obtainable at R3, so an endpoint that
+//     could never mint one made the entire FHIR surface unreachable by construction. The block below
+//     mints a token and then reads with it.
+//   - R4 answers 503 `FHIR_READER_UNBOUND` in THIS harness, and that is the honest answer rather than a
+//     regression: the M1 seam registry here has no `PatientReader` bound, so the deployment cannot
+//     answer, and saying "not found" would be a claim about the tenant's data. Against a real boot the
+//     same route returns the resource (`m28-fhir-gateway.live.test.ts`).
+//   - A resource type this gateway does not serve answers 404 `not-supported`, never `not-found`.
+//   - R12 (`CodeSystem/:system`), R14 (`ValueSet/:vs`) and the six forward-seam/Phase-2 resources
+//     (Claim/ClaimResponse/ExplanationOfBenefit/ServiceRequest/QuestionnaireResponse/Location) answer 404.
 //   - R17/R18 (`/fhir/r5/*`, `/fhir/r6/*`) answer 415 — those FHIR releases are not served at all.
 // Every one of these is asserted as its REAL, current status code with an inline note — not skipped, not
 // faked to 2xx.
@@ -46,6 +54,8 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
+
+import type { FhirReadDisclosureEnvelope } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer, registerSeam } from "../src/bootstrap/index";
@@ -148,13 +158,33 @@ function buildTestAbacResolver(
   };
 }
 
-function makeServer() {
+/** The api-key client R3 mints for. Its secret lives only here and as a sha256 digest in the store. */
+const API_KEY_CLIENT_ID = "aaaaaaaa-0000-4000-8000-00000000f1f1";
+const API_KEY_SECRET = "s".repeat(48);
+const API_KEY_DIGEST = createHash("sha256").update(API_KEY_SECRET, "utf8").digest("hex");
+
+interface MakeServerOptions {
+  readonly tokenEndpointUrl?: string;
+  readonly disclosureSink?: FhirReadDisclosureEnvelope[];
+}
+
+function makeServer(options: MakeServerOptions = {}) {
   const store = createInMemoryFhirGatewayStore({
     now: () => NOW,
+    ...(options.disclosureSink ? { disclosureSink: options.disclosureSink } : {}),
     clients: [
       { id: SESSION_CLIENT_ID, organizationId: ORG, name: "Session Test Client" },
       { id: FULL_CLIENT_ID, organizationId: ORG, name: "Full Scope Bearer Client" },
       { id: LIMITED_CLIENT_ID, organizationId: ORG, name: "Limited Scope Bearer Client" },
+      {
+        id: API_KEY_CLIENT_ID,
+        organizationId: ORG,
+        name: "Api Key Client",
+        type: "api_key",
+        status: "active",
+        allowedScopes: ["system/Patient.read", "system/Encounter.read"],
+        secretDigests: [API_KEY_DIGEST],
+      },
     ],
     sessions: [
       {
@@ -215,7 +245,11 @@ function makeServer() {
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  mountM28Routes(app, { store, now: () => NOW });
+  mountM28Routes(app, {
+    store,
+    now: () => NOW,
+    ...(options.tokenEndpointUrl ? { tokenEndpointUrl: options.tokenEndpointUrl } : {}),
+  });
   return { app, store };
 }
 
@@ -343,7 +377,95 @@ describe("M28-fhir-inject — R1/R2: anonymous discovery", () => {
 
 // ── R3 — token mint: well-formed body still fails CLOSED (documented Phase-1 posture, not a bug) ───────
 describe("M28-fhir-inject — R3: token mint", () => {
-  it("POST /fhir/oauth2/token with a well-formed body → 401 invalid_client (no external client resolution path is bound in Phase 1)", async () => {
+  const TOKEN_URL = "https://fhir.wardenx.test/fhir/oauth2/token";
+
+  it("mints for a valid api key, and the minted token is accepted as a bearer", async () => {
+    // The assertion that matters. A mint whose product is never presented proves the endpoint returned
+    // a string; this proves the string is a credential — which is exactly what the previous
+    // unconditional `invalid_client` made impossible for any input (F-035, #95).
+    const { app } = makeServer({ tokenEndpointUrl: TOKEN_URL });
+    const minted = await app.inject({
+      method: "POST",
+      url: "/fhir/oauth2/token",
+      payload: {
+        grant_type: "client_credentials",
+        scope: "system/Patient.read",
+        client_id: API_KEY_CLIENT_ID,
+        client_secret: API_KEY_SECRET,
+      },
+    });
+    expect(minted.statusCode).toBe(200);
+    const grant = minted.json();
+    expect(grant.token_type).toBe("bearer");
+    expect(grant.scope).toBe("system/Patient.read");
+    expect(typeof grant.access_token).toBe("string");
+
+    const used = await app.inject({
+      method: "GET",
+      url: "/fhir/r4/Patient",
+      headers: { authorization: `Bearer ${grant.access_token}` },
+    });
+    // 200 — the bearer resolved, the scope check passed, and the search ran. (It finds nothing: this
+    // harness binds no PatientReader, and a Patient search with no `_id`/`identifier` matches nothing
+    // by design.) A 401 here would mean the mint produced a token the gateway does not recognise.
+    expect(used.statusCode).toBe(200);
+    expect(used.json().resourceType).toBe("Bundle");
+    await app.close();
+  });
+
+  it("refuses a scope beyond the client's grant with invalid_scope, NAMING the scope (§2.3)", async () => {
+    // The one failure that is deliberately specific. §2.3 forbids a silent down-scope, so the partner
+    // has to be told which scope was refused — and knowing it already requires holding the credential.
+    const { app } = makeServer({ tokenEndpointUrl: TOKEN_URL });
+    const res = await app.inject({
+      method: "POST",
+      url: "/fhir/oauth2/token",
+      payload: {
+        grant_type: "client_credentials",
+        scope: "system/Patient.read system/Condition.read",
+        client_id: API_KEY_CLIENT_ID,
+        client_secret: API_KEY_SECRET,
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("invalid_scope");
+    expect(res.json().error_description).toContain("system/Condition.read");
+    await app.close();
+  });
+
+  it("refuses a wrong secret and an unknown client with the SAME generic invalid_client", async () => {
+    // Byte-identical bodies on purpose: a description that distinguished them would turn an
+    // unauthenticated endpoint into a client-id oracle.
+    const { app } = makeServer({ tokenEndpointUrl: TOKEN_URL });
+    const wrongSecret = await app.inject({
+      method: "POST",
+      url: "/fhir/oauth2/token",
+      payload: {
+        grant_type: "client_credentials",
+        scope: "system/Patient.read",
+        client_id: API_KEY_CLIENT_ID,
+        client_secret: "not-the-secret",
+      },
+    });
+    const unknownClient = await app.inject({
+      method: "POST",
+      url: "/fhir/oauth2/token",
+      payload: {
+        grant_type: "client_credentials",
+        scope: "system/Patient.read",
+        client_id: "aaaaaaaa-0000-4000-8000-0000000000ff",
+        client_secret: API_KEY_SECRET,
+      },
+    });
+    expect(wrongSecret.statusCode).toBe(401);
+    expect(unknownClient.statusCode).toBe(401);
+    expect(wrongSecret.json()).toEqual(unknownClient.json());
+    expect(wrongSecret.json().error).toBe("invalid_client");
+    await app.close();
+  });
+
+  it("refuses the SMART assertion path with 503, not 401, when the deployment has no token-endpoint URL", async () => {
+    // A deployment fault reported as a credential fault sends the partner to debug a key that is fine.
     const { app } = makeServer();
     const res = await app.inject({
       method: "POST",
@@ -351,6 +473,24 @@ describe("M28-fhir-inject — R3: token mint", () => {
       payload: {
         grant_type: "client_credentials",
         scope: "system/Patient.read",
+        client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+        client_assertion: "x".repeat(64),
+      },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toBe("temporarily_unavailable");
+    await app.close();
+  });
+
+  it("refuses an unverifiable assertion with invalid_client once the audience IS configured", async () => {
+    const { app } = makeServer({ tokenEndpointUrl: TOKEN_URL });
+    const res = await app.inject({
+      method: "POST",
+      url: "/fhir/oauth2/token",
+      payload: {
+        grant_type: "client_credentials",
+        scope: "system/Patient.read",
+        client_id: API_KEY_CLIENT_ID,
         client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
         client_assertion: "x".repeat(64),
       },
@@ -381,19 +521,49 @@ describe("M28-fhir-inject — forward-seam / Phase-2 resources: 404 before any r
 
 // ── R4/R5/R6 — resource read / search / $everything ──────────────────────────────────────────────────
 describe("M28-fhir-inject — R4/R5/R6: resource read, search, $everything", () => {
-  it("GET /fhir/r4/Patient/:id → 404 not-found (the projection reader seam is a fail-closed deny-stub this wave, per the route's own comment — not a fabricated 500-avoiding pass)", async () => {
+  it("GET /fhir/r4/Patient/:id → 503 FHIR_READER_UNBOUND when M5's reader seam is not bound", async () => {
+    // This harness registers no `PatientReader`, so the M1 deny-stub throws. 503 says "this DEPLOYMENT
+    // cannot answer"; the 404 `not-found` this route used to return said "your patient has no such
+    // record", which is a claim about the tenant's data and was false for every id ever requested.
     const { app } = makeServer();
     const res = await app.inject({
       method: "GET",
       url: "/fhir/r4/Patient/patient-1",
       headers: BEARER_FULL,
     });
-    expect(res.statusCode).toBe(404);
-    expect(res.json().issue[0].code).toBe("not-found");
+    expect(res.statusCode).toBe(503);
+    expect(res.json().issue[0].details.coding[0].code).toBe("FHIR_READER_UNBOUND");
     await app.close();
   });
 
-  it("GET /fhir/r4/Patient → 200 empty searchset Bundle", async () => {
+  it("GET /fhir/r4/Condition/:id → 404 not-supported, NOT not-found", async () => {
+    // Condition is not served (no reader seam exists for it anywhere), so the gateway says so about
+    // ITSELF. The CapabilityStatement no longer advertises it either — the two read one list.
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/fhir/r4/Condition/cond-1",
+      headers: BEARER_FULL,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().issue[0].code).toBe("not-supported");
+    await app.close();
+  });
+
+  it("GET /fhir/r4/Encounter/:id → 404 not-supported: Encounter is search-only, and says which", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/fhir/r4/Encounter/enc-1",
+      headers: BEARER_FULL,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().issue[0].code).toBe("not-supported");
+    expect(res.json().issue[0].diagnostics).toContain("search only");
+    await app.close();
+  });
+
+  it("GET /fhir/r4/Patient → 200 empty searchset Bundle (a search naming no patient matches nothing)", async () => {
     const { app } = makeServer();
     const res = await app.inject({ method: "GET", url: "/fhir/r4/Patient", headers: BEARER_FULL });
     expect(res.statusCode).toBe(200);
@@ -402,7 +572,21 @@ describe("M28-fhir-inject — R4/R5/R6: resource read, search, $everything", () 
     await app.close();
   });
 
-  it("GET /fhir/r4/Patient/:id/$everything → 200 empty Bundle", async () => {
+  it("a search that matched nothing writes NO §164.528 accounting row", async () => {
+    // §164.528 accounts for DISCLOSURES, not for requests. A ledger that grew on every unmatched search
+    // would report disclosures that never happened, to patients who were never disclosed.
+    const disclosures: FhirReadDisclosureEnvelope[] = [];
+    const { app } = makeServer({ disclosureSink: disclosures });
+    const res = await app.inject({ method: "GET", url: "/fhir/r4/Patient", headers: BEARER_FULL });
+    expect(res.statusCode).toBe(200);
+    expect(disclosures).toHaveLength(0);
+    await app.close();
+  });
+
+  it("GET /fhir/r4/Patient/:id/$everything → 200 Bundle; an unbound type degrades to an advisory, not a 503", async () => {
+    // `$everything` is a compilation. Refusing the whole Bundle because one owner module's seam is
+    // unbound would hide the types that ARE readable, so each unavailable type contributes an
+    // `OperationOutcome` entry the consumer can see instead of a silent gap.
     const { app } = makeServer();
     const res = await app.inject({
       method: "GET",
@@ -411,6 +595,10 @@ describe("M28-fhir-inject — R4/R5/R6: resource read, search, $everything", () 
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().resourceType).toBe("Bundle");
+    const outcomes = (res.json().entry as { resource: { resourceType: string } }[]).filter(
+      (e) => e.resource.resourceType === "OperationOutcome",
+    );
+    expect(outcomes.length).toBeGreaterThan(0);
     await app.close();
   });
 });
@@ -639,11 +827,12 @@ describe("M28-fhir-inject — admin: client registry (R23-R30)", () => {
   it("R23/R24/R25/R28/R27/R26 — list, propose, co-approve, rotate, suspend, revoke, walked on one client", async () => {
     const { app } = makeServer();
 
-    // Three bearer-fixture clients are already seeded in `makeServer()` (session/full/limited); R23 must
-    // see all of them (org-scoped list), not an empty result.
+    // Four fixture clients are seeded in `makeServer()` — three bearer fixtures (session/full/limited)
+    // plus the api-key client R3 mints for; R23 must see all of them (org-scoped list), not an empty
+    // result.
     const list0 = await app.inject({ method: "GET", url: "/api/v1/fhir/clients", headers: SUPER });
     expect(list0.statusCode).toBe(200);
-    expect(list0.json().clients).toHaveLength(3);
+    expect(list0.json().clients).toHaveLength(4);
 
     const create = await app.inject({
       method: "POST",

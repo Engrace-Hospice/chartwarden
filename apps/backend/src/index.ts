@@ -517,6 +517,9 @@ import {
   createDrizzleFhirGatewayEraseStore,
   createDrizzleFhirGatewayStore,
   createDrizzleFhirPublishedSeamStore,
+  createHttpFhirJwksFetcher,
+  createInMemoryFhirReplayGuard,
+  createRedisFhirReplayGuard,
   denyStubFhirGatewayAbacResolver,
   mountM28Routes,
   registerFhirGatewayAbacPredicates,
@@ -1388,10 +1391,13 @@ export function wireModuleSeams(
   // M28-T06 (§4.3) — publish M28's three read seams (FhirGatewayMetricsProvider / FhirClientReader /
   // FhirInboundProposalReader) over their M1 deny-stubs so M33 (utilization) / M30 (§164.528 disclosure
   // scorecard) / M34 (SaaS console) / M5 + M12 (inbound-proposal review queues) can resolve them via
-  // getSeam. Registration is STORE-GATED: M28's Drizzle store lands with its routes/repos (T08), so this
-  // wave passes NO store and the call is a no-op — the fail-closed deny-stubs stand, exactly like M19/M20's
-  // db-less boot. A consumer reaching an unbound M28 seam denies LOUDLY rather than reading a fabricated
-  // empty projection (a zero-disclosure scorecard minted from an unwired store).
+  // getSeam. Registration is STORE-GATED: with a db the Drizzle store binds all three; a db-less boot
+  // passes none and the fail-closed deny-stubs stand, exactly like M19/M20. A consumer reaching an
+  // unbound M28 seam denies LOUDLY rather than reading a fabricated empty projection.
+  //
+  // (The comment here used to say this wave passed NO store and the call was a no-op. It has passed the
+  // store on every db boot for as long as the store has existed; an external audit read the comment,
+  // not the argument, and filed "registers none of its three published seams" — F-035/#95.)
   registerFhirPublishedSeams(
     deps.db ? { store: createDrizzleFhirPublishedSeamStore(deps.db) } : {},
   );
@@ -3182,10 +3188,26 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // M28 (FHIR Gateway) — mount the thirty-nine §4.1 routes over the Drizzle route store. The
           // FHIR-spec bearer surface (R1-R22) resolves its own SMART token; the admin console (R23-R39)
           // composes the §4.6 permission + §4.7 ABAC preHandlers. `fhir.write` stays OFF: read-only US
-          // Core R4. The disclosure-audit sink stays unbound this wave (no served-read log table yet), so
-          // the bearer read path runs its scope-enforcement + OperationOutcome shape without persisting a
-          // row — the fail-closed Phase-1 posture (no external client is provisioned).
-          mountM28Routes(app, { store: createDrizzleFhirGatewayStore(dbHandle.db) });
+          // Core R4.
+          //
+          // F-035 (#95) — the read path is BOUND. The three things this call used to leave unwired were
+          // each load-bearing: the JWKS fetcher (without it the SMART assertion path cannot verify a
+          // signature), the token-endpoint URL (the `aud` an assertion must carry — without it the mint
+          // refuses the assertion path outright rather than accepting an unbound audience), and the
+          // replay guard. The disclosure sink is deliberately NOT passed: absent, the routes default to
+          // `store.recordDisclosure`, which is the §164.528 ledger. It used to default to a no-op.
+          //
+          // The replay guard goes cluster-wide over Valkey when REDIS_URL is set and per-process
+          // otherwise — the same posture as the credential throttle and the signup limiter above, and
+          // for the same reason: on a single-replica deployment one replica IS the cluster.
+          mountM28Routes(app, {
+            store: createDrizzleFhirGatewayStore(dbHandle.db),
+            jwks: createHttpFhirJwksFetcher(),
+            replay: rateLimitRedisClient
+              ? createRedisFhirReplayGuard(rateLimitRedisClient)
+              : createInMemoryFhirReplayGuard(),
+            tokenEndpointUrl: process.env.FHIR_TOKEN_ENDPOINT_URL,
+          });
 
           // M29 (External Interfaces) — mount the §4.1 operator + §4.2 clinician routes over the Drizzle
           // route store. Feed lifecycle (dual-approval + BAA gate), ADT proposal review (propose-then-review),
