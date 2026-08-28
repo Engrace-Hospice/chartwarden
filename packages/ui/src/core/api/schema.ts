@@ -9636,7 +9636,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** The admission's attested GIP criteria and their reassessment trail. The §2.4 `data` payload is NOT projected — it carries clinical narrative; the M22 render is the readable document */
+        get: operations["getApiV1IpuadmissionsByIdGipcriteria"];
         put?: never;
         /** Attest GIP criteria (step-up); the 3-kind discriminated union (422 on an invalid payload) (§2.4) */
         post: operations["postApiV1IpuadmissionsByIdGipcriteria"];
@@ -9697,6 +9698,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ipu-admissions/{id}/irc-episodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The admission's IRC episodes, newest first (consecutive-day count vs the cap) */
+        get: operations["getApiV1IpuadmissionsByIdIrcepisodes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ipu-admissions/{id}/request-bed": {
         parameters: {
             query?: never;
@@ -9723,8 +9741,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Apply a restraint (step-up + m37.ipu.rn_coverage_active). 422 on missing physician order / <100-char justification; 403 without step-up (§2.10) */
+        /** Apply a restraint (step-up + m37.ipu.rn_coverage_active). `orderingOrderId` is RESOLVED through M11: 422 unless the order exists, is for this admission's patient, is signed, and names an ordering physician (which is where the stored ordering physician comes from). 422 on a <100-char justification; 403 without step-up (§2.10) */
         post: operations["postApiV1IpuadmissionsByIdRestraint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-admissions/{id}/restraints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The admission's restraint events, newest first, with each one's reassessment count and next-due instant (F-069 — reassess/release are keyed by an id no read route returned) */
+        get: operations["getApiV1IpuadmissionsByIdRestraints"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -10050,7 +10085,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Visitors for one IPU admission, newest check-in first (F-069 — check-out is keyed by an id no read route returned) */
+        get: operations["getApiV1Ipuvisitors"];
         put?: never;
         /** Check in a visitor; 412 on full_block / immediate_family_only restriction (§2.7) */
         post: operations["postApiV1Ipuvisitors"];
@@ -44617,6 +44653,44 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1IpuadmissionsByIdGipcriteria: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            ipuAdmissionId: string;
+                            criterionKind: string;
+                            attestedAt: string;
+                            attestingPhysicianId: string;
+                            reassessments: {
+                                id: string;
+                                reassessedAt: string;
+                                criterionStillMet: boolean;
+                            }[];
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1IpuadmissionsByIdGipcriteria: {
         parameters: {
             query?: never;
@@ -44803,6 +44877,39 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1IpuadmissionsByIdIrcepisodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            ipuAdmissionId: string;
+                            state: string;
+                            consecutiveDayCount: number;
+                            capOverrideInvoked: boolean;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1IpuadmissionsByIdRequestbed: {
         parameters: {
             query?: never;
@@ -44856,7 +44963,6 @@ export interface operations {
                 "application/json": {
                     restraintKind: "soft_limb" | "posey_vest" | "mitt" | "side_rail_4";
                     restraintJustificationText: string;
-                    orderingPhysicianId: string;
                     orderingOrderId: string;
                     category: "behavioral" | "medical";
                     reassessmentIntervalMinutes: number;
@@ -44877,6 +44983,47 @@ export interface operations {
                         state: string;
                         reassessmentIntervalMinutes: number;
                         version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1IpuadmissionsByIdRestraints: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            ipuAdmissionId: string;
+                            restraintKind: string;
+                            category: "behavioral" | "medical";
+                            state: string;
+                            reassessmentIntervalMinutes: number;
+                            appliedAt: string;
+                            appliedByMembershipId: string;
+                            orderingOrderId: string;
+                            orderingPhysicianId: string;
+                            releasedAt: string | null;
+                            nextDueAt: string | null;
+                            reassessmentCount: number;
+                            version: number;
+                        }[];
                     };
                 };
             };
@@ -45741,6 +45888,39 @@ export interface operations {
                         scope: string;
                         restrictionKind: string;
                         liftedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Ipuvisitors: {
+        parameters: {
+            query: {
+                ipuAdmissionId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            ipuAdmissionId: string;
+                            relationship: string;
+                            maskRequired: boolean;
+                            checkedInAt: string;
+                            checkedOutAt: string | null;
+                        }[];
                     };
                 };
             };

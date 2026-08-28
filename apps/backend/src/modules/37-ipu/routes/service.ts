@@ -129,6 +129,41 @@ export interface BodyReleaseView {
   readonly version: number;
 }
 
+/** The bedside read of one restraint: enough to decide whether it is due, and to reach it (F-069). */
+export interface RestraintDetailView {
+  readonly id: string;
+  readonly ipuAdmissionId: string;
+  readonly restraintKind: string;
+  readonly category: "behavioral" | "medical";
+  readonly state: string;
+  readonly reassessmentIntervalMinutes: number;
+  readonly appliedAt: string;
+  readonly appliedByMembershipId: string;
+  readonly orderingOrderId: string;
+  readonly orderingPhysicianId: string;
+  readonly releasedAt: string | null;
+  /** The latest reassessment's `next_due_at`; null until the first one, when the interval runs from
+   *  `appliedAt` instead. The bedside board counts down to whichever applies. */
+  readonly nextDueAt: string | null;
+  readonly reassessmentCount: number;
+  readonly version: number;
+}
+
+/** One attested GIP criterion plus its reassessment trail (§2.4 — GIP is reassessed daily). */
+export interface GipCriteriaDetailView {
+  readonly id: string;
+  readonly ipuAdmissionId: string;
+  readonly criterionKind: string;
+  readonly attestedAt: string;
+  readonly attestingPhysicianId: string;
+  readonly reassessments: readonly {
+    readonly id: string;
+    readonly reassessedAt: string;
+    readonly criterionStillMet: boolean;
+  }[];
+  readonly version: number;
+}
+
 export interface RestraintView {
   readonly id: string;
   readonly ipuAdmissionId: string;
@@ -245,6 +280,17 @@ export interface IpuRouteService {
     admissionId: string,
     body: ApplyRestraintBody,
   ): Promise<RestraintView>;
+  // F-069 (read side) — the four reads a bedside pane needs. `reassessRestraint`/`releaseRestraint`/
+  // `checkOutVisitor` are keyed by an id that, until these existed, was returned ONLY by the POST that
+  // created it: reload the page and an active restraint became unreachable, so a 15-minute reassessment
+  // could be recorded only by whoever applied it and kept the tab open.
+  listRestraints(actor: IpuReadActor, admissionId: string): Promise<readonly RestraintDetailView[]>;
+  listGipCriteria(
+    actor: IpuReadActor,
+    admissionId: string,
+  ): Promise<readonly GipCriteriaDetailView[]>;
+  listIrcEpisodes(actor: IpuReadActor, admissionId: string): Promise<readonly IrcEpisodeView[]>;
+  listVisitors(actor: IpuReadActor, admissionId: string): Promise<readonly VisitorView[]>;
   reassessRestraint(
     actor: IpuWriteActor,
     restraintId: string,

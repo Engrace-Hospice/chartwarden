@@ -9,6 +9,7 @@ import {
   type AdmissionTransition,
   INITIAL_BED_CLEANING_STATUS,
   IpuStateError,
+  RESTRAINT_REASSESS_FLOOR_MINUTES,
   type RoomOccupancyDecision,
   assertInspectionCurrent,
   computeIrcState,
@@ -31,7 +32,7 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import type { PatientPrivacyFlagReader, PatientRoomingFacts } from "@wardenx/types";
 import { ConflictError, NotFoundError } from "@wardenx/types";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { IpuReadActor, IpuWriteActor } from "./actor";
 import type {
   AdvanceBodyReleaseBody,
@@ -72,10 +73,12 @@ import type {
   BodyReleaseView,
   CensusView,
   EquipmentView,
+  GipCriteriaDetailView,
   GipCriteriaView,
   IpuRouteService,
   IrcEpisodeView,
   MealView,
+  RestraintDetailView,
   RestraintView,
   RnCoverageView,
   RoomView,
@@ -128,6 +131,21 @@ const UNBOUND_ROOMING: RoomingFactsPort = {
  * relationship → consent-type mapping stays in M37's pure core (`visitorConsentTypesFor`) and this calls
  * M39's real, general `evaluate` per candidate type.
  */
+/**
+ * The slice of M11's `OrderProvider` the restraint gate reads. Narrowed rather than imported whole for
+ * the same reason `VisitorConsentGate` is: M37 consumes one method, and a narrow port is a smaller
+ * thing for a test to fake honestly.
+ */
+export interface RestraintOrderReader {
+  getOrder(input: { orderId: string }): Promise<{
+    readonly orderId: string;
+    readonly patientId: string;
+    readonly status: string;
+    readonly signedAt: string | null;
+    readonly orderingPhysicianMdmId: string | null;
+  } | null>;
+}
+
 export interface VisitorConsentGate {
   evaluate(args: {
     organizationId: string;
@@ -152,6 +170,17 @@ const UNBOUND_CONSENT: VisitorConsentGate = {
   },
 };
 
+/**
+ * Unbound default: THROWS. A restraint applied while the order seam is unbound must fail, not proceed —
+ * an unreadable order register is indistinguishable from an absent order, and CoP 418.110 does not have
+ * a branch for "we could not check".
+ */
+const UNBOUND_ORDERS: RestraintOrderReader = {
+  getOrder() {
+    throw new Error("OrderProvider is not bound");
+  },
+};
+
 export interface IpuRouteServiceDeps {
   readonly outbox?: WriteOutboxPort;
   /** M5 `PatientPrivacyFlagReader` (GAP-061). Bound lazily — the composition root passes a thunk so
@@ -159,6 +188,8 @@ export interface IpuRouteServiceDeps {
   readonly rooming?: RoomingFactsPort | (() => RoomingFactsPort);
   /** M39 `ConsentEvaluator` (GAP-062), same lazy-thunk posture as `rooming`. */
   readonly consent?: VisitorConsentGate | (() => VisitorConsentGate);
+  /** M11 `OrderProvider` (F-069) — the restraint gate's physician-order read, same thunk posture. */
+  readonly orders?: RestraintOrderReader | (() => RestraintOrderReader);
 }
 
 const iso = (d: Date): string => d.toISOString();
@@ -179,6 +210,9 @@ export function buildDrizzleIpuRouteService(
   const consentDep = deps.consent ?? UNBOUND_CONSENT;
   const consentGate = (): VisitorConsentGate =>
     typeof consentDep === "function" ? consentDep() : consentDep;
+  const ordersDep = deps.orders ?? UNBOUND_ORDERS;
+  const orderReader = (): RestraintOrderReader =>
+    typeof ordersDep === "function" ? ordersDep() : ordersDep;
   const U = schema.inpatientUnit;
   const A = schema.ipuAdmission;
   const H = schema.ipuAdmissionStateHistory;
@@ -1235,6 +1269,136 @@ export function buildDrizzleIpuRouteService(
       });
     },
 
+    // ── F-069 (read side) — the bedside reads ────────────────────────────────────────────────────────
+    //
+    // `reassessRestraint`, `releaseRestraint` and `checkOutVisitor` are keyed by ids that no read route
+    // returned: the only way to hold one was to be the browser session that performed the POST. A
+    // behavioral restraint is reassessed every 15 minutes and a visitor is checked out by a later
+    // shift — both, by definition, by someone who did not do the create.
+    async listRestraints(actor: IpuReadActor, admissionId: string) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const rows = await t
+          .select()
+          .from(RE)
+          .where(eq(RE.ipuAdmissionId, admissionId))
+          .orderBy(desc(RE.appliedAt));
+        if (rows.length === 0) return [];
+        const reassessments = await t
+          .select()
+          .from(RR)
+          .where(
+            inArray(
+              RR.restraintEventId,
+              rows.map((r) => r.id),
+            ),
+          )
+          .orderBy(desc(RR.reassessedAt));
+        return rows.map((r) => {
+          const mine = reassessments.filter((x) => x.restraintEventId === r.id);
+          return {
+            id: r.id,
+            ipuAdmissionId: r.ipuAdmissionId,
+            restraintKind: r.restraintKind,
+            // `category` is not a column: it is the interval FLOOR the application was normalized to,
+            // and the two floors differ, so the interval recovers it. `normalizeReassessmentInterval`
+            // is tighten-only, so a behavioral restraint can never exceed the behavioral floor.
+            category: (r.reassessmentIntervalMinutes <= RESTRAINT_REASSESS_FLOOR_MINUTES.behavioral
+              ? "behavioral"
+              : "medical") as "behavioral" | "medical",
+            state: r.state,
+            reassessmentIntervalMinutes: r.reassessmentIntervalMinutes,
+            appliedAt: iso(r.appliedAt),
+            appliedByMembershipId: r.appliedByMembershipId,
+            orderingOrderId: r.orderingOrderId,
+            orderingPhysicianId: r.orderingPhysicianId,
+            releasedAt: r.releasedAt ? iso(r.releasedAt) : null,
+            nextDueAt: mine[0] ? iso(mine[0].nextDueAt) : null,
+            reassessmentCount: mine.length,
+            version: Number(r.version),
+          } satisfies RestraintDetailView;
+        });
+      });
+    },
+
+    async listGipCriteria(actor: IpuReadActor, admissionId: string) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const rows = await t
+          .select()
+          .from(GC)
+          .where(eq(GC.ipuAdmissionId, admissionId))
+          .orderBy(desc(GC.attestedAt));
+        if (rows.length === 0) return [];
+        const GR = schema.gipCriteriaReassessment;
+        const reassessments = await t
+          .select()
+          .from(GR)
+          .where(
+            inArray(
+              GR.gipAdmissionCriteriaId,
+              rows.map((r) => r.id),
+            ),
+          )
+          .orderBy(desc(GR.assessedAt));
+        return rows.map(
+          (r) =>
+            ({
+              id: r.id,
+              ipuAdmissionId: r.ipuAdmissionId,
+              criterionKind: r.criterionKind,
+              attestedAt: iso(r.attestedAt),
+              attestingPhysicianId: r.attestingPhysicianId,
+              // The `data` payload is deliberately NOT projected: it carries the §2.4 clinical
+              // narrative (uncontrolled symptoms, signs of imminent death), which this read surface
+              // does not publish. The M22 render is the readable document, with its own consent gate.
+              reassessments: reassessments
+                .filter((x) => x.gipAdmissionCriteriaId === r.id)
+                .map((x) => ({
+                  id: x.id,
+                  reassessedAt: iso(x.assessedAt),
+                  criterionStillMet: x.criterionStillMet,
+                })),
+              version: Number(r.version),
+            }) satisfies GipCriteriaDetailView,
+        );
+      });
+    },
+
+    async listIrcEpisodes(actor: IpuReadActor, admissionId: string) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const rows = await t
+          .select()
+          .from(IE)
+          .where(eq(IE.ipuAdmissionId, admissionId))
+          .orderBy(desc(IE.startedAt));
+        return rows.map(ircView);
+      });
+    },
+
+    async listVisitors(actor: IpuReadActor, admissionId: string) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const rows = await t
+          .select()
+          .from(schema.ipuVisitor)
+          .where(eq(schema.ipuVisitor.ipuAdmissionId, admissionId))
+          .orderBy(desc(schema.ipuVisitor.checkedInAt));
+        return rows.map(
+          (r) =>
+            ({
+              id: r.id,
+              ipuAdmissionId: r.ipuAdmissionId,
+              relationship: r.relationship,
+              maskRequired: r.maskRequired,
+              checkedInAt: iso(r.checkedInAt),
+              checkedOutAt: r.checkedOutAt ? iso(r.checkedOutAt) : null,
+            }) satisfies VisitorView,
+        );
+      });
+    },
+
     async applyRestraint(actor: IpuWriteActor, admissionId: string, body: ApplyRestraintBody) {
       return withOrgContext(db, ctx(actor), async (tx) => {
         const t = tx as DbClient;
@@ -1265,11 +1429,48 @@ export function buildDrizzleIpuRouteService(
             "The unit's 24/7 RN coverage is inactive; restraint application is blocked (D3).",
           );
         }
+        // F-069 — RESOLVE the physician order before asking the machine about it.
+        //
+        // `hasOrderingOrder` used to be `body.orderingOrderId.length > 0`: whether the caller typed
+        // anything into the field. `validateRestraintApply` refuses without it and quotes CoP 418.110
+        // ("even in emergency"), so the one control the regulation is explicit about was satisfied by
+        // any non-empty string, and the order the row claims to rest on was never looked for. M37 has
+        // `dependsOn` 11 and `OrderProvider` has been registered the whole time.
+        //
+        // Three separate questions, because they have three different answers for the nurse standing at
+        // the bedside: the order does not exist (wrong id), it is for someone else (wrong patient — the
+        // one this check exists to catch), or it was never signed (an unsigned draft is not an order).
+        const order = await orderReader().getOrder({ orderId: body.orderingOrderId });
+        requireIpu(
+          order !== null,
+          "RESTRAINT_ORDER_REQUIRED",
+          "No order with that id exists; a restraint cannot be applied without a physician order (CoP 418.110, even in emergency).",
+        );
+        requireIpu(
+          order?.patientId === adm.patientId,
+          "RESTRAINT_ORDER_REQUIRED",
+          "That order belongs to a different patient; a restraint must rest on an order for THIS patient (CoP 418.110).",
+        );
+        requireIpu(
+          order?.signedAt != null,
+          "RESTRAINT_ORDER_REQUIRED",
+          "That order has not been signed; an unsigned draft is not a physician order (CoP 418.110).",
+        );
+        // The ordering physician comes from the ORDER, not from a second uuid the caller supplies
+        // alongside it. Two independent client assertions about one fact can name different people and
+        // the record cannot say which is true. An order naming no ordering physician cannot authorise a
+        // restraint, so that is a refusal rather than a null written into a NOT NULL column.
+        const orderingPhysicianId = order?.orderingPhysicianMdmId ?? null;
+        requireIpu(
+          orderingPhysicianId !== null,
+          "RESTRAINT_ORDER_REQUIRED",
+          "That order names no ordering physician, so it cannot authorise a restraint (CoP 418.110).",
+        );
         // §2.10 — validate the application (step-up + physician order + ≥100-char justification) and floor
         // the reassessment interval by category. The DB CHECK is the schema backstop.
         validateRestraintApply({
           justificationText: body.restraintJustificationText,
-          hasOrderingOrder: body.orderingOrderId.length > 0,
+          hasOrderingOrder: true, // resolved above; the machine's fact is now the server's answer
           stepUpVerified: actor.stepUpRecent,
         });
         const interval = normalizeReassessmentInterval(
@@ -1283,10 +1484,18 @@ export function buildDrizzleIpuRouteService(
             ipuAdmissionId: admissionId,
             restraintKind: body.restraintKind,
             restraintJustificationText: body.restraintJustificationText,
-            orderingPhysicianId: body.orderingPhysicianId,
+            orderingPhysicianId: orderingPhysicianId as string,
             orderingOrderId: body.orderingOrderId,
             appliedByMembershipId: actor.membershipId,
-            appliedStepUpAssertionId: actor.membershipId, // the step-up assertion id (session-verified)
+            // KNOWN GAP (F-069 §3, stated rather than papered over). This is NOT an assertion id — it is
+            // the actor's membership, so every restraint the same nurse applies carries the same value
+            // and the column cannot distinguish two applications. The platform has no uuid-identified
+            // step-up assertion to put here: step-up state is `session.last_step_up_at` on a row whose
+            // `id` is `text` (the same absence #165 found behind
+            // `evv_missing_resolution.step_up_auth_ref_id`). Unlike that column this one is NOT NULL, so
+            // it cannot be left empty until an M2 `step_up_session` exists. The step-up itself is real
+            // and server-verified — `actor.stepUpRecent`, checked by the machine above.
+            appliedStepUpAssertionId: actor.membershipId,
             reassessmentIntervalMinutes: interval,
           })
           .returning();

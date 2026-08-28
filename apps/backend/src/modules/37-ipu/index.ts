@@ -32,6 +32,7 @@ export { eraseIpuRecord, registerIpuErasers } from "./eraser";
 // §4.11 — the eight published IPU reader seams (registered over the deny-stubs by the composition root).
 export {
   buildIpuSeams,
+  getIpuOrderReader,
   getIpuRoomingFactsReader,
   getIpuVisitorConsentGate,
   registerIpuSeams,

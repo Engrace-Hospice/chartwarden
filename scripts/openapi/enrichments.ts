@@ -8043,8 +8043,10 @@ import {
   DischargeBodySchema as M37DischargeBodySchema,
   EquipmentListSchema as M37EquipmentListSchema,
   EquipmentViewSchema as M37EquipmentViewSchema,
+  GipCriteriaListSchema as M37GipCriteriaListSchema,
   GipCriteriaViewSchema as M37GipCriteriaViewSchema,
   InitiateTransferBodySchema as M37InitiateTransferBodySchema,
+  IrcEpisodeListSchema as M37IrcEpisodeListSchema,
   IrcEpisodeViewSchema as M37IrcEpisodeViewSchema,
   IrcOverrideBodySchema as M37IrcOverrideBodySchema,
   LiftVisitorRestrictionBodySchema as M37LiftVisitorRestrictionBodySchema,
@@ -8056,6 +8058,7 @@ import {
   ReassessGipBodySchema as M37ReassessGipBodySchema,
   ReassessRestraintBodySchema as M37ReassessRestraintBodySchema,
   RequestBedBodySchema as M37RequestBedBodySchema,
+  RestraintListSchema as M37RestraintListSchema,
   RestraintViewSchema as M37RestraintViewSchema,
   RnBreakGlassViewSchema as M37RnBreakGlassViewSchema,
   RnCoverageViewSchema as M37RnCoverageViewSchema,
@@ -8070,6 +8073,8 @@ import {
   UpdateBedBodySchema as M37UpdateBedBodySchema,
   UpdateRoomBodySchema as M37UpdateRoomBodySchema,
   UpdateUnitBodySchema as M37UpdateUnitBodySchema,
+  VisitorListQuerySchema as M37VisitorListQuerySchema,
+  VisitorListSchema as M37VisitorListSchema,
   VisitorRestrictionViewSchema as M37VisitorRestrictionViewSchema,
   VisitorViewSchema as M37VisitorViewSchema,
 } from "../../apps/backend/src/modules/37-ipu/routes/ipu-typebox";
@@ -8193,11 +8198,31 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Break-glass IRC cap override (step-up; reason >=100; <=2 days) — recomputes the episode state (§2.5)",
   },
+  "GET /api/v1/ipu-admissions/:id/restraints": {
+    response: M37RestraintListSchema,
+    summary:
+      "The admission's restraint events, newest first, with each one's reassessment count and next-due instant (F-069 — reassess/release are keyed by an id no read route returned)",
+  },
+  "GET /api/v1/ipu-admissions/:id/gip-criteria": {
+    response: M37GipCriteriaListSchema,
+    summary:
+      "The admission's attested GIP criteria and their reassessment trail. The §2.4 `data` payload is NOT projected — it carries clinical narrative; the M22 render is the readable document",
+  },
+  "GET /api/v1/ipu-admissions/:id/irc-episodes": {
+    response: M37IrcEpisodeListSchema,
+    summary: "The admission's IRC episodes, newest first (consecutive-day count vs the cap)",
+  },
+  "GET /api/v1/ipu-visitors": {
+    query: M37VisitorListQuerySchema,
+    response: M37VisitorListSchema,
+    summary:
+      "Visitors for one IPU admission, newest check-in first (F-069 — check-out is keyed by an id no read route returned)",
+  },
   "POST /api/v1/ipu-admissions/:id/restraint": {
     body: M37ApplyRestraintBodySchema,
     response: M37RestraintViewSchema,
     summary:
-      "Apply a restraint (step-up + m37.ipu.rn_coverage_active). 422 on missing physician order / <100-char justification; 403 without step-up (§2.10)",
+      "Apply a restraint (step-up + m37.ipu.rn_coverage_active). `orderingOrderId` is RESOLVED through M11: 422 unless the order exists, is for this admission's patient, is signed, and names an ordering physician (which is where the stored ordering physician comes from). 422 on a <100-char justification; 403 without step-up (§2.10)",
   },
   "POST /api/v1/ipu-restraint/:id/reassess": {
     body: M37ReassessRestraintBodySchema,
