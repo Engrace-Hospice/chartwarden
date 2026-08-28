@@ -656,6 +656,17 @@ jobs:
       # default is untouched, and the limiter itself is proven by `rate-limit-store-live` and by the
       # SD-055 unit tests, not by this job.
       RATE_LIMIT_UNAUTHENTICATED_PER_MINUTE: "300"
+      # The AUTHENTICATED tier, for the same reason and now for the same measured cause. This job was
+      # never set, so it ran on the shipped 600/min default — fine when the suite was 24 tests, and not
+      # once #91's per-module E2E specs took it to 33: one full serial pass now issues 805 requests in
+      # 43 seconds (measured, `grep -c responseTime` over the backend log across one run), i.e. ~1113/min
+      # sustained against a 600/min ceiling, all in ONE `ip:` bucket because the whole suite drives one
+      # loopback client. The failure it produces is worth naming, because it does not look like a rate
+      # limit: the census read 429s, `openPatientChartByLastName` polls an empty table until it times
+      # out, and the run goes red in whichever spec happened to be next — a DIFFERENT one each time. It
+      # reads as missing seed data. 3000 is ~2.7x the measured peak, so the remaining eight modules can
+      # land their specs without re-tripping it. Production default untouched.
+      RATE_LIMIT_AUTHENTICATED_PER_MINUTE: "3000"
     steps:
       - uses: actions/checkout@v4
       - name: Install Bun
