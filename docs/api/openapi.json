@@ -165129,6 +165129,219 @@
         }
       }
     },
+    "/api/v1/scales": {
+      "get": {
+        "operationId": "getApiV1Scales",
+        "tags": [
+          "09-assessments"
+        ],
+        "summary": "The instrument catalog (F-067) — per scale: label, family, license requirement, whether it is RECORDABLE at all, its published score range, and the item definitions a capture form is built from. Ten of the fourteen have no scorer and raise a 500 on capture; `recordable` is what says so",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "scales"
+                  ],
+                  "properties": {
+                    "scales": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "scaleType",
+                          "label",
+                          "family",
+                          "licenseRequired",
+                          "recordable",
+                          "scoreRange",
+                          "items"
+                        ],
+                        "properties": {
+                          "scaleType": {
+                            "anyOf": [
+                              {
+                                "const": "pps",
+                                "type": "string"
+                              },
+                              {
+                                "const": "kps",
+                                "type": "string"
+                              },
+                              {
+                                "const": "fast",
+                                "type": "string"
+                              },
+                              {
+                                "const": "painad",
+                                "type": "string"
+                              },
+                              {
+                                "const": "flacc",
+                                "type": "string"
+                              },
+                              {
+                                "const": "esas_r",
+                                "type": "string"
+                              },
+                              {
+                                "const": "nyha",
+                                "type": "string"
+                              },
+                              {
+                                "const": "meld",
+                                "type": "string"
+                              },
+                              {
+                                "const": "bode",
+                                "type": "string"
+                              },
+                              {
+                                "const": "flacker",
+                                "type": "string"
+                              },
+                              {
+                                "const": "gds",
+                                "type": "string"
+                              },
+                              {
+                                "const": "braden",
+                                "type": "string"
+                              },
+                              {
+                                "const": "morse",
+                                "type": "string"
+                              },
+                              {
+                                "const": "aims",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "family": {
+                            "type": "string"
+                          },
+                          "licenseRequired": {
+                            "type": "boolean"
+                          },
+                          "recordable": {
+                            "type": "boolean"
+                          },
+                          "scoreRange": {
+                            "anyOf": [
+                              {
+                                "type": "array",
+                                "items": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "number"
+                                  }
+                                ],
+                                "additionalItems": false,
+                                "minItems": 2,
+                                "maxItems": 2
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "key",
+                                    "label",
+                                    "kind",
+                                    "required"
+                                  ],
+                                  "properties": {
+                                    "key": {
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "anyOf": [
+                                        {
+                                          "const": "number",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "choice",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "text",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "required": {
+                                      "type": "boolean"
+                                    },
+                                    "min": {
+                                      "type": "number"
+                                    },
+                                    "max": {
+                                      "type": "number"
+                                    },
+                                    "options": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "required": [
+                                          "value",
+                                          "label"
+                                        ],
+                                        "properties": {
+                                          "value": {
+                                            "type": "string"
+                                          },
+                                          "label": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/scheduled-doses": {
       "get": {
         "operationId": "getApiV1Scheduleddoses",

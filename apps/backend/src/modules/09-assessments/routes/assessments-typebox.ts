@@ -79,6 +79,46 @@ const CommonRecordFields = {
   data: Type.Record(Type.String(), Type.Unknown()),
 };
 
+/**
+ * F-067 — the instrument catalog (`GET /api/v1/scales`).
+ *
+ * `items` is NULL, not empty, for the ten scales whose scorer is unregistered: capture raises
+ * `SCALE_SCORER_UNAVAILABLE` (a 500) for them, so a form cannot be built, and "no items" would read as
+ * "this scale takes no data" rather than "this scale cannot be captured yet".
+ */
+export const ScaleCatalogResponseSchema = Type.Object({
+  scales: Type.Array(
+    Type.Object({
+      scaleType: SCALE_TYPE,
+      label: Type.String(),
+      family: Type.String(),
+      licenseRequired: Type.Boolean(),
+      recordable: Type.Boolean(),
+      scoreRange: Type.Union([Type.Tuple([Type.Number(), Type.Number()]), Type.Null()]),
+      items: Type.Union([
+        Type.Array(
+          Type.Object({
+            key: Type.String(),
+            label: Type.String(),
+            kind: Type.Union([
+              Type.Literal("number"),
+              Type.Literal("choice"),
+              Type.Literal("text"),
+            ]),
+            required: Type.Boolean(),
+            min: Type.Optional(Type.Number()),
+            max: Type.Optional(Type.Number()),
+            options: Type.Optional(
+              Type.Array(Type.Object({ value: Type.String(), label: Type.String() })),
+            ),
+          }),
+        ),
+        Type.Null(),
+      ]),
+    }),
+  ),
+});
+
 export const RecordAssessmentSchema = Type.Object({
   admissionId: Type.String({ format: "uuid" }),
   ...CommonRecordFields,

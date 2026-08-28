@@ -85,6 +85,7 @@ export function MedicationDetail(): JSX.Element {
   const [action, setAction] = useState<MedicationAction | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is the intentional refetch trigger a completed write bumps, not read in the body.
   useEffect(() => {
     let active = true;
     (async () => {
@@ -113,8 +114,6 @@ export function MedicationDetail(): JSX.Element {
     return () => {
       active = false;
     };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: `reloadKey` is the explicit refetch trigger a
-    // completed write bumps — the repo's convention for reload-on-write (see 07-care-plan/care-plan-view).
   }, [client, id, reloadKey]);
 
   /** The §2.2 transitions this order's CURRENT status permits. The server decides; this narrows the

@@ -57,10 +57,10 @@ import {
 import type {
   AdmissionAbacResolver,
   AdmissionDetail,
-  PatientAdmissionSummary,
   AdmissionRouteService,
   MutationResult,
   Page,
+  PatientAdmissionSummary,
   PatientElectionCertificationView,
   SummaryRow,
 } from "./routes/service";

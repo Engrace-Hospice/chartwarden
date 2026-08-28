@@ -268,6 +268,62 @@ describe("M9-T05 — assessment routes (§4.1, §4.6 RBAC gating)", () => {
     expect(res.json().id).toMatch(/^90000000-/);
   });
 
+  it("GET /scales publishes the item definitions a capture form is built from (F-067)", async () => {
+    // The reason there was no record modal: `POST .../assessments` publishes `data` as a bare object,
+    // and which items a scale needs — how many, what kind, what range, which option values — existed
+    // only as TypeScript interfaces in `@wardenx/assessments`. A client cannot read a type.
+    const { app } = makeServer();
+    const res = await app.inject({ method: "GET", url: "/api/v1/scales", headers: RN });
+    expect(res.statusCode).toBe(200);
+    const scales = res.json().scales as {
+      scaleType: string;
+      recordable: boolean;
+      scoreRange: [number, number] | null;
+      items: { key: string; kind: string; min?: number; max?: number }[] | null;
+    }[];
+    // All fourteen are described; the catalog is the whole vocabulary, not just what works.
+    expect(scales).toHaveLength(14);
+
+    const painad = scales.find((s) => s.scaleType === "painad");
+    expect(painad?.recordable).toBe(true);
+    // The five 0..2 observational items the scorer sums — and the SAME keys the capture above sends.
+    expect(painad?.items?.filter((i) => i.kind === "number").map((i) => i.key)).toEqual([
+      "breathing",
+      "negativeVocalization",
+      "facialExpression",
+      "bodyLanguage",
+      "consolability",
+    ]);
+    expect(painad?.items?.find((i) => i.key === "breathing")?.max).toBe(2);
+
+    // TEN OF THE FOURTEEN HAVE NO SCORER and raise SCALE_SCORER_UNAVAILABLE — a 500 — on capture,
+    // while sitting in this route's own `scaleType` enum. `items` is NULL, not empty: a form cannot be
+    // built, and "no items" would read as "this scale takes no data".
+    const braden = scales.find((s) => s.scaleType === "braden");
+    expect(braden?.recordable).toBe(false);
+    expect(braden?.items).toBeNull();
+    expect(braden?.scoreRange).toBeNull();
+    expect(
+      scales
+        .filter((s) => s.recordable)
+        .map((s) => s.scaleType)
+        .sort(),
+    ).toEqual(["esas_r", "fast", "painad", "pps"]);
+  });
+
+  it("the published score range is the one the dispatcher enforces, not a second copy (F-067)", async () => {
+    // `scoreRange` is read off each scorer's own published range, so a scorer change cannot leave the
+    // catalog advertising a range the D6 sanity check would reject.
+    const { app } = makeServer();
+    const res = await app.inject({ method: "GET", url: "/api/v1/scales", headers: RN });
+    const scales = res.json().scales as {
+      scaleType: string;
+      scoreRange: [number, number] | null;
+    }[];
+    expect(scales.find((s) => s.scaleType === "esas_r")?.scoreRange).toEqual([0, 90]);
+    expect(scales.find((s) => s.scaleType === "pps")?.scoreRange).toEqual([0, 100]);
+  });
+
   it("rejects an author without the permission key (403)", async () => {
     const { app } = makeServer();
     const res = await app.inject({

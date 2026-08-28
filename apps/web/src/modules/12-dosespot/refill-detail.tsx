@@ -42,6 +42,7 @@ export function RefillDetail(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is the intentional refetch trigger a completed decision bumps, not read in the body.
   useEffect(() => {
     let active = true;
     (async () => {
@@ -63,8 +64,6 @@ export function RefillDetail(): JSX.Element {
     return () => {
       active = false;
     };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: `reloadKey` is the explicit refetch trigger a
-    // completed decision bumps — the repo's reload-on-write convention.
   }, [client, id, reloadKey]);
 
   // §2.7 — a refill is decided while it is PENDING. The server owns the transition and the per-schedule

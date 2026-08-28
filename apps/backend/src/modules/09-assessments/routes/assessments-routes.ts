@@ -1,4 +1,8 @@
-import { ASSESSMENT_DISCIPLINES, disciplineCanRecordScale } from "@wardenx/assessments";
+import {
+  ASSESSMENT_DISCIPLINES,
+  disciplineCanRecordScale,
+  scaleDefinitions,
+} from "@wardenx/assessments";
 // apps/backend/src/modules/09-assessments/routes/assessments-routes.ts — M9-T05 the §4.1 route inventory
 // (18 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth,
 // M3) on the §4.6 keys M9 registers into M3's catalog (M9_CONTRIBUTED_PERMISSIONS). Org binding is
@@ -382,6 +386,29 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   );
 
   // 16 — admin: scale-policy registry (the enabled/disabled scales for the tenant).
+  // F-067 — the instrument catalog. `SCALE_CATALOG`'s own header calls itself "the single source the
+  // record-modal scale picker (T07) ... read", and there was no record modal: the ITEMS a scale's `data`
+  // payload must carry — how many, what kind, what range, which option values — existed only as
+  // TypeScript interfaces in `@wardenx/assessments`. A client cannot read a type, and the create
+  // publishes `data` as a bare object, so a capture form could only be a hand-copied duplicate of those
+  // shapes, free to drift from what `scoring.ts` computes over.
+  //
+  // It also reports `recordable`. `scoring.ts` registers FOUR scorers and raises
+  // `SCALE_SCORER_UNAVAILABLE` — a 500 — for the other ten, all of which are in this route's own
+  // `scaleType` enum. `hasScorer` is documented as "the form-gating ... check"; nothing gated on it.
+  app.get(
+    "/api/v1/scales",
+    {
+      preHandler: [READ],
+      config: {
+        auditRead: {
+          none: "the instrument catalog — labels, item structure, option vocabularies and score ranges. Platform reference data, identical for every patient and every tenant; no patient content is returned, so there is no disclosure to account for (§164.528). The captured assessments built from it ARE audited, on the patient-scoped reads",
+        },
+      },
+    },
+    async () => ({ scales: scaleDefinitions() }),
+  );
+
   app.get(
     "/api/v1/admin/scales/policies",
     {

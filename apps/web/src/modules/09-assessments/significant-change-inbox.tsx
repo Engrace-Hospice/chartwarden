@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   KpiCard,
   KpiStrip,
@@ -19,6 +20,7 @@ import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
 import { CHANGE_TONE, SEVERITY_TONE, stateLabel } from "./assessment-status";
+import { acknowledgeChange } from "./assessments-api";
 
 interface ChangeRow {
   id: string;
@@ -32,9 +34,13 @@ export function SignificantChangeInbox(): JSX.Element {
   const client = useApiClient();
   const { patientId } = useParams<{ patientId: string }>();
   const [items, setItems] = useState<ChangeRow[]>([]);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is the intentional refetch trigger a completed acknowledgement bumps, not read in the body.
   useEffect(() => {
     let active = true;
     (async () => {
@@ -59,14 +65,43 @@ export function SignificantChangeInbox(): JSX.Element {
     return () => {
       active = false;
     };
-  }, [client, patientId]);
+  }, [client, patientId, reloadKey]);
+
+  /**
+   * #91 — acknowledge the detected change. This is the ONE action this queue exists for and it did not
+   * offer it: a decline the detector found sat unacknowledged forever, and the escalation that keys off
+   * acknowledgement never stopped. The event row is KEPT — acknowledging records that a clinician saw
+   * it, it does not erase the finding.
+   */
+  async function acknowledge(eventId: string): Promise<void> {
+    setBusyId(eventId);
+    setNotice(null);
+    const res = await acknowledgeChange(client, eventId);
+    setBusyId(null);
+    setNotice(res.ok ? "Acknowledged." : res.message);
+    if (res.ok) setReloadKey((k) => k + 1);
+  }
 
   const open = items.filter((c) => c.status !== "acknowledged").length;
   const high = items.filter((c) => c.severity === "high" && c.status !== "acknowledged").length;
 
   return (
     <WorkQueueLayout
-      header={<PageHeader title="Significant changes" />}
+      header={
+        <PageHeader title="Significant changes">
+          {notice ? (
+            <output
+              style={{
+                display: "block",
+                fontSize: "0.8rem",
+                color: "var(--color-on-surface-variant)",
+              }}
+            >
+              {notice}
+            </output>
+          ) : null}
+        </PageHeader>
+      }
       kpis={
         <KpiStrip>
           <KpiCard label="Open" value={open} />
@@ -91,6 +126,7 @@ export function SignificantChangeInbox(): JSX.Element {
                   <th>Rule</th>
                   <th>Severity</th>
                   <th>Status</th>
+                  <th style={{ textAlign: "right" }}>Acknowledge</th>
                 </tr>
               </thead>
               <tbody>
@@ -108,6 +144,20 @@ export function SignificantChangeInbox(): JSX.Element {
                         label={stateLabel(c.status)}
                         tone={CHANGE_TONE[c.status] ?? "neutral"}
                       />
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      {c.status === "acknowledged" ? (
+                        <span style={{ color: "var(--color-muted)" }}>—</span>
+                      ) : (
+                        <Button
+                          tone="tertiary"
+                          size="sm"
+                          disabled={busyId === c.id}
+                          onClick={() => void acknowledge(c.id)}
+                        >
+                          Acknowledge
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))}

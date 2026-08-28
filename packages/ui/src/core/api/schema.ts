@@ -16227,6 +16227,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/scales": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The instrument catalog (F-067) — per scale: label, family, license requirement, whether it is RECORDABLE at all, its published score range, and the item definitions a capture form is built from. Ten of the fourteen have no scorer and raise a 500 on capture; `recordable` is what says so */
+        get: operations["getApiV1Scales"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/scheduled-doses": {
         parameters: {
             query?: never;
@@ -62844,6 +62861,52 @@ export interface operations {
                         coverageGapsCreated: {
                             clinicianMembershipId: string;
                             reason: "no_subscription" | "all_subscriptions_deactivated" | "vacation_forwards_unresolved";
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Scales: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        scales: {
+                            scaleType: "pps" | "kps" | "fast" | "painad" | "flacc" | "esas_r" | "nyha" | "meld" | "bode" | "flacker" | "gds" | "braden" | "morse" | "aims";
+                            label: string;
+                            family: string;
+                            licenseRequired: boolean;
+                            recordable: boolean;
+                            scoreRange: [
+                                number,
+                                number
+                            ] | null;
+                            items: {
+                                key: string;
+                                label: string;
+                                kind: "number" | "choice" | "text";
+                                required: boolean;
+                                min?: number;
+                                max?: number;
+                                options?: {
+                                    value: string;
+                                    label: string;
+                                }[];
+                            }[] | null;
                         }[];
                     };
                 };

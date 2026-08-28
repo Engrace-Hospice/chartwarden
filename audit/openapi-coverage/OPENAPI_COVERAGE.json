@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1267,
-    "enriched": 1262,
+    "routes": 1268,
+    "enriched": 1263,
     "deficit": 5,
     "mutating": 715,
     "mutatingNoBody": 1,
-    "gets": 519,
+    "gets": 520,
     "getsNoResponse": 7
   },
   "modules": [
@@ -81,12 +81,12 @@
     },
     {
       "module": "09-assessments",
-      "routes": 18,
-      "enriched": 18,
+      "routes": 19,
+      "enriched": 19,
       "deficit": 0,
       "mutating": 7,
       "mutatingNoBody": 0,
-      "gets": 11,
+      "gets": 12,
       "getsNoResponse": 0
     },
     {
