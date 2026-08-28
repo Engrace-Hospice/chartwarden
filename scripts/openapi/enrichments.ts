@@ -1921,97 +1921,15 @@ const AdmissionPageResponseSchema = Type.Object({
 });
 const AdmissionListResponseSchema = Type.Object({ items: Type.Array(AdmissionSummaryRowSchema) });
 
-// M7 Care Plan (IPOC) routes validate via a manual parse() (the route-level TypeBox covers request
-// bodies, not the wire response shapes), so the read responses are declared here to type the Track B
-// screens (M7-T09). Mirrors CarePlanRouteService's getCarePlanForPatient / listVersions / getSummary
-// projections (apps/backend/src/modules/07-care-plan/routes/service.ts). The UI reads only the fields
-// it renders; the server may send richer rows.
-const CarePlanVersionDtoSchema = Type.Object({
-  id: Type.String(),
-  planId: Type.String(),
-  sequence: Type.Integer(),
-  kind: Type.String(),
-  status: Type.String(),
-  idgMeetingId: Type.Union([Type.String(), Type.Null()]),
-  requiredSignerSet: Type.Array(Type.String()),
-  signatures: Type.Array(Type.Object({ signerRole: Type.String(), signedAt: Type.String() })),
-  signedAt: Type.Union([Type.String(), Type.Null()]),
-  version: Type.Integer(),
-});
-const CarePlanProblemDtoSchema = Type.Object({
-  id: Type.String(),
-  description: Type.String(),
-  kind: Type.String(),
-  source: Type.String(),
-  sudRelated: Type.Boolean(),
-  status: Type.String(),
-  icd10Code: Type.Union([Type.String(), Type.Null()]),
-  snomedCode: Type.Union([Type.String(), Type.Null()]),
-  resolutionNote: Type.Union([Type.String(), Type.Null()]),
-  version: Type.Integer(),
-});
-const CarePlanGoalDtoSchema = Type.Object({
-  id: Type.String(),
-  problemId: Type.String(),
-  originalText: Type.String(),
-  revisedText: Type.Union([Type.String(), Type.Null()]),
-  source: Type.String(),
-  actingConsentId: Type.Union([Type.String(), Type.Null()]),
-  measurableOutcome: Type.Union([Type.String(), Type.Null()]),
-  status: Type.String(),
-  version: Type.Integer(),
-});
-const CarePlanInterventionDtoSchema = Type.Object({
-  id: Type.String(),
-  problemId: Type.String(),
-  goalRefs: Type.Array(Type.String()),
-  scopeText: Type.String(),
-  frequencyText: Type.String(),
-  frequencyValue: Type.String(),
-  discipline: Type.String(),
-  responsibleRole: Type.Union([Type.String(), Type.Null()]),
-  status: Type.String(),
-  version: Type.Integer(),
-});
-// The patient-scoped read returns the assembled plan; the no-plan case sends `{ carePlan: null }`.
-// All assembled fields are optional so the client narrows on `id` presence (the empty case omits them).
-const CarePlanReadResponseSchema = Type.Object({
-  id: Type.Optional(Type.String()),
-  patientId: Type.Optional(Type.String()),
-  status: Type.Optional(Type.String()),
-  activeVersionId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-  version: Type.Optional(Type.Integer()),
-  versions: Type.Optional(Type.Array(CarePlanVersionDtoSchema)),
-  problems: Type.Optional(Type.Array(CarePlanProblemDtoSchema)),
-  goals: Type.Optional(Type.Array(CarePlanGoalDtoSchema)),
-  interventions: Type.Optional(Type.Array(CarePlanInterventionDtoSchema)),
-  redacted: Type.Optional(Type.Boolean()),
-  // present (and null) only on the no-plan response
-  carePlan: Type.Optional(Type.Null()),
-});
-const CarePlanVersionsResponseSchema = Type.Object({
-  items: Type.Array(CarePlanVersionDtoSchema),
-  nextCursor: Type.Union([Type.String(), Type.Null()]),
-});
-const CarePlanSummaryResponseSchema = Type.Object({
-  planId: Type.String(),
-  versionId: Type.Union([Type.String(), Type.Null()]),
-  activeProblems: Type.Array(Type.Object({ description: Type.String(), kind: Type.String() })),
-  patientStatedGoals: Type.Array(
-    Type.Object({
-      text: Type.String(),
-      measurableOutcome: Type.Union([Type.String(), Type.Null()]),
-    }),
-  ),
-  activeInterventions: Type.Array(
-    Type.Object({
-      layText: Type.String(),
-      discipline: Type.String(),
-      frequencyText: Type.String(),
-    }),
-  ),
-  redacted: Type.Boolean(),
-});
+// M7 Care Plan (IPOC) read responses are declared by the M07 block below, which imports the ROUTE-LEVEL
+// TypeBox (`CarePlanDetailResponseSchema` et al.) rather than restating it. A hand-written mirror of the
+// same three responses used to sit here and was superseded by that block — a later `Object.assign` wins —
+// so it published nothing and nobody noticed it had drifted. It declared
+// `requiredSignerSet: Type.Array(Type.String())` while the wire has always sent `{ role, count }`, which
+// is the shape both M7 SCREENS then copied: the IDG signature checklist compared an object to a role
+// string and passed the object to `cap()` (→ `s.replace`, a throw) the moment a version carried a
+// non-empty signer set (#91). A superseded schema is worse than a wrong one, because it is wrong
+// somewhere a reader will still find it and right nowhere anything checks.
 
 // M8 Encounters & Visit Notes (Track B — Encounter Read / Cosignature Queue / My Drafts, M8-T12). M8's
 // routes are not auto-mounted into the contract yet (the write routes keep route-level TypeBox bodies),
@@ -3079,22 +2997,9 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     query: ComplianceListQuerySchema,
     response: AdmissionPageResponseSchema,
   },
-  // M7 Care Plan / IPOC (Track B — Care Plan View / Version History / Summary, M7-T09). Read responses
-  // only; the write routes keep their route-level TypeBox request bodies (already in the contract).
-  "GET /api/v1/patients/:patientId/care-plan": {
-    summary:
-      "A patient's care plan — problems/goals/interventions + versions; §7.6 SUD-redacted per caller (§5.2)",
-    response: CarePlanReadResponseSchema,
-  },
-  "GET /api/v1/care-plans/:planId/versions": {
-    summary: "Care-plan version history — every version with status, signers, and signed-at (§5.1)",
-    response: CarePlanVersionsResponseSchema,
-  },
-  "GET /api/v1/care-plans/:planId/summary": {
-    summary:
-      "Patient/family-friendly care-plan summary; SUD content excluded unless consent matches (§5.2)",
-    response: CarePlanSummaryResponseSchema,
-  },
+  // M7 Care Plan / IPOC read responses live in the M07 block below, which imports the route-level
+  // TypeBox. The three entries that used to sit here restated them by hand, were overridden by that
+  // block, and had drifted — see the note beside the deleted DTOs above.
   // M8 Encounters & Visit Notes (Track B — Encounter Read / Cosignature Queue / My Drafts, M8-T12). Read
   // responses only; the write routes keep their route-level TypeBox request bodies (not yet in the contract).
   "GET /api/v1/encounters/:encounterId": {

@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   Glyph,
   LoadingSpinner,
@@ -21,11 +22,31 @@ import {
 // frontend hide. Reads GET /patients/:patientId/care-plan (+ the patient summary for the banner); the
 // server enforces every scope. Honest gaps: the API exposes no next-review date and AI care-plan
 // suggestions are M29 (not built) — those regions render as honest substitutions, never fabricated.
+//
+// #91 — this screen displayed the IPOC and could not author it. The plan of care is the legal predicate
+// for delivering hospice care at all (42 CFR 418.56(b)) and the IDG must review it every 15 days
+// (418.56(d)); the footer's three buttons were all NAVIGATION, and the "IDG quorum required to approve"
+// chip was a static string that read the same whether the quorum was unmet, met, or not applicable.
+// Every problem, goal and intervention is now authorable and editable in place, and the footer carries
+// the §2 version ceremonies — each offered only in the state the SERVER accepts it in.
+//
+// The quorum chip now names the roles actually outstanding, computed from the signer SLOTS the server
+// published against the signatures collected. That comparison was impossible before: both M7 screens
+// typed `requiredSignerSet` as `string[]` when the wire has always sent `{ role, count }`, so the
+// checklist compared an object to a role string (always false) and passed the object to `cap()`, which
+// calls `s.replace`. It never threw only because `requiredSignerSet` is populated at FINALIZE and
+// nothing in the product could finalize.
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
+import {
+  CarePlanElementModal,
+  type ElementAction,
+  type ElementSubject,
+} from "./care-plan-element-modal";
 import { cap, toneFor } from "./care-plan-status";
+import { CarePlanVersionModal, type VersionAction } from "./care-plan-version-modal";
 
 interface Version {
   id: string;
@@ -33,8 +54,16 @@ interface Version {
   kind: string;
   status: string;
   signatures: { signerRole: string; signedAt: string }[];
-  requiredSignerSet: string[];
+  // #91 — `{ role, count }`, NOT `string`. The wire has always sent slot OBJECTS; both M7 screens
+  // declared `string[]` and rendered each entry through `cap()`, which calls `s.replace` — so the IDG
+  // signature checklist would have THROWN the first time a version carried a non-empty signer set, and
+  // the `signerRole === role` comparison beside it was an object-vs-string that could only ever be
+  // false. It never fired because `requiredSignerSet` is populated at FINALIZE and nothing could
+  // finalize; enabling that write is what would have surfaced it.
+  requiredSignerSet: { role: string; count: number }[];
   signedAt: string | null;
+  // §7.7 — the row version a write must quote. Read here, sent verbatim; never invented.
+  version: number;
 }
 interface Problem {
   id: string;
@@ -43,6 +72,8 @@ interface Problem {
   source: string;
   sudRelated: boolean;
   status: string;
+  // §7.7 — the row version a write must quote. Read here, sent verbatim; never invented.
+  version: number;
 }
 interface Goal {
   id: string;
@@ -51,6 +82,8 @@ interface Goal {
   revisedText: string | null;
   source: string;
   status: string;
+  // §7.7 — the row version a write must quote. Read here, sent verbatim; never invented.
+  version: number;
 }
 interface Intervention {
   id: string;
@@ -59,6 +92,8 @@ interface Intervention {
   frequencyText: string;
   discipline: string;
   status: string;
+  // §7.7 — the row version a write must quote. Read here, sent verbatim; never invented.
+  version: number;
 }
 interface CarePlan {
   id: string;
@@ -90,7 +125,17 @@ export function CarePlanView(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [empty, setEmpty] = useState(false);
+  const [element, setElement] = useState<{
+    action: ElementAction;
+    problemId?: string | null;
+    subject?: ElementSubject | null;
+  } | null>(null);
+  const [versionAction, setVersionAction] = useState<VersionAction | null>(null);
+  /** Bumped after every write so the effect re-reads — including the row versions the next write quotes. */
+  const [reloadKey, setReloadKey] = useState(0);
+  const reload = (): void => setReloadKey((k) => k + 1);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is the intentional refetch trigger, not read in the body.
   useEffect(() => {
     let active = true;
     (async () => {
@@ -131,7 +176,7 @@ export function CarePlanView(): JSX.Element {
     return () => {
       active = false;
     };
-  }, [client, patientId]);
+  }, [client, patientId, reloadKey]);
 
   const sortedProblems = useMemo(
     () =>
@@ -142,6 +187,20 @@ export function CarePlanView(): JSX.Element {
   );
   const activeVersion = plan?.versions.find((v) => v.id === plan.activeVersionId) ?? null;
   const draftVersion = plan?.versions.find((v) => v.status === "draft") ?? null;
+  // The version the lifecycle acts on: a draft is edited and finalized; anything finalized-but-unsigned
+  // is signed or returned. `activeVersion` is signed and in force — it is not the subject of a ceremony.
+  const pendingVersion =
+    plan?.versions.find(
+      (v) => v.status !== "draft" && v.id !== plan.activeVersionId && !v.signedAt,
+    ) ?? null;
+  // The §418.56 quorum, as the SERVER published it — slots required vs signatures collected. This chip
+  // used to be a static "IDG quorum required to approve" that said the same thing whether the quorum was
+  // unmet, met, or not yet applicable. The server decides whether a version activates; this reports it.
+  const quorumSubject = pendingVersion ?? draftVersion ?? activeVersion;
+  const signatures = quorumSubject?.signatures ?? [];
+  const outstandingSlots = (quorumSubject?.requiredSignerSet ?? []).filter(
+    (slot) => signatures.filter((sig) => sig.signerRole === slot.role).length < slot.count,
+  );
 
   const bailBanner = patient ? (
     <PatientBanner
@@ -244,6 +303,11 @@ export function CarePlanView(): JSX.Element {
             </div>
 
             <section style={{ ...cardSurface, padding: "1.5rem" }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.75rem" }}>
+                <Button size="sm" onClick={() => setElement({ action: "create-problem" })}>
+                  Add problem
+                </Button>
+              </div>
               {sortedProblems.length === 0 ? (
                 <p style={meta}>No problems on this plan.</p>
               ) : (
@@ -254,6 +318,9 @@ export function CarePlanView(): JSX.Element {
                     problem={p}
                     goals={plan.goals.filter((g) => g.problemId === p.id)}
                     interventions={plan.interventions.filter((iv) => iv.problemId === p.id)}
+                    onAct={(action, problemId, subject) =>
+                      setElement({ action, problemId, subject })
+                    }
                   />
                 ))
               )}
@@ -281,11 +348,14 @@ export function CarePlanView(): JSX.Element {
                     fontSize: "0.8rem",
                   }}
                 >
-                  {activeVersion.requiredSignerSet.map((role) => {
-                    const signed = activeVersion.signatures.some((s) => s.signerRole === role);
+                  {activeVersion.requiredSignerSet.map((slot) => {
+                    const collected = activeVersion.signatures.filter(
+                      (sig) => sig.signerRole === slot.role,
+                    ).length;
+                    const signed = collected >= slot.count;
                     return (
                       <li
-                        key={role}
+                        key={slot.role}
                         style={{
                           display: "flex",
                           alignItems: "center",
@@ -295,7 +365,8 @@ export function CarePlanView(): JSX.Element {
                         }}
                       >
                         <Glyph name={signed ? "check-circle" : "clock"} size={13} />
-                        {cap(role)}
+                        {cap(slot.role)}
+                        {slot.count > 1 ? ` ${collected}/${slot.count}` : ""}
                       </li>
                     );
                   })}
@@ -320,21 +391,21 @@ export function CarePlanView(): JSX.Element {
           </aside>
         </div>
 
-        {/* Sticky footer — IDG-quorum guard + the real plan actions */}
+        {/* Sticky footer — the REAL quorum state + the §2 version ceremonies */}
         <div style={footer}>
-          <span style={guardChip}>
-            <Glyph name="lock" size={14} /> IDG quorum required to approve
-          </span>
+          {outstandingSlots.length > 0 ? (
+            <span style={guardChip}>
+              <Glyph name="lock" size={14} /> Awaiting{" "}
+              {outstandingSlots.map((slot) => cap(slot.role)).join(", ")}
+            </span>
+          ) : quorumSubject?.status === "draft" ? (
+            <span style={guardChip}>
+              <Glyph name="lock" size={14} /> Draft — close for signature to collect the IDG quorum
+            </span>
+          ) : (
+            <span style={{ flex: 0 }} />
+          )}
           <span style={{ flex: 1 }} />
-          {draftVersion ? (
-            <button
-              type="button"
-              onClick={() => navigate(`/care-plans/${plan.id}/versions`)}
-              style={ghostBtn}
-            >
-              Open draft (v{draftVersion.sequence})
-            </button>
-          ) : null}
           <button
             type="button"
             onClick={() => navigate(`/care-plans/${plan.id}/summary`)}
@@ -345,12 +416,58 @@ export function CarePlanView(): JSX.Element {
           <button
             type="button"
             onClick={() => navigate(`/care-plans/${plan.id}/versions`)}
-            style={primaryBtn}
+            style={ghostBtn}
           >
             Version history
           </button>
+          {/* Each ceremony is offered only in the state the SERVER accepts it in, so no control here
+              is one the server will refuse. A draft is closed for signature; a closed-but-unsigned
+              version is signed or reopened; with neither, a new version is opened. */}
+          {draftVersion ? (
+            <button type="button" onClick={() => setVersionAction("finalize")} style={primaryBtn}>
+              Close draft for signature
+            </button>
+          ) : pendingVersion ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setVersionAction("return-to-draft")}
+                style={ghostBtn}
+              >
+                Return to draft
+              </button>
+              <button type="button" onClick={() => setVersionAction("sign")} style={primaryBtn}>
+                Sign
+              </button>
+            </>
+          ) : (
+            <button type="button" onClick={() => setVersionAction("revise")} style={primaryBtn}>
+              Start IDG review
+            </button>
+          )}
         </div>
       </div>
+      {element !== null ? (
+        <CarePlanElementModal
+          open
+          action={element.action}
+          planId={plan.id}
+          problemId={element.problemId ?? null}
+          subject={element.subject ?? null}
+          onClose={() => setElement(null)}
+          onDone={reload}
+        />
+      ) : null}
+      {versionAction !== null ? (
+        <CarePlanVersionModal
+          open
+          action={versionAction}
+          planId={plan.id}
+          version={versionAction === "finalize" ? draftVersion : pendingVersion}
+          onClose={() => setVersionAction(null)}
+          onDone={reload}
+        />
+      ) : null}
     </PatientWorkspaceLayout>
   );
 }
@@ -360,11 +477,14 @@ function ProblemBlock({
   problem,
   goals,
   interventions,
+  onAct,
 }: {
   first: boolean;
   problem: Problem;
   goals: Goal[];
   interventions: Intervention[];
+  /** Opens the authoring modal. The block never writes; it names the operation and its subject. */
+  onAct: (action: ElementAction, problemId: string | null, subject: ElementSubject | null) => void;
 }): JSX.Element {
   return (
     <div
@@ -383,10 +503,30 @@ function ProblemBlock({
             <Glyph name="lock" size={11} /> SUD
           </span>
         ) : null}
+        <span style={{ flex: 1 }} />
+        {problem.status !== "resolved" ? (
+          <span style={{ display: "flex", gap: "0.375rem" }}>
+            <Button size="sm" tone="tertiary" onClick={() => onAct("edit-problem", null, problem)}>
+              Edit
+            </Button>
+            <Button
+              size="sm"
+              tone="tertiary"
+              onClick={() => onAct("resolve-problem", null, problem)}
+            >
+              Resolve
+            </Button>
+          </span>
+        ) : null}
       </div>
 
       <div style={indentBlock}>
-        <span style={miniLabel}>Goals</span>
+        <span style={miniLabel}>
+          Goals{" "}
+          <Button size="sm" tone="tertiary" onClick={() => onAct("create-goal", problem.id, null)}>
+            Add goal
+          </Button>
+        </span>
         {goals.length === 0 ? (
           <p style={meta}>None recorded.</p>
         ) : (
@@ -405,13 +545,25 @@ function ProblemBlock({
                 {g.source !== "clinical" ? <span style={tag}> {cap(g.source)}-stated</span> : null}
               </span>
               <StatusPill label={cap(g.status)} tone={toneFor(g.status)} />
+              <Button size="sm" tone="tertiary" onClick={() => onAct("edit-goal", problem.id, g)}>
+                Revise
+              </Button>
             </div>
           ))
         )}
       </div>
 
       <div style={indentBlock}>
-        <span style={miniLabel}>Interventions</span>
+        <span style={miniLabel}>
+          Interventions{" "}
+          <Button
+            size="sm"
+            tone="tertiary"
+            onClick={() => onAct("create-intervention", problem.id, null)}
+          >
+            Add intervention
+          </Button>
+        </span>
         {interventions.length === 0 ? (
           <p style={meta}>None recorded.</p>
         ) : (
@@ -426,6 +578,24 @@ function ProblemBlock({
                 </span>
               </span>
               <StatusPill label={cap(iv.status)} tone={toneFor(iv.status)} />
+              {iv.status !== "discontinued" ? (
+                <span style={{ display: "flex", gap: "0.375rem" }}>
+                  <Button
+                    size="sm"
+                    tone="tertiary"
+                    onClick={() => onAct("edit-intervention", problem.id, iv)}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    size="sm"
+                    tone="tertiary"
+                    onClick={() => onAct("discontinue-intervention", problem.id, iv)}
+                  >
+                    Stop
+                  </Button>
+                </span>
+              ) : null}
             </div>
           ))
         )}
