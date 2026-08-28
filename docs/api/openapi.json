@@ -99933,6 +99933,89 @@
         }
       }
     },
+    "/api/v1/ipu-shifts/{id}/staff/confirm": {
+      "post": {
+        "operationId": "postApiV1IpushiftsByIdStaffConfirm",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Confirm a staff assignment (F-080 — `tentative` -> `confirmed`). §2.3 counts only CONFIRMED assignments toward RN coverage and the column defaults to `tentative`, so before this route no assignment made through any product path could cover an hour: `ipu_rn_coverage_window.is_covered` was false for every hour of every unit, and every GIP and inpatient-respite admission was refused at open",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "shiftId",
+                    "membershipId",
+                    "role",
+                    "state"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "shiftId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "membershipId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "assignmentId"
+                ],
+                "properties": {
+                  "assignmentId": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ipu-units/{id}/rn-coverage": {
       "get": {
         "operationId": "getApiV1IpuunitsByIdRncoverage",

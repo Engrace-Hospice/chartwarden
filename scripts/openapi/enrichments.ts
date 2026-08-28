@@ -8058,6 +8058,7 @@ import {
   CensusListSchema as M37CensusListSchema,
   CheckInVisitorBodySchema as M37CheckInVisitorBodySchema,
   ConfirmBodySchema as M37ConfirmBodySchema,
+  ConfirmStaffBodySchema as M37ConfirmStaffBodySchema,
   ConfirmTransferBodySchema as M37ConfirmTransferBodySchema,
   CreateBedBodySchema as M37CreateBedBodySchema,
   CreateEquipmentBodySchema as M37CreateEquipmentBodySchema,
@@ -8280,6 +8281,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M37UnassignStaffBodySchema,
     response: M37StaffAssignmentViewSchema,
     summary: "Cancel a staff assignment (§4.1)",
+  },
+  "POST /api/v1/ipu-shifts/:id/staff/confirm": {
+    body: M37ConfirmStaffBodySchema,
+    response: M37StaffAssignmentViewSchema,
+    summary:
+      "Confirm a staff assignment (F-080 — `tentative` -> `confirmed`). §2.3 counts only CONFIRMED assignments toward RN coverage and the column defaults to `tentative`, so before this route no assignment made through any product path could cover an hour: `ipu_rn_coverage_window.is_covered` was false for every hour of every unit, and every GIP and inpatient-respite admission was refused at open",
   },
   "GET /api/v1/ipu-units/:id/rn-coverage": {
     response: M37RnCoverageViewSchema,

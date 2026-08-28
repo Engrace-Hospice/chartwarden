@@ -29,6 +29,7 @@ import {
   BedCleaningBodySchema,
   CheckInVisitorBodySchema,
   ConfirmBodySchema,
+  ConfirmStaffBodySchema,
   ConfirmTransferBodySchema,
   CreateBedBodySchema,
   CreateEquipmentBodySchema,
@@ -477,6 +478,21 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       return service.unassignStaff(actor, id, parse(UnassignStaffBodySchema, request.body));
+    },
+  );
+
+  // 26b. POST /ipu-shifts/:id/staff/confirm — confirm an assignment (F-080). §4.1.
+  //
+  // Gated on `m37.shift.assign_staff`, the SAME key as assign/unassign, deliberately: whoever staffs the
+  // roster confirms it, and minting `m37.shift.confirm_staff` would have been a key no role template
+  // grants — #169's fail-closed invisibility, which this module's own screens.ts header cites.
+  app.post(
+    "/api/v1/ipu-shifts/:id/staff/confirm",
+    { preHandler: [P("m37.shift.assign_staff")] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.confirmStaff(actor, id, parse(ConfirmStaffBodySchema, request.body));
     },
   );
 

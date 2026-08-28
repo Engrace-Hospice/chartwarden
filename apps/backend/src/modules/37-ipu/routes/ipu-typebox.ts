@@ -306,6 +306,13 @@ export const ShiftListSchema = Type.Object({ items: Type.Array(ShiftViewSchema) 
 export const UnassignStaffBodySchema = Type.Object({ assignmentId: id });
 export type UnassignStaffBody = Static<typeof UnassignStaffBodySchema>;
 
+/**
+ * F-080 — confirm a staff assignment (§2.3). The same `{ assignmentId }` shape as the unassign body,
+ * and for the same F-070 reason: the shift id is part of the assignment's identity, not decoration.
+ */
+export const ConfirmStaffBodySchema = Type.Object({ assignmentId: id });
+export type ConfirmStaffBody = Static<typeof ConfirmStaffBodySchema>;
+
 export const RnCoverageViewSchema = Type.Object({
   unitId: id,
   items: Type.Array(Type.Object({ hourStartAt: Type.String(), isCovered: Type.Boolean() })),

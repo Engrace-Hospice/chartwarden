@@ -12,6 +12,45 @@
 // minting `m37.restraint.read` and friends would have hidden this screen from every caller and denied
 // its reads to every one of them — the fail-closed invisibility this whole audit is about. Which
 // templates get a narrower key is a tenant policy decision, taken deliberately or not at all.
+//
+// F-080 (#91 AC5) — `e2e/specs/ipu.spec.ts` drives the §2.2 lifecycle in a real browser: request a bed,
+// assign a specific one, confirm the admission active. Writing it found TWO defects, either of which
+// alone made every one of those transitions impossible on every deployment.
+//
+//   1. NO RN ASSIGNMENT COULD EVER COVER AN HOUR. §2.3 counts an hour covered only when a `confirmed`
+//      RN assignment spans it; `ipu_staff_assignment.state` defaults to `tentative`, `assignStaff` never
+//      set it, and no route confirmed one — zero writes of `'confirmed'` in the whole module. So the
+//      F-071/#174 watchdog materialized 216 rows per unit all reading `is_covered = false`, and every
+//      GIP and inpatient-respite admission stayed refused at open. The watchdog was the missing producer
+//      of the WINDOW; its own INPUT had none. `POST /ipu-shifts/:id/staff/confirm` is it.
+//   2. EVERY §2.2 TRANSITION AFTER `open` ANSWERED 500. `applyAdmissionTransition` — the shared path for
+//      request-bed, assign-bed, confirm, transfer, confirm-transfer and discharge — published
+//      `{ ipuAdmissionId, organizationId }` for events whose §4.4 schemas also require `unitId`,
+//      `bedId` + `levelOfCarePeriodId`, `activatedAt`, `targetKind`, `completedAt` and `reason`. The
+//      transactional publisher validates inside the mutation's own tx, so the emit threw and rolled the
+//      write back. `opened` was the one event that worked, and the one that does NOT go through that
+//      helper — `openAdmission` builds its payload inline, correctly.
+//
+// Neither was visible from inside the repo's tests. `m37-ipu-write.live.test.ts` drives all four broken
+// transitions and passed, because its outbox port was the default NO-OP — it skipped precisely the
+// check that was failing. It validates against the real §4.4 schemas now. `m37-rn-coverage.live.test.ts`
+// passed because every coverage test inserted `state='confirmed'` with raw SQL, the one value no product
+// path could produce; it also turned out to have been RED since the day it was written (six units on one
+// facility id against a UNIQUE(org, facility) index that predates the file), which nothing noticed
+// because CI has never executed a live suite.
+//
+// TWO FINDINGS LEFT AS FINDINGS:
+//
+//   • THE ADMISSIONS WORKLIST NEVER NAMES THE PATIENT. It renders the admission's raw uuid as the row's
+//     identity; the list projection carries no patient reference at all. An inpatient census where a
+//     nurse cannot tell who is in which bed is the one thing this screen exists to answer. Fixing it is
+//     a producer-side change (a patient projection through the M5 seam, with the masking decision that
+//     comes with it), not a frontend one.
+//   • `m37.gip_criteria.attester_eligible` IS REGISTERED AND GATES NOTHING. Route 19 carries RBAC plus
+//     step-up and no `requireAbac`, so CoP 418.108's "hospice MD only" attestation is open to any holder
+//     of `m37.gip_criteria.attest`. It is the `RN_COVERAGE` shape `routes/guards.ts` documents — the
+//     predicate reads a boolean off a SYNCHRONOUS ABAC target that no route can populate — so binding it
+//     needs the same async-target change, not a one-line guard.
 import type { ScreenRegistryModule } from "@wardenx/types";
 import { lazy } from "react";
 import type { ComponentType } from "react";

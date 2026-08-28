@@ -10028,6 +10028,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ipu-shifts/{id}/staff/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm a staff assignment (F-080 — `tentative` -> `confirmed`). §2.3 counts only CONFIRMED assignments toward RN coverage and the column defaults to `tentative`, so before this route no assignment made through any product path could cover an hour: `ipu_rn_coverage_window.is_covered` was false for every hour of every unit, and every GIP and inpatient-respite admission was refused at open */
+        post: operations["postApiV1IpushiftsByIdStaffConfirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ipu-units/{id}/rn-coverage": {
         parameters: {
             query?: never;
@@ -45844,6 +45861,42 @@ export interface operations {
         };
     };
     deleteApiV1IpushiftsByIdStaff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    assignmentId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        shiftId: string;
+                        membershipId: string;
+                        role: string;
+                        state: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpushiftsByIdStaffConfirm: {
         parameters: {
             query?: never;
             header?: never;

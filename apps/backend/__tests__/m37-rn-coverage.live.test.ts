@@ -35,7 +35,16 @@ const USER = "33333333-3333-3333-3333-333333333333";
 const MEMBER = "44444444-4444-4444-4444-444444444444";
 const PATIENT = "55555555-5555-5555-5555-555555555555";
 const PE = "66666666-6666-6666-6666-666666666666";
-const FACILITY = "77777777-7777-4777-8777-777777777777";
+/**
+ * A DISTINCT facility per unit. `inpatient_unit_org_facility_uq` (migration 0149) is UNIQUE on
+ * (organization_id, facility_id) — one IPU unit per facility per org — so every unit after the first
+ * collided on 23505 and this suite has been red since the day it was written: 5 of its 8 tests died in
+ * their own `createUnit` call, on a constraint that predates them. Nothing surfaced it because CI has
+ * not executed a live suite; `arch:live-suites` proves a suite is WIRED to a job, never that the job
+ * is green. (F-080, found while adding the confirm-staff test below.)
+ */
+const facilityFor = (n: number): string => `77777777-7777-4777-8777-${String(n).padStart(12, "0")}`;
+const FACILITY = facilityFor(1);
 
 const actor = {
   organizationId: ORG_A,
@@ -188,7 +197,7 @@ describe.skipIf(!DB_URL)("M37 RN-coverage watchdog — LIVE Postgres (F-071)", (
   it("a TENTATIVE assignment does not cover — only `confirmed` counts (§2.3)", async () => {
     const now = Date.now();
     const unit2 = await svc.createUnit(actor, {
-      facilityId: FACILITY,
+      facilityId: facilityFor(2),
       displayName: "IPU Two",
       bedCount: 2,
     });
@@ -225,7 +234,7 @@ describe.skipIf(!DB_URL)("M37 RN-coverage watchdog — LIVE Postgres (F-071)", (
   it("a NON-RN role does not cover, however many of them are on shift", async () => {
     const now = Date.now();
     const unit3 = await svc.createUnit(actor, {
-      facilityId: FACILITY,
+      facilityId: facilityFor(3),
       displayName: "IPU Three",
       bedCount: 2,
     });
@@ -276,7 +285,7 @@ describe.skipIf(!DB_URL)("M37 RN-coverage watchdog — LIVE Postgres (F-071)", (
 
   it("break-glass writes a row that the coverage gate reads, and it expires", async () => {
     const unit4 = await svc.createUnit(actor, {
-      facilityId: FACILITY,
+      facilityId: facilityFor(4),
       displayName: "IPU Four",
       bedCount: 2,
     });
@@ -339,13 +348,21 @@ describe.skipIf(!DB_URL)("M37 RN-coverage watchdog — LIVE Postgres (F-071)", (
     ).toBe(1);
 
     // Expire it in place; the gate stops passing with nothing having had to run.
-    await admin.query("UPDATE ipu_rn_break_glass SET expires_at = now() - interval '1 minute'");
+    //
+    // BOTH timestamps move back. `ipu_rn_break_glass_window_ordered` (migration 0230) is
+    // CHECK (expires_at > invoked_at), so pushing only `expires_at` into the past raises 23514 and the
+    // row never expires — which is how this line failed. Aging the whole window backwards is what an
+    // elapsed override actually looks like. (F-080.)
+    await admin.query(
+      "UPDATE ipu_rn_break_glass SET invoked_at = now() - interval '2 hours', " +
+        "expires_at = now() - interval '1 minute'",
+    );
     await expect(openOnUnit4()).rejects.toMatchObject({ code: "IPU_RN_COVERAGE_UNAVAILABLE" });
   });
 
   it("the DB refuses an override longer than the §2.3 4-hour cap, whatever the route asks for", async () => {
     const unit5 = await svc.createUnit(actor, {
-      facilityId: FACILITY,
+      facilityId: facilityFor(5),
       displayName: "IPU Five",
       bedCount: 1,
     });
@@ -360,9 +377,88 @@ describe.skipIf(!DB_URL)("M37 RN-coverage watchdog — LIVE Postgres (F-071)", (
     ).rejects.toThrow(/ipu_rn_break_glass_max_window/);
   });
 
+  /**
+   * F-080 — the whole chain through the SERVICE, with no raw SQL anywhere in it.
+   *
+   * Every other coverage test in this file inserts `state='confirmed'` directly, which is exactly the
+   * value no product path could produce: `ipu_staff_assignment.state` defaults to `tentative`,
+   * `assignStaff` never set it, and nothing in M37 ever wrote `confirmed`. So the watchdog materialized a
+   * 216-row grid of `is_covered = false` for every unit on every deployment, and every GIP and
+   * inpatient-respite admission stayed refused at open — the outage the watchdog was built to end. The
+   * suite passed throughout, because its own fixture supplied the one fact the product could not.
+   *
+   * This is the same assertion the file's second test makes, minus the SQL: create the shift with
+   * `createShift`, assign with `assignStaff`, confirm with `confirmStaff`, run the real watchdog, open
+   * a GIP admission. The `tentative` arm in the middle is what fails against the pre-fix code.
+   */
+  it("covers an hour end-to-end through the service alone — no raw SQL (F-080)", async () => {
+    const now = Date.now();
+    const unit7 = await svc.createUnit(actor, {
+      facilityId: facilityFor(6),
+      displayName: "IPU Seven",
+      bedCount: 1,
+    });
+    const shift = await svc.createShift(actor, {
+      unitId: unit7.id,
+      shiftStartAt: new Date(now - HOUR).toISOString(),
+      shiftEndAt: new Date(now + 11 * HOUR).toISOString(),
+    });
+    const assignment = await svc.assignStaff(actor, shift.id, {
+      membershipId: MEMBER,
+      role: "charge_rn",
+    });
+    // The route creates it tentative — which is correct, and is why the confirm step has to exist.
+    expect(assignment.state).toBe("tentative");
+
+    await runWatchdog();
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int n FROM ipu_rn_coverage_window WHERE unit_id=$1 AND is_covered",
+          [unit7.id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+
+    const confirmed = await svc.confirmStaff(actor, shift.id, { assignmentId: assignment.id });
+    expect(confirmed.state).toBe("confirmed");
+
+    await runWatchdog();
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int n FROM ipu_rn_coverage_window WHERE unit_id=$1 AND is_covered",
+          [unit7.id],
+        )
+      ).rows[0].n,
+    ).toBeGreaterThanOrEqual(11);
+
+    admissionSeq += 1;
+    const pad = String(admissionSeq).padStart(2, "0");
+    const adm = await svc.openAdmission(actor, {
+      patientId: PATIENT,
+      admissionId: `99999999-0000-4000-8000-0000000000${pad}`,
+      levelOfCarePeriodId: `99999999-1111-4111-8111-0000000000${pad}`,
+      providerEntityId: PE,
+      unitId: unit7.id,
+      kind: "gip",
+    });
+    expect(adm.state).toBe("pending");
+
+    // Confirming twice is idempotent — the second call returns the row rather than re-stamping it.
+    const again = await svc.confirmStaff(actor, shift.id, { assignmentId: assignment.id });
+    expect(again.state).toBe("confirmed");
+
+    // …and a cancelled assignment is never confirmable back onto the grid.
+    await svc.unassignStaff(actor, shift.id, { assignmentId: assignment.id });
+    await expect(
+      svc.confirmStaff(actor, shift.id, { assignmentId: assignment.id }),
+    ).rejects.toMatchObject({ code: "ILLEGAL_STAFF_ASSIGNMENT_TRANSITION" });
+  });
+
   it("the DB refuses an override with a too-short reason", async () => {
     const unit6 = await svc.createUnit(actor, {
-      facilityId: FACILITY,
+      facilityId: facilityFor(7),
       displayName: "IPU Six",
       bedCount: 1,
     });

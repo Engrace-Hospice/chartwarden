@@ -4,15 +4,48 @@
  * lifecycle (open → request-bed → assign-bed → discharge with the bed-cleaning cross-effects), the restraint
  * workflow (apply → reassess), and the `ipu_record` destruction eraser. Gated on a live DB:
  *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m37:write:live
+ *
+ * F-080 — the outbox port is CATALOG-VALIDATING, not a no-op. It used to be the default no-op, which is
+ * why this suite drove `requestBed`, `assignBed`, `confirm` and `discharge` green while all four
+ * answered 500 in production: the transactional publisher `Value.Check`s every payload against its §4.4
+ * schema inside the mutation's own transaction, and `applyAdmissionTransition` emitted only
+ * `{ ipuAdmissionId, organizationId }` for events that also require `unitId` / `bedId` +
+ * `levelOfCarePeriodId` / `activatedAt` / `targetKind` / `completedAt` / `reason`. A no-op outbox skips
+ * exactly the check that was failing, so the suite proved the state machine and nothing about the emit.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { Value } from "@sinclair/typebox/value";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eraseIpuRecord } from "../src/modules/37-ipu/eraser";
+import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/events-by-m37";
 import { buildDrizzleIpuRouteService } from "../src/modules/37-ipu/routes/service-drizzle";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+
+/**
+ * An outbox that PERSISTS NOTHING and VALIDATES EVERYTHING (F-080).
+ *
+ * The production publisher's third check — `Value.Check(entry.payloadSchema, payload)` — is the one a
+ * no-op stub skips, and it is the one that was failing. This applies the same check against M37's own
+ * §4.4 contribution and throws the way the real one does, so a payload that the route builds wrong
+ * fails HERE rather than in a browser. It deliberately does not write `outbox_event`: the assertion is
+ * on the payload's shape, and a real persister would drag the whole boot catalog in with it.
+ */
+const M37_EVENT_SCHEMAS = new Map(M37_OUTBOX_EVENTS.map((e) => [e.eventName, e.payloadSchema]));
+const VALIDATING_OUTBOX = {
+  publish: async (_tx: unknown, event: { eventName: string; payload: unknown }) => {
+    const schema = M37_EVENT_SCHEMAS.get(event.eventName);
+    if (!schema) throw new Error(`m37 event not in events-by-m37.ts: ${event.eventName}`);
+    if (!Value.Check(schema, event.payload)) {
+      const details = [...Value.Errors(schema, event.payload)]
+        .map((e) => `${e.path || "/"}: ${e.message}`)
+        .join("; ");
+      throw new Error(`payload_schema_violation ${event.eventName} — ${details}`);
+    }
+  },
+} as never;
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -141,10 +174,13 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });
-    // NOOP outbox — this suite asserts state + effects. The `orders` seam is supplied because the
-    // restraint gate now RESOLVES the physician order rather than checking the caller's string is
-    // non-empty (F-069); `ORDERS` below is the fake M11 register.
-    svc = buildDrizzleIpuRouteService(handle.db, { orders: ORDERS, admissions: ADMISSIONS });
+    // The `orders` seam is supplied because the restraint gate now RESOLVES the physician order rather
+    // than checking the caller's string is non-empty (F-069); `ORDERS` below is the fake M11 register.
+    svc = buildDrizzleIpuRouteService(handle.db, {
+      orders: ORDERS,
+      admissions: ADMISSIONS,
+      outbox: VALIDATING_OUTBOX,
+    });
   }, 120_000);
 
   afterAll(async () => {

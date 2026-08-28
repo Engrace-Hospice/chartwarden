@@ -1,3 +1,5 @@
+import { createDbClient } from "@wardenx/db";
+import { Client } from "pg";
 /**
  * WardenX — final scenario-data batch: M16 (Bereavement) / M30 (HQRP & Quality) / M37 (IPU Management) /
  * M39 (Consent) / M22 (Documents) for the flagship patient(s) + org (local dev). NOT for production.
@@ -43,12 +45,20 @@
  *     `supervisor@wardenx.local` the `compliance_officer` role key directly (plus `quality` added to
  *     every persona's broad permission-category grant), so the role exists before ANY script ever
  *     authenticates as that persona, in any run order.
- *   - M37: `kind: "arranged"` is the only IPU admission kind reachable — GIP/IRC synchronously check
- *     `ipu_rn_coverage_window` and fail closed (`service-drizzle.ts`'s `openAdmission`), and there is no
- *     route that ever writes a coverage-window row (`POST .../rn-coverage/break-glass` only emits a
- *     compliance-signal outbox event, never touches the table). `arranged` skips the coverage check
- *     entirely and needs no on-site unit/room/bed, so this script opens one arranged admission for
- *     Whitfield and stops there (no bed request/assign — those are for on-site GIP/IRC beds).
+ *   - M37: this used to say `kind: "arranged"` was the only reachable IPU admission kind, because
+ *     nothing ever wrote an `ipu_rn_coverage_window` row and GIP/IRC fail closed on it. That was true
+ *     when written and is not now: F-071/#174 built the `ipu.rn-coverage-watchdog` that materializes the
+ *     grid (and made break-glass persist a row rather than only emit an event), and F-080 gave the
+ *     grid's own INPUT a producer — `ipu_staff_assignment.state` defaults to `tentative`, §2.3 counts
+ *     only `confirmed`, and no route wrote it, so every assignment made through the API covered nothing
+ *     and the watchdog materialized 216 rows of `is_covered = false` per unit forever. This script now
+ *     builds the real thing: a unit on the `kind='ipu'` Facility, a room, two ready beds, 12-hour shifts
+ *     with a CONFIRMED charge RN across the whole 168h-back/48h-forward grid, one direct run of the real
+ *     watchdog worker (crons are only constructed when `DATABASE_PLATFORM_URL` is set, which no local or
+ *     e2e stack sets), then Okonkwo's GIP admission — whose M6 level-of-care period has sat at
+ *     `assigning` since db:seed:scenario-admissions waiting for exactly this — plus Whitfield's arranged
+ *     (CoP 418.112) stay. The GIP criterion is attested here rather than from the browser because that
+ *     route is step-up gated; see the note on `stepUpSession` below.
  *   - M39: consent reaches `draft` with no gate. `sign`/`revoke`/`supersede` are step-up gated with the
  *     REAL `step_up_recent` predicate (session-column-based, not a raw header) — the verify routes are
  *     never mounted (same confirmed gap as M24's trading-partner credential earlier), so this reuses the
@@ -69,13 +79,17 @@
  * Prereqs: bun run db:seed:org-admin, db:seed:staff, db:seed:scenario-admissions, db:seed:org-structure.
  * Run:     bun run db:seed:scenario-remaining
  */
-import { Client } from "pg";
+import { runRnCoverageWatchdogCron } from "../../apps/backend/src/modules/37-ipu/jobs/cron-workers";
 import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
 import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001"; // db:seed:org-structure
 const LOCATION_MAIN_ID = "55555555-0000-4000-8000-000000000001"; // db:seed:org-structure
+const LOCATION_IPU_ID = "55555555-0000-4000-8000-000000000002"; // db:seed:org-structure
+const IPU_FACILITY_ID = "22222222-0000-4000-8000-000000000003"; // Engrace Inpatient Hospice Unit (kind=ipu)
+const SNF_FACILITY_ID = "22222222-0000-4000-8000-000000000002"; // Oakdale Skilled Nursing (arranged care)
+const HOSPICE_MD_ID = "11111111-0000-4000-8000-000000000001"; // Eleanor Whitfield MD (db:seed:mdm)
 const nowIso = (): string => new Date().toISOString();
 
 async function membershipIdFor(email: string): Promise<string> {
@@ -91,7 +105,16 @@ async function membershipIdFor(email: string): Promise<string> {
   return firstRow(r, "seed-scenario-remaining: id lookup").id;
 }
 
-/** GENUINE GAP (see file header): the step-up verify routes are never mounted; nudges the session row. */
+/**
+ * Nudge the session's step-up columns so a §D14-gated route accepts the next call.
+ *
+ * This used to say the step-up verify routes "are never mounted". They ARE, and have been since F-029
+ * wired `mountSessionStepUpRoutes` with production adapters — the accurate blocker is one layer up: the
+ * verify route requires an ENROLLED factor (`two_factor.verified` for TOTP, a registered passkey for
+ * WebAuthn) and no seeded persona has one, because the web app ships a passkey-enrolment screen but no
+ * TOTP enrolment surface and this seed enrols neither. So the ceremony is real and unreachable from a
+ * script, and the honest stand-in is to write what a completed ceremony would have written.
+ */
 async function stepUpSession(userId: string): Promise<void> {
   if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
   const db = new Client({ connectionString: ADMIN_URL });
@@ -213,6 +236,65 @@ async function levelOfCarePeriodIdFor(admissionId: string): Promise<string> {
   return firstRow(r, "seed-scenario-remaining: id lookup").id;
 }
 
+/** The patient's open admission id (the M6 row the IPU stay hangs off). */
+async function activeAdmissionIdFor(patientId: string): Promise<string> {
+  if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
+  const db = new Client({ connectionString: ADMIN_URL });
+  await db.connect();
+  const r = await db.query<{ id: string }>(
+    `SELECT id FROM admission WHERE patient_id = $1 ORDER BY created_at DESC LIMIT 1`,
+    [patientId],
+  );
+  await db.end();
+  if (!r.rows[0]) throw new Error(`no admission for patient ${patientId}`);
+  return firstRow(r, "seed-scenario-remaining: id lookup").id;
+}
+
+/**
+ * Run the REAL `ipu.rn-coverage-watchdog` worker once and report how many hours it marked covered.
+ *
+ * Not a stand-in for the cron — it IS the cron's function, called directly. The BullMQ workers are
+ * constructed only inside `if (queueConnection && platformDbHandle && m34ProvisionGateway)`, so a stack
+ * without `DATABASE_PLATFORM_URL` (every local and e2e stack) never rebuilds `ipu_rn_coverage_window` at
+ * all, and a seed that merely created shifts would leave every GIP/IRC open refused with no way for the
+ * operator to tell why.
+ *
+ * The outbox port collects rather than publishes: this seed is outside a request and holds no
+ * catalog-validating tx publisher, and a fully covered grid should raise NEITHER §2.3 alert — so
+ * anything arriving here is reported rather than dropped.
+ */
+async function rebuildRnCoverage(organizationId: string, unitId: string): Promise<number> {
+  if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
+  const alerts: string[] = [];
+  const handle = createDbClient({ connectionString: ADMIN_URL });
+  try {
+    await runRnCoverageWatchdogCron({
+      connection: {} as never, // unused — the worker function is driven directly, not through BullMQ
+      db: handle.db,
+      outbox: {
+        publish: async (_tx: unknown, event: { eventName: string }) => {
+          alerts.push(event.eventName);
+        },
+      } as never,
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId }] },
+      now: () => new Date(),
+    });
+  } finally {
+    await handle.close();
+  }
+  if (alerts.length > 0) {
+    console.log(`  ! rn-coverage watchdog raised ${alerts.length} alert(s): ${alerts.join(", ")}`);
+  }
+  const db = new Client({ connectionString: ADMIN_URL });
+  await db.connect();
+  const r = await db.query<{ n: string }>(
+    "SELECT count(*)::int AS n FROM ipu_rn_coverage_window WHERE unit_id = $1 AND is_covered",
+    [unitId],
+  );
+  await db.end();
+  return Number(firstRow(r, "seed-scenario-remaining: coverage count").n);
+}
+
 async function wipePrior(
   organizationId: string,
   whitfieldPatientId: string,
@@ -300,10 +382,69 @@ async function wipePrior(
     await db.query("DELETE FROM sra_cycle WHERE id = ANY($1)", [cycleIds]);
   }
 
-  // M37 — arranged IPU admission for Whitfield.
-  await db
-    .query("DELETE FROM ipu_admission WHERE patient_id = $1", [whitfieldPatientId])
-    .catch(() => {});
+  // M37 — the whole IPU structure this script now builds: Whitfield's arranged stay, Okonkwo's GIP stay
+  // and its criterion, and the unit/room/bed/shift/coverage scaffolding underneath them. Deleted in FK
+  // order rather than by patient, because a re-run recreates the unit and
+  // `inpatient_unit_org_facility_uq` (UNIQUE org+facility) would otherwise 23505 on the second run.
+  const ipuAdmissions = await db.query<{ id: string }>(
+    "SELECT id FROM ipu_admission WHERE organization_id = $1",
+    [organizationId],
+  );
+  const ipuAdmissionIds = ipuAdmissions.rows.map((r) => r.id);
+  if (ipuAdmissionIds.length) {
+    for (const t of [
+      "gip_criteria_reassessment",
+      "gip_admission_criteria",
+      "irc_episode",
+      "ipu_bed_assignment",
+      "ipu_admission_state_history",
+    ]) {
+      await db
+        .query(`DELETE FROM ${t} WHERE ipu_admission_id = ANY($1)`, [ipuAdmissionIds])
+        .catch(() => {});
+    }
+    await db.query("DELETE FROM ipu_admission WHERE id = ANY($1)", [ipuAdmissionIds]);
+  }
+  const ipuUnits = await db.query<{ id: string }>(
+    "SELECT id FROM inpatient_unit WHERE organization_id = $1",
+    [organizationId],
+  );
+  const ipuUnitIds = ipuUnits.rows.map((r) => r.id);
+  if (ipuUnitIds.length) {
+    const shifts = await db.query<{ id: string }>(
+      "SELECT id FROM ipu_shift WHERE unit_id = ANY($1)",
+      [ipuUnitIds],
+    );
+    const shiftIds = shifts.rows.map((r) => r.id);
+    if (shiftIds.length) {
+      await db.query("DELETE FROM ipu_staff_assignment WHERE shift_id = ANY($1)", [shiftIds]);
+      await db.query("DELETE FROM ipu_shift WHERE id = ANY($1)", [shiftIds]);
+    }
+    await db.query("DELETE FROM ipu_rn_coverage_window WHERE unit_id = ANY($1)", [ipuUnitIds]);
+    await db
+      .query("DELETE FROM ipu_rn_break_glass WHERE unit_id = ANY($1)", [ipuUnitIds])
+      .catch(() => {});
+    const rooms = await db.query<{ id: string }>(
+      "SELECT id FROM ipu_room WHERE unit_id = ANY($1)",
+      [ipuUnitIds],
+    );
+    const roomIds = rooms.rows.map((r) => r.id);
+    if (roomIds.length) {
+      const beds = await db.query<{ id: string }>(
+        "SELECT id FROM ipu_bed WHERE room_id = ANY($1)",
+        [roomIds],
+      );
+      const bedIds = beds.rows.map((r) => r.id);
+      if (bedIds.length) {
+        await db
+          .query("DELETE FROM ipu_bed_cleaning_event WHERE bed_id = ANY($1)", [bedIds])
+          .catch(() => {});
+        await db.query("DELETE FROM ipu_bed WHERE id = ANY($1)", [bedIds]);
+      }
+      await db.query("DELETE FROM ipu_room WHERE id = ANY($1)", [roomIds]);
+    }
+    await db.query("DELETE FROM inpatient_unit WHERE id = ANY($1)", [ipuUnitIds]);
+  }
 
   // M39 — consent records for Whitfield created by this script (typeKey hipaa_release — the only one of
   // the three locally-seeded consent_type_catalog rows this script uses).
@@ -335,6 +476,8 @@ async function main(): Promise<void> {
   // bereavement_program_coordinator / compliance_officer — vera's volunteer_coordinator role does NOT
   // qualify (confirmed live: FORBIDDEN), so M16's actor is supervisor@ (clinical_supervisor), not vera@.
   const supervisor = await signIn("supervisor@wardenx.local");
+  // The hospice physician — the only actor CoP 418.108 lets attest a GIP admission criterion (§2.4/D4).
+  const drharris = await signIn("drharris@wardenx.local");
   const log = new ScenarioLog("remaining (M16/M30/M37/M39/M22)");
 
   const whitfieldId = await findPatientIdByLastName(admin, "Whitfield");
@@ -675,8 +818,158 @@ async function main(): Promise<void> {
     log.fail(`M30 quality: ${String(err)}`);
   }
 
-  // ── M37 — IPU Management (arranged admission only — GIP/IRC structurally blocked, see file header) ──
+  // ── M37 — IPU Management (a real unit, real RN coverage, Okonkwo's GIP stay, + Whitfield arranged) ──
+  //
+  // This block used to open ONE `arranged` admission and stop, under a header saying GIP and IRC were
+  // "structurally blocked — no route ever populates ipu_rn_coverage_window". That was true when written
+  // and is not any more: F-071/#174 built the `ipu.rn-coverage-watchdog` cron that materializes the grid,
+  // and F-080 gave its INPUT a producer (`POST /ipu-shifts/:id/staff/confirm` — the assignment state
+  // defaults to `tentative`, §2.3 counts only `confirmed`, and nothing in the module ever wrote it).
+  //
+  // The watchdog is invoked DIRECTLY here rather than waited for. Crons are constructed only when
+  // `DATABASE_PLATFORM_URL` is set (`apps/backend/src/index.ts`), which no local or e2e stack sets, so
+  // on a seeded stack nothing would ever rebuild the grid. This calls the real exported worker function
+  // with the real store — the same thing `m37-rn-coverage.live.test.ts` does — not a hand-written INSERT
+  // of what it would have produced.
   try {
+    const okonkwoId = await findPatientIdByLastName(admin, "Okonkwo");
+    const okonkwoAdmissionId = await activeAdmissionIdFor(okonkwoId);
+    const ritaMembershipId = await membershipIdFor("rita@wardenx.local");
+
+    // 1. The unit. `inpatient_unit_org_facility_uq` is UNIQUE(org, facility) — one unit per facility —
+    //    and `IPU_FACILITY_ID` is the `kind='ipu'` Facility db:seed:mdm creates. Unit CREATE is the only
+    //    structural route that is step-up gated (§4.1 route 2).
+    await stepUpSession(admin.userId);
+    const unit = await admin.client.POST("/api/v1/inpatient-units", {
+      body: { facilityId: IPU_FACILITY_ID, displayName: "Engrace Inpatient Unit", bedCount: 4 },
+    });
+    if (unit.error || !unit.data)
+      throw new Error(`ipu unit create failed: ${JSON.stringify(unit.error)}`);
+    const unitId = unit.data.id;
+
+    // 2. One private room, two beds. A bed is created `ready`, which is what `requestBed`'s
+    //    `hasReadyBed` and `assignBed`'s `bedReady` gates look for.
+    const room = await admin.client.POST("/api/v1/inpatient-units/{id}/rooms", {
+      params: { path: { id: unitId } },
+      body: { roomNumber: "101", kind: "private", bedCount: 2, hasWindow: true },
+    });
+    if (room.error || !room.data)
+      throw new Error(`ipu room create failed: ${JSON.stringify(room.error)}`);
+    for (const bedLabel of ["101-A", "101-B"]) {
+      const bed = await admin.client.POST("/api/v1/ipu-rooms/{id}/beds", {
+        params: { path: { id: room.data.id } },
+        body: { bedLabel },
+      });
+      if (bed.error) throw new Error(`ipu bed create failed: ${JSON.stringify(bed.error)}`);
+    }
+
+    // 3. Continuous RN cover over the whole window the watchdog materializes (168h back + 48h forward),
+    //    as 12-hour shifts — what a 24/7 unit's roster actually looks like, and the only shape that
+    //    makes every hour of the grid covered rather than just the hours around the seed run.
+    const HOUR_MS = 3_600_000;
+    const SHIFT_HOURS = 12;
+    const gridStart = Math.floor(Date.now() / HOUR_MS) * HOUR_MS - 168 * HOUR_MS;
+    let shiftCount = 0;
+    for (let h = 0; h < 168 + 48; h += SHIFT_HOURS) {
+      const shift = await admin.client.POST("/api/v1/ipu-shifts", {
+        body: {
+          unitId,
+          shiftStartAt: new Date(gridStart + h * HOUR_MS).toISOString(),
+          shiftEndAt: new Date(gridStart + (h + SHIFT_HOURS) * HOUR_MS).toISOString(),
+          displayLabel: h % 24 === 0 ? "Day" : "Night",
+        },
+      });
+      if (shift.error || !shift.data)
+        throw new Error(`ipu shift create failed: ${JSON.stringify(shift.error)}`);
+      const assigned = await admin.client.POST("/api/v1/ipu-shifts/{id}/staff", {
+        params: { path: { id: shift.data.id } },
+        body: { membershipId: ritaMembershipId, role: "charge_rn" },
+      });
+      if (assigned.error || !assigned.data)
+        throw new Error(`ipu staff assign failed: ${JSON.stringify(assigned.error)}`);
+      // F-080 — WITHOUT this the assignment stays `tentative` and covers nothing, which is exactly the
+      // state every deployment was in: a materialized grid of 216 rows all reading uncovered.
+      const confirmed = await admin.client.POST("/api/v1/ipu-shifts/{id}/staff/confirm", {
+        params: { path: { id: shift.data.id } },
+        body: { assignmentId: assigned.data.id },
+      });
+      if (confirmed.error)
+        throw new Error(`ipu staff confirm failed: ${JSON.stringify(confirmed.error)}`);
+      shiftCount += 1;
+    }
+
+    // 4. Rebuild the grid through the real worker, then read back what it decided.
+    const coveredHours = await rebuildRnCoverage(admin.organizationId, unitId);
+    if (coveredHours === 0)
+      throw new Error(
+        "rn-coverage watchdog produced no covered hour — the GIP open below would 412",
+      );
+
+    // 5. Okonkwo's GIP stay. His M6 level-of-care period has sat at `assigning` since
+    //    db:seed:scenario-admissions — the M6 half of the §2.2 handshake, waiting for exactly this.
+    const gipLcpId = await levelOfCarePeriodIdFor(okonkwoAdmissionId);
+    const gip = await admin.client.POST("/api/v1/ipu-admissions", {
+      body: {
+        patientId: okonkwoId,
+        admissionId: okonkwoAdmissionId,
+        levelOfCarePeriodId: gipLcpId,
+        providerEntityId: PROVIDER_ENTITY_ID,
+        locationId: LOCATION_IPU_ID,
+        unitId,
+        kind: "gip",
+      },
+    });
+    if (gip.error || !gip.data)
+      throw new Error(`gip admission open failed: ${JSON.stringify(gip.error)}`);
+
+    // 6. The CoP 418.108 criterion, attested BY THE PHYSICIAN AT ADMISSION — which is where the
+    //    regulation puts it ("documented at admission with hospice MD attestation", §2.4/D4), not a
+    //    convenience. It is left seeded rather than driven from the browser because the attest route is
+    //    step-up gated and no seeded account has an enrolled MFA factor (see the file header) — so the
+    //    lifecycle the E2E spec drives (request bed -> assign bed -> confirm) starts from an admission
+    //    whose criterion already exists, exactly as a real one would.
+    await stepUpSession(drharris.userId);
+    const criteria = await drharris.client.POST("/api/v1/ipu-admissions/{id}/gip-criteria", {
+      params: { path: { id: gip.data.id } },
+      body: {
+        attestingPhysicianId: HOSPICE_MD_ID,
+        data: {
+          criterion_kind: "acute_symptom_management",
+          uncontrolled_symptoms: [
+            {
+              symptom: "Intractable abdominal pain",
+              severity_score: 9,
+              duration_hours: 36,
+              interventions_attempted_in_home: [
+                "Oral morphine sulfate immediate-release titrated to 30 mg q4h with breakthrough dosing",
+                "Subcutaneous hydromorphone via CADD pump at the maximum home-titration rate",
+              ],
+            },
+            {
+              symptom: "Refractory nausea and vomiting",
+              severity_score: 8,
+              duration_hours: 30,
+              interventions_attempted_in_home: [
+                "Scheduled oral ondansetron with as-needed haloperidol per the comfort kit",
+              ],
+            },
+          ],
+          planned_inpatient_interventions: [
+            "Parenteral opioid titration with hourly nursing reassessment and rotation if unrelieved",
+            "Continuous antiemetic infusion with electrolyte correction and intake/output monitoring",
+          ],
+          rationale:
+            "Uncontrolled pain crisis with intractable nausea and vomiting that has not responded to " +
+            "escalating oral and subcutaneous regimens at the routine home care level; parenteral " +
+            "titration with continuous nursing reassessment cannot be delivered safely in the home.",
+        },
+      },
+    });
+    if (criteria.error)
+      throw new Error(`gip criteria attest failed: ${JSON.stringify(criteria.error)}`);
+
+    // 7. Whitfield keeps the CoP 418.112 arranged (remote, contracted) stay — the other half of §2.14,
+    //    and the one kind that models no bed because the agency does not own one.
     const locPeriodId = await levelOfCarePeriodIdFor(whitfieldAdmissionId);
     const admission = await admin.client.POST("/api/v1/ipu-admissions", {
       body: {
@@ -686,9 +979,8 @@ async function main(): Promise<void> {
         providerEntityId: PROVIDER_ENTITY_ID,
         locationId: LOCATION_MAIN_ID,
         // `ipu_admission_unit_xor_remote` CHECK requires exactly one of unitId/remoteFacilityId — an
-        // `arranged` (off-site, contracted) admission needs remoteFacilityId, never unitId. No FK on
-        // this column (app-validated, per the table's own DDL), so a fresh uuid is a legitimate value.
-        remoteFacilityId: crypto.randomUUID(),
+        // `arranged` (off-site, contracted) admission needs remoteFacilityId, never unitId.
+        remoteFacilityId: SNF_FACILITY_ID,
         kind: "arranged",
       },
     });
@@ -696,7 +988,7 @@ async function main(): Promise<void> {
       throw new Error(`ipu admission open failed: ${JSON.stringify(admission.error)}`);
 
     log.ok(
-      "IPU Management (M37): 1 arranged inpatient admission opened for Whitfield (GIP/IRC structurally blocked — no route ever populates ipu_rn_coverage_window, see file header)",
+      `IPU Management (M37): 1 unit + 1 room + 2 ready beds, ${shiftCount} shifts with a CONFIRMED charge-RN each (${coveredHours} covered hours after the real watchdog run), Okonkwo's GIP admission open at 'pending' with its CoP 418.108 criterion attested, Whitfield's arranged (CoP 418.112) stay alongside it`,
     );
   } catch (err) {
     log.fail(`M37 IPU: ${String(err)}`);
