@@ -1,4 +1,5 @@
 import {
+  Button,
   DetailPageLayout,
   EmptyState,
   LoadingSpinner,
@@ -15,7 +16,10 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { useParams } from "react-router-dom";
+import { useSession } from "../../shell/session";
+import { type MembershipOption, loadMemberships } from "./scheduling-api";
 import { VISIT_TONE, stateLabel } from "./scheduling-status";
+import { type VisitAction, VisitActionModal } from "./visit-modals";
 
 interface VisitDetailView {
   id: string;
@@ -35,12 +39,25 @@ interface VisitDetailView {
 
 const ts = (v: string): string => v.slice(0, 16).replace("T", " ");
 
+/** The §2.2 statuses a visit can still be moved, reassigned or called off from. */
+const OPEN_STATUSES = new Set(["scheduled", "published", "in_progress"]);
+
 export function VisitDetail(): JSX.Element {
   const client = useApiClient();
   const { visitId } = useParams<{ visitId: string }>();
   const [visit, setVisit] = useState<VisitDetailView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [action, setAction] = useState<VisitAction | null>(null);
+  const [memberships, setMemberships] = useState<MembershipOption[]>([]);
+  const session = useSession();
+
+  // The roster the reassign picker offers. NOT an eligibility list — the §4.7 D8 gate is the server's.
+  useEffect(() => {
+    const orgId = session?.organizationId;
+    if (!orgId) return;
+    void loadMemberships(client, orgId).then(setMemberships);
+  }, [client, session]);
 
   const load = useCallback(async () => {
     if (!visitId) return;
@@ -63,7 +80,44 @@ export function VisitDetail(): JSX.Element {
   }, [load]);
 
   return (
-    <DetailPageLayout header={<PageHeader title="Visit Detail" />}>
+    <DetailPageLayout
+      header={
+        <PageHeader
+          title="Visit Detail"
+          actions={
+            // #91 — the §2.2 ceremonies, offered by the visit's CURRENT status. The server owns every
+            // transition; narrowing the offer keeps a scheduler out of one certain to be refused, and
+            // the refusal is still rendered where they are looking.
+            visit && OPEN_STATUSES.has(visit.status) ? (
+              <span style={{ display: "inline-flex", gap: "0.35rem" }}>
+                <Button tone="tertiary" onClick={() => setAction("reschedule")}>
+                  Reschedule
+                </Button>
+                <Button tone="tertiary" onClick={() => setAction("reassign")}>
+                  Reassign
+                </Button>
+                <Button tone="tertiary" onClick={() => setAction("no-show")}>
+                  No-show
+                </Button>
+                <Button tone="tertiary" onClick={() => setAction("cancel")}>
+                  Cancel
+                </Button>
+              </span>
+            ) : undefined
+          }
+        />
+      }
+    >
+      {visit && action ? (
+        <VisitActionModal
+          open
+          action={action}
+          visitId={visit.id}
+          memberships={memberships}
+          onClose={() => setAction(null)}
+          onDone={() => void load()}
+        />
+      ) : null}
       {error ? (
         <EmptyState title="Unavailable" description={error} />
       ) : loading || !visit ? (

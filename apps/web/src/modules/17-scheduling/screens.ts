@@ -4,10 +4,32 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // the Week View, the Proposal Inbox, the Recurring Policies list, the Time-Off Queue, the single Visit Detail,
 // the clinician's My Visits, and the org-wide Scheduling Metrics. Nav visibility is gated by the matching M17
 // permission key; the SERVER stays the only enforcement point (no frontend authz, ADR-0030 — out-of-scope
-// visits 404, never 403; the §4.7 pre-schedule ABAC + RLS narrow every read). The drag-drop reschedule,
-// publish-all, create/discontinue-recurring, approve/deny-time-off, availability editor, and the OSRM map
-// (polyline) surfaces — plus the Capacitor mobile Today/Map variants and the M31 portal upcoming-visit view —
-// fill in as those write paths / Phase-2 modules land.
+// visits 404, never 403; the §4.7 pre-schedule ABAC + RLS narrow every read).
+//
+// #91 — VISITS CAN BE SCHEDULED NOW. Schedule (from the Day View, which resolves the patient's open
+// admission and addresses first), reschedule, reassign, cancel, no-show, publish/dismiss a proposal, and
+// approve/deny time off are built and DOM-covered (`scheduling-writes.dom.test.tsx`).
+//
+// THE PROPOSAL INBOX WAS THE SHARPEST CASE. M17 generates proposals from the care plan's frequency
+// orders, the IDG's decisions and the supervisory cadence, and `publish` is what turns one into a real
+// scheduled visit. With no caller, every proposal the platform produced sat in a list forever and the
+// visits the plan of care called for were never created. The time-off queue was load-bearing in the same
+// way: APPROVED time off is what the conflict rules refuse a visit against, so an approval nobody could
+// record was also a clinician the scheduler kept booking.
+//
+// THE ASSIGNEE PICKER OFFERS THE ACTIVE ROSTER, NOT AN ELIGIBILITY LIST. The §4.7 D8 pre-schedule gate
+// resolves the clinician's disciplines from their M3 role grants and checks the licence is current;
+// filtering here would be a second, divergent implementation of a rule
+// `discipline-derivation.test.ts` exists to keep singular.
+//
+// STILL DEFERRED, each for a reason rather than a schedule:
+//   • Drag-and-drop rescheduling on the Day/Week grids — the ceremony exists on the visit detail, where
+//     the reason field the route requires can actually be asked for. A drag has nowhere to put it.
+//   • The availability editor (`PUT /availability/:membershipId`) — a weekly slot grid is its own
+//     surface, and the read it would edit is already built.
+//   • Recurring-policy CREATE — it takes an RRULE, and an RRULE builder is a screen, not a modal.
+//     Discontinue is wired.
+//   • The OSRM map polyline, the Capacitor mobile Today/Map variants, and the M31 portal view.
 import { lazy } from "react";
 import type { ComponentType } from "react";
 const MyVisits = lazy(() => import("./my-visits").then((m) => ({ default: m.MyVisits })));
