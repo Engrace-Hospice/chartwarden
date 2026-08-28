@@ -303,6 +303,58 @@ async function main(): Promise<void> {
   }
   void signedOrderId;
 
+  // ── M11 — a SECOND order, deliberately left AWAITING SIGNATURE (#91) ──────────────────────────
+  //
+  // The order above is driven all the way to `signed`, which is the right shape for a chart but leaves
+  // M11's Signature Inbox — the queue four of its seven screens are built around — permanently EMPTY on
+  // a seeded stack. An E2E spec written against that seed can only assert the empty state, which is the
+  // exact failure #106/F-046 names in the billing spec: a test that passes because there is nothing to
+  // act on tells you nothing about whether acting works.
+  //
+  // Same LPN-draft → RN-cosign path, stopping one step short. The §2.5 cosignature is ATTACHED (an
+  // LPN-drafted clinical order requires one before it can be signed), so the row the inbox renders is
+  // genuinely signable rather than one that would 409 on the ceremony the queue offers.
+  try {
+    const draft = await lpn.client.POST("/api/v1/orders", {
+      body: {
+        patientId,
+        admissionId,
+        kind: "dme",
+        drafterDiscipline: "lpn",
+        data: {
+          itemDescription: "Hospital bed with trapeze bar",
+          reason: "Patient no longer able to transfer independently",
+        },
+        orderingPhysicianMdmId: "11111111-0000-4000-8000-000000000001",
+      },
+    });
+    const draftData = draft.data as unknown as { id: string } | undefined;
+    if (draft.error || !draftData)
+      throw new Error(`pending-signature draft failed: ${JSON.stringify(draft.error)}`);
+
+    const reqSig = await lpn.client.POST("/api/v1/orders/{id}/request-signature", {
+      params: { path: { id: draftData.id } },
+      body: { signerDiscipline: "rn_case_manager" },
+    });
+    if (reqSig.error)
+      throw new Error(`pending-signature request failed: ${JSON.stringify(reqSig.error)}`);
+
+    const cosign = await rn.client.POST("/api/v1/orders/{id}/cosign", {
+      params: { path: { id: draftData.id } },
+      body: {
+        cosignerRole: "rn_case_manager",
+        attestationText:
+          "Reviewed the LPN-drafted DME request against the current plan of care and cosigned it.",
+      },
+    });
+    if (cosign.error)
+      throw new Error(`pending-signature cosign failed: ${JSON.stringify(cosign.error)}`);
+
+    log.ok("Orders: a second DME order left AWAITING SIGNATURE (the inbox has something to sign)");
+  } catch (err) {
+    log.fail(`M11 pending-signature order: ${String(err)}`);
+  }
+
   // ── M12 — DoseSpot (standard medication order, no EPCS) ───────────────────────────────────────
   let signedMedOrderId: string | null = null;
   try {

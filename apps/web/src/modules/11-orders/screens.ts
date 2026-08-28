@@ -22,6 +22,12 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 //
 // STILL DEFERRED, named so the corpus stays the accurate inventory: the AUTHORING draft modal (all 8
 // kinds, `POST /api/v1/orders`), `correct`, and the standing-order + verbal-policy admin writes.
+//
+// E2E (#91 AC5): `e2e/specs/orders.spec.ts` drives the signature round trip in a real browser — the
+// order appears in the inbox, the RN signs it from the row, and it LEAVES the inbox. Writing it required
+// changing the seed: `db:seed:scenario-orders-idg` drove its only order all the way to `signed`, so this
+// queue was permanently empty on a seeded stack and the only spec anyone could have written would have
+// asserted the empty state, passing forever and proving nothing (the #106/F-046 shape).
 import { lazy } from "react";
 import type { ComponentType } from "react";
 const CosignQueue = lazy(() => import("./cosign-queue").then((m) => ({ default: m.CosignQueue })));
