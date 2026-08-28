@@ -4,9 +4,9 @@
 //   · ./published  the §4.3 seam IMPLEMENTATIONS, over a T08 Drizzle store
 //
 // `registerFhirPublishedSeams` is §4.3's boot registration, driven from the composition root's
-// `wireModuleSeams()` and therefore before `validateSeams()`. Without a store it is a NO-OP and the M1
-// fail-closed deny-stubs stand (the M19/M20 "no store ⇒ register nothing" posture) — M28's routes/repos,
-// which supply the store, land in T08.
+// `wireModuleSeams()` and therefore before `validateSeams()`. The store comes from
+// `createDrizzleFhirPublishedSeamStore`, so a db boot registers all three; without a store the call is a
+// NO-OP and the M1 fail-closed deny-stubs stand (the M19/M20 "no store ⇒ register nothing" posture).
 export {
   type FhirBaaStatusView,
   type FhirClaimReaderView,
@@ -24,6 +24,7 @@ export {
   getFhirMedicationAdministrationProvider,
   getFhirMedicationOrderProvider,
   getFhirOrderProvider,
+  getFhirPatientAddressReader,
   getFhirPatientReader,
   getFhirReconciliationProvider,
   getFhirSignedEncountersReader,

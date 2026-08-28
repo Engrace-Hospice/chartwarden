@@ -71425,9 +71425,10 @@ export interface operations {
                     /** @constant */
                     grant_type: "client_credentials";
                     scope: string;
-                    /** @constant */
-                    client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
-                    client_assertion: string;
+                    client_id?: string;
+                    client_assertion_type?: string;
+                    client_assertion?: string;
+                    client_secret?: string;
                 };
             };
         };
@@ -71447,6 +71448,8 @@ export interface operations {
         parameters: {
             query?: {
                 patient?: string;
+                _id?: string;
+                identifier?: string;
                 _count?: number;
                 _since?: string;
             };

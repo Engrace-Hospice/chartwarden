@@ -35,6 +35,8 @@ const GOOD: EnvLike = {
   M34_PROVISION_GATEWAY_URL: "https://provision.wardenx.cloud",
   M34_PROVISION_GATEWAY_TOKEN: "p".repeat(32),
   M34_INVITATION_ACCEPT_URL: "https://app.wardenx.cloud/tenant-invitations",
+  // F-035 (#95) — the `aud` every SMART Backend Services client assertion must carry.
+  FHIR_TOKEN_ENDPOINT_URL: "https://fhir.wardenx.cloud/fhir/oauth2/token",
   DATABASE_PLATFORM_URL: "postgres://u:p@platform-host:5432/db",
   PASSKEY_RP_ID: "app.wardenx.cloud",
   WEBAUTHN_RP_ID: "app.wardenx.cloud",
@@ -86,6 +88,7 @@ describe("collectEnvProblems", () => {
         "M34_PROVISION_GATEWAY_URL",
         "M34_PROVISION_GATEWAY_TOKEN",
         "M34_INVITATION_ACCEPT_URL",
+        "FHIR_TOKEN_ENDPOINT_URL",
         "DATABASE_PLATFORM_URL",
         "PASSKEY_RP_ID",
         "WEBAUTHN_RP_ID",

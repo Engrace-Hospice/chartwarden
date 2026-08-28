@@ -31,7 +31,7 @@ import {
   type FhirInboundOwnerModule,
   type FhirInboundStatus,
 } from "@wardenx/types";
-import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 
 import { type FhirRevocationCascadePort, cascadeClientRevocation } from "./revocation-cascade";
 import {
@@ -56,6 +56,19 @@ const asStringArray = (value: unknown): string[] =>
 
 const iso = (d: Date | null): string | null => (d === null ? null : d.toISOString());
 
+/** §2.2 — the rotation overlap in which a `retired` credential still authenticates (30 days). */
+const FHIR_CREDENTIAL_ROTATION_OVERLAP_MS = 30 * 24 * 60 * 60 * 1000;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Both tenant resolvers take a uuid, so a non-uuid is refused HERE rather than by Postgres. Not
+ * cosmetic: `$1::uuid` on a garbage string raises `22P02`, which surfaces as a 500 on a route whose
+ * honest answer is 401, and lets an unauthenticated caller distinguish "malformed" from "unknown" by
+ * status code — a free oracle on a credential-shaped input.
+ */
+const isUuid = (value: string): boolean => UUID_RE.test(value);
+
 export function createDrizzleFhirGatewayStore(db: DbClient): FhirGatewayStore {
   const CLIENT = schema.fhirClient;
   const CRED = schema.fhirClientCredential;
@@ -63,11 +76,33 @@ export function createDrizzleFhirGatewayStore(db: DbClient): FhirGatewayStore {
   const JOB = schema.fhirBulkExportJob;
   const INBOUND = schema.fhirInboundResource;
   const CONFIG = schema.tenantFhirConfig;
+  const DISCLOSURE = schema.fhirReadDisclosure;
 
   const ctx = (orgId: string, membershipId = "") => ({
     organizationId: orgId,
     userId: membershipId,
   });
+
+  /**
+   * The two tenant resolvers (migration 0233). Each takes ONE unguessable uuid the caller must already
+   * hold and returns ONE org uuid — nothing else, and nothing an attacker without the credential can
+   * use. They exist because the FHIR-spec surface is the one place on this platform where the tenant is
+   * a fact about the CREDENTIAL rather than about a session, so it must be read before an org context
+   * can be opened. A null answer is "no such credential", which every caller turns into a 401.
+   */
+  const resolveOrgVia = async (fn: string, arg: string): Promise<string | null> => {
+    try {
+      const { rows } = await db.execute(
+        sql`SELECT ${sql.raw(fn)}(${arg}::uuid) AS organization_id`,
+      );
+      const org = (rows as Record<string, unknown>[])[0]?.organization_id;
+      return typeof org === "string" && org.length > 0 ? org : null;
+    } catch {
+      return null;
+    }
+  };
+  const resolveSessionOrg = (jti: string) => resolveOrgVia("fhir_resolve_session_org", jti);
+  const resolveClientOrg = (clientId: string) => resolveOrgVia("fhir_resolve_client_org", clientId);
 
   const clientDetailRow = (
     row: typeof CLIENT.$inferSelect,
@@ -671,37 +706,135 @@ export function createDrizzleFhirGatewayStore(db: DbClient): FhirGatewayStore {
     },
 
     async resolveBearer(token): Promise<FhirBearerContext | null> {
-      // The Phase-1 bearer token IS the session `jti`. This lookup is cross-org (the caller carries no
-      // WardenX session), so under `wardenx_app` RLS it returns nothing until a platform-bypass read path
-      // is bound — fail-closed, which is the correct Phase-1 posture (no external client is live yet).
+      // The bearer token IS the session `jti`. The caller carries no WardenX session, so the tenant is
+      // unknown here and has to be RESOLVED before any row can be read — `fhir_resolve_session_org`
+      // (0233) is the narrow SECURITY DEFINER function that does it, taking one unguessable uuid and
+      // returning one org uuid. Everything after this line runs inside `withOrgContext`, so the session
+      // row and the client row are read under ordinary RLS with no bypass anywhere.
+      //
+      // This used to be an unscoped `SELECT` on the tenant pool: with no `app.org_id` set the policy
+      // predicate is NULL and the read matched nothing, so every bearer token that will ever be presented
+      // resolved to null and the whole FHIR-spec surface was unreachable (F-035, #95).
+      if (!isUuid(token)) return null;
+      const organizationId = await resolveSessionOrg(token);
+      if (organizationId === null) return null;
       try {
-        const [row] = await db
-          .select({
-            organizationId: SESSION.organizationId,
-            clientId: SESSION.clientId,
-            scopesGranted: SESSION.scopesGranted,
-            expiresAt: SESSION.expiresAt,
-            revokedAt: SESSION.revokedAt,
-          })
-          .from(SESSION)
-          .where(eq(SESSION.jti, token))
-          .limit(1);
-        if (!row || row.revokedAt !== null || row.expiresAt <= new Date()) return null;
-        const [client] = await db
-          .select({ status: CLIENT.status })
-          .from(CLIENT)
-          .where(eq(CLIENT.id, row.clientId))
-          .limit(1);
-        if (!client) return null;
-        return {
-          organizationId: row.organizationId,
-          clientId: row.clientId,
-          scopesGranted: asStringArray(row.scopesGranted),
-          clientStatus: client.status,
-        };
+        return await withOrgContext(db, ctx(organizationId), async (tx) => {
+          const [row] = await tx
+            .select({
+              organizationId: SESSION.organizationId,
+              clientId: SESSION.clientId,
+              scopesGranted: SESSION.scopesGranted,
+              expiresAt: SESSION.expiresAt,
+              revokedAt: SESSION.revokedAt,
+            })
+            .from(SESSION)
+            .where(eq(SESSION.jti, token))
+            .limit(1);
+          if (!row || row.revokedAt !== null || row.expiresAt <= new Date()) return null;
+          const [client] = await tx
+            .select({ status: CLIENT.status })
+            .from(CLIENT)
+            .where(eq(CLIENT.id, row.clientId))
+            .limit(1);
+          if (!client) return null;
+          // `last_used_at` is what makes an idle-session sweep and a "which of my tokens is live"
+          // console answer anything but null. Best-effort and inside the same org context; a failure to
+          // stamp it must never refuse a read the credential is entitled to.
+          await tx
+            .update(SESSION)
+            .set({ lastUsedAt: new Date() })
+            .where(and(eq(SESSION.jti, token), eq(SESSION.organizationId, organizationId)));
+          return {
+            organizationId: row.organizationId,
+            clientId: row.clientId,
+            scopesGranted: asStringArray(row.scopesGranted),
+            clientStatus: client.status,
+          };
+        });
       } catch {
         return null;
       }
+    },
+
+    async resolveClientForToken(clientId) {
+      // Same tenant-resolution shape as `resolveBearer`, one credential earlier: a SMART Backend Services
+      // token request presents a `client_id` and nothing else, so the org is read through
+      // `fhir_resolve_client_org` (0233) and every subsequent statement is org-scoped.
+      if (!isUuid(clientId)) return null;
+      const organizationId = await resolveClientOrg(clientId);
+      if (organizationId === null) return null;
+      return withOrgContext(db, ctx(organizationId), async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(CLIENT)
+          .where(and(eq(CLIENT.id, clientId), eq(CLIENT.organizationId, organizationId)))
+          .limit(1);
+        if (!row) return null;
+        // Every credential that can currently authenticate this client: the `active` row plus any
+        // `retired` row still inside its §2.2 30-day rotation overlap. `retired_at` is what bounds the
+        // window — a row retired longer ago than that is excluded here rather than at compare time, so
+        // an expired secret is not merely rejected but never loaded.
+        const overlapFloor = new Date(Date.now() - FHIR_CREDENTIAL_ROTATION_OVERLAP_MS);
+        const creds = await tx
+          .select({
+            digest: CRED.secretDigestSha256,
+            status: CRED.status,
+            retiredAt: CRED.retiredAt,
+          })
+          .from(CRED)
+          .where(and(eq(CRED.clientId, clientId), eq(CRED.organizationId, organizationId)));
+        const apiKeyDigests = creds
+          .filter(
+            (c) =>
+              c.digest !== null &&
+              (c.status === "active" ||
+                (c.status === "retired" && c.retiredAt !== null && c.retiredAt > overlapFloor)),
+          )
+          .map((c) => c.digest as string);
+        return {
+          id: row.id,
+          organizationId: row.organizationId,
+          type: row.type,
+          status: row.status,
+          jwksUri: row.jwksUri,
+          allowedScopes: asStringArray(row.allowedScopes),
+          apiKeyDigests,
+        };
+      });
+    },
+
+    async mintSession(args) {
+      await withOrgContext(db, ctx(args.organizationId), async (tx) => {
+        await tx.insert(SESSION).values({
+          jti: args.jti,
+          organizationId: args.organizationId,
+          clientId: args.clientId,
+          scopesGranted: [...args.scopesGranted],
+          issuedAt: new Date(args.issuedAt),
+          expiresAt: new Date(args.expiresAt),
+          tokenKeyFingerprint: args.tokenKeyFingerprint,
+          ipAtIssue: args.ipAtIssue ?? null,
+        });
+      });
+    },
+
+    async recordDisclosure(envelope) {
+      // §164.528 (F-035). Org-scoped like every other write here; the ledger grants `wardenx_app`
+      // SELECT + INSERT only (0233), so this is the sole statement the application role can run against
+      // it and an accounting row cannot later be edited away by the code that wrote it.
+      await withOrgContext(db, ctx(envelope.organizationId), async (tx) => {
+        await tx.insert(DISCLOSURE).values({
+          organizationId: envelope.organizationId,
+          fhirClientId: envelope.fhirClientId,
+          resourceType: envelope.resourceType,
+          patientId: envelope.patientId ?? null,
+          queryParameters: envelope.queryParameters,
+          resultCount: envelope.resultCount,
+          servedAt: new Date(envelope.servedAt),
+          initiatedByMembershipId: envelope.initiatedByMembershipId ?? null,
+        });
+      });
     },
   };
 }

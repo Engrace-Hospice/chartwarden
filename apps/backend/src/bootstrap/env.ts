@@ -99,6 +99,16 @@ const REQUIREMENTS: readonly Requirement[] = [
     rule: (v) => (/^https:\/\//.test(v) ? null : "must be an https:// URL"),
   },
   {
+    // F-035 (#95) — the absolute URL of M28's `/fhir/oauth2/token`, which is the `aud` every SMART
+    // Backend Services client assertion must carry. Required in production because audience binding is
+    // what stops an assertion minted for a partner's OTHER FHIR server being replayed against this one;
+    // with it unset the mint refuses the assertion path with a 503 rather than accepting an unbound
+    // audience, so an unset value does not weaken the gateway — it silently disables it, which is the
+    // failure mode this whole module just stopped having.
+    key: "FHIR_TOKEN_ENDPOINT_URL",
+    rule: (v) => (/^https:\/\//.test(v) ? null : "must be an https:// URL"),
+  },
+  {
     // TASK-010/OPS-010 — the platform-scoped DB connection (M34/M35/outbox dispatcher). Presence-only,
     // like DATABASE_URL: format is a connection string, not something to pattern-match here.
     key: "DATABASE_PLATFORM_URL",

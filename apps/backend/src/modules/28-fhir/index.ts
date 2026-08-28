@@ -54,4 +54,10 @@ export {
   type FhirRevocationCascadePort,
   type FhirRevocationCascadeResult,
   type M28RouteServices,
+  type FhirAssertionReplayGuard,
+  type FhirJwksFetcher,
+  type FhirReplayRedis,
+  createHttpFhirJwksFetcher,
+  createInMemoryFhirReplayGuard,
+  createRedisFhirReplayGuard,
 } from "./routes/index";

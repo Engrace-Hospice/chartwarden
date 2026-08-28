@@ -30,6 +30,7 @@ import type {
   MedicationAdministrationProvider,
   MedicationOrderProvider,
   OrderProvider,
+  PatientAddressReader,
   PatientReader,
   ReconciliationProvider,
   SignedEncountersReader,
@@ -46,6 +47,15 @@ import { getSeam } from "../../../bootstrap/index";
 /** M5 — the patient identity/demographics read the `Patient` projection + `?patient=:id` search read. */
 export function getFhirPatientReader(): PatientReader {
   return getSeam("PatientReader");
+}
+
+/**
+ * M5 — the one address element any registered seam exposes (F-035). The US Core Patient projection sends
+ * `address.state` from this; street, city and postal code are recorded by the agency but reachable
+ * through no seam, so the projection omits them rather than inventing them.
+ */
+export function getFhirPatientAddressReader(): PatientAddressReader {
+  return getSeam("PatientAddressReader");
 }
 
 /** M6 — the election/benefit-period read the `Coverage` / `Encounter` projections read. */

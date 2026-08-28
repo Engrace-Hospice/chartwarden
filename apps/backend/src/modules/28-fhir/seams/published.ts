@@ -1,18 +1,22 @@
 // apps/backend/src/modules/28-fhir/seams/published.ts — §4.3's seam IMPLEMENTATIONS (M28-T06).
 //
 // The three READ-ONLY seams M28 publishes into the M1 registry, each a thin adapter over a Drizzle
-// store that reads M28's OWN tables (`fhir_client` / `fhir_inbound_resource` / the disclosure-audit
-// rows). None re-decides a gate — a FHIR consumer's authz is decided at the request pipeline (T08); a
+// store that reads M28's OWN tables (`fhir_client` / `fhir_inbound_resource` / `fhir_read_disclosure`). None re-decides a gate — a FHIR consumer's authz is decided at the request pipeline (T08); a
 // seam consumer (M33 / M30 / M34 / M5 / M12) reaches these under its OWN org context, so the store
 // self-scopes each read (HARD RULE 3) and the seam never compares an org id it was handed.
 //
-// ── PHASE 1: NO STORE, SO `registerFhirPublishedSeams` REGISTERS NOTHING ─────────────────────────────
+// ── REGISTRATION IS STORE-GATED (and the store EXISTS) ───────────────────────────────────────────────
 //
-// M28's routes/repos land in T08; there is no Drizzle store for these reads yet. Following the M19/M20
-// precedent ("no store ⇒ register nothing"), `registerFhirPublishedSeams` registers the three impls ONLY
-// when a store is supplied. Without one, `validateSeams()` leaves the M1 fail-closed deny-stubs standing,
-// so a consumer that reaches an unbound seam denies LOUDLY rather than reading an empty projection minted
-// from nothing — the disclosure scorecard never shows zero disclosures because M28's store was unwired.
+// `registerFhirPublishedSeams` registers the three impls only when a store is supplied. The composition
+// root supplies `createDrizzleFhirPublishedSeamStore(deps.db)` on every db boot, so on a real deployment
+// all three are live; a db-less boot passes none and `validateSeams()` leaves the M1 fail-closed
+// deny-stubs standing, so a consumer that reaches an unbound seam denies LOUDLY rather than reading an
+// empty projection minted from nothing — the M19/M20 posture.
+//
+// This header used to say "PHASE 1: NO STORE, SO `registerFhirPublishedSeams` REGISTERS NOTHING", which
+// stopped being true the moment the T08 store landed one directory over. An external audit read the
+// header and reported the seams as unregistered (F-035, #95). A comment that outlives its subject does
+// not merely go stale — it is read as the specification.
 import type {
   FhirClientDetail,
   FhirClientId,
@@ -93,7 +97,7 @@ export function createFhirInboundProposalReader(
 
 /** Deps for M28's §4.3 published-seam registration. */
 export interface FhirPublishedSeamDeps {
-  /** The T08 Drizzle store. Absent ⇒ the three seams keep their M1 fail-closed deny-stubs. */
+  /** The Drizzle store. Absent (a db-less boot) ⇒ the three seams keep their M1 fail-closed deny-stubs. */
   store?: FhirPublishedSeamStore;
 }
 

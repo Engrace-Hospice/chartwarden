@@ -13,6 +13,7 @@ import { registerAdminExportRoutes } from "./admin-export.routes";
 import { registerAdminInboundRoutes } from "./admin-inbound.routes";
 import { type FhirDisclosureAuditPort, registerFhirR4Routes } from "./fhir-r4.routes";
 import type { FhirGatewayStore } from "./store";
+import type { FhirAssertionReplayGuard, FhirJwksFetcher } from "./token-mint";
 
 export { registerAdminClientRoutes, type AdminClientsRouteDeps } from "./admin-clients.routes";
 export { registerAdminConfigRoutes, type AdminConfigRouteDeps } from "./admin-config.routes";
@@ -23,21 +24,45 @@ export {
   type FhirR4RouteDeps,
   type FhirDisclosureAuditPort,
 } from "./fhir-r4.routes";
+export {
+  type FhirAssertionReplayGuard,
+  type FhirJwksFetcher,
+  type FhirReplayRedis,
+  createHttpFhirJwksFetcher,
+  createInMemoryFhirReplayGuard,
+  createRedisFhirReplayGuard,
+  mintFhirToken,
+} from "./token-mint";
+export {
+  SERVED_RESOURCES,
+  type FhirServedResource,
+  projectResourceById,
+  projectSearch,
+} from "./projection";
 
 /** The service surface every M28 route plugin composes over (bound at the composition root). */
 export interface M28RouteServices {
   /** The Drizzle-backed repo (in-memory in tests / db-less boot). */
   readonly store: FhirGatewayStore;
-  /** The D15 disclosure-audit sink for served FHIR reads; absent ⇒ reads are not persisted. */
+  /**
+   * Where §164.528 accounting rows go. Absent ⇒ `store.recordDisclosure` (the `fhir_read_disclosure`
+   * ledger), which is the production path; a test substitutes a spy.
+   */
   readonly audit?: FhirDisclosureAuditPort;
   /** Injectable clock — the §7 tests pin served-at timestamps. */
   readonly now?: () => string;
+  /** R3 — resolves a client's `jwks_uri`. Absent ⇒ the SMART assertion path cannot verify a signature. */
+  readonly jwks?: FhirJwksFetcher;
+  /** R3 — the assertion `jti` replay defence. Absent ⇒ the per-process guard. */
+  readonly replay?: FhirAssertionReplayGuard;
+  /** R3 — this token endpoint's absolute URL (the required assertion `aud`). */
+  readonly tokenEndpointUrl?: string;
 }
 
 /** Mount every M28 §4.1 route plugin over the composed service surface. */
 export function mountM28Routes(app: FastifyInstance, services: M28RouteServices): void {
-  const { store, audit, now } = services;
-  registerFhirR4Routes(app, { store, audit, now });
+  const { store, audit, now, jwks, replay, tokenEndpointUrl } = services;
+  registerFhirR4Routes(app, { store, audit, now, jwks, replay, tokenEndpointUrl });
   registerAdminClientRoutes(app, { store });
   registerAdminExportRoutes(app, { store });
   registerAdminInboundRoutes(app, { store });

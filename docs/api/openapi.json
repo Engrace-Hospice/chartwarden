@@ -210989,9 +210989,7 @@
                 "type": "object",
                 "required": [
                   "grant_type",
-                  "scope",
-                  "client_assertion_type",
-                  "client_assertion"
+                  "scope"
                 ],
                 "properties": {
                   "grant_type": {
@@ -211003,13 +211001,24 @@
                     "maxLength": 2000,
                     "type": "string"
                   },
+                  "client_id": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
                   "client_assertion_type": {
-                    "const": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+                    "minLength": 1,
+                    "maxLength": 200,
                     "type": "string"
                   },
                   "client_assertion": {
                     "minLength": 1,
                     "maxLength": 8192,
+                    "type": "string"
+                  },
+                  "client_secret": {
+                    "minLength": 1,
+                    "maxLength": 512,
                     "type": "string"
                   }
                 }
@@ -211042,6 +211051,26 @@
             "schema": {
               "minLength": 1,
               "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "name": "_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "name": "identifier",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 400,
               "type": "string"
             }
           },
