@@ -8,11 +8,22 @@ import type { HopeSubmissionEnvelope } from "./envelope";
 // {@link DegradedError} so the worker DLQs cleanly rather than blocking — capture (Tier 2) is unaffected.
 import { DegradedError, type IqiesOperation } from "./errors";
 
-/** `submitBatch` request — the assembled envelope plus the rendered wire payload + its recorded hash. */
+/**
+ * `submitBatch` request — the assembled envelope plus its recorded canonical hash.
+ *
+ * F-072 (#177) dropped a required `envelopeXml` field from this shape. It asked the CALLER for "the
+ * rendered CMS HOPE submission XML" while the comment beside it — and this module's header — said the
+ * TRANSPORT renders it. M10 cannot render it: the CMS HOPE submission XML schema is not in this
+ * repository. A required field no caller can honestly fill is not a contract, so rendering now sits
+ * wholly behind the adapter, where both this file and `envelope.ts` always said it belonged.
+ *
+ * `correlationId` is the IDEMPOTENCY KEY, not a log tag: `iqies-submit-worker` derives it
+ * deterministically from the submission id, so a retry after an ambiguous failure is the same request.
+ * That is what makes the worker's at-least-once delivery safe (`WARDENX_INTEGRATIONS_v0_1.md` §5).
+ */
 export interface SubmitBatchRequest {
   readonly envelope: HopeSubmissionEnvelope;
-  /** The rendered CMS HOPE submission XML (transport renders; recorded encrypted in MinIO). */
-  readonly envelopeXml: string;
+  /** SHA-256 of `assembleEnvelopeCanonical(envelope)` — the audit-replayable batch-membership digest. */
   readonly envelopeSha256: string;
   readonly correlationId: string;
 }
@@ -39,10 +50,10 @@ export interface AcceptanceReport {
   readonly items: readonly AcceptanceItemOutcome[];
 }
 
-/** `submitCorrection` request — references the original by its accepted iQIES record id (D7). */
+/** `submitCorrection` request — references the original by its accepted iQIES record id (D7). Same
+ *  rendering ownership as {@link SubmitBatchRequest}: the transport renders, the caller does not. */
 export interface SubmitCorrectionRequest {
   readonly envelope: HopeSubmissionEnvelope;
-  readonly envelopeXml: string;
   readonly envelopeSha256: string;
   readonly originalIqiesRecordId: string;
   readonly correlationId: string;

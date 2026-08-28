@@ -214,24 +214,22 @@ export async function skipSchedule(
   return { ok: true, value: data as ScheduleView };
 }
 
-// THE TWO SUBMISSION WRITES ARE STILL DELIBERATELY ABSENT (#150, updated by F-058).
+// THE TWO SUBMISSION WRITES ARE STILL DELIBERATELY ABSENT (#150, #177 — reasoning updated twice).
 //
-// `POST /hope/submissions/assemble` now does real work: it runs `planAssembleSubmissions` over the
-// provider entity's eligible signed assessments and writes one `hope_submission` per CMS submission
-// period WITH its `hope_submission_item` rows (that table had no writer at all before F-058). So the
-// original objection to a client — that the route reported success for work the server did not do — no
-// longer applies to assemble.
+// The original objection was that `POST /hope/submissions/assemble` reported success for work the server
+// did not do: it wrote a `hope_submission` with `itemCount: 0` and no item rows. F-058 fixed that, and
+// F-072 built the two §4.10 stages behind it, so the pipeline is real end to end — assemble, transmit,
+// reconcile — and every planner in it now has a production caller.
 //
-// The buttons stay off anyway, and for a different reason: a batch stops at `queued` and there is
-// nothing downstream to move it. `iqies-submit-worker` terminates in `@wardenx/iqies-client`, whose only
-// adapter is the deny-stub, so `submitBatch` still has no caller and `m10.hope.submission_transmitted`
-// is still emitted by nothing. Putting "Assemble batch" on a compliance screen would present a working
-// submission workflow to the one user whose job is to know whether the agency has submitted — and,
-// through `uniq_hope_sub_item_assessment_active`, would permanently exclude every batched assessment
-// from any future batch. Retry is unchanged: it requeues into that same unreachable stage.
+// What is still missing is the TRANSPORT. `@wardenx/iqies-client` ships only its deny-stub adapter,
+// because the CMS endpoint, its auth flow and the HOPE submission XML schema are not in this repository.
+// So a batch assembled today is transmitted by a worker whose adapter refuses, the job DLQs, and the
+// operator sees an alert. That is the honest behaviour, and it is exactly why an "Assemble batch" button
+// would still mislead: it would present a working submission workflow to the one user whose job is to
+// know whether the agency has actually submitted to CMS. Retry is the same — it requeues into a stage
+// that cannot reach iQIES.
 //
-// The submission worklist says so on screen instead. The client goes here when a live iQIES transport
-// binds.
+// The submission worklist says so on screen instead. The client goes here when a live transport binds.
 
 /** §4.1 route 20 — recompute an admission's timepoint schedules after a post-hoc date correction. */
 export async function regenerateSchedules(

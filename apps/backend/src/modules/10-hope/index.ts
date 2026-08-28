@@ -126,13 +126,25 @@ export {
 // M25 precedent) + the platform-tenancy registration their active-org fan-out needs.
 export {
   type ActiveOrgListPort as M10ActiveOrgListPort,
+  type AssembleTickOutcome,
   type HopeOutboxPublishPort,
+  type IqiesAdapterPort,
   type M10WorkerDeps,
+  type ReconcileTickOutcome,
+  type SubmissionItemValidator,
+  type SubmitTickOutcome,
+  IQIES_BATCHES_PER_TICK,
+  IQIES_SUBMIT_BLOCKED_RULE,
   buildM10WorkerDeps,
   registerM10CronWorkers,
+  runAssembleSubmissionCron,
   runHopeWindowWatchdogCron,
+  runIqiesReconcileCron,
+  runIqiesSubmitCron,
   runSfvWatchdogCron,
+  runSubmissionJob,
   scheduleM10Jobs,
+  transmitCorrelationId,
 } from "./jobs/cron-workers";
 export { M10_PLATFORM_JOB_ID, wireM10Tenancy } from "./wiring";
 // M10-T07 — the §4.10 iQIES submission worker loop: the pure assemble / submit-readiness / transmit /
@@ -171,6 +183,20 @@ export {
   persistAssembledSubmission,
   queuedSubmissionCountForOrg,
 } from "./jobs/assemble-store";
+// F-072 (#177) — the Drizzle half of §4.10 stages 2 and 3.
+export {
+  type PickedSubmission,
+  type PickedSubmissionItem,
+  applyItemTransition,
+  claimSubmissionForTransmit,
+  inFlightSubmissionsForOrg,
+  pendingItemsForSubmission,
+  queuedSubmissionsForOrg,
+  recordReconcileOutcome,
+  recordTransmit,
+  releaseSubmission,
+  writeValidationFindings,
+} from "./jobs/submission-store";
 // M10-T08 — the `hope_record` data eraser (§8.4). registerHopeErasers stands the REAL eraser over the
 // Phase-0 deny-stub; invoked from the composition root's wireModuleErasers() before validateErasers(). The
 // pure retention/partition core (earliestErasableInstant / isHopeErasureBlocked / eraseHopeRecord) is unit

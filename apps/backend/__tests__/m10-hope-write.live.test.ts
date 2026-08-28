@@ -27,9 +27,14 @@ import {
   createDbHopeBackend,
 } from "../src/modules/10-hope/index";
 import {
+  type M10WorkerDeps,
+  runAssembleSubmissionCron,
   runHopeWindowWatchdogCron,
+  runIqiesReconcileCron,
+  runIqiesSubmitCron,
   runSfvWatchdogCron,
 } from "../src/modules/10-hope/jobs/cron-workers";
+import { releaseSubmission } from "../src/modules/10-hope/jobs/submission-store";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -538,6 +543,319 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       const res = await svc.assembleSubmission(ORG_B, providerOf[ORG_B]);
       expect(res.submissions).toEqual([]);
       expect(res.assessmentsConsidered).toBe(0);
+    });
+  });
+
+  // ── F-072 (#177) — §4.10 stages 2 and 3, at the row ──────────────────────────────────────────────
+  //
+  // F-058 built the assembler. The submit and reconcile workers were still unbuilt, and with them five
+  // pure planners with no production callers plus `hasBlockingError`, whose whole purpose is to gate a
+  // transmit that had no transmit-time to run in. These prove the ORCHESTRATION the planners cannot:
+  // the batch-level refusal, the CAS ordering around the adapter call, the roll-back that must never
+  // un-transmit, and the partial acceptance report.
+  //
+  // The iQIES wire protocol is still absent and is not invented — these drive the typed `IqiesAdapter`
+  // port with fakes, which is exactly what a real transport would replace.
+  describe("F-072 — the iQIES submit + reconcile workers", () => {
+    const orgs = { listActiveOrgs: async () => [{ organizationId: ORG_A }] };
+
+    function deps(over: Partial<M10WorkerDeps> = {}): M10WorkerDeps {
+      return {
+        connection: {} as never,
+        db: handle.db,
+        outbox: consumerOutbox as never,
+        activeOrgs: orgs,
+        validateItem: async () => [],
+        now: () => new Date("2026-08-27T10:00:00.000Z"),
+        ...over,
+      } as M10WorkerDeps;
+    }
+
+    /** Sign a fresh assessment and assemble it, returning (assessmentId, submissionId). */
+    async function queuedBatch(): Promise<{ assessmentId: string; submissionId: string }> {
+      await svc.assembleSubmission(ORG_A, providerOf[ORG_A]); // drain the suite's history
+      const adm = nextAdmission();
+      await seedSchedule(ORG_A, adm);
+      const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
+      const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+      const res = await svc.assembleSubmission(ORG_A, providerOf[ORG_A]);
+      const submissionId = res.submissions[0]?.id as string;
+      expect(submissionId).toBeDefined();
+      return { assessmentId: signed.id, submissionId };
+    }
+
+    async function submissionRow(id: string) {
+      const { rows } = await admin.query("SELECT * FROM hope_submission WHERE id = $1", [id]);
+      return rows[0];
+    }
+
+    it("transmits a clean batch: in_flight, batch id, digest, and submission_transmitted", async () => {
+      const { submissionId } = await queuedBatch();
+      const out = await runIqiesSubmitCron(
+        deps({
+          iqies: {
+            submitBatch: async (req) => {
+              // The envelope carries the PE's CCN and the batch's period — `buildSubmissionEnvelope`
+              // had no production caller before this.
+              expect(req.envelope.providerEntityCcn).toBeTruthy();
+              expect(req.envelope.items.length).toBeGreaterThan(0);
+              expect(req.correlationId).toBe(submissionId);
+              return { iqiesBatchId: "iqies-1", transmittedAt: "2026-08-27T10:00:00.000Z" };
+            },
+            fetchAcceptanceReport: async () => ({ iqiesBatchId: "iqies-1", items: [] }),
+          },
+        }),
+      );
+      expect(out.transmitted).toContain(submissionId);
+      const row = await submissionRow(submissionId);
+      expect(row.status).toBe("in_flight");
+      expect(row.iqies_batch_id).toBe("iqies-1");
+      expect(row.envelope_sha256).toMatch(/^[0-9a-f]{64}$/);
+      // Null deliberately: the key names the RENDERED submission XML and nothing renders it. The
+      // digest does not depend on it.
+      expect(row.envelope_storage_uri).toBeNull();
+      expect(await eventsFor(submissionId)).toContain("m10.hope.submission_transmitted");
+    });
+
+    it("refuses the WHOLE batch when any item has a blocking error, and records why", async () => {
+      const { assessmentId, submissionId } = await queuedBatch();
+      const out = await runIqiesSubmitCron(
+        deps({
+          validateItem: async () => [
+            {
+              ruleId: "cms.section_i.missing",
+              severity: "error" as const,
+              section: "I",
+              itemCode: null,
+              message: "Section I is required before submission.",
+            },
+          ],
+          iqies: {
+            submitBatch: async () => {
+              throw new Error("must not transmit a blocked batch");
+            },
+            fetchAcceptanceReport: async () => ({ iqiesBatchId: "x", items: [] }),
+          },
+        }),
+      );
+      expect(out.blocked).toContain(submissionId);
+      // Never a partial transmit (§4.10) — the batch does not move at all.
+      expect((await submissionRow(submissionId)).status).toBe("queued");
+      const { rows } = await admin.query(
+        "SELECT rule_id, severity FROM hope_validation_finding WHERE hope_assessment_id = $1 AND severity = 'error'",
+        [assessmentId],
+      );
+      // The refusal is a row a clinician can see, not only a worker log line.
+      expect(rows.length).toBeGreaterThan(0);
+    });
+
+    it("rolls a failed transmit back to queued so a later tick retries it", async () => {
+      const { submissionId } = await queuedBatch();
+      await expect(
+        runIqiesSubmitCron(
+          deps({
+            iqies: {
+              submitBatch: async () => {
+                throw new Error("iqies unreachable");
+              },
+              fetchAcceptanceReport: async () => ({ iqiesBatchId: "x", items: [] }),
+            },
+          }),
+        ),
+      ).rejects.toBeInstanceOf(AggregateError);
+      const row = await submissionRow(submissionId);
+      // Back to queued, and — critically — with no batch id, so nothing believes CMS received it.
+      expect(row.status).toBe("queued");
+      expect(row.iqies_batch_id).toBeNull();
+    });
+
+    it("never un-transmits: a batch that reached iQIES is not rolled back", async () => {
+      // `releaseSubmission` is guarded on `iqies_batch_id IS NULL`. This drives the guard directly,
+      // because the ordering it protects (CAS → adapter → record) has no other observable.
+      const { submissionId } = await queuedBatch();
+      await runIqiesSubmitCron(
+        deps({
+          iqies: {
+            submitBatch: async () => ({
+              iqiesBatchId: "iqies-2",
+              transmittedAt: "2026-08-27T10:00:00.000Z",
+            }),
+            fetchAcceptanceReport: async () => ({ iqiesBatchId: "iqies-2", items: [] }),
+          },
+        }),
+      );
+      await releaseSubmission(handle.db, ORG_A, submissionId);
+      const row = await submissionRow(submissionId);
+      expect(row.status).toBe("in_flight");
+      expect(row.iqies_batch_id).toBe("iqies-2");
+    });
+
+    it("reconciles acceptance: item accepted, assessment stamped, submission_accepted emitted", async () => {
+      const { assessmentId, submissionId } = await queuedBatch();
+      await runIqiesSubmitCron(
+        deps({
+          iqies: {
+            submitBatch: async () => ({
+              iqiesBatchId: "iqies-3",
+              transmittedAt: "2026-08-27T10:00:00.000Z",
+            }),
+            fetchAcceptanceReport: async () => ({ iqiesBatchId: "iqies-3", items: [] }),
+          },
+        }),
+      );
+      const out = await runIqiesReconcileCron(
+        deps({
+          iqies: {
+            submitBatch: async () => {
+              throw new Error("not used");
+            },
+            fetchAcceptanceReport: async () => ({
+              iqiesBatchId: "iqies-3",
+              items: [
+                {
+                  hopeAssessmentId: assessmentId,
+                  outcome: "accepted" as const,
+                  iqiesRecordId: "rec-1",
+                  findings: [],
+                },
+              ],
+            }),
+          },
+        }),
+      );
+      expect(out.reconciled).toContain(submissionId);
+      const row = await submissionRow(submissionId);
+      expect(row.status).toBe("accepted");
+      expect(row.accepted_count).toBe(1);
+      expect(row.accepted_at).not.toBeNull();
+      const item = (
+        await admin.query(
+          "SELECT item_status, iqies_record_id FROM hope_submission_item WHERE hope_submission_id = $1",
+          [submissionId],
+        )
+      ).rows[0];
+      expect(item.item_status).toBe("accepted");
+      expect(item.iqies_record_id).toBe("rec-1");
+      // The assessment's own terminal marker — half the assembler's eligibility rule, so without this
+      // an accepted assessment would be re-batched forever.
+      const assess = (
+        await admin.query("SELECT iqies_record_id FROM hope_assessment WHERE id = $1", [
+          assessmentId,
+        ])
+      ).rows[0];
+      expect(assess.iqies_record_id).toBe("rec-1");
+      expect(await eventsFor(submissionId)).toContain("m10.hope.submission_accepted");
+    });
+
+    it("reconciles rejection: item rejected, finding written, assessment NOT stamped", async () => {
+      const { assessmentId, submissionId } = await queuedBatch();
+      await runIqiesSubmitCron(
+        deps({
+          iqies: {
+            submitBatch: async () => ({
+              iqiesBatchId: "iqies-4",
+              transmittedAt: "2026-08-27T10:00:00.000Z",
+            }),
+            fetchAcceptanceReport: async () => ({ iqiesBatchId: "iqies-4", items: [] }),
+          },
+        }),
+      );
+      await runIqiesReconcileCron(
+        deps({
+          iqies: {
+            submitBatch: async () => {
+              throw new Error("not used");
+            },
+            fetchAcceptanceReport: async () => ({
+              iqiesBatchId: "iqies-4",
+              items: [
+                {
+                  hopeAssessmentId: assessmentId,
+                  outcome: "rejected" as const,
+                  iqiesRecordId: null,
+                  findings: [{ ruleId: "iqies.E0100", message: "Item J2051 is out of range." }],
+                },
+              ],
+            }),
+          },
+        }),
+      );
+      const row = await submissionRow(submissionId);
+      expect(row.status).toBe("rejected");
+      expect(row.rejected_count).toBe(1);
+      // A wholly rejected batch has an ANSWER but nothing accepted; stamping accepted_at would make
+      // the column mean "answered".
+      expect(row.accepted_at).toBeNull();
+      const assess = (
+        await admin.query("SELECT iqies_record_id FROM hope_assessment WHERE id = $1", [
+          assessmentId,
+        ])
+      ).rows[0];
+      // Stamping a rejected item would make it permanently unsubmittable — `iqies_record_id IS NULL`
+      // is half the assembler's eligibility rule.
+      expect(assess.iqies_record_id).toBeNull();
+      const findings = (
+        await admin.query(
+          "SELECT rule_id FROM hope_validation_finding WHERE hope_assessment_id = $1 AND rule_id = 'iqies.E0100'",
+          [assessmentId],
+        )
+      ).rows;
+      expect(findings.length).toBe(1);
+      expect(await eventsFor(submissionId)).toContain("m10.hope.submission_rejected");
+    });
+
+    it("leaves a batch in_flight when the acceptance report answers none of its items", async () => {
+      // A partial or empty report must not be folded as a wholly accepted batch — `planReconcile`
+      // derives status from the outcomes it is GIVEN, so handing it an empty set would score 0/0 as
+      // `accepted`. The next tick asks again.
+      const { submissionId } = await queuedBatch();
+      await runIqiesSubmitCron(
+        deps({
+          iqies: {
+            submitBatch: async () => ({
+              iqiesBatchId: "iqies-5",
+              transmittedAt: "2026-08-27T10:00:00.000Z",
+            }),
+            fetchAcceptanceReport: async () => ({ iqiesBatchId: "iqies-5", items: [] }),
+          },
+        }),
+      );
+      const out = await runIqiesReconcileCron(
+        deps({
+          iqies: {
+            submitBatch: async () => {
+              throw new Error("not used");
+            },
+            fetchAcceptanceReport: async () => ({ iqiesBatchId: "iqies-5", items: [] }),
+          },
+        }),
+      );
+      expect(out.reconciled).not.toContain(submissionId);
+      expect((await submissionRow(submissionId)).status).toBe("in_flight");
+    });
+
+    it("the unbound adapter fails the job loudly instead of leaving the batch silent", async () => {
+      // This is the property that let the `assemble-hope-submission` cron be registered at all. With
+      // no transport, a queued batch used to sit forever with nothing reporting it; now the worker
+      // raises, BullMQ DLQs the job, and `attachDlqAlertsToAll` surfaces it.
+      const { submissionId } = await queuedBatch();
+      await expect(runIqiesSubmitCron(deps({ iqies: undefined }))).rejects.toBeInstanceOf(
+        AggregateError,
+      );
+      expect((await submissionRow(submissionId)).status).toBe("queued");
+    });
+
+    it("the assemble cron batches org-wide, across provider entities", async () => {
+      // The route assembles for ONE named CCN; the cron has no operator naming one, so it groups
+      // across all of them.
+      await svc.assembleSubmission(ORG_A, providerOf[ORG_A]);
+      const adm = nextAdmission();
+      await seedSchedule(ORG_A, adm);
+      const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
+      await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+      const out = await runAssembleSubmissionCron(deps());
+      expect(out.submissionsCreated).toBe(1);
+      expect(out.assessmentsBatched).toBe(1);
     });
   });
 

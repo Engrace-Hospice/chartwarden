@@ -20,6 +20,7 @@ import {
 } from "@wardenx/auth";
 import type { RbacEngineHandle, SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
+import { createUnboundIqiesAdapter } from "@wardenx/iqies-client";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import { registerPlatformJob, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
 import { DegradedError, WardenXError } from "@wardenx/types";
@@ -84,6 +85,7 @@ import {
 import {
   buildOrgProviderEntityLister,
   buildPrimaryProviderEntityResolver,
+  buildProviderEntityCcnResolver,
   buildProviderEntityLocationLister,
   buildProviderEntityOrgCheck,
 } from "./bootstrap/provider-entity-resolver";
@@ -4019,9 +4021,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     }
     app.log.info({ queues: m9Workers.length }, "M9 §4.8 BullMQ compliance-scan crons constructed");
 
-    // ── M10 §4.8 HOPE watchdog crons (TASK-040D — the M25 worker-runner shape) ───────────────────────────
-    // `hope-window-watchdog` + `sfv-watchdog` only (`alerts`/`scheduling`/`validation`/`submission`/
-    // `retention` are out of scope — see jobs/cron-workers.ts's own header for why).
+    // ── M10 §4.8 HOPE crons (TASK-040D — the M25 worker-runner shape) ────────────────────────────────────
+    // `hope-window-watchdog` + `sfv-watchdog`, plus (F-058 / F-072) the three §4.10 submission stages on
+    // the shared `hope.submission` queue: `assemble-hope-submission`, `iqies-submit-worker` and
+    // `iqies-reconcile-worker`. `alerts`/`scheduling`/`validation`/`retention` are still out of scope —
+    // see jobs/cron-workers.ts's own header.
+    //
+    // The iQIES adapter is bound to `createUnboundIqiesAdapter` because there is no live transport in
+    // this codebase: the CMS endpoint, its auth flow and the HOPE submission XML schema are not here
+    // (#177). That binding is DELIBERATE and is not the same as leaving the port unbound — the deny-stub
+    // raises a typed `retryable: false` DegradedError, so the job DLQs immediately (no retry storm) and
+    // `attachDlqAlertsToAll` surfaces it, while Tier-2 capture is untouched (§5.6 / §7.10).
     const m10ActiveOrgs = buildActiveOrgEnumerator({
       platformDb: dbHandle.db,
       auditBypass: m34PlatformBypassAuditor,
@@ -4033,6 +4043,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       db: dbHandle.db,
       outbox: m10OutboxPublisher,
       activeOrgs: m10ActiveOrgs,
+      iqies: createUnboundIqiesAdapter(),
+      providerEntityCcn: buildProviderEntityCcnResolver(dbHandle.db),
     });
     const m10Workers = registerM10CronWorkers(m10WorkerDeps);
     attachDlqAlertsToAll(m10Workers, "m10");
@@ -4047,7 +4059,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M10 cron-schedule registration failed");
     }
-    app.log.info({ queues: m10Workers.length }, "M10 §4.8 BullMQ HOPE watchdog crons constructed");
+    app.log.info(
+      { queues: m10Workers.length },
+      "M10 §4.8 BullMQ HOPE crons constructed (watchdogs + the §4.10 submission pipeline)",
+    );
 
     // ── M14 §4.8 `idg.review-clock-sweep` cron (GAP-092 — the M9/M10/M25 worker-runner shape) ────────────
     const m14ActiveOrgs = buildActiveOrgEnumerator({
