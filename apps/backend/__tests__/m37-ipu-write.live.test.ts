@@ -23,6 +23,66 @@ const MEMBER = "44444444-4444-4444-4444-444444444444";
 const PATIENT = "55555555-5555-5555-5555-555555555555";
 const PE = "66666666-6666-6666-6666-666666666666";
 
+// ── F-069 — the fake M11 order register the restraint gate reads ──────────────────────────────────
+//
+// `hasOrderingOrder` used to be `body.orderingOrderId.length > 0`, so a restraint rested on whatever
+// the caller typed. It resolves through `OrderProvider` now, and these four rows are the four answers
+// that matter: a signed order for this patient, one for SOMEBODY ELSE, an unsigned draft, and an order
+// naming no ordering physician.
+const PHYSICIAN = "aaaaaaaa-0000-4000-8000-aaaaaaaaaaaa";
+const OTHER_PATIENT = "bbbbbbbb-0000-4000-8000-bbbbbbbbbbbb";
+const SIGNED_ORDER = "ffffffff-ffff-4fff-8fff-ffffffffff01";
+const OTHER_PATIENTS_ORDER = "ffffffff-ffff-4fff-8fff-ffffffffff02";
+const UNSIGNED_ORDER = "ffffffff-ffff-4fff-8fff-ffffffffff03";
+const ORDER_WITHOUT_PHYSICIAN = "ffffffff-ffff-4fff-8fff-ffffffffff04";
+const UNKNOWN_ORDER = "ffffffff-ffff-4fff-8fff-ffffffffff99";
+
+const ORDER_ROWS = new Map([
+  [
+    SIGNED_ORDER,
+    {
+      orderId: SIGNED_ORDER,
+      patientId: PATIENT,
+      status: "active",
+      signedAt: "2026-08-27T09:00:00.000Z",
+      orderingPhysicianMdmId: PHYSICIAN,
+    },
+  ],
+  [
+    OTHER_PATIENTS_ORDER,
+    {
+      orderId: OTHER_PATIENTS_ORDER,
+      patientId: OTHER_PATIENT,
+      status: "active",
+      signedAt: "2026-08-27T09:00:00.000Z",
+      orderingPhysicianMdmId: PHYSICIAN,
+    },
+  ],
+  [
+    UNSIGNED_ORDER,
+    {
+      orderId: UNSIGNED_ORDER,
+      patientId: PATIENT,
+      status: "draft",
+      signedAt: null,
+      orderingPhysicianMdmId: PHYSICIAN,
+    },
+  ],
+  [
+    ORDER_WITHOUT_PHYSICIAN,
+    {
+      orderId: ORDER_WITHOUT_PHYSICIAN,
+      patientId: PATIENT,
+      status: "active",
+      signedAt: "2026-08-27T09:00:00.000Z",
+      orderingPhysicianMdmId: null,
+    },
+  ],
+]);
+const ORDERS = {
+  getOrder: async ({ orderId }: { orderId: string }) => ORDER_ROWS.get(orderId) ?? null,
+};
+
 const actor = {
   organizationId: ORG_A,
   userId: USER,
@@ -68,7 +128,10 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });
-    svc = buildDrizzleIpuRouteService(handle.db); // NOOP outbox — this suite asserts state + effects
+    // NOOP outbox — this suite asserts state + effects. The `orders` seam is supplied because the
+    // restraint gate now RESOLVES the physician order rather than checking the caller's string is
+    // non-empty (F-069); `ORDERS` below is the fake M11 register.
+    svc = buildDrizzleIpuRouteService(handle.db, { orders: ORDERS });
   }, 120_000);
 
   afterAll(async () => {
@@ -181,12 +244,18 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
     const restraint = await svc.applyRestraint(actor, adm.id, {
       restraintKind: "soft_limb",
       restraintJustificationText: "x".repeat(120),
-      orderingPhysicianId: PE,
-      orderingOrderId: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      orderingOrderId: SIGNED_ORDER,
       category: "behavioral",
       reassessmentIntervalMinutes: 15,
     });
     expect(restraint.state).toBe("active");
+    // F-069 — the ordering physician comes from the ORDER, not from a second uuid the caller sends.
+    const { rows: stored } = await admin.query(
+      "SELECT ordering_physician_id, ordering_order_id FROM ipu_restraint_event WHERE id=$1",
+      [restraint.id],
+    );
+    expect(stored[0].ordering_physician_id).toBe(PHYSICIAN);
+    expect(stored[0].ordering_order_id).toBe(SIGNED_ORDER);
     const reassessed = await svc.reassessRestraint(actor, restraint.id, {
       outcome: "release",
       nextDueAt: new Date().toISOString(),
@@ -219,8 +288,7 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
     const restraint = await svc.applyRestraint(actor, adm.id, {
       restraintKind: "posey_vest",
       restraintJustificationText: "x".repeat(120),
-      orderingPhysicianId: PE,
-      orderingOrderId: "33333333-4444-4444-8444-444444444444",
+      orderingOrderId: SIGNED_ORDER,
       category: "medical",
       reassessmentIntervalMinutes: 120,
     });
@@ -253,12 +321,72 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
       svc.applyRestraint(actor, adm.id, {
         restraintKind: "side_rail_4",
         restraintJustificationText: "x".repeat(120),
-        orderingPhysicianId: PE,
-        orderingOrderId: "88888888-9999-4999-8999-999999999999",
+        orderingOrderId: SIGNED_ORDER,
         category: "medical",
         reassessmentIntervalMinutes: 120,
       }),
     ).rejects.toMatchObject({ code: "IPU_RN_COVERAGE_UNAVAILABLE", statusCode: 412 });
+  });
+
+  // ── F-069 · the CoP 418.110 physician-order requirement ─────────────────────────────────────────
+  //
+  // `validateRestraintApply` refuses without `hasOrderingOrder` and quotes the regulation, and the
+  // service used to answer that with `body.orderingOrderId.length > 0`. Every case below passed before
+  // this change — including the one where the order belongs to a different patient.
+  it("refuses a restraint whose order does not exist, is another patient's, is unsigned, or names no physician", async () => {
+    const adm = await svc.openAdmission(actor, {
+      patientId: PATIENT,
+      admissionId: "99999999-1111-4111-8111-111111111111",
+      levelOfCarePeriodId: "99999999-2222-4222-8222-222222222222",
+      providerEntityId: PE,
+      remoteFacilityId: "99999999-3333-4333-8333-333333333333",
+      kind: "arranged",
+    });
+    const apply = (orderingOrderId: string) =>
+      svc.applyRestraint(actor, adm.id, {
+        restraintKind: "mitt",
+        restraintJustificationText: "x".repeat(120),
+        orderingOrderId,
+        category: "medical",
+        reassessmentIntervalMinutes: 120,
+      });
+
+    for (const orderId of [
+      UNKNOWN_ORDER,
+      OTHER_PATIENTS_ORDER,
+      UNSIGNED_ORDER,
+      ORDER_WITHOUT_PHYSICIAN,
+    ]) {
+      await expect(apply(orderId)).rejects.toMatchObject({ code: "RESTRAINT_ORDER_REQUIRED" });
+    }
+
+    // Nothing was written: a refused restraint leaves no row behind.
+    const { rows } = await admin.query(
+      "SELECT count(*)::int n FROM ipu_restraint_event WHERE ipu_admission_id=$1",
+      [adm.id],
+    );
+    expect(rows[0].n).toBe(0);
+  });
+
+  it("refuses a restraint when the order seam is unbound — unreadable is not absent", async () => {
+    const unbound = buildDrizzleIpuRouteService(handle.db);
+    const adm = await svc.openAdmission(actor, {
+      patientId: PATIENT,
+      admissionId: "99999999-4444-4444-8444-444444444444",
+      levelOfCarePeriodId: "99999999-5555-4555-8555-555555555555",
+      providerEntityId: PE,
+      remoteFacilityId: "99999999-6666-4666-8666-666666666666",
+      kind: "arranged",
+    });
+    await expect(
+      unbound.applyRestraint(actor, adm.id, {
+        restraintKind: "mitt",
+        restraintJustificationText: "x".repeat(120),
+        orderingOrderId: SIGNED_ORDER,
+        category: "medical",
+        reassessmentIntervalMinutes: 120,
+      }),
+    ).rejects.toThrow(/OrderProvider is not bound/);
   });
 
   it("erases the patient's IPU record under a destruction cert", async () => {

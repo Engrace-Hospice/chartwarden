@@ -96336,6 +96336,107 @@
       }
     },
     "/api/v1/ipu-admissions/{id}/gip-criteria": {
+      "get": {
+        "operationId": "getApiV1IpuadmissionsByIdGipcriteria",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "The admission's attested GIP criteria and their reassessment trail. The §2.4 `data` payload is NOT projected — it carries clinical narrative; the M22 render is the readable document",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "ipuAdmissionId",
+                          "criterionKind",
+                          "attestedAt",
+                          "attestingPhysicianId",
+                          "reassessments",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "ipuAdmissionId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "criterionKind": {
+                            "type": "string"
+                          },
+                          "attestedAt": {
+                            "type": "string"
+                          },
+                          "attestingPhysicianId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "reassessments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "reassessedAt",
+                                "criterionStillMet"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "reassessedAt": {
+                                  "type": "string"
+                                },
+                                "criterionStillMet": {
+                                  "type": "boolean"
+                                }
+                              }
+                            }
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "post": {
         "operationId": "postApiV1IpuadmissionsByIdGipcriteria",
         "tags": [
@@ -96949,6 +97050,84 @@
         }
       }
     },
+    "/api/v1/ipu-admissions/{id}/irc-episodes": {
+      "get": {
+        "operationId": "getApiV1IpuadmissionsByIdIrcepisodes",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "The admission's IRC episodes, newest first (consecutive-day count vs the cap)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "ipuAdmissionId",
+                          "state",
+                          "consecutiveDayCount",
+                          "capOverrideInvoked",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "ipuAdmissionId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "consecutiveDayCount": {
+                            "type": "integer"
+                          },
+                          "capOverrideInvoked": {
+                            "type": "boolean"
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/ipu-admissions/{id}/request-bed": {
       "post": {
         "operationId": "postApiV1IpuadmissionsByIdRequestbed",
@@ -97065,7 +97244,7 @@
         "tags": [
           "37-ipu"
         ],
-        "summary": "Apply a restraint (step-up + m37.ipu.rn_coverage_active). 422 on missing physician order / <100-char justification; 403 without step-up (§2.10)",
+        "summary": "Apply a restraint (step-up + m37.ipu.rn_coverage_active). `orderingOrderId` is RESOLVED through M11: 422 unless the order exists, is for this admission's patient, is signed, and names an ordering physician (which is where the stored ordering physician comes from). 422 on a <100-char justification; 403 without step-up (§2.10)",
         "parameters": [
           {
             "name": "id",
@@ -97133,7 +97312,6 @@
                 "required": [
                   "restraintKind",
                   "restraintJustificationText",
-                  "orderingPhysicianId",
                   "orderingOrderId",
                   "category",
                   "reassessmentIntervalMinutes"
@@ -97164,10 +97342,6 @@
                     "maxLength": 4000,
                     "type": "string"
                   },
-                  "orderingPhysicianId": {
-                    "minLength": 1,
-                    "type": "string"
-                  },
                   "orderingOrderId": {
                     "minLength": 1,
                     "type": "string"
@@ -97192,6 +97366,142 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-admissions/{id}/restraints": {
+      "get": {
+        "operationId": "getApiV1IpuadmissionsByIdRestraints",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "The admission's restraint events, newest first, with each one's reassessment count and next-due instant (F-069 — reassess/release are keyed by an id no read route returned)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "ipuAdmissionId",
+                          "restraintKind",
+                          "category",
+                          "state",
+                          "reassessmentIntervalMinutes",
+                          "appliedAt",
+                          "appliedByMembershipId",
+                          "orderingOrderId",
+                          "orderingPhysicianId",
+                          "releasedAt",
+                          "nextDueAt",
+                          "reassessmentCount",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "ipuAdmissionId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "restraintKind": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "anyOf": [
+                              {
+                                "const": "behavioral",
+                                "type": "string"
+                              },
+                              {
+                                "const": "medical",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "reassessmentIntervalMinutes": {
+                            "type": "integer"
+                          },
+                          "appliedAt": {
+                            "type": "string"
+                          },
+                          "appliedByMembershipId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "orderingOrderId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "orderingPhysicianId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "releasedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "nextDueAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reassessmentCount": {
+                            "type": "integer"
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -99520,6 +99830,90 @@
       }
     },
     "/api/v1/ipu-visitors": {
+      "get": {
+        "operationId": "getApiV1Ipuvisitors",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Visitors for one IPU admission, newest check-in first (F-069 — check-out is keyed by an id no read route returned)",
+        "parameters": [
+          {
+            "name": "ipuAdmissionId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "ipuAdmissionId",
+                          "relationship",
+                          "maskRequired",
+                          "checkedInAt",
+                          "checkedOutAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "ipuAdmissionId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "relationship": {
+                            "type": "string"
+                          },
+                          "maskRequired": {
+                            "type": "boolean"
+                          },
+                          "checkedInAt": {
+                            "type": "string"
+                          },
+                          "checkedOutAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "post": {
         "operationId": "postApiV1Ipuvisitors",
         "tags": [

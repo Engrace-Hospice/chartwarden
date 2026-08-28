@@ -52,6 +52,7 @@ import {
   UpdateBedBodySchema,
   UpdateRoomBodySchema,
   UpdateUnitBodySchema,
+  VisitorListQuerySchema,
   parse,
 } from "./ipu-typebox";
 import type { IpuRouteService } from "./service";
@@ -336,6 +337,61 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       return service.overrideIrcCap(actor, id, parse(IrcOverrideBodySchema, request.body));
+    },
+  );
+
+  // 21b–21e. The bedside READS (F-069). `reassess`/`release`/`check-out` below are keyed by ids that no
+  // read route returned, so the only way to hold one was to be the browser session that performed the
+  // POST — and a behavioral restraint is reassessed every 15 minutes by whoever is on shift.
+  //
+  // All four gate on `m37.ipu_admission.read` rather than four new `m37.*.read` keys. They are
+  // sub-resources of ONE admission, reached from its detail pane, and whoever may read the admission is
+  // the staff standing at that bedside. Minting keys no role template grants would make every one of
+  // these routes deny every caller — the fail-closed-invisible shape this whole audit is about — and
+  // deciding which templates get them is a tenant policy call, not one to make silently here (the
+  // `phi.full_read` precedent).
+  app.get(
+    "/api/v1/ipu-admissions/:id/restraints",
+    {
+      preHandler: [P("m37.ipu_admission.read")],
+      config: { auditRead: { resourceKind: "ipu_restraint_event", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { id } = parse(IdParamsSchema, request.params);
+      return { items: await service.listRestraints(actorOf(request), id) };
+    },
+  );
+  app.get(
+    "/api/v1/ipu-admissions/:id/gip-criteria",
+    {
+      preHandler: [P("m37.ipu_admission.read")],
+      config: { auditRead: { resourceKind: "gip_admission_criteria", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { id } = parse(IdParamsSchema, request.params);
+      return { items: await service.listGipCriteria(actorOf(request), id) };
+    },
+  );
+  app.get(
+    "/api/v1/ipu-admissions/:id/irc-episodes",
+    {
+      preHandler: [P("m37.ipu_admission.read")],
+      config: { auditRead: { resourceKind: "irc_episode", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { id } = parse(IdParamsSchema, request.params);
+      return { items: await service.listIrcEpisodes(actorOf(request), id) };
+    },
+  );
+  app.get(
+    "/api/v1/ipu-visitors",
+    {
+      preHandler: [P("m37.ipu_admission.read")],
+      config: { auditRead: { resourceKind: "ipu_visitor", list: true } },
+    },
+    async (request) => {
+      const q = parse(VisitorListQuerySchema, request.query);
+      return { items: await service.listVisitors(actorOf(request), q.ipuAdmissionId) };
     },
   );
 

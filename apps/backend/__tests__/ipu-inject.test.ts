@@ -466,6 +466,64 @@ function createIpuTestBackend(): IpuRouteService {
       void actor;
       return { serviceDate, items: [] };
     },
+    // F-069 (read side) — the four bedside reads. `reassess`/`release`/`check-out` are keyed by ids no
+    // read route returned, so the only way to hold one was to be the session that did the POST.
+    async listRestraints(actor, admissionId) {
+      return [...restraints.values()]
+        .filter(
+          (r) => r.organizationId === actor.organizationId && r.ipuAdmissionId === admissionId,
+        )
+        .map((r) => ({
+          id: r.id,
+          ipuAdmissionId: r.ipuAdmissionId,
+          restraintKind: r.restraintKind,
+          category: "behavioral" as const,
+          state: r.state,
+          reassessmentIntervalMinutes: r.reassessmentIntervalMinutes,
+          appliedAt: "2026-08-27T09:00:00.000Z",
+          appliedByMembershipId: MEMBERSHIP,
+          orderingOrderId: randomUUID(),
+          orderingPhysicianId: randomUUID(),
+          releasedAt: null,
+          nextDueAt: null,
+          reassessmentCount: 0,
+          version: r.version,
+        }));
+    },
+    async listGipCriteria(actor, admissionId) {
+      void actor;
+      return [
+        {
+          id: randomUUID(),
+          ipuAdmissionId: admissionId,
+          criterionKind: "acute_symptom_management",
+          attestedAt: "2026-08-27T09:00:00.000Z",
+          attestingPhysicianId: randomUUID(),
+          reassessments: [],
+          version: 1,
+        },
+      ];
+    },
+    async listIrcEpisodes(actor, admissionId) {
+      void actor;
+      return [
+        {
+          id: randomUUID(),
+          ipuAdmissionId: admissionId,
+          state: "active",
+          consecutiveDayCount: 3,
+          capOverrideInvoked: false,
+          version: 1,
+        },
+      ];
+    },
+    async listVisitors(actor, admissionId) {
+      return [...visitors.values()]
+        .filter(
+          (v) => v.organizationId === actor.organizationId && v.ipuAdmissionId === admissionId,
+        )
+        .map(({ organizationId: _o, ...v }) => v);
+    },
     async applyRestraint(actor, admissionId, body) {
       const id = randomUUID();
       const row = {
@@ -901,7 +959,6 @@ describe("M37-T11 §4.1 admission open → bed → transfer → restraint (route
       payload: {
         restraintKind: "soft_limb",
         restraintJustificationText: "x".repeat(110),
-        orderingPhysicianId: randomUUID(),
         orderingOrderId: randomUUID(),
         category: "medical",
         reassessmentIntervalMinutes: 15,
@@ -1044,7 +1101,6 @@ describe("M37-T11 §4.1 restraint reassess/release (routes 23-24)", () => {
     const restraint = await service.applyRestraint(SEED_ACTOR, admissionId, {
       restraintKind: "mitt",
       restraintJustificationText: "x".repeat(110),
-      orderingPhysicianId: randomUUID(),
       orderingOrderId: randomUUID(),
       category: "medical",
       reassessmentIntervalMinutes: 30,
@@ -1336,6 +1392,103 @@ describe("M37-T11 §4.1 census (route 38)", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().serviceDate).toBe("2026-08-04");
+    await app.close();
+  });
+});
+
+// ── F-069 · the bedside reads ─────────────────────────────────────────────────────────────────────────
+//
+// `POST /ipu-restraint/:id/reassess`, `/release` and `POST /ipu-visitors/:id/check-out` are keyed by ids
+// that no read route returned. Holding one meant BEING the browser session that performed the create —
+// and a behavioral restraint is reassessed every 15 minutes, by whoever is on shift.
+
+describe("M37 §4.1 bedside reads (F-069)", () => {
+  it("an applied restraint is reachable by a LATER caller through the admission's list", async () => {
+    const { app } = makeServer();
+    const admissionId = randomUUID();
+    const applied = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-admissions/${admissionId}/restraint`,
+      headers: SUPER,
+      payload: {
+        restraintKind: "soft_limb",
+        restraintJustificationText: "x".repeat(120),
+        orderingOrderId: randomUUID(),
+        category: "behavioral",
+        reassessmentIntervalMinutes: 15,
+      },
+    });
+    expect(applied.statusCode).toBe(201);
+    const restraintId = applied.json().id as string;
+
+    // The list is the ONLY other way to this id. Without it the 15-minute reassessment below could be
+    // recorded by nobody but the caller that applied the restraint, for as long as they kept the tab.
+    const listed = await app.inject({
+      method: "GET",
+      url: `/api/v1/ipu-admissions/${admissionId}/restraints`,
+      headers: SUPER,
+    });
+    expect(listed.statusCode).toBe(200);
+    const items = listed.json().items as { id: string; reassessmentIntervalMinutes: number }[];
+    expect(items.map((r) => r.id)).toContain(restraintId);
+    expect(items[0]?.reassessmentIntervalMinutes).toBe(15);
+
+    const reassessed = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-restraint/${items[0]?.id}/reassess`,
+      headers: SUPER,
+      payload: { outcome: "continue", nextDueAt: "2026-08-27T10:00:00.000Z" },
+    });
+    expect(reassessed.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("a checked-in visitor is reachable by a LATER shift through the admission's list", async () => {
+    const { app } = makeServer();
+    const ipuAdmissionId = randomUUID();
+    const checkedIn = await app.inject({
+      method: "POST",
+      url: "/api/v1/ipu-visitors",
+      headers: SUPER,
+      payload: {
+        ipuAdmissionId,
+        visitorName: "Jordan Lee",
+        relationship: "spouse",
+        screeningOutcome: { feverFree: true },
+      },
+    });
+    expect(checkedIn.statusCode).toBe(201);
+
+    const listed = await app.inject({
+      method: "GET",
+      url: `/api/v1/ipu-visitors?ipuAdmissionId=${ipuAdmissionId}`,
+      headers: SUPER,
+    });
+    expect(listed.statusCode).toBe(200);
+    const items = listed.json().items as { id: string; checkedOutAt: string | null }[];
+    expect(items.map((v) => v.id)).toContain(checkedIn.json().id);
+
+    const out = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-visitors/${items[0]?.id}/check-out`,
+      headers: SUPER,
+    });
+    expect(out.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("the GIP criteria and IRC episode lists are readable for the bedside pane", async () => {
+    const { app } = makeServer();
+    const admissionId = randomUUID();
+    for (const path of ["gip-criteria", "irc-episodes"]) {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/ipu-admissions/${admissionId}/${path}`,
+        headers: SUPER,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(Array.isArray(res.json().items)).toBe(true);
+    }
     await app.close();
   });
 });

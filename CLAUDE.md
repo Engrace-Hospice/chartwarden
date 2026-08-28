@@ -602,3 +602,18 @@ analysis a gate would need is a call graph from the composition root, and the ob
 Architecture documents are authoritative. Module and UI screen specifications are
 implementation proposals.
 **If a module or screen spec conflicts with architecture, architecture wins.**
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `Engrace-Hospice/wardenx`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, each label string equal to its name. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context — one repo-root `CONTEXT.md` (not yet created) plus the existing `docs/adr/`.
+See `docs/agents/domain.md`.

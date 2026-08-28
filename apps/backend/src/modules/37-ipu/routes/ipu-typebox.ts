@@ -302,6 +302,10 @@ export const RnCoverageViewSchema = Type.Object({
 export const RnBreakGlassViewSchema = Type.Object({ unitId: id, invoked: Type.Boolean() });
 
 // ── restraint (§4.1 routes 22–24) ──────────────────────────────────────────────────────────────────────
+// No `orderingPhysicianId` (F-069). It was a SECOND client-supplied uuid for a fact the order already
+// carries, so the two could name different people and the record could not say which was true. The
+// server now derives it from the resolved M11 order's `orderingPhysicianMdmId`; an order that names no
+// ordering physician cannot authorise a restraint, which is a refusal rather than a null.
 export const ApplyRestraintBodySchema = Type.Object({
   restraintKind: Type.Union([
     Type.Literal("soft_limb"),
@@ -310,7 +314,8 @@ export const ApplyRestraintBodySchema = Type.Object({
     Type.Literal("side_rail_4"),
   ]),
   restraintJustificationText: Type.String({ minLength: 100, maxLength: 4000 }),
-  orderingPhysicianId: id,
+  /** The M11 order authorising the restraint. RESOLVED through `OrderProvider` — it must exist, be for
+   *  this admission's patient, and be signed. Not merely non-empty (F-069). */
   orderingOrderId: id,
   category: Type.Union([Type.Literal("behavioral"), Type.Literal("medical")]),
   reassessmentIntervalMinutes: Type.Integer({ minimum: 1, maximum: 240 }),
@@ -331,6 +336,56 @@ export const RestraintViewSchema = Type.Object({
   state: Type.String(),
   reassessmentIntervalMinutes: Type.Integer(),
   version: Type.Integer(),
+});
+
+// F-069 (read side) — the three POST-only surfaces below had NO read route, so the id each of them
+// needs was obtainable only from the response of the POST that created it, inside one browser session.
+// A behavioral restraint is reassessed every 15 minutes and a visitor is checked out by a later shift:
+// both are, by definition, done by someone who did not perform the create. The lists close that.
+export const RestraintDetailViewSchema = Type.Object({
+  id,
+  ipuAdmissionId: id,
+  restraintKind: Type.String(),
+  category: Type.Union([Type.Literal("behavioral"), Type.Literal("medical")]),
+  state: Type.String(),
+  reassessmentIntervalMinutes: Type.Integer(),
+  appliedAt: Type.String(),
+  appliedByMembershipId: id,
+  orderingOrderId: id,
+  orderingPhysicianId: id,
+  releasedAt: Type.Union([Type.String(), Type.Null()]),
+  /** The most recent reassessment's `next_due_at` — what a bedside board counts down to. Null until
+   *  the first reassessment, when the interval from `appliedAt` is the clock instead. */
+  nextDueAt: Type.Union([Type.String(), Type.Null()]),
+  reassessmentCount: Type.Integer(),
+  version: Type.Integer(),
+});
+export const RestraintListSchema = Type.Object({
+  items: Type.Array(RestraintDetailViewSchema),
+});
+
+export const GipCriteriaDetailViewSchema = Type.Object({
+  id,
+  ipuAdmissionId: id,
+  criterionKind: Type.String(),
+  attestedAt: Type.String(),
+  attestingPhysicianId: id,
+  /** Reassessments recorded against this attestation, newest first (§2.4 — GIP is reassessed daily). */
+  reassessments: Type.Array(
+    Type.Object({
+      id,
+      reassessedAt: Type.String(),
+      criterionStillMet: Type.Boolean(),
+    }),
+  ),
+  version: Type.Integer(),
+});
+export const GipCriteriaListSchema = Type.Object({
+  items: Type.Array(GipCriteriaDetailViewSchema),
+});
+
+export const IrcEpisodeListSchema = Type.Object({
+  items: Type.Array(IrcEpisodeViewSchema),
 });
 
 // ── visitor (§4.1 routes 29–31) ────────────────────────────────────────────────────────────────────────
@@ -366,6 +421,9 @@ export const VisitorViewSchema = Type.Object({
   checkedInAt: Type.String(),
   checkedOutAt: Type.Union([Type.String(), Type.Null()]),
 });
+export const VisitorListSchema = Type.Object({ items: Type.Array(VisitorViewSchema) });
+export const VisitorListQuerySchema = Type.Object({ ipuAdmissionId: id });
+
 export const ApplyVisitorRestrictionBodySchema = Type.Object({
   scope: Type.Union([Type.Literal("unit"), Type.Literal("patient")]),
   unitId: Type.Optional(id),
