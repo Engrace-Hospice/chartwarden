@@ -23,15 +23,15 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // signed-URL open, which asks for its §164.528 access purpose because minting the URL WRITES a
 // disclosure-accounting record and defaulting every look to "treatment" would make that log a fiction.
 //
-// WHAT IS NOT BUILT, AND WHY:
+// Plus TAG EDITING, on the version-chain aside. This row was not deferred by preference — it was
+// UNBUILDABLE (#153): `document_tag` had two writers and NO READER anywhere in the repo, and the id its
+// DELETE takes was returned exactly once by a POST whose contract declared no response body, so an
+// editor could not have listed what was already on a document and anything added through it would have
+// been permanently invisible and undeletable on the next page load. #153 built the reader, published
+// the POST's response and wired the cross-document `?tagKey=` query; this is the caller they were
+// missing.
 //
-//   • TAG EDITING — not deferred, IMPOSSIBLE as the surface stands (#153). `document_tag` has two
-//     writers and NO READER anywhere in the repo: no route projects tags, `GET /documents/:id` does not
-//     carry them, and no SELECT touches the table outside the eraser. Its two indexes were built for
-//     queries that were never written. The tag id is returned exactly once, by a POST whose contract
-//     declares no response body — so a typed client cannot hold it, and the DELETE is unreachable by
-//     construction. An editor here could not show what is already on a document, and anything added
-//     through it would be permanently invisible and undeletable on the next page load.
+// WHAT IS NOT BUILT, AND WHY:
 //   • DocLens SIDE-BY-SIDE REVIEW + the FAX SPLITTER — the reviewer screen (§5.1
 //     INTAKE.ReviewSideBySide) does not exist, and the DocLens classifier/extractor are M32-flag-gated:
 //     behind `documents.doclens` the jobs queue as `awaiting_capability`. Wiring the eight review

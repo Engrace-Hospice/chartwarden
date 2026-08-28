@@ -68,7 +68,34 @@ function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string;
   return { url: input.url, method: (init?.method ?? input.method ?? "GET").toUpperCase() };
 }
 
+/**
+ * #153/#91 — the tags `GET /documents/:id/tags` answers. Mutable so a test can start a document with
+ * tags already on it, which is the case the old surface could not represent at all: before the reader
+ * existed, a document's existing tags were invisible to every client.
+ */
+let tagRows: {
+  id: string;
+  tagKind: string;
+  tagKey: string;
+  tagValue: string | null;
+  addedAt: string;
+  createdAt: string;
+}[] = [];
+/** What the POST answers — the created row, id included. The response that did not exist. */
+const createdTag = {
+  id: "eeeeeeee-5555-4555-8555-eeeeeeeeeeee",
+  tagKind: "structured",
+  tagKey: "phase",
+  tagValue: "IIA",
+  addedAt: "2026-06-21T12:00:00.000Z",
+  createdAt: "2026-06-21T12:00:00.000Z",
+};
+
 function bodyFor(method: string, path: string): unknown {
+  // Before the generic `/api/v1/documents/…` branch below, which would answer the document row.
+  if (path.endsWith("/tags"))
+    return method === "GET" ? { items: tagRows, nextCursor: null } : createdTag;
+  if (path.includes("/tags/")) return {};
   if (path === "/api/v1/document-uploads")
     return {
       uploadId: UPLOAD,
@@ -208,6 +235,7 @@ beforeEach(() => {
   // design. Both are pointed at the same recorder here — and that they are two different call sites is
   // itself asserted below ("the bytes go to object storage and NEVER through the API"). Before this
   // line the PUT escaped to a real network request, which is the clearest possible proof of the split.
+  tagRows = [];
   vi.stubGlobal("fetch", stubFetch);
 });
 afterEach(() => {
@@ -392,5 +420,84 @@ describe("#91 — a refusal is rendered, not swallowed", () => {
     const alert = await waitFor(() => screen.getByRole("alert"));
     expect(alert.textContent).toContain("legal hold");
     expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
+  });
+});
+
+// #91's M22 row + #153 — TAG EDITING. This surface was not deferred by preference, it was UNBUILDABLE:
+// `document_tag` had two writers and no reader anywhere in the repo, and the id its DELETE takes was
+// returned exactly once by a POST whose contract declared no response body. So an editor could not
+// have listed a document's existing tags, and anything added through it would have been permanently
+// invisible and undeletable on the next page load — worse than no control, which is why the M22 row
+// shipped upload/edit/preview and stated this one. These prove the loop closes end to end.
+describe("#91 — tags can be seen, added and removed", () => {
+  const EXISTING = {
+    id: "99999999-7777-4777-8777-999999999999",
+    tagKind: "free",
+    tagKey: "source",
+    tagValue: "fax intake",
+    addedAt: "2026-06-20T09:00:00.000Z",
+    createdAt: "2026-06-20T09:00:00.000Z",
+  };
+
+  it("lists the tags already on the document — the read that did not exist", async () => {
+    tagRows = [EXISTING];
+    mount(`/documents/${DOCUMENT}/versions`, "/documents/:documentId/versions", <VersionHistory />);
+    await waitFor(() => expect(calls).toContain(`GET /api/v1/documents/${DOCUMENT}/tags`));
+    expect(await screen.findByText("source")).toBeTruthy();
+    expect(screen.getByText(/fax intake/)).toBeTruthy();
+  });
+
+  it("says so plainly when there are none, rather than rendering nothing", async () => {
+    tagRows = [];
+    mount(`/documents/${DOCUMENT}/versions`, "/documents/:documentId/versions", <VersionHistory />);
+    expect(await screen.findByText("No tags on this document.")).toBeTruthy();
+  });
+
+  it("Add tag POSTs the kind, key and value, and shows the created tag without a re-read", async () => {
+    tagRows = [];
+    mount(`/documents/${DOCUMENT}/versions`, "/documents/:documentId/versions", <VersionHistory />);
+    fireEvent.click(await screen.findByRole("button", { name: "Add tag" }));
+    fireEvent.change(screen.getByLabelText("Key"), { target: { value: "phase" } });
+    fireEvent.change(screen.getByLabelText(/^Value/), { target: { value: "IIA" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add tag" }));
+    await waitFor(() => expect(calls).toContain(`POST /api/v1/documents/${DOCUMENT}/tags`));
+    expect(bodies.at(-1)).toEqual({ tagKind: "structured", tagKey: "phase", tagValue: "IIA" });
+    // The POST response carries the row, so it appears without a second GET — which is exactly what
+    // the missing response schema made impossible.
+    expect(await screen.findByText("phase")).toBeTruthy();
+    expect(calls.filter((c) => c === `GET /api/v1/documents/${DOCUMENT}/tags`)).toHaveLength(1);
+  });
+
+  it("an empty value is a BARE KEY, not the empty string", async () => {
+    tagRows = [];
+    mount(`/documents/${DOCUMENT}/versions`, "/documents/:documentId/versions", <VersionHistory />);
+    fireEvent.click(await screen.findByRole("button", { name: "Add tag" }));
+    fireEvent.change(screen.getByLabelText("Key"), { target: { value: "reviewed" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add tag" }));
+    await waitFor(() => expect(calls).toContain(`POST /api/v1/documents/${DOCUMENT}/tags`));
+    expect(bodies.at(-1)).toEqual({ tagKind: "structured", tagKey: "reviewed" });
+  });
+
+  it("Remove DELETEs by the id the LIST returned — the id a reload used to destroy", async () => {
+    tagRows = [EXISTING];
+    mount(`/documents/${DOCUMENT}/versions`, "/documents/:documentId/versions", <VersionHistory />);
+    fireEvent.click(await screen.findByRole("button", { name: "Remove tag source" }));
+    await waitFor(() =>
+      expect(calls).toContain(`DELETE /api/v1/documents/${DOCUMENT}/tags/${EXISTING.id}`),
+    );
+    await waitFor(() => expect(screen.getByText("No tags on this document.")).toBeTruthy());
+  });
+
+  it("a legal-hold refusal is shown and the tag stays on the document", async () => {
+    tagRows = [EXISTING];
+    writeFailure = {
+      status: 409,
+      body: { message: "the document is under an active legal hold" },
+    };
+    mount(`/documents/${DOCUMENT}/versions`, "/documents/:documentId/versions", <VersionHistory />);
+    fireEvent.click(await screen.findByRole("button", { name: "Remove tag source" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/legal hold/i));
+    // Refused server-side, not hidden client-side: the row is still listed.
+    expect(screen.getByText("source")).toBeTruthy();
   });
 });
