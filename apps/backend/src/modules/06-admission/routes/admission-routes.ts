@@ -313,6 +313,32 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     },
   );
 
+  // F-065 — the patient's admissions, newest first. Every clinical CREATE in this platform is keyed by
+  // `admissionId` (a medication order, an encounter, a care-plan version), and nothing could resolve one
+  // for a patient: `GET /api/v1/admissions` is an org-wide census that takes no patient filter and whose
+  // items carry `{ id, state, version }` with no `patientId`, and `GET /api/v1/patients/:id` carries no
+  // admission. So the id had to come from a row that already had one — fine for acting on an existing
+  // record, impossible for creating the first one. The two workarounds in the tree name it: M07's
+  // `screens.ts` declines to offer plan creation ("a 'create care plan' button would need an admissionId
+  // this screen does not read"), and M24's claim-assembly wizard renders a raw text input for it.
+  //
+  // Gated by `admission.read`; a patient with no admissions returns an empty list, never a 404 — an
+  // empty list is the truthful answer and a 404 would leak whether the patient exists.
+  app.get(
+    "/api/v1/patients/:patientId/admissions",
+    {
+      preHandler: [ADMISSION_READ],
+      config: {
+        auditRead: { resourceKind: "admission", patientIdParam: "patientId", list: true },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { patientId } = parse(PatientIdParamsSchema, request.params);
+      return { items: await service.listPatientAdmissions(organizationId, patientId) };
+    },
+  );
+
   // Patient-scoped Election & Certification aggregate — the patient-chart "Election & Certification"
   // tab. Gated by `election.read`; a patient with no admission returns a truthful empty (admission null),
   // never a 404. RLS scopes every underlying read to the caller's org.

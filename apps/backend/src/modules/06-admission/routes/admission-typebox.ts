@@ -119,6 +119,18 @@ export const AdmissionListQuerySchema = Type.Object({
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
 });
 
+/** F-065 — the patient's admissions, newest first (`GET /patients/:patientId/admissions`). */
+export const PatientAdmissionsResponseSchema = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      id: Uuid(),
+      state: Type.String(),
+      admissionAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+      dischargedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+    }),
+  ),
+});
+
 export const AdmissionUpdateSchema = Type.Object({
   intakeMethod: Type.Optional(Type.Union(INTAKE_METHODS.map((m) => Type.Literal(m)))),
   attendingPhysicianId: Type.Optional(Uuid()),

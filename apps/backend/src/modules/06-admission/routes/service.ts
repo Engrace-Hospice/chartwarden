@@ -275,6 +275,14 @@ export interface SummaryRow {
   readonly version: number;
 }
 
+/** One of a patient's admissions (F-065) — enough to pick the one being documented against. */
+export interface PatientAdmissionSummary {
+  readonly id: string;
+  readonly state: string;
+  readonly admissionAt: string | null;
+  readonly dischargedAt: string | null;
+}
+
 /** The admission aggregate (route 10) — summary + the R-AC-01 activation gate (§7.2 / §5.2.5). */
 export interface AdmissionDetail extends SummaryRow {
   readonly activationGate: ActivationGate;
@@ -433,6 +441,27 @@ export interface AdmissionRouteService {
     query: { state?: string; cursor?: string; limit?: number },
   ): Promise<Page<SummaryRow>>;
   getAdmission(organizationId: string, id: string): Promise<AdmissionDetail | null>;
+  /**
+   * The patient's admissions, newest first (F-065).
+   *
+   * Every clinical CREATE in this platform is keyed by `admissionId` — a medication order, an
+   * encounter, a care plan — and until this route nothing could answer "which admission am I
+   * documenting against" for a given patient. `GET /api/v1/admissions` is an org-wide census that takes
+   * no patient filter and whose items carry `{ id, state, version }` with no `patientId`, and
+   * `GET /api/v1/patients/:id` carries no admission. So the id had to come from a row that already had
+   * one — which is fine for acting on an existing record and impossible for creating the first one.
+   *
+   * The two workarounds in the tree say it plainly: M07's `screens.ts` declines to offer plan creation
+   * because "a 'create care plan' button would need an admissionId this screen does not read", and
+   * M24's claim-assembly wizard renders a raw text input for it — a billing clerk typing a uuid.
+   *
+   * Summary only (no PHI beyond the dates), so it needs no redaction; org-scoped by RLS and
+   * patient-scoped by the filter, so a cross-tenant patient literal resolves nothing.
+   */
+  listPatientAdmissions(
+    organizationId: string,
+    patientId: string,
+  ): Promise<readonly PatientAdmissionSummary[]>;
   /** Patient-scoped Election & Certification aggregate (patient-chart tab); empty admission when none. */
   getPatientElectionCertification(
     organizationId: string,
@@ -951,6 +980,21 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
             locationId: rec.locationId ?? null,
           }
         : null;
+    },
+    async listPatientAdmissions(organizationId, patientId) {
+      // Ids are monotonic in insert order, so reversing gives newest-first (the DB path orders by
+      // `admission_at`; both agree on "the current admission is the first row").
+      return listOfKind(organizationId, "admission")
+        .filter((r) => r.patientId === patientId)
+        .reverse()
+        .map((r) => ({
+          id: r.id,
+          state: r.state,
+          // The in-memory `Rec` carries no admission/discharge timestamps — the slice models the
+          // lifecycle, not the calendar. Null here, real in the Drizzle path.
+          admissionAt: null,
+          dischargedAt: null,
+        }));
     },
     async getPatientElectionCertification(organizationId, patientId) {
       // Newest admission for the patient (ids are monotonic in insert order → last is newest).

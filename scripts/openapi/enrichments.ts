@@ -96,6 +96,7 @@ import {
   ComplianceCloseSchema as M6ComplianceCloseSchema,
   ComplianceListQuerySchema as M6ComplianceListQuerySchema,
   ComplianceOverrideSchema as M6ComplianceOverrideSchema,
+  PatientAdmissionsResponseSchema as M6PatientAdmissionsResponseSchema,
   SummaryItemsResponseSchema as M6SummaryItemsResponseSchema,
   SummaryPageResponseSchema as M6SummaryPageResponseSchema,
   SummaryRowResponseSchema as M6SummaryRowResponseSchema,
@@ -3425,6 +3426,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/admissions/:id/election-periods": {
     summary: "The admission's benefit-period ladder",
     response: M6SummaryItemsResponseSchema,
+  },
+  "GET /api/v1/patients/:patientId/admissions": {
+    summary:
+      "The patient's admissions, newest first (F-065). Every clinical create is keyed by admissionId and nothing could resolve one for a patient — the org-wide census takes no patient filter and its items carry no patientId",
+    response: M6PatientAdmissionsResponseSchema,
   },
   "GET /api/v1/patients/:patientId/election-certification": {
     summary:

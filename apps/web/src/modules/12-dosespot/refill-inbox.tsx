@@ -19,6 +19,8 @@ import {
 // no frontend authz; the patient name is SUD-consent-gated server-side). The approve/deny actions live on the
 // detail screen as their write surface hardens. Reads GET /api/v1/refills via the typed client.
 // Leaves only (@wardenx/ui).
+// #91 — a row opens the REFILL, where the §2.7 approve/deny decision lives. The per-schedule refill
+// cap the decision is bounded by is the server's, and the detail is where the source order is visible.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";

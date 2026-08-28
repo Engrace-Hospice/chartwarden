@@ -57,6 +57,7 @@ import {
 import type {
   AdmissionAbacResolver,
   AdmissionDetail,
+  PatientAdmissionSummary,
   AdmissionRouteService,
   MutationResult,
   Page,
@@ -901,6 +902,32 @@ export function createDbAdmissionRouteService(
     // ── Admission reads ──────────────────────────────────────────────────────────────────────────
     async listAdmissions(organizationId, query) {
       return pageByStatus(organizationId, ADM, ADM.admissionAt, query);
+    },
+    /**
+     * F-065 — the patient's admissions, newest first. Every clinical CREATE is keyed by `admissionId`
+     * and nothing could resolve one for a patient: the org-wide census takes no patient filter and its
+     * items carry no `patientId`, and the patient read carries no admission. Ordered by `admission_at`
+     * with the id as a tiebreak so a draft admission with no date still has a stable position.
+     */
+    async listPatientAdmissions(organizationId, patientId): Promise<PatientAdmissionSummary[]> {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const rows = await tx
+          .select({
+            id: ADM.id,
+            state: ADM.status,
+            admissionAt: ADM.admissionAt,
+            dischargedAt: ADM.dischargedAt,
+          })
+          .from(ADM)
+          .where(eq(ADM.patientId, patientId))
+          .orderBy(desc(ADM.admissionAt), desc(ADM.id));
+        return rows.map((r) => ({
+          id: r.id,
+          state: r.state,
+          admissionAt: r.admissionAt ? r.admissionAt.toISOString() : null,
+          dischargedAt: r.dischargedAt ? r.dischargedAt.toISOString() : null,
+        }));
+      });
     },
     async getAdmission(organizationId, id): Promise<AdmissionDetail | null> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {

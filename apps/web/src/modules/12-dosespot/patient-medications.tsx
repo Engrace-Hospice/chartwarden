@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   FilterBar,
   LoadingSpinner,
@@ -19,6 +20,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { MED_ORDER_TONE, controlledLabel, stateLabel } from "./medication-status";
+import { loadPatientAdmissions } from "./medications-api";
+import { PrescribeModal } from "./prescribe-modal";
 
 interface MedRow {
   id: string;
@@ -39,12 +42,19 @@ export function PatientMedications(): JSX.Element {
   const navigate = useNavigate();
   const { patientId } = useParams<{ patientId: string }>();
   const [items, setItems] = useState<MedRow[]>([]);
+  const [admissionId, setAdmissionId] = useState<string | null>(null);
+  const [prescribing, setPrescribing] = useState(false);
   const [status, setStatus] = useState("active");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!patientId) return;
+    // The admission the new order is documented against. An OPEN one, newest first; a patient with only
+    // discharged admissions is not currently under care and prescribing into one would be wrong.
+    void loadPatientAdmissions(client, patientId).then((rows) =>
+      setAdmissionId(rows.find((a) => a.dischargedAt == null)?.id ?? null),
+    );
     setLoading(true);
     setError(null);
     // "active" reads the dedicated active-medications surface; any other status reads the filtered list.
@@ -87,7 +97,16 @@ export function PatientMedications(): JSX.Element {
 
   return (
     <PatientWorkspaceLayout
-      banner={<PageHeader title="Medications" />}
+      banner={
+        <PageHeader
+          title="Medications"
+          actions={
+            admissionId ? (
+              <Button onClick={() => setPrescribing(true)}>Prescribe</Button>
+            ) : undefined
+          }
+        />
+      }
       contextHeader={
         <FilterBar
           actions={
@@ -111,6 +130,15 @@ export function PatientMedications(): JSX.Element {
         </FilterBar>
       }
     >
+      {patientId && admissionId ? (
+        <PrescribeModal
+          open={prescribing}
+          patientId={patientId}
+          admissionId={admissionId}
+          onClose={() => setPrescribing(false)}
+          onCreated={(order) => navigate(`/medication-orders/${order.id}`)}
+        />
+      ) : null}
       {error ? (
         <EmptyState title="Unavailable" description={error} />
       ) : loading && items.length === 0 ? (
