@@ -70504,7 +70504,7 @@
         "summary": "Initiate a checksum-enforced direct document upload",
         "parameters": [],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK",
             "content": {
               "application/json": {
@@ -70807,7 +70807,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "204": {
             "description": "OK"
           },
           "4XX": {
@@ -71400,7 +71400,132 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "patientId",
+                    "admissionId",
+                    "retentionClass",
+                    "aggregateType",
+                    "title",
+                    "patientFacing",
+                    "attachToDisclosures",
+                    "status",
+                    "version",
+                    "versionsCount",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "admissionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "retentionClass": {
+                      "anyOf": [
+                        {
+                          "const": "compliance",
+                          "type": "string"
+                        },
+                        {
+                          "const": "clinical_record",
+                          "type": "string"
+                        },
+                        {
+                          "const": "bereavement",
+                          "type": "string"
+                        },
+                        {
+                          "const": "operational",
+                          "type": "string"
+                        },
+                        {
+                          "const": "intake_artifact",
+                          "type": "string"
+                        },
+                        {
+                          "const": "compliance_42cfr_part2",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "aggregateType": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "patientFacing": {
+                      "type": "boolean"
+                    },
+                    "attachToDisclosures": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "superseded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "legal_hold",
+                          "type": "string"
+                        },
+                        {
+                          "const": "destroyed_tombstone",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "versionsCount": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

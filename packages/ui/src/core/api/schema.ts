@@ -36940,7 +36940,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -36974,7 +36974,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description OK */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -37172,7 +37172,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        patientId: string | null;
+                        admissionId: string | null;
+                        retentionClass: "compliance" | "clinical_record" | "bereavement" | "operational" | "intake_artifact" | "compliance_42cfr_part2";
+                        aggregateType: string;
+                        title: string;
+                        patientFacing: boolean;
+                        attachToDisclosures: boolean;
+                        status: "active" | "superseded" | "legal_hold" | "destroyed_tombstone";
+                        version: number;
+                        versionsCount: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

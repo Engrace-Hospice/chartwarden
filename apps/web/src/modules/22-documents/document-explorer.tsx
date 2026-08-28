@@ -16,10 +16,15 @@ import {
 // tables (§6.7), warm-paper surfaces. The SERVER is the only authz point (ADR-0030): out-of-scope rows are
 // non-leaking 404s, SUD content is redacted server-side, legal-hold blocks live in the response — never a
 // frontend hide. Reads GET /api/v1/documents (cursor-paginated) via the typed client. Leaves only
-// (@wardenx/ui). The upload dialog / tag editor / signed-URL preview write+modal surfaces fill in as their
-// write paths harden (the §164.528 access-purpose capture rides the signed-URL request).
+// (@wardenx/ui).
+//
+// #91 — "Upload document" is the control this app did not have ANYWHERE: one `type="file"` existed in the
+// whole product and it was in the portal, so a family member could attach a document and the staff who
+// run the agency could not. It drives the checksum-enforced path (see `documents-api.ts`). Tag editing
+// is NOT here and is not deferred either — `document_tag` has no reader anywhere in the repo (#153).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { DocumentUploadDialog } from "./document-upload-dialog";
 import { StatusPill, lifecycleTone } from "./lantern";
 
 interface DocumentRow {
@@ -53,6 +58,7 @@ export function DocumentExplorer(): JSX.Element {
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -128,230 +134,256 @@ export function DocumentExplorer(): JSX.Element {
   };
 
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader title="Documents" breadcrumb="Records / Documents">
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Browse tenant documents by retention class, source type, status, and patient linkage.
-          </div>
-        </PageHeader>
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard
-            label="Documents"
-            value={loading || error ? "—" : counts.total}
-            detail="Loaded records"
-            tone="info"
-            accentColor="var(--color-primary)"
-            selected={!retentionFilter && !typeFilter && !statusFilter}
-            onSelect={clearFilters}
-          />
-          <KpiCard
-            label="Part 2 / SUD"
-            value={loading || error ? "—" : counts.part2}
-            detail="Restricted retention"
-            tone={counts.part2 > 0 ? "warning" : "neutral"}
-            accentColor={counts.part2 > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"}
-            selected={retentionFilter === "compliance_42cfr_part2"}
-            onSelect={() => {
-              setRetentionFilter("compliance_42cfr_part2");
-              setPage(1);
-            }}
-          />
-          <KpiCard
-            label="From intake"
-            value={loading || error ? "—" : counts.intake}
-            detail="Intake artifacts"
-            tone={counts.intake > 0 ? "success" : "neutral"}
-            accentColor={
-              counts.intake > 0 ? "var(--color-success)" : "var(--color-outline-variant)"
-            }
-            selected={retentionFilter === "intake_artifact"}
-            onSelect={() => {
-              setRetentionFilter("intake_artifact");
-              setPage(1);
-            }}
-          />
-        </KpiStrip>
-      }
-      filters={
-        <div style={filterShellStyle}>
-          {error ? (
-            <div role="alert" style={errorBannerStyle}>
-              <span>{error}</span>
-              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
-                x
-              </button>
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader title="Documents" breadcrumb="Records / Documents">
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Browse tenant documents by retention class, source type, status, and patient linkage.
             </div>
-          ) : null}
-          <div style={toolbarStyle}>
-            <div style={toolbarTitleStyle}>
-              <span style={toolbarEyebrowStyle}>Library</span>
-              <strong>{rows.length} matching documents</strong>
+            <div style={{ marginTop: "0.5rem" }}>
+              <Button size="sm" onClick={() => setUploading(true)}>
+                Upload document
+              </Button>
             </div>
-            <div style={controlGroupStyle}>
-              <div style={searchWrapStyle}>
-                <input
-                  type="search"
-                  placeholder="Search title, patient, document..."
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setPage(1);
-                  }}
-                  aria-label="Search documents"
-                  style={searchInputStyle}
-                />
-              </div>
-              <select
-                aria-label="Retention class"
-                value={retentionFilter}
-                onChange={(e) => {
-                  setRetentionFilter(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Retention: All</option>
-                {Object.entries(CATEGORY_LABEL).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Document type"
-                value={typeFilter}
-                onChange={(e) => {
-                  setTypeFilter(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Type: All</option>
-                {typeOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {stateLabel(option)}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Document status"
-                value={statusFilter}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Status: All</option>
-                {statusOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {stateLabel(option)}
-                  </option>
-                ))}
-              </select>
-              {activeFilters > 0 ? (
-                <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                  Clear
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      }
-      table={
-        error ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState title="Unavailable" description={error} />
-          </div>
-        ) : loading && items.length === 0 ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : rows.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState
-              title={activeFilters > 0 ? "No matching documents" : "No documents"}
-              description={
-                activeFilters > 0
-                  ? "Try adjusting the document filters."
-                  : "No documents are available for this organization."
-              }
-              action={
-                activeFilters > 0 ? (
-                  <Button size="sm" tone="secondary" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                ) : undefined
-              }
+          </PageHeader>
+        }
+        kpis={
+          <KpiStrip>
+            <KpiCard
+              label="Documents"
+              value={loading || error ? "—" : counts.total}
+              detail="Loaded records"
+              tone="info"
+              accentColor="var(--color-primary)"
+              selected={!retentionFilter && !typeFilter && !statusFilter}
+              onSelect={clearFilters}
             />
-          </div>
-        ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr style={headerRowStyle}>
-                  <th style={{ ...thStyle, width: "32%" }}>Document</th>
-                  <th style={{ ...thStyle, width: "18%" }}>Category</th>
-                  <th style={{ ...thStyle, width: "16%" }}>Patient</th>
-                  <th style={{ ...thStyle, width: "12%" }}>Version</th>
-                  <th style={{ ...thStyle, width: "12%" }}>Status</th>
-                  <th style={{ ...thStyle, width: "10%", textAlign: "right" }}>Updated</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedRows.map((d) => (
-                  <tr key={d.id} style={rowStyle}>
-                    <td style={tdStyle}>
-                      <div style={primaryCellStyle}>
-                        <span style={primaryTextStyle}>{d.title}</span>
-                        <code className="wx-data-md" style={codeStyle}>
-                          {shortId(d.id)}
-                        </code>
-                      </div>
-                    </td>
-                    <td style={tdStyle}>{CATEGORY_LABEL[d.retentionClass] ?? d.retentionClass}</td>
-                    <td style={tdStyle}>
-                      {d.patientId ? (
-                        <code className="wx-data-md" style={codeStyle}>
-                          {shortId(d.patientId)}
-                        </code>
-                      ) : (
-                        <span style={{ color: "var(--color-muted)" }}>—</span>
-                      )}
-                    </td>
-                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>v{d.version}</td>
-                    <td style={tdStyle}>
-                      <StatusPill tone={lifecycleTone(d.status)}>{stateLabel(d.status)}</StatusPill>
-                    </td>
-                    <td
-                      style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
-                    >
-                      {formatDateTime(d.updatedAt)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <OffsetPagination
-              page={activePage}
-              pageSize={pageSize}
-              totalItems={rows.length}
-              onPageChange={setPage}
-              onPageSizeChange={(nextPageSize) => {
-                setPageSize(nextPageSize);
+            <KpiCard
+              label="Part 2 / SUD"
+              value={loading || error ? "—" : counts.part2}
+              detail="Restricted retention"
+              tone={counts.part2 > 0 ? "warning" : "neutral"}
+              accentColor={
+                counts.part2 > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
+              }
+              selected={retentionFilter === "compliance_42cfr_part2"}
+              onSelect={() => {
+                setRetentionFilter("compliance_42cfr_part2");
                 setPage(1);
               }}
-              pageSizeOptions={DOC_PAGE_SIZES}
-              noun="documents"
             />
+            <KpiCard
+              label="From intake"
+              value={loading || error ? "—" : counts.intake}
+              detail="Intake artifacts"
+              tone={counts.intake > 0 ? "success" : "neutral"}
+              accentColor={
+                counts.intake > 0 ? "var(--color-success)" : "var(--color-outline-variant)"
+              }
+              selected={retentionFilter === "intake_artifact"}
+              onSelect={() => {
+                setRetentionFilter("intake_artifact");
+                setPage(1);
+              }}
+            />
+          </KpiStrip>
+        }
+        filters={
+          <div style={filterShellStyle}>
+            {error ? (
+              <div role="alert" style={errorBannerStyle}>
+                <span>{error}</span>
+                <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
+                  x
+                </button>
+              </div>
+            ) : null}
+            <div style={toolbarStyle}>
+              <div style={toolbarTitleStyle}>
+                <span style={toolbarEyebrowStyle}>Library</span>
+                <strong>{rows.length} matching documents</strong>
+              </div>
+              <div style={controlGroupStyle}>
+                <div style={searchWrapStyle}>
+                  <input
+                    type="search"
+                    placeholder="Search title, patient, document..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setPage(1);
+                    }}
+                    aria-label="Search documents"
+                    style={searchInputStyle}
+                  />
+                </div>
+                <select
+                  aria-label="Retention class"
+                  value={retentionFilter}
+                  onChange={(e) => {
+                    setRetentionFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="">Retention: All</option>
+                  {Object.entries(CATEGORY_LABEL).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Document type"
+                  value={typeFilter}
+                  onChange={(e) => {
+                    setTypeFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="">Type: All</option>
+                  {typeOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {stateLabel(option)}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Document status"
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="">Status: All</option>
+                  {statusOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {stateLabel(option)}
+                    </option>
+                  ))}
+                </select>
+                {activeFilters > 0 ? (
+                  <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                    Clear
+                  </Button>
+                ) : null}
+              </div>
+            </div>
           </div>
-        )
-      }
-      fullPageScroll
-    />
+        }
+        table={
+          error ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState title="Unavailable" description={error} />
+            </div>
+          ) : loading && items.length === 0 ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : rows.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title={activeFilters > 0 ? "No matching documents" : "No documents"}
+                description={
+                  activeFilters > 0
+                    ? "Try adjusting the document filters."
+                    : "No documents are available for this organization."
+                }
+                action={
+                  activeFilters > 0 ? (
+                    <Button size="sm" tone="secondary" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : (
+            <div style={tableWrapStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={headerRowStyle}>
+                    <th style={{ ...thStyle, width: "32%" }}>Document</th>
+                    <th style={{ ...thStyle, width: "18%" }}>Category</th>
+                    <th style={{ ...thStyle, width: "16%" }}>Patient</th>
+                    <th style={{ ...thStyle, width: "12%" }}>Version</th>
+                    <th style={{ ...thStyle, width: "12%" }}>Status</th>
+                    <th style={{ ...thStyle, width: "10%", textAlign: "right" }}>Updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedRows.map((d) => (
+                    <tr key={d.id} style={rowStyle}>
+                      <td style={tdStyle}>
+                        <div style={primaryCellStyle}>
+                          <span style={primaryTextStyle}>{d.title}</span>
+                          <code className="wx-data-md" style={codeStyle}>
+                            {shortId(d.id)}
+                          </code>
+                        </div>
+                      </td>
+                      <td style={tdStyle}>
+                        {CATEGORY_LABEL[d.retentionClass] ?? d.retentionClass}
+                      </td>
+                      <td style={tdStyle}>
+                        {d.patientId ? (
+                          <code className="wx-data-md" style={codeStyle}>
+                            {shortId(d.patientId)}
+                          </code>
+                        ) : (
+                          <span style={{ color: "var(--color-muted)" }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                        v{d.version}
+                      </td>
+                      <td style={tdStyle}>
+                        <StatusPill tone={lifecycleTone(d.status)}>
+                          {stateLabel(d.status)}
+                        </StatusPill>
+                      </td>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {formatDateTime(d.updatedAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <OffsetPagination
+                page={activePage}
+                pageSize={pageSize}
+                totalItems={rows.length}
+                onPageChange={setPage}
+                onPageSizeChange={(nextPageSize) => {
+                  setPageSize(nextPageSize);
+                  setPage(1);
+                }}
+                pageSizeOptions={DOC_PAGE_SIZES}
+                noun="documents"
+              />
+            </div>
+          )
+        }
+        fullPageScroll
+      />
+      <DocumentUploadDialog
+        open={uploading}
+        onClose={() => setUploading(false)}
+        onDone={() => {
+          void load();
+        }}
+      />
+    </>
   );
 }
 

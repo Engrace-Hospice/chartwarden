@@ -7,9 +7,39 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // taxonomy (color always paired with a glyph), §6.2 Lantern Cards, §3.1 mono identifiers — via the index.css
 // `@theme` tokens, not ad-hoc styling. Nav visibility is gated by the matching M22 permission key; the SERVER
 // stays the only enforcement point (no frontend authz, ADR-0030 — out-of-scope resources are non-leaking 404s,
-// SUD content + legal-hold blocks are server-side, never a frontend hide). The upload dialog / tag editor /
-// signed-URL preview / DocLens side-by-side review / overlay editor write+modal surfaces fill in as those write
-// paths harden; the portal §5.3 surfaces are M31 Phase-2 forward-seams.
+// SUD content + legal-hold blocks are server-side, never a frontend hide). The portal §5.3 surfaces are
+// M31 Phase-2 forward-seams.
+//
+// F-031 (#91) — this header used to end "…fill in as those write paths harden", which made the
+// screens.ts corpus the only accurate inventory of what the app could not do. It is accurate the other
+// way now.
+//
+// WHAT IS BUILT: the staff UPLOAD — the control this product did not have ANYWHERE, since the single
+// `type="file"` in the whole tree was in the portal, so a family member could attach a document to a
+// patient's record and the nurse could not. It drives the checksum-enforced path (browser SHA-256 →
+// `POST /document-uploads` → PUT direct to object storage → `POST …/complete`, with an abort on every
+// failure between), offered from the Document Explorer, the patient chart's Documents tab, and the
+// version chain (as a new version). Plus metadata edit (`PATCH /documents/:id`) and the per-version
+// signed-URL open, which asks for its §164.528 access purpose because minting the URL WRITES a
+// disclosure-accounting record and defaulting every look to "treatment" would make that log a fiction.
+//
+// WHAT IS NOT BUILT, AND WHY:
+//
+//   • TAG EDITING — not deferred, IMPOSSIBLE as the surface stands (#153). `document_tag` has two
+//     writers and NO READER anywhere in the repo: no route projects tags, `GET /documents/:id` does not
+//     carry them, and no SELECT touches the table outside the eraser. Its two indexes were built for
+//     queries that were never written. The tag id is returned exactly once, by a POST whose contract
+//     declares no response body — so a typed client cannot hold it, and the DELETE is unreachable by
+//     construction. An editor here could not show what is already on a document, and anything added
+//     through it would be permanently invisible and undeletable on the next page load.
+//   • DocLens SIDE-BY-SIDE REVIEW + the FAX SPLITTER — the reviewer screen (§5.1
+//     INTAKE.ReviewSideBySide) does not exist, and the DocLens classifier/extractor are M32-flag-gated:
+//     behind `documents.doclens` the jobs queue as `awaiting_capability`. Wiring the eight review
+//     routes without the surface they belong to would be a decision surface with nothing to decide on.
+//   • The TEMPLATE OVERLAY editor and form-fill retry — admin surfaces on the template library, and a
+//     different permission family from the clinical document path this slice covers.
+//   • `POST /documents/:id/export-phi-bundle` — the §164.524 right-of-access bulk export. A
+//     step-up-gated disclosure action that belongs on a disclosure surface, not on a browse screen.
 import { lazy } from "react";
 import type { ComponentType } from "react";
 const DocumentExplorer = lazy(() =>
