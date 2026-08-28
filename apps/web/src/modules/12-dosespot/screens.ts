@@ -6,11 +6,33 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // Refill Inbox (§6.1) + Refill Detail (§6.1), the Medication-history Reconciliation worksheet (§6.1), the
 // Prescriber Roster admin (§6.1), and the Prescribing Policy admin (§6.1, refill SLA + controlled-substance).
 // Nav visibility is gated by the matching M12 permission key; the SERVER stays the only enforcement point (no
-// frontend authz, ADR-0030 — out-of-scope resources 404, never 403). The prescribe modal (the native
-// per-class authoring UI), the sign / sign-controlled EPCS step-up, the verbal / cosign / discontinue /
-// correct / refill-decide / reconcile / roster / policy write surfaces fill in as those write paths harden.
+// frontend authz, ADR-0030 — out-of-scope resources 404, never 403).
+//
+// #91 / F-065 — PRESCRIBING WORKS NOW. The prescribe modal (drug identity from M38's RxNorm search and
+// the concept's own published NDCs, never typed), the §2.2 lifecycle ceremonies (request-signature,
+// sign, cosign, discontinue, complete), the §2.3 verbal order, and the §2.7 refill approve/deny are all
+// built and DOM-covered (`medication-writes.dom.test.tsx`).
+//
+// Two things had to be true on the server first, and only one of them was:
+//   • The lifecycle had to REACH a state the eMAR can administer against. Until #136 `signed` had one
+//     exit — through a DoseSpot transmission worker that does not exist — so every signed order was
+//     frozen: never completable, never discontinuable, never `active`.
+//   • `POST /medication-orders` requires `admissionId`, and NOTHING could resolve one for a patient. The
+//     org-wide census takes no patient filter and its items carry no `patientId`; the patient read
+//     carries no admission. This change adds `GET /api/v1/patients/:patientId/admissions` (F-065) —
+//     the read M07 declined to build a create without, and the one M24's claim wizard works around by
+//     asking a clerk to type the uuid.
+//
+// STILL DEFERRED, each for a reason rather than a schedule:
+//   • The `sign-controlled` EPCS two-step. §2.4/D18 ships Phase 1 `not_certified`, so
+//     `requestSignature` refuses a controlled order outright — the ceremony would always fail. The
+//     prescribe modal READS that status (`GET /admin/controlled-substance-policy`) rather than assuming
+//     it, so an agency that certifies gets the class without a code change.
+//   • `correct` and `retransmit` — correction mints a replacement order and belongs with a lineage
+//     surface; retransmission is meaningless without the transmission worker #136 left out of scope.
+//   • The med-history reconcile decision, and the roster enrol/revoke + policy edits (admin surfaces).
 // The platform-ops EPCS-certification + webhook-explorer screens (apps/admin) are deferred (`dosespot.epcs`
-// OFF in Phase 1); the M13 administration (eMAR) screens land with M13.
+// OFF in Phase 1); the M13 administration (eMAR) screens landed with M13.
 import { lazy } from "react";
 import type { ComponentType } from "react";
 const MedicationDetail = lazy(() =>

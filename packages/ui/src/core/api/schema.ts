@@ -12158,6 +12158,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{patientId}/admissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The patient's admissions, newest first (F-065). Every clinical create is keyed by admissionId and nothing could resolve one for a patient — the org-wide census takes no patient filter and its items carry no patientId */
+        get: operations["getApiV1PatientsByPatientIdAdmissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{patientId}/assessments": {
         parameters: {
             query?: never;
@@ -51738,6 +51755,38 @@ export interface operations {
                         capturedAt: string | null;
                         sudRestricted: boolean;
                         sudDisclosable: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByPatientIdAdmissions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            state: string;
+                            admissionAt: string | null;
+                            dischargedAt: string | null;
+                        }[];
                     };
                 };
             };

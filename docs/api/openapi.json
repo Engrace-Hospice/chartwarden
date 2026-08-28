@@ -123616,6 +123616,91 @@
         }
       }
     },
+    "/api/v1/patients/{patientId}/admissions": {
+      "get": {
+        "operationId": "getApiV1PatientsByPatientIdAdmissions",
+        "tags": [
+          "06-admission"
+        ],
+        "summary": "The patient's admissions, newest first (F-065). Every clinical create is keyed by admissionId and nothing could resolve one for a patient — the org-wide census takes no patient filter and its items carry no patientId",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "state",
+                          "admissionAt",
+                          "dischargedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "admissionAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "dischargedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/patients/{patientId}/assessments": {
       "get": {
         "operationId": "getApiV1PatientsByPatientIdAssessments",

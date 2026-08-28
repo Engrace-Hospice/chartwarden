@@ -1,4 +1,5 @@
 import {
+  Button,
   DetailPageLayout,
   EmptyState,
   LoadingSpinner,
@@ -11,13 +12,20 @@ import {
 // prescribe modal in sign-only mode). Read-only view of a single medication order: drug + sig facts, the §2.2
 // D2 lifecycle status, the controlled-substance / EPCS posture, the prescriber + pharmacy, the signature
 // posture, refills remaining, and the correction lineage (replaces / derived-from-refill). For a transmitted
-// order it also loads the DoseSpot transmission status + retry history (§2.6). The sign / sign-controlled /
-// discontinue / correct write actions fill in as their write surfaces harden; the SERVER enforces every scope
-// incl. ABAC (ADR-0030 — out-of-scope orders 404, never 403). Reads GET /api/v1/medication-orders/:id and
-// (when transmitted) GET .../transmission via the typed client. Leaves only (@wardenx/ui).
-import { useEffect, useState } from "react";
+// order it also loads the DoseSpot transmission status + retry history (§2.6).
+//
+// #91 — the §2.2 write ceremonies are here now, offered by the order's CURRENT status. The server still
+// decides every one of them (`transitionMedicationOrder`); narrowing the offer keeps a prescriber from
+// being shown a ceremony that will certainly be refused, and a refusal is still rendered where they are
+// looking. `sign-controlled` (the EPCS two-step) is deliberately NOT offered: §2.4/D18 ships Phase 1
+// `not_certified`, so `requestSignature` refuses a controlled order outright and the ceremony would
+// always fail — see `prescribe-modal.tsx`, which reads that status rather than assuming it.
+// The SERVER enforces every scope incl. ABAC (ADR-0030 — out-of-scope orders 404, never 403).
+// Reads GET /api/v1/medication-orders/:id and (when transmitted) GET .../transmission.
+import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
+import { type MedicationAction, MedicationActionModal } from "./medication-action-modal";
 import { MED_ORDER_TONE, SEND_TONE, controlledLabel, stateLabel } from "./medication-status";
 
 interface MedicationOrderView {
@@ -58,6 +66,15 @@ interface TransmissionView {
 
 const ts = (v: string | null): string => (v ? v.slice(0, 16).replace("T", " ") : "—");
 
+const ACTION_LABEL: Record<MedicationAction, string> = {
+  "request-signature": "Send for signature",
+  sign: "Sign",
+  cosign: "Cosign",
+  verbal: "Record verbal",
+  discontinue: "Discontinue",
+  complete: "Complete",
+};
+
 export function MedicationDetail(): JSX.Element {
   const client = useApiClient();
   const { id } = useParams<{ id: string }>();
@@ -65,6 +82,8 @@ export function MedicationDetail(): JSX.Element {
   const [tx, setTx] = useState<TransmissionView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [action, setAction] = useState<MedicationAction | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -94,7 +113,24 @@ export function MedicationDetail(): JSX.Element {
     return () => {
       active = false;
     };
-  }, [client, id]);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: `reloadKey` is the explicit refetch trigger a
+    // completed write bumps — the repo's convention for reload-on-write (see 07-care-plan/care-plan-view).
+  }, [client, id, reloadKey]);
+
+  /** The §2.2 transitions this order's CURRENT status permits. The server decides; this narrows the
+   *  offer so a prescriber is not shown a ceremony that will certainly be refused (#91). */
+  const offered: MedicationAction[] =
+    row === null
+      ? []
+      : row.status === "draft"
+        ? ["request-signature"]
+        : row.status === "pending_signature"
+          ? ["sign"]
+          : row.status === "verbal_pending"
+            ? ["sign", "cosign"]
+            : row.status === "active"
+              ? ["discontinue", "complete", ...(row.cosignRequired ? (["cosign"] as const) : [])]
+              : [];
 
   return (
     <DetailPageLayout
@@ -104,6 +140,11 @@ export function MedicationDetail(): JSX.Element {
           actions={
             row ? (
               <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                {offered.map((a) => (
+                  <Button key={a} tone="tertiary" onClick={() => setAction(a)}>
+                    {ACTION_LABEL[a]}
+                  </Button>
+                ))}
                 {row.isControlledSubstance ? (
                   <StatusPill
                     label={controlledLabel(row.deaSchedule)}
@@ -127,6 +168,15 @@ export function MedicationDetail(): JSX.Element {
         </PageHeader>
       }
     >
+      {row && action ? (
+        <MedicationActionModal
+          open
+          action={action}
+          orderId={row.id}
+          onClose={() => setAction(null)}
+          onDone={() => setReloadKey((k) => k + 1)}
+        />
+      ) : null}
       {error ? (
         <EmptyState title="Unavailable" description={error} />
       ) : loading || !row ? (

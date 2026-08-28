@@ -16,6 +16,8 @@ import {
 // (D18, `dosespot.epcs` OFF) — they never appear here. The sign step-up fills in as its write surface
 // hardens; the SERVER owns the §2.2 D2 status (ADR-0030 — no frontend authz). Reads
 // GET /api/v1/medication-orders?status=verbal_pending via the typed client. Leaves only (@wardenx/ui).
+// #91 — a row opens the ORDER, where the §2.3 verbal ceremonies (sign, cosign) live. See the note in
+// `sign-inbox.tsx` on why the ceremony is not inlined into the row.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";

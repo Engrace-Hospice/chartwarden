@@ -302,6 +302,46 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
     await app.close();
   });
 
+  it("GET /patients/:patientId/admissions resolves the admission every clinical create is keyed by (F-065)", async () => {
+    // Nothing could answer "which admission am I documenting against" for a patient: the org-wide
+    // census takes no patient filter and its items carry `{ id, state, version }` with no `patientId`,
+    // and the patient read carries no admission. So `POST /medication-orders`, `POST /encounters` and
+    // `POST /care-plans` — all keyed by `admissionId` — had no way to obtain one for a first record.
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/patients/pat_1/admissions",
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items.map((a: { id: string }) => a.id)).toContain(ADMISSION);
+  });
+
+  it("a patient with no admissions gets an EMPTY list, not a 404 (F-065)", async () => {
+    // An empty list is the truthful answer; a 404 would leak whether the patient exists at all.
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/patients/00000000-0000-4000-8000-000000000000/admissions",
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items).toEqual([]);
+  });
+
+  it("denies /patients/:patientId/admissions without admission.read (403)", async () => {
+    // `CO` (compliance officer) is the seeded actor with no `admission.read` — INTAKE holds it, which
+    // is correct: an intake coordinator reads admissions by definition.
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/patients/pat_1/admissions",
+      headers: CO,
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
   it("denies /patients/:patientId/election-certification without election.read (403)", async () => {
     const { app } = makeServer();
     const res = await app.inject({
