@@ -17,6 +17,16 @@
 // RLS: every statement is org-scoped through `withOrgContext`, so a tenant can only ever see or claim
 // its own keys — the `idempotency_key_org` policy (0001) is a plain `app.org_id` match.
 //
+// A BODILESS RESPONSE IS A REAL RESPONSE (F-073, #182). 24 routes answer `code(204)`, and the web
+// client attaches an `Idempotency-Key` to every mutating request, so all 24 reached `complete` with
+// `body: undefined`. Drizzle OMITS undefined keys from a `.set()`, so `response_body` was never named
+// in the UPDATE, stayed SQL NULL, and tripped `idempotency_key_complete_has_response` — after the
+// handler had committed, so the client got a 500 for a write that had already happened and the key was
+// left `pending`, answering 409 to every retry for its 24h TTL. Migration 0232 relaxes the constraint
+// (a complete row must carry its STATUS; a 204 genuinely has no body); this file stops relying on
+// Drizzle's undefined handling either way, and `load` returns `undefined` rather than `null` for an
+// absent body so a bodiless response REPLAYS as bodiless instead of as the JSON value `null`.
+//
 // ONE BEHAVIOURAL DIFFERENCE FROM THE IN-MEMORY STORE, verified live: a replayed body is SEMANTICALLY
 // identical but not BYTE-identical. `response_body` is `jsonb`, which normalizes object key order, so
 // `{"invitationId":…,"expiresAt":…}` can replay as `{"expiresAt":…,"invitationId":…}`. The in-memory
@@ -65,7 +75,9 @@ export function createDbIdempotencyStore(db: DbClient): IdempotencyStore {
           requestHash: row.requestHash,
           response: {
             status: row.responseStatus ?? "",
-            body: row.responseBody ?? null,
+            // `undefined`, NOT `null`: a NULL column means the response had no body, and replaying it
+            // as `null` would send the four bytes `null` where the original sent nothing.
+            body: row.responseBody === null ? undefined : row.responseBody,
           },
         };
       });
@@ -101,7 +113,9 @@ export function createDbIdempotencyStore(db: DbClient): IdempotencyStore {
           .set({
             state: "complete",
             responseStatus: response.status,
-            responseBody: response.body as never,
+            // `?? null` is load-bearing: Drizzle drops `undefined` keys, so a bodiless response would
+            // otherwise leave the column unmentioned by the UPDATE (F-073).
+            responseBody: (response.body ?? null) as never,
           })
           .where(and(eq(T.organizationId, organizationId), eq(T.key, key), eq(T.state, "pending")));
       });

@@ -265,6 +265,13 @@ jobs:
           # job, so nothing had ever run it: the same GAP-086 shape this job was created for. Wired
           # while fixing the two catalog mismatches that kept the relay from booting at all.
           - { name: "M1 outbox dispatcher relay", scripts: "test:m1:outbox-dispatcher:live" }
+          # F-073 (#182) — LIVE by necessity: the in-memory IdempotencyStore is a Map with no
+          # constraint, so it accepts the bodiless completion Postgres refused. Every unit, DOM and
+          # inject test passed while all 24 `code(204)` routes 500'd on the production store.
+          - {
+              name: "M1 idempotency — bodiless (204) responses",
+              scripts: "test:f073:idempotency-bodiless:live",
+            }
           # GAP-063: M38's platform-ops write door. Migration 0015 granted `terminology_loader`
           # INSERT/UPDATE on the canonical tables but created no row POLICY for it, so the grant was
           # dead — every loader write matched zero rows. This suite runs as NOBYPASSRLS wardenx_app,

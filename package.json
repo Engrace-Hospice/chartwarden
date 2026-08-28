@@ -92,6 +92,7 @@
     "test:m17:write:live": "vitest run apps/backend/__tests__/m17-scheduling-write.live.test.ts",
     "test:m18:read:live": "vitest run apps/backend/__tests__/m18-evv-read-service.live.test.ts",
     "test:m18:write:live": "vitest run apps/backend/__tests__/m18-evv-write.live.test.ts",
+    "test:f073:idempotency-bodiless:live": "vitest run apps/backend/__tests__/f-073-idempotency-bodiless-response.live.test.ts",
     "test:m22:write:live": "vitest run apps/backend/__tests__/m22-documents-write.live.test.ts",
     "test:m22:read:live": "vitest run apps/backend/__tests__/m22-documents-read-service.live.test.ts",
     "test:m4:read-audit:live": "vitest run apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts",
