@@ -215,7 +215,13 @@ export interface TransmitResultPlan {
   readonly submissionId: string;
   readonly nextStatus: "in_flight";
   readonly iqiesBatchId: string;
-  readonly envelopeStorageUri: string;
+  /**
+   * The MinIO key of the RENDERED submission XML — null until a transport that renders and stores it
+   * exists (F-072 / #177). `envelope_sha256` is not null in that state and does not depend on it: the
+   * digest is over `assembleEnvelopeCanonical`, which is deterministic from the envelope model, so
+   * batch membership stays audit-replayable with no object behind the key.
+   */
+  readonly envelopeStorageUri: string | null;
   readonly envelopeSha256: string;
   readonly transmittedAt: string;
   readonly event: PlannedSubmissionEvent;
@@ -230,7 +236,7 @@ export interface TransmitResultPlan {
 export function planTransmitResult(input: {
   readonly submissionId: string;
   readonly iqiesBatchId: string;
-  readonly envelopeStorageUri: string;
+  readonly envelopeStorageUri: string | null;
   readonly envelopeSha256: string;
   readonly transmittedAt: string;
 }): TransmitResultPlan {

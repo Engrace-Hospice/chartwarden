@@ -151,3 +151,42 @@ export function buildProviderEntityOrgCheck(db: DbClient): {
     },
   };
 }
+
+/**
+ * One provider entity's CMS Certification Number, org-scoped (F-072 / #177).
+ *
+ * Lives here for the same reason `buildPrimaryProviderEntityResolver` does: `provider_entity` is an M1
+ * FOUNDATION table M10 neither owns nor may import (`arch:tables` — cross-module reads go through the
+ * owner, never its Drizzle schema). M10's `iqies-submit-worker` declares the shape it needs
+ * (`ProviderEntityCcnPort`) and the composition root binds this.
+ *
+ * The CCN is what the whole submission envelope is keyed on — CMS matches the submitter credential and
+ * `ccn_at_election` against it — so it is resolved rather than assumed. `null` when the provider entity
+ * is absent OR belongs to another org: the worker then skips the batch and logs, and those two cases
+ * are deliberately indistinguishable to the caller (the same posture as
+ * `buildProviderEntityLocationLister`).
+ *
+ * Opens its own org-context transaction because the cron calls it outside any ambient tx; the explicit
+ * `organization_id` predicate sits on top of RLS, belt and braces, as the seam stores do.
+ */
+export function buildProviderEntityCcnResolver(db: DbClient): {
+  ccnFor(organizationId: string, providerEntityId: string): Promise<string | null>;
+} {
+  return {
+    async ccnFor(organizationId, providerEntityId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const rows = await tx
+          .select({ ccn: schema.providerEntities.ccn })
+          .from(schema.providerEntities)
+          .where(
+            and(
+              eq(schema.providerEntities.id, providerEntityId),
+              eq(schema.providerEntities.organizationId, organizationId),
+            ),
+          )
+          .limit(1);
+        return rows[0]?.ccn ?? null;
+      });
+    },
+  };
+}
