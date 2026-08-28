@@ -22,7 +22,7 @@ import {
   type J2051Severity,
   J2051_SEVERITY_ORDER,
 } from "@wardenx/types";
-import { and, count, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, count, eq, gte, inArray, isNull, lt } from "drizzle-orm";
 
 // ── intermediate row projections (the provider reduces these to counts; never crosses the seam) ──────────
 
@@ -74,6 +74,8 @@ export interface HopeOrgRollupStore {
     organizationId: string,
     period: HopeRollupPeriod,
   ): Promise<readonly SubmissionPostureRow[]>;
+  /** F-058 — assembled-and-never-transmitted batch count (period-independent; see the seam contract). */
+  queuedSubmissionCount(organizationId: string): Promise<number>;
   terminalSfvs(
     organizationId: string,
     period: HopeRollupPeriod,
@@ -167,6 +169,23 @@ export function createDrizzleHopeOrgRollupStore(db: DbClient): HopeOrgRollupStor
       });
     },
 
+    queuedSubmissionCount(organizationId) {
+      // F-058 — a batch with no `transmitted_at`. Distinguishes "nothing to report" from "nothing was
+      // ever sent", which the acceptance-rate measure needs to avoid labelling a transport gap "low N".
+      return scoped(organizationId, async (tx) => {
+        const rows = await tx
+          .select({ n: count() })
+          .from(SUB)
+          .where(
+            and(
+              eq(SUB.organizationId, organizationId),
+              eq(SUB.status, "queued"),
+              isNull(SUB.transmittedAt),
+            ),
+          );
+        return Number(rows[0]?.n ?? 0);
+      });
+    },
     submissionBatches(organizationId, period) {
       // Transmitted batches with a terminal acceptance posture in the period (period anchored on transmittedAt).
       return scoped(organizationId, async (tx) => {
@@ -255,6 +274,8 @@ export interface HopeOrgRollupSeed {
   readonly terminalSfvs?: readonly SfvTimelinessRow[];
   readonly j2051Triggers?: readonly J2051TriggerRow[];
   readonly openSfvObligations?: number;
+  /** F-058 — assembled-and-never-transmitted batches. */
+  readonly queuedSubmissions?: number;
 }
 
 /** An in-memory {@link HopeOrgRollupStore} that returns the seeded intermediate rows verbatim (no DB, no RLS). */
@@ -268,6 +289,9 @@ export function createInMemoryHopeOrgRollupStore(seed: HopeOrgRollupSeed = {}): 
       },
       async submissionBatches() {
         return seed.submissionBatches ?? [];
+      },
+      async queuedSubmissionCount() {
+        return seed.queuedSubmissions ?? 0;
       },
       async terminalSfvs() {
         return seed.terminalSfvs ?? [];

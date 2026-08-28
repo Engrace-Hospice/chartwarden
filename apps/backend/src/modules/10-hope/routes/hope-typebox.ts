@@ -289,6 +289,24 @@ export const HopeSubmissionResponseSchema = Type.Object({
   transmittedAt: NullableString(),
   acceptedAt: NullableString(),
 });
+/**
+ * F-058 (#150) — what one force-assemble pass did.
+ *
+ * The route used to answer with a single {@link HopeSubmissionResponseSchema}, because it always created
+ * exactly one batch: an EMPTY one, with no `hope_submission_item` rows behind it. A real pass groups the
+ * provider entity's eligible signed assessments by CMS submission period, so it yields one batch per
+ * period and may legitimately yield none — and the three counts are what let the caller tell "nothing
+ * to do" apart from "nothing happened".
+ */
+export const HopeAssembleResponseSchema = Type.Object({
+  submissions: Type.Array(HopeSubmissionResponseSchema),
+  assessmentsConsidered: Type.Integer(),
+  /** Already on a `pending` item — the §4.10 idempotency skip, so a second press is legible. */
+  skippedAlreadyBatched: Type.Integer(),
+  /** No `provider_entity_id`, so no CCN to batch under. Never silent. */
+  skippedUnsited: Type.Integer(),
+});
+
 /** Org-level HQRP compliance posture (on-time + acceptance rates). */
 /** #48 — every rate is nullable (`null` = no data, which is NOT 100%) and ships beside the count pair it
  * was computed from, so a consumer can suppress a small-N rate instead of rendering a fragile one. */

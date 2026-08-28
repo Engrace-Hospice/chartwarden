@@ -72,6 +72,23 @@ describe("HopeOrgRollupProvider — submissionPostureRollup", () => {
     expect(await provider.submissionPostureRollup(ORG, PERIOD)).toEqual({
       submissions: 15,
       acceptedSubmissions: 14,
+      queuedSubmissions: 0,
+    });
+  });
+
+  // F-058 (#150) — the queued count is period-INDEPENDENT and rides beside the period counts, because a
+  // zero denominator has two causes that must not present as one blank cell: an agency with nothing to
+  // report, and one whose batches were assembled and never transmitted.
+  it("carries the assembled-but-never-transmitted count beside the period's counts", async () => {
+    const { store } = createInMemoryHopeOrgRollupStore({
+      submissionBatches: [],
+      queuedSubmissions: 3,
+    });
+    const provider = createHopeOrgRollupProvider(store);
+    expect(await provider.submissionPostureRollup(ORG, PERIOD)).toEqual({
+      submissions: 0,
+      acceptedSubmissions: 0,
+      queuedSubmissions: 3,
     });
   });
 });

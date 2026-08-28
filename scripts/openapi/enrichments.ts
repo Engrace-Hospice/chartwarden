@@ -1223,6 +1223,7 @@ import {
   AssembleSubmissionSchema as M10AssembleSubmissionSchema,
   CorrectTimepointSchema as M10CorrectTimepointSchema,
   DashboardQuerySchema as M10DashboardQuerySchema,
+  HopeAssembleResponseSchema as M10HopeAssembleResponseSchema,
   HopeAssessmentListResponseSchema as M10HopeAssessmentListResponseSchema,
   HopeAssessmentResponseSchema as M10HopeAssessmentResponseSchema,
   HopeComplianceResponseSchema as M10HopeComplianceResponseSchema,
@@ -3994,15 +3995,16 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeSubmissionResponseSchema,
   },
   "POST /api/v1/hope/submissions/:id/retry": {
-    summary: "Retry a rejected submission (re-validates, re-assembles)",
+    summary: "Requeue a rejected submission for the next transmit pass",
     body: M10RetrySubmissionSchema,
     response: M10HopeSubmissionResponseSchema,
   },
   "POST /api/v1/hope/submissions/assemble": {
-    summary: "Force-assemble a submission outside the cron cadence",
+    summary:
+      "Force-assemble this provider entity's eligible signed assessments into per-period batches",
     body: M10AssembleSubmissionSchema,
     status: 201,
-    response: M10HopeSubmissionResponseSchema,
+    response: M10HopeAssembleResponseSchema,
   },
   "GET /api/v1/hope/dashboard/compliance": {
     summary: "Org-level HQRP compliance posture",

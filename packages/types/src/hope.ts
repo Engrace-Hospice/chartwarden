@@ -367,11 +367,23 @@ export interface HopeOrgRollupProvider {
     organizationId: string,
     period: HopeRollupPeriod,
   ): Promise<{ readonly onTime: number; readonly late: number }>;
-  /** Submission posture for the acceptance measure: iQIES submissions vs those accepted in the period (APU signal). */
+  /**
+   * Submission posture for the acceptance measure: iQIES submissions vs those accepted in the period
+   * (APU signal), plus how many batches are ASSEMBLED AND NEVER TRANSMITTED.
+   *
+   * `queuedSubmissions` (F-058 / #150) is what tells a zero denominator's two causes apart: an agency
+   * with nothing to report, and one whose batches are stacked up unsent because this deployment has no
+   * iQIES transport. It is period-independent on purpose — a queued batch has no `transmitted_at` to
+   * anchor to, and "there are unsent batches" is a fact about the agency now, not about the window.
+   */
   submissionPostureRollup(
     organizationId: string,
     period: HopeRollupPeriod,
-  ): Promise<{ readonly submissions: number; readonly acceptedSubmissions: number }>;
+  ): Promise<{
+    readonly submissions: number;
+    readonly acceptedSubmissions: number;
+    readonly queuedSubmissions: number;
+  }>;
   /** SFV timeliness for the on-time-SFV measure: SFVs due vs completed within the 2-calendar-day window. */
   sfvTimelinessRollup(
     organizationId: string,

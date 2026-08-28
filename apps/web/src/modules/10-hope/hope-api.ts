@@ -214,17 +214,24 @@ export async function skipSchedule(
   return { ok: true, value: data as ScheduleView };
 }
 
-// THE TWO SUBMISSION WRITES ARE DELIBERATELY ABSENT (#150). `POST /hope/submissions/assemble` and
-// `POST /hope/submissions/:id/retry` are mounted and reachable, and neither does what it says: assemble
-// inserts a `hope_submission` with `itemCount: 0` and NO `hope_submission_item` rows, ignoring
-// `planAssembleSubmissions` entirely; retry flips a status nothing downstream consumes. The whole iQIES
-// pipeline behind them is unreachable — `hope_submission_item` has no writer anywhere in the repo,
-// `submitBatch` has no caller, and `m10.hope.submission_transmitted` is emitted by nothing.
+// THE TWO SUBMISSION WRITES ARE STILL DELIBERATELY ABSENT (#150, updated by F-058).
 //
-// Wiring a client for either would put a button on a queue that reports success for work the server does
-// not do, which is the same defect this whole change exists to end (the F-007 rule: no enabled control
-// wired to nothing). The submission worklist says so on screen instead. When #150 lands, the client goes
-// here and the buttons go on that screen.
+// `POST /hope/submissions/assemble` now does real work: it runs `planAssembleSubmissions` over the
+// provider entity's eligible signed assessments and writes one `hope_submission` per CMS submission
+// period WITH its `hope_submission_item` rows (that table had no writer at all before F-058). So the
+// original objection to a client — that the route reported success for work the server did not do — no
+// longer applies to assemble.
+//
+// The buttons stay off anyway, and for a different reason: a batch stops at `queued` and there is
+// nothing downstream to move it. `iqies-submit-worker` terminates in `@wardenx/iqies-client`, whose only
+// adapter is the deny-stub, so `submitBatch` still has no caller and `m10.hope.submission_transmitted`
+// is still emitted by nothing. Putting "Assemble batch" on a compliance screen would present a working
+// submission workflow to the one user whose job is to know whether the agency has submitted — and,
+// through `uniq_hope_sub_item_assessment_active`, would permanently exclude every batched assessment
+// from any future batch. Retry is unchanged: it requeues into that same unreachable stage.
+//
+// The submission worklist says so on screen instead. The client goes here when a live iQIES transport
+// binds.
 
 /** §4.1 route 20 — recompute an admission's timepoint schedules after a post-hoc date correction. */
 export async function regenerateSchedules(

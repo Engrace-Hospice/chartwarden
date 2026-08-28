@@ -159,7 +159,18 @@ export {
   planCorrectionRfa,
   planReconcile,
   planTransmitResult,
+  submissionPeriodFor,
 } from "./jobs/submission";
+// F-058 (#150) — the Drizzle read/write half of §4.10 stage 1. `hope_submission_item` had no writer
+// anywhere in the repo and `planAssembleSubmissions` had no production caller; both now run behind
+// `assembleSubmission` on the route service.
+export {
+  type AssemblableScan,
+  type PersistedSubmission,
+  assemblableAssessmentsForOrg,
+  persistAssembledSubmission,
+  queuedSubmissionCountForOrg,
+} from "./jobs/assemble-store";
 // M10-T08 — the `hope_record` data eraser (§8.4). registerHopeErasers stands the REAL eraser over the
 // Phase-0 deny-stub; invoked from the composition root's wireModuleErasers() before validateErasers(). The
 // pure retention/partition core (earliestErasableInstant / isHopeErasureBlocked / eraseHopeRecord) is unit
