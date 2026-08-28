@@ -67,9 +67,12 @@ export interface DecisionView {
   readonly id: string;
   readonly meetingId: string;
   readonly patientId: string | null;
+  readonly agendaItemId: string | null;
   readonly decisionKind: IdgDecisionKind;
   readonly status: IdgDecisionStatus;
   readonly wasQuorate: boolean;
+  readonly recordedByMembershipId: string;
+  readonly recordedAt: string;
   readonly supersededByDecisionId: string | null;
 }
 export interface ActionItemView {
@@ -82,10 +85,32 @@ export interface ActionItemView {
   readonly dueDate: string;
   readonly linkedArtifactKind: IdgActionItemLinkedKind | null;
 }
+/**
+ * A meeting's minutes (GET /idg/meetings/:id/minutes).
+ *
+ * COUNTS, not the snapshots themselves. `idg_minutes` freezes `attendance_snapshot` /
+ * `decision_list_snapshot` / `action_item_list_snapshot` at finalize, and those nest the decision
+ * PAYLOADS — the §3.3 denylisted clinical narrative. Publishing them would reopen the W-SUD-01
+ * redaction question this module's read surface is deliberately built to avoid (see
+ * {@link PatientIdgHistoryView}: "PHI-safe by construction … never the denylisted packet cover
+ * summaries, decision payloads, or item body text"). The counts plus the finalize attribution are
+ * what a minutes SCREEN needs — the readable document is the M22 render at `minutesDocumentId`,
+ * which is the designed delivery path for the narrative and carries its own consent gate.
+ *
+ * `closingNote` is likewise withheld: it is a DENYLISTED free-text column (§3.3).
+ */
 export interface MinutesView {
   readonly id: string;
   readonly meetingId: string;
   readonly status: "in_progress" | "final";
+  readonly finalizedAt: string | null;
+  readonly finalizedByMembershipId: string | null;
+  /** M22 rendered-PDF back-ref; null until the render lands. */
+  readonly minutesDocumentId: string | null;
+  /** Snapshot sizes — null while `in_progress` (nothing is frozen yet). */
+  readonly attendanceCount: number | null;
+  readonly decisionCount: number | null;
+  readonly actionItemCount: number | null;
 }
 export interface PacketDigestView {
   readonly packetId: string;
@@ -241,6 +266,15 @@ export interface IdgRouteService {
     userId: string,
     id: string,
   ): Promise<{ id: string; removed: true }>;
+  /**
+   * The meeting's attendance roster — the §2.7 participation the `quorate_decision` predicate reads.
+   *
+   * F-062: this is the read the three attendance WRITES never had. A coordinator could check a
+   * clinician in, amend the row, and delete it, and no route in the module would return it — so the
+   * live quorum gauge the §5 surface is specified around had no source, and an attendance ledger
+   * nobody can read cannot evidence the §418.56 group composition it exists to record.
+   */
+  listAttendance(orgId: string, meetingId: string): Promise<AttendanceView[]>;
   // packets
   listPackets(orgId: string, meetingId: string): Promise<PacketDigestView[]>;
   getPacket(orgId: string, meetingId: string, patientId: string): Promise<PacketDigestView>;
@@ -259,6 +293,8 @@ export interface IdgRouteService {
     userId: string,
     id: string,
   ): Promise<{ id: string; removed: true }>;
+  /** The meeting's ordered agenda (F-062 — add/update/remove existed; nothing listed them). */
+  listAgenda(orgId: string, meetingId: string): Promise<AgendaItemView[]>;
   // decisions
   recordDecision(
     orgId: string,
@@ -273,6 +309,19 @@ export interface IdgRouteService {
     payload: IdgDecisionRecordedPayload,
   ): Promise<DecisionView>;
   supersedeDecision(orgId: string, userId: string, id: string): Promise<DecisionView>;
+  /**
+   * The meeting's decision ledger — metadata only, on the {@link PatientIdgHistoryView} precedent.
+   *
+   * F-062: record/update/supersede all wrote to `idg_decision` and the only reader anywhere was the
+   * PATIENT-scoped history tab, which returns one patient's decisions across meetings. Nothing could
+   * answer "what did this meeting decide", which is the question the live surface exists to ask and
+   * the one an adjournment commits to.
+   *
+   * The `payload` is deliberately NOT returned: it is the D4 canonical narrative (rationaleText /
+   * mutations / recommendations), denylisted in the §3.3 write-audit trigger, and publishing it would
+   * reopen W-SUD-01 for a surface that has never had to answer it.
+   */
+  listDecisions(orgId: string, meetingId: string): Promise<DecisionView[]>;
   // action items
   createActionItem(
     orgId: string,
@@ -354,6 +403,9 @@ interface DecisionRow {
   id: string;
   meetingId: string;
   patientId: string | null;
+  agendaItemId: string | null;
+  recordedByMembershipId: string;
+  recordedAt: string;
   decisionKind: IdgDecisionKind;
   payload: IdgDecisionRecordedPayload;
   status: IdgDecisionStatus;
@@ -375,6 +427,12 @@ interface MinutesRow {
   id: string;
   meetingId: string;
   status: "in_progress" | "final";
+  finalizedAt: string | null;
+  finalizedByMembershipId: string | null;
+  minutesDocumentId: string | null;
+  attendanceCount: number | null;
+  decisionCount: number | null;
+  actionItemCount: number | null;
 }
 interface RecurringPolicyRow {
   id: string;
@@ -455,7 +513,17 @@ export function createInMemoryIdgBackend(
   function ensureMinutes(meetingId: string): MinutesRow {
     let row = minutes.get(meetingId);
     if (!row) {
-      row = { id: nextId("idg-min"), meetingId, status: "in_progress" };
+      row = {
+        id: nextId("idg-min"),
+        meetingId,
+        status: "in_progress",
+        finalizedAt: null,
+        finalizedByMembershipId: null,
+        minutesDocumentId: null,
+        attendanceCount: null,
+        decisionCount: null,
+        actionItemCount: null,
+      };
       minutes.set(meetingId, row);
       minutesById.set(row.id, row);
     }
@@ -621,6 +689,11 @@ export function createInMemoryIdgBackend(
       }
       const min = ensureMinutes(id);
       min.status = "final";
+      min.finalizedAt = m.adjournedAt;
+      min.finalizedByMembershipId = userId;
+      min.attendanceCount = [...attendance.values()].filter((a) => a.meetingId === id).length;
+      min.decisionCount = [...decisions.values()].filter((d) => d.meetingId === id).length;
+      min.actionItemCount = [...actionItems.values()].filter((a) => a.meetingId === id).length;
       emit("m14.meeting.adjourned", { meetingId: id, adjournedAt: m.adjournedAt });
       emit("m14.minutes.signed", { minutesId: min.id, meetingId: id });
       return toMeetingView(m);
@@ -660,6 +733,13 @@ export function createInMemoryIdgBackend(
       meetingOf(orgId, row.meetingId);
       attendance.delete(id);
       return { id, removed: true };
+    },
+
+    async listAttendance(orgId, meetingId) {
+      meetingOf(orgId, meetingId);
+      return [...attendance.values()]
+        .filter((a) => a.meetingId === meetingId)
+        .map((a) => ({ ...a }));
     },
 
     // ── packets ──────────────────────────────────────────────────────────────────────────────────────────
@@ -738,8 +818,13 @@ export function createInMemoryIdgBackend(
       return { id, removed: true };
     },
 
+    async listAgenda(orgId, meetingId) {
+      meetingOf(orgId, meetingId);
+      return [...agenda.values()].filter((a) => a.meetingId === meetingId).map((a) => ({ ...a }));
+    },
+
     // ── decisions ────────────────────────────────────────────────────────────────────────────────────────
-    async recordDecision(orgId, _userId, meetingId, args) {
+    async recordDecision(orgId, userId, meetingId, args) {
       const m = meetingOf(orgId, meetingId);
       // `planDecisionRecord` enforces MEETING_NOT_LIVE + INCLUSION_CRITERIA_FAILED and stamps the quorum.
       const plan = planDecisionRecord({
@@ -752,6 +837,9 @@ export function createInMemoryIdgBackend(
         id,
         meetingId,
         patientId: args.patientId,
+        agendaItemId: args.agendaItemId ?? null,
+        recordedByMembershipId: userId,
+        recordedAt: now(),
         decisionKind: args.decisionKind,
         payload: args.payload,
         status: plan.status,
@@ -777,7 +865,7 @@ export function createInMemoryIdgBackend(
       row.payload = payload;
       return { ...row };
     },
-    async supersedeDecision(orgId, _userId, id) {
+    async supersedeDecision(orgId, userId, id) {
       const prior = decisions.get(id);
       if (!prior) throw new NotFoundError("idg_decision");
       const m = meetingOf(orgId, prior.meetingId);
@@ -788,6 +876,9 @@ export function createInMemoryIdgBackend(
         id: newId,
         meetingId: m.id,
         patientId: prior.patientId,
+        agendaItemId: prior.agendaItemId,
+        recordedByMembershipId: userId,
+        recordedAt: now(),
         decisionKind: prior.decisionKind,
         payload: prior.payload,
         status: "open",
@@ -798,6 +889,25 @@ export function createInMemoryIdgBackend(
       prior.status = "superseded";
       prior.supersededByDecisionId = newId;
       return { ...prior };
+    },
+
+    /** Metadata projection — `payload` and `quorumSnapshot` are deliberately NOT returned (§3.3). */
+    async listDecisions(orgId, meetingId) {
+      meetingOf(orgId, meetingId);
+      return [...decisions.values()]
+        .filter((d) => d.meetingId === meetingId)
+        .map((d) => ({
+          id: d.id,
+          meetingId: d.meetingId,
+          patientId: d.patientId,
+          agendaItemId: d.agendaItemId,
+          decisionKind: d.decisionKind,
+          status: d.status,
+          wasQuorate: d.wasQuorate,
+          recordedByMembershipId: d.recordedByMembershipId,
+          recordedAt: d.recordedAt,
+          supersededByDecisionId: d.supersededByDecisionId,
+        }));
     },
 
     // ── action items ─────────────────────────────────────────────────────────────────────────────────────

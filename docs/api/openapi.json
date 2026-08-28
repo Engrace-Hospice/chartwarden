@@ -87017,9 +87017,12 @@
                     "id",
                     "meetingId",
                     "patientId",
+                    "agendaItemId",
                     "decisionKind",
                     "status",
                     "wasQuorate",
+                    "recordedByMembershipId",
+                    "recordedAt",
                     "supersededByDecisionId"
                   ],
                   "properties": {
@@ -87032,6 +87035,17 @@
                       "type": "string"
                     },
                     "patientId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "agendaItemId": {
                       "anyOf": [
                         {
                           "format": "uuid",
@@ -87100,6 +87114,14 @@
                     },
                     "wasQuorate": {
                       "type": "boolean"
+                    },
+                    "recordedByMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "recordedAt": {
+                      "format": "date-time",
+                      "type": "string"
                     },
                     "supersededByDecisionId": {
                       "anyOf": [
@@ -87884,9 +87906,12 @@
                     "id",
                     "meetingId",
                     "patientId",
+                    "agendaItemId",
                     "decisionKind",
                     "status",
                     "wasQuorate",
+                    "recordedByMembershipId",
+                    "recordedAt",
                     "supersededByDecisionId"
                   ],
                   "properties": {
@@ -87899,6 +87924,17 @@
                       "type": "string"
                     },
                     "patientId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "agendaItemId": {
                       "anyOf": [
                         {
                           "format": "uuid",
@@ -87967,6 +88003,14 @@
                     },
                     "wasQuorate": {
                       "type": "boolean"
+                    },
+                    "recordedByMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "recordedAt": {
+                      "format": "date-time",
+                      "type": "string"
                     },
                     "supersededByDecisionId": {
                       "anyOf": [
@@ -88364,6 +88408,95 @@
       }
     },
     "/api/v1/idg/meetings/{id}/agenda": {
+      "get": {
+        "operationId": "getApiV1IdgMeetingsByIdAgenda",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "The meeting's agenda in sort_order (F-062: add/update/remove had no reader)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "meetingId",
+                      "kind",
+                      "patientId"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "meetingId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "anyOf": [
+                          {
+                            "const": "patient_review",
+                            "type": "string"
+                          },
+                          {
+                            "const": "carry_forward",
+                            "type": "string"
+                          },
+                          {
+                            "const": "administrative_note",
+                            "type": "string"
+                          },
+                          {
+                            "const": "family_meeting_setup",
+                            "type": "string"
+                          },
+                          {
+                            "const": "other",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "patientId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "post": {
         "operationId": "postApiV1IdgMeetingsByIdAgenda",
         "tags": [
@@ -88499,6 +88632,97 @@
       }
     },
     "/api/v1/idg/meetings/{id}/attendance": {
+      "get": {
+        "operationId": "getApiV1IdgMeetingsByIdAttendance",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "The meeting's attendance roster in check-in order — the §2.7 participation the quorate_decision predicate evaluates (F-062: the three attendance writes shipped with no reader)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "meetingId",
+                      "membershipId",
+                      "discipline",
+                      "status",
+                      "checkedInAt"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "meetingId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "membershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "discipline": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "const": "present",
+                            "type": "string"
+                          },
+                          {
+                            "const": "tardy",
+                            "type": "string"
+                          },
+                          {
+                            "const": "partial",
+                            "type": "string"
+                          },
+                          {
+                            "const": "absent",
+                            "type": "string"
+                          },
+                          {
+                            "const": "excused",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "checkedInAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "post": {
         "operationId": "postApiV1IdgMeetingsByIdAttendance",
         "tags": [
@@ -88697,6 +88921,166 @@
       }
     },
     "/api/v1/idg/meetings/{id}/decisions": {
+      "get": {
+        "operationId": "getApiV1IdgMeetingsByIdDecisions",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "The meeting's decision ledger, newest first — METADATA only; the D4 payload stays off the wire (F-062: the only prior reader was the patient-scoped history tab)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "meetingId",
+                      "patientId",
+                      "agendaItemId",
+                      "decisionKind",
+                      "status",
+                      "wasQuorate",
+                      "recordedByMembershipId",
+                      "recordedAt",
+                      "supersededByDecisionId"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "meetingId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "patientId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "agendaItemId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "decisionKind": {
+                        "anyOf": [
+                          {
+                            "const": "care_plan_update",
+                            "type": "string"
+                          },
+                          {
+                            "const": "order_request",
+                            "type": "string"
+                          },
+                          {
+                            "const": "medication_recommendation",
+                            "type": "string"
+                          },
+                          {
+                            "const": "level_of_care_consideration",
+                            "type": "string"
+                          },
+                          {
+                            "const": "recertification_consideration",
+                            "type": "string"
+                          },
+                          {
+                            "const": "family_meeting_needed",
+                            "type": "string"
+                          },
+                          {
+                            "const": "bereavement_risk_flag",
+                            "type": "string"
+                          },
+                          {
+                            "const": "referral",
+                            "type": "string"
+                          },
+                          {
+                            "const": "team_note",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "const": "open",
+                            "type": "string"
+                          },
+                          {
+                            "const": "emitted",
+                            "type": "string"
+                          },
+                          {
+                            "const": "superseded",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "wasQuorate": {
+                        "type": "boolean"
+                      },
+                      "recordedByMembershipId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "recordedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "supersededByDecisionId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "post": {
         "operationId": "postApiV1IdgMeetingsByIdDecisions",
         "tags": [
@@ -88724,9 +89108,12 @@
                     "id",
                     "meetingId",
                     "patientId",
+                    "agendaItemId",
                     "decisionKind",
                     "status",
                     "wasQuorate",
+                    "recordedByMembershipId",
+                    "recordedAt",
                     "supersededByDecisionId"
                   ],
                   "properties": {
@@ -88739,6 +89126,17 @@
                       "type": "string"
                     },
                     "patientId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "agendaItemId": {
                       "anyOf": [
                         {
                           "format": "uuid",
@@ -88807,6 +89205,14 @@
                     },
                     "wasQuorate": {
                       "type": "boolean"
+                    },
+                    "recordedByMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "recordedAt": {
+                      "format": "date-time",
+                      "type": "string"
                     },
                     "supersededByDecisionId": {
                       "anyOf": [
@@ -89606,7 +90012,13 @@
                   "required": [
                     "id",
                     "meetingId",
-                    "status"
+                    "status",
+                    "finalizedAt",
+                    "finalizedByMembershipId",
+                    "minutesDocumentId",
+                    "attendanceCount",
+                    "decisionCount",
+                    "actionItemCount"
                   ],
                   "properties": {
                     "id": {
@@ -89626,6 +90038,72 @@
                         {
                           "const": "final",
                           "type": "string"
+                        }
+                      ]
+                    },
+                    "finalizedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "finalizedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "minutesDocumentId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "attendanceCount": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decisionCount": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "actionItemCount": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
                         }
                       ]
                     }

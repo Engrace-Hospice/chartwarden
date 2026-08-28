@@ -277,6 +277,16 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     const minutes = await svc.getMinutes(ORG_A, m);
     expect(minutes.status).toBe("final");
     expect(await eventsFor(minutes.id)).toContain("m14.minutes.signed");
+    // F-062 — adjournment FREEZES the minutes. It used to stamp status/finalized_at/finalized_by and
+    // leave `attendance_snapshot`, `decision_list_snapshot` and `action_item_list_snapshot` NULL on
+    // every meeting ever adjourned, so the finalized §418.56(d) record said a review happened and
+    // nothing about what it reviewed. One attendee, two decisions (the care-plan update AND the team
+    // note — a snapshot of what the meeting DID includes the note), no action items.
+    expect(minutes.finalizedAt).not.toBeNull();
+    expect(minutes.finalizedByMembershipId).toBe(MEMBER);
+    expect(minutes.attendanceCount).toBe(1);
+    expect(minutes.decisionCount).toBe(2);
+    expect(minutes.actionItemCount).toBe(0);
 
     // supersede: the now-`emitted` decision may be superseded (new open row; prior → superseded).
     const superseded = await svc.supersedeDecision(ORG_A, MEMBER, actionable.id);
@@ -292,6 +302,49 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     );
     expect(amd.minutesId).toBe(minutes.id);
     expect(await eventsFor(minutes.id)).toContain("m14.minutes.amended");
+  });
+
+  it("attendance / agenda / decisions read back the rows their writes create (F-062)", async () => {
+    // Six write routes filed rows into three tables that NO route in the module returned: the roster
+    // the `quorate_decision` predicate evaluates, the meeting's running order, and the decision ledger
+    // an adjournment commits. The patient-scoped history tab was the only decision reader anywhere, and
+    // it answers a different question ("what was decided about this patient", across meetings).
+    const m = await seedMeeting(ORG_A, "live");
+    await svc.recordAttendance(ORG_A, MEMBER, m, { membershipId: MEMBER, discipline: "rn" });
+    const agendaItem = await svc.addAgendaItem(ORG_A, MEMBER, m, {
+      kind: "patient_review",
+      patientId: PATIENT,
+    });
+    const decision = await svc.recordDecision(ORG_A, MEMBER, m, {
+      patientId: PATIENT,
+      agendaItemId: agendaItem.id,
+      decisionKind: "team_note",
+      payload: { kind: "team_note", noteText: "Reviewed; continue the current plan." },
+    });
+
+    const roster = await svc.listAttendance(ORG_A, m);
+    expect(roster.map((a) => a.discipline)).toEqual(["rn"]);
+    expect(roster[0]?.status).toBe("present");
+
+    const agenda = await svc.listAgenda(ORG_A, m);
+    expect(agenda.map((a) => a.id)).toEqual([agendaItem.id]);
+    expect(agenda[0]?.patientId).toBe(PATIENT);
+
+    const ledger = await svc.listDecisions(ORG_A, m);
+    expect(ledger.map((d) => d.id)).toEqual([decision.id]);
+    expect(ledger[0]?.agendaItemId).toBe(agendaItem.id);
+    expect(ledger[0]?.recordedByMembershipId).toBe(MEMBER);
+    // The D4 payload is the §3.3 denylisted narrative — a property of this read, not an accident.
+    expect((ledger[0] as Record<string, unknown>).payload).toBeUndefined();
+    expect((ledger[0] as Record<string, unknown>).quorumSnapshot).toBeUndefined();
+  });
+
+  it("the three conduct reads are tenant-scoped: org B sees org A's meeting as 404", async () => {
+    const m = await seedMeeting(ORG_A, "live");
+    await svc.recordAttendance(ORG_A, MEMBER, m, { membershipId: MEMBER, discipline: "rn" });
+    await expect(svc.listAttendance(ORG_B, m)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(svc.listAgenda(ORG_B, m)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(svc.listDecisions(ORG_B, m)).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
   it("adjourn without a fresh step-up → STEP_UP_REQUIRED (412)", async () => {

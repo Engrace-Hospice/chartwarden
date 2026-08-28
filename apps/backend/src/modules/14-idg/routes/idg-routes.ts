@@ -270,6 +270,23 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     return service.removeAttendance(organizationId, userId, id);
   });
 
+  // 12b — list the meeting's attendance roster (F-062). The three attendance WRITES shipped without
+  // one, so the §2.7 participation the `quorate_decision` predicate evaluates could be written, amended
+  // and excused, and read back by nothing — no source for the live quorum gauge §5 is specified around,
+  // and no way to evidence the §418.56 group composition the roster exists to record.
+  app.get(
+    "/api/v1/idg/meetings/:id/attendance",
+    {
+      preHandler: [READ, SCOPE("idg.read")],
+      config: { auditRead: { resourceKind: "idg_meeting", resourceIdParam: "id", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.listAttendance(organizationId, id);
+    },
+  );
+
   // 13 — list a meeting's packets.
   app.get(
     "/api/v1/idg/meetings/:id/packets",
@@ -345,6 +362,20 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     return service.removeAgendaItem(organizationId, userId, id);
   });
 
+  // 17b — list the meeting's agenda in `sort_order` (F-062; add/update/remove had no reader).
+  app.get(
+    "/api/v1/idg/meetings/:id/agenda",
+    {
+      preHandler: [READ, SCOPE("idg.read")],
+      config: { auditRead: { resourceKind: "idg_meeting", resourceIdParam: "id", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.listAgenda(organizationId, id);
+    },
+  );
+
   // 18 — record a decision (quorate_decision ABAC; target = meeting :id).
   app.post(
     "/api/v1/idg/meetings/:id/decisions",
@@ -381,6 +412,24 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       parse(SupersedeDecisionRequest, request.body);
       const res = await service.supersedeDecision(organizationId, userId, id);
       return reply.code(201).send(res);
+    },
+  );
+
+  // 20b — the meeting's decision ledger, newest first (F-062). record/update/supersede all wrote to
+  // `idg_decision` and the module's only reader was the PATIENT-scoped history tab, which answers "what
+  // was decided about this patient across meetings". Nothing could answer "what did THIS meeting
+  // decide" — the question the live surface exists to ask and the one an adjournment commits to.
+  // Metadata only (see `DecisionViewSchema`): the D4 payload stays off the wire.
+  app.get(
+    "/api/v1/idg/meetings/:id/decisions",
+    {
+      preHandler: [READ, SCOPE("idg.read")],
+      config: { auditRead: { resourceKind: "idg_decision", resourceIdParam: "id", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.listDecisions(organizationId, id);
     },
   );
 

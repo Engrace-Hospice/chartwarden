@@ -4,11 +4,26 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // (per-location), the pre-meeting Meeting Detail, the Live Meeting Surface, the per-patient Packet (chart
 // embed), My Action Items, and the per-meeting Minutes. Nav visibility is gated by the matching M14 permission
 // key; the SERVER stays the only enforcement point (no frontend authz, ADR-0030 — out-of-scope resources 404,
-// never 403; SUD-flagged packet blocks redacted server-side per §7.2/W-SUD-01). The decision-recording panel,
-// attendance tracker, action-item assignment, adjourn control (D13 fresh step-up), build-packets, and the
-// minutes amendment-request write surfaces — plus the Socket.IO real-time decision/action-item propagation and
-// the Capacitor Mobile Live variant — fill in as those write paths harden. The M22 minutes/packet PDF render and
-// the M28 FHIR CareTeam/Encounter projection are deferred (Wave F/H handshakes).
+// never 403; SUD-flagged packet blocks redacted server-side per §7.2/W-SUD-01).
+//
+// #91 / F-062 — THE MEETING IS NOW CONDUCTABLE. The decision-recording panel, the attendance tracker, the
+// action-item assignment and status transitions, the adjourn control (D13 fresh step-up), build-packets,
+// start, cancel, reschedule, and the §7.8 minutes amendment request are all built and DOM-covered
+// (`idg-writes.dom.test.tsx`). This header used to say they would "fill in as those write paths harden";
+// the write paths were mounted, guarded and contract-enriched the whole time — but SIX of them wrote rows
+// no read route in the module returned (`idg_attendance`, `idg_agenda_item`, `idg_decision`), and
+// adjournment stamped the minutes `final` while writing none of the three snapshot columns that make them
+// a record. Both were fixed on the server in the same change.
+//
+// STILL DEFERRED, and each for a reason rather than a schedule:
+//   • Remove an agenda item — `DELETE /idg/agenda/:id` is a tenant-checked NO-OP (no delete grant, no
+//     tombstone column). A control over it would report a removal that did not happen (the F-007 rule).
+//   • The `care_plan_update` decision beyond `problem_add` — its other five mutation ops address M7 plan
+//     elements by uuid and need the care-plan element picker on the M07 surface.
+//   • Socket.IO real-time decision/action-item propagation, and the Capacitor Mobile Live variant. The
+//     live surface reloads its three ledgers after each write, which is correct if less live.
+//   • The action-item link-artifact / add-note surfaces — no route mints either.
+//   • The M22 minutes/packet PDF render and the M28 FHIR CareTeam/Encounter projection (Wave F/H).
 import { lazy } from "react";
 import type { ComponentType } from "react";
 const IdgSchedule = lazy(() => import("./idg-schedule").then((m) => ({ default: m.IdgSchedule })));

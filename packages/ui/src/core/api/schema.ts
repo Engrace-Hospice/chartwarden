@@ -8626,7 +8626,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** The meeting's agenda in sort_order (F-062: add/update/remove had no reader) */
+        get: operations["getApiV1IdgMeetingsByIdAgenda"];
         put?: never;
         /** Add an agenda item to a meeting */
         post: operations["postApiV1IdgMeetingsByIdAgenda"];
@@ -8643,7 +8644,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** The meeting's attendance roster in check-in order — the §2.7 participation the quorate_decision predicate evaluates (F-062: the three attendance writes shipped with no reader) */
+        get: operations["getApiV1IdgMeetingsByIdAttendance"];
         put?: never;
         /** Self check-in attendance for a meeting */
         post: operations["postApiV1IdgMeetingsByIdAttendance"];
@@ -8677,7 +8679,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** The meeting's decision ledger, newest first — METADATA only; the D4 payload stays off the wire (F-062: the only prior reader was the patient-scoped history tab) */
+        get: operations["getApiV1IdgMeetingsByIdDecisions"];
         put?: never;
         /** Record a decision (quorate_decision ABAC) */
         post: operations["postApiV1IdgMeetingsByIdDecisions"];
@@ -41894,9 +41897,14 @@ export interface operations {
                         /** Format: uuid */
                         meetingId: string;
                         patientId: string | null;
+                        agendaItemId: string | null;
                         decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
                         status: "open" | "emitted" | "superseded";
                         wasQuorate: boolean;
+                        /** Format: uuid */
+                        recordedByMembershipId: string;
+                        /** Format: date-time */
+                        recordedAt: string;
                         supersededByDecisionId: string | null;
                     };
                 };
@@ -41934,9 +41942,14 @@ export interface operations {
                         /** Format: uuid */
                         meetingId: string;
                         patientId: string | null;
+                        agendaItemId: string | null;
                         decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
                         status: "open" | "emitted" | "superseded";
                         wasQuorate: boolean;
+                        /** Format: uuid */
+                        recordedByMembershipId: string;
+                        /** Format: date-time */
+                        recordedAt: string;
                         supersededByDecisionId: string | null;
                     };
                 };
@@ -42059,6 +42072,37 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1IdgMeetingsByIdAgenda: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        kind: "patient_review" | "carry_forward" | "administrative_note" | "family_meeting_setup" | "other";
+                        patientId: string | null;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1IdgMeetingsByIdAgenda: {
         parameters: {
             query?: never;
@@ -42093,6 +42137,41 @@ export interface operations {
                         kind: "patient_review" | "carry_forward" | "administrative_note" | "family_meeting_setup" | "other";
                         patientId: string | null;
                     };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1IdgMeetingsByIdAttendance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        /** Format: uuid */
+                        membershipId: string;
+                        discipline: string;
+                        status: "present" | "tardy" | "partial" | "absent" | "excused";
+                        /** Format: date-time */
+                        checkedInAt: string;
+                    }[];
                 };
             };
             "4XX": components["responses"]["Error"];
@@ -42170,6 +42249,45 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1IdgMeetingsByIdDecisions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        patientId: string | null;
+                        agendaItemId: string | null;
+                        decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
+                        status: "open" | "emitted" | "superseded";
+                        wasQuorate: boolean;
+                        /** Format: uuid */
+                        recordedByMembershipId: string;
+                        /** Format: date-time */
+                        recordedAt: string;
+                        supersededByDecisionId: string | null;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42319,9 +42437,14 @@ export interface operations {
                         /** Format: uuid */
                         meetingId: string;
                         patientId: string | null;
+                        agendaItemId: string | null;
                         decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
                         status: "open" | "emitted" | "superseded";
                         wasQuorate: boolean;
+                        /** Format: uuid */
+                        recordedByMembershipId: string;
+                        /** Format: date-time */
+                        recordedAt: string;
                         supersededByDecisionId: string | null;
                     };
                 };
@@ -42353,6 +42476,12 @@ export interface operations {
                         /** Format: uuid */
                         meetingId: string;
                         status: "in_progress" | "final";
+                        finalizedAt: string | null;
+                        finalizedByMembershipId: string | null;
+                        minutesDocumentId: string | null;
+                        attendanceCount: number | null;
+                        decisionCount: number | null;
+                        actionItemCount: number | null;
                     };
                 };
             };

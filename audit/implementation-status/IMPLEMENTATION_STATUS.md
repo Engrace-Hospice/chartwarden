@@ -23,7 +23,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M11 Orders | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 28/28 ✅ | ✅ | ✅ | — | 8/8 ✅ |
 | M12 DoseSpot Integration | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 31/31 ✅ | ✅ | ✅ | ✅ | 7/7 ✅ |
 | M13 eMAR & Med Administration | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 28/28 ✅ | ✅ | ✅ | — | 12/12 ✅ |
-| M14 IDG | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 27/27 ✅ | ✅ | ✅ | — | 9/9 ✅ |
+| M14 IDG | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 30/30 ✅ | ✅ | ✅ | — | 9/9 ✅ |
 | M15 Discipline Care Plans | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 28/28 ✅ | ✅ | ✅ | — | 11/11 ✅ |
 | M16 Bereavement | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 33/33 ✅ | ✅ | ✅ | — | 10/10 ✅ |
 | M17 Scheduling & Route Optimization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 32/32 ✅ | ✅ | ✅ | ✅ | 8/8 ✅ |

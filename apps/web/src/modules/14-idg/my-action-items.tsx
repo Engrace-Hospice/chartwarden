@@ -11,14 +11,28 @@ import {
 // apps/web/src/modules/14-idg — My Action Items (M14 §4.1/§5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace". The
 // caller's queue of IDG action items assigned to them (`assignee=me` resolves to the caller's membership
-// server-side), one row per item with its status + due date + linked-artifact kind. The update-status /
-// link-artifact / add-note write surfaces fill in as their write paths harden; the SERVER owns the §2.7
-// auto-close (an item linked to a downstream artifact closes when that artifact reaches an absorbing state) and
-// the §4.7 is_assignee ABAC (ADR-0030 — no frontend authz). Reads GET /api/v1/idg/action-items via the typed
-// client. Leaves only (@wardenx/ui).
+// server-side), one row per item with its status + due date + linked-artifact kind.
+//
+// #91 — the STATUS TRANSITIONS are here now. A queue of follow-ups the assignee could read and never
+// advance is the shape this issue is about; `PATCH /api/v1/idg/action-items/:id` was mounted, guarded by
+// `idg.act` and contract-enriched the whole time. An item is never RE-OPENED — `open` is genesis-only in
+// the §1.1/D8 machine — so the three offered transitions are the three the route accepts.
+//
+// The link-artifact and add-note surfaces stay deferred: no route mints either. The SERVER owns the §2.7
+// auto-close (an item linked to a downstream artifact closes when that artifact reaches an absorbing state)
+// and the §4.7 is_assignee ABAC (ADR-0030 — no frontend authz). Reads GET /api/v1/idg/action-items via the
+// typed client.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { type ActionItemPatchStatus, updateActionItem } from "./idg-api";
 import { ACTION_TONE, stateLabel } from "./idg-status";
+
+/** The three statuses `PATCH /idg/action-items/:id` accepts (`open` is genesis-only). */
+const PATCH_STATUSES = [
+  { value: "in_progress", label: "Start" },
+  { value: "completed", label: "Complete" },
+  { value: "cancelled", label: "Cancel" },
+] as const satisfies readonly { value: ActionItemPatchStatus; label: string }[];
 
 interface ActionItemRow {
   id: string;
@@ -36,6 +50,8 @@ export function MyActionItems(): JSX.Element {
   const [status, setStatus] = useState("");
   const [artifact, setArtifact] = useState("");
   const [dueFilter, setDueFilter] = useState<"all" | "overdue" | "next7">("all");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
@@ -59,6 +75,19 @@ export function MyActionItems(): JSX.Element {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /**
+   * Advance one item. The SERVER decides whether the transition is legal (`transitionActionItem`) and
+   * whether this caller may make it (`is_assignee`); a refusal is rendered here rather than pre-empted.
+   */
+  async function advance(itemId: string, status: ActionItemPatchStatus): Promise<void> {
+    setBusyId(itemId);
+    setNotice(null);
+    const res = await updateActionItem(client, itemId, status);
+    setBusyId(null);
+    setNotice(res.ok ? `Action item ${shortId(itemId)} → ${stateLabel(status)}.` : res.message);
+    if (res.ok) await load();
+  }
 
   const now = Date.now();
   const artifactOptions = useMemo(
@@ -118,6 +147,18 @@ export function MyActionItems(): JSX.Element {
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Track IDG follow-ups assigned to you by due date, status, and linked artifact.
           </div>
+          {notice ? (
+            <output
+              style={{
+                display: "block",
+                color: "var(--color-on-surface-variant)",
+                fontSize: "0.8rem",
+                marginTop: "0.35rem",
+              }}
+            >
+              {notice}
+            </output>
+          ) : null}
         </PageHeader>
       }
       filters={
@@ -235,12 +276,13 @@ export function MyActionItems(): JSX.Element {
             <table style={tableStyle}>
               <thead>
                 <tr style={headerRowStyle}>
-                  <th style={{ ...thStyle, width: "28%" }}>Action item</th>
-                  <th style={{ ...thStyle, width: "18%" }}>Meeting</th>
-                  <th style={{ ...thStyle, width: "18%" }}>Patient</th>
-                  <th style={{ ...thStyle, width: "14%" }}>Linked</th>
-                  <th style={{ ...thStyle, width: "12%" }}>Status</th>
+                  <th style={{ ...thStyle, width: "22%" }}>Action item</th>
+                  <th style={{ ...thStyle, width: "15%" }}>Meeting</th>
+                  <th style={{ ...thStyle, width: "15%" }}>Patient</th>
+                  <th style={{ ...thStyle, width: "12%" }}>Linked</th>
+                  <th style={{ ...thStyle, width: "11%" }}>Status</th>
                   <th style={{ ...thStyle, width: "10%", textAlign: "right" }}>Due</th>
+                  <th style={{ ...thStyle, width: "15%", textAlign: "right" }}>Advance</th>
                 </tr>
               </thead>
               <tbody>
@@ -292,6 +334,27 @@ export function MyActionItems(): JSX.Element {
                           {formatDate(a.dueDate)}
                           {overdue ? <StatusPill label="Overdue" tone="error" /> : null}
                         </span>
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                        {isActionable(a.status) ? (
+                          <span style={{ display: "inline-flex", gap: "0.35rem" }}>
+                            {PATCH_STATUSES.filter(
+                              (p) => !(a.status === "in_progress" && p.value === "in_progress"),
+                            ).map((p) => (
+                              <Button
+                                key={p.value}
+                                tone="tertiary"
+                                size="sm"
+                                disabled={busyId === a.id}
+                                onClick={() => void advance(a.id, p.value)}
+                              >
+                                {p.label}
+                              </Button>
+                            ))}
+                          </span>
+                        ) : (
+                          <span style={{ color: "var(--color-muted)" }}>—</span>
+                        )}
                       </td>
                     </tr>
                   );

@@ -1347,10 +1347,13 @@ import {
   AddAgendaItemRequest as M14AddAgendaItemRequest,
   AdjournMeetingRequest as M14AdjournMeetingRequest,
   AgendaItemViewSchema as M14AgendaItemViewSchema,
+  AgendaListResponseSchema as M14AgendaListResponseSchema,
   AmendmentResponseSchema as M14AmendmentResponseSchema,
+  AttendanceListResponseSchema as M14AttendanceListResponseSchema,
   AttendanceViewSchema as M14AttendanceViewSchema,
   CancelMeetingRequest as M14CancelMeetingRequest,
   CreateActionItemRequest as M14CreateActionItemRequest,
+  DecisionListResponseSchema as M14DecisionListResponseSchema,
   DecisionViewSchema as M14DecisionViewSchema,
   MeetingViewSchema as M14MeetingViewSchema,
   MinutesViewSchema as M14MinutesViewSchema,
@@ -4503,6 +4506,20 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/idg/meetings/:meetingId/packets/:patientId": {
     summary: "Read one patient's packet (SUD redaction applied)",
     response: M14PacketDigestViewSchema,
+  },
+  "GET /api/v1/idg/meetings/:id/attendance": {
+    summary:
+      "The meeting's attendance roster in check-in order — the §2.7 participation the quorate_decision predicate evaluates (F-062: the three attendance writes shipped with no reader)",
+    response: M14AttendanceListResponseSchema,
+  },
+  "GET /api/v1/idg/meetings/:id/agenda": {
+    summary: "The meeting's agenda in sort_order (F-062: add/update/remove had no reader)",
+    response: M14AgendaListResponseSchema,
+  },
+  "GET /api/v1/idg/meetings/:id/decisions": {
+    summary:
+      "The meeting's decision ledger, newest first — METADATA only; the D4 payload stays off the wire (F-062: the only prior reader was the patient-scoped history tab)",
+    response: M14DecisionListResponseSchema,
   },
   "POST /api/v1/idg/meetings/:id/agenda": {
     summary: "Add an agenda item to a meeting",
