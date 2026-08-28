@@ -111,6 +111,12 @@ function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string;
 }
 
 function bodyFor(method: string, path: string): unknown {
+  // F-066 (#161) — the patient's admissions, the read the plan bootstrap resolves its key from. Must
+  // be matched BEFORE the generic patient branch below, which would otherwise swallow it.
+  if (method === "GET" && path.endsWith("/admissions"))
+    return { items: admissions, nextCursor: null };
+  // The no-plan branch of the read union: `{ carePlan: null }`, no `id`.
+  if (method === "GET" && path.endsWith("/care-plan") && noPlan) return { carePlan: null };
   if (method === "GET" && path.endsWith("/care-plan"))
     return {
       id: PLAN,
@@ -200,6 +206,16 @@ function mount(session = SESSION): ReturnType<typeof render> {
   ) as unknown as ReturnType<typeof render>;
 }
 
+/** F-066 — flips the care-plan read to its no-plan branch so the empty state renders. */
+let noPlan = false;
+/** F-066 — what `GET /patients/:patientId/admissions` answers for this test. */
+let admissions: {
+  id: string;
+  state: string;
+  admissionAt: string | null;
+  dischargedAt: string | null;
+}[] = [];
+
 const writes = () => calls.filter((c) => !c.startsWith("GET "));
 
 beforeEach(() => {
@@ -209,6 +225,8 @@ beforeEach(() => {
   writeFailure = null;
   versions = [draftVersion];
   activeVersionId = null;
+  noPlan = false;
+  admissions = [];
 });
 afterEach(() => {
   writeFailure = null;
@@ -393,5 +411,92 @@ describe("#91 — the quorum chip reports the server's slots, not a fixed string
     mount();
     await waitFor(() => expect(screen.getByText(/close for signature/i)).toBeTruthy());
     expect(screen.queryByText(/Awaiting/)).toBeNull();
+  });
+});
+
+// F-066 (#161) — the plan bootstrap. `POST /patients/:id/care-plan` had a client and no control, and
+// the screen said so: "a 'create care plan' button would need an admissionId this screen does not
+// read". Nothing could read one for a patient at all — the org-wide census takes no patient filter and
+// its items carry no `patientId` — so the control was not omitted by preference, it was unbuildable.
+describe("F-066 — the care plan can be STARTED, not only displayed", () => {
+  const OPEN_ADMISSION = "11111111-8888-4888-8888-111111111111";
+  const DISCHARGED_ADMISSION = "22222222-9999-4999-8999-222222222222";
+
+  it("offers Start the care plan when the patient has an open admission, and POSTs that admission", async () => {
+    noPlan = true;
+    admissions = [
+      // Newest first, as the route answers — and the newest one is DISCHARGED, so "newest" and
+      // "open" are deliberately different answers here.
+      {
+        id: DISCHARGED_ADMISSION,
+        state: "discharged",
+        admissionAt: "2026-01-04T00:00:00.000Z",
+        dischargedAt: "2026-02-01T00:00:00.000Z",
+      },
+      {
+        id: OPEN_ADMISSION,
+        state: "active",
+        admissionAt: "2025-11-02T00:00:00.000Z",
+        dischargedAt: null,
+      },
+    ];
+    mount();
+    const button = await screen.findByRole("button", { name: "Start the care plan" });
+    fireEvent.click(button);
+    await waitFor(() => expect(writes()).toContain(`POST /api/v1/patients/${PATIENT}/care-plan`));
+    // The OPEN admission, not the newest row.
+    expect(bodies[0]).toEqual({ admissionId: OPEN_ADMISSION });
+  });
+
+  it("offers no control when every admission is discharged, and says why", async () => {
+    noPlan = true;
+    admissions = [
+      {
+        id: DISCHARGED_ADMISSION,
+        state: "discharged",
+        admissionAt: "2026-01-04T00:00:00.000Z",
+        dischargedAt: "2026-02-01T00:00:00.000Z",
+      },
+    ];
+    mount();
+    await waitFor(() => expect(screen.getByText("No care plan yet")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Start the care plan" })).toBeNull();
+    expect(screen.getByText(/no open admission/i)).toBeTruthy();
+    expect(writes()).toHaveLength(0);
+  });
+
+  it("no longer claims the plan appears by itself on admission — nothing in the product did that", async () => {
+    noPlan = true;
+    admissions = [
+      {
+        id: OPEN_ADMISSION,
+        state: "active",
+        admissionAt: "2025-11-02T00:00:00.000Z",
+        dischargedAt: null,
+      },
+    ];
+    mount();
+    await waitFor(() => expect(screen.getByText("No care plan yet")).toBeTruthy());
+    expect(screen.queryByText(/created when the patient is admitted/i)).toBeNull();
+  });
+
+  it("a refused bootstrap says so and leaves the control offered", async () => {
+    noPlan = true;
+    admissions = [
+      {
+        id: OPEN_ADMISSION,
+        state: "active",
+        admissionAt: "2025-11-02T00:00:00.000Z",
+        dischargedAt: null,
+      },
+    ];
+    writeFailure = {
+      status: 409,
+      body: { error: { code: "CONFLICT", message: "already exists" } },
+    };
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Start the care plan" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/Could not start/i));
+    expect(screen.getByRole("button", { name: "Start the care plan" })).toBeTruthy();
   });
 });

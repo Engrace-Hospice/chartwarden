@@ -22,10 +22,17 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // `cap()`, which calls `s.replace`. It never threw only because the set is populated at FINALIZE and
 // nothing in the product could finalize.
 //
-// STILL NOT BUILT: the IDG-review MEETING screens are M14's, not M7's (#91 lists them under M14); the
-// AI care-plan suggestion rail is M29 and renders as a stated absence; and `POST /patients/:id/
+// F-066 (#161) — the plan BOOTSTRAP is now built. This header used to end: "`POST /patients/:id/
 // care-plan` (plan bootstrap) has a client but no control — the plan shell is created on admission,
-// and a "create care plan" button would need an admissionId this screen does not read.
+// and a 'create care plan' button would need an admissionId this screen does not read". Both halves
+// were wrong in the same way: nothing in the product created the plan shell on admission, and no
+// caller could resolve an admissionId for a patient at all until F-065 added
+// `GET /patients/:patientId/admissions`. The Care Plan View's empty state now resolves the patient's
+// OPEN admission through that read and offers "Start the care plan" — or says the patient has no open
+// admission, which is the one honest reason not to offer it.
+//
+// STILL NOT BUILT: the IDG-review MEETING screens are M14's, not M7's (#91 lists them under M14); the
+// AI care-plan suggestion rail is M29 and renders as a stated absence.
 import { lazy } from "react";
 import type { ComponentType } from "react";
 const CarePlanView = lazy(() =>

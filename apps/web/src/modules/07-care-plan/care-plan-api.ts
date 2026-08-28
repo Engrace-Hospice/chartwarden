@@ -140,6 +140,33 @@ const patchHeaders = (rowVersion: number): { "If-Match": string; "Idempotency-Ke
 
 // ── plan + version lifecycle ───────────────────────────────────────────────────────────────────────────
 
+/**
+ * F-066 (#161) — the patient's admissions, newest first (the read F-065 added).
+ *
+ * `bootstrapCarePlan` below requires an `admissionId`, and until that route existed nothing could
+ * resolve one for a patient: `GET /api/v1/admissions` is an org-wide census taking no patient filter,
+ * whose items carry no `patientId`, and `GET /patients/:id` returns no admission. So this module had a
+ * client for the plan bootstrap and declined to offer a control for it — the screen header said as
+ * much: "a 'create care plan' button would need an admissionId this screen does not read". It reads it
+ * now.
+ */
+export async function loadPatientAdmissions(
+  client: ApiClient,
+  patientId: string,
+): Promise<
+  { id: string; state: string; admissionAt: string | null; dischargedAt: string | null }[]
+> {
+  const { data } = await client.GET("/api/v1/patients/{patientId}/admissions", {
+    params: { path: { patientId } },
+  });
+  return (data?.items ?? []) as {
+    id: string;
+    state: string;
+    admissionAt: string | null;
+    dischargedAt: string | null;
+  }[];
+}
+
 /** §5.2 — create the plan shell for an admission. The initial IPOC hangs off this. */
 export async function bootstrapCarePlan(
   client: ApiClient,

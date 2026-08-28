@@ -540,9 +540,7 @@ describe("M22-T07 — F-060 document tags are readable, and therefore removable"
       headers: RN,
     });
     expect(res.statusCode).toBe(200);
-    const found = res
-      .json()
-      .items.find((t: { tagKey: string }) => t.tagKey === "f060-listed") as
+    const found = res.json().items.find((t: { tagKey: string }) => t.tagKey === "f060-listed") as
       | { tagValue: string }
       | undefined;
     expect(found).toBeDefined();
@@ -577,9 +575,9 @@ describe("M22-T07 — F-060 document tags are readable, and therefore removable"
       url: `/api/v1/documents/${DOC}/tags`,
       headers: RN,
     });
-    expect(
-      after.json().items.some((t: { tagKey: string }) => t.tagKey === "f060-roundtrip"),
-    ).toBe(false);
+    expect(after.json().items.some((t: { tagKey: string }) => t.tagKey === "f060-roundtrip")).toBe(
+      false,
+    );
   });
 
   it("tags supplied at creation are persisted, not validated and discarded", async () => {
@@ -608,7 +606,10 @@ describe("M22-T07 — F-060 document tags are readable, and therefore removable"
     expect(res.statusCode).toBe(200);
     expect(res.json().items).toHaveLength(2);
     expect(
-      res.json().items.map((t: { tagKey: string }) => t.tagKey).sort(),
+      res
+        .json()
+        .items.map((t: { tagKey: string }) => t.tagKey)
+        .sort(),
     ).toEqual(["f060-at-birth", "f060-at-birth-2"]);
     // A bare key carries a null value on the wire — not the absent field the DTO would not type.
     const bare = res

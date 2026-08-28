@@ -40,6 +40,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
+import { bootstrapCarePlan, loadPatientAdmissions } from "./care-plan-api";
 import {
   CarePlanElementModal,
   type ElementAction,
@@ -125,6 +126,12 @@ export function CarePlanView(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [empty, setEmpty] = useState(false);
+  // F-066 (#161) — the open admission `POST /patients/:id/care-plan` is keyed by. `null` while the
+  // read is in flight or when the patient has none; a patient with only discharged admissions is not
+  // currently under care, and bootstrapping a plan into one would be wrong.
+  const [openAdmissionId, setOpenAdmissionId] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
   const [element, setElement] = useState<{
     action: ElementAction;
     problemId?: string | null;
@@ -157,6 +164,11 @@ export function CarePlanView(): JSX.Element {
       // The read response is now a typed union: the no-plan branch is `{ carePlan: null }` (no `id`), a
       // real plan carries the assembled fields. Narrow on `"id" in data` so the assembled branch is typed.
       if (!data || !("id" in data) || !data.id) {
+        // No plan yet — resolve the admission a bootstrap would hang off, so the empty state can
+        // offer the create rather than assert that admission already did it.
+        const admissions = await loadPatientAdmissions(client, patientId);
+        if (!active) return;
+        setOpenAdmissionId(admissions.find((a) => a.dischargedAt == null)?.id ?? null);
         setEmpty(true);
         setLoading(false);
         return;
@@ -226,12 +238,49 @@ export function CarePlanView(): JSX.Element {
     );
   }
   if (empty || !plan) {
+    // F-066 (#161) — this used to say the plan "is created when the patient is admitted", which was
+    // not true of anything in the product: `POST /patients/:id/care-plan` had a client and no control,
+    // and no caller could resolve the `admissionId` it requires. The plan of care is the legal
+    // predicate for delivering hospice care at all (42 CFR 418.56(b)), so "it will appear by itself"
+    // was the one description that could not be acted on.
     return (
       <PatientChartBail banner={bailBanner} patientId={patientId} current="care-plan">
         <EmptyState
           title="No care plan yet"
-          description="An initial IPOC is created when the patient is admitted; problems, goals, and interventions appear here."
+          description={
+            openAdmissionId
+              ? "Start the individualised plan of care for this admission (42 CFR 418.56(b)). Problems, goals, and interventions are added to it here."
+              : "This patient has no open admission, so there is no admission to hang a plan of care on. Admit the patient first."
+          }
+          action={
+            openAdmissionId ? (
+              <Button
+                onClick={() => {
+                  if (!patientId || !openAdmissionId || starting) return;
+                  setStarting(true);
+                  setStartError(null);
+                  void bootstrapCarePlan(client, patientId, openAdmissionId).then((res) => {
+                    setStarting(false);
+                    if (!res.ok) {
+                      setStartError("Could not start the care plan.");
+                      return;
+                    }
+                    setEmpty(false);
+                    reload();
+                  });
+                }}
+                disabled={starting}
+              >
+                {starting ? "Starting…" : "Start the care plan"}
+              </Button>
+            ) : undefined
+          }
         />
+        {startError ? (
+          <p role="alert" aria-live="assertive" style={{ color: "var(--color-error)" }}>
+            {startError}
+          </p>
+        ) : null}
       </PatientChartBail>
     );
   }

@@ -108,33 +108,59 @@ async function loadMembers(
   };
 }
 
-async function loadAdmissions(
+/**
+ * F-066 (#161) — the patient's admissions, newest first, from the read F-065 added.
+ *
+ * This used to page `GET /api/v1/admissions`, the ORG-WIDE census: it takes no patient filter and its
+ * items are `{ id, state, version }` with no `patientId`, so the options could not be narrowed to the
+ * patient and could not even be LABELLED with whose they were. `AdmissionLookupField` accepted a
+ * `patientId` prop and destructured it into `_patientId` — accepted and dropped. The clerk therefore
+ * chose an opaque uuid from every admission in the organization; the issue called the old raw text
+ * input a transcription error waiting to become a billing error, and picking the wrong tenant-wide row
+ * from a list of `Admission 3f2a1b0c` is the same error with a dropdown around it.
+ */
+async function loadPatientAdmissions(
   client: ApiClient,
+  patientId: string,
   input: EntityLookupLoadInput,
 ): Promise<EntityLookupLoadResult> {
-  const query: Record<string, string | number> = { limit: input.limit };
-  if (input.cursor) query.cursor = input.cursor;
-  const { data, error } = await client.GET("/api/v1/admissions", {
-    params: { query },
-  } as never);
+  // No patient chosen yet: the field is disabled and says so — never a list nobody can choose from.
+  if (!patientId) return { options: [], nextCursor: null };
+  const { data, error } = await client.GET("/api/v1/patients/{patientId}/admissions", {
+    params: { path: { patientId } },
+  });
   if (error) throw error;
-  const rawItems = ((
-    data as { items?: Array<{ id: string; state: string }>; nextCursor?: string | null }
-  )?.items ?? []) as Array<{ id: string; state: string }>;
+  const rawItems = (data?.items ?? []) as Array<{
+    id: string;
+    state: string;
+    admissionAt: string | null;
+    dischargedAt: string | null;
+  }>;
   const needle = input.query.trim().toLowerCase();
   const items = needle
     ? rawItems.filter(
-        (a) => a.id.toLowerCase().includes(needle) || a.state.toLowerCase().includes(needle),
+        (a) =>
+          a.id.toLowerCase().includes(needle) ||
+          a.state.toLowerCase().includes(needle) ||
+          (a.admissionAt ?? "").toLowerCase().includes(needle),
       )
     : rawItems;
   return {
     options: items.map((a) => ({
+      // The admission a human recognises is the one they can DATE. The uuid stays as the secondary,
+      // because it is what the wizard sends and a biller reconciling against a record may need it.
       id: a.id,
-      label: optionLabel(`Admission ${shortId(a.id)}`, a.state),
-      searchLabel: a.id,
-      description: "Admission record",
+      label: optionLabel(
+        a.admissionAt ? `Admitted ${a.admissionAt.slice(0, 10)}` : "Admission (no date recorded)",
+        shortId(a.id),
+      ),
+      searchLabel: a.admissionAt ?? a.id,
+      description: a.dischargedAt
+        ? `${a.state} · discharged ${a.dischargedAt.slice(0, 10)}`
+        : `${a.state} · open`,
     })),
-    nextCursor: (data as { nextCursor?: string | null } | undefined)?.nextCursor ?? null,
+    // The route answers the patient's admissions in one page — there is no cursor to follow.
+    nextCursor: null,
   };
 }
 
@@ -249,18 +275,27 @@ export function MdmEntityLookupField(props: LookupProps & { kind: MdmKind }): JS
   );
 }
 
-export function AdmissionLookupField(props: LookupProps & { patientId?: string }): JSX.Element {
+/**
+ * F-066 (#161) — `patientId` is REQUIRED, and is now actually used. An admission is only meaningful
+ * against the patient it belongs to: every clinical create keyed by `admissionId` is a create FOR a
+ * patient, so a lookup that spans the organization can only ever offer wrong answers alongside the
+ * right one. Until a patient is chosen the field is disabled and says why, rather than listing the
+ * whole census.
+ */
+export function AdmissionLookupField(props: LookupProps & { patientId: string }): JSX.Element {
   const client = useApiClient();
-  const { patientId: _patientId, ...rest } = props;
+  const { patientId, ...rest } = props;
   const loadOptions = useCallback(
-    (input: EntityLookupLoadInput) => loadAdmissions(client, input),
-    [client],
+    (input: EntityLookupLoadInput) => loadPatientAdmissions(client, patientId, input),
+    [client, patientId],
   );
   return (
     <EntityLookupField
       {...rest}
       loadOptions={loadOptions}
-      placeholder={props.placeholder ?? "Search admissions..."}
+      disabled={props.disabled ?? !patientId}
+      hint={props.hint ?? (patientId ? undefined : "Choose a patient first.")}
+      placeholder={props.placeholder ?? "Search this patient's admissions..."}
     />
   );
 }
