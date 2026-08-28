@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -14,6 +15,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useSearchParams } from "react-router-dom";
+import { approveTimeOff, denyTimeOff } from "./scheduling-api";
 import { TIMEOFF_TONE, stateLabel } from "./scheduling-status";
 
 interface TimeOffRow {
@@ -35,6 +37,8 @@ export function SchedulingTimeOff(): JSX.Element {
   const [rows, setRows] = useState<TimeOffRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,6 +59,23 @@ export function SchedulingTimeOff(): JSX.Element {
     void load();
   }, [load]);
 
+  /**
+   * #91 — decide a request. This queue's whole reason to exist is an approval it did not offer, and the
+   * decision is load-bearing beyond the requester: APPROVED time off is what M17's conflict rules refuse
+   * a visit against, so an approval nobody could record was also a clinician the scheduler kept booking.
+   */
+  async function decide(id: string, kind: "approve" | "deny"): Promise<void> {
+    setBusyId(id);
+    setNotice(null);
+    const res =
+      kind === "approve"
+        ? await approveTimeOff(client, id)
+        : await denyTimeOff(client, id, "Coverage cannot be arranged for this period.");
+    setBusyId(null);
+    setNotice(res.ok ? (kind === "approve" ? "Approved." : "Denied.") : res.message);
+    if (res.ok) await load();
+  }
+
   return (
     <WorkQueueLayout
       header={
@@ -64,6 +85,17 @@ export function SchedulingTimeOff(): JSX.Element {
             {membership ? `, scoped to clinician ${membership.slice(0, 8)}` : ""}
             {state ? `, filtered to ${stateLabel(state)}` : ""}.
           </div>
+          {notice ? (
+            <output
+              style={{
+                display: "block",
+                color: "var(--color-on-surface-variant)",
+                fontSize: "0.8rem",
+              }}
+            >
+              {notice}
+            </output>
+          ) : null}
         </PageHeader>
       }
       filters={
@@ -100,6 +132,7 @@ export function SchedulingTimeOff(): JSX.Element {
                   <th style={thStyle}>Starts</th>
                   <th style={thStyle}>Ends</th>
                   <th style={thStyle}>State</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>Decide</th>
                 </tr>
               </thead>
               <tbody>
@@ -120,6 +153,29 @@ export function SchedulingTimeOff(): JSX.Element {
                         label={stateLabel(r.state)}
                         tone={TIMEOFF_TONE[r.state] ?? "neutral"}
                       />
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: "right" }}>
+                      {r.state === "requested" ? (
+                        <span style={{ display: "inline-flex", gap: "0.35rem" }}>
+                          <Button
+                            size="sm"
+                            disabled={busyId === r.id}
+                            onClick={() => void decide(r.id, "approve")}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            tone="tertiary"
+                            disabled={busyId === r.id}
+                            onClick={() => void decide(r.id, "deny")}
+                          >
+                            Deny
+                          </Button>
+                        </span>
+                      ) : (
+                        <span style={{ color: "var(--color-muted)" }}>—</span>
+                      )}
                     </td>
                   </tr>
                 ))}

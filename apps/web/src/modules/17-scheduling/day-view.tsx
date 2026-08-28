@@ -1,4 +1,12 @@
-import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@wardenx/ui";
+import {
+  Button,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  TextField,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/17-scheduling — Day View (M17 §5.1, Track B / ADR-0030).
 // Spec: docs/design/screens — "Use Work Queue". The scheduler's per-clinician day grid: one row per visit for the
 // selected service date with its lifecycle chip + scheduled window. The drag-drop reschedule / publish-all
@@ -9,6 +17,16 @@ import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient }
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSession } from "../../shell/session";
+import {
+  type MembershipOption,
+  type PatientAddressOption,
+  loadMemberships,
+  loadPatientAddresses,
+  loadPatientAdmissions,
+  searchPatients,
+} from "./scheduling-api";
+import { ScheduleVisitModal } from "./visit-modals";
 import { type VisitRow, VisitRows } from "./visit-table";
 
 export function SchedulingDay(): JSX.Element {
@@ -20,6 +38,44 @@ export function SchedulingDay(): JSX.Element {
   const [visits, setVisits] = useState<VisitRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [scheduling, setScheduling] = useState(false);
+  const [patientQuery, setPatientQuery] = useState("");
+  const [patientHits, setPatientHits] = useState<{ id: string; label: string }[]>([]);
+  const [target, setTarget] = useState<{ patientId: string; admissionId: string } | null>(null);
+  const [addresses, setAddresses] = useState<PatientAddressOption[]>([]);
+  const [memberships, setMemberships] = useState<MembershipOption[]>([]);
+  const [pickError, setPickError] = useState<string | null>(null);
+  const session = useSession();
+
+  // The assignee roster. NOT an eligibility list — the §4.7 D8 gate is the server's (see visit-modals).
+  useEffect(() => {
+    const orgId = session?.organizationId;
+    if (!orgId) return;
+    void loadMemberships(client, orgId).then(setMemberships);
+  }, [client, session]);
+
+  /**
+   * Choosing the patient resolves the two things `POST /visits` needs and a day view does not have: the
+   * open ADMISSION the visit is filed under (F-065 — nothing could resolve one for a patient until that
+   * read landed, see #161) and the patient's ADDRESSES, since a home visit with no address is a visit
+   * nobody can travel to. If either is missing the form is not opened and the reason is said out loud.
+   */
+  async function choosePatient(patientId: string): Promise<void> {
+    setPickError(null);
+    const [admissions, addr] = await Promise.all([
+      loadPatientAdmissions(client, patientId),
+      loadPatientAddresses(client, patientId),
+    ]);
+    const openAdmission = admissions.find((a) => a.dischargedAt == null);
+    if (!openAdmission) {
+      setPickError("That patient has no open admission, so a visit cannot be scheduled for them.");
+      return;
+    }
+    setAddresses(addr);
+    setTarget({ patientId, admissionId: openAdmission.id });
+    setPatientHits([]);
+    setScheduling(true);
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,10 +115,66 @@ export function SchedulingDay(): JSX.Element {
       }
       filters={
         <div style={filterShellStyle}>
+          {/* #91 — scheduling starts here. A day view has no patient context, so the patient is
+              searched for, and choosing one resolves the admission and addresses the create needs. */}
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
+            <div style={{ flex: 1, maxWidth: "22rem" }}>
+              <TextField
+                label="Schedule a visit — find a patient"
+                value={patientQuery}
+                onChange={(e) => setPatientQuery(e.target.value)}
+              />
+            </div>
+            <Button
+              tone="tertiary"
+              disabled={patientQuery.trim().length < 2}
+              onClick={() => void searchPatients(client, patientQuery).then(setPatientHits)}
+            >
+              Search
+            </Button>
+          </div>
+          {patientHits.length > 0 ? (
+            <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+              {patientHits.map((p) => (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    style={{
+                      border: "none",
+                      background: "none",
+                      cursor: "pointer",
+                      padding: "0.35rem 0",
+                      fontSize: "0.85rem",
+                      color: "var(--color-on-surface)",
+                    }}
+                    onClick={() => void choosePatient(p.id)}
+                  >
+                    {p.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {pickError ? (
+            <p role="alert" style={{ margin: 0, fontSize: "0.8rem", color: "var(--color-error)" }}>
+              {pickError}
+            </p>
+          ) : null}
           <div style={infoBannerStyle}>
             Reads are server-scoped by date and optional membership query parameters. Drag/drop
-            reschedule and publish actions remain outside this read-only view.
+            rescheduling is not built; a visit is moved from its detail page.
           </div>
+          {target ? (
+            <ScheduleVisitModal
+              open={scheduling}
+              patientId={target.patientId}
+              admissionId={target.admissionId}
+              addresses={addresses}
+              memberships={memberships}
+              onClose={() => setScheduling(false)}
+              onScheduled={() => void load()}
+            />
+          ) : null}
         </div>
       }
       table={

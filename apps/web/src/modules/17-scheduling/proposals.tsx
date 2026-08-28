@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -15,6 +16,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useSearchParams } from "react-router-dom";
+import { dismissProposal, publishProposal } from "./scheduling-api";
 import { PROPOSAL_TONE, stateLabel } from "./scheduling-status";
 
 interface ProposalRow {
@@ -32,6 +34,8 @@ export function SchedulingProposals(): JSX.Element {
   const [rows, setRows] = useState<ProposalRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,6 +56,32 @@ export function SchedulingProposals(): JSX.Element {
     void load();
   }, [load]);
 
+  /**
+   * #91 — decide a proposal. PUBLISH is the write this inbox exists for: M17 generates proposals from
+   * the care plan's frequency orders, the IDG's decisions and the supervisory cadence, and publishing is
+   * what turns one into a real scheduled visit. With no caller, every proposal the platform produced sat
+   * in this list and the visits the plan of care called for were never created.
+   *
+   * A dismissal keeps the row — declining to schedule is a decision, not an absence of one.
+   */
+  async function decide(proposalId: string, kind: "publish" | "dismiss"): Promise<void> {
+    setBusyId(proposalId);
+    setNotice(null);
+    const res =
+      kind === "publish"
+        ? await publishProposal(client, proposalId)
+        : await dismissProposal(client, proposalId, "Not scheduling this occurrence.");
+    setBusyId(null);
+    setNotice(
+      res.ok
+        ? kind === "publish"
+          ? "Published — the visit is on the schedule."
+          : "Dismissed."
+        : res.message,
+    );
+    if (res.ok) await load();
+  }
+
   const pending = rows.filter((r) => r.status === "pending");
 
   return (
@@ -62,6 +92,17 @@ export function SchedulingProposals(): JSX.Element {
             Pending visit proposals awaiting publish
             {patient ? ` for patient ${patient.slice(0, 8)}` : ""}.
           </div>
+          {notice ? (
+            <output
+              style={{
+                display: "block",
+                color: "var(--color-on-surface-variant)",
+                fontSize: "0.8rem",
+              }}
+            >
+              {notice}
+            </output>
+          ) : null}
         </PageHeader>
       }
       filters={
@@ -97,6 +138,7 @@ export function SchedulingProposals(): JSX.Element {
                   <th style={thStyle}>Purpose</th>
                   <th style={thStyle}>Patient</th>
                   <th style={thStyle}>Status</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>Decide</th>
                 </tr>
               </thead>
               <tbody>
@@ -114,6 +156,25 @@ export function SchedulingProposals(): JSX.Element {
                         label={stateLabel(r.status)}
                         tone={PROPOSAL_TONE[r.status] ?? "neutral"}
                       />
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: "right" }}>
+                      <span style={{ display: "inline-flex", gap: "0.35rem" }}>
+                        <Button
+                          size="sm"
+                          disabled={busyId === r.id}
+                          onClick={() => void decide(r.id, "publish")}
+                        >
+                          Publish
+                        </Button>
+                        <Button
+                          size="sm"
+                          tone="tertiary"
+                          disabled={busyId === r.id}
+                          onClick={() => void decide(r.id, "dismiss")}
+                        >
+                          Dismiss
+                        </Button>
+                      </span>
                     </td>
                   </tr>
                 ))}
