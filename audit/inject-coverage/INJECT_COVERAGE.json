@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1263,
-    "coveredRoutes": 1263,
-    "directRoutesReferenced": 1205
+    "routes": 1264,
+    "coveredRoutes": 1264,
+    "directRoutesReferenced": 1206
   },
   "modules": [
     {
@@ -221,14 +221,14 @@
     },
     {
       "module": "22-documents",
-      "routes": 38,
+      "routes": 39,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/document-doclens.test.ts",
         "apps/backend/__tests__/document-routes.test.ts",
         "apps/backend/__tests__/document-workflow-acceptance.test.ts"
       ],
-      "directRoutesReferenced": 30
+      "directRoutesReferenced": 31
     },
     {
       "module": "23-billing-medicare",

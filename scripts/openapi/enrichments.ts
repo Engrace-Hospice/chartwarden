@@ -1499,6 +1499,9 @@ import {
   ReviewQuerySchema as M22ReviewQuerySchema,
   SignedUrlRequest as M22SignedUrlRequest,
   SignedUrlResponseSchema as M22SignedUrlResponseSchema,
+  TagListQuerySchema as M22TagListQuerySchema,
+  TagListResponseSchema as M22TagListResponseSchema,
+  TagViewSchema as M22TagViewSchema,
   TenantOverlayListResponseSchema as M22TenantOverlayListResponseSchema,
   UploadDocumentRequest as M22UploadDocumentRequest,
   UploadVersionRequest as M22UploadVersionRequest,
@@ -4962,7 +4965,20 @@ Object.assign(ROUTE_ENRICHMENTS, {
     // back what the server made of it. The emitted contract did not look absent, it looked satisfied.
     response: M22DocumentViewSchema,
   },
-  "POST /api/v1/documents/:id/tags": { summary: "Add a tag to a document", body: M22AddTagRequest },
+  // F-060 — `document_tag` had two writers and no reader. The GET is new; the POST always returned
+  // the created tag on the wire and declared no response schema, so `client:gen` typed it `never`
+  // and the id the DELETE below takes was unreadable — the tag became undeletable on reload.
+  "GET /api/v1/documents/:id/tags": {
+    summary: "List a document's tags (§3.3, cursor-paginated)",
+    query: M22TagListQuerySchema,
+    response: M22TagListResponseSchema,
+  },
+  "POST /api/v1/documents/:id/tags": {
+    summary: "Add a tag to a document",
+    body: M22AddTagRequest,
+    status: 201,
+    response: M22TagViewSchema,
+  },
   "DELETE /api/v1/documents/:id/tags/:tagId": { summary: "Remove a tag from a document" },
   "POST /api/v1/documents/:id/export-phi-bundle": {
     summary: "§164.524 right-of-access bulk PHI export (step-up)",
