@@ -61,3 +61,12 @@ export const AUDITOR_ACCOUNT = (): DemoAccount => byEmailPrefix("avery@");
  * exactly the split the eMAR spec has to sign in around.
  */
 export const RN_ACCOUNT = (): DemoAccount => byEmailPrefix("rita@");
+/**
+ * The hospice medical director from `db:seed:staff` (`md` / `hospice_physician` / `medical_director`)
+ * — the seeded account that can PRESCRIBE. M12 gates `POST /medication-orders` and the §2.2 lifecycle
+ * on a prescribing discipline resolved from role grants, so the RN who administers a dose (M13) and
+ * the physician who orders it are deliberately two different logins, exactly as they are on a ward.
+ * Holding two of M12's four prescriber roles is why the action modal's discipline select offers a
+ * choice here rather than preselecting one.
+ */
+export const PRESCRIBER_ACCOUNT = (): DemoAccount => byEmailPrefix("drharris@");

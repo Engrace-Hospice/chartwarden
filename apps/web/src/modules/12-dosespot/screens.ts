@@ -23,6 +23,26 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 //     the read M07 declined to build a create without, and the one M24's claim wizard works around by
 //     asking a clerk to type the uuid.
 //
+// F-068 (#91 AC5) — `e2e/specs/prescribing.spec.ts` drives the primary path in a real browser: search
+// M38 for the drug, resolve its NDC, create the draft, send it for signature, sign it, and assert the
+// order reaches the patient's ACTIVE list — the state M13's eMAR administers against. Writing it found
+// that "PRESCRIBING WORKS NOW" was not true on any seeded stack, for a reason outside M12: `code_system`,
+// `code_system_version` and `concept_rxnorm` were EMPTY, because those tables say "writes only via
+// `terminology_loader`" — an external loader that is not in this repository — and no seed wrote a row.
+// The drug search returned nothing, so no concept could be selected, so no NDC could be resolved, so the
+// modal's submit stayed disabled. `scripts/db/seed-terminology.ts` (new, in `db:seed:all`) seeds the
+// hospice comfort-kit concepts, including the morphine RxCUI the scenario seed already hard-codes.
+//
+// The screen was HONEST about it the whole time ("If this deployment's terminology has not been
+// loaded…"), which is exactly why it went unnoticed: the failure read as a deployment fact rather than a
+// missing seed. Verified in both directions — the spec fails with the concepts deleted and passes with
+// them present.
+//
+// KNOWN, NOT FIXED HERE: "Ordering physician (MDM id)" is a free-text control asking a prescriber to
+// type a UUID — the exact pattern this header rejects two paragraphs up for RxCUI and NDC, and the one
+// CLAUDE.md records M24's claim wizard working around by asking a clerk to type it. M40 holds the
+// directory read a picker would bind to.
+//
 // STILL DEFERRED, each for a reason rather than a schedule:
 //   • The `sign-controlled` EPCS two-step. §2.4/D18 ships Phase 1 `not_certified`, so
 //     `requestSignature` refuses a controlled order outright — the ceremony would always fail. The
