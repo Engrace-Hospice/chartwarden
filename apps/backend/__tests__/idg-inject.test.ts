@@ -365,6 +365,22 @@ describe("M14-idg-inject — live meeting: reads + attendance + packets + agenda
     });
     expect(phys.statusCode).toBe(201);
 
+    // route #12b (F-062) — the attendance roster the three attendance WRITES shipped without. Before
+    // this read existed a coordinator could check four clinicians in and no route in the module would
+    // return them, so the §5 live quorum gauge had no source.
+    const roster = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/attendance`,
+      headers: SUPER,
+    });
+    expect(roster.statusCode).toBe(200);
+    expect(
+      roster
+        .json()
+        .map((a: { discipline: string }) => a.discipline)
+        .sort(),
+    ).toEqual(["chaplain", "hospice_physician", "msw", "rn_case_manager"]);
+
     // route #1 — schedule list (location + date-range scoped).
     const schedule = await app.inject({
       method: "GET",
@@ -419,6 +435,16 @@ describe("M14-idg-inject — live meeting: reads + attendance + packets + agenda
     });
     expect(agenda.statusCode).toBe(201);
 
+    // route #17b (F-062) — the agenda list. add/update/remove existed; nothing read them back.
+    const agendaList = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/agenda`,
+      headers: SUPER,
+    });
+    expect(agendaList.statusCode).toBe(200);
+    expect(agendaList.json()).toHaveLength(1);
+    expect(agendaList.json()[0].kind).toBe("patient_review");
+
     // route #18 — record a decision (quorate_decision §4.7 predicate; quorum satisfied above).
     const decision = await app.inject({
       method: "POST",
@@ -436,6 +462,24 @@ describe("M14-idg-inject — live meeting: reads + attendance + packets + agenda
     });
     expect(decision.statusCode).toBe(201);
     expect(decision.json().wasQuorate).toBe(true);
+
+    // route #20b (F-062) — the meeting's decision ledger. The only prior reader anywhere was the
+    // PATIENT-scoped history tab, so "what did THIS meeting decide" — the question an adjournment
+    // commits to — was unanswerable.
+    const ledger = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/decisions`,
+      headers: SUPER,
+    });
+    expect(ledger.statusCode).toBe(200);
+    expect(ledger.json()).toHaveLength(1);
+    expect(ledger.json()[0].decisionKind).toBe("referral");
+    expect(ledger.json()[0].wasQuorate).toBe(true);
+    expect(ledger.json()[0].recordedByMembershipId).toBe("coord_1");
+    // The PHI posture is a PROPERTY of this read, not an accident of the current projection: the D4
+    // payload is the §3.3 denylisted narrative and a list read must never carry it.
+    expect(ledger.json()[0].payload).toBeUndefined();
+    expect(ledger.json()[0].quorumSnapshot).toBeUndefined();
 
     // route #21 — create an action item.
     const actionItem = await app.inject({
@@ -467,6 +511,10 @@ describe("M14-idg-inject — live meeting: reads + attendance + packets + agenda
     });
     expect(minutesBefore.statusCode).toBe(200);
     expect(minutesBefore.json().status).toBe("in_progress");
+    // Null, not 0, while in progress: "no decisions were recorded" and "the snapshot has not been
+    // taken" are different facts about a meeting, and a screen has to be able to tell them apart.
+    expect(minutesBefore.json().attendanceCount).toBeNull();
+    expect(minutesBefore.json().decisionCount).toBeNull();
 
     // route #9 — adjourn (fresh step-up required, §2.2 D13); the commit point: emits the open decision,
     // finalizes the minutes.
@@ -478,6 +526,23 @@ describe("M14-idg-inject — live meeting: reads + attendance + packets + agenda
     });
     expect(adjourn.statusCode).toBe(200);
     expect(adjourn.json().status).toBe("adjourned");
+
+    // route #25 again (F-062) — the finalized minutes. This read used to project 3 of the row's 13
+    // columns (`{ id, meetingId, status }`), so the §418.56(d) evidence document reported only that it
+    // was final. It now carries the finalize attribution and the SIZES of the three frozen snapshots —
+    // which adjournment also had to start writing, since it stamped the status and left all three NULL.
+    const minutesAfter = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/minutes`,
+      headers: SUPER,
+    });
+    expect(minutesAfter.statusCode).toBe(200);
+    expect(minutesAfter.json().status).toBe("final");
+    expect(minutesAfter.json().finalizedAt).not.toBeNull();
+    expect(minutesAfter.json().finalizedByMembershipId).toBe("coord_1");
+    expect(minutesAfter.json().attendanceCount).toBe(4);
+    expect(minutesAfter.json().decisionCount).toBe(1);
+    expect(minutesAfter.json().actionItemCount).toBe(1);
 
     await app.close();
   });

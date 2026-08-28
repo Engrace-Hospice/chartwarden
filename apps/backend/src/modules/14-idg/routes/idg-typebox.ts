@@ -244,11 +244,25 @@ export const ActionItemViewSchema = Type.Object({
 });
 export const ActionItemListResponseSchema = Type.Array(ActionItemViewSchema);
 
-/** A meeting's minutes view (GET /idg/meetings/:id/minutes). */
+/**
+ * A meeting's minutes view (GET /idg/meetings/:id/minutes).
+ *
+ * The three `*Count` fields are the SIZES of `idg_minutes`' frozen snapshots, not the snapshots: those
+ * nest the §3.3 denylisted decision narrative, and this module's read surface is narrative-free by
+ * construction (see `PatientIdgHistoryView`). Null while `in_progress` — nothing is frozen yet, and
+ * "no decisions" and "not yet snapshotted" are different facts. The readable document is the M22 render
+ * at `minutesDocumentId`.
+ */
 export const MinutesViewSchema = Type.Object({
   id: Type.String({ format: "uuid" }),
   meetingId: Type.String({ format: "uuid" }),
   status: Type.Union([Type.Literal("in_progress"), Type.Literal("final")]),
+  finalizedAt: Nullable(Type.String({ format: "date-time" })),
+  finalizedByMembershipId: Nullable(Type.String({ format: "uuid" })),
+  minutesDocumentId: Nullable(Type.String({ format: "uuid" })),
+  attendanceCount: Nullable(Type.Integer({ minimum: 0 })),
+  decisionCount: Nullable(Type.Integer({ minimum: 0 })),
+  actionItemCount: Nullable(Type.Integer({ minimum: 0 })),
 });
 
 /** A recurring-policy view (POST/PATCH /idg/recurring-policies). */
@@ -269,7 +283,10 @@ export const AttendanceViewSchema = Type.Object({
   checkedInAt: Type.String({ format: "date-time" }),
 });
 
-/** An agenda-item view (POST /idg/meetings/:id/agenda, PATCH /idg/agenda/:id). */
+/** The meeting's attendance roster (GET /idg/meetings/:id/attendance). */
+export const AttendanceListResponseSchema = Type.Array(AttendanceViewSchema);
+
+/** An agenda-item view (GET/POST /idg/meetings/:id/agenda, PATCH /idg/agenda/:id). */
 export const AgendaItemViewSchema = Type.Object({
   id: Type.String({ format: "uuid" }),
   meetingId: Type.String({ format: "uuid" }),
@@ -277,22 +294,34 @@ export const AgendaItemViewSchema = Type.Object({
   patientId: Nullable(Type.String({ format: "uuid" })),
 });
 
+/** The meeting's ordered agenda (GET /idg/meetings/:id/agenda). */
+export const AgendaListResponseSchema = Type.Array(AgendaItemViewSchema);
+
 const DECISION_STATUS = Type.Union([
   Type.Literal("open"),
   Type.Literal("emitted"),
   Type.Literal("superseded"),
 ]);
 
-/** A decision view (POST /idg/meetings/:id/decisions, PATCH /idg/decisions/:id, .../supersede). */
+/**
+ * A decision view (GET /idg/meetings/:id/decisions, POST .../decisions, PATCH /idg/decisions/:id,
+ * .../supersede). METADATA ONLY — `payload` (the D4 canonical narrative) and `quorumSnapshot` are
+ * deliberately absent, on the `PatientIdgHistoryView` precedent, so the meeting-conduct read surface
+ * never has to answer W-SUD-01.
+ */
 export const DecisionViewSchema = Type.Object({
   id: Type.String({ format: "uuid" }),
   meetingId: Type.String({ format: "uuid" }),
   patientId: Nullable(Type.String({ format: "uuid" })),
+  agendaItemId: Nullable(Type.String({ format: "uuid" })),
   decisionKind: DECISION_KIND,
   status: DECISION_STATUS,
   wasQuorate: Type.Boolean(),
+  recordedByMembershipId: Type.String({ format: "uuid" }),
+  recordedAt: Type.String({ format: "date-time" }),
   supersededByDecisionId: Nullable(Type.String({ format: "uuid" })),
 });
+export const DecisionListResponseSchema = Type.Array(DecisionViewSchema);
 
 /** The `{ id, removed: true }` envelope the DELETE routes return (attendance/agenda/action-items). */
 export const RemovedResponseSchema = Type.Object({

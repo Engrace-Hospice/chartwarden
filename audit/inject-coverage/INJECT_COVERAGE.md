@@ -4,7 +4,7 @@
 
 A module's pure-function permission/ABAC tests prove its DECISIONS are correct; they prove nothing about the route wiring, schema validation, or service composition around them (the M30 dead-`inOrg` class, the Claim Workbench 404). `covered` requires a real Fastify `.inject()` call through the module's route registrar.
 
-**Totals:** 39/39 modules covered (100%) · 1250/1250 route defs sit behind a covered module · 1191/1250 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
+**Totals:** 39/39 modules covered (100%) · 1253/1253 route defs sit behind a covered module · 1194/1253 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
 
 | Module | Routes | Covered | Direct refs | Suite file(s) |
 |---|--:|:--:|--:|---|
@@ -20,7 +20,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 11-orders | 28 | ✅ | 22/28 | apps/backend/__tests__/orders-routes.test.ts |
 | 12-dosespot | 31 | ✅ | 19/31 | apps/backend/__tests__/dosespot-routes.test.ts |
 | 13-emar | 28 | ✅ | 16/28 | apps/backend/__tests__/emar-caregiver-barcode.test.ts, apps/backend/__tests__/emar-routes.test.ts |
-| 14-idg | 27 | ✅ | 27/27 | apps/backend/__tests__/idg-inject.test.ts, apps/backend/__tests__/idg-routes.test.ts |
+| 14-idg | 30 | ✅ | 30/30 | apps/backend/__tests__/idg-inject.test.ts, apps/backend/__tests__/idg-routes.test.ts |
 | 15-discipline-care-plans | 28 | ✅ | 28/28 | apps/backend/__tests__/discipline-plans-inject.test.ts |
 | 16-bereavement | 33 | ✅ | 33/33 | apps/backend/__tests__/bereavement-inject.test.ts |
 | 17-scheduling | 32 | ✅ | 32/32 | apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts, apps/backend/__tests__/gap-093-membership-credential-live.test.ts, apps/backend/__tests__/scheduling-inject.test.ts |

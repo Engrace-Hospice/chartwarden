@@ -317,14 +317,37 @@ export function createDbIdgBackend(
     dueDate: iso(r.dueDate) ?? "",
     linkedArtifactKind: r.linkedArtifactKind,
   });
+  /**
+   * The decision METADATA projection. `payload` and `quorumSnapshot` are deliberately absent: the
+   * payload is the D4 canonical narrative (rationaleText / mutations / recommendations), denylisted in
+   * the §3.3 write-audit trigger, and publishing it on a list read would reopen W-SUD-01 for a surface
+   * built not to have to answer it (see `PatientIdgHistoryView`'s "PHI-safe by construction" note).
+   */
   const toDecisionView = (r: typeof DEC.$inferSelect): DecisionView => ({
     id: r.id,
     meetingId: r.idgMeetingId,
     patientId: r.patientId,
+    agendaItemId: r.agendaItemId,
     decisionKind: r.decisionKind,
     status: r.status,
     wasQuorate: r.wasQuorate,
+    recordedByMembershipId: r.recordedByMembershipId,
+    recordedAt: isoReq(r.recordedAt),
     supersededByDecisionId: r.supersededByDecisionId,
+  });
+  const toAttendanceView = (r: typeof ATT.$inferSelect): AttendanceView => ({
+    id: r.id,
+    meetingId: r.idgMeetingId,
+    membershipId: r.membershipId,
+    discipline: r.discipline,
+    status: r.status,
+    checkedInAt: iso(r.checkInAt) ?? "",
+  });
+  const toAgendaItemView = (r: typeof AGD.$inferSelect): AgendaItemView => ({
+    id: r.id,
+    meetingId: r.idgMeetingId,
+    kind: r.kind,
+    patientId: r.patientId,
   });
 
   return {
@@ -509,16 +532,89 @@ export function createDbIdgBackend(
     },
 
     // ── minutes read ───────────────────────────────────────────────────────────────────────────────────
+    /**
+     * F-062 — this used to project 3 of `idg_minutes`' 13 columns: `{ id, meetingId, status }`. The
+     * minutes screen therefore rendered two uuids and a status pill for the document that IS the
+     * §418.56(d) evidence of the review, while the row beside it held the frozen attendance / decision /
+     * action-item snapshots, the finalize attribution, and the M22 render back-ref.
+     *
+     * The snapshots are returned as COUNTS. They nest the decision payloads — the §3.3 denylisted
+     * narrative — so publishing them would reopen W-SUD-01 for a read surface deliberately built not to
+     * carry narrative; the readable document is the M22 render at `minutesDocumentId`, which has its own
+     * consent gate. `closing_note` is withheld for the same reason (a DENYLISTED free-text column).
+     */
     async getMinutes(orgId, meetingId): Promise<MinutesView> {
       return withOrg(orgId, async (tx) => {
         if (!(await meetingExists(tx, meetingId))) throw new NotFoundError("idg_meeting");
         const [r] = await tx
-          .select({ id: MIN.id, status: MIN.status })
+          .select({
+            id: MIN.id,
+            status: MIN.status,
+            finalizedAt: MIN.finalizedAt,
+            finalizedByMembershipId: MIN.finalizedByMembershipId,
+            minutesDocumentId: MIN.minutesDocumentId,
+            attendanceSnapshot: MIN.attendanceSnapshot,
+            decisionListSnapshot: MIN.decisionListSnapshot,
+            actionItemListSnapshot: MIN.actionItemListSnapshot,
+          })
           .from(MIN)
           .where(eq(MIN.idgMeetingId, meetingId))
           .limit(1);
         if (!r) throw new NotFoundError("idg_minutes");
-        return { id: r.id, meetingId, status: r.status };
+        // Null (rather than 0) while `in_progress`: nothing is frozen yet, and "no decisions were
+        // recorded" and "the snapshot has not been taken" are different facts about a meeting.
+        const size = (v: unknown): number | null => (Array.isArray(v) ? v.length : null);
+        return {
+          id: r.id,
+          meetingId,
+          status: r.status,
+          finalizedAt: iso(r.finalizedAt),
+          finalizedByMembershipId: r.finalizedByMembershipId,
+          minutesDocumentId: r.minutesDocumentId,
+          attendanceCount: size(r.attendanceSnapshot),
+          decisionCount: size(r.decisionListSnapshot),
+          actionItemCount: size(r.actionItemListSnapshot),
+        };
+      });
+    },
+
+    // ── meeting-conduct reads (F-062) ──────────────────────────────────────────────────────────────────
+    // Three writes each had no reader at all. `idg_attendance` backs the §2.7 quorum the
+    // `quorate_decision` predicate evaluates, `idg_agenda_item` is the meeting's running order, and
+    // `idg_decision` is what an adjournment commits — and none of the three could be read back through
+    // any route in the module. Ordered the way the surface reads them: attendance by check-in, agenda by
+    // its explicit `sort_order`, decisions newest-first.
+    async listAttendance(orgId, meetingId): Promise<AttendanceView[]> {
+      return withOrg(orgId, async (tx) => {
+        if (!(await meetingExists(tx, meetingId))) throw new NotFoundError("idg_meeting");
+        const rows = await tx
+          .select()
+          .from(ATT)
+          .where(eq(ATT.idgMeetingId, meetingId))
+          .orderBy(asc(ATT.checkInAt));
+        return rows.map(toAttendanceView);
+      });
+    },
+    async listAgenda(orgId, meetingId): Promise<AgendaItemView[]> {
+      return withOrg(orgId, async (tx) => {
+        if (!(await meetingExists(tx, meetingId))) throw new NotFoundError("idg_meeting");
+        const rows = await tx
+          .select()
+          .from(AGD)
+          .where(eq(AGD.idgMeetingId, meetingId))
+          .orderBy(asc(AGD.sortOrder));
+        return rows.map(toAgendaItemView);
+      });
+    },
+    async listDecisions(orgId, meetingId): Promise<DecisionView[]> {
+      return withOrg(orgId, async (tx) => {
+        if (!(await meetingExists(tx, meetingId))) throw new NotFoundError("idg_meeting");
+        const rows = await tx
+          .select()
+          .from(DEC)
+          .where(eq(DEC.idgMeetingId, meetingId))
+          .orderBy(desc(DEC.recordedAt));
+        return rows.map(toDecisionView);
       });
     },
 
@@ -763,29 +859,87 @@ export function createDbIdgBackend(
           .set({ frozenAt: at, lastIdgReviewedAt: at, updatedAt: at })
           .where(eq(PKT.idgMeetingId, id));
 
+        // F-062 — FREEZE THE MINUTES. `idg_minutes` declares three snapshot columns whose whole purpose
+        // is to make the finalized record immutable (the M4 trigger refuses a content UPDATE on `final`),
+        // and adjournment wrote NONE of them: it stamped `status`/`finalized_at`/`finalized_by` and left
+        // `attendance_snapshot`, `decision_list_snapshot` and `action_item_list_snapshot` NULL on every
+        // meeting the platform has ever adjourned. So the finalized minutes of a §418.56(d) review — the
+        // artefact a surveyor asks for — recorded that a review happened and nothing about what it
+        // reviewed. The two events carried the same emptiness (`attendanceSnapshot: {}`,
+        // `renderPayload: {}`), which is what M22's minutes render would have been handed.
+        //
+        // METADATA, matching the rest of this module's read surface: ids, disciplines, statuses, times.
+        // Not the decision payloads — those are the §3.3 denylisted narrative, they are already immutable
+        // once `emitted` (`updateDecision` refuses a non-`open` row), and the eraser hash-redacts patient
+        // references INSIDE these snapshots, which only works on a shape it can walk.
+        const attendanceRows = await tx
+          .select()
+          .from(ATT)
+          .where(eq(ATT.idgMeetingId, id))
+          .orderBy(asc(ATT.checkInAt));
+        // Re-read AFTER the emit loop so the snapshot records the committed `emitted` status, and across
+        // every status — a superseded decision is part of what the meeting did (§2.8).
+        const decisionRows = await tx
+          .select()
+          .from(DEC)
+          .where(eq(DEC.idgMeetingId, id))
+          .orderBy(asc(DEC.recordedAt));
+        const actionItemRows = await tx.select().from(ACT).where(eq(ACT.idgMeetingId, id));
+
+        const attendanceSnapshot = attendanceRows.map((a) => ({
+          attendanceId: a.id,
+          membershipId: a.membershipId,
+          discipline: a.discipline,
+          status: a.status,
+          checkInAt: iso(a.checkInAt),
+        }));
+        const decisionListSnapshot = decisionRows.map((d) => ({
+          decisionId: d.id,
+          patientId: d.patientId,
+          decisionKind: d.decisionKind,
+          status: d.status,
+          wasQuorate: d.wasQuorate,
+          recordedByMembershipId: d.recordedByMembershipId,
+          recordedAt: isoReq(d.recordedAt),
+          supersededByDecisionId: d.supersededByDecisionId,
+        }));
+        const actionItemListSnapshot = actionItemRows.map((a) => ({
+          actionItemId: a.id,
+          decisionId: a.idgDecisionId,
+          patientId: a.patientId,
+          assignedToMembershipId: a.assignedToMembershipId,
+          assignedToDiscipline: a.assignedToDiscipline,
+          status: a.status,
+          dueDate: iso(a.dueDate),
+        }));
+
         const minutesId = await ensureMinutes(tx, orgId, id);
         await tx
           .update(MIN)
-          .set({ status: "final", finalizedByMembershipId: userId, finalizedAt: at, updatedAt: at })
+          .set({
+            status: "final",
+            finalizedByMembershipId: userId,
+            finalizedAt: at,
+            attendanceSnapshot,
+            decisionListSnapshot,
+            actionItemListSnapshot,
+            updatedAt: at,
+          })
           .where(eq(MIN.id, minutesId));
 
-        const actionItems = await tx
-          .select({ id: ACT.id })
-          .from(ACT)
-          .where(eq(ACT.idgMeetingId, id));
         await emit(tx, orgId, "m14.meeting.adjourned", "idg_meeting", id, {
           meetingId: id,
           adjournedByMembershipId: userId,
           adjournedAt: at.toISOString(),
           decisionsEmittedCount,
-          actionItemsAssignedCount: actionItems.length,
-          attendanceSnapshot: {},
+          actionItemsAssignedCount: actionItemRows.length,
+          attendanceSnapshot,
         });
         await emit(tx, orgId, "m14.minutes.signed", "idg_minutes", minutesId, {
           minutesId,
           meetingId: id,
           finalizedByMembershipId: userId,
-          renderPayload: {},
+          renderPayload: { attendanceSnapshot, decisionListSnapshot, actionItemListSnapshot },
         });
         return toMeetingView({ ...m, status: "adjourned", actualEnd: at });
       });
