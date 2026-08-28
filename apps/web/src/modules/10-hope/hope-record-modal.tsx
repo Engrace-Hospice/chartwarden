@@ -79,7 +79,7 @@ const SEVERITIES: readonly Severity[] = ["none", "mild", "moderate", "severe"];
 const TRIGGER_SEVERITIES: ReadonlySet<string> = new Set(["moderate", "severe"]);
 
 // The §4.7 author vocabulary lives in `hope-api.ts` (`authorDisciplinesForRoles`) — it is the WIRE
-// vocabulary (RN/NP/MD), not the M3 role keys, and this modal used to conflate the two. See F-067 there.
+// vocabulary (RN/NP/MD), not the M3 role keys, and this modal used to conflate the two. See F-074 there.
 
 const RFA_KINDS: readonly RfaKind[] = [
   "01_admission",
@@ -272,7 +272,7 @@ export function HopeRecordModal({
   async function submit(): Promise<void> {
     // Narrowing, not a re-check: `blocked` already disables the control. Returning here rather than
     // casting is what lets the two calls below pass a real `AuthorDiscipline` — the `as` that used to
-    // stand in for this is precisely what let a role key reach the wire (F-067).
+    // stand in for this is precisely what let a role key reach the wire (F-074).
     if (authorDiscipline === "") return;
     setBusy(true);
     setError(null);

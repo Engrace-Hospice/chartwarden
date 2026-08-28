@@ -245,7 +245,7 @@ export async function regenerateSchedules(
 
 // ── §4.7 author attribution ────────────────────────────────────────────────────────────────────────
 //
-// F-067 (#91) — `authorDiscipline` is the ONE field in the platform whose wire vocabulary is not the
+// F-074 (#91) — `authorDiscipline` is the ONE field in the platform whose wire vocabulary is not the
 // lowercase M3 role key: the route schema is `Type.Union([Literal("RN"), Literal("NP"), Literal("MD")])`
 // (`10-hope/routes/hope-typebox.ts`), and `seed-scenario-clinical-core.ts`'s header has said so all
 // along. The record modal offered the caller's raw role keys as the select's VALUES and sent one

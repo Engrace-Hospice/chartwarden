@@ -5,7 +5,7 @@
 // HOPE is CMS-reportable: what this screen records is what the agency submits to iQIES and what HQRP
 // scores it on.
 //
-// IT FOUND THREE DEFECTS, WHICH IS THE ARGUMENT FOR WRITING IT (F-067).
+// IT FOUND THREE DEFECTS, WHICH IS THE ARGUMENT FOR WRITING IT (F-074).
 //
 //   1. `authorDiscipline` is the one field in the platform whose wire vocabulary is NOT the lowercase M3
 //      role key — the route schema is `Union([Literal("RN"), Literal("NP"), Literal("MD")])`. The record
