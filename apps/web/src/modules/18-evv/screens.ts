@@ -14,6 +14,25 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // appear on the supervisor roster only; `/me/evv/devices` is a clinician looking at their own handsets,
 // and approving one is an act on someone else's.
 //
+// F-078 (#91 AC5) — `e2e/specs/evv.spec.ts` drives the one M18 write a browser can: a supervisor
+// approves a pending handset and it leaves the queue. `db:seed:scenario-field-ops` self-registered one
+// device and approved it in the same breath, so `/evv/devices/pending` was permanently empty and the
+// ceremony had nothing to act on; the seed now leaves a second pending. The spec also asserts the
+// negative half — `/me/evv/devices` offers no approve control, because approving your own handset would
+// defeat the point of the control.
+//
+// TWO GAPS FOUND AND NOT FIXED THERE, recorded because they are compliance-shaped:
+//   • `evv_missing_resolution` has exactly ONE writer — the correction-of-record path, which needs a
+//     check-in to already exist in order to correct it. A visit that simply never captured produces
+//     nothing. The designed producer is M17's late-check sweep emitting
+//     `m17.visit.late_check_out_suspected`, whose own catalog entry reads "M18 opens an
+//     evv_missing_resolution row (M18 §7 / D6)". M18's side is a REGISTERED deferral in
+//     `outbox-deferred-consumers.ts` — a declared absence, correctly tracked. The M17 side is not:
+//     nothing in the codebase EMITS that event, so binding the consumer would still deliver nothing.
+//     The queue that exists to prove a visit happened when the device did not record it is unreachable.
+//   • The Aggregator Submission queue is empty for the same reason, so its resubmit/cancel controls
+//     are unexercisable on a seeded stack.
+//
 // STILL NOT HERE, and neither is a deferral: the check-in/check-out CAPTURE surfaces are the Capacitor
 // mobile flow (§5.2, owned by the M17 visit-detail CTA) — a browser has no attested device and no §12.4
 // posture to report, so there is nothing for a web screen to do. Device SELF-registration is the same
