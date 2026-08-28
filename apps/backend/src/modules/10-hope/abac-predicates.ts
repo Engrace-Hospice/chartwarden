@@ -75,6 +75,13 @@ export function hopeDisciplinesOf(context: AbacContext): readonly string[] {
   return [...new Set(context.roles)].map((d) => d.toUpperCase());
 }
 
+/** The actor's active membership id off the M2-assembled session attributes (never the request body).
+ *  Mirrors M7's `membershipIdOf` / M12's `actorOf` — the F-030 produced key. */
+function membershipIdOf(context: AbacContext): string | null {
+  const raw = context.attributes.membershipId;
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
+}
+
 /** Whether the actor holds the HOPE clinical-lead role (case-insensitive). */
 function isClinicalLead(context: AbacContext): boolean {
   return context.roles.some((r) =>
@@ -181,7 +188,14 @@ export function buildHopeAbacPredicates(
       if (!id) return false;
       const facts = await resolver.loadAssessment(context.organizationId, id);
       if (!facts) return false; // fail-closed (absent / cross-tenant)
-      return facts.originalSignedBy != null && facts.originalSignedBy === context.userId;
+      // MEMBERSHIP to MEMBERSHIP. `originalSignedBy` is `hope_assessment.signed_by_membership_id`, and
+      // this compared it to `context.userId` — two different id spaces that are never equal, so the
+      // ORIGINAL SIGNER was denied their own correction on every request and only a clinical lead could
+      // ever correct anything. GAP-026 is the same defect in M12, whose `actorOf` header already spells
+      // out why the route suites stay green through it: their fixtures use one id for both.
+      const actingMembershipId = membershipIdOf(context);
+      if (actingMembershipId === null) return false; // no active membership → cannot own a row
+      return facts.originalSignedBy != null && facts.originalSignedBy === actingMembershipId;
     },
     "hope.scope": async (context, target) => {
       const patientId = targetStr(target, "patientId");

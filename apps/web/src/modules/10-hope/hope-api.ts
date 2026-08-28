@@ -242,3 +242,60 @@ export async function regenerateSchedules(
   if (error || !data) return failure(response?.status, error);
   return { ok: true, value: data };
 }
+
+// ── §4.7 author attribution ────────────────────────────────────────────────────────────────────────
+//
+// F-067 (#91) — `authorDiscipline` is the ONE field in the platform whose wire vocabulary is not the
+// lowercase M3 role key: the route schema is `Type.Union([Literal("RN"), Literal("NP"), Literal("MD")])`
+// (`10-hope/routes/hope-typebox.ts`), and `seed-scenario-clinical-core.ts`'s header has said so all
+// along. The record modal offered the caller's raw role keys as the select's VALUES and sent one
+// through an `as AuthorDiscipline` cast, so every capture from the UI was rejected 422
+// `authorDiscipline: Expected union value` — all five RFAs, the SFV, and the correction alike. The cast
+// is why `tsc` was silent; the DOM suite asserted `sent.authorDiscipline === "rn"` against a stub that
+// 200s any non-GET, so it encoded the defect as the expectation.
+//
+// The derivation below MIRRORS THE SERVER'S rather than introducing a second one. M10's ABAC predicate
+// is `hopeDisciplinesOf(context).some(isHopeAuthorDisciplineAllowed)`, and `hopeDisciplinesOf` is
+// literally `roles.map(r => r.toUpperCase())` (`10-hope/abac-predicates.ts`) — so a role satisfies the
+// author floor exactly when its UPPERCASED key is one of RN / NP / MD. That matters beyond the casing:
+// the old `AUTHOR_ROLE_KEYS` also offered `rn_case_manager` and `medical_director`, and neither can ever
+// satisfy `hope.authorDisciplineAllowed` (`RN_CASE_MANAGER` is not in the list). A caller holding only
+// one of those would have been offered an attribution the server then refused 403 — the client and the
+// server disagreeing about who may author, which is worse than the casing bug because it fails later.
+//
+// Typed against `AuthorDiscipline`, which is extracted from the generated client, so a change to the
+// route's union becomes a compile error here instead of a 422 in front of a clinician.
+
+/** §4.7 — disciplines permitted to author any HOPE timepoint (mirrors `HOPE_AUTHOR_DISCIPLINES`). */
+const HOPE_AUTHOR_DISCIPLINES: readonly AuthorDiscipline[] = ["RN", "NP", "MD"];
+/** §4.7 — the narrower CMS floor for a Symptom-Follow-Up Visit (mirrors `SFV_AUTHOR_DISCIPLINES`). */
+const SFV_AUTHOR_DISCIPLINES: readonly AuthorDiscipline[] = ["RN", "NP"];
+
+/** Readable expansion of the CMS code; the CODE is what is recorded, so it leads. */
+const DISCIPLINE_LABELS: Record<AuthorDiscipline, string> = {
+  RN: "RN — Registered nurse",
+  NP: "NP — Nurse practitioner",
+  MD: "MD — Physician",
+};
+
+/** The label shown beside a discipline code in an attribution control. */
+export function authorDisciplineLabel(discipline: AuthorDiscipline): string {
+  return DISCIPLINE_LABELS[discipline];
+}
+
+/**
+ * The disciplines this caller may be ATTRIBUTED as, derived from their own session role keys the same
+ * way M10's ABAC predicate derives them. Deduplicated, because two role keys can normalize to one
+ * discipline (`rn` and `rn_case_manager` both mean RN to a reader, though only the first satisfies the
+ * server) and offering the same attribution twice is a choice with one answer.
+ *
+ * Empty means the capture cannot be attributed — NOT a permission verdict, which stays the server's.
+ */
+export function authorDisciplinesForRoles(
+  roles: readonly string[],
+  options: { readonly sfv?: boolean } = {},
+): readonly AuthorDiscipline[] {
+  const permitted = options.sfv === true ? SFV_AUTHOR_DISCIPLINES : HOPE_AUTHOR_DISCIPLINES;
+  const held = new Set(roles.map((r) => r.toUpperCase()));
+  return permitted.filter((d) => held.has(d));
+}
