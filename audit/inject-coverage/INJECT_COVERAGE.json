@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1264,
-    "coveredRoutes": 1264,
-    "directRoutesReferenced": 1206
+    "routes": 1265,
+    "coveredRoutes": 1265,
+    "directRoutesReferenced": 1207
   },
   "modules": [
     {
@@ -363,12 +363,12 @@
     },
     {
       "module": "37-ipu",
-      "routes": 50,
+      "routes": 51,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/ipu-inject.test.ts"
       ],
-      "directRoutesReferenced": 50
+      "directRoutesReferenced": 51
     },
     {
       "module": "38-terminology",

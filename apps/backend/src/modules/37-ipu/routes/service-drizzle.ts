@@ -8,6 +8,7 @@ import { type DbClient, schema, todayForOrganization } from "@wardenx/db";
 import {
   type AdmissionTransition,
   INITIAL_BED_CLEANING_STATUS,
+  type IpuAdmissionOutboxEvent,
   IpuStateError,
   RESTRAINT_REASSESS_FLOOR_MINUTES,
   type RoomOccupancyDecision,
@@ -45,6 +46,7 @@ import type {
   BedCleaningBody,
   CheckInVisitorBody,
   ConfirmBody,
+  ConfirmStaffBody,
   ConfirmTransferBody,
   CreateBedBody,
   CreateEquipmentBody,
@@ -385,12 +387,87 @@ export function buildDrizzleIpuRouteService(
    * bump the admission's state + version. `sourceBedId` is the bed whose cleaning cycle the transition drives
    * (the assigned bed on assignBed; the active-assignment bed on discharge/transfer).
    */
+  /**
+   * The per-event payload fields §4.4 requires BEYOND `{ ipuAdmissionId, organizationId }`.
+   *
+   * F-080 — every `m37.ipu_admission.*` event except `opened` declares extra REQUIRED properties
+   * (`unitId`, `bedId` + `levelOfCarePeriodId`, `activatedAt`, `targetKind`, `completedAt`, `reason`,
+   * `deathEventId`), and `applyAdmissionTransition` published only the two shared ones for all of them.
+   * The transactional publisher `Value.Check`s each payload against its catalog schema inside the
+   * mutation's own transaction, so the emit THREW and rolled the whole write back: `requestBed`,
+   * `assignBed`, `confirm`, `initiateTransfer`, `confirmTransfer` and `discharge` each answered 500 for
+   * every caller on every deployment. §2.2's entire lifecycle after `open` was unreachable.
+   *
+   * `opened` is the one that worked, and the reason is instructive: it is the ONE emit that does not go
+   * through this helper — `openAdmission` builds its payload inline, correctly. Nothing else did, so the
+   * shared path was wrong for all six and right for none, and the module's own tests never noticed
+   * because the pure machine's unit tests assert the event NAMES and never publish.
+   */
+  interface AdmissionEventFacts {
+    /** requestBed — the unit whose coverage and ready-bed state were actually checked. */
+    readonly unitId?: string;
+    /** assignBed — the bed the assignment was persisted against. */
+    readonly bedId?: string;
+    /** confirm — the activation instant, the same one written to `ipu_admission.activated_at`. */
+    readonly activatedAt?: Date;
+    /** initiateTransfer — `to_unit` / `to_home` / `to_facility`. */
+    readonly targetKind?: string;
+    /** confirmTransfer — when the destination acknowledged the handover. */
+    readonly completedAt?: Date;
+    /** discharge — the §2.2 discharge reason. */
+    readonly reason?: string;
+    /** recordDeath — the M6 death event this IPU death hangs off (no route yet). */
+    readonly deathEventId?: string;
+  }
+
+  /**
+   * Build one event's payload. A `switch` over the event union rather than a merged bag, so adding an
+   * `m37.ipu_admission.*` event without deciding what it carries is a compile error rather than a 500.
+   * A required fact that is genuinely absent is refused HERE, where the message names the event — the
+   * publisher's own `payload_schema_violation` names only the property.
+   */
+  const admissionEventPayload = (
+    event: IpuAdmissionOutboxEvent,
+    admission: typeof A.$inferSelect,
+    facts: AdmissionEventFacts,
+  ): Record<string, unknown> => {
+    const need = (value: string | null | undefined, field: string): string => {
+      if (!value) throw new ConflictError(`${event} cannot be emitted without ${field}`);
+      return value;
+    };
+    switch (event) {
+      case "m37.ipu_admission.opened":
+        return { levelOfCarePeriodId: admission.levelOfCarePeriodId, kind: admission.kind };
+      case "m37.ipu_admission.bed_requested":
+        // The requested unit, falling back to the one the row already carries — a non-`arranged`
+        // admission always has one (`ipu_admission_unit_xor_remote`).
+        return { unitId: need(facts.unitId ?? admission.unitId, "unitId") };
+      case "m37.ipu_admission.bed_assigned":
+        return {
+          bedId: need(facts.bedId, "bedId"),
+          levelOfCarePeriodId: need(admission.levelOfCarePeriodId, "levelOfCarePeriodId"),
+        };
+      case "m37.ipu_admission.activated":
+        return { activatedAt: (facts.activatedAt ?? new Date()).toISOString() };
+      case "m37.ipu_admission.transferring":
+        return { targetKind: need(facts.targetKind, "targetKind") };
+      case "m37.ipu_admission.transferred":
+        return { completedAt: (facts.completedAt ?? new Date()).toISOString() };
+      case "m37.ipu_admission.discharged":
+        return { reason: need(facts.reason, "reason") };
+      case "m37.ipu_admission.death_recorded":
+        return { deathEventId: need(facts.deathEventId, "deathEventId") };
+      case "m37.ipu_admission.closed":
+        return {};
+    }
+  };
+
   async function applyAdmissionTransition(
     t: DbClient,
     actor: IpuWriteActor,
     admission: typeof A.$inferSelect,
     transition: AdmissionTransition,
-    opts: { sourceBedId?: string; sourceBedStatus?: string } = {},
+    opts: { sourceBedId?: string; sourceBedStatus?: string; events?: AdmissionEventFacts } = {},
   ): Promise<void> {
     for (const eff of transition.effects) {
       if (eff.kind === "state_history") {
@@ -437,7 +514,11 @@ export function buildDrizzleIpuRouteService(
       } else if (eff.kind === "outbox") {
         await outbox.publish(t, {
           eventName: eff.event,
-          payload: { ipuAdmissionId: admission.id, organizationId: actor.organizationId },
+          payload: {
+            ipuAdmissionId: admission.id,
+            organizationId: actor.organizationId,
+            ...admissionEventPayload(eff.event, admission, opts.events ?? {}),
+          },
           organizationId: actor.organizationId,
           aggregateKind: "ipu_admission",
           aggregateId: admission.id,
@@ -879,7 +960,9 @@ export function buildDrizzleIpuRouteService(
           rnCoverageActive: coverage.covered,
           hasReadyBed: readyBeds.length > 0,
         });
-        await applyAdmissionTransition(t, actor, adm, transition);
+        await applyAdmissionTransition(t, actor, adm, transition, {
+          events: { unitId: body.unitId },
+        });
         const [updated] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         return admissionView(updated ?? adm);
       });
@@ -917,6 +1000,7 @@ export function buildDrizzleIpuRouteService(
         await applyAdmissionTransition(t, actor, adm, transition, {
           sourceBedId: body.bedId,
           sourceBedStatus: bed.cleaningStatus ?? INITIAL_BED_CLEANING_STATUS,
+          events: { bedId: body.bedId },
         });
         await t.update(A).set({ bedAssignedAt: new Date() }).where(eq(A.id, admissionId));
         const [updated] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
@@ -966,7 +1050,11 @@ export function buildDrizzleIpuRouteService(
           type: "discharge",
           m6AdmissionDischarged,
         });
-        await applyAdmissionTransition(t, actor, adm, transition, { sourceBedId, sourceBedStatus });
+        await applyAdmissionTransition(t, actor, adm, transition, {
+          sourceBedId,
+          sourceBedStatus,
+          events: { reason: body.reason },
+        });
         const [updated] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         return admissionView(updated ?? adm);
       });
@@ -989,14 +1077,14 @@ export function buildDrizzleIpuRouteService(
           lcpConfirmed: true,
           gipCriteriaExists: gip !== undefined,
         });
-        await applyAdmissionTransition(
-          t,
-          actor,
-          adm,
-          transition,
-          bed ? { sourceBedId: bed.id, sourceBedStatus: bed.status } : {},
-        );
-        await t.update(A).set({ activatedAt: new Date() }).where(eq(A.id, admissionId));
+        const activatedAt = new Date();
+        await applyAdmissionTransition(t, actor, adm, transition, {
+          ...(bed ? { sourceBedId: bed.id, sourceBedStatus: bed.status } : {}),
+          // The SAME instant the column gets — an event whose `activatedAt` disagrees with the row's is
+          // worse than one that carries none, because a consumer cannot tell which is the activation.
+          events: { activatedAt },
+        });
+        await t.update(A).set({ activatedAt }).where(eq(A.id, admissionId));
         const [updated] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         return admissionView(updated ?? adm);
       });
@@ -1028,7 +1116,9 @@ export function buildDrizzleIpuRouteService(
           reason: body.reason ?? null,
           initiatedBy: actor.membershipId,
         });
-        await applyAdmissionTransition(t, actor, adm, transition);
+        await applyAdmissionTransition(t, actor, adm, transition, {
+          events: { targetKind: body.targetKind },
+        });
         const [updated] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         return admissionView(updated ?? adm);
       });
@@ -1044,13 +1134,10 @@ export function buildDrizzleIpuRouteService(
           type: "confirmTransfer",
           destinationAcknowledged: body.destinationAcknowledged,
         });
-        await applyAdmissionTransition(
-          t,
-          actor,
-          adm,
-          transition,
-          bed ? { sourceBedId: bed.id, sourceBedStatus: bed.status } : {},
-        );
+        await applyAdmissionTransition(t, actor, adm, transition, {
+          ...(bed ? { sourceBedId: bed.id, sourceBedStatus: bed.status } : {}),
+          events: { completedAt: new Date() },
+        });
         if (bed) {
           await t
             .update(schema.ipuBedAssignment)
@@ -1242,6 +1329,61 @@ export function buildDrizzleIpuRouteService(
           })
           .returning();
         if (!row) throw new ConflictError("staff assignment insert failed");
+        return {
+          id: row.id,
+          shiftId: row.shiftId,
+          membershipId: row.membershipId,
+          role: row.role,
+          state: row.state,
+        } satisfies StaffAssignmentView;
+      });
+    },
+
+    /**
+     * F-080 — `tentative → confirmed` (§2.3). The RN-coverage rule counts only CONFIRMED assignments, and
+     * `ipu_staff_assignment.state` defaults to `tentative`; `assignStaff` never set it and nothing else in
+     * the module ever wrote `confirmed`. So no assignment created through any product path could cover an
+     * hour, `ipu_rn_coverage_window.is_covered` was false for every hour of every unit forever, and every
+     * GIP and inpatient-respite admission was still refused at open — the outage F-071/#174 built the
+     * watchdog to end. The watchdog was the missing producer of the WINDOW; this is the missing producer
+     * of the window's own input.
+     *
+     * Idempotent on an already-confirmed row (a re-post returns it unchanged rather than re-stamping
+     * `confirmed_at`, which is the timestamp of the ceremony and not of the last request). Every other
+     * state is a refusal: `cancelled`/`completed`/`no_show` are terminal, and silently "confirming" one
+     * would put an RN back on a coverage grid they are not working.
+     */
+    async confirmStaff(actor: IpuWriteActor, shiftId: string, body: ConfirmStaffBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const SA = schema.ipuStaffAssignment;
+        const t = tx as DbClient;
+        const [cur] = await t
+          .select()
+          .from(SA)
+          .where(and(eq(SA.id, body.assignmentId), eq(SA.shiftId, shiftId)))
+          .limit(1);
+        if (!cur) throw new NotFoundError("ipu_staff_assignment not found");
+        if (cur.state === "confirmed") {
+          return {
+            id: cur.id,
+            shiftId: cur.shiftId,
+            membershipId: cur.membershipId,
+            role: cur.role,
+            state: cur.state,
+          } satisfies StaffAssignmentView;
+        }
+        if (cur.state !== "tentative") {
+          throw new IpuStateError(
+            "ILLEGAL_STAFF_ASSIGNMENT_TRANSITION",
+            `ipu_staff_assignment cannot be confirmed from '${cur.state}'.`,
+          );
+        }
+        const [row] = await t
+          .update(SA)
+          .set({ state: "confirmed", confirmedAt: new Date(), version: cur.version + 1 })
+          .where(eq(SA.id, body.assignmentId))
+          .returning();
+        if (!row) throw new ConflictError("confirm failed");
         return {
           id: row.id,
           shiftId: row.shiftId,

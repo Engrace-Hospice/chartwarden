@@ -85,6 +85,10 @@ export const M37_ERROR_STATUS = {
   RN_BREAK_GLASS_ENDER_INVALID: 403,
   // §2.3 — an RN-coverage break-glass without fresh M2 step-up (Org Admin / Compliance Officer / Med Director).
   RN_BREAK_GLASS_STEP_UP_REQUIRED: 403,
+  // §2.3 (F-080) — a staff assignment confirmed from a state that is not `tentative`. `cancelled`,
+  // `completed` and `no_show` are terminal, and confirming one would put an RN back on a coverage grid
+  // they are not working; an already-`confirmed` row is idempotent and never reaches this.
+  ILLEGAL_STAFF_ASSIGNMENT_TRANSITION: 409,
 
   // ── §2.10 D11 restraint · §2.7 D8 visitor · §2.9 D10 equipment (M37-T08) ────────────────────────────
   // §2.10 — a restraint application with justification below the 100-char floor.

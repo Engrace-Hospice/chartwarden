@@ -13,6 +13,7 @@ import type {
   BedCleaningBody,
   CheckInVisitorBody,
   ConfirmBody,
+  ConfirmStaffBody,
   ConfirmTransferBody,
   CreateBedBody,
   CreateEquipmentBody,
@@ -296,6 +297,11 @@ export interface IpuRouteService {
     actor: IpuWriteActor,
     shiftId: string,
     body: UnassignStaffBody,
+  ): Promise<StaffAssignmentView>;
+  confirmStaff(
+    actor: IpuWriteActor,
+    shiftId: string,
+    body: ConfirmStaffBody,
   ): Promise<StaffAssignmentView>;
   getRnCoverage(actor: IpuReadActor, unitId: string): Promise<RnCoverageView>;
   invokeRnBreakGlass(
