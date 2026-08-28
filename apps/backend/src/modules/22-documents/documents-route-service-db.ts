@@ -200,9 +200,7 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
                       eq(TAG.documentId, DOC.id),
                       eq(TAG.organizationId, organizationId),
                       eq(TAG.tagKey, filter.tagKey),
-                      ...(filter.tagValue === undefined
-                        ? []
-                        : [eq(TAG.tagValue, filter.tagValue)]),
+                      ...(filter.tagValue === undefined ? [] : [eq(TAG.tagValue, filter.tagValue)]),
                     ),
                   ),
               )

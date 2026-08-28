@@ -531,12 +531,7 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     await expect(svc.listTags(ORG_B, docId, undefined, undefined)).rejects.toMatchObject({
       statusCode: 404,
     });
-    const crossTenant = await svc.listDocuments(
-      ORG_B,
-      { tagKey: "private" },
-      undefined,
-      undefined,
-    );
+    const crossTenant = await svc.listDocuments(ORG_B, { tagKey: "private" }, undefined, undefined);
     expect(crossTenant.items).toHaveLength(0);
   });
 
