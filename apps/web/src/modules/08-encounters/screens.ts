@@ -4,8 +4,26 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // patient-scoped Encounter Read (§5.2 — now also hosting the Sign/Acknowledge/Cosign-sign/Supervisor-
 // release ceremonies, TASK-031), the Cosignature Queue (§5.5), and the author's My Drafts (§5.1). Nav
 // visibility is gated by the matching M8 permission key; the SERVER stays the only enforcement point
-// (no frontend authz). The authoring / finalize-Layer-2 write surfaces (§5.2–5.3) still fill in as
-// their write paths harden.
+// (no frontend authz).
+//
+// #91 / F-063 — THE NOTE CAN NOW BE AUTHORED. `encounter-compose.tsx` is the §2.6 tap-to-document
+// surface: the template's sections, the vocabulary each accepts, per-entry `${slot}` params, verbatim
+// per-section free text, vitals capture, save (§7.7 `If-Match`) and finalize. This header used to say
+// the authoring surfaces would "fill in as their write paths harden" — `PATCH .../selections` had been
+// mounted since M8-T09 and persisting since #114. What was missing is the MENU: the route carries
+// `sectionId`/`code` as free strings and rejects an unknown one, and the template registry + vocabulary
+// corpus (`@wardenx/hearthnote`, `@wardenx/narrative-vocab`, both since M8-T05) were on nobody's wire.
+// `GET .../template` is that menu, served rather than shipped so the client cannot hold a second,
+// divergent copy of the rules `assembleSelections` enforces.
+//
+// STILL DEFERRED, each for a reason:
+//   • Layer-2 (`hearthnote/enhance` + the modification decisions) — the §2.6 D5 AI ladder is its own
+//     ceremony with its own governance surface, not part of authoring the deterministic note.
+//   • Care-plan links — `POST .../care-plan-links` parses a body, DISCARDS it, persists nothing and
+//     returns the ENCOUNTER's id as `linkId`; `DELETE` is a documented no-op. A control over that would
+//     report a link that does not exist (the F-007 rule). Filed separately.
+//   • Addenda authoring — the post-signature correction path; the same composer shape against
+//     `.../addenda/:id/selections`, once the addendum lifecycle surface exists to reach it from.
 import { lazy } from "react";
 import type { ComponentType } from "react";
 const CosignatureQueue = lazy(() =>
@@ -13,6 +31,9 @@ const CosignatureQueue = lazy(() =>
 );
 const EncounterRead = lazy(() =>
   import("./encounter-read").then((m) => ({ default: m.EncounterRead })),
+);
+const EncounterCompose = lazy(() =>
+  import("./encounter-compose").then((m) => ({ default: m.EncounterCompose })),
 );
 const MyDrafts = lazy(() => import("./my-drafts").then((m) => ({ default: m.MyDrafts })));
 const PatientEncounters = lazy(() =>
@@ -38,6 +59,15 @@ export const encounterScreens: ScreenRegistryModule<ComponentType> = {
       title: "Encounter",
       requiredPermission: "encounter.read",
       screen: EncounterRead,
+    },
+    {
+      // HearthNote composer — the §2.6 authoring surface for a draft; reached from My Drafts or the
+      // patient encounters list. Param path (no nav): a note is always composed in a patient's context.
+      id: "encounter.compose",
+      path: "/patients/:patientId/encounters/:encounterId/compose",
+      title: "Compose note",
+      requiredPermission: "encounter.author",
+      screen: EncounterCompose,
     },
     {
       // RN / Supervisor cosignature work queue — a top-level work surface.

@@ -392,6 +392,57 @@ export const SelectionsViewResponseSchema = Type.Object({
   version: Type.Integer(),
 });
 
+/**
+ * Route 3c — the authoring MENU (F-063): the resolved HearthNote template with the vocabulary entries
+ * each section accepts for this encounter's (type × discipline) pair.
+ *
+ * `slots` is what the client must supply as `params` on a selected entry — the phrase's `${…}`
+ * placeholders minus the two the assembly context fills (`patient`, `serviceDate`). Derived from the
+ * phrase rather than declared, so a corpus edit cannot leave the client asking for a slot that is gone.
+ */
+export const EncounterTemplateResponseSchema = Type.Object({
+  encounterId: Type.String({ format: "uuid" }),
+  templateKey: Type.String(),
+  vocabVersion: Type.String(),
+  encounterType: lit(ENCOUNTER_TYPE),
+  discipline: lit(ENCOUNTER_DISCIPLINE),
+  sections: Type.Array(
+    Type.Object({
+      sectionId: Type.String(),
+      heading: Type.String(),
+      /** A required section must carry ≥1 selection before the §2.6 Layer-3 gate lets the note finalize. */
+      required: Type.Boolean(),
+      /** Empty when the section accepts any entry the pair is eligible for. */
+      allowedCategories: Type.Array(Type.String()),
+      entries: Type.Array(
+        Type.Object({
+          code: Type.String(),
+          label: Type.String(),
+          category: Type.String(),
+          bodySystem: Type.Union([Type.String(), Type.Null()]),
+          slots: Type.Array(Type.String()),
+        }),
+      ),
+    }),
+  ),
+});
+
+/** Route 7b — the mileage row as recorded (F-063); `null` when none was captured. */
+export const MileageViewResponseSchema = Type.Union([
+  Type.Object({
+    mileageId: Type.String(),
+    encounterId: Type.String({ format: "uuid" }),
+    odometerStart: Type.Union([Type.Integer(), Type.Null()]),
+    odometerEnd: Type.Union([Type.Integer(), Type.Null()]),
+    milesDriven: Type.String(),
+    source: Type.String(),
+    manualOverrideReason: Type.Union([Type.String(), Type.Null()]),
+    routeProposedMiles: Type.Union([Type.String(), Type.Null()]),
+    recordedAt: Type.String({ format: "date-time" }),
+  }),
+  Type.Null(),
+]);
+
 /** Route 8 — care-plan link created. */
 export const CarePlanLinkResponseSchema = Type.Object({ linkId: Type.String() });
 
@@ -504,6 +555,9 @@ type _Created = Conforms<Static<typeof CreatedEncounterResponseSchema>, ServiceC
 type _View = Conforms<Static<typeof EncounterViewResponseSchema>, ServiceEncounterView>;
 type _List = Conforms<Static<typeof EncounterListResponseSchema>, Ret<"listEncounters">>;
 type _Vitals = Conforms<Static<typeof VitalsResultResponseSchema>, ServiceVitalsResult>;
+// F-063 — the two reads that had no counterpart write... the other way round: two WRITES that had no read.
+type _Template = Conforms<Static<typeof EncounterTemplateResponseSchema>, Ret<"getTemplate">>;
+type _MileageView = Conforms<Static<typeof MileageViewResponseSchema>, Ret<"getMileage">>;
 type _VitalsList = Conforms<Static<typeof VitalsListResponseSchema>, Ret<"listVitals">>;
 type _Mileage = Conforms<Static<typeof MileageResultResponseSchema>, ServiceMileageResult>;
 type _Selections = Conforms<Static<typeof SelectionsUpdateResponseSchema>, Ret<"updateSelections">>;

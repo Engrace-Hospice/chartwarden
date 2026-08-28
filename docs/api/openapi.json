@@ -74617,6 +74617,118 @@
       }
     },
     "/api/v1/encounters/{encounterId}/mileage": {
+      "get": {
+        "operationId": "getApiV1EncountersByEncounterIdMileage",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "The encounter's mileage row as recorded, or null (F-063: POST/PATCH .../mileage wrote a real row and nothing returned it — the write-only shape #92 fixed for vitals)",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "mileageId",
+                        "encounterId",
+                        "odometerStart",
+                        "odometerEnd",
+                        "milesDriven",
+                        "source",
+                        "manualOverrideReason",
+                        "routeProposedMiles",
+                        "recordedAt"
+                      ],
+                      "properties": {
+                        "mileageId": {
+                          "type": "string"
+                        },
+                        "encounterId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "odometerStart": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "odometerEnd": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "milesDriven": {
+                          "type": "string"
+                        },
+                        "source": {
+                          "type": "string"
+                        },
+                        "manualOverrideReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "routeProposedMiles": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "recordedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "patch": {
         "operationId": "patchApiV1EncountersByEncounterIdMileage",
         "tags": [
@@ -75142,6 +75254,229 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/template": {
+      "get": {
+        "operationId": "getApiV1EncountersByEncounterIdTemplate",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "The authoring menu (F-063) — the resolved HearthNote template with the vocabulary entries each section accepts for this encounter's (type × discipline) pair. Without it a note composer can only guess at `sectionId`/`code`, which the PATCH carries as free strings",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "encounterId",
+                    "templateKey",
+                    "vocabVersion",
+                    "encounterType",
+                    "discipline",
+                    "sections"
+                  ],
+                  "properties": {
+                    "encounterId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "templateKey": {
+                      "type": "string"
+                    },
+                    "vocabVersion": {
+                      "type": "string"
+                    },
+                    "encounterType": {
+                      "anyOf": [
+                        {
+                          "const": "routine_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "admission_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "recert_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "face_to_face",
+                          "type": "string"
+                        },
+                        {
+                          "const": "telephonic",
+                          "type": "string"
+                        },
+                        {
+                          "const": "lpn_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chha_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "msw_assessment",
+                          "type": "string"
+                        },
+                        {
+                          "const": "msw_followup",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chaplain_assessment",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chaplain_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "volunteer_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "bereavement_contact",
+                          "type": "string"
+                        },
+                        {
+                          "const": "idg_followup",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "discipline": {
+                      "anyOf": [
+                        {
+                          "const": "rn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "lpn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chha",
+                          "type": "string"
+                        },
+                        {
+                          "const": "msw",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chaplain",
+                          "type": "string"
+                        },
+                        {
+                          "const": "volunteer",
+                          "type": "string"
+                        },
+                        {
+                          "const": "md",
+                          "type": "string"
+                        },
+                        {
+                          "const": "np",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "sections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "sectionId",
+                          "heading",
+                          "required",
+                          "allowedCategories",
+                          "entries"
+                        ],
+                        "properties": {
+                          "sectionId": {
+                            "type": "string"
+                          },
+                          "heading": {
+                            "type": "string"
+                          },
+                          "required": {
+                            "type": "boolean"
+                          },
+                          "allowedCategories": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "entries": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "code",
+                                "label",
+                                "category",
+                                "bodySystem",
+                                "slots"
+                              ],
+                              "properties": {
+                                "code": {
+                                  "type": "string"
+                                },
+                                "label": {
+                                  "type": "string"
+                                },
+                                "category": {
+                                  "type": "string"
+                                },
+                                "bodySystem": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "slots": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

@@ -1169,6 +1169,7 @@ import {
   EncounterListQuerySchema as M8EncounterListQuerySchema,
   EncounterListResponseSchema as M8EncounterListResponseSchema,
   EncounterStatusResponseSchema as M8EncounterStatusResponseSchema,
+  EncounterTemplateResponseSchema as M8EncounterTemplateResponseSchema,
   EncounterViewResponseSchema as M8EncounterViewResponseSchema,
   EvvReconcileResponseSchema as M8EvvReconcileResponseSchema,
   EvvReconcileSchema as M8EvvReconcileSchema,
@@ -1177,6 +1178,7 @@ import {
   HearthnoteEnhanceSchema as M8HearthnoteEnhanceSchema,
   LateEntryOverrideSchema as M8LateEntryOverrideSchema,
   MileageResultResponseSchema as M8MileageResultResponseSchema,
+  MileageViewResponseSchema as M8MileageViewResponseSchema,
   ModificationDecisionSchema as M8ModificationDecisionSchema,
   ModificationResponseSchema as M8ModificationResponseSchema,
   RenderPayloadResponseSchema as M8RenderPayloadResponseSchema,
@@ -3664,6 +3666,16 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M8UpdateSelectionsSchema,
     response: M8SelectionsUpdateResponseSchema,
     headers: IF_MATCH_HEADER,
+  },
+  "GET /api/v1/encounters/:encounterId/template": {
+    summary:
+      "The authoring menu (F-063) — the resolved HearthNote template with the vocabulary entries each section accepts for this encounter's (type × discipline) pair. Without it a note composer can only guess at `sectionId`/`code`, which the PATCH carries as free strings",
+    response: M8EncounterTemplateResponseSchema,
+  },
+  "GET /api/v1/encounters/:encounterId/mileage": {
+    summary:
+      "The encounter's mileage row as recorded, or null (F-063: POST/PATCH .../mileage wrote a real row and nothing returned it — the write-only shape #92 fixed for vitals)",
+    response: M8MileageViewResponseSchema,
   },
   "GET /api/v1/encounters/:encounterId/selections": {
     summary: "Read the stored HearthNote selection tree back, with its assembled Layer-1 narrative",
