@@ -6,6 +6,7 @@ import {
   PatientWorkspaceLayout,
   ageYears,
   cardSurface,
+  interactiveRowProps,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -23,7 +24,7 @@ import { StatusPill as UiStatusPill } from "@wardenx/ui";
 // the tenant Explorer's row shape and the Lantern helpers so the two views stay visually identical.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
 import { DocumentUploadDialog } from "./document-upload-dialog";
 import { Mono, StatusPill, lifecycleTone, ts } from "./lantern";
@@ -66,6 +67,7 @@ const PATIENT_TONE: Record<string, "success" | "progress" | "neutral" | "error">
 
 export function PatientDocuments(): JSX.Element {
   const client = useApiClient();
+  const navigate = useNavigate();
   const { patientId } = useParams<{ patientId: string }>();
   const [rows, setRows] = useState<DocumentRow[]>([]);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
@@ -198,7 +200,18 @@ export function PatientDocuments(): JSX.Element {
                 </thead>
                 <tbody>
                   {rows.map((d) => (
-                    <tr key={d.id} style={{ borderTop: `1px solid ${t.outlineVariant}` }}>
+                    <tr
+                      key={d.id}
+                      className="wx-data-row-interactive"
+                      style={{ borderTop: `1px solid ${t.outlineVariant}` }}
+                      // #91 — the version chain (upload a new version, correct the title, open the
+                      // content, edit tags) was reachable from nowhere in the app.
+                      {...interactiveRowProps(
+                        () => navigate(`/documents/${d.id}/versions`),
+                        false,
+                        false,
+                      )}
+                    >
                       <td style={{ ...td, maxWidth: "22rem", color: t.onSurface, fontWeight: 600 }}>
                         {d.title}
                       </td>

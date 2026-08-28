@@ -7,6 +7,7 @@ import {
   OffsetPagination,
   PageHeader,
   WorkQueueLayout,
+  interactiveRowProps,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/22-documents — DOC.Explorer (M22 §5.1, Track B / ADR-0030).
@@ -20,10 +21,16 @@ import {
 //
 // #91 — "Upload document" is the control this app did not have ANYWHERE: one `type="file"` existed in the
 // whole product and it was in the portal, so a family member could attach a document and the staff who
-// run the agency could not. It drives the checksum-enforced path (see `documents-api.ts`). Tag editing
-// is NOT here and is not deferred either — `document_tag` has no reader anywhere in the repo (#153).
+// run the agency could not. It drives the checksum-enforced path (see `documents-api.ts`).
+//
+// A row now OPENS the document's version chain. `/documents/:documentId/versions` was registered and
+// linked from NOWHERE in the app — `grep` for it across `apps/web` returned the route registration and
+// the screen's own read, and nothing else — so every control that screen hosts (upload a new version,
+// correct the title, open the content as a §164.528 accounting event, and now edit tags) was reachable
+// only by typing a URL. M07 and M15 both link to their version screens; this one was the outlier.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { useNavigate } from "react-router-dom";
 import { DocumentUploadDialog } from "./document-upload-dialog";
 import { StatusPill, lifecycleTone } from "./lantern";
 
@@ -48,6 +55,7 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 
 export function DocumentExplorer(): JSX.Element {
+  const navigate = useNavigate();
   const client = useApiClient();
   const [items, setItems] = useState<DocumentRow[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -317,7 +325,19 @@ export function DocumentExplorer(): JSX.Element {
                 </thead>
                 <tbody>
                   {pagedRows.map((d) => (
-                    <tr key={d.id} style={rowStyle}>
+                    <tr
+                      key={d.id}
+                      className="wx-data-row-interactive"
+                      style={rowStyle}
+                      // No focusable content in the row, so the `role="button"` announcement is the
+                      // right one — a bare focusable row tells a screen-reader user nothing about
+                      // what Enter would do.
+                      {...interactiveRowProps(
+                        () => navigate(`/documents/${d.id}/versions`),
+                        false,
+                        false,
+                      )}
+                    >
                       <td style={tdStyle}>
                         <div style={primaryCellStyle}>
                           <span style={primaryTextStyle}>{d.title}</span>

@@ -22,6 +22,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
 import { DocumentEditDialog, DocumentPreviewDialog } from "./document-actions";
+import { DocumentTags } from "./document-tags";
 import { DocumentUploadDialog } from "./document-upload-dialog";
 import type { DocumentView } from "./documents-api";
 import { Card, CardTitle, Eyebrow, Mono, StatusPill, lifecycleTone, ts } from "./lantern";
@@ -132,6 +133,11 @@ export function VersionHistory(): JSX.Element {
                   <Eyebrow>Versions</Eyebrow>
                   {doc.versionsCount}
                 </div>
+              </div>
+              {/* #91's M22 row deferred tag editing as UNBUILDABLE (#153); the reader it needed
+                  exists now, so the editor lives beside the metadata it annotates. */}
+              <div style={{ marginTop: "1rem" }}>
+                <DocumentTags documentId={doc.id} />
               </div>
             </Card>
           </aside>

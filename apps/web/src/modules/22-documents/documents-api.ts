@@ -279,12 +279,58 @@ export async function mintContentUrl(
   return { ok: true, value: data as SignedUrlResult };
 }
 
-// TAG EDITING IS DELIBERATELY ABSENT (#153). `document_tag` has two writers — the INSERT behind
-// `POST /documents/:id/tags` and the DELETE behind `DELETE /documents/:id/tags/:tagId` — and NO READER
-// anywhere in the repo: no route projects tags, `GET /documents/:id` does not carry them, and no
-// SELECT touches the table outside the eraser. Its two indexes (`document_tag_doc_idx`,
-// `document_tag_org_key_idx`) were built for queries that were never written. The tag id is returned
-// exactly once, by the POST — whose contract declares no response body, so a typed client cannot read
-// it either, which makes the DELETE unreachable by construction. A tag editor cannot show what is
-// already on a document, and a tag added through it becomes permanently invisible and undeletable on
-// the next page load. That is not a caller that is missing.
+// ── tags (§3.3) ────────────────────────────────────────────────────────────────────────────────────────
+//
+// This block used to be a paragraph explaining why tag editing could not be built (#153): `document_tag`
+// had two writers and NO READER anywhere in the repo — no route projected tags, `GET /documents/:id`
+// did not carry them, and no SELECT touched the table outside the eraser. The tag id was returned
+// exactly once, by a POST whose contract declared no response body, so a typed client could not hold
+// it and the DELETE was unreachable by construction. An editor could not have shown what was already
+// on a document, and anything added through it would have been invisible and undeletable on reload.
+//
+// #153 is fixed: `GET /documents/:id/tags` exists, the POST publishes the created tag, and the
+// cross-document `?tagKey=` query is wired. The editor below is the caller those routes were missing.
+
+export type TagView = Ok<operations["getApiV1DocumentsByIdTags"]>["items"][number];
+export type AddTagBody = ReqBody<operations["postApiV1DocumentsByIdTags"]>;
+/** §3.3 — `free` values may carry PHI and are denylisted in the audit trigger; `structured` may not. */
+export type TagKind = AddTagBody["tagKind"];
+
+/** §3.3 — the document's tags, newest first. */
+export async function listDocumentTags(
+  client: ApiClient,
+  documentId: string,
+): Promise<WriteResult<TagView[]>> {
+  const { data, error, response } = await client.GET("/api/v1/documents/{id}/tags", {
+    params: { path: { id: documentId } },
+  });
+  if (error || !data) return failure(response?.status, error);
+  return { ok: true, value: [...data.items] as TagView[] };
+}
+
+/** §3.3 — add a tag. The response carries the created row, INCLUDING the id the removal needs. */
+export async function addDocumentTag(
+  client: ApiClient,
+  documentId: string,
+  body: AddTagBody,
+): Promise<WriteResult<TagView>> {
+  const { data, error, response } = await client.POST("/api/v1/documents/{id}/tags", {
+    params: { path: { id: documentId } },
+    body,
+  });
+  if (error || !data) return failure(response?.status, error);
+  return { ok: true, value: data as TagView };
+}
+
+/** §3.3 — remove a tag. 204; refused under legal hold by `ABAC_LEGAL_HOLD`, not by this. */
+export async function removeDocumentTag(
+  client: ApiClient,
+  documentId: string,
+  tagId: string,
+): Promise<WriteResult<null>> {
+  const { error, response } = await client.DELETE("/api/v1/documents/{id}/tags/{tagId}", {
+    params: { path: { id: documentId, tagId } },
+  });
+  if (error) return failure(response?.status, error);
+  return { ok: true, value: null };
+}
