@@ -20,6 +20,14 @@ import type { SignedUrlObjectFacts, SignedUrlObjectResolver } from "./signed-url
 
 // ── route DTOs (in-memory; the Drizzle adapter projects rows to the SAME shapes) ──────────────────────
 
+/** One tag as a CALLER states it (§3.3) — the shape `POST /documents/:id/tags` and the creation
+ *  `tags[]` both carry. `tagValue` is null for a bare key; free-kind values may carry PHI (§3.6). */
+export interface DocumentTagInput {
+  readonly tagKind: string;
+  readonly tagKey: string;
+  readonly tagValue: string | null;
+}
+
 export interface UploadDocumentArgs {
   readonly patientId: string | null;
   readonly admissionId: string | null;
@@ -28,6 +36,9 @@ export interface UploadDocumentArgs {
   readonly aggregateId: string | null;
   readonly title: string;
   readonly patientFacing: boolean;
+  /** F-060 — `UploadDocumentRequest` has always declared `tags[]`; the route parsed it and passed it
+   *  to nothing, so a document could never actually be BORN with the tags its contract accepts. */
+  readonly tags: readonly DocumentTagInput[];
 }
 
 export interface DocumentView {
@@ -62,6 +73,10 @@ export interface TagView {
   readonly tagKind: string;
   readonly tagKey: string;
   readonly tagValue: string | null;
+  readonly addedAt: string;
+  /** The keyset field `paginate` sorts on — the same instant as `addedAt`, under the name every
+   *  other M22 list view publishes it (VersionView/IntakeBatchView do the same off one column). */
+  readonly createdAt: string;
 }
 
 export interface IntakeBatchView {
@@ -122,7 +137,15 @@ export interface DocumentRouteService {
   getVersion(organizationId: OrgId, documentId: string, versionId: string): Promise<VersionView>;
   listDocuments(
     organizationId: OrgId,
-    filter: { patientId?: string; aggregateType?: string; retentionClass?: string },
+    filter: {
+      patientId?: string;
+      aggregateType?: string;
+      retentionClass?: string;
+      /** F-060 — the cross-document tag query `document_tag_org_key_idx` was built for and nothing
+       *  ever ran. `tagValue` narrows within a key; a `tagValue` without a `tagKey` is ignored. */
+      tagKey?: string;
+      tagValue?: string;
+    },
     cursor: string | undefined,
     limit: number | undefined,
   ): Promise<CursorPage<DocumentView>>;
@@ -132,6 +155,14 @@ export interface DocumentRouteService {
     documentId: string,
     patch: { title?: string; patientFacing?: boolean; attachToDisclosures?: boolean },
   ): Promise<DocumentView>;
+  /** F-060 — `document_tag` had two writers and no reader: every tag was invisible on write and
+   *  undeletable on reload, because the id the DELETE needs was produced once and never readable. */
+  listTags(
+    organizationId: OrgId,
+    documentId: string,
+    cursor: string | undefined,
+    limit: number | undefined,
+  ): Promise<CursorPage<TagView>>;
   addTag(
     organizationId: OrgId,
     actor: DocumentWriteActor,
@@ -456,6 +487,18 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
         tags: new Map(),
         legalHoldActive: false,
       };
+      // F-060 — a document born with tags is born with REAL ones (previously parsed and dropped).
+      for (const t of args.tags) {
+        const tagId = subId();
+        rec.tags.set(tagId, {
+          id: tagId,
+          tagKind: t.tagKind,
+          tagKey: t.tagKey,
+          tagValue: t.tagValue,
+          addedAt: rec.createdAt,
+          createdAt: rec.createdAt,
+        });
+      }
       docs.set(id, rec);
       return toDocView(rec);
     },
@@ -523,6 +566,15 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
           .filter((r) =>
             filter.retentionClass ? r.retentionClass === filter.retentionClass : true,
           )
+          .filter((r) =>
+            filter.tagKey
+              ? [...r.tags.values()].some(
+                  (t) =>
+                    t.tagKey === filter.tagKey &&
+                    (filter.tagValue === undefined || t.tagValue === filter.tagValue),
+                )
+              : true,
+          )
           .map(toDocView),
       );
       return paginate(rows, cursor, limit);
@@ -543,6 +595,15 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       r.updatedAt = now();
       return toDocView(r);
     },
+    async listTags(organizationId, documentId, cursor, limit) {
+      const r = loadDoc(organizationId, documentId);
+      const rows = [...r.tags.values()].sort((a, b) =>
+        a.createdAt === b.createdAt
+          ? b.id.localeCompare(a.id)
+          : b.createdAt.localeCompare(a.createdAt),
+      );
+      return paginate(rows, cursor, limit);
+    },
     async addTag(organizationId, _actor, documentId, tag) {
       const r = loadDoc(organizationId, documentId);
       if (r.legalHoldActive)
@@ -552,11 +613,14 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
           409,
         );
       const id = subId();
+      const at = now();
       const view: TagView = {
         id,
         tagKind: tag.tagKind,
         tagKey: tag.tagKey,
         tagValue: tag.tagValue,
+        addedAt: at,
+        createdAt: at,
       };
       r.tags.set(id, view);
       return view;

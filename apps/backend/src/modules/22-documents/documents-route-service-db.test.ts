@@ -30,6 +30,7 @@ describe("production document upload containment", () => {
         admissionId: null,
         retentionClass: "clinical_record",
         patientFacing: false,
+        tags: [],
       }),
     ).rejects.toMatchObject({ code: "DEGRADED", statusCode: 503 });
   });

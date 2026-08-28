@@ -6692,7 +6692,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List a document's tags (§3.3, cursor-paginated) */
+        get: operations["getApiV1DocumentsByIdTags"];
         put?: never;
         /** Add a tag to a document */
         post: operations["postApiV1DocumentsByIdTags"];
@@ -37117,6 +37118,8 @@ export interface operations {
                 patientId?: string;
                 aggregateType?: string;
                 retentionClass?: string;
+                tagKey?: string;
+                tagValue?: string;
                 cursor?: string;
                 limit?: number;
             };
@@ -37321,6 +37324,46 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1DocumentsByIdTags: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            tagKind: "free" | "structured";
+                            tagKey: string;
+                            tagValue: string | null;
+                            /** Format: date-time */
+                            addedAt: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1DocumentsByIdTags: {
         parameters: {
             query?: never;
@@ -37341,11 +37384,22 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        tagKind: "free" | "structured";
+                        tagKey: string;
+                        tagValue: string | null;
+                        /** Format: date-time */
+                        addedAt: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

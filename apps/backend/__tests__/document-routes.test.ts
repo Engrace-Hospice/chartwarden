@@ -503,3 +503,178 @@ describe("M22-T07 — §2.5 overlay If-Match optimistic concurrency", () => {
     expect(res.statusCode).toBe(428);
   });
 });
+
+// F-060 (#153) — `document_tag` had two writers and no reader. These prove the loop CLOSES: a tag
+// survives a reload, and the id the DELETE needs is obtainable from a fresh read rather than only
+// from the POST response a caller held until it navigated away.
+describe("M22-T07 — F-060 document tags are readable, and therefore removable", () => {
+  it("POST /documents/:id/tags answers 201 with the created tag — id included", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/documents/${DOC}/tags`,
+      headers: RN,
+      payload: { tagKind: "structured", tagKey: "f060-created", tagValue: "IIA" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({
+      tagKind: "structured",
+      tagKey: "f060-created",
+      tagValue: "IIA",
+    });
+    expect(typeof res.json().id).toBe("string");
+    expect(res.json().addedAt).toEqual(expect.any(String));
+  });
+
+  it("GET /documents/:id/tags lists a tag written by an earlier request (the read that did not exist)", async () => {
+    const { app } = makeServer();
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/documents/${DOC}/tags`,
+      headers: RN,
+      payload: { tagKind: "free", tagKey: "f060-listed", tagValue: "note" },
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/documents/${DOC}/tags`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
+    const found = res
+      .json()
+      .items.find((t: { tagKey: string }) => t.tagKey === "f060-listed") as
+      | { tagValue: string }
+      | undefined;
+    expect(found).toBeDefined();
+    expect(found?.tagValue).toBe("note");
+  });
+
+  it("a tag added, then re-read, can be DELETEd by the id that read returned", async () => {
+    const { app } = makeServer();
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/documents/${DOC}/tags`,
+      headers: RN,
+      payload: { tagKind: "structured", tagKey: "f060-roundtrip", tagValue: "x" },
+    });
+    // The reload a caller does: the POST response is gone, the id comes from the LIST.
+    const listed = await app.inject({
+      method: "GET",
+      url: `/api/v1/documents/${DOC}/tags`,
+      headers: RN,
+    });
+    const tag = listed
+      .json()
+      .items.find((t: { tagKey: string }) => t.tagKey === "f060-roundtrip") as { id: string };
+    const del = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/documents/${DOC}/tags/${tag.id}`,
+      headers: RN,
+    });
+    expect(del.statusCode).toBe(204);
+    const after = await app.inject({
+      method: "GET",
+      url: `/api/v1/documents/${DOC}/tags`,
+      headers: RN,
+    });
+    expect(
+      after.json().items.some((t: { tagKey: string }) => t.tagKey === "f060-roundtrip"),
+    ).toBe(false);
+  });
+
+  it("tags supplied at creation are persisted, not validated and discarded", async () => {
+    const { app } = makeServer();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/documents",
+      headers: RN,
+      payload: {
+        retentionClass: "clinical_record",
+        aggregateType: "encounter",
+        title: "Born with tags",
+        patientId: PATIENT,
+        tags: [
+          { tagKind: "structured", tagKey: "f060-at-birth", tagValue: "yes" },
+          { tagKind: "free", tagKey: "f060-at-birth-2" },
+        ],
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/documents/${created.json().id}/tags`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items).toHaveLength(2);
+    expect(
+      res.json().items.map((t: { tagKey: string }) => t.tagKey).sort(),
+    ).toEqual(["f060-at-birth", "f060-at-birth-2"]);
+    // A bare key carries a null value on the wire — not the absent field the DTO would not type.
+    const bare = res
+      .json()
+      .items.find((t: { tagKey: string }) => t.tagKey === "f060-at-birth-2") as {
+      tagValue: string | null;
+    };
+    expect(bare.tagValue).toBeNull();
+  });
+
+  it("GET /documents?tagKey= runs the cross-document query the org_key index was built for", async () => {
+    const { app } = makeServer();
+    const tagged = await app.inject({
+      method: "POST",
+      url: "/api/v1/documents",
+      headers: RN,
+      payload: {
+        retentionClass: "clinical_record",
+        aggregateType: "encounter",
+        title: "Findable by tag",
+        patientId: PATIENT,
+        tags: [{ tagKind: "structured", tagKey: "f060-filter", tagValue: "match" }],
+      },
+    });
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/documents",
+      headers: RN,
+      payload: {
+        retentionClass: "clinical_record",
+        aggregateType: "encounter",
+        title: "Same key, other value",
+        patientId: PATIENT,
+        tags: [{ tagKind: "structured", tagKey: "f060-filter", tagValue: "other" }],
+      },
+    });
+    const byKey = await app.inject({
+      method: "GET",
+      url: "/api/v1/documents?tagKey=f060-filter",
+      headers: RN,
+    });
+    expect(byKey.statusCode).toBe(200);
+    expect(byKey.json().items).toHaveLength(2);
+    // `tagValue` narrows WITHIN the key rather than spanning unrelated ones.
+    const byValue = await app.inject({
+      method: "GET",
+      url: "/api/v1/documents?tagKey=f060-filter&tagValue=match",
+      headers: RN,
+    });
+    expect(byValue.json().items).toHaveLength(1);
+    expect(byValue.json().items[0].id).toBe(tagged.json().id);
+  });
+
+  it("403 when the caller lacks documents.read, and a cross-tenant document's tags are a 404", async () => {
+    const { app } = makeServer();
+    const denied = await app.inject({
+      method: "GET",
+      url: `/api/v1/documents/${DOC}/tags`,
+      headers: VIEWER,
+    });
+    expect(denied.statusCode).toBe(403);
+    const crossTenant = await app.inject({
+      method: "GET",
+      url: `/api/v1/documents/${DOC_B}/tags`,
+      headers: RN,
+    });
+    expect(crossTenant.statusCode).toBe(404);
+  });
+});
