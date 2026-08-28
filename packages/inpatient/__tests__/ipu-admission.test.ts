@@ -136,7 +136,7 @@ describe("terminal flows from active", () => {
   it("discharge dirties the bed and closes the irc_episode for an IRC admission", () => {
     const irc = transitionAdmission("active", "irc", {
       type: "discharge",
-      dischargeEventExists: true,
+      m6AdmissionDischarged: true,
     });
     expect(irc.to).toBe("discharged");
     expect(effectKinds(irc)).toContain("close_irc_episode");
@@ -144,7 +144,7 @@ describe("terminal flows from active", () => {
     // GIP discharge does not close an irc_episode.
     const gip = transitionAdmission("active", "gip", {
       type: "discharge",
-      dischargeEventExists: true,
+      m6AdmissionDischarged: true,
     });
     expect(effectKinds(gip)).not.toContain("close_irc_episode");
   });
@@ -192,7 +192,7 @@ describe("terminal flows from active", () => {
 describe("graph integrity + classifiers", () => {
   it("rejects illegal transitions; closed is terminal", () => {
     expect(() =>
-      transitionAdmission("pending", "gip", { type: "discharge", dischargeEventExists: true }),
+      transitionAdmission("pending", "gip", { type: "discharge", m6AdmissionDischarged: true }),
     ).toThrow(IpuStateError);
     expect(ADMISSION_GRAPH.closed).toEqual([]);
     try {

@@ -96207,7 +96207,7 @@
         "tags": [
           "37-ipu"
         ],
-        "summary": "Discharge an admission; dirties the source bed + closes the irc_episode for an IRC stay (§2.2)",
+        "summary": "Discharge an admission; dirties the source bed + closes the irc_episode for an IRC stay (§2.2). 422 unless the M6 admission is ITSELF discharged — resolved server-side through M6's AdmissionStatusReader, not asserted by the caller (F-070)",
         "parameters": [
           {
             "name": "id",
@@ -96297,8 +96297,7 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "reason",
-                  "dischargeEventExists"
+                  "reason"
                 ],
                 "properties": {
                   "reason": {
@@ -96324,9 +96323,6 @@
                         "type": "string"
                       }
                     ]
-                  },
-                  "dischargeEventExists": {
-                    "type": "boolean"
                   }
                 }
               }
@@ -99134,7 +99130,7 @@
         "tags": [
           "37-ipu"
         ],
-        "summary": "List IPU shifts (§4.1)",
+        "summary": "List IPU shifts with their staff assignments (F-070 — the assignments the route's audit config already claimed it carried, and the only source of the `assignmentId` that unassign takes)",
         "parameters": [],
         "responses": {
           "200": {
@@ -99157,6 +99153,7 @@
                           "shiftStartAt",
                           "shiftEndAt",
                           "displayLabel",
+                          "assignments",
                           "version"
                         ],
                         "properties": {
@@ -99183,6 +99180,39 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "assignments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "shiftId",
+                                "membershipId",
+                                "role",
+                                "state"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "shiftId": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "membershipId": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "role": {
+                                  "type": "string"
+                                },
+                                "state": {
+                                  "type": "string"
+                                }
+                              }
+                            }
                           },
                           "version": {
                             "type": "integer"
@@ -99223,6 +99253,7 @@
                     "shiftStartAt",
                     "shiftEndAt",
                     "displayLabel",
+                    "assignments",
                     "version"
                   ],
                   "properties": {
@@ -99249,6 +99280,39 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "assignments": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "shiftId",
+                          "membershipId",
+                          "role",
+                          "state"
+                        ],
+                        "properties": {
+                          "id": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "shiftId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "membershipId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          }
+                        }
+                      }
                     },
                     "version": {
                       "type": "integer"
@@ -99699,6 +99763,163 @@
                 }
               }
             }
+          }
+        }
+      },
+      "get": {
+        "operationId": "getApiV1Ipuvisitorrestrictions",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Visitor restrictions in force (F-070 — `DELETE` lifts by an id that no read route returned, so a restriction could be lifted only from the session that applied it). `active=false` reads the lifted trail",
+        "parameters": [
+          {
+            "name": "unitId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "name": "active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "true",
+                  "type": "string"
+                },
+                {
+                  "const": "false",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "scope",
+                          "unitId",
+                          "patientId",
+                          "restrictionKind",
+                          "rationale",
+                          "sourceKind",
+                          "appliedAt",
+                          "appliedBy",
+                          "appliedUntil",
+                          "liftedAt",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "scope": {
+                            "type": "string"
+                          },
+                          "unitId": {
+                            "anyOf": [
+                              {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "patientId": {
+                            "anyOf": [
+                              {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "restrictionKind": {
+                            "type": "string"
+                          },
+                          "rationale": {
+                            "type": "string"
+                          },
+                          "sourceKind": {
+                            "type": "string"
+                          },
+                          "appliedAt": {
+                            "type": "string"
+                          },
+                          "appliedBy": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "appliedUntil": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "liftedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       },

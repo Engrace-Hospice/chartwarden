@@ -66,6 +66,7 @@ import type {
   UpdateBedBody,
   UpdateRoomBody,
   UpdateUnitBody,
+  VisitorRestrictionListQuery,
 } from "./ipu-typebox";
 import type {
   AdmissionView,
@@ -85,6 +86,7 @@ import type {
   ShiftView,
   StaffAssignmentView,
   UnitView,
+  VisitorRestrictionDetailView,
   VisitorRestrictionView,
   VisitorView,
 } from "./service";
@@ -181,6 +183,33 @@ const UNBOUND_ORDERS: RestraintOrderReader = {
   },
 };
 
+/**
+ * The slice of M6's `AdmissionStatusReader` the discharge gate reads (F-070). Narrowed for the same
+ * reason `RestraintOrderReader` is: M37 consumes one method, and a narrow port is a smaller thing for a
+ * test to fake honestly.
+ */
+export interface AdmissionDischargeReader {
+  getAdmissionSummary(admissionId: string): Promise<{
+    readonly status: string;
+    readonly dischargedAt: string | null;
+  }>;
+}
+
+/**
+ * Unbound default: THROWS — the `UNBOUND_ORDERS` rule. An unreadable M6 admission is indistinguishable
+ * from an undischarged one, and closing an IPU stay in front of the discharge is the failure the gate
+ * exists to prevent.
+ */
+const UNBOUND_ADMISSIONS: AdmissionDischargeReader = {
+  getAdmissionSummary() {
+    throw new Error("AdmissionStatusReader is not bound");
+  },
+};
+
+/** The M6 admission states that mean the discharge has been recorded (§4.7 `AdmissionStatusValue`).
+ *  `bereavement`/`closed` are POST-discharge states, so an IPU stay may be closed out from them too. */
+const M6_DISCHARGED_STATES: ReadonlySet<string> = new Set(["discharged", "bereavement", "closed"]);
+
 export interface IpuRouteServiceDeps {
   readonly outbox?: WriteOutboxPort;
   /** M5 `PatientPrivacyFlagReader` (GAP-061). Bound lazily — the composition root passes a thunk so
@@ -190,6 +219,8 @@ export interface IpuRouteServiceDeps {
   readonly consent?: VisitorConsentGate | (() => VisitorConsentGate);
   /** M11 `OrderProvider` (F-069) — the restraint gate's physician-order read, same thunk posture. */
   readonly orders?: RestraintOrderReader | (() => RestraintOrderReader);
+  /** M6 `AdmissionStatusReader` (F-070) — the discharge gate's M6-state read, same thunk posture. */
+  readonly admissions?: AdmissionDischargeReader | (() => AdmissionDischargeReader);
 }
 
 const iso = (d: Date): string => d.toISOString();
@@ -213,6 +244,9 @@ export function buildDrizzleIpuRouteService(
   const ordersDep = deps.orders ?? UNBOUND_ORDERS;
   const orderReader = (): RestraintOrderReader =>
     typeof ordersDep === "function" ? ordersDep() : ordersDep;
+  const admissionsDep = deps.admissions ?? UNBOUND_ADMISSIONS;
+  const admissionReader = (): AdmissionDischargeReader =>
+    typeof admissionsDep === "function" ? admissionsDep() : admissionsDep;
   const U = schema.inpatientUnit;
   const A = schema.ipuAdmission;
   const H = schema.ipuAdmissionStateHistory;
@@ -875,6 +909,20 @@ export function buildDrizzleIpuRouteService(
         const t = tx as DbClient;
         const [adm] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         if (!adm) throw new NotFoundError("ipu_admission not found");
+        // F-070 — the machine refuses a discharge whose M6 side has not happened. That boolean used
+        // to arrive in the request body, so the only party it could ever have been answered by was the
+        // one being gated, and `true` was the only value any caller would send. Resolved here from
+        // M6's published `AdmissionStatusReader`, keyed by the M6 admission this IPU stay hangs off.
+        // A throw is a refusal, not a pass: an unreadable admission reads the same as an active one.
+        let m6AdmissionDischarged: boolean;
+        try {
+          const m6 = await admissionReader().getAdmissionSummary(adm.admissionId);
+          m6AdmissionDischarged = M6_DISCHARGED_STATES.has(m6.status) || m6.dischargedAt !== null;
+        } catch {
+          m6AdmissionDischarged = false;
+        }
+        // Resolved BEFORE the bed assignment is ended: the transaction would roll a refusal back
+        // either way, but a gate that runs after the writes it guards reads as an afterthought.
         // Resolve the active bed assignment (its bed goes discharged_dirty).
         const [ba] = await t
           .select()
@@ -896,7 +944,7 @@ export function buildDrizzleIpuRouteService(
         }
         const transition = transitionAdmission(adm.state, adm.kind, {
           type: "discharge",
-          dischargeEventExists: body.dischargeEventExists,
+          m6AdmissionDischarged,
         });
         await applyAdmissionTransition(t, actor, adm, transition, { sourceBedId, sourceBedStatus });
         const [updated] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
@@ -1101,7 +1149,35 @@ export function buildDrizzleIpuRouteService(
     async listShifts(actor) {
       return withOrgContext(db, ctx(actor), async (tx) => {
         const S = schema.ipuShift;
-        const rows = await (tx as DbClient).select().from(S).orderBy(desc(S.shiftStartAt));
+        const SA = schema.ipuStaffAssignment;
+        const t = tx as DbClient;
+        const rows = await t.select().from(S).orderBy(desc(S.shiftStartAt));
+        // F-070 — the assignments the list has always CLAIMED to carry (this route's `auditRead`
+        // config says "staff assignments by membership"). Without them `DELETE /ipu-shifts/:id/staff`
+        // was reachable only by the session that made the assignment.
+        const assignments = rows.length
+          ? await t
+              .select()
+              .from(SA)
+              .where(
+                inArray(
+                  SA.shiftId,
+                  rows.map((r) => r.id),
+                ),
+              )
+          : [];
+        const byShift = new Map<string, StaffAssignmentView[]>();
+        for (const a of assignments) {
+          const list = byShift.get(a.shiftId) ?? [];
+          list.push({
+            id: a.id,
+            shiftId: a.shiftId,
+            membershipId: a.membershipId,
+            role: a.role,
+            state: a.state,
+          });
+          byShift.set(a.shiftId, list);
+        }
         return rows.map(
           (r): ShiftView => ({
             id: r.id,
@@ -1109,6 +1185,7 @@ export function buildDrizzleIpuRouteService(
             shiftStartAt: iso(r.shiftStartAt),
             shiftEndAt: iso(r.shiftEndAt),
             displayLabel: r.displayLabel,
+            assignments: byShift.get(r.id) ?? [],
             version: r.version,
           }),
         );
@@ -1136,6 +1213,7 @@ export function buildDrizzleIpuRouteService(
           shiftStartAt: iso(row.shiftStartAt),
           shiftEndAt: iso(row.shiftEndAt),
           displayLabel: row.displayLabel,
+          assignments: [], // a shift is created empty; staff arrive through assignStaff
           version: row.version,
         };
       });
@@ -1164,11 +1242,18 @@ export function buildDrizzleIpuRouteService(
       });
     },
 
-    async unassignStaff(actor: IpuWriteActor, _shiftId: string, body: UnassignStaffBody) {
+    async unassignStaff(actor: IpuWriteActor, shiftId: string, body: UnassignStaffBody) {
       return withOrgContext(db, ctx(actor), async (tx) => {
         const SA = schema.ipuStaffAssignment;
         const t = tx as DbClient;
-        const [cur] = await t.select().from(SA).where(eq(SA.id, body.assignmentId)).limit(1);
+        // F-070 — the path's shift id is part of the identity of what is being cancelled, not
+        // decoration. It used to be ignored (`_shiftId`), so any shift id in the URL cancelled the
+        // named assignment and the audit trail recorded a route that had not happened.
+        const [cur] = await t
+          .select()
+          .from(SA)
+          .where(and(eq(SA.id, body.assignmentId), eq(SA.shiftId, shiftId)))
+          .limit(1);
         if (!cur) throw new NotFoundError("ipu_staff_assignment not found");
         const [row] = await t
           .update(SA)
@@ -1395,6 +1480,41 @@ export function buildDrizzleIpuRouteService(
               checkedInAt: iso(r.checkedInAt),
               checkedOutAt: r.checkedOutAt ? iso(r.checkedOutAt) : null,
             }) satisfies VisitorView,
+        );
+      });
+    },
+
+    async listVisitorRestrictions(actor: IpuReadActor, query: VisitorRestrictionListQuery) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const VR = schema.ipuVisitorRestriction;
+        const where = [
+          // Default to what is currently IN FORCE — the board a nurse checks before admitting a
+          // visitor. `active=false` is how the lifted trail is read back.
+          query.active === "false" ? undefined : isNull(VR.liftedAt),
+          query.unitId ? eq(VR.unitId, query.unitId) : undefined,
+          query.patientId ? eq(VR.patientId, query.patientId) : undefined,
+        ].filter((c): c is Exclude<typeof c, undefined> => c !== undefined);
+        const rows = await (tx as DbClient)
+          .select()
+          .from(VR)
+          .where(where.length ? and(...where) : undefined)
+          .orderBy(desc(VR.appliedAt));
+        return rows.map(
+          (r) =>
+            ({
+              id: r.id,
+              scope: r.scope,
+              unitId: r.unitId,
+              patientId: r.patientId,
+              restrictionKind: r.restrictionKind,
+              rationale: r.rationale,
+              sourceKind: r.sourceKind,
+              appliedAt: iso(r.appliedAt),
+              appliedBy: r.appliedBy,
+              appliedUntil: r.appliedUntil ? iso(r.appliedUntil) : null,
+              liftedAt: r.liftedAt ? iso(r.liftedAt) : null,
+              version: r.version,
+            }) satisfies VisitorRestrictionDetailView,
         );
       });
     },

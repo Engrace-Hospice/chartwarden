@@ -83,6 +83,19 @@ const ORDERS = {
   getOrder: async ({ orderId }: { orderId: string }) => ORDER_ROWS.get(orderId) ?? null,
 };
 
+// F-070 — the fake M6 admission register the discharge gate now reads. `status` is mutable per test so
+// one case can exercise the refusal (M6 still active) and the next the pass (M6 discharged).
+const M6_ADMISSIONS = new Map<string, { status: string; dischargedAt: string | null }>();
+const ADMISSIONS = {
+  getAdmissionSummary: async (admissionId: string) => {
+    const row = M6_ADMISSIONS.get(admissionId);
+    // The real M6 reader THROWS `AdmissionNotFoundError` for an unknown id; mirror that, because the
+    // service must treat a throw as a refusal rather than letting it escape as a 500.
+    if (!row) throw new Error(`admission ${admissionId} not found`);
+    return row;
+  },
+};
+
 const actor = {
   organizationId: ORG_A,
   userId: USER,
@@ -131,7 +144,7 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
     // NOOP outbox — this suite asserts state + effects. The `orders` seam is supplied because the
     // restraint gate now RESOLVES the physician order rather than checking the caller's string is
     // non-empty (F-069); `ORDERS` below is the fake M11 register.
-    svc = buildDrizzleIpuRouteService(handle.db, { orders: ORDERS });
+    svc = buildDrizzleIpuRouteService(handle.db, { orders: ORDERS, admissions: ADMISSIONS });
   }, 120_000);
 
   afterAll(async () => {
@@ -195,10 +208,26 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
     await admin.query("UPDATE ipu_admission SET state='active' WHERE id=$1", [adm.id]);
     await admin.query("UPDATE ipu_bed SET cleaning_status='occupied' WHERE id=$1", [bedId]);
 
-    const discharged = await svc.discharge(actor, adm.id, {
-      reason: "to_home",
-      dischargeEventExists: true,
+    // F-070 — the M6 admission is still `active`, so the discharge must refuse. Before this change the
+    // request body carried the answer and this call succeeded with M6 in exactly this state.
+    const M6_ADMISSION_ID = "77777777-7777-7777-7777-777777777777";
+    M6_ADMISSIONS.set(M6_ADMISSION_ID, { status: "active", dischargedAt: null });
+    await expect(svc.discharge(actor, adm.id, { reason: "to_home" })).rejects.toMatchObject({
+      code: "ADMISSION_DISCHARGE_EVENT_MISSING",
     });
+    // Still active, and the bed was NOT released — a refused discharge leaves no half-applied effects.
+    expect((await svc.getAdmission(readActor, adm.id))?.state).toBe("active");
+    expect(
+      (await admin.query("SELECT cleaning_status FROM ipu_bed WHERE id=$1", [bedId])).rows[0]
+        .cleaning_status,
+    ).toBe("occupied");
+
+    // M6 records the discharge; now the IPU stay may be closed out behind it.
+    M6_ADMISSIONS.set(M6_ADMISSION_ID, {
+      status: "discharged",
+      dischargedAt: "2026-08-27T12:00:00.000Z",
+    });
+    const discharged = await svc.discharge(actor, adm.id, { reason: "to_home" });
     expect(discharged.state).toBe("discharged");
     // The bed went discharged_dirty and the assignment ended.
     const bedAfterDc = (
@@ -387,6 +416,93 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
         reassessmentIntervalMinutes: 120,
       }),
     ).rejects.toThrow(/OrderProvider is not bound/);
+  });
+
+  // ── F-070 ──────────────────────────────────────────────────────────────────────────────────────
+
+  it("refuses a discharge when the M6 admission seam is unbound — unreadable is not discharged", async () => {
+    const unbound = buildDrizzleIpuRouteService(handle.db, { orders: ORDERS });
+    const [unit] = await svc.listUnits(readActor);
+    if (!unit) throw new Error("expected a unit");
+    const adm = await svc.openAdmission(actor, {
+      patientId: PATIENT,
+      admissionId: "aaaaaaaa-1111-4111-8111-111111111111",
+      levelOfCarePeriodId: "aaaaaaaa-2222-4222-8222-222222222222",
+      providerEntityId: PE,
+      remoteFacilityId: "aaaaaaaa-3333-4333-8333-333333333333",
+      kind: "arranged",
+    });
+    await admin.query("UPDATE ipu_admission SET state='active' WHERE id=$1", [adm.id]);
+    await expect(unbound.discharge(actor, adm.id, { reason: "to_home" })).rejects.toMatchObject({
+      code: "ADMISSION_DISCHARGE_EVENT_MISSING",
+    });
+  });
+
+  it("lists a shift's staff assignments, and unassign is scoped to the shift in the path", async () => {
+    const [unit] = await svc.listUnits(readActor);
+    if (!unit) throw new Error("expected a unit");
+    const shift = await svc.createShift(actor, {
+      unitId: unit.id,
+      shiftStartAt: "2026-08-27T07:00:00.000Z",
+      shiftEndAt: "2026-08-27T19:00:00.000Z",
+      displayLabel: "Day",
+    });
+    expect(shift.assignments).toEqual([]);
+    const other = await svc.createShift(actor, {
+      unitId: unit.id,
+      shiftStartAt: "2026-08-27T19:00:00.000Z",
+      shiftEndAt: "2026-08-28T07:00:00.000Z",
+    });
+    const assignment = await svc.assignStaff(actor, shift.id, {
+      membershipId: MEMBER,
+      role: "charge_rn",
+    });
+
+    // The id is reachable from the LIST, not only from the 201 that created it.
+    const listed = await svc.listShifts(readActor);
+    const row = listed.find((s) => s.id === shift.id);
+    expect(row?.assignments.map((a) => a.id)).toEqual([assignment.id]);
+    expect(listed.find((s) => s.id === other.id)?.assignments).toEqual([]);
+
+    // The path's shift id is part of the identity: another shift does not cancel this assignment.
+    await expect(
+      svc.unassignStaff(actor, other.id, { assignmentId: assignment.id }),
+    ).rejects.toThrow();
+    expect(
+      (await admin.query("SELECT state FROM ipu_staff_assignment WHERE id=$1", [assignment.id]))
+        .rows[0].state,
+    ).toBe("tentative");
+
+    const cancelled = await svc.unassignStaff(actor, shift.id, { assignmentId: assignment.id });
+    expect(cancelled.state).toBe("cancelled");
+  });
+
+  it("lists visitor restrictions so one can be lifted by a later session", async () => {
+    const [unit] = await svc.listUnits(readActor);
+    if (!unit) throw new Error("expected a unit");
+    const applied = await svc.applyVisitorRestriction(actor, {
+      scope: "unit",
+      unitId: unit.id,
+      restrictionKind: "mask_required",
+      rationale: "Respiratory outbreak on the unit.",
+      sourceKind: "outbreak_surveillance",
+    });
+
+    const inForce = await svc.listVisitorRestrictions(readActor, { unitId: unit.id });
+    expect(inForce.map((r) => r.id)).toContain(applied.id);
+    expect(inForce.find((r) => r.id === applied.id)?.rationale).toBe(
+      "Respiratory outbreak on the unit.",
+    );
+
+    await svc.liftVisitorRestriction(actor, { restrictionId: applied.id });
+    expect(
+      (await svc.listVisitorRestrictions(readActor, { unitId: unit.id })).map((r) => r.id),
+    ).not.toContain(applied.id);
+    expect(
+      (await svc.listVisitorRestrictions(readActor, { unitId: unit.id, active: "false" })).map(
+        (r) => r.id,
+      ),
+    ).toContain(applied.id);
   });
 
   it("erases the patient's IPU record under a destruction cert", async () => {
