@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PatientBanner,
@@ -15,12 +16,16 @@ import { StatusPill as UiStatusPill } from "@wardenx/ui";
 // rail) over the patient's documents table | a retention-class filter + KPI right rail. The SERVER is
 // the only authz point (ADR-0030): out-of-scope rows are non-leaking 404s, SUD content is redacted
 // server-side, legal-hold blocks live in the response — never a frontend hide. Reads
+// #91 — the chart's Documents tab now UPLOADS. One `type="file"` existed in the whole product before
+// this and it was in the portal, so a family member could attach a document to a patient's record and
+// the nurse could not. The dialog files against this patient by construction.
 // GET /api/v1/documents?patientId (+ the patient summary for the banner) via the typed client, reusing
 // the tenant Explorer's row shape and the Lantern helpers so the two views stay visually identical.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
+import { DocumentUploadDialog } from "./document-upload-dialog";
 import { Mono, StatusPill, lifecycleTone, ts } from "./lantern";
 
 interface DocumentRow {
@@ -67,6 +72,7 @@ export function PatientDocuments(): JSX.Element {
   const [retentionFilter, setRetentionFilter] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const load = useCallback(async () => {
     if (!patientId) return;
@@ -164,6 +170,9 @@ export function PatientDocuments(): JSX.Element {
                 ))}
               </select>
             </label>
+            <Button size="sm" onClick={() => setUploading(true)}>
+              Upload document
+            </Button>
           </div>
 
           {error ? (
@@ -228,6 +237,14 @@ export function PatientDocuments(): JSX.Element {
           </div>
         </aside>
       </div>
+      <DocumentUploadDialog
+        open={uploading}
+        patientId={patientId ?? null}
+        onClose={() => setUploading(false)}
+        onDone={() => {
+          void load();
+        }}
+      />
     </PatientWorkspaceLayout>
   );
 }

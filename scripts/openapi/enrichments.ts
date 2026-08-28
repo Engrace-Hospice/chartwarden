@@ -7134,6 +7134,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/document-uploads": {
     summary: "Initiate a checksum-enforced direct document upload",
     body: M22InitiateVerifiedUploadRequest,
+    status: 201,
     response: M22InitiateVerifiedUploadResponse,
   },
   "POST /api/v1/document-uploads/:id/complete": {
@@ -7143,6 +7144,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "DELETE /api/v1/document-uploads/:id": {
     summary: "Abort a pending document upload and destroy its staged object versions",
+    status: 204,
   },
   "POST /api/v1/documents": {
     summary: "Upload a new document (creates version v1)",
@@ -7178,6 +7180,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "PATCH /api/v1/documents/:id": {
     summary: "Edit document metadata (legal-hold aware)",
     body: M22PatchDocumentRequest,
+    // #91 — the route RETURNS the patched document and the contract declared no response schema, so
+    // `client:gen` typed the body `never`: a caller could send the edit and had no typed way to read
+    // back what the server made of it. The emitted contract did not look absent, it looked satisfied.
+    response: M22DocumentViewSchema,
   },
   "POST /api/v1/documents/:id/tags": { summary: "Add a tag to a document", body: M22AddTagRequest },
   "DELETE /api/v1/documents/:id/tags/:tagId": { summary: "Remove a tag from a document" },
