@@ -1940,6 +1940,14 @@
       "app": "web",
       "module": "37-ipu",
       "moduleId": 37,
+      "id": "ipu.bedside",
+      "path": "/ipu/admissions/:id",
+      "permission": "m37.ipu_admission.read"
+    },
+    {
+      "app": "web",
+      "module": "37-ipu",
+      "moduleId": 37,
       "id": "ipu.census",
       "path": "/ipu/census",
       "permission": "m37.census.read"
