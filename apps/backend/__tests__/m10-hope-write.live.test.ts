@@ -392,24 +392,153 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     expect(skipped.status).toBe("skipped");
   });
 
-  it("assembleSubmission queues a submission; retry is refused unless the submission is rejected", async () => {
-    const assembled = await svc.assembleSubmission(ORG_A, providerOf[ORG_A]);
-    expect(assembled.status).toBe("queued");
-    expect(await eventsFor(assembled.id)).toContain("m10.hope.submission_queued");
-    // A queued submission cannot be retried (409).
-    await expect(svc.retrySubmission(ORG_A, assembled.id)).rejects.toMatchObject({
-      statusCode: 409,
-    });
-    // Seed a rejected submission → retry re-queues it.
+  it("retry is refused unless the submission is rejected", async () => {
+    // Seed a rejected submission → retry re-queues it. (F-058 moved the assemble half of this test into
+    // its own describe below, because assemble no longer produces exactly one batch by construction.)
     const rejected = (
       await admin.query(
         `INSERT INTO hope_submission (organization_id, provider_entity_id, submission_period, status, item_count)
-         VALUES ($1,$2,'2026-06','rejected',3) RETURNING id`,
+         VALUES ($1,$2,'2026-Q2','rejected',3) RETURNING id`,
         [ORG_A, providerOf[ORG_A]],
       )
     ).rows[0].id as string;
     const requeued = await svc.retrySubmission(ORG_A, rejected);
     expect(requeued.status).toBe("queued");
+    await expect(svc.retrySubmission(ORG_A, rejected)).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  // ── F-058 (#150) — the §4.10 stage-1 assembler, at the row ───────────────────────────────────────
+  //
+  // `hope_submission_item` had NO writer anywhere in the repo: the only non-schema references were the
+  // eraser (deleting rows nothing created) and the M10 RLS suite (inserting its own). The route that
+  // claimed to force-assemble inserted a `hope_submission` with `itemCount: 0` and no items, ignoring
+  // `planAssembleSubmissions` — which had shipped unit-tested with zero production callers since
+  // M10-T07 — and answered 201 Created.
+  //
+  // These assertions are at the ROW because that is the only place the fix is real: the slice can prove
+  // the grouping and the counts, but not that item rows exist, not that
+  // `uniq_hope_sub_item_assessment_active` is now a barrier over a table something fills, and not that
+  // `hope_assessment.provider_entity_id` carries the batch key. That column shipped NOT NULL in
+  // migration 0034 for exactly this purpose — the schema header says so ("denormalized from the
+  // admission … so submission batching and the iQIES ccn_at_election match run without joining M6") —
+  // and 0130 relaxed it to nullable because the write path did not carry it. Nothing read it either, so
+  // the relaxation cost nothing visible: the reader it existed for was the assembler, which did not
+  // exist. Both ends are now real.
+  describe("F-058 — assemble writes hope_submission_item", () => {
+    /**
+     * Batch away everything already eligible.
+     *
+     * The suite shares one database across its tests with no truncation between them, so assessments
+     * signed by the tests above are eligible here. Draining first is what lets each case assert about
+     * the rows IT created rather than about the suite's accumulated history.
+     */
+    async function drain(): Promise<void> {
+      await svc.assembleSubmission(ORG_A, providerOf[ORG_A]);
+    }
+
+    /** Sign a fresh assessment so it becomes eligible for batching. */
+    async function signOne(org: string): Promise<string> {
+      const adm = nextAdmission();
+      await seedSchedule(org, adm);
+      const draft = await svc.recordTimepoint(org, memberOf[org], adm, recordArgs(QUIET_DATA));
+      const signed = await svc.signTimepoint(org, memberOf[org], draft.id);
+      return signed.id;
+    }
+
+    it("stamps the batch key on the assessment at record time", async () => {
+      const id = await signOne(ORG_A);
+      const { rows } = await admin.query(
+        "SELECT provider_entity_id, location_id FROM hope_assessment WHERE id = $1",
+        [id],
+      );
+      // Both columns were NULL on every row the platform had ever written. `hope_submission.provider_entity_id`
+      // is NOT NULL, so with no batch key nothing could ever have been assembled.
+      expect(rows[0].provider_entity_id).toBe(providerOf[ORG_A]);
+      expect(rows[0].location_id).toBe(locationOf[ORG_A]);
+    });
+
+    it("creates a batch WITH its item rows, and the itemCount matches the rows", async () => {
+      await drain();
+      const a = await signOne(ORG_A);
+      const b = await signOne(ORG_A);
+      const res = await svc.assembleSubmission(ORG_A, providerOf[ORG_A]);
+      // Both target dates are `now()`, so both land in the same CMS quarter — one batch, two items.
+      expect(res.submissions.length).toBe(1);
+
+      const batch = res.submissions[0];
+      expect(batch?.itemCount).toBe(2);
+      const { rows } = await admin.query(
+        "SELECT hope_assessment_id, item_status FROM hope_submission_item WHERE hope_submission_id = $1",
+        [batch?.id],
+      );
+      // The rows are the point: this table had no writer at all, so `itemCount` was a number with
+      // nothing behind it.
+      expect(rows.length).toBe(2);
+      expect(rows.map((r) => r.hope_assessment_id).sort()).toEqual([a, b].sort());
+      expect(rows.every((r) => r.item_status === "pending")).toBe(true);
+      expect(await eventsFor(String(batch?.id))).toContain("m10.hope.submission_queued");
+    });
+
+    it("keys the period off the assessment's target date, not the clock", async () => {
+      await drain();
+      await signOne(ORG_A);
+      const res = await svc.assembleSubmission(ORG_A, providerOf[ORG_A]);
+      expect(res.submissions.length).toBe(1);
+      // `YYYY-Qn`. The old route wrote `new Date().toISOString().slice(0, 7)` — `YYYY-MM` — which
+      // nothing that reads a submission period could parse.
+      expect(res.submissions[0]?.submissionPeriod).toMatch(/^\d{4}-Q[1-4]$/);
+    });
+
+    it("is idempotent: a second pass batches nothing and reports the skip", async () => {
+      await drain();
+      await signOne(ORG_A);
+      const first = await svc.assembleSubmission(ORG_A, providerOf[ORG_A]);
+      expect(first.submissions.length).toBe(1);
+      const second = await svc.assembleSubmission(ORG_A, providerOf[ORG_A]);
+      expect(second.submissions).toEqual([]);
+      expect(second.skippedAlreadyBatched).toBe(1);
+    });
+
+    it("uniq_hope_sub_item_assessment_active refuses a second pending item for one assessment", async () => {
+      // The partial unique index guarded a table nothing wrote. It is the backstop under two concurrent
+      // assemblers that both read the same eligible set before either writes.
+      await drain();
+      const id = await signOne(ORG_A);
+      await svc.assembleSubmission(ORG_A, providerOf[ORG_A]);
+      const sub = (
+        await admin.query(
+          `INSERT INTO hope_submission (organization_id, provider_entity_id, submission_period, status, item_count)
+           VALUES ($1,$2,'2026-Q2','queued',1) RETURNING id`,
+          [ORG_A, providerOf[ORG_A]],
+        )
+      ).rows[0].id as string;
+      await expect(
+        admin.query(
+          `INSERT INTO hope_submission_item (organization_id, hope_submission_id, hope_assessment_id, item_status)
+           VALUES ($1,$2,$3,'pending')`,
+          [ORG_A, sub, id],
+        ),
+      ).rejects.toThrow(/uniq_hope_sub_item_assessment_active/);
+    });
+
+    it("a queued batch is not counted as a non-acceptance on the compliance dashboard", async () => {
+      // The regression this change would otherwise have introduced: `submissionAcceptanceRate` divided
+      // by every submission of any status, so assembling real batches would have shown 0% acceptance —
+      // the §1.3 APU-penalty band — for work merely awaiting transmit.
+      await drain();
+      await signOne(ORG_A);
+      const before = await svc.complianceDashboard(ORG_A, providerOf[ORG_A]);
+      await svc.assembleSubmission(ORG_A, providerOf[ORG_A]);
+      const after = await svc.complianceDashboard(ORG_A, providerOf[ORG_A]);
+      expect(after.submissionAcceptanceCounts.total).toBe(before.submissionAcceptanceCounts.total);
+    });
+
+    it("does not batch another tenant's assessments", async () => {
+      await signOne(ORG_A);
+      const res = await svc.assembleSubmission(ORG_B, providerOf[ORG_B]);
+      expect(res.submissions).toEqual([]);
+      expect(res.assessmentsConsidered).toBe(0);
+    });
   });
 
   it("requestSummaryPdf emits summary_requested for a real assessment", async () => {

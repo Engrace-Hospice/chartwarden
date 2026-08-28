@@ -8456,7 +8456,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Retry a rejected submission (re-validates, re-assembles) */
+        /** Requeue a rejected submission for the next transmit pass */
         post: operations["postApiV1HopeSubmissionsByIdRetry"];
         delete?: never;
         options?: never;
@@ -8473,7 +8473,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Force-assemble a submission outside the cron cadence */
+        /** Force-assemble this provider entity's eligible signed assessments into per-period batches */
         post: operations["postApiV1HopeSubmissionsAssemble"];
         delete?: never;
         options?: never;
@@ -41647,15 +41647,20 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        id: string;
-                        providerEntityId: string;
-                        submissionPeriod: string;
-                        status: "queued" | "in_flight" | "accepted" | "rejected" | "partially_accepted";
-                        itemCount: number;
-                        acceptedCount: number;
-                        rejectedCount: number;
-                        transmittedAt: string | null;
-                        acceptedAt: string | null;
+                        submissions: {
+                            id: string;
+                            providerEntityId: string;
+                            submissionPeriod: string;
+                            status: "queued" | "in_flight" | "accepted" | "rejected" | "partially_accepted";
+                            itemCount: number;
+                            acceptedCount: number;
+                            rejectedCount: number;
+                            transmittedAt: string | null;
+                            acceptedAt: string | null;
+                        }[];
+                        assessmentsConsidered: number;
+                        skippedAlreadyBatched: number;
+                        skippedUnsited: number;
                     };
                 };
             };

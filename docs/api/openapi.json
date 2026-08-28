@@ -86328,7 +86328,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Retry a rejected submission (re-validates, re-assembles)",
+        "summary": "Requeue a rejected submission for the next transmit pass",
         "parameters": [
           {
             "name": "id",
@@ -86451,7 +86451,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Force-assemble a submission outside the cron cadence",
+        "summary": "Force-assemble this provider entity's eligible signed assessments into per-period batches",
         "parameters": [],
         "responses": {
           "201": {
@@ -86461,78 +86461,101 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "id",
-                    "providerEntityId",
-                    "submissionPeriod",
-                    "status",
-                    "itemCount",
-                    "acceptedCount",
-                    "rejectedCount",
-                    "transmittedAt",
-                    "acceptedAt"
+                    "submissions",
+                    "assessmentsConsidered",
+                    "skippedAlreadyBatched",
+                    "skippedUnsited"
                   ],
                   "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "providerEntityId": {
-                      "type": "string"
-                    },
-                    "submissionPeriod": {
-                      "type": "string"
-                    },
-                    "status": {
-                      "anyOf": [
-                        {
-                          "const": "queued",
-                          "type": "string"
-                        },
-                        {
-                          "const": "in_flight",
-                          "type": "string"
-                        },
-                        {
-                          "const": "accepted",
-                          "type": "string"
-                        },
-                        {
-                          "const": "rejected",
-                          "type": "string"
-                        },
-                        {
-                          "const": "partially_accepted",
-                          "type": "string"
+                    "submissions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "providerEntityId",
+                          "submissionPeriod",
+                          "status",
+                          "itemCount",
+                          "acceptedCount",
+                          "rejectedCount",
+                          "transmittedAt",
+                          "acceptedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "type": "string"
+                          },
+                          "submissionPeriod": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "queued",
+                                "type": "string"
+                              },
+                              {
+                                "const": "in_flight",
+                                "type": "string"
+                              },
+                              {
+                                "const": "accepted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rejected",
+                                "type": "string"
+                              },
+                              {
+                                "const": "partially_accepted",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "itemCount": {
+                            "type": "integer"
+                          },
+                          "acceptedCount": {
+                            "type": "integer"
+                          },
+                          "rejectedCount": {
+                            "type": "integer"
+                          },
+                          "transmittedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "acceptedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
                         }
-                      ]
+                      }
                     },
-                    "itemCount": {
+                    "assessmentsConsidered": {
                       "type": "integer"
                     },
-                    "acceptedCount": {
+                    "skippedAlreadyBatched": {
                       "type": "integer"
                     },
-                    "rejectedCount": {
+                    "skippedUnsited": {
                       "type": "integer"
-                    },
-                    "transmittedAt": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "acceptedAt": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
                     }
                   }
                 }

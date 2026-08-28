@@ -16,6 +16,7 @@ import {
   planCorrectionRfa,
   planReconcile,
   planTransmitResult,
+  submissionPeriodFor,
 } from "../src/modules/10-hope/index";
 
 const PE1 = "11111111-1111-4111-8111-111111111111";
@@ -214,5 +215,38 @@ describe("planCorrectionRfa (submit-correction-rfa, §7.8 / D7)", () => {
         originalIqiesRecordId: null,
       }),
     ).toEqual({ action: "skip", reason: "original_not_submitted" });
+  });
+});
+
+// ── F-058 (#150) — the batch key ─────────────────────────────────────────────────────────────────────
+//
+// `hope_submission.submission_period` is the second half of the batch key, and the route that claimed to
+// force-assemble computed it as `new Date().toISOString().slice(0, 7)`. Both halves of that were wrong,
+// and both are load-bearing.
+describe("submissionPeriodFor (F-058)", () => {
+  it("anchors on the ASSESSMENT's target date, not on the clock", () => {
+    // An Admission timepoint dated 30 March belongs to Q1 however long it sits unsigned. Anchoring on
+    // "now" put every assessment into whatever period the operator pressed the button in, which merges
+    // quarters and splits one quarter across two batches.
+    expect(submissionPeriodFor("2026-03-30T23:59:59.999Z")).toBe("2026-Q1");
+    expect(submissionPeriodFor("2026-04-01T00:00:00.000Z")).toBe("2026-Q2");
+  });
+
+  it("is QUARTERLY — the grain HQRP submission deadlines and the §1.3 APU signal use", () => {
+    // `slice(0, 7)` produced `2026-06`, which nothing that reads a period could parse: the schema's own
+    // doc comment, the iQIES-client fixtures and every M10 unit test use `YYYY-Qn`.
+    expect(submissionPeriodFor("2026-06-15T00:00:00.000Z")).toBe("2026-Q2");
+    expect(submissionPeriodFor("2026-06-15T00:00:00.000Z")).not.toBe("2026-06");
+  });
+
+  it("covers all four quarter boundaries", () => {
+    expect(submissionPeriodFor("2026-01-01T00:00:00.000Z")).toBe("2026-Q1");
+    expect(submissionPeriodFor("2026-06-30T23:59:59.999Z")).toBe("2026-Q2");
+    expect(submissionPeriodFor("2026-07-01T00:00:00.000Z")).toBe("2026-Q3");
+    expect(submissionPeriodFor("2026-12-31T23:59:59.999Z")).toBe("2026-Q4");
+  });
+
+  it("refuses an unparseable date rather than emitting `NaN-QNaN` as a batch key", () => {
+    expect(() => submissionPeriodFor("not-a-date")).toThrow(/M10_SUBMISSION_PERIOD_UNPARSEABLE/);
   });
 });

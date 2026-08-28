@@ -396,7 +396,13 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     },
   );
 
-  // 17 — retry a rejected submission (re-validates, re-assembles).
+  // 17 — requeue a rejected submission for the next transmit pass.
+  //
+  // F-058 (#150) — this comment used to read "re-validates, re-assembles". It does neither: it flips
+  // `status` from `rejected` to `queued` and re-emits `m10.hope.submission_queued`. Re-validation is
+  // `iqies-submit-worker`'s job (`decideSubmitReadiness` → `hasBlockingError`), and that worker has no
+  // transport to be wired to — `@wardenx/iqies-client`'s only adapter is the deny-stub. Requeueing is
+  // still the right transition to expose; describing it as work it does not do is not.
   app.post(
     "/api/v1/hope/submissions/:id/retry",
     { preHandler: [SUBMISSION_MANAGE, SCOPE_SUBMISSION("hope.submission.manage")] },
@@ -408,7 +414,9 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     },
   );
 
-  // 18 — force-assemble a submission outside the cron cadence.
+  // 18 — force-assemble this provider entity's eligible signed assessments into per-period batches
+  // (§4.10 stage 1). F-058 (#150): this used to insert one `hope_submission` with `itemCount: 0` and no
+  // `hope_submission_item` rows at all, ignoring `planAssembleSubmissions`, and answer 201.
   app.post(
     "/api/v1/hope/submissions/assemble",
     { preHandler: [SUBMISSION_MANAGE, SCOPE_BODY_PE("hope.submission.manage")] },

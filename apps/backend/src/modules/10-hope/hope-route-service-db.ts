@@ -47,6 +47,8 @@ import { NotFoundError } from "@wardenx/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import type { HopeAbacResolver, HopeAssessmentAbacFacts } from "./abac-predicates";
+import { assemblableAssessmentsForOrg, persistAssembledSubmission } from "./jobs/assemble-store";
+import { planAssembleSubmissions } from "./jobs/submission";
 import type { HopeWriteOutboxPort } from "./outbox-port";
 import type {
   CorrectTimepointArgs,
@@ -75,6 +77,9 @@ type SfvRow = typeof SFV.$inferSelect;
 type SubmissionRow = typeof SUB.$inferSelect;
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
+
+/** F-058 — a batch iQIES has answered on. See `complianceDashboard`. */
+const SUBMISSION_TERMINAL_STATUSES = ["accepted", "rejected", "partially_accepted"];
 
 /** D9 — is Section Q (Participation) present on the payload? A death discharge must NOT carry it; every
  * other discharge reason must. Presence is the key existing with any value, mirroring how the §J reader
@@ -308,7 +313,12 @@ export function createDbHopeBackend(
   async function admissionFacts(
     organizationId: string,
     admissionId: string,
-  ): Promise<{ patientId: string; status: string }> {
+  ): Promise<{
+    patientId: string;
+    status: string;
+    providerEntityId: string | null;
+    locationId: string | null;
+  }> {
     let summary: Awaited<ReturnType<AdmissionStatusReader["getAdmissionSummary"]>>;
     try {
       summary = await getSeam("AdmissionStatusReader").getAdmissionSummary(admissionId);
@@ -326,7 +336,19 @@ export function createDbHopeBackend(
         `Admission ${admissionId} is not visible in this organization.`,
       );
     }
-    return { patientId: summary.patientId, status: String(summary.status) };
+    return {
+      patientId: summary.patientId,
+      status: String(summary.status),
+      // F-058 (#150) — the siting `hope_assessment.provider_entity_id` / `location_id` are denormalized
+      // FOR (the schema header: "denormalized from the admission … so submission batching and the iQIES
+      // ccn_at_election match run without joining M6"). No insert had ever stamped either, so every row
+      // carried NULL and the assembler had no batch key. Taken from the summary this function already
+      // fetches — no second seam call. Null tolerated: `location_id` is nullable and a rare unsited
+      // admission must not block a clinical capture (§7.13); an unsited row is instead reported by the
+      // assembler as unbatchable rather than silently skipped.
+      providerEntityId: summary.providerEntityId ?? null,
+      locationId: summary.locationId ?? null,
+    };
   }
 
   async function loadA(t: DbClient, id: string): Promise<AssessmentRow> {
@@ -505,15 +527,24 @@ export function createDbHopeBackend(
         const subs = subsAll.filter(
           (s) => !providerEntityId || s.providerEntityId === providerEntityId,
         );
-        const accepted = subs.filter((s) => s.status === "accepted").length;
+        // F-058 (#150) — the acceptance-rate DENOMINATOR is the terminal batches only.
+        //
+        // It used to be every submission of any status, which read as 0% acceptance for an agency whose
+        // batches are merely queued. That was latent while nothing created a batch with anything in it;
+        // it becomes live the moment force-assemble does real work, and 0% is the §1.3 APU-penalty band
+        // — the worst possible reading to hand a compliance officer for "assembled, not yet sent". A
+        // `queued` or `in_flight` batch has no acceptance outcome, so it belongs in neither half of the
+        // ratio. Same definition M30's `submissionBatches` rollup already uses.
+        const terminal = subs.filter((s) => SUBMISSION_TERMINAL_STATUSES.includes(s.status));
+        const accepted = terminal.filter((s) => s.status === "accepted").length;
         return {
           providerEntityId: providerEntityId ?? null,
           hopeOnTimeRate: rateOf(completed, denom),
           hopeOnTimeCounts: { onTime: completed, total: denom },
           sfvOnTimeRate: rateOf(sfvOnTime, sfvDenom),
           sfvOnTimeCounts: { onTime: sfvOnTime, total: sfvDenom },
-          submissionAcceptanceRate: rateOf(accepted, subs.length),
-          submissionAcceptanceCounts: { accepted, total: subs.length },
+          submissionAcceptanceRate: rateOf(accepted, terminal.length),
+          submissionAcceptanceCounts: { accepted, total: terminal.length },
         };
       });
     },
@@ -697,6 +728,9 @@ export function createDbHopeBackend(
               organizationId,
               patientId: facts.patientId,
               admissionId,
+              // F-058 — the batch key. See `admissionFacts`.
+              providerEntityId: facts.providerEntityId,
+              locationId: facts.locationId,
               // Only an OPEN window is linked: `trg_hope_schedule_mark_completed` closes the linked
               // schedule on sign and its own WHERE is `status = 'open'`, so linking a closed row would
               // record a relationship the trigger will never act on.
@@ -741,6 +775,10 @@ export function createDbHopeBackend(
               organizationId,
               patientId: sfv.patientId,
               admissionId,
+              // F-058 — the batch key, carried from the SFV obligation this RFA-04 completes (the same
+              // denormalized siting, already resolved when the trigger created it).
+              providerEntityId: sfv.providerEntityId,
+              locationId: sfv.locationId,
               rfaKind: "04_sfv",
               status: "signed",
               data: args.data,
@@ -947,6 +985,12 @@ export function createDbHopeBackend(
                 organizationId,
                 patientId: r.patientId,
                 admissionId: r.admissionId,
+                // F-058 — the same unstamped-siting defect one table over: `symptom_follow_up_visit`
+                // carries the denormalized PE/location and nothing wrote either, so the RFA-04 the SFV
+                // later spawns had no batch key to inherit. Taken from the TRIGGERING assessment, which
+                // is the record that sited this obligation.
+                providerEntityId: r.providerEntityId,
+                locationId: r.locationId,
                 triggeringAssessmentId: id,
                 status: "open",
                 triggeredAt: new Date(descriptor.triggeredAt),
@@ -996,6 +1040,11 @@ export function createDbHopeBackend(
               organizationId,
               patientId: original.patientId,
               admissionId: original.admissionId,
+              // F-058 — copied, never re-resolved: the CCN a correction is submitted under is the one
+              // the ORIGINAL was captured under, and an admission transferred between provider entities
+              // since then must not silently move the record to the new CCN.
+              providerEntityId: original.providerEntityId,
+              locationId: original.locationId,
               rfaKind: original.rfaKind,
               status: "signed",
               data: args.data,
@@ -1065,29 +1114,57 @@ export function createDbHopeBackend(
         return toSubmissionView(firstOrThrow(rows, "retrySubmission matched no row"));
       });
     },
+    /**
+     * §4.10 stage 1 — force-assemble this provider entity's eligible signed assessments into one
+     * `hope_submission` per CMS submission period, WITH its `hope_submission_item` rows (F-058 / #150).
+     *
+     * This used to insert a batch with `itemCount: 0` and no items, ignoring `planAssembleSubmissions`
+     * entirely, and emit `submission_queued` with `itemCount: 0` — a 201 for work it did not do, and the
+     * reason `hope_submission_item` had no writer anywhere in the repo.
+     *
+     * Read, plan and both writes share ONE transaction, so a batch is never created without its items
+     * and the `uniq_hope_sub_item_assessment_active` partial unique index is a real barrier against two
+     * concurrent passes rather than a guard over a table nothing filled.
+     *
+     * The batch stops at `queued`. Stage 2 (`iqies-submit-worker`) terminates in
+     * `@wardenx/iqies-client`, whose only adapter is the deny-stub — there is no iQIES transport in this
+     * codebase, which is why no `assemble-hope-submission` CRON is registered: a nightly pass would
+     * accumulate batches nothing can transmit and, through that same unique index, permanently exclude
+     * their assessments from every future batch. An operator pressing this is a deliberate act; a cron
+     * doing it silently is not.
+     */
     async assembleSubmission(organizationId, providerEntityId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const period = new Date().toISOString().slice(0, 7);
-        const row = firstOrThrow(
-          await t
-            .insert(SUB)
-            .values({
-              organizationId,
-              providerEntityId,
-              submissionPeriod: period,
-              status: "queued",
-              itemCount: 0,
-            })
-            .returning(),
-          "hope_submission insert returned no row",
-        );
-        await emit(t, organizationId, "m10.hope.submission_queued", "hope_submission", row.id, {
-          submissionId: row.id,
-          providerEntityId,
-          itemCount: 0,
-        });
-        return toSubmissionView(row);
+        const scan = await assemblableAssessmentsForOrg(t, organizationId, providerEntityId);
+        const plan = planAssembleSubmissions(scan.eligible);
+
+        const views: HopeSubmissionView[] = [];
+        for (const planned of plan.submissions) {
+          const { submission } = await persistAssembledSubmission(t, organizationId, planned);
+          await emit(
+            t,
+            organizationId,
+            "m10.hope.submission_queued",
+            "hope_submission",
+            submission.id,
+            {
+              submissionId: submission.id,
+              providerEntityId: submission.providerEntityId,
+              // The real count. The `itemCount: 0` this used to publish was consumed downstream as a
+              // fact about the batch, so every subscriber was told every batch was empty.
+              itemCount: submission.itemCount,
+            },
+          );
+          views.push(toSubmissionView(submission));
+        }
+
+        return {
+          submissions: views,
+          assessmentsConsidered: scan.eligible.length + scan.unsitedAssessmentIds.length,
+          skippedAlreadyBatched: plan.skippedAssessmentIds.length,
+          skippedUnsited: scan.unsitedAssessmentIds.length,
+        };
       });
     },
 

@@ -401,6 +401,9 @@ export async function resolveHopeMeasureInput(
         ...base,
         submissions: rollup.submissions,
         acceptedSubmissions: rollup.acceptedSubmissions,
+        // F-058 (#150) — lets the calculator declare the measure UNAVAILABLE rather than suppress it for
+        // low N when batches exist but none has ever been transmitted.
+        queuedSubmissions: rollup.queuedSubmissions,
         threshold: hopeThresholdFor(code),
       };
       return input;

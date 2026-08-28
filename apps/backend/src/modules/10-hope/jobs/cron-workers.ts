@@ -7,6 +7,25 @@
 // (a cadence-dispatch-tracking store, patient-display-name + CTA-URL resolution, the multi-stage iQIES
 // submission pipeline) — out of scope for this pass, not silently dropped.
 //
+// F-058 (#150) SHARPENS the `submission` entry, because "out of scope for this pass" had stopped being
+// the reason. §4.10 is three stages and they are not blocked by the same thing:
+//
+//   • stage 1 `assemble-hope-submission` — needs NOTHING outside M10, and its absence was the whole
+//     defect: `hope_submission_item` had no writer anywhere in the repo and the route that claims to
+//     force-assemble inserted an empty batch. It is now REAL, in ./assemble-store.ts, reachable through
+//     `assembleSubmission` on the route service.
+//   • stages 2 and 3 `iqies-submit-worker` / `iqies-reconcile-worker` — terminate in
+//     `@wardenx/iqies-client`, whose only adapter is `createUnboundIqiesAdapter`. There is no transport
+//     (CMS HOPE submission XML, per-MAC submitter auth, sandbox/prod selection, per-tenant credentials
+//     from M34's secret store). A genuine declared absence, and the deny-stub is the right posture.
+//
+// No `assemble-hope-submission` CRON is registered even though stage 1 works, and that is a decision
+// rather than an omission. A nightly pass would create batches nothing can transmit, and each batched
+// assessment is then excluded from every future batch by `uniq_hope_sub_item_assessment_active` — so an
+// unattended cron would quietly consume the agency's whole backlog into batches that go nowhere. An
+// operator pressing force-assemble is a deliberate act; a cron doing it is not. Registering it is a
+// one-line change here once a live adapter binds.
+//
 // Each cron fans out over the active orgs, opens ONE per-org `withOrgContext` RLS envelope, reads via
 // ./cron-store, runs the PURE planner (planHopeWindowWatchdog / planSfvWatchdog from ./index), persists the
 // `changed===true` transitions, and publishes every planned event to the injected transactional-outbox

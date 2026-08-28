@@ -89,6 +89,8 @@ function makeServer(
     resolveAdmissionPatient?: ResolveAdmissionPatient;
     /** #48 — the M6 admission status the §2.3 active-admission guard turns on (default `active`). */
     admissionStatus?: string;
+    /** F-058 — extra seeded assessments for the force-assemble tests (sited, signed, dated). */
+    extraAssessments?: ReadonlyArray<Record<string, unknown>>;
   } = {},
 ) {
   const backend = createInMemoryHopeBackend({
@@ -125,6 +127,7 @@ function makeServer(
         signedAt: "2026-06-02T10:00:00.000Z",
         signedBy: "rn_1",
       },
+      ...((options.extraAssessments ?? []) as never[]),
     ],
     submissions: [
       {
@@ -399,6 +402,169 @@ describe("M10-T06 — submission retry guard (§4.4)", () => {
       payload: {},
     });
     expect(bad.statusCode).toBe(409);
+    await app.close();
+  });
+});
+
+// ── F-058 (#150) — force-assemble ────────────────────────────────────────────────────────────────────
+//
+// `POST /api/v1/hope/submissions/assemble` had NO test of any kind. It inserted one `hope_submission`
+// with `itemCount: 0` and no `hope_submission_item` rows at all — that table had no writer anywhere in
+// the repo — ignored `planAssembleSubmissions` entirely, keyed the period off the wall clock, and
+// answered 201 Created. Every assertion below fails against that implementation.
+describe("F-058 — force-assemble builds real batches (§4.10 stage 1)", () => {
+  const SITED_Q1 = "90000000-0000-4000-8000-000000000021";
+  const SITED_Q2 = "90000000-0000-4000-8000-000000000022";
+  const SITED_Q2_B = "90000000-0000-4000-8000-000000000023";
+  const OTHER_PE = "90000000-0000-4000-8000-000000000024";
+
+  const sited = [
+    {
+      id: SITED_Q1,
+      organizationId: ORG,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      providerEntityId: "pe_1",
+      rfaKind: "01_admission",
+      status: "signed",
+      targetDate: "2026-02-11T00:00:00.000Z",
+      signedAt: "2026-02-12T00:00:00.000Z",
+      signedBy: "rn_1",
+    },
+    {
+      id: SITED_Q2,
+      organizationId: ORG,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      providerEntityId: "pe_1",
+      rfaKind: "02_huv1",
+      status: "signed",
+      targetDate: "2026-04-20T00:00:00.000Z",
+      signedAt: "2026-04-21T00:00:00.000Z",
+      signedBy: "rn_1",
+    },
+    {
+      id: SITED_Q2_B,
+      organizationId: ORG,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      providerEntityId: "pe_1",
+      rfaKind: "03_huv2",
+      status: "signed",
+      targetDate: "2026-05-30T00:00:00.000Z",
+      signedAt: "2026-06-01T00:00:00.000Z",
+      signedBy: "rn_1",
+    },
+    {
+      id: OTHER_PE,
+      organizationId: ORG,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      providerEntityId: "pe_2",
+      rfaKind: "01_admission",
+      status: "signed",
+      targetDate: "2026-04-02T00:00:00.000Z",
+      signedAt: "2026-04-03T00:00:00.000Z",
+      signedBy: "rn_1",
+    },
+  ];
+
+  const assemble = (app: ReturnType<typeof makeServer>["app"]) =>
+    app.inject({
+      method: "POST",
+      url: "/api/v1/hope/submissions/assemble",
+      headers: RN,
+      payload: { providerEntityId: "pe_1" },
+    });
+
+  it("groups by CMS submission period and carries a real itemCount", async () => {
+    const { app } = makeServer({ extraAssessments: sited });
+    const res = await assemble(app);
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    // Two batches: 2026-Q1 (one assessment) and 2026-Q2 (two). The old route always produced exactly
+    // ONE batch, of zero items, keyed on today's month.
+    expect(body.submissions.map((s: { submissionPeriod: string }) => s.submissionPeriod)).toEqual([
+      "2026-Q1",
+      "2026-Q2",
+    ]);
+    expect(body.submissions.map((s: { itemCount: number }) => s.itemCount)).toEqual([1, 2]);
+    await app.close();
+  });
+
+  it("batches only the named provider entity — the CCN is the batch key", async () => {
+    const { app } = makeServer({ extraAssessments: sited });
+    const body = (await assemble(app)).json();
+    const total = body.submissions.reduce(
+      (n: number, s: { itemCount: number }) => n + s.itemCount,
+      0,
+    );
+    expect(total).toBe(3); // pe_1's three; pe_2's one is not in this CCN's batches
+    await app.close();
+  });
+
+  it("is idempotent, and says so — a second press returns no batches and a skip count", async () => {
+    const { app } = makeServer({ extraAssessments: sited });
+    await assemble(app);
+    const second = (await assemble(app)).json();
+    expect(second.submissions).toEqual([]);
+    // Not merely "true": the skip count is what makes a no-op distinguishable from a failure.
+    expect(second.skippedAlreadyBatched).toBe(3);
+    await app.close();
+  });
+
+  it("reports an UNSITED assessment rather than dropping it inside a WHERE clause", async () => {
+    // SIGNED_A is seeded signed with no provider entity. `hope_submission.provider_entity_id` is NOT
+    // NULL, so it cannot be batched at all — and an assessment excluded by arithmetic, with nothing on
+    // the wire to say so, is the same class of silence this whole change exists to end.
+    const { app } = makeServer({ extraAssessments: sited });
+    const body = (await assemble(app)).json();
+    expect(body.skippedUnsited).toBe(1);
+    expect(body.assessmentsConsidered).toBe(4); // pe_1's three + the one unsited row
+    await app.close();
+  });
+
+  it("emits submission_queued carrying the REAL item count", async () => {
+    // The route used to publish `itemCount: 0` on every batch, and subscribers consume that as a fact
+    // about the batch — so every consumer was told each batch was empty.
+    const { app, backend } = makeServer({ extraAssessments: sited });
+    await assemble(app);
+    const queued = backend
+      .drainEvents()
+      .filter((e) => e.eventName === "m10.hope.submission_queued");
+    expect(queued.map((e) => (e.payload as { itemCount: number }).itemCount).sort()).toEqual([
+      1, 2,
+    ]);
+    await app.close();
+  });
+
+  it("a queued batch does not drag the acceptance rate to 0% on the compliance dashboard", async () => {
+    // The regression this change would otherwise have INTRODUCED. `submissionAcceptanceRate` divided by
+    // every submission of any status, which was harmless only while nothing ever created a batch with
+    // anything in it. Once force-assemble does real work, a `queued` batch would read as a failed one:
+    // 0% acceptance, the §1.3 APU-penalty band, shown to a compliance officer for work that is merely
+    // awaiting transmit. A batch iQIES has not answered on belongs in neither half of the ratio.
+    const { app } = makeServer({ extraAssessments: sited });
+    await assemble(app);
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/hope/dashboard/compliance?providerEntityId=pe_1",
+      headers: RN,
+    });
+    const body = res.json();
+    // pe_1 has, after the assemble above: one seeded `rejected` batch, one seeded `queued` batch, and
+    // two freshly assembled `queued` ones. Only the rejected batch has an outcome, so the denominator is
+    // 1 — not 4. Before this change every queued batch counted as a non-acceptance.
+    expect(body.submissionAcceptanceCounts.total).toBe(1);
+    expect(body.submissionAcceptanceCounts.accepted).toBe(0);
+    await app.close();
+  });
+
+  it("assembles nothing when there is nothing eligible, and does not invent a batch", async () => {
+    const { app } = makeServer();
+    const body = (await assemble(app)).json();
+    expect(body.submissions).toEqual([]);
+    expect(body.skippedAlreadyBatched).toBe(0);
     await app.close();
   });
 });
@@ -927,8 +1093,10 @@ describe("M10 — #48 the HQRP compliance dashboard distinguishes no-data from a
     const body = res.json();
     expect(body.hopeOnTimeRate).toBeNull();
     expect(body.hopeOnTimeCounts).toEqual({ onTime: 0, total: 0 });
-    expect(body.submissionAcceptanceRate).not.toBe(1); // two seeded submissions, neither accepted
-    expect(body.submissionAcceptanceCounts.total).toBe(2);
+    // F-058 — the denominator is TERMINAL batches only, so of the two seeded submissions only the
+    // `rejected` one counts; the `queued` one has no acceptance outcome yet. It used to be 2.
+    expect(body.submissionAcceptanceRate).not.toBe(1);
+    expect(body.submissionAcceptanceCounts.total).toBe(1);
     await app.close();
   });
 });

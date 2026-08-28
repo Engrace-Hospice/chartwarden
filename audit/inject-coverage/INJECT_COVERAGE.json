@@ -4,7 +4,7 @@
     "covered": 39,
     "routes": 1262,
     "coveredRoutes": 1262,
-    "directRoutesReferenced": 1203
+    "directRoutesReferenced": 1204
   },
   "modules": [
     {
@@ -114,7 +114,7 @@
         "apps/backend/__tests__/hope-presubmission-validation.test.ts",
         "apps/backend/__tests__/hope-routes.test.ts"
       ],
-      "directRoutesReferenced": 18
+      "directRoutesReferenced": 19
     },
     {
       "module": "11-orders",
