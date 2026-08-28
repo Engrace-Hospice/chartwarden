@@ -76,6 +76,10 @@ const ORG = "org_a";
 const ORG_B = "org_b";
 const PATIENT = "11111111-1111-4111-8111-111111111111";
 const ADMISSION = "33333333-3333-4333-8333-333333333333";
+// F-064 — M7 care-plan element refs (logical uuids; the table carries no cross-module FK).
+const PROBLEM = "44444444-4444-4444-8444-444444444444";
+const GOAL = "55555555-5555-4555-8555-555555555555";
+const INTERVENTION = "66666666-6666-4666-8666-666666666666";
 // pre-seeded cosign_pending encounters (uuid-shaped slice ids).
 const ENC_BY_LPN = "a0000000-0000-4000-8000-000000000001";
 const ENC_BY_RN = "a0000000-0000-4000-8000-000000000002";
@@ -559,6 +563,125 @@ describe("M8 §2.6 — the HearthNote selection tree round-trips (#114)", () => 
       "edema_grade",
     ]);
     expect(assessment?.entries.find((e) => e.code === "nv.cv.stable")?.slots).toEqual([]);
+  });
+
+  // ── F-064 (#159) — care-plan links ────────────────────────────────────────────────────────────────
+  //
+  // These three routes had NO test of any kind. `POST .../care-plan-links` parsed a body carrying the M7
+  // problem/goal/intervention refs, passed NONE of them on — `addCarePlanLink(organizationId,
+  // encounterId)` took no third argument — persisted nothing, and answered 201 Created with the
+  // ENCOUNTER's own id under the name `linkId`. `DELETE` returned 204 having removed nothing. There was
+  // no `GET`. Every assertion below fails against that implementation.
+  it("persists the M7 refs the body carries, and returns the LINK's id", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/care-plan-links`,
+      headers: RN,
+      payload: { problemId: PROBLEM, interventionId: INTERVENTION },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    // The old response's `linkId` WAS the encounter id. A caller that stored it held an encounter id
+    // under a link-shaped name, and nothing distinguished that from a working create.
+    expect(body.id).not.toBe(id);
+    expect(body.encounterId).toBe(id);
+    expect(body.problemId).toBe(PROBLEM);
+    expect(body.interventionId).toBe(INTERVENTION);
+    expect(body.goalId).toBeNull();
+    await app.close();
+  });
+
+  it("reads the links back — the table would be write-only without the GET", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const before = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/care-plan-links`,
+      headers: RN,
+    });
+    expect(before.json().links).toEqual([]);
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/care-plan-links`,
+      headers: RN,
+      payload: { goalId: GOAL },
+    });
+    const after = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/care-plan-links`,
+      headers: RN,
+    });
+    expect(after.json().links).toHaveLength(1);
+    expect(after.json().links[0].goalId).toBe(GOAL);
+    await app.close();
+  });
+
+  it("refuses a link naming no element with a 422, not a raw CHECK violation", async () => {
+    // `encounter_care_plan_link_at_least_one` is a DB CHECK, so an empty body would have surfaced as a
+    // `23514` — a 500 carrying a Postgres constraint name.
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/care-plan-links`,
+      headers: RN,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error?.code ?? res.json().code).toBe("CARE_PLAN_LINK_REF_REQUIRED");
+    await app.close();
+  });
+
+  it("removal actually removes: the link stops being listed", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const created = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/care-plan-links`,
+      headers: RN,
+      payload: { problemId: PROBLEM },
+    });
+    const linkId = created.json().id as string;
+    const del = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/encounters/${id}/care-plan-links/${linkId}`,
+      headers: RN,
+    });
+    expect(del.statusCode).toBe(204);
+    const after = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${id}/care-plan-links`,
+      headers: RN,
+    });
+    // The old DELETE returned 204 having removed nothing, which is indistinguishable from this.
+    expect(after.json().links).toEqual([]);
+    await app.close();
+  });
+
+  it("removing a link that is absent or already removed is a 404, not another 204", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const created = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/care-plan-links`,
+      headers: RN,
+      payload: { problemId: PROBLEM },
+    });
+    const linkId = created.json().id as string;
+    await app.inject({
+      method: "DELETE",
+      url: `/api/v1/encounters/${id}/care-plan-links/${linkId}`,
+      headers: RN,
+    });
+    const second = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/encounters/${id}/care-plan-links/${linkId}`,
+      headers: RN,
+    });
+    expect(second.statusCode).toBe(404);
+    await app.close();
   });
 
   it("mileage reads back the row its writes create (F-063)", async () => {

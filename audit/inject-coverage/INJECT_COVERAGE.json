@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1262,
-    "coveredRoutes": 1262,
-    "directRoutesReferenced": 1204
+    "routes": 1263,
+    "coveredRoutes": 1263,
+    "directRoutesReferenced": 1205
   },
   "modules": [
     {
@@ -88,13 +88,13 @@
     },
     {
       "module": "08-encounters",
-      "routes": 36,
+      "routes": 37,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/encounter-authoring.test.ts",
         "apps/backend/__tests__/encounter-routes.test.ts"
       ],
-      "directRoutesReferenced": 32
+      "directRoutesReferenced": 33
     },
     {
       "module": "09-assessments",

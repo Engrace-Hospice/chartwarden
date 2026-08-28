@@ -6984,7 +6984,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** The live care-plan links on an encounter */
+        get: operations["getApiV1EncountersByEncounterIdCareplanlinks"];
         put?: never;
         /** Link the encounter to care-plan elements */
         post: operations["postApiV1EncountersByEncounterIdCareplanlinks"];
@@ -7004,7 +7005,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove a care-plan link while draft */
+        /** Remove a care-plan link while draft (soft invalidate) */
         delete: operations["deleteApiV1EncountersByEncounterIdCareplanlinksByLinkId"];
         options?: never;
         head?: never;
@@ -38022,6 +38023,39 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1EncountersByEncounterIdCareplanlinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        links: {
+                            id: string;
+                            encounterId: string;
+                            problemId: string | null;
+                            goalId: string | null;
+                            interventionId: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1EncountersByEncounterIdCareplanlinks: {
         parameters: {
             query?: never;
@@ -38045,13 +38079,18 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        linkId: string;
+                        id: string;
+                        encounterId: string;
+                        problemId: string | null;
+                        goalId: string | null;
+                        interventionId: string | null;
+                        createdAt: string;
                     };
                 };
             };

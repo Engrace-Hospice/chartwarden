@@ -97,11 +97,10 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   /** The real caller signing (§3.3/D13) — `resolveSignatureProvenance` resolves SESSION_A's step-up
    *  through the SessionContextResolver seam registered in beforeAll (fresh, webauthn). */
   let ACTOR_A: { membershipId: string; sessionId: string };
-  /** PARAM-004/CoP-418.104(c) follow-up — signing now writes an `encounter_signature` row, which has
-   *  NOT NULL provider_entity_id/location_id. `createDraft` never sets an encounter's siting (a
-   *  pre-existing gap this write-lifecycle slice doesn't backfill from the admission/visit yet — see
-   *  the file header's "siting backfills... when present" note), so the test seeds real FK-valid
-   *  siting and `draft()` stamps it onto every created encounter directly. */
+  /** PARAM-004/CoP-418.104(c) follow-up — signing writes an `encounter_signature` row, which has NOT
+   *  NULL provider_entity_id/location_id. F-064 (#159): `createDraft` now RESOLVES the encounter's
+   *  siting from M6's `AdmissionStatusReader`, so this is the FK-valid pair the seam fake answers with
+   *  rather than a value the harness stamps on afterwards. */
   let SITING_A: { providerEntityId: string; locationId: string };
 
   async function resetSchema() {
@@ -217,6 +216,26 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     // the composition root binds M7's real reader; here a fake stands in, because M7's Drizzle store
     // reads under the CALLER'S ambient request context and this suite drives the service directly with
     // none. `carePlanOverdue` is the switch the overdue tests below flip.
+    // F-064 (#159) — M6's `AdmissionStatusReader`, which `createDraft` now resolves the encounter's
+    // ARCH-011 siting through. Migration 0128 relaxed `encounter.provider_entity_id` / `location_id` to
+    // nullable and recorded that "the siting backfills when the admission has it"; this is that
+    // backfill, and without the seam registered here the write path would degrade to null and the
+    // assertions below would be testing the harness rather than the code.
+    registerSeam("AdmissionStatusReader", {
+      getAdmissionSummary: async (admissionId: string) => ({
+        admissionId,
+        patientId: PATIENT,
+        organizationId: ORG_A,
+        providerEntityId: SITING_A.providerEntityId,
+        locationId: SITING_A.locationId,
+        status: "active",
+        admissionAt: "2026-01-05",
+        activatedAt: "2026-01-05",
+        dischargedAt: null,
+        currentElectionPeriodId: null,
+        currentLevelOfCare: "routine_home_care",
+      }),
+    } as never);
     registerSeam("CarePlanReader", {
       relevantElementsForEncounter: async () => null,
       isReviewOverdue: async () => carePlanOverdue,
@@ -261,11 +280,10 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
         ? { faceToFaceEncounterId: extra.faceToFaceEncounterId }
         : {}),
     });
-    await admin.query("UPDATE encounter SET provider_entity_id=$1, location_id=$2 WHERE id=$3", [
-      SITING_A.providerEntityId,
-      SITING_A.locationId,
-      d.id,
-    ]);
+    // F-064 — the harness used to stamp the siting here, because `createDraft` never did. That is the
+    // shape every one of these gaps has taken: the suite supplies the fact its own production path
+    // cannot produce, so the gate is proven and the producer is not. `createDraft` resolves it from M6
+    // now, and `encounter is sited at createDraft` below asserts exactly that.
     // Document it to the §2.6 gate's floor (#121) unless the caller is testing the gate itself. Every
     // finalize/sign case below went through this draft helper and documented NOTHING before the gate
     // was real — and signed anyway.
@@ -1097,6 +1115,107 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     expect(rows[0].status).toBe("voided");
     expect(rows[0].vocab_version_id).not.toBe(RETIRED_SENTINEL);
     expect(narrativeVocabReleaseById(rows[0].vocab_version_id as string)).not.toBeNull();
+  });
+
+  // ── F-064 (#159) — care-plan links, at the row ────────────────────────────────────────────────────
+  //
+  // `POST .../care-plan-links` parsed a body carrying the M7 problem/goal/intervention refs, passed NONE
+  // of them on, persisted nothing, and answered 201 with the ENCOUNTER's id as `linkId`. The route
+  // service blamed only the un-threaded refs. The other half is here, and is what made the insert
+  // IMPOSSIBLE rather than merely unwritten: `encounter_care_plan_link.provider_entity_id` /
+  // `location_id` were NOT NULL while the encounter they copy from carried null in both, because 0128
+  // relaxed that pair on every OTHER encounter satellite and left this table out.
+  describe("F-064 — the care-plan link persists", () => {
+    const PROBLEM = "44444444-4444-4444-8444-444444444444";
+    const GOAL = "55555555-5555-4555-8555-555555555555";
+
+    it("encounter is sited at createDraft, from M6 — the column 0128 deferred", async () => {
+      const id = await draft("routine_visit", "rn");
+      const { rows } = await admin.query(
+        "SELECT provider_entity_id, location_id FROM encounter WHERE id = $1",
+        [id],
+      );
+      // Both were NULL on every encounter the platform had ever written, and the harness used to patch
+      // them in so the signature row's NOT NULLs would hold.
+      expect(rows[0].provider_entity_id).toBe(SITING_A.providerEntityId);
+      expect(rows[0].location_id).toBe(SITING_A.locationId);
+    });
+
+    it("inserts a real row carrying the M7 refs, and returns ITS id", async () => {
+      const id = await draft("routine_visit", "rn");
+      const link = await svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, {
+        problemId: PROBLEM,
+        goalId: GOAL,
+      });
+      expect(link.id).not.toBe(id); // the old `linkId` was the encounter's own id
+      const { rows } = await admin.query(
+        "SELECT * FROM encounter_care_plan_link WHERE encounter_id = $1",
+        [id],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].problem_id).toBe(PROBLEM);
+      expect(rows[0].goal_id).toBe(GOAL);
+      expect(rows[0].intervention_id).toBeNull();
+      // Copied from the encounter, which is why the encounter had to be sited first.
+      expect(rows[0].provider_entity_id).toBe(SITING_A.providerEntityId);
+      expect(rows[0].removed_at).toBeNull();
+    });
+
+    it("refuses a link naming no element before the DB CHECK can raise a 23514", async () => {
+      const id = await draft("routine_visit", "rn");
+      await expect(svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, {})).rejects.toMatchObject({
+        code: "CARE_PLAN_LINK_REF_REQUIRED",
+        statusCode: 422,
+      });
+      const { rows } = await admin.query(
+        "SELECT count(*)::int AS n FROM encounter_care_plan_link WHERE encounter_id = $1",
+        [id],
+      );
+      expect(rows[0].n).toBe(0);
+    });
+
+    it("removal is a soft invalidate: the row survives, the link stops listing", async () => {
+      const id = await draft("routine_visit", "rn");
+      const link = await svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, {
+        problemId: PROBLEM,
+      });
+      await svc.removeCarePlanLink(ORG_A, membershipOf[ORG_A], id, link.id);
+      expect((await svc.listCarePlanLinks(ORG_A, id)).links).toEqual([]);
+      const { rows } = await admin.query(
+        "SELECT removed_at, removed_by_membership_id FROM encounter_care_plan_link WHERE id = $1",
+        [link.id],
+      );
+      // `wardenx_app` holds DELETE on no M8 table (§3.6 append-only), and the M4 write-audit trail is
+      // only as good as the rows it describes — so the row stays, marked and attributed.
+      expect(rows).toHaveLength(1);
+      expect(rows[0].removed_at).not.toBeNull();
+      expect(rows[0].removed_by_membership_id).toBe(membershipOf[ORG_A]);
+    });
+
+    it("removing an already-removed link is a 404, not a second success", async () => {
+      const id = await draft("routine_visit", "rn");
+      const link = await svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, {
+        problemId: PROBLEM,
+      });
+      await svc.removeCarePlanLink(ORG_A, membershipOf[ORG_A], id, link.id);
+      await expect(
+        svc.removeCarePlanLink(ORG_A, membershipOf[ORG_A], id, link.id),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it("the removal-consistency CHECK refuses an instant with no actor", async () => {
+      // `encounter_care_plan_link_removal_consistent` — a removal with no actor is unattributable, and
+      // an actor with no instant is not a removal. Only the constraint can prove this.
+      const id = await draft("routine_visit", "rn");
+      const link = await svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, {
+        problemId: PROBLEM,
+      });
+      await expect(
+        admin.query("UPDATE encounter_care_plan_link SET removed_at = now() WHERE id = $1", [
+          link.id,
+        ]),
+      ).rejects.toThrow(/encounter_care_plan_link_removal_consistent/);
+    });
   });
 
   it("RLS — org B cannot read or write org A's encounter (non-leaking 404)", async () => {
