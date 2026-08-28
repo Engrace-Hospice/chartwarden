@@ -24,7 +24,13 @@ interface Version {
   kind: string;
   status: string;
   signedAt: string | null;
-  requiredSignerSet: string[];
+  // #91 — `{ role, count }`, NOT `string`. The wire has always sent slot OBJECTS; both M7 screens
+  // declared `string[]` and rendered each entry through `cap()`, which calls `s.replace` — so the IDG
+  // signature checklist would have THROWN the first time a version carried a non-empty signer set, and
+  // the `signerRole === role` comparison beside it was an object-vs-string that could only ever be
+  // false. It never fired because `requiredSignerSet` is populated at FINALIZE and nothing could
+  // finalize; enabling that write is what would have surfaced it.
+  requiredSignerSet: { role: string; count: number }[];
   signatures: { signerRole: string; signedAt: string }[];
 }
 
@@ -93,11 +99,16 @@ export function CarePlanVersionHistory(): JSX.Element {
                   <td className="tabular-nums">{v.signedAt ? v.signedAt.slice(0, 10) : "—"}</td>
                   <td>
                     <span style={{ display: "inline-flex", flexWrap: "wrap", gap: "0.5rem" }}>
-                      {v.requiredSignerSet.map((role) => {
-                        const signed = v.signatures.some((s) => s.signerRole === role);
+                      {v.requiredSignerSet.map((slot) => {
+                        // A slot can require MORE than one signature of a role (`count`); it is met only
+                        // when that many have been collected, which the old `some()` could not express.
+                        const collected = v.signatures.filter(
+                          (sig) => sig.signerRole === slot.role,
+                        ).length;
+                        const signed = collected >= slot.count;
                         return (
                           <span
-                            key={role}
+                            key={slot.role}
                             style={{
                               display: "inline-flex",
                               alignItems: "center",
@@ -106,7 +117,8 @@ export function CarePlanVersionHistory(): JSX.Element {
                             }}
                           >
                             <Glyph name={signed ? "check-circle" : "clock"} size={13} />
-                            {cap(role)}
+                            {cap(slot.role)}
+                            {slot.count > 1 ? ` ${collected}/${slot.count}` : ""}
                           </span>
                         );
                       })}
