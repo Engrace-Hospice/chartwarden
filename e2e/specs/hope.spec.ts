@@ -36,7 +36,10 @@
 //
 // The D4 symptom-follow-up assertion is folded into the main path rather than standing as its own test,
 // because a separate test would have to assume either an execution ORDER or a fixed row count — and the
-// seed already leaves one open SFV, so "there is a row" passes without this spec doing anything.
+// seed already leaves one open SFV, so "there is a row" passes without this spec doing anything. It is
+// asserted on THIS assessment's own row (`j2051TriggerFired`) rather than against the org-wide SFV
+// worklist, which paginates: a "one more than before" count over a paginated list stops growing once a
+// database has accumulated a page of obligations, and the assertion becomes untestable without failing.
 //
 // Signs in as the RN, not the admin: `hope.authorDisciplineAllowed` resolves the caller's disciplines
 // from their M3 role grants, and `admin@` holds every permission key and no clinical role — it passes
@@ -54,19 +57,6 @@ const PATIENT_LAST_NAME = "Whitfield";
 test.describe("HOPE", () => {
   test("main path: an RN records a HOPE timepoint and signs it", async ({ page }) => {
     await signInAs(page, RN_ACCOUNT());
-
-    // D4 baseline, taken BEFORE the capture. The seed's own admission assessment already recorded
-    // `pain = moderate` and was signed, so an open SFV exists on a seeded stack — asserting a COUNT
-    // rather than "there is a row" is what makes the assertion below about this test's signature.
-    // Unlike the timeline, this table's rows are real `row`s; only the action cell holds a button.
-    await page.goto("/hope/sfv");
-    await expect(page.getByRole("heading", { name: "Symptom Follow-Up Visits" })).toBeVisible();
-    const sfvRows = page
-      .getByRole("table")
-      .getByRole("row")
-      .filter({ hasText: "Symptom follow-up" });
-    await expect.poll(() => sfvRows.count(), { timeout: 15_000 }).toBeGreaterThan(0);
-    const sfvBefore = await sfvRows.count();
 
     const patientId = await openPatientChartByLastName(page, PATIENT_LAST_NAME);
     await page.goto(`/patients/${patientId}/hope`);
@@ -142,12 +132,16 @@ test.describe("HOPE", () => {
     // assessment — so its presence is a second, independent read of the same transition.
     await expect(page.getByRole("button", { name: "Correct" })).toBeVisible();
 
-    // D4 — the SFV obligation is created by the SERVER's J2051 evaluation at sign time, from the STORED
-    // payload, and is due 2 calendar days from the VISIT date rather than from the signature. One more
-    // than the baseline is the assertion; the recorded `moderate` is what earns it.
-    await page.goto("/hope/sfv");
-    await expect(page.getByRole("heading", { name: "Symptom Follow-Up Visits" })).toBeVisible();
-    await expect.poll(() => sfvRows.count(), { timeout: 15_000 }).toBe(sfvBefore + 1);
+    // D4 — the SFV obligation is created by the SERVER's J2051 evaluation at SIGN time, from the stored
+    // payload, and `j2051TriggerFired` on the row is how the caller learns it happened. Asserted on THIS
+    // assessment's own timeline row rather than by counting the org-wide SFV worklist: that worklist
+    // paginates, so once a database has accumulated a page of obligations a "one more than before" count
+    // stops growing and the assertion silently becomes untestable. Found exactly that way — the count
+    // stuck at 10 after repeated local runs while the trigger was firing correctly every time.
+    await page.goto(`/patients/${patientId}/hope`);
+    await expect(page.getByRole("heading", { name: "HOPE Timeline" })).toBeVisible();
+    const signedHuv1 = rows.filter({ hasText: "HUV1" }).filter({ hasText: "Signed" }).first();
+    await expect(signedHuv1).toContainText("SFV", { timeout: 15_000 });
   });
 
   test("the HOPE timeline is accessible (WCAG 2.1 A/AA)", async ({ page }) => {

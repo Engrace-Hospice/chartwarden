@@ -70,3 +70,10 @@ export const RN_ACCOUNT = (): DemoAccount => byEmailPrefix("rita@");
  * choice here rather than preselecting one.
  */
 export const PRESCRIBER_ACCOUNT = (): DemoAccount => byEmailPrefix("drharris@");
+/**
+ * The clinical supervisor from `db:seed:staff` (`clinical_supervisor` / `compliance_officer`) — the
+ * account that can act on someone ELSE's work. M18 device approval is the clear case: `/me/evv/devices`
+ * is a clinician looking at their own handsets and offers no approve control at all, because approving
+ * a device is a supervisory act, not a self-service one.
+ */
+export const SUPERVISOR_ACCOUNT = (): DemoAccount => byEmailPrefix("supervisor@");

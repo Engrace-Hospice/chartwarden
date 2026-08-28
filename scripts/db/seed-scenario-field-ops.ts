@@ -382,8 +382,22 @@ async function main(): Promise<void> {
     });
     if (approve.error) throw new Error(`device approve failed: ${JSON.stringify(approve.error)}`);
 
+    // A SECOND handset, deliberately left PENDING. The approve/reject ceremony is the only M18 write a
+    // browser can drive at all — check-in/check-out is the Capacitor mobile flow (§5.2), because a
+    // browser has no attested device and no §12.4 posture to report — and with the first device driven
+    // straight to `approved` the supervisor roster had nothing to act on, so `/evv/devices/pending` was
+    // permanently empty on a seeded stack and the action could not be exercised. Same shape as M11's
+    // signature inbox (#91) and the billing spec #106/F-046 names: a queue whose only row is already
+    // terminal, and a spec written against it that would assert the empty state forever.
+    const pending = await rn.client.POST("/api/v1/evv/devices/self-register", {
+      body: { platform: "android", modelDescription: "Demo Pixel — awaiting approval" },
+    });
+    if (pending.error)
+      throw new Error(`second device register failed: ${JSON.stringify(pending.error)}`);
+
     log.ok(
-      "EVV: device self-registered + approved (no completed visit yet to check in/out against — scheduled for tomorrow)",
+      "EVV: device self-registered + approved, and a second left PENDING for the supervisor roster " +
+        "(no completed visit yet to check in/out against — scheduled for tomorrow)",
     );
   } catch (err) {
     log.fail(`M18 EVV: ${String(err)}`);
