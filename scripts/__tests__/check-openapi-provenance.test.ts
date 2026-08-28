@@ -11,12 +11,15 @@
 // of this scanner used a non-greedy `\{[\s\S]*?\}` and reported that the M35 Stripe webhook published
 // an M30 CAHPS schema — a false positive caused by running past a single-line entry into the next
 // block. Those shapes are pinned below.
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   type ImportBinding,
   directoryProvenance,
   duplicateAliases,
+  duplicateRouteKeys,
   importBindings,
+  routeKeyOccurrences,
   routeSchemaIdentifiers,
   run,
 } from "../check-openapi-provenance";
@@ -185,11 +188,73 @@ describe("rule 2 — directory provenance", () => {
   });
 });
 
+// ── rule 3 — key uniqueness (F-061 / #156) ─────────────────────────────────────────────────────────
+//
+// Rule 1 catches two imports bound to one alias. This is the same defect one level up: two entries
+// declaring one route key. `Object.assign` replaces the value WHOLESALE, so the earlier entry is not
+// merged, it is erased — and every other gate reads the map that survived, so nothing could see it.
+// 441 keys were declared twice on main, 422 of the pairs disagreeing.
+describe("duplicate route keys", () => {
+  it("names every line a repeated key is declared on, not just that it repeats", () => {
+    // Which entry to delete is the reader's judgement, so the gate has to say where they all are.
+    const src = `export const ROUTE_ENRICHMENTS = {
+  "GET /api/v1/a": { response: HandWritten },
+};
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/a": { response: TheRouteTypeBox },
+});`;
+    const v = duplicateRouteKeys(src);
+    expect(v).toHaveLength(1);
+    expect(v[0]?.rule).toBe("duplicate-key");
+    expect(v[0]?.message).toContain("GET /api/v1/a");
+    expect(v[0]?.message).toContain("lines 2, 5");
+  });
+
+  it("fails an IDENTICAL restatement too", () => {
+    // 19 of the 441 pairs agreed. They are just as dead, and just as free to stop agreeing: the
+    // 123 summaries the later blocks silently downgraded all started life as exact copies.
+    const src = `X({ "POST /a": { body: B } });
+Object.assign(ROUTE_ENRICHMENTS, { "POST /a": { body: B } });`;
+    expect(duplicateRouteKeys(src).map((v) => v.rule)).toEqual(["duplicate-key"]);
+  });
+
+  it("refuses the spread form even though it publishes correctly", () => {
+    // The 17 M32 routes written this way worked. They are banned anyway: the published value becomes
+    // a function of block order — the property that failed — and at a glance they are identical to
+    // the 424 entries that were silently clobbered.
+    const src = `Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/ai/health": {
+    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/health"],
+    response: HealthResponse,
+  },
+});`;
+    const v = duplicateRouteKeys(src);
+    expect(v.some((x) => x.rule === "order-dependent-entry")).toBe(true);
+  });
+
+  it("passes a registry that declares each key once", () => {
+    const src = `X({ "GET /a": { response: A } });
+Object.assign(ROUTE_ENRICHMENTS, { "GET /b": { response: B } });`;
+    expect(duplicateRouteKeys(src)).toEqual([]);
+  });
+
+  it("enumerates the same entries rule 2 does, so the two rules cannot disagree", () => {
+    // routeSchemaIdentifiers returns a Map and therefore reports only the SURVIVOR of a duplicated
+    // key — the exact blindness rule 3 removes. Both must be reading the same set of entries.
+    const src = readFileSync("scripts/openapi/enrichments.ts", "utf8");
+    const occurrences = routeKeyOccurrences(src);
+    expect(occurrences.size).toBe(routeSchemaIdentifiers(src).size);
+    const total = [...occurrences.values()].reduce((n, l) => n + l.length, 0);
+    expect(total).toBe(occurrences.size);
+  });
+});
+
 describe("the repo baseline", () => {
   it("is clean, and the run attributed a real number of pairs", () => {
-    const { violations, report } = run();
+    const { violations, report, routeKeys } = run();
     expect(violations).toEqual([]);
     // Pins the gate against quietly degrading into a no-op if the registry's shape changes.
     expect(report.checked).toBeGreaterThan(1500);
+    expect(routeKeys).toBeGreaterThan(1200);
   });
 });

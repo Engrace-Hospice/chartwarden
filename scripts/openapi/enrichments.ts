@@ -48,7 +48,6 @@ import {
   InvitationListResponseSchema as M2InvitationListResponseSchema,
   InvitationPeekResponseSchema as M2InvitationPeekResponseSchema,
   InvitationRescindedResponseSchema as M2InvitationRescindedResponseSchema,
-  InvitationResendRequestSchema as M2InvitationResendRequestSchema,
   InvitationResendResponseSchema as M2InvitationResendResponseSchema,
   MemberPatchRequestSchema as M2MemberPatchRequestSchema,
   MemberRevokedResponseSchema as M2MemberRevokedResponseSchema,
@@ -66,35 +65,6 @@ import {
   UserDeactivateRequestSchema as M2UserDeactivateRequestSchema,
   UserDeactivatedResponseSchema as M2UserDeactivatedResponseSchema,
 } from "../../apps/backend/src/modules/02-identity/routes/identity-typebox";
-import {
-  AssignRoleBody,
-  CreateEngagementBody,
-  CreateRoleBody,
-  EnrollAuditorBody,
-  InvokeBreakGlassBody,
-  UpdateEngagementBody,
-  UpdateRoleBody,
-} from "../../apps/backend/src/modules/03-authorization/routes/authz-typebox";
-import {
-  AuditEventsQuerySchema,
-  AuditEventsResponseSchema,
-} from "../../apps/backend/src/modules/04-audit/routes/audit-typebox";
-import {
-  AddressBodySchema,
-  AdmitBodySchema,
-  AmendmentBodySchema,
-  CensusMetricsResponseSchema,
-  DenyBodySchema,
-  PatientAddressesResponseSchema,
-  PatientCareTeamResponseSchema,
-  PatientDemographicsSchema,
-  PatientIdentifiersResponseSchema,
-  PatientListQuerySchema,
-  PatientListResponseSchema,
-  PatientPayersResponseSchema,
-  PatientPrivacyFlagsResponseSchema,
-  PatientSummarySchema,
-} from "../../apps/backend/src/modules/05-patient/routes/patient-typebox";
 // M6 Admission — the §4.2 request bodies/queries the handlers `parse(...)` + the §4.2 response DTOs
 // (pinned to the service read views by compile-time `Conforms` aliases in admission-typebox.ts).
 import {
@@ -142,35 +112,7 @@ import {
   TransferInSchema,
   TransferOutSchema,
 } from "../../apps/backend/src/modules/06-admission/routes/admission-typebox";
-import { OrderListQuerySchema } from "../../apps/backend/src/modules/11-orders/routes/orders-typebox";
-import {
-  AdministrationListResponseSchema,
-  AdministrationPolicyViewSchema,
-  AdministrationViewSchema,
-  DeploymentListResponseSchema,
-  DeploymentViewSchema,
-  AdministrationListQuerySchema as EmarAdministrationListQuerySchema,
-  DeploymentQuerySchema as EmarDeploymentQuerySchema,
-  MissedDoseQuerySchema as EmarMissedDoseQuerySchema,
-  ScheduledDoseQuerySchema as EmarScheduledDoseQuerySchema,
-  WorksheetQuerySchema as EmarWorksheetQuerySchema,
-  IvSessionViewSchema,
-  MissedDoseListResponseSchema,
-  ScheduledDoseListResponseSchema,
-  WorksheetListResponseSchema,
-  WorksheetViewSchema,
-} from "../../apps/backend/src/modules/13-emar/routes/emar-typebox";
-import {
-  ActionItemListQuerySchema as IdgActionItemListQuerySchema,
-  ActionItemListResponseSchema as IdgActionItemListResponseSchema,
-  MeetingViewSchema as IdgMeetingViewSchema,
-  MinutesViewSchema as IdgMinutesViewSchema,
-  PacketDigestViewSchema as IdgPacketDigestViewSchema,
-  PacketListResponseSchema as IdgPacketListResponseSchema,
-  PatientIdgHistoryResponseSchema as IdgPatientHistoryResponseSchema,
-  ScheduleListResponseSchema as IdgScheduleListResponseSchema,
-  ScheduleQuerySchema as IdgScheduleQuerySchema,
-} from "../../apps/backend/src/modules/14-idg/routes/idg-typebox";
+import { PatientIdgHistoryResponseSchema as IdgPatientHistoryResponseSchema } from "../../apps/backend/src/modules/14-idg/routes/idg-typebox";
 // M15 Discipline Care Plans — the §4.2 request bodies + list queries the route handlers `parse(...)` /
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M15-T07
 // web screens call the surface these type.
@@ -234,44 +176,6 @@ import {
   SupervisorDashboardQuerySchema as M16SupervisorDashboardQuerySchema,
   UpdateContactBody as M16UpdateContactBody,
 } from "../../apps/backend/src/modules/16-bereavement/routes/m16-typebox";
-import {
-  AvailabilityQuerySchema as SchedAvailabilityQuerySchema,
-  AvailabilityViewSchema as SchedAvailabilityViewSchema,
-  DayViewQuerySchema as SchedDayViewQuerySchema,
-  DayViewResponseSchema as SchedDayViewResponseSchema,
-  MapViewQuerySchema as SchedMapViewQuerySchema,
-  MapViewResponseSchema as SchedMapViewResponseSchema,
-  MetricsQuerySchema as SchedMetricsQuerySchema,
-  ProposalListQuerySchema as SchedProposalListQuerySchema,
-  ProposalListResponseSchema as SchedProposalListResponseSchema,
-  RecurringListQuerySchema as SchedRecurringListQuerySchema,
-  RecurringListResponseSchema as SchedRecurringListResponseSchema,
-  RouteEfficiencyQuerySchema as SchedRouteEfficiencyQuerySchema,
-  RouteEfficiencyResponseSchema as SchedRouteEfficiencyResponseSchema,
-  TimeOffListQuerySchema as SchedTimeOffListQuerySchema,
-  TimeOffListResponseSchema as SchedTimeOffListResponseSchema,
-  VisitListQuerySchema as SchedVisitListQuerySchema,
-  VisitListResponseSchema as SchedVisitListResponseSchema,
-  VisitMetricsResponseSchema as SchedVisitMetricsResponseSchema,
-  VisitViewSchema as SchedVisitViewSchema,
-  WeekViewQuerySchema as SchedWeekViewQuerySchema,
-  WeekViewResponseSchema as SchedWeekViewResponseSchema,
-} from "../../apps/backend/src/modules/17-scheduling/routes/scheduling-typebox";
-import {
-  AggregatorListQuery as EvvAggregatorListQuery,
-  EvvAggregatorSubmissionListResponse,
-  EvvDeviceListResponse,
-  EventGetQuery as EvvEventGetQuery,
-  EventListQuery as EvvEventListQuery,
-  EvvEventListResponse,
-  EvvEventView,
-  EvvGeofencePolicyView,
-  MembershipIdQuery as EvvMembershipIdQuery,
-  MetricsQuery as EvvMetricsQuery,
-  EvvMetricsView,
-  MissingResolutionListQuery as EvvMissingResolutionListQuery,
-  EvvMissingResolutionListResponse,
-} from "../../apps/backend/src/modules/18-evv/routes/evv-typebox";
 // M19 On-Call Triage — the §4.2 request bodies + list queries the §4.1 route handlers `parse(...)` /
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M19-T08
 // web screens call the surface these type. Note what is deliberately ABSENT from every body and therefore
@@ -461,60 +365,7 @@ import {
   ValidationWorklistQuery as M24ValidationWorklistQuery,
   VoidClaimBody as M24VoidClaimBody,
 } from "../../apps/backend/src/modules/24-billing-medicaid/routes/m24-typebox";
-import {
-  AdjustmentOverrideRequestSchema,
-  AppealAttachRequestSchema,
-  AppealCreateRequestSchema,
-  AppealDecideRequestSchema,
-  AppealSubmitRequestSchema,
-  AppealSummaryPageSchema,
-  AppealWithdrawRequestSchema,
-  DenialAssignRequestSchema,
-  DenialCloseWriteOffRequestSchema,
-  DenialEscalateRequestSchema,
-  DenialReopenRequestSchema,
-  DenialResolveRequestSchema,
-  DenialWorklistPageSchema,
-  M25ListQuerySchema,
-  ManualMatchRequestSchema,
-  RemittanceAdviceSummaryPageSchema,
-  RemittanceLineSummaryPageSchema,
-  TaxonomyOverlayPatchSchema,
-} from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
-// M26 Cap Management — the §4.2 request/response schemas the route handlers bind (the @wardenx/cap-management
-// contracts re-exported via modules/26-cap/routes/m26-typebox so the enrichment matches the module path).
-import {
-  AcknowledgeEventRequest as CapAcknowledgeEventRequest,
-  AmendConstantRequest as CapAmendConstantRequest,
-  CloseCapPeriodRequest as CapCloseCapPeriodRequest,
-  FinalizeSettlementRequest as CapFinalizeSettlementRequest,
-  InpatientProjectionDto as CapInpatientProjectionDto,
-  LockMethodologyRequest as CapLockMethodologyRequest,
-  OpenCapPeriodRequest as CapOpenCapPeriodRequest,
-  CapPeriodDto,
-  CapPeriodListResponse,
-  ProjectionListResponse as CapProjectionListResponse,
-  ProjectionSnapshotDto as CapProjectionSnapshotDto,
-  PsrImportRequest as CapPsrImportRequest,
-  PublishConstantRequest as CapPublishConstantRequest,
-  ReopenCapPeriodRequest as CapReopenCapPeriodRequest,
-  ResolveVarianceRequest as CapResolveVarianceRequest,
-  SettlementDto as CapSettlementDto,
-} from "../../apps/backend/src/modules/26-cap/routes/m26-typebox";
-// M27 Cost Report — the §4.1 request bodies + list query the cost-report routes bind (the realigned
-// Form CMS-1984-14 surface; modules/27-cost-report/routes path flips the OpenAPI-enriched flag).
-import {
-  AddBadDebtBodySchema,
-  ApproveForSubmitBodySchema,
-  CostReportListQuerySchema,
-  CreateCostReportBodySchema,
-  CreateValidationRuleBodySchema,
-  PatchCostReportBodySchema,
-  PutWorksheetBodySchema,
-  RecordAcknowledgmentBodySchema,
-  ReopenBodySchema,
-  SubmitBodySchema,
-} from "../../apps/backend/src/modules/27-cost-report/routes/cost-report-typebox";
+import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
 // M28 FHIR Gateway — the §4.2 request bodies + list queries the §4.1 route handlers validate against.
 import {
   AcceptProposalBody as M28AcceptProposalBody,
@@ -659,56 +510,7 @@ import {
   TransitionCapabilityBody as M32TransitionCapabilityBody,
   TriageHallucinationReportBody as M32TriageHallucinationReportBody,
 } from "../../apps/backend/src/modules/32-ai-platform/routes/m32-typebox";
-// M33 Reporting & Dashboards — the read query + drilldown body the Track B screens call (FB read paths).
-import {
-  DashboardListQuerySchema,
-  MvListQuerySchema,
-} from "../../apps/backend/src/modules/33-reporting/routes/reporting-typebox";
-import {
-  DrilldownEmitRequest,
-  ScheduleListQuery,
-} from "../../apps/backend/src/modules/33-reporting/routes/write-typebox";
-import {
-  BaaRegisterListQuerySchema,
-  FeatureFlagListQuerySchema,
-  OnboardingTemplateListQuerySchema,
-  UpsertOnboardingTemplateRequest,
-} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/platform-typebox";
-import {
-  DsarListQuerySchema,
-  TenantExportListQuerySchema,
-} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/tenant-typebox";
-// M34 SaaS Tenant Platform — platform-ops + tenant read queries + the write bodies the admin screens call.
-import {
-  KillSwitchRequest,
-  SupportConsentGrantRequest,
-  TenantListQuerySchema,
-} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/typebox";
-import {
-  ListMessagesQuerySchema,
-  SendMessageBodySchema,
-} from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
 import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
-import {
-  AddDpoaAgentBodySchema,
-  AddRecipientBodySchema,
-  BereavementOutreachBodySchema,
-  CreateDraftBodySchema as ConsentCreateDraftBodySchema,
-  ConsentDpoaAgentListResponseSchema,
-  EvalAuditQuerySchema as ConsentEvalAuditByPatientQuerySchema,
-  ConsentEvalAuditQuerySchema,
-  ConsentListResponseSchema,
-  ConsentRecipientListResponseSchema,
-  RevokeBodySchema as ConsentRevokeBodySchema,
-  ExpiringConsentsQuerySchema,
-  ExpiringConsentsResponseSchema,
-  RemoveRecipientBodySchema,
-  RenewBodySchema,
-  SupersedeBodySchema,
-  UpdateDpoaAgentBodySchema,
-  UpdateDraftBodySchema,
-  UpsertOverlayBodySchema,
-} from "../../apps/backend/src/modules/39-consent/routes/consent-typebox";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
 
 // M3 Authorization (§4.3–4.4) — request bodies + response DTOs the route handlers parse/return.
@@ -1047,7 +849,6 @@ import {
   DashboardDetailViewSchema as M33DashboardDetailViewSchema,
   DashboardListQuerySchema as M33DashboardListQuerySchema,
   DashboardListResponseSchema as M33DashboardListResponseSchema,
-  DashboardSummaryViewSchema as M33DashboardSummaryViewSchema,
   DrilldownAuditListQuerySchema as M33DrilldownAuditListQuerySchema,
   DrilldownAuditListResponseSchema as M33DrilldownAuditListResponseSchema,
   MetricListQuerySchema as M33MetricListQuerySchema,
@@ -1371,7 +1172,6 @@ import {
   EncounterViewResponseSchema as M8EncounterViewResponseSchema,
   EvvReconcileResponseSchema as M8EvvReconcileResponseSchema,
   EvvReconcileSchema as M8EvvReconcileSchema,
-  FinalizeEncounterSchema as M8FinalizeEncounterSchema,
   FinalizeResponseSchema as M8FinalizeResponseSchema,
   HearthnoteEnhanceResponseSchema as M8HearthnoteEnhanceResponseSchema,
   HearthnoteEnhanceSchema as M8HearthnoteEnhanceSchema,
@@ -1788,7 +1588,7 @@ import {
 
 // M36 service view shapes (packages/messaging/src/interfaces/route-service.ts + provider.ts). The
 // routes return TS service results (not TypeBox), so the response shapes are declared here for the client.
-const ChannelSummarySchema = Type.Object({
+const _ChannelSummarySchema = Type.Object({
   channelId: Type.String(),
   kind: Type.String(),
   title: Type.Union([Type.String(), Type.Null()]),
@@ -1796,7 +1596,7 @@ const ChannelSummarySchema = Type.Object({
   archivedAt: Type.Union([Type.String(), Type.Null()]),
   unreadCount: Type.Integer(),
 });
-const ResolvedMessageSchema = Type.Object({
+const _ResolvedMessageSchema = Type.Object({
   messageId: Type.String(),
   channelId: Type.String(),
   authorUserId: Type.Union([Type.String(), Type.Null()]),
@@ -1805,7 +1605,7 @@ const ResolvedMessageSchema = Type.Object({
   createdAt: Type.String(),
   parentMessageId: Type.Union([Type.String(), Type.Null()]),
 });
-const AlertInboxItemSchema = Type.Object({
+const _AlertInboxItemSchema = Type.Object({
   alertId: Type.String(),
   eventType: Type.String(),
   category: Type.String(),
@@ -1853,12 +1653,12 @@ const MdmResolvedSummarySchema = Type.Object({
     displayName: Type.String(),
   }),
 });
-const MdmSearchResponseSchema = Type.Object({ results: Type.Array(MdmResolvedSummarySchema) });
+const _MdmSearchResponseSchema = Type.Object({ results: Type.Array(MdmResolvedSummarySchema) });
 
 // M2 Identity routes validate via a manual parse() (no route-level TypeBox file), so their request/
 // response schemas are declared here to type the client. Mirrors the wire shapes in
 // apps/backend/src/modules/02-identity/routes/identity-routes.ts (toView / readString).
-const MembershipViewSchema = Type.Object({
+const _MembershipViewSchema = Type.Object({
   membershipId: Type.String(),
   userId: Type.String(),
   organizationId: Type.String(),
@@ -1887,7 +1687,7 @@ const MembershipViewSchema = Type.Object({
 // The authenticated actor's role/membership context (FB-T15, M2↔M3 enrichment). Mirrors the
 // `GET /api/v1/auth/context` wire shape in identity-routes.ts — the shell reflects these
 // server-resolved roles/permissions for Role-Home + nav gating (the server stays the enforcer).
-const ActorContextSchema = Type.Object({
+const _ActorContextSchema = Type.Object({
   userId: Type.String(),
   organizationId: Type.Union([Type.String(), Type.Null()]),
   organizationName: Type.Union([Type.String(), Type.Null()]),
@@ -1899,7 +1699,7 @@ const ActorContextSchema = Type.Object({
 });
 
 // Step-up qualifying factors (W-M2-11 / D9): only webauthn + totp; SMS is excluded by design.
-const StepUpFactorSchema = Type.Union([Type.Literal("webauthn"), Type.Literal("totp")]);
+const _StepUpFactorSchema = Type.Union([Type.Literal("webauthn"), Type.Literal("totp")]);
 
 // M6 Admission routes validate via a manual parse() (the route-level TypeBox covers request bodies,
 // not the wire response shapes), so the read responses are declared here to type the Track B screens
@@ -1910,16 +1710,16 @@ const AdmissionSummaryRowSchema = Type.Object({
   state: Type.String(),
   version: Type.Integer(),
 });
-const ComplianceListQuerySchema = Type.Object({
+const _ComplianceListQuerySchema = Type.Object({
   state: Type.Optional(Type.String()),
   cursor: Type.Optional(Type.String()),
   limit: Type.Optional(Type.Integer()),
 });
-const AdmissionPageResponseSchema = Type.Object({
+const _AdmissionPageResponseSchema = Type.Object({
   items: Type.Array(AdmissionSummaryRowSchema),
   nextCursor: Type.Union([Type.String(), Type.Null()]),
 });
-const AdmissionListResponseSchema = Type.Object({ items: Type.Array(AdmissionSummaryRowSchema) });
+const _AdmissionListResponseSchema = Type.Object({ items: Type.Array(AdmissionSummaryRowSchema) });
 
 // M7 Care Plan (IPOC) read responses are declared by the M07 block below, which imports the ROUTE-LEVEL
 // TypeBox (`CarePlanDetailResponseSchema` et al.) rather than restating it. A hand-written mirror of the
@@ -1953,8 +1753,10 @@ const EncounterViewDtoSchema = Type.Object({
   signedAt: Type.Union([Type.String(), Type.Null()]),
   cosignedAt: Type.Union([Type.String(), Type.Null()]),
 });
-const EncounterListResponseSchema = Type.Object({ encounters: Type.Array(EncounterViewDtoSchema) });
-const CosignatureReadResponseSchema = Type.Object({
+const _EncounterListResponseSchema = Type.Object({
+  encounters: Type.Array(EncounterViewDtoSchema),
+});
+const _CosignatureReadResponseSchema = Type.Object({
   status: Type.Union([Type.String(), Type.Null()]),
 });
 
@@ -1981,14 +1783,14 @@ const AssessmentViewDtoSchema = Type.Object({
   redacted: Type.Boolean(),
   version: Type.Integer(),
 });
-const AssessmentListResponseSchema = Type.Object({
+const _AssessmentListResponseSchema = Type.Object({
   assessments: Type.Array(AssessmentViewDtoSchema),
 });
-const AssessmentSummaryResponseSchema = Type.Object({
+const _AssessmentSummaryResponseSchema = Type.Object({
   patientId: Type.String(),
   latest: Type.Array(AssessmentViewDtoSchema),
 });
-const ScaleSeriesResponseSchema = Type.Object({
+const _ScaleSeriesResponseSchema = Type.Object({
   scaleType: Type.String(),
   patientId: Type.String(),
   from: Type.String(),
@@ -2003,7 +1805,7 @@ const ScaleSeriesResponseSchema = Type.Object({
     }),
   ),
 });
-const SignificantChangeListResponseSchema = Type.Object({
+const _SignificantChangeListResponseSchema = Type.Object({
   events: Type.Array(
     Type.Object({
       id: Type.String(),
@@ -2015,7 +1817,7 @@ const SignificantChangeListResponseSchema = Type.Object({
     }),
   ),
 });
-const ScaleLicenseListResponseSchema = Type.Object({
+const _ScaleLicenseListResponseSchema = Type.Object({
   licenses: Type.Array(
     Type.Object({
       id: Type.String(),
@@ -2028,11 +1830,11 @@ const ScaleLicenseListResponseSchema = Type.Object({
     }),
   ),
 });
-const ScalePolicyListResponseSchema = Type.Object({
+const _ScalePolicyListResponseSchema = Type.Object({
   policies: Type.Array(Type.Object({ scaleType: Type.String(), enabled: Type.Boolean() })),
 });
 // The per-scale series window (§4.1 `/scales/:scaleType/series` — from/to ISO instants, the trend window).
-const ScaleSeriesQuerySchema = Type.Object({ from: Type.String(), to: Type.String() });
+const _ScaleSeriesQuerySchema = Type.Object({ from: Type.String(), to: Type.String() });
 
 // ── M10 HOPE Engine read DTOs (Track B, M10-T08) ───────────────────────────────────────────────────
 // Mirror HopeRouteService's view projections (apps/backend/src/modules/10-hope/routes/service.ts). The UI
@@ -2092,38 +1894,38 @@ const HopeSubmissionViewSchema = Type.Object({
   transmittedAt: Type.Union([Type.String(), Type.Null()]),
   acceptedAt: Type.Union([Type.String(), Type.Null()]),
 });
-const HopeComplianceViewSchema = Type.Object({
+const _HopeComplianceViewSchema = Type.Object({
   providerEntityId: Type.Union([Type.String(), Type.Null()]),
   hopeOnTimeRate: Type.Number(),
   sfvOnTimeRate: Type.Number(),
   submissionAcceptanceRate: Type.Number(),
 });
-const HopeValidationResponseSchema = Type.Object({
+const _HopeValidationResponseSchema = Type.Object({
   assessmentId: Type.String(),
   findings: Type.Array(
     Type.Object({ ruleId: Type.String(), severity: Type.String(), message: Type.String() }),
   ),
 });
-const HopeScheduleListResponseSchema = Type.Object({
+const _HopeScheduleListResponseSchema = Type.Object({
   schedules: Type.Array(HopeScheduleViewSchema),
 });
-const HopeAssessmentListResponseSchema = Type.Object({
+const _HopeAssessmentListResponseSchema = Type.Object({
   assessments: Type.Array(HopeAssessmentViewSchema),
 });
-const HopeSfvListResponseSchema = Type.Object({ sfvs: Type.Array(HopeSfvViewSchema) });
-const HopeSubmissionListResponseSchema = Type.Object({
+const _HopeSfvListResponseSchema = Type.Object({ sfvs: Type.Array(HopeSfvViewSchema) });
+const _HopeSubmissionListResponseSchema = Type.Object({
   submissions: Type.Array(HopeSubmissionViewSchema),
 });
-const HopeScheduleListQuerySchema = Type.Object({
+const _HopeScheduleListQuerySchema = Type.Object({
   patientId: Type.Optional(Type.String()),
   status: Type.Optional(Type.String()),
   rfaKind: Type.Optional(Type.String()),
 });
-const HopeSfvWorklistQuerySchema = Type.Object({ state: Type.Optional(Type.String()) });
-const HopeSubmissionListQuerySchema = Type.Object({
+const _HopeSfvWorklistQuerySchema = Type.Object({ state: Type.Optional(Type.String()) });
+const _HopeSubmissionListQuerySchema = Type.Object({
   providerEntityId: Type.Optional(Type.String()),
 });
-const HopeDashboardQuerySchema = Type.Object({ providerEntityId: Type.Optional(Type.String()) });
+const _HopeDashboardQuerySchema = Type.Object({ providerEntityId: Type.Optional(Type.String()) });
 
 // ── M11 Orders read DTOs (Track B, M11-T08) ────────────────────────────────────────────────────────
 // Mirror OrderRouteService's view projections (apps/backend/src/modules/11-orders/routes/service.ts —
@@ -2167,7 +1969,7 @@ const StandingOrderViewSchema = Type.Object({
   spawnCount: Type.Integer(),
   maxSpawns: Type.Union([Type.Integer(), Type.Null()]),
 });
-const VerbalPolicyViewSchema = Type.Object({
+const _VerbalPolicyViewSchema = Type.Object({
   windowHours: Type.Integer(),
   businessHoursOnly: Type.Boolean(),
   lpnCosignRequiredKinds: Type.Array(Type.String()),
@@ -2175,8 +1977,8 @@ const VerbalPolicyViewSchema = Type.Object({
   platformFloorWindowHours: Type.Integer(),
   policyVersion: Type.String(),
 });
-const OrderListResponseSchema = Type.Object({ orders: Type.Array(OrderViewSchema) });
-const StandingOrderListResponseSchema = Type.Object({
+const _OrderListResponseSchema = Type.Object({ orders: Type.Array(OrderViewSchema) });
+const _StandingOrderListResponseSchema = Type.Object({
   standingOrders: Type.Array(StandingOrderViewSchema),
 });
 
@@ -2234,36 +2036,36 @@ const PrescriberRosterViewSchema = Type.Object({
   deaAuthorizedSchedules: Type.Array(Type.String()),
   ial2Status: Type.String(),
 });
-const RefillInboxPolicyViewSchema = Type.Object({
+const _RefillInboxPolicyViewSchema = Type.Object({
   slaWarnHours: Type.Integer(),
   slaCriticalHours: Type.Integer(),
   platformFloorWarnHours: Type.Integer(),
   platformFloorCriticalHours: Type.Integer(),
 });
-const ControlledSubstancePolicyViewSchema = Type.Object({
+const _ControlledSubstancePolicyViewSchema = Type.Object({
   scheduleIiMaxRefills: Type.Integer(),
   scheduleIiiToVMaxRefills: Type.Integer(),
   epcsCertificationStatus: Type.String(),
 });
-const MedicationOrderListResponseSchema = Type.Object({
+const _MedicationOrderListResponseSchema = Type.Object({
   orders: Type.Array(MedicationOrderViewSchema),
 });
-const MedicationOrderListQuerySchema = Type.Object({
+const _MedicationOrderListQuerySchema = Type.Object({
   patientId: Type.Optional(Type.String()),
   prescriberId: Type.Optional(Type.String()),
   medClass: Type.Optional(Type.String()),
   status: Type.Optional(Type.String()),
 });
-const MedicationHistoryListResponseSchema = Type.Object({
+const _MedicationHistoryListResponseSchema = Type.Object({
   records: Type.Array(
     Type.Object({ id: Type.String(), drugName: Type.String(), source: Type.String() }),
   ),
 });
-const RefillListResponseSchema = Type.Object({ refills: Type.Array(RefillRequestViewSchema) });
-const PrescriberRosterListResponseSchema = Type.Object({
+const _RefillListResponseSchema = Type.Object({ refills: Type.Array(RefillRequestViewSchema) });
+const _PrescriberRosterListResponseSchema = Type.Object({
   prescribers: Type.Array(PrescriberRosterViewSchema),
 });
-const TransmissionStatusResponseSchema = Type.Object({
+const _TransmissionStatusResponseSchema = Type.Object({
   orderId: Type.String(),
   status: Type.String(),
   retryHistory: Type.Array(
@@ -2336,14 +2138,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: M35SubscriptionResponseDto,
     summary: "Change plan",
   },
-  "POST /api/v1/subscription/cancel": {
-    response: M35SubscriptionResponseDto,
-    summary: "Cancel at period end",
-  },
-  "POST /api/v1/subscription/resume": {
-    response: M35SubscriptionResponseDto,
-    summary: "Resume subscription",
-  },
   "POST /api/v1/subscription/apply_promo": {
     body: M35ApplyPromoBody,
     response: M35PromoApplicationDto,
@@ -2352,10 +2146,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/payment_methods": {
     response: M35PaymentMethodListResponseDto,
     summary: "List payment methods",
-  },
-  "POST /api/v1/payment_methods/setup_intent": {
-    response: M35SetupIntentResponseDto,
-    summary: "Create Stripe SetupIntent",
   },
   "POST /api/v1/payment_methods/attach": {
     body: M35AttachPaymentMethodBody,
@@ -2409,8 +2199,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: M35PlanAdminDto,
     summary: "Update draft plan",
   },
-  "POST /api/admin/plans/:id/activate": { response: M35PlanAdminDto, summary: "Activate plan" },
-  "POST /api/admin/plans/:id/deprecate": { response: M35PlanAdminDto, summary: "Deprecate plan" },
   "POST /api/admin/plans/:id/meters": {
     body: M35AddMeterBody,
     response: M35MeterAdminDto,
@@ -2435,14 +2223,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: M35SubscriptionAdminResponseDto,
     summary: "Pause subscription",
   },
-  "POST /api/admin/subscriptions/:id/resume": {
-    response: M35SubscriptionAdminResponseDto,
-    summary: "Resume subscription (admin)",
-  },
-  "POST /api/admin/subscriptions/:id/cancel": {
-    response: M35SubscriptionAdminResponseDto,
-    summary: "Cancel immediately",
-  },
   "POST /api/admin/subscriptions/:id/apply_promo": {
     body: M35ApplyPromoBody,
     response: M35PromoApplicationDto,
@@ -2458,20 +2238,11 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: M35DunningListResponseDto,
     summary: "List subscriptions in dunning (admin)",
   },
-  "POST /api/admin/dunning/:subscriptionId/skip_stage": {
-    response: M35DunningDto,
-    summary: "Skip dunning stage",
-  },
-  "POST /api/admin/dunning/:subscriptionId/reset": {
-    response: M35DunningDto,
-    summary: "Reset dunning",
-  },
   "POST /api/admin/refunds": {
     body: M35RequestRefundBody,
     response: M35RefundDto,
     summary: "Request refund",
   },
-  "POST /api/admin/refunds/:id/approve": { response: M35RefundDto, summary: "Approve refund" },
   "POST /api/admin/refunds/:id/deny": {
     body: M35DenyRefundBody,
     response: M35RefundDto,
@@ -2782,517 +2553,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     body: CloseSraCycleBodySchema,
   },
 
-  // ── M25 Remittance & Denials (§4.1). The four cursor-paginated reads the built screens call get a
-  // typed response so the client stops handing them `never` (the screens were casting through
-  // `res.data as unknown as Page<DenialRow>` with a hand-maintained row shape); every write route gets
-  // the SAME TypeBox body its handler already `parse`s, so the contract cannot drift from the validator.
-  "GET /api/v1/denials": {
-    summary: "Denial worklist (cursor-paginated, §4.12)",
-    query: M25ListQuerySchema,
-    response: DenialWorklistPageSchema,
-  },
-  "GET /api/v1/appeals": {
-    summary: "Appeal tracker (cursor-paginated, §4.12)",
-    query: M25ListQuerySchema,
-    response: AppealSummaryPageSchema,
-  },
-  "GET /api/v1/remittance/advices": {
-    summary: "Remittance advices (835 headers, cursor-paginated, §4.12)",
-    query: M25ListQuerySchema,
-    response: RemittanceAdviceSummaryPageSchema,
-  },
-  "GET /api/v1/remittance/lines": {
-    summary: "Remittance service lines (cursor-paginated, §4.12)",
-    query: M25ListQuerySchema,
-    response: RemittanceLineSummaryPageSchema,
-  },
-  "GET /api/v1/remittance/unmatched": {
-    summary: "Unmatched remittance lines awaiting manual match (§4.1)",
-    query: M25ListQuerySchema,
-    response: RemittanceLineSummaryPageSchema,
-  },
-  "POST /api/v1/remittance/lines/:id/manual-match": {
-    summary: "Manually match a remittance line to a claim (§4.1)",
-    body: ManualMatchRequestSchema,
-  },
-  "POST /api/v1/remittance/adjustments/:id/override": {
-    summary: "Override an adjustment's taxonomy classification (§4.1)",
-    body: AdjustmentOverrideRequestSchema,
-  },
-  "PATCH /api/v1/denials/:id/assign": {
-    summary: "Assign a denial case to a membership (§4.1)",
-    body: DenialAssignRequestSchema,
-  },
-  "PATCH /api/v1/denials/:id/escalate": {
-    summary: "Escalate a denial case (§4.1)",
-    body: DenialEscalateRequestSchema,
-  },
-  "PATCH /api/v1/denials/:id/resolve": {
-    summary: "Resolve a denial case (§4.1)",
-    body: DenialResolveRequestSchema,
-  },
-  "POST /api/v1/denials/:id/close-write-off": {
-    summary: "Close a denial case as a write-off (§4.1)",
-    body: DenialCloseWriteOffRequestSchema,
-  },
-  "POST /api/v1/denials/:id/reopen": {
-    summary: "Reopen a closed denial case (§4.1)",
-    body: DenialReopenRequestSchema,
-  },
-  "POST /api/v1/denials/:id/appeals": {
-    summary: "Open an appeal against a denial case (§4.1)",
-    body: AppealCreateRequestSchema,
-  },
-  "PATCH /api/v1/appeals/:id/attach": {
-    summary: "Attach supporting evidence to an appeal (§4.1)",
-    body: AppealAttachRequestSchema,
-  },
-  "POST /api/v1/appeals/:id/submit": {
-    summary: "Submit an appeal to the payer (§4.1)",
-    body: AppealSubmitRequestSchema,
-  },
-  "POST /api/v1/appeals/:id/decide": {
-    summary: "Record the payer's appeal decision (§4.1)",
-    body: AppealDecideRequestSchema,
-  },
-  "POST /api/v1/appeals/:id/withdraw": {
-    summary: "Withdraw a submitted appeal (§4.1)",
-    body: AppealWithdrawRequestSchema,
-  },
-  "PATCH /api/v1/taxonomy/overlays/:carc": {
-    summary: "Patch the tenant CARC taxonomy overlay (§4.1)",
-    body: TaxonomyOverlayPatchSchema,
-  },
-
-  // ── M39 Consent (§4.1–4.2). Bodies + queries from the module's own validators.
-  "POST /api/v1/consent-types/overlay": {
-    summary: "Publish a TIGHTEN-ONLY tenant consent-type overlay (§7.6)",
-    body: UpsertOverlayBodySchema,
-  },
-  "POST /api/v1/patients/:patientId/consents": {
-    summary: "Create a consent DRAFT for a patient (§4.1)",
-    body: ConsentCreateDraftBodySchema,
-  },
-  "PATCH /api/v1/consents/:consentId": {
-    summary: "Edit a consent draft — only `status='draft'` is editable (D1)",
-    body: UpdateDraftBodySchema,
-  },
-  "POST /api/v1/consents/:consentId/supersede": {
-    summary: "Supersede an active consent with a new row (D1 append-only)",
-    body: SupersedeBodySchema,
-  },
-  "POST /api/v1/consents/:consentId/revoke": {
-    summary: "Revoke a consent (§7.3 cascade; staff revocation needs evidence)",
-    body: ConsentRevokeBodySchema,
-  },
-  "POST /api/v1/consents/:consentId/renew": {
-    summary: "Renew an expired/revoked consent (D13 renewal chain)",
-    body: RenewBodySchema,
-  },
-  "POST /api/v1/consents/:consentId/recipients": {
-    summary: "Add a named disclosure recipient (D6)",
-    body: AddRecipientBodySchema,
-  },
-  "DELETE /api/v1/consents/:consentId/recipients/:recipientId": {
-    summary: "Remove a named recipient — flips removed_at, never deletes (D6)",
-    body: RemoveRecipientBodySchema,
-  },
-  "POST /api/v1/consents/:consentId/dpoa-agents": {
-    summary: "Name a DPOA agent (D5)",
-    body: AddDpoaAgentBodySchema,
-  },
-  "PATCH /api/v1/consents/:consentId/dpoa-agents/:agentId": {
-    summary: "Mutate a DPOA agent's scope / activation / term, or retire them (D5)",
-    body: UpdateDpoaAgentBodySchema,
-  },
-  "POST /api/v1/consents/bereavement-outreach": {
-    summary: "Capture post-mortem bereavement-outreach consent (D14)",
-    body: BereavementOutreachBodySchema,
-  },
-  "GET /api/v1/patients/:patientId/expiring-consents": {
-    summary: "Consents inside the renewal window (cursor-paginated, §4.12)",
-    query: ExpiringConsentsQuerySchema,
-    response: ExpiringConsentsResponseSchema,
-  },
-  "GET /api/v1/patients/:patientId/consents": {
-    summary: "A patient's ACTIVE consents (§4.1)",
-    response: ConsentListResponseSchema,
-  },
-  "GET /api/v1/consents/:consentId/recipients": {
-    summary: "Named disclosure recipients on a consent, active + historical (D6)",
-    response: ConsentRecipientListResponseSchema,
-  },
-  "GET /api/v1/consents/:consentId/dpoa-agents": {
-    summary: "Named DPOA agents on a consent, active + historical (D5)",
-    response: ConsentDpoaAgentListResponseSchema,
-  },
-  "GET /api/v1/consents/:consentId/eval-audit": {
-    summary: "Per-consent decision audit (cursor-paginated, §4.12)",
-    query: ConsentEvalAuditQuerySchema,
-  },
-  "GET /api/v1/consents/eval-audit/by-patient": {
-    summary: "Patient-scoped consent-decision audit (cursor-paginated, §4.12)",
-    query: ConsentEvalAuditByPatientQuerySchema,
-  },
-
-  // ── M3 Authorization (§4.3–4.4). The bodies its routes now validate at the boundary — the surface
-  // that GRANTS PERMISSIONS had no request contract in the published API at all.
-  "POST /api/v1/roles": {
-    summary: "Clone/extend a platform template into an org-owned custom role (§7.6)",
-    body: CreateRoleBody,
-  },
-  "PATCH /api/v1/roles/:id": {
-    summary: "Rename / enable / edit a role's permission set (§7.6)",
-    body: UpdateRoleBody,
-  },
-  "POST /api/v1/memberships/:id/roles": {
-    summary: "Grant a role onto a membership (§6 anti-escalation applies)",
-    body: AssignRoleBody,
-  },
-  "POST /api/v1/breakglass": {
-    summary: "Invoke break-glass emergency access (§7.4; reason ≥10 chars)",
-    body: InvokeBreakGlassBody,
-  },
-  "POST /api/v1/engagements": {
-    summary: "Open an auditor engagement over a defined slice + window (§7.5)",
-    body: CreateEngagementBody,
-  },
-  "PATCH /api/v1/engagements/:id": {
-    summary: "Shorten an engagement window or cancel it (§7.5)",
-    body: UpdateEngagementBody,
-  },
-  "POST /api/v1/engagements/:id/auditors": {
-    summary: "Enroll an auditor — M2 mints the magic link out-of-band (D4)",
-    body: EnrollAuditorBody,
-  },
-
-  // M6 Admission, Election & Certification (Track B — Referral Inbox / Admission Detail /
-  // Compliance Dashboard / Admission Census, M6-T12). Read responses only; the write routes keep
-  // their route-level TypeBox request bodies (already in the contract).
-  "GET /api/v1/referrals": {
-    summary: "Referral inbox queue (cursor-paginated, §4.1)",
-    query: ReferralListQuerySchema,
-    response: AdmissionPageResponseSchema,
-  },
-  "GET /api/v1/admissions": {
-    summary: "Admission census (cursor-paginated; optional state filter, §4.1)",
-    query: AdmissionListQuerySchema,
-    response: AdmissionPageResponseSchema,
-  },
-  "GET /api/v1/admissions/:id": {
-    summary: "Admission aggregate + the R-AC-01 activation gate (route 10, §5.2.4/§5.2.5)",
-    response: AdmissionDetailResponseSchema,
-  },
-  "GET /api/v1/admissions/:id/election-periods": {
-    summary: "An admission's election periods (§5.2.4 Elections tab)",
-    response: AdmissionListResponseSchema,
-  },
-  "GET /api/v1/admissions/:id/compliance-windows": {
-    summary: "An admission's compliance windows (§5.2.4 Compliance tab)",
-    response: AdmissionListResponseSchema,
-  },
-  "GET /api/v1/compliance-windows": {
-    summary:
-      "Org-wide compliance window dashboard (cursor-paginated; optional state filter, §5.2.11)",
-    query: ComplianceListQuerySchema,
-    response: AdmissionPageResponseSchema,
-  },
-  // M7 Care Plan / IPOC read responses live in the M07 block below, which imports the route-level
-  // TypeBox. The three entries that used to sit here restated them by hand, were overridden by that
-  // block, and had drifted — see the note beside the deleted DTOs above.
-  // M8 Encounters & Visit Notes (Track B — Encounter Read / Cosignature Queue / My Drafts, M8-T12). Read
-  // responses only; the write routes keep their route-level TypeBox request bodies (not yet in the contract).
-  "GET /api/v1/encounters/:encounterId": {
-    summary:
-      "Read one encounter (selections + signatures + addenda; §7.6 SUD-redacted per caller, §5.2)",
-    response: EncounterViewDtoSchema,
-  },
-  "GET /api/v1/encounters/cosignature-queue": {
-    summary: "RN/Supervisor cosignature work queue with SLA chips (§5.5)",
-    response: EncounterListResponseSchema,
-  },
-  "GET /api/v1/encounters/my-drafts": {
-    summary: "The author's open encounter drafts (§5.1 My Drafts)",
-    response: EncounterListResponseSchema,
-  },
-  "GET /api/v1/encounters/:encounterId/cosignature": {
-    summary: "Read an encounter's cosignature-request state (§5.5)",
-    response: CosignatureReadResponseSchema,
-  },
-  // M9 Clinical Assessments Suite (Track B — Timeline / Trend / Change Inbox / Summary / License
-  // Registry / Policy Editor, M9-T07). Read responses only; the write routes keep their route-level
-  // TypeBox request bodies (already in the contract). SUD redaction is server-side (§7.6).
-  "GET /api/v1/patients/:patientId/assessments": {
-    summary:
-      "Patient assessment timeline — every captured scale, newest first; §7.6 SUD-redacted per caller (§5.2)",
-    response: AssessmentListResponseSchema,
-  },
-  "GET /api/v1/patients/:patientId/assessments/summary": {
-    summary:
-      "Assessment summary — latest value per scale family across all scales; SUD-redacted per caller (§5.2)",
-    response: AssessmentSummaryResponseSchema,
-  },
-  "GET /api/v1/patients/:patientId/scales/:scaleType/series": {
-    summary:
-      "Per-scale scored series over a [from,to] window with significant-change markers (§5.2)",
-    query: ScaleSeriesQuerySchema,
-    response: ScaleSeriesResponseSchema,
-  },
-  "GET /api/v1/patients/:patientId/significant-changes": {
-    summary:
-      "Per-patient significant-change worklist — open/escalated changes with ack state (§5.2)",
-    response: SignificantChangeListResponseSchema,
-  },
-  "GET /api/v1/admin/scales/licenses": {
-    summary: "Scale-license registry — one row per (org × scale) with status/expiry (§5.2)",
-    response: ScaleLicenseListResponseSchema,
-  },
-  "GET /api/v1/admin/scales/policies": {
-    summary: "Scale-policy editor — enable/disable state per scale (§5.2)",
-    response: ScalePolicyListResponseSchema,
-  },
-  // M10 HOPE Engine (Track B — Timepoint Dashboard / Patient Timeline / SFV Worklist / Assessment Detail /
-  // Submission Worklist + Detail / HQRP Compliance Dashboard, M10-T08). Read responses only; the recording
-  // modal, sign/correct, skip, retry, assemble, and admin-regenerate write routes keep their route-level
-  // TypeBox request bodies (already in the contract). The server is authoritative for J2051/late/snapshot.
-  "GET /api/v1/hope/schedules": {
-    summary: "HOPE timepoint dashboard — open/closing/late/expired schedules (§5.1/§5.2)",
-    query: HopeScheduleListQuerySchema,
-    response: HopeScheduleListResponseSchema,
-  },
-  "GET /api/v1/hope/schedules/:id": {
-    summary: "HOPE schedule detail with derived window state (§5.2)",
-    response: HopeScheduleViewSchema,
-  },
-  "GET /api/v1/patients/:patientId/hope/assessments": {
-    summary: "Patient HOPE timeline — Admission → HUV1 → HUV2 → SFV(s) → Discharge (§5.1/§5.2)",
-    response: HopeAssessmentListResponseSchema,
-  },
-  "GET /api/v1/hope/assessments/:id": {
-    summary: "HOPE assessment detail — snapshot, J2051 trigger outcome, submission status (§5.2)",
-    response: HopeAssessmentViewSchema,
-  },
-  "GET /api/v1/hope/assessments/:id/validation": {
-    summary: "On-demand pre-submission validation findings for one HOPE assessment (§5.2)",
-    response: HopeValidationResponseSchema,
-  },
-  "GET /api/v1/hope/sfv": {
-    summary:
-      "SFV worklist — open/overdue/missed symptom-follow-up visits across the org (§5.1/§5.2)",
-    query: HopeSfvWorklistQuerySchema,
-    response: HopeSfvListResponseSchema,
-  },
-  "GET /api/v1/hope/sfv/:id": {
-    summary: "SFV detail — triggering symptoms + 2-calendar-day countdown (§5.2)",
-    response: HopeSfvViewSchema,
-  },
-  "GET /api/v1/hope/submissions": {
-    summary: "HOPE submission worklist — batches per ProviderEntity, per-period (§5.1/§5.2)",
-    query: HopeSubmissionListQuerySchema,
-    response: HopeSubmissionListResponseSchema,
-  },
-  "GET /api/v1/hope/submissions/:id": {
-    summary: "HOPE submission detail — per-item outcomes, rejection findings, retry control (§5.2)",
-    response: HopeSubmissionViewSchema,
-  },
-  "GET /api/v1/hope/dashboard/compliance": {
-    summary:
-      "HQRP compliance dashboard — on-time / SFV on-time / submission acceptance rates (§5.2)",
-    query: HopeDashboardQuerySchema,
-    response: HopeComplianceViewSchema,
-  },
-  // M11 Orders (Track B — Patient Orders / Signature Inbox / Verbal-Expiring / Cosign / Results-Review /
-  // Standing-Order admin, M11-T08). Read responses only; the write routes keep their route-level TypeBox
-  // request bodies (already in the contract). The server is authoritative for the §2.2 D2 lifecycle.
-  "GET /api/v1/orders": {
-    summary: "List orders by patient / admission / kind / status (§4.1; ABAC caseload_or_scope)",
-    query: OrderListQuerySchema,
-    response: OrderListResponseSchema,
-  },
-  "GET /api/v1/orders/:id": {
-    summary:
-      "Order detail — lifecycle status, signatures, verbal deadline, transmission/results state (§4.1)",
-    response: OrderViewSchema,
-  },
-  "GET /api/v1/orders/pending-signature": {
-    summary: "Physician pending-signature inbox — orders in pending_signature (§4.1 / §5.2)",
-    response: OrderListResponseSchema,
-  },
-  "GET /api/v1/orders/verbal-expiring": {
-    summary:
-      "RN verbal-expiring queue — verbal_pending orders with a live 48h countdown (§4.1 / §5.2 D3)",
-    response: OrderListResponseSchema,
-  },
-  "GET /api/v1/orders/cosign-pending": {
-    summary:
-      "RN cosign-pending queue — orders awaiting an RN/supervisor cosignature (§4.1 / §5.2 §2.5)",
-    response: OrderListResponseSchema,
-  },
-  "GET /api/v1/orders/results-pending-review": {
-    summary: "Lab orders with results received awaiting clinician Mark-reviewed (§4.1 / §5.2 D17)",
-    response: OrderListResponseSchema,
-  },
-  "GET /api/v1/standing-orders": {
-    summary: "Standing-order templates — cadence, next-spawn, spawn count (§4.1 / §5.2 D5)",
-    response: StandingOrderListResponseSchema,
-  },
-  "GET /api/v1/standing-orders/:id": {
-    summary: "Standing-order template detail + spawn history (§4.1 / §5.2 D5)",
-    response: StandingOrderViewSchema,
-  },
-  "GET /api/v1/admin/orders/verbal-policy": {
-    summary:
-      "Org verbal-order policy — window hours, cosign kinds, platform floor (§4.1 / §2.3 D3)",
-    response: VerbalPolicyViewSchema,
-  },
-  // M12 DoseSpot prescribing (Track B — Patient Medications / Medication Detail / Sign Inbox / Verbal-Orders
-  // Queue / Refill Inbox + Detail / Medication Reconciliation / Prescriber Roster / Prescribing Policy,
-  // M12-T09). Read responses only; the write routes keep their route-level TypeBox request bodies (already in
-  // the contract). The server is authoritative for the §2.2 D2 lifecycle, the §2.7 D9 refill state, and the
-  // controlled-substance / EPCS posture (`dosespot.epcs` OFF in Phase 1).
-  "GET /api/v1/medication-orders": {
-    summary:
-      "List medication orders by patient / prescriber / med-class / status (§4.1; ABAC caseload_or_scope)",
-    query: MedicationOrderListQuerySchema,
-    response: MedicationOrderListResponseSchema,
-  },
-  "GET /api/v1/medication-orders/:id": {
-    summary:
-      "Medication-order detail — lifecycle status, signatures, controlled/EPCS posture, refills (§4.1)",
-    response: MedicationOrderViewSchema,
-  },
-  "GET /api/v1/medication-orders/:id/transmission": {
-    summary: "DoseSpot transmission status incl. retry history (§4.1 / §2.6)",
-    response: TransmissionStatusResponseSchema,
-  },
-  "GET /api/v1/patients/:patientId/medications/active": {
-    summary: "Active medications for a patient (chart medication list; §4.1 / §6.1)",
-    response: MedicationOrderListResponseSchema,
-  },
-  "GET /api/v1/patients/:patientId/medications/history": {
-    summary:
-      "Medication-history records for a patient (DoseSpot MedHx; §4.1 / §6.1 reconciliation)",
-    response: MedicationHistoryListResponseSchema,
-  },
-  "GET /api/v1/refills": {
-    summary: "Refill inbox — pending refills the caller may decide (§4.1; ABAC refill_inbox_scope)",
-    response: RefillListResponseSchema,
-  },
-  "GET /api/v1/refills/:id": {
-    summary:
-      "Refill detail — source order + request fields for approve/deny (§4.1; ABAC refill_inbox_scope)",
-    response: RefillRequestViewSchema,
-  },
-  "GET /api/v1/admin/dosespot-prescribers": {
-    summary:
-      "Per-tenant DoseSpot prescriber roster — DEA schedules, IAL2 status, enrollment (§4.1 / §6.1)",
-    response: PrescriberRosterListResponseSchema,
-  },
-  "GET /api/v1/admin/refill-inbox-policy": {
-    summary: "Refill-inbox SLA policy — warn/critical hours + platform floors (§4.1 / §2.7 D9)",
-    response: RefillInboxPolicyViewSchema,
-  },
-  "GET /api/v1/admin/controlled-substance-policy": {
-    summary:
-      "Controlled-substance policy — refill caps + EPCS certification status (§4.1 / 21 CFR 1306.22 / D18)",
-    response: ControlledSubstancePolicyViewSchema,
-  },
-  // M13 eMAR administration (Track B — Patient eMAR / Administration Detail / IV Continuous Session /
-  // Missed-Dose Inbox / Reconciliation Worksheet / Comfort Kit View / Administration Policy, M13-T10). Read
-  // responses only; the record / witness-attest / caregiver-cosign / reconcile-decide / comfort-kit / policy
-  // write routes keep their route-level TypeBox request bodies (already in the contract). The server is
-  // authoritative for the §2.2 lifecycle, the §2.5 late-entry tier, the §2.9 BCMA match result, and the §7.2
-  // SUD read gate (SUD-flagged rows skipped without a Part 2 release).
-  "GET /api/v1/administrations": {
-    summary:
-      "List a patient's administrations — eMAR projection + caregiver-attested cosign rows (§4.1 / §6.1)",
-    query: EmarAdministrationListQuerySchema,
-    response: AdministrationListResponseSchema,
-  },
-  "GET /api/v1/administrations/:id": {
-    summary:
-      "Administration detail — lifecycle, late-entry tier, witness pair, BCMA match (§4.1 / §6.1 #11)",
-    response: AdministrationViewSchema,
-  },
-  "GET /api/v1/administrations/iv-sessions/:sessionId": {
-    summary:
-      "IV continuous session — the ordered start→rate_change→stop segment sequence (§4.1 / §6.1 #5)",
-    response: IvSessionViewSchema,
-  },
-  "GET /api/v1/scheduled-doses": {
-    summary: "Scheduled-dose timeline for a patient (the eMAR next-24h projection; §4.1 / §6.1 #1)",
-    query: EmarScheduledDoseQuerySchema,
-    response: ScheduledDoseListResponseSchema,
-  },
-  "GET /api/v1/missed-doses": {
-    summary: "Missed-dose inbox — unacknowledged misses for a patient (§4.1 / §6.1 #8)",
-    query: EmarMissedDoseQuerySchema,
-    response: MissedDoseListResponseSchema,
-  },
-  "GET /api/v1/reconciliation/worksheets": {
-    summary:
-      "Reconciliation worksheets for a patient (admission/transfer/discharge/recert; §4.1 / §6.1 #6)",
-    query: EmarWorksheetQuerySchema,
-    response: WorksheetListResponseSchema,
-  },
-  "GET /api/v1/reconciliation/worksheets/:id": {
-    summary:
-      "Reconciliation worksheet — per-line sources + decisions + finalize readiness (§4.1 / §6.1 #6)",
-    response: WorksheetViewSchema,
-  },
-  "GET /api/v1/comfort-kits/deployments": {
-    summary: "Comfort-kit deployments for a patient (drawdown + disposal status; §4.1 / §6.1 #7)",
-    query: EmarDeploymentQuerySchema,
-    response: DeploymentListResponseSchema,
-  },
-  "GET /api/v1/comfort-kits/deployments/:id": {
-    summary:
-      "Comfort-kit deployment detail — remaining quantity + replenishment + disposal (§4.1 / §6.1 #7)",
-    response: DeploymentViewSchema,
-  },
-  "GET /api/v1/admin/administration-policy": {
-    summary:
-      "Tenant administration policy — grace window, PRN reassessment defaults (§4.1 / §6.1 #12)",
-    response: AdministrationPolicyViewSchema,
-  },
-  // M22 Document Management (Track B — DOC.Explorer / DOC.VersionHistory / INTAKE.BatchDetail /
-  // FORM.TemplateLibrary, M22-T10). Read responses only; the upload / tag / export / intake-review /
-  // classify / publish write routes keep their route-level TypeBox request bodies (already in the
-  // contract). The SERVER is authoritative for §4.6 RBAC + §4.7 ABAC, legal-hold blocks (§8.6), the
-  // §4.12 signed-URL TTL floor, and SUD redaction — the screens never decide authorization.
-  "GET /api/v1/documents": {
-    summary:
-      "List documents — filtered by patient / aggregate / retention class, cursor-paginated (§4.1 / §5.1 DOC.Explorer)",
-    query: M22DocumentListQuerySchema,
-    response: M22DocumentListResponseSchema,
-  },
-  "GET /api/v1/documents/:id": {
-    summary:
-      "Document metadata + current version metadata (§4.1 / §5.1 DOC.SignedUrlPreview header)",
-    response: M22DocumentViewSchema,
-  },
-  "GET /api/v1/documents/:id/versions": {
-    summary:
-      "Version history — author/version chain for the side-by-side diff (§4.1 / §5.1 DOC.VersionHistory)",
-    query: M22VersionListQuerySchema,
-    response: M22VersionListResponseSchema,
-  },
-  "GET /api/v1/intake/uploads/:id": {
-    summary:
-      "Intake batch — pipeline status + page count for the DocLens review queue (§4.1 / §5.1 INTAKE.BatchDetail)",
-    response: M22IntakeBatchViewSchema,
-  },
-  "GET /api/v1/intake/uploads/:id/jobs": {
-    summary:
-      "Extraction jobs for a batch — per-job pipeline status, cursor-paginated (§4.1 / §5.1 INTAKE.BatchDetail)",
-    response: M22IntakeJobListResponseSchema,
-  },
-  "GET /api/v1/form-templates": {
-    summary:
-      "Browse the platform-floor form templates with version metadata (§4.1 / §5.1 FORM.TemplateLibrary)",
-    query: M22TemplateListQuerySchema,
-    response: M22FormTemplateListResponseSchema,
-  },
   // ── M23 Billing — Medicare (§4.1 route surface) ──────────────────────────────────────────────────────
   // Request bodies (POST/PATCH) + filter queries (list/read GETs) reuse the SAME TypeBox validators the
   // handlers `parse(...)` against (billing-typebox + the @wardenx/billing route-contract schemas). Responses
@@ -3310,14 +2570,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: ClaimAssembleResponse,
     headers: IDEMPOTENCY_KEY_HEADER,
     status: 201,
-  },
-  "GET /api/v1/billing/claims": {
-    summary: "List claims — cursor-paginated; filter by state / patient / ProviderEntity (§4.1 #2)",
-    query: ClaimListQuerySchema,
-  },
-  "GET /api/v1/billing/claims/:id": {
-    summary:
-      "Single-claim detail — lines + HIPPS + SIA + latest run + submissions + acks (§4.1 #3)",
   },
   "PATCH /api/v1/billing/claims/:id": {
     summary:
@@ -3356,25 +2608,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
     status: 201,
   },
-  "GET /api/v1/billing/claims/:id/lines": {
-    summary: "The claim_line projection for a claim (§4.1 #10)",
-  },
-  "GET /api/v1/billing/claims/:id/state-history": {
-    summary: "Per-claim transition timeline (cursor-paginated, §4.1 #11)",
-  },
-  "GET /api/v1/billing/claims/:id/submissions": {
-    summary: "All dispatch attempts for a claim (§4.1 #12)",
-  },
-  "GET /api/v1/billing/claims/:id/acknowledgments": {
-    summary: "All 999 / 277CA / 835 acknowledgments for a claim (§4.1 #13)",
-  },
   // ── validation + override (validation.routes.ts) — paths are /api/v1/claims/... (no /billing prefix) ──
-  "GET /api/v1/claims/:id/validation-runs": {
-    summary: "List a claim's validation runs, most recent first (§4.1 #14)",
-  },
-  "GET /api/v1/claims/:id/validation-runs/:runId": {
-    summary: "Single validation run — per-rule results + override status (§4.1 #15)",
-  },
   "POST /api/v1/claims/:id/validate": {
     summary: "Trigger a manual_re_run validation; state → validating (202, §4.1 #6)",
     headers: IDEMPOTENCY_KEY_HEADER,
@@ -3387,14 +2621,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     status: 201,
   },
   // ── rule-config overlay (rule-config.routes.ts) ──
-  "GET /api/v1/billing/rule-configs": {
-    summary:
-      "List validation-rule overlay rows — platform snapshot + tenant overlays (cursor-paginated, §4.1 #18)",
-    query: RuleConfigListQuerySchema,
-  },
-  "GET /api/v1/billing/rule-configs/:id": {
-    summary: "Read a single validation-rule overlay row (§4.1)",
-  },
   "POST /api/v1/billing/rule-configs/custom": {
     summary:
       "Create a tenant CUSTOM validation rule (regulatory-required forbidden; 201, §4.1 #20)",
@@ -3413,13 +2639,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     status: 204,
   },
   // ── NOE fast path (noe.routes.ts) ──
-  "GET /api/v1/noe-records": {
-    summary: "List NOE records — timely-filing worklist, cursor-paginated (§4.1 #24)",
-    query: NoeListQuerySchema,
-  },
-  "GET /api/v1/noe-records/:id": {
-    summary: "NOE detail (§4.1 #25)",
-  },
   "POST /api/v1/noe-records/:id/submit": {
     summary: "READY → SUBMITTED — emits m23.noe.submit_requested (step-up; 202, §4.1 #26)",
   },
@@ -3428,13 +2647,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     body: CancelNoeBodySchema,
   },
   // ── NOTR fast path (notr.routes.ts) ──
-  "GET /api/v1/notr-records": {
-    summary: "List NOTR records — timely-filing worklist, cursor-paginated (§4.1 #28)",
-    query: NotrListQuerySchema,
-  },
-  "GET /api/v1/notr-records/:id": {
-    summary: "NOTR detail (§4.1 #29)",
-  },
   "POST /api/v1/notr-records/:id/submit": {
     summary: "READY → SUBMITTED — emits m23.notr.submit_requested (step-up; 202, §4.1 #30)",
   },
@@ -3448,53 +2660,17 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
       "Force / refresh-on-stale a 270/271 eligibility round-trip (202; no MBI on the wire, §4.1 #22)",
     body: CheckEligibilityBodySchema,
   },
-  "GET /api/v1/billing/eligibility": {
-    summary: "Per-patient eligibility-check history (§4.1 #23)",
-    query: BillingPatientQuerySchema,
-  },
-  "GET /api/v1/billing/eligibility/latest": {
-    summary: "The latest eligibility check for a patient (auto-refresh-on-stale read, §4.1)",
-    query: BillingPatientQuerySchema,
-  },
   // ── sequestration policy (sequestration-policy.routes.ts) ──
-  "GET /api/v1/billing/sequestration-policies": {
-    summary:
-      "Per-ProviderEntity sequestration-percentage timeline — effective-dated rows (D11, §4.1 #32)",
-    query: RequiredProviderEntityQuerySchema,
-  },
-  "GET /api/v1/billing/sequestration-policies/active": {
-    summary: "The active-on-now sequestration policy for a ProviderEntity (or null, §4.1)",
-    query: RequiredProviderEntityQuerySchema,
-  },
   "POST /api/v1/billing/sequestration-policies": {
     summary:
       "Forward-date a new sequestration policy row (percentage is a decimal string; 201, §4.1 #33)",
     body: ForwardDateSequestrationBodySchema,
   },
   // ── MAC credentials (mac-credentials.routes.ts, §3.6) ──
-  "GET /api/v1/billing/mac-credentials": {
-    summary:
-      "List per-ProviderEntity MAC credentials — secrets masked, cursor-paginated (§4.1 #34)",
-    query: MacCredentialListQuerySchema,
-  },
-  "GET /api/v1/billing/mac-credentials/:providerEntityId": {
-    summary: "The MAC credential for one ProviderEntity, or null (§4.1)",
-  },
   "POST /api/v1/billing/mac-credentials": {
     summary:
       "Upsert a MAC credential — clientSecret write-only/encrypted at the boundary; step-up (§4.1 #35)",
     body: UpsertMacCredentialBodySchema,
-  },
-  // ── AR dashboard + metrics (metrics.routes.ts) ──
-  "GET /api/v1/billing/ar-dashboard": {
-    summary:
-      "AR-aging dashboard — aging buckets + denial / NOE-NOTR window-breach rates (org-wide or per-PE, §4.1 #37)",
-    query: BillingMetricsQuerySchema,
-  },
-  "GET /api/v1/billing/metrics": {
-    summary:
-      "Per-window claim metric buckets (the M33 reporting consumer; org-wide or per-PE, §4.1 #38)",
-    query: BillingMetricsQuerySchema,
   },
   // ── internal service-to-service seams (internal.routes.ts; system-principal only) ──
   "GET /api/v1/internal/billing/claim-day-projection": {
@@ -3507,161 +2683,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Accepted submissions in a window (M25 remittance 835→claim matching, §4.1 #40)",
     query: AcceptedSubmissionsQuery,
     response: AcceptedSubmissionsResponse,
-  },
-  // M36 Messaging (Track A — Staff Messaging + Notifications)
-  "GET /api/v1/messaging/channels": {
-    summary: "List the caller's channels (§4.6)",
-    response: Type.Object({ channels: Type.Array(ChannelSummarySchema) }),
-  },
-  "GET /api/v1/messaging/channels/:id/messages": {
-    summary: "List a channel's messages (cursor-paginated, §4.6)",
-    query: ListMessagesQuerySchema,
-    response: Type.Object({
-      messages: Type.Array(ResolvedMessageSchema),
-      nextCursor: Type.Optional(Type.String()),
-    }),
-  },
-  "POST /api/v1/messaging/channels/:id/messages": {
-    summary: "Post a message to a channel (§4.6)",
-    body: SendMessageBodySchema,
-  },
-  "GET /api/v1/alerts/inbox": {
-    summary: "The caller's alert inbox (§4.7)",
-    response: Type.Object({ alerts: Type.Array(AlertInboxItemSchema) }),
-  },
-  // M3 Authorization (Track A — Roles & Permissions). No route-level TypeBox; shapes from
-  // apps/backend/src/modules/03-authorization/authz-ports.ts (RoleView) + the M3 permission mirror.
-  "GET /api/v1/roles": {
-    summary: "List role catalog for the org (templates + customized, §6)",
-    response: Type.Object({
-      roles: Type.Array(
-        Type.Object({
-          roleId: Type.String(),
-          organizationId: Type.Union([Type.String(), Type.Null()]),
-          key: Type.String(),
-          name: Type.String(),
-          category: Type.String(),
-          scopeLevel: Type.String(),
-          systemDefault: Type.Boolean(),
-          systemLocked: Type.Boolean(),
-          enabled: Type.Boolean(),
-          customized: Type.Boolean(),
-          permissionKeys: Type.Array(Type.String()),
-        }),
-      ),
-    }),
-  },
-  "GET /api/v1/permissions": {
-    summary: "The permission catalog (mirror rows, §6)",
-    response: Type.Object({
-      permissions: Type.Array(
-        Type.Object({
-          key: Type.String(),
-          resource: Type.String(),
-          action: Type.String(),
-          category: Type.String(),
-        }),
-      ),
-    }),
-  },
-  // M38 Terminology (Track A — Terminology Admin)
-  "GET /api/v1/terminology/:system/search": {
-    summary: "Search concepts within a code system (§4.2)",
-    query: TerminologySearchQuerySchema,
-    response: TerminologySearchResponseSchema,
-  },
-  // M40 MDM (Track A — Master Data Management console)
-  "GET /api/v1/mdm/:kind/search": {
-    summary: "Search a kind's canonical master-data set (§4.2)",
-    query: MdmSearchQuerySchema,
-    response: MdmSearchResponseSchema,
-  },
-  // M4 Audit (Track A — Audit Log Viewer)
-  "GET /api/v1/audit/events": {
-    summary: "Search audit events (cursor-paginated, §4.3)",
-    query: AuditEventsQuerySchema,
-    response: AuditEventsResponseSchema,
-  },
-  // M2 Identity (Track A — Auth screens)
-  "GET /api/v1/auth/memberships": {
-    summary: "List the caller's memberships (pre-org-bind, §7.2)",
-    response: Type.Object({ memberships: Type.Array(MembershipViewSchema) }),
-  },
-  "GET /api/v1/auth/context": {
-    summary: "The authenticated actor's roles/membership context (M2↔M3 enrichment, FB-T15)",
-    response: ActorContextSchema,
-  },
-  "POST /api/v1/auth/select-organization": {
-    summary: "Bind the session to one organization (one-time, §7.2)",
-    body: Type.Object({ organizationId: Type.String({ minLength: 1 }) }),
-  },
-  "POST /api/v1/invitations/accept": {
-    summary: "Accept an invitation token → membership (§7.1)",
-    body: Type.Object({ token: Type.String({ minLength: 1 }) }),
-  },
-  // M2 Identity — Staff Management (Track A): org member roster + invitations + lifecycle.
-  "GET /api/v1/orgs/:id/members": {
-    summary:
-      "List an org's members; optional ?q narrows by user identity (member.manage, §6; FB-T11)",
-    query: Type.Object({
-      q: Type.Optional(
-        Type.String({ description: "Narrow the roster by the wrapped user's identity" }),
-      ),
-    }),
-    response: Type.Object({
-      members: Type.Array(MembershipViewSchema),
-      // Org-wide count of still-pending invitations — the "pending invites" KPI (FB-T12).
-      pendingInvitations: Type.Integer(),
-    }),
-  },
-  "POST /api/v1/orgs/:id/invitations": {
-    summary: "Invite a member by email — token emailed, never returned (§7.1)",
-    body: Type.Object({
-      email: Type.String({ format: "email" }),
-      proposedRoleKeys: Type.Optional(Type.Array(Type.String())),
-      proposedDefaultLocationIds: Type.Optional(Type.Array(Type.String())),
-    }),
-  },
-  "PATCH /api/v1/orgs/:id/members/:mId": {
-    summary:
-      "Change a member's status (active|suspended) or default locations; last-admin guarded (§6)",
-    body: Type.Object({
-      status: Type.Optional(Type.Union([Type.Literal("active"), Type.Literal("suspended")])),
-      defaultLocationIds: Type.Optional(Type.Array(Type.String())),
-    }),
-    response: MembershipViewSchema,
-  },
-  "DELETE /api/v1/orgs/:id/members/:mId": {
-    summary: "Revoke a membership (terminates its sessions; last-admin guarded, §6/§7.5)",
-    response: Type.Object({ revoked: Type.Boolean() }),
-  },
-  // M2 Identity — session step-up (§4.4). Manual parse() in routes/session-step-up.ts; the wire shapes
-  // are mirrored here for the client. SMS is intentionally absent (D9 — only webauthn + totp qualify).
-  "POST /api/v1/sessions/step-up/initiate": {
-    summary: "Begin a step-up challenge (webauthn | totp, §4.4)",
-    body: Type.Object({ factor: StepUpFactorSchema }),
-    response: Type.Object({
-      challengeId: Type.String(),
-      factor: StepUpFactorSchema,
-      // present only for webauthn (the browser uses it to drive the assertion ceremony)
-      webauthnChallenge: Type.Optional(
-        Type.Object({ challenge: Type.String(), rpId: Type.String() }),
-      ),
-    }),
-  },
-  "POST /api/v1/sessions/step-up": {
-    summary: "Verify a step-up challenge → paired-write the session freshness (§4.4, D8)",
-    body: Type.Object({
-      factor: StepUpFactorSchema,
-      challengeId: Type.String({ minLength: 1 }),
-      // factor-specific (one is supplied): a 6-digit TOTP code or a WebAuthn assertion.
-      totpCode: Type.Optional(Type.String({ pattern: "^[0-9]{6}$" })),
-      assertion: Type.Optional(Type.Unknown()),
-    }),
-    response: Type.Object({
-      lastStepUpAt: Type.String(),
-      lastStepUpFactor: StepUpFactorSchema,
-    }),
   },
   // M19 (F-030) — bind a session to an `external_triage_vendor` (D3 Hybrid/Centralized). The session id
   // is deliberately absent from the body: it is server-assembled, so a caller cannot bind someone
@@ -3817,258 +2838,12 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
       nextCursor: Type.Union([Type.String(), Type.Null()]),
     }),
   },
-  // M5 Patient
-  "GET /api/v1/patients": {
-    summary: "Patient census / list (cursor-paginated, §4.2)",
-    query: PatientListQuerySchema,
-    response: PatientListResponseSchema,
-  },
-  "GET /api/v1/patients/census-metrics": {
-    summary: "Census KPI metrics — active count + per-status breakdown (§4.2)",
-    response: CensusMetricsResponseSchema,
-  },
-  "GET /api/v1/patients/:id": {
-    summary: "Fetch a patient by id (merge-redirect aware, §4.8)",
-    response: PatientSummarySchema,
-  },
-  "GET /api/v1/patients/:id/demographics": {
-    summary: "Patient demographics tab — name parts + SOGI/race/ethnicity codes + language (§3.3)",
-    response: PatientDemographicsSchema,
-  },
-  "GET /api/v1/patients/:id/identifiers": {
-    summary: "Patient identifiers — ssn/state_id masked to last4 (§3.3/§2.2)",
-    response: PatientIdentifiersResponseSchema,
-  },
-  "POST /api/v1/patients": {
-    body: AdmitBodySchema,
-    summary: "Admit a patient (§7.1 duplicate-check)",
-  },
-  "GET /api/v1/patients/:id/addresses": {
-    summary: "Patient address history — D5 append-only; current + closed rows (§3.3)",
-    response: PatientAddressesResponseSchema,
-  },
-  "POST /api/v1/patients/:id/addresses": {
-    body: AddressBodySchema,
-    summary: "Append a patient address (§7.4 cascade; isPrimary rotates the current primary)",
-  },
-  "GET /api/v1/patients/:id/payers": {
-    summary: "Patient coverage / payers — ranked coverages; payer name resolved via M40 (§3.4)",
-    response: PatientPayersResponseSchema,
-  },
-  "GET /api/v1/patients/:id/care-team": {
-    summary: "Patient care team — assignment roster + caregivers + emergency contacts (§3.4/§3.5)",
-    response: PatientCareTeamResponseSchema,
-  },
-  "GET /api/v1/patients/:id/privacy-flags": {
-    summary:
-      "Patient privacy flags — active restrictions snapshot; SUD §7.6 fail-closed (§3.5/D10)",
-    response: PatientPrivacyFlagsResponseSchema,
-  },
-  "POST /api/v1/patients/:id/amendments": {
-    body: AmendmentBodySchema,
-    summary: "Open a record-amendment request (§7.7, 60-day SLA)",
-  },
-  "POST /api/v1/amendments/:id/deny": {
-    body: DenyBodySchema,
-    summary: "Deny an amendment request (denial reason required)",
-  },
   // M14 IDG (Track B — read surfaces the §5 screens consume; M14-T07). Reads only — the lifecycle / decision /
   // attendance / agenda / action-item / amendment write surfaces fill in as those write paths harden.
-  "GET /api/v1/idg/schedule": {
-    summary:
-      "Meeting schedule for a location/range — next-weeks meetings, location-scoped (§4.1 / §5)",
-    query: IdgScheduleQuerySchema,
-    response: IdgScheduleListResponseSchema,
-  },
-  "GET /api/v1/idg/meetings/:id": {
-    summary: "One meeting's lifecycle view — status + scheduled window + adjournment (§4.1 / §5)",
-    response: IdgMeetingViewSchema,
-  },
-  "GET /api/v1/idg/meetings/:id/packets": {
-    summary: "Per-patient packet digests for a meeting — readiness + freeze state (§4.1 / §5)",
-    response: IdgPacketListResponseSchema,
-  },
-  "GET /api/v1/idg/meetings/:meetingId/packets/:patientId": {
-    summary:
-      "One patient's packet digest in a meeting — chart-embed read (§4.1 / §5; SUD-redacted server-side)",
-    response: IdgPacketDigestViewSchema,
-  },
   "GET /api/v1/patients/:patientId/idg-history": {
     summary:
       "A patient's IDG review history — meetings reviewed in, with per-meeting decisions + action items (metadata only)",
     response: IdgPatientHistoryResponseSchema,
-  },
-  "GET /api/v1/idg/action-items": {
-    summary: "The caller's action items — open / in-progress queue (§4.1 / §5 'My Action Items')",
-    query: IdgActionItemListQuerySchema,
-    response: IdgActionItemListResponseSchema,
-  },
-  "GET /api/v1/idg/meetings/:id/minutes": {
-    summary: "A meeting's minutes — in-progress or finalized (§4.1 / §5)",
-    response: IdgMinutesViewSchema,
-  },
-  // M17 Scheduling (Track B — the §5.1 read surfaces the day/week/map/proposals/recurring/time-off/availability/
-  // metrics screens consume; M17-T08). Reads only — the create/publish/edit/reschedule/cancel/reassign/approve
-  // write routes keep their route-level TypeBox request bodies (already in the contract).
-  "GET /api/v1/visits": {
-    summary:
-      "Visits in caseload/scope — clinician/patient/status/date-window filtered (§4.1 / §5.1)",
-    query: SchedVisitListQuerySchema,
-    response: SchedVisitListResponseSchema,
-  },
-  "GET /api/v1/visits/:visitId": {
-    summary:
-      "One visit's detail — status + scheduled window + assignment (§4.1 / §5.1 visit detail)",
-    response: SchedVisitViewSchema,
-  },
-  "GET /api/v1/visit-proposals": {
-    summary:
-      "The scheduler proposal inbox — pending frequency/order/IDG/supervisory proposals (§5.1)",
-    query: SchedProposalListQuerySchema,
-    response: SchedProposalListResponseSchema,
-  },
-  "GET /api/v1/recurring-visits": {
-    summary: "A patient's recurring-visit policies — active/discontinued (§5.1 recurring)",
-    query: SchedRecurringListQuerySchema,
-    response: SchedRecurringListResponseSchema,
-  },
-  "GET /api/v1/availability": {
-    summary: "A membership's weekly availability pattern (§5.1 availability editor)",
-    query: SchedAvailabilityQuerySchema,
-    response: SchedAvailabilityViewSchema,
-  },
-  "GET /api/v1/time-off": {
-    summary: "Time-off requests — approval queue / my-PTO, membership/state/date filtered (§5.1)",
-    query: SchedTimeOffListQuerySchema,
-    response: SchedTimeOffListResponseSchema,
-  },
-  "GET /api/v1/day-view": {
-    summary: "Day-view grid — a clinician's visits for one service date (§5.1 day)",
-    query: SchedDayViewQuerySchema,
-    response: SchedDayViewResponseSchema,
-  },
-  "GET /api/v1/week-view": {
-    summary: "Week-view grid — a clinician's visits across a week (§5.1 week)",
-    query: SchedWeekViewQuerySchema,
-    response: SchedWeekViewResponseSchema,
-  },
-  "GET /api/v1/map-view": {
-    summary: "Map-view ordered stops for a clinician day (coords-only polylines, D9; §5.1 map)",
-    query: SchedMapViewQuerySchema,
-    response: SchedMapViewResponseSchema,
-  },
-  "GET /api/v1/metrics/visits": {
-    summary:
-      "Org-wide visit metrics — on-time / no-show / reschedule rates (§5.1 scheduling-metrics)",
-    query: SchedMetricsQuerySchema,
-    response: SchedVisitMetricsResponseSchema,
-  },
-  "GET /api/v1/metrics/route-efficiency": {
-    summary: "Per-clinician route-efficiency metrics — proposed miles + override rate (§5.1)",
-    query: SchedRouteEfficiencyQuerySchema,
-    response: SchedRouteEfficiencyResponseSchema,
-  },
-
-  // ── M18 EVV read surfaces (§5.1, Track B / M18-T07) ───────────────────────────────────────────────────
-  "GET /api/v1/evv/events": {
-    summary: "EVV event ledger — coordinate-free capture events, filterable (§5.1 events)",
-    query: EvvEventListQuery,
-    response: EvvEventListResponse,
-  },
-  "GET /api/v1/evv/events/:eventId": {
-    summary:
-      "EVV single-event detail — raw + computed fields, coordinates redacted unless evv.read_coords (§5.1 event)",
-    query: EvvEventGetQuery,
-    response: EvvEventView,
-  },
-  "GET /api/v1/evv/devices": {
-    summary:
-      "EVV devices — self or team list with approval/integrity status (§5.1 devices/pending, me/evv/devices)",
-    query: EvvMembershipIdQuery,
-    response: EvvDeviceListResponse,
-  },
-  "GET /api/v1/evv/geofence-policy": {
-    summary:
-      "EVV geofence policy — tenant tighten-only default + per-address overrides (§5.1 geofence-policy)",
-    response: EvvGeofencePolicyView,
-  },
-  "GET /api/v1/evv/missing-resolutions": {
-    summary:
-      "EVV missing-resolution queue — open + recently-closed late-checkout resolutions (§5.1 missing-resolutions)",
-    query: EvvMissingResolutionListQuery,
-    response: EvvMissingResolutionListResponse,
-  },
-  "GET /api/v1/evv/aggregator-submissions": {
-    summary:
-      "EVV aggregator submission queue — per-state submission status + rejection detail (§5.1 aggregator-submissions)",
-    query: EvvAggregatorListQuery,
-    response: EvvAggregatorSubmissionListResponse,
-  },
-  "GET /api/v1/evv/metrics": {
-    summary:
-      "EVV metrics — compliance / late-checkout / geofence-deviation / GPS-spoof / aggregator-acceptance rates (§5.1 dashboard, metrics)",
-    query: EvvMetricsQuery,
-    response: EvvMetricsView,
-  },
-
-  // M33 Reporting & Dashboards (Track B — Reporting Catalog / Admin / Schedules / Dashboards, M33-T*).
-  // Typing the read queries + the drilldown body the screens call removes the `as never` client casts.
-  "GET /api/v1/reporting/dashboards": {
-    summary: "Reporting dashboard catalog (cursor-paginated)",
-    query: DashboardListQuerySchema,
-  },
-  "GET /api/v1/reporting/admin/mvs": {
-    summary: "Materialized-view admin registry (cursor-paginated)",
-    query: MvListQuerySchema,
-  },
-  "GET /api/v1/reporting/schedules": {
-    summary: "Report schedules — optional status filter (§4.1)",
-    query: ScheduleListQuery,
-  },
-  "POST /api/v1/reporting/drilldown/emit": {
-    summary: "Resolve a tile's drilldown URL template + dimension context into a signed drilldown",
-    body: DrilldownEmitRequest,
-  },
-
-  // M34 SaaS Tenant Platform (Track B — Tenant Inventory / BAA Register / Feature Flags / Onboarding /
-  // Support Grants / Tenant + DSAR Export queues). Typing the read queries + write bodies the admin
-  // screens call removes the `as never` client casts.
-  "GET /api/v1/platform/tenants": {
-    summary: "Platform tenant inventory — status/search filters (§4.1)",
-    query: TenantListQuerySchema,
-  },
-  "GET /api/v1/platform/baa-register": {
-    summary: "Platform BAA register — optional tenant filter (§4.1)",
-    query: BaaRegisterListQuerySchema,
-  },
-  "GET /api/v1/platform/feature-flags": {
-    summary: "Platform feature-flag registry — optional org filter (§4.1)",
-    query: FeatureFlagListQuerySchema,
-  },
-  "POST /api/v1/platform/feature-flags/:flagKey/kill-switch": {
-    summary: "Toggle a feature flag's kill switch (org-scoped or platform-wide)",
-    body: KillSwitchRequest,
-  },
-  "GET /api/v1/platform/onboarding-templates": {
-    summary: "Platform onboarding-template catalog (cursor-paginated)",
-    query: OnboardingTemplateListQuerySchema,
-  },
-  "POST /api/v1/platform/onboarding-templates": {
-    summary: "Create or update a platform onboarding template",
-    body: UpsertOnboardingTemplateRequest,
-  },
-  "GET /api/v1/tenant/tenant-export-jobs": {
-    summary: "Tenant data-export job queue (cursor-paginated)",
-    query: TenantExportListQuerySchema,
-  },
-  "GET /api/v1/tenant/dsar-export-jobs": {
-    summary: "Tenant DSAR export job queue (cursor-paginated)",
-    query: DsarListQuerySchema,
-  },
-  "POST /api/v1/tenant/support-consent-grants": {
-    summary:
-      "Issue a tenant-scoped support-access consent grant (§6/D10 step-up enforced server-side)",
-    body: SupportConsentGrantRequest,
   },
 
   // ── M24 Billing — Medicaid (§4.1) — claim lifecycle + validation/override, per-tenant rule overlay,
@@ -4263,755 +3038,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: M24LoadRateScheduleResponse,
   },
 
-  // ── M26 Cap Management (§4.1) — cap-period lifecycle, projections, threshold queue, PS&R, settlement,
-  // platform constants. Bodies/responses are the §4.2 contract schemas the handlers bind; org/actor binding
-  // is server-side, so no body carries an org/user id. Reads returning view interfaces (dashboard/accrual/
-  // psr) are omitted (no fabrication) — params auto-derive from the path.
-  "GET /api/v1/cap/periods": {
-    summary: "List cap periods for the calling tenant — status + methodology (§4.1)",
-    response: CapPeriodListResponse,
-  },
-  "POST /api/v1/cap/periods": {
-    summary:
-      "Open a new cap period (snapshots the platform constant; emits m26.cap.year_opened; §4.1)",
-    body: CapOpenCapPeriodRequest,
-    response: CapPeriodDto,
-  },
-  "GET /api/v1/cap/periods/:periodId": {
-    summary: "Single cap period including methodology lock + status (§4.1)",
-    response: CapPeriodDto,
-  },
-  "PATCH /api/v1/cap/periods/:periodId/close": {
-    summary: "Close a cap period — active → in_settlement (cap_period_open ABAC; M26-F06; §4.1)",
-    body: CapCloseCapPeriodRequest,
-    response: CapPeriodDto,
-  },
-  "PATCH /api/v1/cap/periods/:periodId/reopen": {
-    summary: "Reopen a settled period — step-up required (cap_period_settled ABAC; D12; §4.1)",
-    body: CapReopenCapPeriodRequest,
-    response: CapPeriodDto,
-  },
-  "POST /api/v1/cap/periods/:periodId/methodology": {
-    summary:
-      "Lock the streamlined/proportional methodology — one-time, step-up required (D2/D12; §4.1)",
-    body: CapLockMethodologyRequest,
-    response: CapPeriodDto,
-  },
-  "GET /api/v1/cap/projections": {
-    summary: "Latest projection snapshots (agency + inpatient) for a period (§4.1)",
-    response: CapProjectionListResponse,
-  },
-  "GET /api/v1/cap/projections/agency/:periodId": {
-    summary: "Agency-aggregate projection snapshot — utilization + band (§4.1)",
-    response: CapProjectionSnapshotDto,
-  },
-  "GET /api/v1/cap/projections/patient/:periodId/:patientId": {
-    summary: "Per-patient projection snapshot — contribution + band (§4.1)",
-    response: CapProjectionSnapshotDto,
-  },
-  "GET /api/v1/cap/projections/inpatient/:periodId": {
-    summary: "Inpatient (20%) cap utilization — GIP+IRC day count + band (§4.1)",
-    response: CapInpatientProjectionDto,
-  },
-  "POST /api/v1/cap/projections/:periodId/recompute": {
-    summary: "Force an immediate projection recompute (cap_period_open ABAC; §4.1)",
-    response: CapProjectionListResponse,
-  },
-  "PATCH /api/v1/cap/threshold-events/:eventId/acknowledge": {
-    summary:
-      "Acknowledge a threshold event — records actor + timestamp (does not clear the breach; §4.1)",
-    body: CapAcknowledgeEventRequest,
-  },
-  "POST /api/v1/cap/periods/:periodId/psr-imports": {
-    summary: "Upload a PS&R CSV — sha256-deduped, queued for reconciliation (202; §4.1)",
-    body: CapPsrImportRequest,
-  },
-  "PATCH /api/v1/cap/psr-imports/:importId/reconciliation/:lineId/resolve": {
-    summary: "Resolve a variance line with a categorical reason + note (§4.1)",
-    body: CapResolveVarianceRequest,
-  },
-  "GET /api/v1/cap/settlements/:periodId": {
-    summary: "Settlement worksheet — final paid/cap/overage + owed direction (§4.1)",
-    response: CapSettlementDto,
-  },
-  "POST /api/v1/cap/settlements/:periodId/propose": {
-    summary:
-      "Propose a settlement worksheet from current accruals (cap_period_in_settlement ABAC; §4.1)",
-    response: CapSettlementDto,
-  },
-  "PATCH /api/v1/cap/settlements/:periodId/finalize": {
-    summary: "Finalize settlement — step-up; in_settlement → settled (D12; M26-F06; §4.1)",
-    body: CapFinalizeSettlementRequest,
-    response: CapSettlementDto,
-  },
-  "POST /api/v1/platform/cap/constants": {
-    summary:
-      "Publish a CMS per-cap-year cap amount — platform-admin (cap_platform_admin ABAC; D3; §4.1)",
-    body: CapPublishConstantRequest,
-  },
-  "PATCH /api/v1/platform/cap/constants/:capYear": {
-    summary: "Amend a published cap amount before first tenant use — platform-admin (D3; §4.1)",
-    body: CapAmendConstantRequest,
-  },
-
-  // ── M27 Cost Report (Form CMS-1984-14; §4.1) ───────────────────────────────────────────────────────────
-  "GET /api/v1/cost-reports": {
-    summary:
-      "List cost reports by (ProviderEntity, fiscal year) + lifecycle state (cost_report.read; §4.1)",
-    query: CostReportListQuerySchema,
-  },
-  "POST /api/v1/cost-reports": {
-    summary:
-      "Create a cost report for a ProviderEntity + fiscal-year-end (cost_report.create; D1; §4.1)",
-    body: CreateCostReportBodySchema,
-  },
-  "PATCH /api/v1/cost-reports/:id": {
-    summary:
-      "Edit cost-report metadata — bad-debt-claimed / wage source; version-checked (cost_report.edit; §4.1)",
-    body: PatchCostReportBodySchema,
-  },
-  "PUT /api/v1/cost-reports/:id/worksheets/:code": {
-    summary: "Write a worksheet's TypeBox-validated data jsonb (cost_report.edit; §4.2)",
-    body: PutWorksheetBodySchema,
-  },
-  "POST /api/v1/cost-reports/:id/bad-debt": {
-    summary:
-      "Add a Medicare bad-debt entry — deductible/coinsurance (cost_report.edit_bad_debt; D7; §4.1)",
-    body: AddBadDebtBodySchema,
-  },
-  "POST /api/v1/cost-reports/:id/validations/:vid/overrides": {
-    summary:
-      "Override a validation result — elevated approval + reason + audit (cost_report.override_validation; §11.B)",
-    body: M27OverrideValidationResultBodySchema,
-  },
-  "POST /api/v1/cost-reports/:id/approve-for-submit": {
-    summary:
-      "Approve a cost report for submission — step-up (cost_report.approve_for_submit; D14; §4.1)",
-    body: ApproveForSubmitBodySchema,
-  },
-  "POST /api/v1/cost-reports/:id/submit": {
-    summary:
-      "Submit — step-up + attestation; builds the content-hashed snapshot (cost_report.submit; D10/D14; §4.1)",
-    body: SubmitBodySchema,
-  },
-  "POST /api/v1/cost-reports/:id/reopen": {
-    summary:
-      "Reopen a submitted cost report — elevated approval + documented reason (cost_report.reopen_submitted; D19; §4.1)",
-    body: ReopenBodySchema,
-  },
-  "POST /api/v1/cost-reports/:id/ecr-submissions/:sid/acknowledgments": {
-    summary:
-      "Record the MCReF acknowledgment / rejection for a submission (cost_report.record_acknowledgment; §4.1)",
-    body: RecordAcknowledgmentBodySchema,
-  },
-  "POST /api/v1/cost-report-validation-rules": {
-    summary:
-      "Create a tenant validation rule layered on the platform floor (cost_report.manage_rules; D21; §11.B)",
-    body: CreateValidationRuleBodySchema,
-  },
-
-  // ── M15 Discipline Care Plans (§4.1) — the four CoP discipline plans, their version/signature ladder,
-  // the 418.76(h) aide supervisory attestation and the 418.78 volunteer surface. Org / acting membership
-  // binding is server-side (§8.6 S), so NO body or query carries an org or membership id for the actor.
-  // Every mutation additionally requires an `Idempotency-Key` (§F08) and every PATCH / state transition an
-  // `If-Match` row version (§2.5) — both header contracts enforced by preHandlers, not by a body field.
-  // Reads returning the §4.1 view interfaces are omitted rather than sketched (the M26 posture — no
-  // fabrication); their params auto-derive from the path.
-  "GET /api/v1/discipline-plans": {
-    summary:
-      "Discipline-plan worklist — cursor-paginated, filterable by patient/admission/kind/status (§4.1 #1)",
-    query: M15PlanListQuerySchema,
-  },
-  "GET /api/v1/discipline-plans/:planId/versions": {
-    summary: "The plan's version chain, cursor-paginated by sequence (§4.1 #4)",
-    query: M15VersionListQuerySchema,
-  },
-  "POST /api/v1/discipline-plans/:planId/versions/:versionId/finalize": {
-    summary:
-      "Finalize a draft version — seals the state snapshot and freezes the D11 quorum, which a tenant may tighten but never loosen (§4.1 #6)",
-    body: M15FinalizeVersionBody,
-  },
-  "POST /api/v1/discipline-plans/:planId/versions/:versionId/sign": {
-    summary:
-      "Sign one slot of the sealed quorum — step-up; the last signature flips the version to signed and triggers the plan-PDF render (§4.1 #7)",
-    body: M15SignVersionBody,
-  },
-  "POST /api/v1/discipline-plans/:planId/goals": {
-    summary: "Author a discipline goal refining an IPOC problem (§4.1 #8)",
-    body: M15CreateGoalBody,
-  },
-  "PATCH /api/v1/discipline-plans/:planId/goals/:goalId": {
-    summary:
-      "Edit a goal — a status event and/or the refinement fields; `originalText` is immutable (§2.3; §4.1 #9)",
-    body: M15UpdateGoalBody,
-  },
-  "POST /api/v1/discipline-plans/:planId/interventions": {
-    summary: "Author a discipline intervention (§4.1 #10)",
-    body: M15CreateInterventionBody,
-  },
-  "PATCH /api/v1/discipline-plans/:planId/interventions/:interventionId": {
-    summary: "Edit an intervention — discontinue (reason required) / complete / refine (§4.1 #11)",
-    body: M15UpdateInterventionBody,
-  },
-  "POST /api/v1/discipline-plans/:planId/assessments": {
-    summary:
-      "Capture a discipline assessment (draft); `data` is validated against the per-kind schema, and the SUD / family-violence flags drive every later read's SQL filter (§4.1 #12)",
-    body: M15CreateAssessmentBody,
-  },
-  "POST /api/v1/discipline-plans/:planId/assessments/:assessmentId/amend": {
-    summary:
-      "Amend a signed assessment — append-only correction of record; the superseded row is retained (§4.1 #14)",
-    body: M15AmendAssessmentBody,
-  },
-  "POST /api/v1/discipline-plans/:planId/aide-supervisory-visits": {
-    summary:
-      "Record an RN supervisory attestation (42 CFR §418.76(h)); a null sourceEncounterId is a phone-only contact and does NOT re-arm the 14-day clock (§4.1 #15)",
-    body: M15CreateSupervisoryVisitBody,
-  },
-  "POST /api/v1/discipline-plans/:planId/volunteer-assignments": {
-    summary:
-      "Create a volunteer assignment — the 418.78 gate check runs unless a documented overrideReason is supplied (§8.6; §4.1 #17)",
-    body: M15CreateVolunteerAssignmentBody,
-  },
-  "PATCH /api/v1/discipline-plans/:planId/volunteer-assignments/:assignmentId": {
-    summary:
-      "Edit / acknowledge / inactivate / reactivate an assignment — reactivation is always manual (§7.5; §4.1 #18)",
-    body: M15UpdateVolunteerAssignmentBody,
-  },
-  "GET /api/v1/volunteer-compliance-gates": {
-    summary:
-      "Volunteer compliance-gate worklist — cursor-paginated; status is re-derived over the validity window as of now (§2.2.6; §4.1 #19)",
-    query: M15GateListQuerySchema,
-  },
-  "POST /api/v1/volunteer-compliance-gates": {
-    summary: "Record a 42 CFR §418.78(b)/(d) compliance gate for a volunteer (§4.1 #20)",
-    body: M15CreateVolunteerGateBody,
-  },
-  "PATCH /api/v1/volunteer-compliance-gates/:gateId": {
-    summary: "Correct a recorded gate's validity window / evidence (§4.1 #21)",
-    body: M15UpdateVolunteerGateBody,
-  },
-  "POST /api/v1/volunteer-compliance-gates/:gateId/revoke": {
-    summary:
-      "Revoke a satisfied gate — reason required; cascades the volunteer to inactive (§4.1 #22)",
-    body: M15RevokeVolunteerGateBody,
-  },
-  "GET /api/v1/volunteer-hour-ratio": {
-    summary:
-      "The 418.78(e) 5% ratio for one provider entity × fiscal year; an unbound cost basis returns `unavailable` with its reason, never a 0% breach (§7.6; §4.1 #23)",
-    query: M15HourRatioQuerySchema,
-  },
-  "POST /api/v1/volunteer-hour-entries": {
-    summary:
-      "Record an audited manual hour adjustment — the only ledger path that may carry negative minutes (§4.1 #24)",
-    body: M15CreateHourEntryBody,
-  },
-  "GET /internal/discipline-plans/relevant-elements": {
-    summary:
-      "System-principal seam — discipline goals/interventions for a patient's plans (§4.1 #25)",
-    query: M15RelevantElementsQuerySchema,
-  },
-  "GET /internal/discipline-plans/msw-risk-factors": {
-    summary:
-      "System-principal seam — MSW psychosocial risk factors for an admission (M16; §4.1 #26)",
-    query: M15RiskFactorQuerySchema,
-  },
-  "GET /internal/discipline-plans/volunteer-effective-status": {
-    summary:
-      "System-principal seam — a volunteer's effective 418.78 status; fail-CLOSED (an unreadable gate store answers not-active; §4.1 #27)",
-    query: M15VolunteerStatusQuerySchema,
-  },
-  "GET /internal/discipline-plans/supervisory-cadence": {
-    summary:
-      "System-principal seam — the supervisory-cadence worklist for a scope (M17/M14; §4.1 #28)",
-    query: M15SupervisoryCadenceQuerySchema,
-  },
-
-  // ── M16 Bereavement (§4.1) — the 42 CFR §418.64(d) 13-month survivor-follow-up program: the plan
-  // ladder, the per-survivor lifecycle, the D4 touchpoint book, the D3/D17 risk ledger and the two
-  // dashboards. Org / acting membership binding is server-side (§6.1's boundary spoofing control), so NO
-  // body or query carries an org id or an acting membership id. Every mutation additionally requires an
-  // `Idempotency-Key` (ADR-0021) and every state transition an `If-Match` row version (§2.5) — both
-  // header contracts enforced by preHandlers, not by a body field. Reads returning the §4.1 view
-  // interfaces are omitted rather than sketched (the M15/M26 no-fabrication posture); their params
-  // auto-derive from the path.
-  "GET /api/v1/bereavement/plans": {
-    summary:
-      "Bereavement plan worklist — cursor-paginated; the counselor's own caseload by default, widened by the filters for an oversight role (§4.1 #1)",
-    query: M16PlanListQuerySchema,
-  },
-  "POST /api/v1/bereavement/plans/:planId/assign-counselor": {
-    summary: "Assign the bereavement counselor — eligible → initiating (§4.1 #3)",
-    body: M16AssignCounselorBody,
-  },
-  "POST /api/v1/bereavement/plans/:planId/assign-volunteer": {
-    summary:
-      "Assign a bereavement volunteer — the 42 CFR §418.78 gates resolve through Module 15's compliance seam, never the body (§4.1 #4)",
-    body: M16AssignVolunteerBody,
-  },
-  "POST /api/v1/bereavement/plans/:planId/seed-roster-and-schedule": {
-    summary:
-      "Seed the survivor roster from M5 and materialize the D4 platform-floor schedule — initiating → active (§4.1 #5)",
-    body: M16SeedRosterAndScheduleBody,
-  },
-  "POST /api/v1/bereavement/plans/:planId/pause": {
-    summary:
-      "Pause the plan — cancels every future-dated touchpoint; a recorded reason is mandatory, because a pause without one is a lapse (§4.1 #6)",
-    body: M16PausePlanBody,
-  },
-  "POST /api/v1/bereavement/plans/:planId/resume": {
-    summary:
-      "Resume the plan — regenerates the schedule FROM NOW; a touchpoint whose due date passed during the pause is not resurrected as a backdated obligation (§4.1 #7)",
-    body: M16ResumePlanBody,
-  },
-  "POST /api/v1/bereavement/plans/:planId/close-early": {
-    summary:
-      "D7 early close — step-up; ≥40-char narrative; lands the closure row awaiting the supervisor cosign (§4.1 #8)",
-    body: M16CloseEarlyBody,
-  },
-  "POST /api/v1/bereavement/plans/:planId/cosign-close": {
-    summary:
-      "The clinical-supervisor cosign that ratifies an early close — step-up; the cosigner is the server-assembled acting membership (§4.1 #9)",
-    body: M16CosignCloseBody,
-  },
-  "GET /api/v1/bereavement/plans/:planId/outreach": {
-    summary: "The plan's touchpoints, scheduled and historical, cursor-paginated (§4.1 #19)",
-    query: M16OutreachListQuerySchema,
-  },
-  "POST /api/v1/bereavement/plans/:planId/regenerate-schedule": {
-    summary:
-      "Regenerate the FORWARD outreach book — whole plan or one survivor; never writes a backdated obligation (§4.1 #27)",
-    body: M16RegenerateScheduleBody,
-  },
-  "POST /api/v1/bereavement/plans/:planId/recompute-risk": {
-    summary:
-      "Recompute the deterministic D3/D17 risk score (Layer 2 narrative only when the platform's full-AI capability is on) — ALWAYS an append; the ledger refuses UPDATE (§4.1 #28)",
-    body: M16RecomputeRiskBody,
-  },
-  "GET /api/v1/bereavement/plans/:planId/risk-scores": {
-    summary:
-      "The append-only risk-score ledger — per-survivor and plan-level, newest first (§4.1 #29)",
-    query: M16RiskScoreListQuerySchema,
-  },
-  "POST /api/v1/bereavement/plans/:planId/initiate-contact": {
-    summary:
-      "The counselor's FIRST contact — D18-gated: an external-source plan awaiting its medical-director cosign is refused with the machine-readable gate reason, not a bare 403 (§4.1 #33)",
-    body: M16InitiateContactBody,
-  },
-  "POST /api/v1/bereavement/plans/:planId/contacts": {
-    summary: "Add a bereaved contact to an open plan — lands `proposed` (§4.1 #11)",
-    body: M16CreateContactBody,
-  },
-  "PATCH /api/v1/bereavement/contacts/:contactId": {
-    summary:
-      "Update a survivor's preferences / channels — `If-Match` required, because a blind overwrite could send a condolence letter to an address the family already corrected (§4.1 #12)",
-    body: M16UpdateContactBody,
-  },
-  "POST /api/v1/bereavement/contacts/:contactId/confirm": {
-    summary:
-      "Confirm a survivor — proposed → active; the M39 consent verdict is resolved server-side and fails CLOSED (§4.1 #13)",
-    body: M16ConfirmContactBody,
-  },
-  "POST /api/v1/bereavement/contacts/:contactId/opt-out": {
-    summary:
-      "Record a per-survivor opt-out (D9) — staff, or the survivor's own portal session; `m39_revocation_cascade` is never accepted from the wire (§4.1 #14)",
-    body: M16OptOutBody,
-  },
-  "POST /api/v1/bereavement/contacts/:contactId/rescind-opt-out": {
-    summary:
-      "Undo an opt-out — the D9 90-day window binds the self-service path; a counselor rescind must say why (§4.1 #15)",
-    body: M16RescindOptOutBody,
-  },
-  "POST /api/v1/bereavement/contacts/:contactId/mark-deceased": {
-    summary:
-      "Mark the survivor deceased — the lifecycle's only terminal state, so the verified date and its source are both required (§4.1 #16)",
-    body: M16MarkDeceasedBody,
-  },
-  "POST /api/v1/bereavement/contacts/:contactId/mark-unreachable": {
-    summary:
-      "Accept the nightly three-strikes proposal — the threshold is enforced by the lifecycle machine, so an early call is refused (§4.1 #17)",
-    body: M16MarkUnreachableBody,
-  },
-  "POST /api/v1/bereavement/contacts/:contactId/flag-complicated-grief": {
-    summary:
-      "§7.7 complicated-grief escalation — ends the program for this survivor and routes them to the named M40 resource, which is REQUIRED (§4.1 #18)",
-    body: M16FlagComplicatedGriefBody,
-  },
-  "POST /api/v1/bereavement/contacts/:contactId/log-direct": {
-    summary:
-      "Log an ad-hoc contact with no scheduled outreach — the kind must be one the survivor allows, stricter than the schedule generator (§4.1 #26)",
-    body: M16LogDirectContactBody,
-  },
-  "POST /api/v1/bereavement/contacts/:contactId/refer-external": {
-    summary:
-      "Log an M40 external-resource referral WITHOUT ending the program — a different clinical fact from the §7.7 escalation (§4.1 #32)",
-    body: M16ReferExternalBody,
-  },
-  "POST /api/v1/bereavement/outreach/:outreachId/start": {
-    summary: "Start a touchpoint — scheduled → in_progress (§4.1 #20)",
-    body: M16StartOutreachBody,
-  },
-  "POST /api/v1/bereavement/outreach/:outreachId/complete": {
-    summary:
-      "Complete a touchpoint, writing its contact log in the SAME transaction. D15: the in-person branch REQUIRES the M8 encounter and every other kind must NOT carry one (§4.1 #21)",
-    body: M16CompleteOutreachBody,
-  },
-  "POST /api/v1/bereavement/outreach/:outreachId/decline": {
-    summary:
-      "The survivor declined THIS touchpoint — not an opt-out: the forward schedule continues untouched (§4.1 #22)",
-    body: M16OutreachOutcomeBody,
-  },
-  "POST /api/v1/bereavement/outreach/:outreachId/no-response": {
-    summary: "No response after retries — feeds the three-strikes unreachable proposal (§4.1 #23)",
-    body: M16OutreachOutcomeBody,
-  },
-  "POST /api/v1/bereavement/outreach/:outreachId/cancel": {
-    summary: "Cancel a scheduled touchpoint — a reason is mandatory (§4.1 #24)",
-    body: M16CancelOutreachBody,
-  },
-  "POST /api/v1/bereavement/outreach/:outreachId/late-attempt": {
-    summary:
-      "Re-open a missed touchpoint inside the 7-day late grace — audit-flagged, but NOT a compliance failure (§4.1 #25)",
-    body: M16LateAttemptBody,
-  },
-  "GET /api/v1/bereavement/dashboard/counselor": {
-    summary:
-      "The caller's OWN bereavement caseload plus what is due in N days — the counselor id comes from the session, never a query param (§4.1 #30)",
-    query: M16CounselorDashboardQuerySchema,
-  },
-  "GET /api/v1/bereavement/dashboard/supervisor": {
-    summary:
-      "Full-tenant bereavement rollups, optionally narrowed to one CCN / location — COUNTS, never rates (§4.1 #31)",
-    query: M16SupervisorDashboardQuerySchema,
-  },
-
-  // ── M19 On-Call Triage (§4.1) — the §2.2.1 call machine, the D5 server-gated protocol walk, the D7
-  // escalation ladder, the CoP 418.100(c)(2) shift roster, the D4 two-layer protocol catalog, the tenant
-  // policy, the §8.5 vendor bindings and the §2.7 BCP paper re-entry. Org, acting membership and vendor
-  // identity are ALL server-side (routes/actor.ts), so no body or query carries any of them — the ONE
-  // membership id a caller may supply is `escalatedToMembershipId`, because an escalation is by definition
-  // addressed to a second person. Every mutation additionally requires an `Idempotency-Key` (ADR-0021) and
-  // every state transition an `If-Match` carrying the row's INTEGER `version` (§2.5, unlike M21's
-  // timestamp ETag); both are header contracts enforced by preHandlers, not body fields. Reads returning
-  // the §4.1 view interfaces are omitted rather than sketched (the M15/M16/M21/M26 no-fabrication
-  // posture); their params auto-derive from the path.
-  "POST /api/v1/triage-calls": {
-    summary:
-      "Open a triage call — `source` is pinned to `manual` and the covering shift is resolved server-side, because attributing a call to somebody else's coverage window would forge the CoP 418.100(c)(2) record (§4.1 #1)",
-    body: M19OpenTriageCallBody,
-  },
-  "GET /api/v1/triage-calls": {
-    summary:
-      "The supervisor board / caseload list — cursor-paginated (offset is refused); `openOnly` is the six-state live set, which deliberately includes `documented_pending_encounter` (§4.1 #2)",
-    query: M19ListTriageCallsQuery,
-  },
-  "POST /api/v1/triage-calls/:triageCallId/identify-patient": {
-    summary:
-      "Resolve the caller to a served person — patient AND admission together, because M8's encounter creator requires both NOT NULL (§4.1 #4)",
-    body: M19IdentifyPatientBody,
-  },
-  "POST /api/v1/triage-calls/:triageCallId/apply-protocol": {
-    summary:
-      "Pin the protocol (D4) and, when the catalog row demands it, write the D7 mandatory escalation in the SAME transaction; `aiOverrideReason` is required only above the §8.6 confidence floor (§4.1 #5)",
-    body: M19ApplyProtocolBody,
-  },
-  "POST /api/v1/triage-calls/:triageCallId/answers": {
-    summary:
-      "Append one answer — a DISCRIMINATED value union, so 'exactly one typed value' is a 422 at the boundary rather than a CHECK violation from the driver; `red_flag_hit` is absent because D5 makes it the server's (§4.1 #6)",
-    body: M19RecordAnswerBody,
-  },
-  "PATCH /api/v1/triage-calls/:triageCallId/answers/:answerId/correct": {
-    summary:
-      "Append a CORRECTION (§2.2.3 amend-by-append) — the original row is preserved, because a 'no' later corrected to 'yes' means the call HAD a red flag (§4.1 #7)",
-    body: M19CorrectAnswerBody,
-  },
-  "POST /api/v1/triage-calls/:triageCallId/awaiting-callback": {
-    summary:
-      "Park the call on a callback; it stays in the open set so it keeps its place on the supervisor board while the SLA detector watches the clock (§4.1 #9)",
-    body: M19AwaitingCallbackBody,
-  },
-  "POST /api/v1/triage-calls/:triageCallId/disposition": {
-    summary:
-      "Select the disposition (D6) over the PUBLISHED `TriageDispositionData` union — one route for both §2.2.1 edges into `documented_pending_encounter` (§4.1 #11)",
-    body: M19SelectDispositionBody,
-  },
-  "POST /api/v1/triage-calls/:triageCallId/document": {
-    summary:
-      "Invoke M8's `EncounterCreator` (D8). The call does NOT reach `documented` here — that transition belongs to the `m8.encounter.signed` consumer (§4.1 #12)",
-    body: M19DocumentCallBody,
-  },
-  "POST /api/v1/triage-calls/:triageCallId/abandon": {
-    summary:
-      "The caller disconnected. A mandatory escalation still blocks: 'the caller hung up' is not an answer to 'did a human respond to the suicidal-ideation page?' (§4.1 #13)",
-    body: M19AbandonCallBody,
-  },
-  "POST /api/v1/triage-calls/paper-reentry": {
-    summary:
-      "§2.7 BCP paper-origin re-entry — its own permission plus a step-up, because the back-dated `opened_at` is §8.3.2's way a coverage gap gets hidden; the instant is range-checked against the worklist row's outage window",
-    body: M19PaperReentryBody,
-  },
-  "POST /api/v1/triage-calls/:triageCallId/escalations": {
-    summary:
-      "Raise an escalation on a call — gated by the CALL's predicate, not the escalation ones, because the actor raising the page is the clinician working the call (§4.1 #15)",
-    body: M19EscalateBody,
-  },
-  "GET /api/v1/escalations": {
-    summary:
-      "The escalation inbox, narrowed server-side to the actor's tier band; `openOnly` defaults TRUE because an inbox shows what is outstanding (§4.1 #16)",
-    query: M19ListEscalationsQuery,
-  },
-  "POST /api/v1/escalations/:escalationId/acknowledge": {
-    summary:
-      "Acknowledge — the write §7.2 waits on; until it lands the call may take no disposition but the hand-off (§4.1 #17)",
-    body: M19AcknowledgeEscalationBody,
-  },
-  "POST /api/v1/escalations/:escalationId/resolve": {
-    summary:
-      "Resolve with the escalated party's own account (≥ 30 chars) — the ONLY place a MANDATORY row can reach `resolved` (§2.2.4 / §4.1 #18)",
-    body: M19ResolveEscalationBody,
-  },
-  "GET /api/v1/oncall/shifts": {
-    summary: "The on-call schedule, cursor-paginated (§4.1 #19)",
-    query: M19ListShiftsQuery,
-  },
-  "POST /api/v1/oncall/shifts": {
-    summary:
-      "Manual shift create — `policySnapshot` is NOT a body field: D7 pins it from the tenant policy at activation, and a caller-supplied snapshot would be a caller-supplied answer to 'which ladder was in effect that night' (§4.1 #20)",
-    body: M19CreateShiftBody,
-  },
-  "PATCH /api/v1/oncall/shifts/:shiftId/cancel": {
-    summary:
-      "Cancel with a reason. No outbox event: a shift that never activated was never in M36's `on_call` channel, so the hole it leaves is the coverage-gap watchdog's finding (§4.1 #21)",
-    body: M19CancelShiftBody,
-  },
-  "POST /api/v1/oncall/shifts/:shiftId/open": {
-    summary:
-      "Manual 'go on shift' — pins the D7 policy snapshot and emits the single canonical shift-open topic M36's synchronizer and M20's SOS path both subscribe to (§4.1 #22)",
-    body: M19ShiftTransitionBody,
-  },
-  "POST /api/v1/oncall/shifts/:shiftId/close": {
-    summary:
-      "Manual close — removes the departing actor from M36's channel; messages sent during their tenure stay attributed to them (§4.1 #23)",
-    body: M19ShiftTransitionBody,
-  },
-  "GET /api/v1/oncall/current": {
-    summary:
-      "Who is on call NOW, keyed PER ProviderEntity and never unioned — CoP 418.100(c)(2) is per-CCN, and `actors: []` for an entity is a REAL answer (a coverage gap), not an empty result (§4.1 #24)",
-    query: M19CurrentOnCallQuery,
-  },
-  "GET /api/v1/oncall/policy": {
-    summary:
-      "The tenant on-call policy for one ProviderEntity. NOT auto-created on read: a default invented at read time would be pinned onto shifts as though the tenant had chosen it (§4.1 #25)",
-    query: M19PolicyQuery,
-  },
-  "PATCH /api/v1/oncall/policy": {
-    summary:
-      "Edit the policy (step-up) — a `hybrid`/`centralized` selection where the D3 flag is off is REFUSED rather than accepted-and-ignored, so a tenant can never believe a vendor is answering their nights (§4.1 #26)",
-    body: M19PatchOncallPolicyBody,
-    query: M19PolicyQuery,
-  },
-  "GET /api/v1/triage-protocols": {
-    summary:
-      "The catalog — the org-less platform floor plus this tenant's own rows (D4), effective-dated by default (§4.1 #27)",
-    query: M19ListProtocolsQuery,
-  },
-  "POST /api/v1/triage-protocols": {
-    summary:
-      "Author a TENANT-CUSTOM protocol (step-up). `isSystemLocked` is absent: accepting and ignoring it would leave the DON believing they had authored a protected question (§4.1 #29)",
-    body: M19CreateProtocolBody,
-  },
-  "PATCH /api/v1/triage-protocols/:protocolId": {
-    summary:
-      "Edit a tenant protocol — a platform-floor row is refused with its key NAMED, because '0 rows updated' is not an answer a DON can act on (§4.1 #30)",
-    body: M19PatchProtocolBody,
-  },
-  "POST /api/v1/triage-protocols/:protocolId/questions": {
-    summary:
-      "Add a question — a tenant cannot write a child row against an org-less parent, so the attempt is refused with the protocol named rather than failing as a policy violation (§4.1 #31)",
-    body: M19ProtocolQuestionBody,
-  },
-  "PATCH /api/v1/triage-protocol-questions/:questionId": {
-    summary:
-      "Edit one question — a system-locked question is refused: it is the D5 red-flag predicate behind a platform-floor mandatory escalation, and editing it is the cheapest way to disable one (§4.1 #32)",
-    body: M19PatchProtocolQuestionBody,
-  },
-  "POST /api/v1/oncall/external-vendors": {
-    summary:
-      "Create a vendor binding (step-up). The BAA is a PRECONDITION, and there is deliberately NO secret field — ADR-0026 puts vendor credentials in the platform secret store, and the absence of the field is the control (§4.1 #34)",
-    body: M19CreateVendorBindingBody,
-  },
-  "PATCH /api/v1/oncall/external-vendors/:vendorId": {
-    summary:
-      "BAA renewal updates only — the narrow request shape IS the rule: changing the adapter key or the minimization profile would silently re-point live PHI at a different contract (§4.1 #35)",
-    body: M19PatchVendorBindingBody,
-  },
-  "GET /api/v1/portal/triage/recent": {
-    summary:
-      "The M31 portal projection — lay-language, caregiver-scoped, with the D11 advisory and the D13 vendor-handoff details excluded BY CONSTRUCTION rather than by filtering (§4.1 #36)",
-    query: M19PortalRecentQuery,
-  },
-  // ── M21 Supplies, DME & Comfort Kits (§4.1) — the §2.2 fulfillment machine, the D11 SKU catalog, the D3
-  // kit templates, the DEA 21 CFR §1304 dispatch/return chain of custody, the D4 vendor-routing ladder and
-  // the D5 par shelf. Org / acting membership binding is server-side (routes/actor.ts is the DEA
-  // chain-of-custody control at the boundary), so NO body or query carries an org id or an acting
-  // membership id — the ONE exception is the reconciliation's disposal WITNESS, who is by definition a
-  // second person. Every mutation additionally requires an `Idempotency-Key` (ADR-0021) and every state
-  // transition an `If-Match` carrying the row's `updated_at` (§7.2 — M21's tables have no version counter);
-  // both are header contracts enforced by preHandlers, not body fields. Reads returning the §4.1 view
-  // interfaces are omitted rather than sketched (the M15/M16/M26 no-fabrication posture); their params
-  // auto-derive from the path.
-  "POST /api/v1/supplies/supply-requests": {
-    summary:
-      "Create a DME / supply / comfort-kit request — the §4.4 dispatcher predicate applies CONDITIONALLY, only when the kind is a comfort-kit deploy (§4.1 #1)",
-    body: M21CreateSupplyRequestBody,
-  },
-  "GET /api/v1/supplies/supply-requests": {
-    summary:
-      "The supply-team worklist — cursor-paginated; `openOnly` narrows to the §2.2 non-terminal set, which is the dashboard's default view (§4.1 #2)",
-    query: M21ListSupplyRequestsQuery,
-  },
-  "POST /api/v1/supplies/supply-requests/:supplyRequestId/assign-vendor": {
-    summary:
-      "D4 vendor override — the ladder still runs and the override is recorded ON TOP of its trace, so the record shows both the rules evaluated and the human decision that overrode them (§4.1 #4)",
-    body: M21AssignVendorBody,
-  },
-  "POST /api/v1/supplies/supply-requests/:supplyRequestId/mark-ordered": {
-    summary:
-      "The vendor accepted — Phase-1 portal/email/fax entry, Phase-2 the EDI 855 acknowledgment (§4.1 #5)",
-    body: M21MarkOrderedBody,
-  },
-  "POST /api/v1/supplies/supply-requests/:supplyRequestId/mark-in-transit": {
-    summary: "Shipment identifiers — Phase-1 manual, Phase-2 the EDI 856 ASN (§4.1 #6)",
-    body: M21MarkInTransitBody,
-  },
-  "POST /api/v1/supplies/supply-requests/:supplyRequestId/mark-delivered": {
-    summary:
-      "D7 courier attestation — the delivering membership is stamped from the SESSION and is not a body field: a courier who could name someone else has attested to nothing (§4.1 #7)",
-    body: M21MarkDeliveredBody,
-  },
-  "POST /api/v1/supplies/supply-requests/:supplyRequestId/confirm-received": {
-    summary:
-      "Caregiver / clinician receipt confirmation — `system_auto_confirm` is NOT accepted here, it is the 72h fallback the worker writes (§4.1 #8)",
-    body: M21ConfirmReceivedBody,
-  },
-  "POST /api/v1/supplies/supply-requests/:supplyRequestId/cancel": {
-    summary:
-      "Cancel — ONE route for both §2.2 edges: immediate before `ordered`, two-phase after, so a caller never has to know which side of the vendor handshake the row sits on (§4.1 #9)",
-    body: M21CancelRequestBody,
-  },
-  "POST /api/v1/supplies/supply-requests/:supplyRequestId/return": {
-    summary:
-      "Initiate an equipment return — the kit-only §2.2 `returned` branch; DME comes back through the M11 rental-pickup path instead (§4.1 #10)",
-    body: M21ReturnRequestBody,
-  },
-  "GET /api/v1/supplies/supply-items": {
-    summary:
-      "The D11 SKU catalog — the platform rows UNION the tenant overlay, one browsable list (§4.1 #11)",
-    query: M21ListSupplyItemsQuery,
-  },
-  "POST /api/v1/supplies/supply-items": {
-    summary:
-      "Create a canonical HCPCS-keyed SKU — PLATFORM-ONLY: `supply_item` carries no organization_id, so the permission is the first gate and the wardenx_admin-only write policy is the backstop (§4.1 #12)",
-    body: M21CreateSupplyItemBody,
-  },
-  "POST /api/v1/supplies/supply-items/:id/retire": {
-    summary:
-      "Retire a canonical SKU — effective-dating, never deletion: a retired HCPCS code must keep resolving for every historical request written against it (§4.1 #14)",
-    body: M21RetireSupplyItemBody,
-  },
-  "POST /api/v1/supplies/tenant-supply-items": {
-    summary: "Create a tenant-local, non-billable overlay item (D11's tenant half; §4.1 #15)",
-    body: M21UpsertTenantSupplyItemBody,
-  },
-  "PUT /api/v1/supplies/tenant-supply-items/:id": {
-    summary: "Edit a tenant-local overlay item (§4.1 #16)",
-    body: M21UpsertTenantSupplyItemBody,
-  },
-  "GET /api/v1/supplies/comfort-kit-templates": {
-    summary:
-      "The §2.3 comfort-kit templates — `includePlatformFloor` defaults ON so the admin screen shows the D3 floor row as locked; a picker passes false (§4.1 #17)",
-    query: M21ListTemplatesQuery,
-  },
-  "POST /api/v1/supplies/comfort-kit-templates": {
-    summary:
-      "Author a tenant template — the D3 floor validation runs BEFORE anything is written, so a template that drops below the floor never exists even transiently (§4.1 #18)",
-    body: M21CreateTemplateBody,
-  },
-  "PUT /api/v1/supplies/comfort-kit-templates/:templateId": {
-    summary:
-      "Supersede a template — this INSERTS a new row pointing back through `replaces_template_id` rather than patching, so a dispatch from three months ago still resolves the recipe it actually used (§4.1 #19)",
-    body: M21SupersedeTemplateBody,
-  },
-  "POST /api/v1/supplies/comfort-kit-dispatches": {
-    summary:
-      "Dispatch a comfort kit — the DEA 21 CFR §1304 outbound log entry: §4.4's dispatcher predicate plus a step-up gate, and the §2.5 refusals, shelf decrement and per-line log all in ONE transaction (§4.1 #20)",
-    body: M21CreateDispatchBody,
-  },
-  "GET /api/v1/supplies/comfort-kit-dispatches": {
-    summary:
-      "Dispatch list — per patient, per Location, or per IPU room for the D17 stock-kit view (§4.1 #21)",
-    query: M21ListDispatchesQuery,
-  },
-  "POST /api/v1/supplies/comfort-kit-dispatches/:dispatchId/deploy-at-patient": {
-    summary:
-      "The kit is physically at the patient — the event M13 builds its deployment rows FROM, so the emitted payload carries the whole manifest rather than making M13 read back (§4.1 #23)",
-    body: M21DeployAtPatientBody,
-  },
-  "POST /api/v1/supplies/comfort-kit-returns": {
-    summary:
-      "Open a return obligation — refused until M13 has acked the deployment, because a return with nothing to close is a count nobody can reconcile (§4.1 #24)",
-    body: M21CreateReturnBody,
-  },
-  "GET /api/v1/supplies/comfort-kit-returns": {
-    summary:
-      "The reconciliation worklist — OLDEST due first, with `daysOverdue` computed at read time from `return_due_at` (§4.1 #25)",
-    query: M21ListReturnsQuery,
-  },
-  "POST /api/v1/supplies/comfort-kit-returns/:returnId/assign-retriever": {
-    summary:
-      "Assign the supply-team member who will physically retrieve — §4.4's separation-of-duties clause compares them against the witness (§2.6)",
-    body: M21AssignRetrieverBody,
-  },
-  "POST /api/v1/supplies/comfort-kit-returns/:returnId/reconcile": {
-    summary:
-      "Reconcile the physical count — step-up plus the reconciler predicate whose FIRST clause is separation of duties; the D8 discrepancy is COMPUTED from the quantities and never accepted from the body (§4.1 #27)",
-    body: M21ReconcileReturnBody,
-  },
-  "POST /api/v1/supplies/comfort-kit-returns/:returnId/declare-unreturnable": {
-    summary:
-      "The 90-day assumption of loss — deliberately NOT folded into reconcile: writing off a kit that held a CII solution is a different authority from counting one that came back (§2.6)",
-    body: M21DeclareUnreturnableBody,
-  },
-  "GET /api/v1/supplies/vendor-routing-rules": {
-    summary:
-      "The D4 ladder, most-specific first — the platform-scope rows come back for every tenant via the table's own floor-plus-overlay policy (§4.1 #28)",
-    query: M21ListRoutingRulesQuery,
-  },
-  "POST /api/v1/supplies/vendor-routing-rules": {
-    summary:
-      "Author a routing rule — `platform` scope is absent from the union by design: a tenant may never author one, and the RLS write policy would refuse it anyway (§4.1 #29)",
-    body: M21UpsertRoutingRuleBody,
-  },
-  "PUT /api/v1/supplies/vendor-routing-rules/:ruleId": {
-    summary: "Edit a routing rule (§4.1 #30)",
-    body: M21UpsertRoutingRuleBody,
-  },
-  "GET /api/v1/supplies/par-stock": {
-    summary:
-      "The hub shelf — `severity` is DERIVED per row and never stored, because a stored band goes stale the moment a threshold is edited (§4.1 #32)",
-    query: M21ListParStockQuery,
-  },
-  "PUT /api/v1/supplies/par-stock/:parStockId": {
-    summary:
-      "Edit the par thresholds — the boundary mirrors §3.1.6's ordering CHECK, so an inverted pair is a field-anchored 422 rather than a 500 out of PostgreSQL (§4.1 #33)",
-    body: M21UpdateParStockBody,
-  },
-  "POST /api/v1/supplies/par-stock/observe": {
-    summary:
-      "Record an on-hand count — this SETS the shelf rather than adjusting it, and the nightly cron (not this route) is the canonical emitter of the below-threshold alert (§4.1 #34)",
-    body: M21ObserveParStockBody,
-  },
-
   // ── M31 Patient/Family Portal & Telehealth (§4.1–4.2). The lay-language reads publish a typed 2xx body;
   // the writes reuse the SAME TypeBox schema the handler `parse`s (portal-typebox.ts), so the published
   // contract cannot drift from the validator. Every lay read body is the D17-minimized projection. ──
@@ -5023,10 +3049,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/portal/sessions/current": {
     summary: "Current portal session context (account, active patient, scope set)",
     response: M31PortalSessionCurrentResponse,
-  },
-  "POST /api/v1/portal/sessions/logout": {
-    summary: "Server-side portal session close",
-    response: M31AckResponse,
   },
   "POST /api/v1/portal/sessions/step-up": {
     summary: "TOTP step-up for high-PHI portal actions",
@@ -5101,10 +3123,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     body: M31PortalDocumentUploadInitRequest,
     response: M31PortalDocumentUploadInitResponse,
   },
-  "POST /api/v1/portal/documents/upload-complete/:uploadId": {
-    summary: "Confirm the M22 intake batch received",
-    response: M31UploadCompleteResponse,
-  },
   "POST /api/v1/portal/administrations/caregiver-attested": {
     summary: "Caregiver-attested administration into M13 (D10); TOTP step-up",
     body: M31CaregiverAttestRequest,
@@ -5153,18 +3171,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Portal-side telehealth join — mints a participant token (consent + ABAC gated)",
     response: M31TelehealthJoinResponse,
   },
-  "POST /api/v1/portal/telehealth/visits/:visitId/leave": {
-    summary: "Portal-side telehealth leave (idempotent)",
-    response: M31AckResponse,
-  },
-  "POST /api/v1/telehealth/visits/:visitId/join": {
-    summary: "Clinician-side telehealth join — mints a participant token",
-    response: M31TelehealthJoinResponse,
-  },
-  "POST /api/v1/telehealth/visits/:visitId/leave": {
-    summary: "Clinician-side telehealth leave",
-    response: M31AckResponse,
-  },
   "POST /api/v1/telehealth/visits/:visitId/start-recording": {
     summary: "Start recording — D9 state-aware gate + step-up",
     body: M31StartRecordingRequest,
@@ -5194,10 +3200,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/admin/portal-invitations": {
     summary: "Per-patient portal invite list",
     response: M31PortalInvitationListResponse,
-  },
-  "POST /api/v1/admin/portal-invitations/:id/revoke": {
-    summary: "Revoke a portal invite before acceptance",
-    response: M31AckResponse,
   },
   "POST /api/v1/admin/portal-accounts/:id/invite-bereaved": {
     summary: "Issue a post-death bereaved invite (M16-coordinated)",
@@ -5247,141 +3249,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
 };
 
 // ---------------------------------------------------------------------------
-// M20 Field Safety — §4.2 request contracts for the §4.1 surface (M20-T06).
-// Each summary states what the boundary REFUSES, not just what it accepts: the
-// generated client is the only place a web caller sees why a shape is illegal.
-// ---------------------------------------------------------------------------
-Object.assign(ROUTE_ENRICHMENTS, {
-  // --- §7.1 check-ins (§4.1 #1-#4) ---
-  "POST /api/v1/safety/check-ins": {
-    summary:
-      "Record a check-in against an obligation — the attribution column is stamped from the SESSION (routes/actor.ts), so a caller cannot post an attestation as somebody else whatever they send (§4.1 #1)",
-    body: M20RecordCheckInBody,
-  },
-  "PATCH /api/v1/safety/check-ins/:checkInId": {
-    summary:
-      "Amend within the 5-minute grace — a correction is a NEW row that supersedes (§2.2.1); the original stays readable because it is what the supervisor may already have acted on (§4.1 #3)",
-    body: M20AmendCheckInBody,
-  },
-  "GET /api/v1/safety/check-ins/me/today": {
-    summary:
-      "The clinician's own day — what she owes and what she has posted. Scoped to the SESSION's membership inside the read service, so `/me/today` cannot be pointed at a colleague (§4.1 #4)",
-    query: M20CheckInListQuery,
-  },
-  // --- §2.2.2 SOS (§4.1 #5-#11) ---
-  "POST /api/v1/safety/sos": {
-    summary:
-      "The press — deliberately NO idempotency key: a duplicate alert is recoverable, a swallowed one is not. `field_eligible_for_sos` gates who may PRESS; nothing downstream of the row gates the fan-out (M20-F05 / S13, §4.1 #5)",
-    body: M20RaiseSosBody,
-  },
-  "POST /api/v1/safety/sos/:sosAlertId/cancel": {
-    summary:
-      "The D5 mid-visit cancel (biometric). A REJECTED cancel is a 200 carrying `cancel_attempted_but_rejected`, never a 4xx — an error would tell a hostile actor holding the device that their tap did something (§4.1 #6)",
-    body: M20CancelSosBody,
-  },
-  "POST /api/v1/safety/sos/:sosAlertId/acknowledge": {
-    summary:
-      "A responder answers — the §2.2.6 acknowledgment row is written in the SAME transaction, so an `acknowledged` alert nobody signed is unrepresentable (§4.1 #7)",
-    body: M20AcknowledgeSosBody,
-  },
-  "POST /api/v1/safety/sos/:sosAlertId/resolve": {
-    summary:
-      "Resolve, or convert into an incident — `openIncidentFromOutcome` dispatches to a DIFFERENT §2.2.2 command (`openIncident`, not `resolve`) because they are different terminal states (§4.1 #8)",
-    body: M20ResolveSosBody,
-  },
-  "GET /api/v1/safety/sos/:sosAlertId/location-stream": {
-    summary:
-      "The D6 coordinate stream — readable only while the consent that produced it stands; `continuous_location_during_sos` additionally requires the TENANT flag before a single row may exist (§4.1 #10)",
-    query: M20LocationStreamQuery,
-  },
-  // --- §2.2.3 incidents (§4.1 #12-#17) ---
-  "POST /api/v1/safety/incidents": {
-    summary:
-      "Open a draft — `affectedClinicianMembershipId` is the ONE membership a caller may name (the §2.2.3 supervisor-opens-on-behalf-of path), and `incident_subject_or_supervisor` is what keeps naming somebody else a supervisor-only act (§4.1 #12)",
-    body: M20CreateIncidentBody,
-  },
-  "GET /api/v1/safety/incidents": {
-    summary:
-      "The review queue — narrowed to the caller's own incidents inside the read service when they hold no oversight role: the guard admits them to the route, the service decides which rows (§4.1 #13)",
-    query: M20IncidentListQuery,
-  },
-  "PATCH /api/v1/safety/incidents/:incidentId": {
-    summary:
-      "Edit a draft — the `(draft)` qualifier is enforced by the service, not the shape (§4.1 #14)",
-    body: M20PatchIncidentBody,
-  },
-  "POST /api/v1/safety/incidents/:incidentId/submit": {
-    summary:
-      "Submit for review — D9's gate: `oshaReportable: true` without the signed-off pair is a 422 that NAMES the fix, not a constraint violation surfacing on a clinician's Submit button (§4.1 #15)",
-    body: M20SubmitIncidentBody,
-  },
-  "POST /api/v1/safety/incidents/:incidentId/state": {
-    summary:
-      "The supervisor state machine (§2.2.3) — `reopened` re-enters review on the SAME row, because a second row would break the workers-comp timeline an insurer reads (§4.1 #16)",
-    body: M20TransitionIncidentBody,
-  },
-  "POST /api/v1/safety/incidents/:incidentId/osha-signoff": {
-    summary: "§7.6 / D9's OSHA-equivalent sign-off — step-up asserted at the route (§4.1 #17)",
-    body: M20OshaSignoffBody,
-  },
-  // --- §2.2.4 policy + §2.2.5/D8 subscriptions + §7.6 areas (§4.1 #18-#25) ---
-  "GET /api/v1/safety/policy": {
-    summary:
-      "The effective policy — §2.2.4's `asOf` is the REPLAY arm: a 2031 review of a 2026 incident has to read the 2026 thresholds, and reading today's would turn a policy that tightened into a regression that never happened (§4.1 #18)",
-    query: M20PolicyQuery,
-  },
-  "PATCH /api/v1/safety/policy": {
-    summary: "Edit the policy — step-up asserted at the route (§4.1 #19)",
-    body: M20PatchPolicyBody,
-  },
-  "GET /api/v1/safety/supervisor-subscriptions": {
-    summary:
-      "Who watches whom (§2.2.5 / D8) — dashboard VISIBILITY is RBAC+ABAC and deliberately independent: a supervisor may SEE a board she is not paged for, and D8 exists because the inverse (visible to everyone, paged by nobody) is the §7.8 failure (§4.1 #20)",
-    query: M20SubscriptionListQuery,
-  },
-  "POST /api/v1/safety/supervisor-subscriptions": {
-    summary:
-      "Add one — the scope-selector pairing (§3.3's `m20_sss_scope_integrity`) and the vacation-forward pairing are re-checked in the service so the DON is told WHICH selector is missing rather than shown a constraint name (§4.1 #21)",
-    body: M20CreateSubscriptionBody,
-  },
-  "GET /api/v1/safety/high-risk-areas": {
-    summary:
-      "The advisory polygons in force — `includeExpired` defaults FALSE so the pre-visit advisory never surfaces a polygon retired last winter; the editor asks for history explicitly (§4.1 #23)",
-    query: M20HighRiskAreaListQuery,
-  },
-  "POST /api/v1/safety/high-risk-areas": {
-    summary:
-      "Draw one (§7.6) — M20-F07: no PostGIS, so ring closure and the ≥4-point minimum are validated in app code the moment the Compliance Officer draws it, not on the night a clinician is standing in it (§4.1 #24)",
-    body: M20CreateHighRiskAreaBody,
-  },
-  "PATCH /api/v1/safety/high-risk-areas/:areaId": {
-    summary:
-      "Edit or retire one — retiring is `effectiveTo`, never a delete: an incident review has to be able to ask what advisory was in force on the day (§4.1 #25)",
-    body: M20PatchHighRiskAreaBody,
-  },
-  // --- §7.8 dashboard + M20-F16 consent (§4.1 #26-#29) ---
-  "GET /api/v1/safety/dashboard": {
-    summary:
-      "The live-awareness board — open obligations, active alerts, and the coverage gaps behind them (§4.1 #26)",
-    query: M20DashboardQuery,
-  },
-  "GET /api/v1/safety/consent": {
-    summary: "My own consents — the three §M20-F16 purposes and their current state (§4.1 #27)",
-    query: M20ConsentQuery,
-  },
-  "POST /api/v1/safety/consent/grant": {
-    summary:
-      "Grant one purpose — the three are separately grantable (M20-F16): declining `sos_coordinates` never disables SOS, and `continuous_location_during_sos` additionally needs the TENANT's `sosContinuousLocationEnabled` before a stream row may exist (§4.1 #28)",
-    body: M20GrantConsentBody,
-  },
-  "POST /api/v1/safety/consent/revoke": {
-    summary:
-      "Revoke one purpose — writes `revoked`, never `expired`: the rotation sweep owns the second, and a coercion review reads exactly that difference (§2.2.8, §4.1 #29)",
-    body: M20RevokeConsentBody,
-  },
-});
-
-// ---------------------------------------------------------------------------
 // M32 AI Platform — §4.1 request contracts for the thirty-two-route surface
 // (M32-T07). Every summary states what the boundary REFUSES, not just what it
 // accepts: the generated client is the only place a web caller sees why a shape
@@ -5396,15 +3263,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Register a capability into PROPOSED (R1). The SIGNER role rides the body and is checked against §2.2's own registration edge; the ACTING MEMBERSHIP is stamped from the session, so a caller may say which role they sign as and may not say that somebody else signed",
     body: M32RegisterCapabilityBody,
   },
-  "GET /api/v1/ai/capabilities": {
-    summary:
-      "List the platform-shared capability registry (R2). §6 grants the read to every clinical role — a clinician offered an AI-enhanced note may look up what the capability is and which lifecycle state it is in. `hotPhase1` is an INVENTORY fact, not a column, and the response reports the filter as unapplied rather than silently ignoring it",
-    query: M32CapabilityListQuery,
-  },
-  "GET /api/v1/ai/capabilities/:capabilityId": {
-    summary:
-      "Capability detail (R3): the row, the §2.2 posture it publishes to consumers, its lifecycle ledger, its calibration trail and the states it can reach next — one read, because four would show a capability mid-transition as four inconsistent panels",
-  },
   "POST /api/v1/ai/capabilities/:capabilityId/transitions": {
     summary:
       "Walk a §2.2 lifecycle edge (R4). STEP-UP: the stage-4 → stage-5 edge is what makes a capability servable against real charts. The FSM, the signer-role check and D10's evaluation-evidence check all re-run inside the service — the guard is the cheap early refusal, not the authority",
@@ -5414,10 +3272,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Publish a calibration (R5): supersede the incumbent and insert the new `is_current` row in ONE store call — `ai_cap_calib_current_per_backend_idx` makes any other ordering a constraint violation rather than a race",
     body: M32PublishCalibrationBody,
-  },
-  "GET /api/v1/ai/capabilities/:capabilityId/calibration/history": {
-    summary:
-      "Calibration trail (R6). Behind `ai_safety_owner` rather than the open capability read: a calibration row states the decision boundary a model is held to, which is the one piece of the registry an adversary could use to shape an input that lands just inside it (§8.1 tampering)",
   },
   // --- D8 kill switch (R7-R9) ---
   "POST /api/v1/ai/capabilities/:capabilityId/kill-switch": {
@@ -5430,10 +3284,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Lift the kill switch (R8). `resolutionNarrative` is REQUIRED (§3.2.12) and the activation half of the row is left ALONE — who stopped it and why is exactly what a post-mortem reads. Step-up is on this direction too: resuming a capability somebody paused during a SEV-1 is what a stolen session would want",
     body: M32DeactivateKillSwitchBody,
   },
-  "GET /api/v1/ai/kill-switches": {
-    summary:
-      "The §5.1.3 dashboard (R9) — the DISJUNCTION of this org's rows and the platform rows, which is the same disjunction the gate applies. A view of only the tenant's own rows would tell an agency a capability was running while a platform switch had it stopped",
-  },
   // --- §5.3 tenant opt-in / §5.4 clinician opt-out (R10-R15) ---
   "POST /api/v1/ai/tenant-opt-in": {
     summary:
@@ -5445,10 +3295,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Revoke (default) or pause (`mode: 'pause'`) the tenant opt-in (R11 / §10.6). An unqualified DELETE WITHDRAWS: a route that silently paused would leave an agency believing it had stopped while the acknowledgment evidence — and M35's metering — said otherwise. A reason is ACCEPTED, never required",
     body: M32RevokeTenantOptInBody,
   },
-  "GET /api/v1/ai/tenant-opt-in": {
-    summary:
-      "The org's opt-in records (R12). Granted to `tenant_admin` and `compliance_officer`: the frozen acknowledgment evidence is what a privacy review reads to answer who agreed to what, and when",
-  },
   "POST /api/v1/ai/clinician-opt-out": {
     summary:
       "The clinician turns a capability off for herself (R13 / §5.4). Takes NO membership id — the acting membership is stamped from the session, so this cannot be pointed at a colleague. Idempotent by rule: a second tap returns the live row and writes nothing",
@@ -5458,30 +3304,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "The clinician re-enables the capability for herself (R14). The ROW IS KEPT and stamped `reverted_at` — §5.4's history is the record that she once declined, which is what makes a later coercion question answerable. A delete would erase the only evidence of it",
   },
-  "GET /api/v1/ai/clinician-opt-out": {
-    summary:
-      "Her own opt-out history, reverted rows included — that IS the history (R15). Scoped to the SESSION's membership inside the service",
-  },
   // --- §164.528 disclosure ledger (R16-R17) ---
-  "GET /api/v1/ai/invocations": {
-    summary:
-      "The compliance search over `ai_invocation` (R16) — the §164.528 disclosure ledger. PHI masking is STRUCTURAL: the projection has no field for the prompt, the response or the chart context at all, and `wardenx.phi.full_read` unlocks only the patient identity and the free-text error. Without it a row still reports `touchedPatientChart`, which is the fact the accounting turns on. Default window: 90 days (the table is RANGE-partitioned on `invoked_at`)",
-    query: M32InvocationSearchQuery,
-  },
-  "GET /api/v1/ai/invocations/:invocationId": {
-    summary:
-      "One invocation (R17). 404-on-deny, not 403: an invocation id is 1:1 with 'this named patient's chart went to a model vendor at this hour', which §8.2's isolation test asks to be unprobeable",
-  },
   // --- D9 hallucination report → triage (R18-R20) ---
   "POST /api/v1/ai/hallucination-reports": {
     summary:
       "File a hallucination report (R18) — the only write a clinician makes in this module, and §5.5's widget's contract. The narrative is DEK-enveloped before it is stored; with no cipher bound the route refuses 503 rather than writing prose in the clear into a column named `_cipher`. A `critical` severity returns D16's SEV-1 follow-up PLAN attached, so the caller can see that filing this is about to stop a capability platform-wide",
     body: M32FileHallucinationReportBody,
-  },
-  "GET /api/v1/ai/hallucination-reports": {
-    summary:
-      "The triage queue (R19). Defaults to the two OPEN statuses §3.2.10's partial index covers — that IS the working set; a queue that opened on every closed report ever filed would need a filter before it was usable",
-    query: M32HallucinationQueueQuery,
   },
   "POST /api/v1/ai/hallucination-reports/:reportId/triage": {
     summary:
@@ -5489,16 +3317,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M32TriageHallucinationReportBody,
   },
   // --- W2 token spend (R21-R22) ---
-  "GET /api/v1/ai/tokens/ledger": {
-    summary:
-      "The token ledger plus the window total (R21). The window is the CALENDAR MONTH, because that is what §3.8 partitions `ai_token_ledger` by and what §1.1's budget is stated in — a rolling 30 days would straddle two partitions and answer a different question from the one the cap enforces",
-    query: M32TokenLedgerQuery,
-  },
-  "GET /api/v1/ai/tokens/forecast": {
-    summary:
-      "Spend vs. caps with a linear burn-rate projection (R22). Nothing here predicts. `softCap`, `hardCap` and `projectedBreach` are ALL `null` when M2 states no budget — an absent bound is not an unbounded one, and a green 'no breach projected' tile minted from a missing configuration is the failure this avoids",
-    query: M32TokenForecastQuery,
-  },
   // --- W8 routing sovereignty (R23-R25) ---
   "POST /api/v1/ai/routing-overrides": {
     summary:
@@ -5509,44 +3327,19 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Remove an override by CLOSING its §3.2.13 window (R24) — never by deleting the row. A delete would erase the record that the agency once required `local_only`, which is exactly the evidence a data-residency question asks for, and would free a window the EXCLUDE constraint had already reserved. 404 when no override is live, rather than a silent success that would read as 'removed'",
   },
-  "GET /api/v1/ai/routing-overrides": {
-    summary:
-      "List routing overrides including EXPIRED rows (R25) — the question a data-residency review asks is 'what was in force in March', not 'what is in force now'",
-  },
   // --- D10 evaluation runs (R26-R28) ---
   "POST /api/v1/ai/evaluations": {
     summary:
       "Queue an evaluation run (R26). `status` is NOT an input — §3.2.11 inserts every run `pending`; a body that could set `passed` would let an operator mint the D10 evidence a stage-3 transition then cites, which is the one thing the evidence check exists to prevent",
     body: M32QueueEvaluationRunBody,
   },
-  "GET /api/v1/ai/evaluations": {
-    summary: "Recent evaluation runs, filterable by capability and status (R27)",
-    query: M32EvaluationRunQuery,
-  },
-  "GET /api/v1/ai/evaluations/:runId": {
-    summary:
-      "One evaluation run with its metric snapshot and MLflow handle (R28). MLflow stays the record of the run; `summary_metrics` is the headline §3.2.11 keeps so a governance review need not reach into a second system to see why an edge was approved",
-  },
   // --- §4.5 / §8.5 prompt registry (R29-R30) ---
-  "GET /api/v1/ai/prompts/:capabilityKey/active": {
-    summary:
-      "The active template's METADATA (R29) — never its body. §8.5: the body is the platform's prompt-injection surface, PR-gated in `packages/prompts` with a clinical-reviewer attestation, and an HTTP route serving it would be a second distribution channel with none of that review attached. 404 when the capability genuinely has no active template",
-  },
   "POST /api/v1/ai/prompts/:capabilityKey/activate": {
     summary:
       "Activate a template version (R30). INSERT-AND-DEPRECATE, not a status flip: §3.5's immutability trigger rejects an UPDATE flipping an existing row to `active`. The ARTIFACT is read and hashed inside the service — the submitted `templateContentHash` is a claim to VERIFY, not a value to store. STEP-UP: the active template is what every consumer's D18 boot validator reads",
     body: M32ActivatePromptTemplateBody,
   },
   // --- D11 drift + backend health (R31-R32) ---
-  "GET /api/v1/ai/drift/recent": {
-    summary:
-      "Drift findings within the last N hours (R31). M32 owns NO drift table: §4.8's sweep publishes `m32.drift.detected` and writes a `drift_response` EVALUATION RUN, which is the durable record — so the response names its `source`, and an empty list cannot be mistaken for 'no drift' when it may mean 'no sweep has run'",
-    query: M32DriftQuery,
-  },
-  "GET /api/v1/ai/health": {
-    summary:
-      "Liveness plus per-backend health (R32). Reports `ok` in capability-shell mode: with `ai.full` OFF, 'no healthy backend' is the EXPECTED state, and reporting `degraded` for the platform's intended posture is the fastest way to teach an operator to ignore the endpoint. `lastHealthStatus: 'unknown'` is a real state — a backend nobody has probed is not healthy",
-  },
 });
 
 // ── M6 Admission, Election & Certification (§4.2). All 46 routes published NO request/response contract
@@ -5591,7 +3384,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M6SummaryPageResponseSchema,
   },
   "GET /api/v1/admissions/:id": {
-    summary: "The admission aggregate + R-AC-01 activation gate (§5.2.5)",
+    summary: "Admission aggregate + the R-AC-01 activation gate (route 10, §5.2.4/§5.2.5)",
     response: AdmissionDetailResponseSchema,
   },
   "PATCH /api/v1/admissions/:id": { summary: "Update an admission", body: AdmissionUpdateSchema },
@@ -5850,7 +3643,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M8EncounterListResponseSchema,
   },
   "GET /api/v1/encounters/cosignature-queue": {
-    summary: "RN cosignature work queue",
+    summary: "RN/Supervisor cosignature work queue with SLA chips (§5.5)",
     response: M8EncounterListResponseSchema,
   },
   "GET /api/v1/encounters/my-drafts": {
@@ -5858,7 +3651,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M8EncounterListResponseSchema,
   },
   "GET /api/v1/encounters/:encounterId": {
-    summary: "Read one encounter",
+    summary:
+      "Read one encounter (selections + signatures + addenda; §7.6 SUD-redacted per caller, §5.2)",
     response: M8EncounterViewResponseSchema,
   },
   "PATCH /api/v1/encounters/:encounterId/selections": {
@@ -5946,7 +3740,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M8VoidResponseSchema,
   },
   "GET /api/v1/encounters/:encounterId/cosignature": {
-    summary: "Read cosignature-request state",
+    summary: "Read an encounter's cosignature-request state (§5.5)",
     response: M8CosignatureReadResponseSchema,
   },
   "POST /api/v1/encounters/:encounterId/cosignature/acknowledge": {
@@ -6018,7 +3812,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     status: 201,
   },
   "GET /api/v1/patients/:patientId/assessments": {
-    summary: "Patient assessment timeline",
+    summary:
+      "Patient assessment timeline — every captured scale, newest first; §7.6 SUD-redacted per caller (§5.2)",
     query: M9AssessmentListQuerySchema,
     response: M9AssessmentListResponseSchema,
   },
@@ -6035,7 +3830,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M9AssessmentViewResponseSchema,
   },
   "GET /api/v1/patients/:patientId/scales/:scaleType/series": {
-    summary: "Scored series over a [from, to] window",
+    summary:
+      "Per-scale scored series over a [from,to] window with significant-change markers (§5.2)",
     query: M9SeriesQuerySchema,
     response: M9ScaleSeriesResponseSchema,
   },
@@ -6049,7 +3845,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M9CosignatureSchema,
   },
   "GET /api/v1/patients/:patientId/significant-changes": {
-    summary: "Significant-change worklist for a patient",
+    summary:
+      "Per-patient significant-change worklist — open/escalated changes with ack state (§5.2)",
     response: M9SignificantChangeListResponseSchema,
   },
   "POST /api/v1/significant-changes/:eventId/acknowledge": {
@@ -6096,7 +3893,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeScheduleListResponseSchema,
   },
   "GET /api/v1/hope/schedules/:id": {
-    summary: "One schedule with derived window state",
+    summary: "HOPE schedule detail with derived window state (§5.2)",
     response: M10HopeScheduleResponseSchema,
   },
   "POST /api/v1/hope/schedules/:id/skip": {
@@ -6137,7 +3934,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeAssessmentResponseSchema,
   },
   "GET /api/v1/patients/:patientId/hope/assessments": {
-    summary: "Patient HOPE timeline",
+    summary: "Patient HOPE timeline — Admission → HUV1 → HUV2 → SFV(s) → Discharge (§5.1/§5.2)",
     response: M10HopeAssessmentListResponseSchema,
   },
   "POST /api/v1/hope/assessments/:id/summary-pdf": {
@@ -6151,18 +3948,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeValidationResponseSchema,
   },
   "GET /api/v1/hope/sfv": {
-    summary: "Open / overdue / missed SFV worklist",
+    summary:
+      "SFV worklist — open/overdue/missed symptom-follow-up visits across the org (§5.1/§5.2)",
     query: M10SfvWorklistQuerySchema,
     response: M10HopeSfvListResponseSchema,
   },
-  "GET /api/v1/hope/sfv/:id": { summary: "SFV detail", response: M10HopeSfvResponseSchema },
+  "GET /api/v1/hope/sfv/:id": {
+    summary: "SFV detail — triggering symptoms + 2-calendar-day countdown (§5.2)",
+    response: M10HopeSfvResponseSchema,
+  },
   "GET /api/v1/hope/submissions": {
-    summary: "Submission batches per ProviderEntity",
+    summary: "HOPE submission worklist — batches per ProviderEntity, per-period (§5.1/§5.2)",
     query: M10SubmissionListQuerySchema,
     response: M10HopeSubmissionListResponseSchema,
   },
   "GET /api/v1/hope/submissions/:id": {
-    summary: "Submission detail with per-item outcomes",
+    summary: "HOPE submission detail — per-item outcomes, rejection findings, retry control (§5.2)",
     response: M10HopeSubmissionResponseSchema,
   },
   "POST /api/v1/hope/submissions/:id/retry": {
@@ -6191,24 +3992,26 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // ── M11 Orders (28 routes) — supersedes the earlier inline M11 GET entries (later Object.assign wins) ──
 Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/orders": {
-    summary: "List orders by patient / admission / kind / status (ABAC caseload_or_scope)",
+    summary: "List orders by patient / admission / kind / status (§4.1; ABAC caseload_or_scope)",
     query: M11OrderListQuerySchema,
     response: M11OrderListResponseSchema,
   },
   "GET /api/v1/orders/pending-signature": {
-    summary: "Physician pending-signature inbox",
+    summary: "Physician pending-signature inbox — orders in pending_signature (§4.1 / §5.2)",
     response: M11OrderListResponseSchema,
   },
   "GET /api/v1/orders/verbal-expiring": {
-    summary: "RN verbal-expiring queue (live 48h countdown)",
+    summary:
+      "RN verbal-expiring queue — verbal_pending orders with a live 48h countdown (§4.1 / §5.2 D3)",
     response: M11OrderListResponseSchema,
   },
   "GET /api/v1/orders/cosign-pending": {
-    summary: "RN cosign-pending queue",
+    summary:
+      "RN cosign-pending queue — orders awaiting an RN/supervisor cosignature (§4.1 / §5.2 §2.5)",
     response: M11OrderListResponseSchema,
   },
   "GET /api/v1/orders/results-pending-review": {
-    summary: "Lab orders with results awaiting Mark-reviewed (D17)",
+    summary: "Lab orders with results received awaiting clinician Mark-reviewed (§4.1 / §5.2 D17)",
     response: M11OrderListResponseSchema,
   },
   "GET /api/v1/orders/suggestions/:patientId": {
@@ -6224,7 +4027,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     status: 201,
   },
   "GET /api/v1/orders/:id": {
-    summary: "Order detail (lifecycle, signatures, verbal deadline, results state)",
+    summary:
+      "Order detail — lifecycle status, signatures, verbal deadline, transmission/results state (§4.1)",
     response: M11OrderViewResponseSchema,
   },
   "PATCH /api/v1/orders/:id": {
@@ -6274,11 +4078,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M11OrderViewResponseSchema,
   },
   "GET /api/v1/standing-orders": {
-    summary: "Standing-order templates (cadence, next-spawn, count)",
+    summary: "Standing-order templates — cadence, next-spawn, spawn count (§4.1 / §5.2 D5)",
     response: M11StandingOrderListResponseSchema,
   },
   "GET /api/v1/standing-orders/:id": {
-    summary: "Standing-order template detail + spawn history",
+    summary: "Standing-order template detail + spawn history (§4.1 / §5.2 D5)",
     response: M11StandingOrderViewResponseSchema,
   },
   "POST /api/v1/standing-orders": {
@@ -6312,7 +4116,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     status: 201, // the spawn CREATES an order — `reply.code(201)` (#91)
   },
   "GET /api/v1/admin/orders/verbal-policy": {
-    summary: "Org verbal-order policy (window, cosign kinds, floor)",
+    summary:
+      "Org verbal-order policy — window hours, cosign kinds, platform floor (§4.1 / §2.3 D3)",
     response: M11VerbalPolicyViewResponseSchema,
   },
   "PUT /api/v1/admin/orders/verbal-policy": {
@@ -6345,7 +4150,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12MedicationOrderResponseSchema,
   },
   "GET /api/v1/medication-orders/:id": {
-    summary: "One medication order's detail",
+    summary:
+      "Medication-order detail — lifecycle status, signatures, controlled/EPCS posture, refills (§4.1)",
     response: M12MedicationOrderResponseSchema,
   },
   "PATCH /api/v1/medication-orders/:id": {
@@ -6393,15 +4199,16 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12NewOrderIdResponseSchema,
   },
   "GET /api/v1/medication-orders/:id/transmission": {
-    summary: "DoseSpot transmission status + retry history",
+    summary: "DoseSpot transmission status incl. retry history (§4.1 / §2.6)",
     response: M12TransmissionResponseSchema,
   },
   "GET /api/v1/patients/:patientId/medications/active": {
-    summary: "Active medications for a patient",
+    summary: "Active medications for a patient (chart medication list; §4.1 / §6.1)",
     response: M12MedicationOrderListResponseSchema,
   },
   "GET /api/v1/patients/:patientId/medications/history": {
-    summary: "Medication-history list for a patient",
+    summary:
+      "Medication-history records for a patient (DoseSpot MedHx; §4.1 / §6.1 reconciliation)",
     response: M12MedicationHistoryResponseSchema,
   },
   "POST /api/v1/patients/:patientId/medications/history/refresh": {
@@ -6413,11 +4220,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M12ReconcileRequest,
   },
   "GET /api/v1/refills": {
-    summary: "Refill inbox (refill_inbox_scope ABAC)",
+    summary: "Refill inbox — pending refills the caller may decide (§4.1; ABAC refill_inbox_scope)",
     response: M12RefillListResponseSchema,
   },
   "GET /api/v1/refills/:id": {
-    summary: "One refill request's detail",
+    summary:
+      "Refill detail — source order + request fields for approve/deny (§4.1; ABAC refill_inbox_scope)",
     response: M12RefillRequestResponseSchema,
   },
   "POST /api/v1/refills/:id/approve": {
@@ -6430,7 +4238,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M12RxBenefitLookupRequest,
   },
   "GET /api/v1/admin/dosespot-prescribers": {
-    summary: "Per-tenant DoseSpot prescriber roster",
+    summary:
+      "Per-tenant DoseSpot prescriber roster — DEA schedules, IAL2 status, enrollment (§4.1 / §6.1)",
     response: M12PrescriberRosterListResponseSchema,
   },
   "POST /api/v1/admin/dosespot-prescribers/:membershipId/enroll": {
@@ -6442,7 +4251,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M12RevokePrescriberRequest,
   },
   "GET /api/v1/admin/refill-inbox-policy": {
-    summary: "Refill-inbox SLA policy",
+    summary: "Refill-inbox SLA policy — warn/critical hours + platform floors (§4.1 / §2.7 D9)",
     response: M12RefillInboxPolicyResponseSchema,
   },
   "PATCH /api/v1/admin/refill-inbox-policy": {
@@ -6450,7 +4259,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M12RefillInboxPolicyRequest,
   },
   "GET /api/v1/admin/controlled-substance-policy": {
-    summary: "Controlled-substance refill policy",
+    summary:
+      "Controlled-substance policy — refill caps + EPCS certification status (§4.1 / 21 CFR 1306.22 / D18)",
     response: M12ControlledSubstancePolicyResponseSchema,
   },
   "PATCH /api/v1/admin/controlled-substance-policy": {
@@ -6523,7 +4333,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13AdministrationViewSchema,
   },
   "GET /api/v1/administrations/:id": {
-    summary: "Read one administration",
+    summary:
+      "Administration detail — lifecycle, late-entry tier, witness pair, BCMA match (§4.1 / §6.1 #11)",
     response: M13AdministrationViewSchema,
   },
   "GET /api/v1/administrations": {
@@ -6532,7 +4343,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13AdministrationListResponseSchema,
   },
   "GET /api/v1/administrations/iv-sessions/:sessionId": {
-    summary: "Read an IV-continuous session's segment sequence",
+    summary:
+      "IV continuous session — the ordered start→rate_change→stop segment sequence (§4.1 / §6.1 #5)",
     response: M13IvSessionViewSchema,
   },
   "POST /api/v1/administrations/refuse": {
@@ -6548,7 +4360,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13OfflineSyncResponseSchema,
   },
   "GET /api/v1/scheduled-doses": {
-    summary: "Read the scheduled-dose timeline for a patient",
+    summary: "Scheduled-dose timeline for a patient (the eMAR next-24h projection; §4.1 / §6.1 #1)",
     query: M13ScheduledDoseQuerySchema,
     response: M13ScheduledDoseListResponseSchema,
   },
@@ -6567,7 +4379,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13MissedDoseViewSchema,
   },
   "GET /api/v1/reconciliation/worksheets": {
-    summary: "List reconciliation worksheets for a patient",
+    summary:
+      "Reconciliation worksheets for a patient (admission/transfer/discharge/recert; §4.1 / §6.1 #6)",
     query: M13WorksheetQuerySchema,
     response: M13WorksheetListResponseSchema,
   },
@@ -6603,7 +4416,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13WorksheetViewSchema,
   },
   "GET /api/v1/comfort-kits/deployments": {
-    summary: "List comfort-kit deployments for a patient",
+    summary: "Comfort-kit deployments for a patient (drawdown + disposal status; §4.1 / §6.1 #7)",
     query: M13DeploymentQuerySchema,
     response: M13DeploymentListResponseSchema,
   },
@@ -6617,7 +4430,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13DeploymentViewSchema,
   },
   "GET /api/v1/admin/administration-policy": {
-    summary: "Read tenant administration policy",
+    summary:
+      "Tenant administration policy — grace window, PRN reassessment defaults (§4.1 / §6.1 #12)",
     response: M13AdministrationPolicyViewSchema,
   },
   "PUT /api/v1/admin/administration-policy": {
@@ -6739,7 +4553,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M14ActionItemListResponseSchema,
   },
   "GET /api/v1/idg/meetings/:id/minutes": {
-    summary: "Read a meeting's minutes",
+    summary: "A meeting's minutes — in-progress or finalized (§4.1 / §5)",
     response: M14MinutesViewSchema,
   },
   "POST /api/v1/idg/minutes/:id/amendments": {
@@ -6752,12 +4566,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // ── M17 Scheduling & Route Optimization (29 routes) — supersedes the earlier inline Sched* GET block ──
 Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/visits": {
-    summary: "Visits in caseload/scope (clinician/patient/status/date filtered)",
+    summary:
+      "Visits in caseload/scope — clinician/patient/status/date-window filtered (§4.1 / §5.1)",
     query: M17VisitListQuerySchema,
     response: M17VisitListResponseSchema,
   },
   "GET /api/v1/visits/:visitId": {
-    summary: "One visit's detail (status + scheduled window + assignment)",
+    summary:
+      "One visit's detail — status + scheduled window + assignment (§4.1 / §5.1 visit detail)",
     response: M17VisitViewSchema,
   },
   "POST /api/v1/visits": {
@@ -6796,7 +4612,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17VisitViewSchema,
   },
   "GET /api/v1/visit-proposals": {
-    summary: "The scheduler proposal inbox",
+    summary:
+      "The scheduler proposal inbox — pending frequency/order/IDG/supervisory proposals (§5.1)",
     query: M17ProposalListQuerySchema,
     response: M17ProposalListResponseSchema,
   },
@@ -6810,7 +4627,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17ProposalViewSchema,
   },
   "GET /api/v1/recurring-visits": {
-    summary: "A patient's recurring-visit policies",
+    summary: "A patient's recurring-visit policies — active/discontinued (§5.1 recurring)",
     query: M17RecurringListQuerySchema,
     response: M17RecurringListResponseSchema,
   },
@@ -6825,7 +4642,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17RecurringViewSchema,
   },
   "GET /api/v1/availability": {
-    summary: "A membership's weekly availability pattern",
+    summary: "A membership's weekly availability pattern (§5.1 availability editor)",
     query: M17AvailabilityQuerySchema,
     response: M17AvailabilityViewSchema,
   },
@@ -6835,7 +4652,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17AvailabilityViewSchema,
   },
   "GET /api/v1/time-off": {
-    summary: "Time-off requests (approval queue / my-PTO)",
+    summary: "Time-off requests — approval queue / my-PTO, membership/state/date filtered (§5.1)",
     query: M17TimeOffListQuerySchema,
     response: M17TimeOffListResponseSchema,
   },
@@ -6860,17 +4677,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17TimeOffViewSchema,
   },
   "GET /api/v1/day-view": {
-    summary: "Day-view grid (a clinician's visits for one date)",
+    summary: "Day-view grid — a clinician's visits for one service date (§5.1 day)",
     query: M17DayViewQuerySchema,
     response: M17DayViewResponseSchema,
   },
   "GET /api/v1/week-view": {
-    summary: "Week-view grid (a clinician's visits across a week)",
+    summary: "Week-view grid — a clinician's visits across a week (§5.1 week)",
     query: M17WeekViewQuerySchema,
     response: M17WeekViewResponseSchema,
   },
   "GET /api/v1/map-view": {
-    summary: "Map-view ordered stops (coords-only polylines, D9)",
+    summary: "Map-view ordered stops for a clinician day (coords-only polylines, D9; §5.1 map)",
     query: M17MapViewQuerySchema,
     response: M17MapViewResponseSchema,
   },
@@ -6885,12 +4702,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17PortalUpcomingResponseSchema,
   },
   "GET /api/v1/metrics/visits": {
-    summary: "Org-wide visit metrics (on-time / no-show / reschedule)",
+    summary:
+      "Org-wide visit metrics — on-time / no-show / reschedule rates (§5.1 scheduling-metrics)",
     query: M17MetricsQuerySchema,
     response: M17VisitMetricsResponseSchema,
   },
   "GET /api/v1/metrics/route-efficiency": {
-    summary: "Per-clinician route-efficiency metrics",
+    summary: "Per-clinician route-efficiency metrics — proposed miles + override rate (§5.1)",
     query: M17RouteEfficiencyQuerySchema,
     response: M17RouteEfficiencyResponseSchema,
   },
@@ -6975,7 +4793,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvDeviceView,
   },
   "GET /api/v1/evv/geofence-policy": {
-    summary: "Read geofence policy (tenant + per-address overrides)",
+    summary:
+      "EVV geofence policy — tenant tighten-only default + per-address overrides (§5.1 geofence-policy)",
     response: M18EvvGeofencePolicyView,
   },
   "PATCH /api/v1/evv/geofence-policy/tenant": {
@@ -6989,7 +4808,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvGeofencePolicyView,
   },
   "GET /api/v1/evv/missing-resolutions": {
-    summary: "Open + recently-closed resolution queue",
+    summary:
+      "EVV missing-resolution queue — open + recently-closed late-checkout resolutions (§5.1 missing-resolutions)",
     query: M18MissingResolutionListQuery,
     response: M18EvvMissingResolutionListResponse,
   },
@@ -7004,7 +4824,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvMissingResolutionView,
   },
   "GET /api/v1/evv/aggregator-submissions": {
-    summary: "Per-state aggregator submission queue + status",
+    summary:
+      "EVV aggregator submission queue — per-state submission status + rejection detail (§5.1 aggregator-submissions)",
     query: M18AggregatorListQuery,
     response: M18EvvAggregatorSubmissionListResponse,
   },
@@ -7056,7 +4877,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M22UploadDocumentRequest,
   },
   "GET /api/v1/documents": {
-    summary: "List documents (filtered, cursor-paginated)",
+    summary:
+      "List documents — filtered by patient / aggregate / retention class, cursor-paginated (§4.1 / §5.1 DOC.Explorer)",
     query: M22DocumentListQuerySchema,
     response: M22DocumentListResponseSchema,
   },
@@ -7079,7 +4901,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M22VersionViewSchema,
   },
   "GET /api/v1/documents/:id": {
-    summary: "Read document metadata + current version",
+    summary:
+      "Document metadata + current version metadata (§4.1 / §5.1 DOC.SignedUrlPreview header)",
     response: M22DocumentViewSchema,
   },
   "PATCH /api/v1/documents/:id": {
@@ -7114,7 +4937,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M22ConfirmClassificationRequest,
   },
   "GET /api/v1/intake/uploads/:id/jobs": {
-    summary: "Extraction jobs for the batch (cursor-paginated)",
+    summary:
+      "Extraction jobs for a batch — per-job pipeline status, cursor-paginated (§4.1 / §5.1 INTAKE.BatchDetail)",
     query: M22JobsListQuerySchema,
     response: M22IntakeJobListResponseSchema,
   },
@@ -7214,7 +5038,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   // M2 identity routes (routes/identity-routes.ts — §7.1–7.7). Bodies read manually via
   // readString/readStringArray; DTOs mirror the routes' real shapes (MembershipView/OrgBinding pinned).
   "GET /api/v1/auth/memberships": {
-    summary: "List the caller's memberships (pre-org, §7.2)",
+    summary: "List the caller's memberships (pre-org-bind, §7.2)",
     response: M2MembershipListResponseSchema,
   },
   "GET /api/v1/auth/context": {
@@ -8189,7 +6013,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M20RaiseSosResponse,
   },
   "POST /api/v1/safety/sos/:sosAlertId/cancel": {
-    summary: "D5 cancel (a rejected cancel is a 200, never a 4xx)",
+    summary:
+      "The D5 mid-visit cancel (biometric). A REJECTED cancel is a 200 carrying `cancel_attempted_but_rejected`, never a 4xx — an error would tell a hostile actor holding the device that their tap did something (§4.1 #6)",
     body: M20CancelSosBody,
     response: M20CancelSosResponse,
   },
@@ -8244,7 +6069,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M20SafetyIncidentResponse,
   },
   "POST /api/v1/safety/incidents/:incidentId/state": {
-    summary: "The supervisor state machine (§2.2.3; reopened re-enters review)",
+    summary:
+      "The supervisor state machine (§2.2.3) — `reopened` re-enters review on the SAME row, because a second row would break the workers-comp timeline an insurer reads (§4.1 #16)",
     body: M20TransitionIncidentBody,
     response: M20SafetyIncidentResponse,
   },
@@ -8256,7 +6082,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
 
   // admin.routes.ts (rows 18-25)
   "GET /api/v1/safety/policy": {
-    summary: "The effective policy (asOf is the §2.2.4 replay arm)",
+    summary:
+      "The effective policy — §2.2.4's `asOf` is the REPLAY arm: a 2031 review of a 2026 incident has to read the 2026 thresholds, and reading today's would turn a policy that tightened into a regression that never happened (§4.1 #18)",
     query: M20PolicyQuery,
     response: M20SafetyPolicyEffectiveResponse,
   },
@@ -8266,7 +6093,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M20SafetyPolicyEffectiveResponse,
   },
   "GET /api/v1/safety/supervisor-subscriptions": {
-    summary: "Who watches whom (§2.2.5 / D8)",
+    summary:
+      "Who watches whom (§2.2.5 / D8) — dashboard VISIBILITY is RBAC+ABAC and deliberately independent: a supervisor may SEE a board she is not paged for, and D8 exists because the inverse (visible to everyone, paged by nobody) is the §7.8 failure (§4.1 #20)",
     query: M20SubscriptionListQuery,
     response: M20SafetySubscriptionPageResponse,
   },
@@ -8280,7 +6108,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M20DeleteSubscriptionResponse,
   },
   "GET /api/v1/safety/high-risk-areas": {
-    summary: "The advisory polygons in force (includeExpired defaults false)",
+    summary:
+      "The advisory polygons in force — `includeExpired` defaults FALSE so the pre-visit advisory never surfaces a polygon retired last winter; the editor asks for history explicitly (§4.1 #23)",
     query: M20HighRiskAreaListQuery,
     response: M20SafetyHighRiskAreaPageResponse,
   },
@@ -8312,7 +6141,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M20SafetyConsentResponse,
   },
   "POST /api/v1/safety/consent/revoke": {
-    summary: "Revoke one purpose (writes revoked, never expired)",
+    summary:
+      "Revoke one purpose — writes `revoked`, never `expired`: the rotation sweep owns the second, and a coercion review reads exactly that difference (§2.2.8, §4.1 #29)",
     body: M20RevokeConsentBody,
     response: M20SafetyConsentResponse,
   },
@@ -8327,7 +6157,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M21CreateSupplyRequestResultSchema,
   },
   "GET /api/v1/supplies/supply-requests": {
-    summary: "Supply-team worklist (cursor-paginated; openOnly default)",
+    summary:
+      "The supply-team worklist — cursor-paginated; `openOnly` narrows to the §2.2 non-terminal set, which is the dashboard's default view (§4.1 #2)",
     query: M21ListSupplyRequestsQuery,
     response: M21SupplyRequestListResponseSchema,
   },
@@ -8373,7 +6204,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
 
   // catalog.routes.ts — §4.1 rows 11–19 (D11 SKU catalog + §2.3 kit templates)
   "GET /api/v1/supplies/supply-items": {
-    summary: "SKU catalog (platform rows UNION the tenant overlay)",
+    summary:
+      "The D11 SKU catalog — the platform rows UNION the tenant overlay, one browsable list (§4.1 #11)",
     query: M21ListSupplyItemsQuery,
     response: M21SupplyItemListResponseSchema,
   },
@@ -8397,7 +6229,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M21SupplyItemViewSchema,
   },
   "PUT /api/v1/supplies/tenant-supply-items/:id": {
-    summary: "Edit a tenant-local item",
+    summary: "Edit a tenant-local overlay item (§4.1 #16)",
     body: M21UpsertTenantSupplyItemBody,
     response: M21SupplyItemViewSchema,
   },
@@ -8424,7 +6256,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M21DispatchDetailSchema,
   },
   "GET /api/v1/supplies/comfort-kit-dispatches": {
-    summary: "Dispatch list (per patient / Location / IPU room)",
+    summary:
+      "Dispatch list — per patient, per Location, or per IPU room for the D17 stock-kit view (§4.1 #21)",
     query: M21ListDispatchesQuery,
     response: M21DispatchListResponseSchema,
   },
@@ -8447,7 +6280,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M21ComfortKitReturnDetailSchema,
   },
   "GET /api/v1/supplies/comfort-kit-returns": {
-    summary: "Reconciliation worklist (oldest due first; daysOverdue read-time)",
+    summary:
+      "The reconciliation worklist — OLDEST due first, with `daysOverdue` computed at read time from `return_due_at` (§4.1 #25)",
     query: M21ListReturnsQuery,
     response: M21ComfortKitReturnListResponseSchema,
   },
@@ -8484,7 +6318,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M21VendorRoutingRuleViewSchema,
   },
   "PUT /api/v1/supplies/vendor-routing-rules/:ruleId": {
-    summary: "Edit a routing rule",
+    summary: "Edit a routing rule (§4.1 #30)",
     body: M21UpsertRoutingRuleBody,
     response: M21VendorRoutingRuleViewSchema,
   },
@@ -8566,10 +6400,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M25DenialAssignRequestSchema,
     response: M25VersionedResultSchema,
   },
-  "PATCH /api/v1/denials/:id/start": {
-    summary: "Start work on a denial case (→ in_progress, §4.1)",
-    response: M25VersionedResultSchema,
-  },
   "PATCH /api/v1/denials/:id/escalate": {
     summary: "Escalate a denial case (§4.1)",
     body: M25DenialEscalateRequestSchema,
@@ -8578,10 +6408,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "PATCH /api/v1/denials/:id/resolve": {
     summary: "Resolve a denial case (§4.1)",
     body: M25DenialResolveRequestSchema,
-    response: M25VersionedResultSchema,
-  },
-  "POST /api/v1/denials/:id/close": {
-    summary: "Close a resolved denial case (§4.1)",
     response: M25VersionedResultSchema,
   },
   "POST /api/v1/denials/:id/close-write-off": {
@@ -8618,10 +6444,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/appeals/:id/submit": {
     summary: "Submit an appeal to the payer (within-deadline + step-up, §4.1)",
     body: M25AppealSubmitRequestSchema,
-    response: M25VersionedResultSchema,
-  },
-  "PATCH /api/v1/appeals/:id/ack": {
-    summary: "Record the payer's receipt acknowledgement of an appeal (§4.1)",
     response: M25VersionedResultSchema,
   },
   "POST /api/v1/appeals/:id/decide": {
@@ -9072,12 +6894,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // contract exists to publish, so each is `summary`-only — the same shape the module already uses for
 // its bodyless mutations. `Object.assign` (later wins) so these merge over any prior ROUTE_ENRICHMENTS.
 Object.assign(ROUTE_ENRICHMENTS, {
-  "POST /api/v1/quality/incidents/:incidentId/submit": {
-    summary: "Submit an incident (draft → submitted)",
-  },
-  "POST /api/v1/quality/incidents/:incidentId/close": {
-    summary: "Close an incident (resolved → closed, follow-up complete)",
-  },
   "POST /api/v1/quality/risk-register/refresh": {
     summary: "Force a risk-register materialized-view refresh",
   },
@@ -9336,10 +7152,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
     query: M34DsarListQuerySchema,
     response: M34DsarExportJobListResponseSchema,
   },
-  "POST /api/v1/tenant/dsar-export-jobs/:id/fulfill": {
-    summary: "Flip a DSAR job to fulfilled + trigger presigned-URL email (step-up)",
-    response: M34DsarExportJobViewSchema,
-  },
   "POST /api/v1/tenant/dsar-export-jobs/:id/extend": {
     summary: "One-time §164.524 30-day extension",
     body: M34DsarExtendRequest,
@@ -9376,10 +7188,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Tenant's onboarding state (D3; cursor-paginated)",
     query: M34OnboardingListQuerySchema,
     response: M34OnboardingTaskListResponseSchema,
-  },
-  "POST /api/v1/tenant/onboarding/:taskId/start": {
-    summary: "Advance an onboarding task pending → in_progress",
-    response: M34OnboardingTaskViewSchema,
   },
   "POST /api/v1/tenant/onboarding/:taskId/complete": {
     summary: "Complete a task with evidence (precondition DSL → 422 if false)",
@@ -9465,10 +7273,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Start a session against a consent grant (distinct-actor + passkey-5min step-up)",
     body: M34StartSessionRequest,
     response: M34StartSessionAckSchema,
-  },
-  "POST /api/v1/platform/support-sessions/:id/elevate": {
-    summary: "Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403)",
-    response: M34ElevateSessionAckSchema,
   },
   "POST /api/v1/platform/support-sessions/:id/close": {
     summary: "Close a session with reason='manual' (no step-up)",
@@ -10005,31 +7809,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // ---------------------------------------------------------------------------
 Object.assign(ROUTE_ENRICHMENTS, {
   // --- FHIR-spec surface (R1-R18) ---
-  "GET /fhir/r4/metadata": {
-    summary:
-      "The deterministic US Core R4 CapabilityStatement (R1). Anonymous per FHIR convention, rate-limited per-IP; the signed checksum is the survey-defense artifact (D11)",
-  },
-  "GET /fhir/.well-known/smart-configuration": {
-    summary:
-      "SMART Backend Services well-known config (R2). Anonymous; advertises the client-credentials + private_key_jwt token endpoint and the system/*.read scope model",
-  },
   "POST /fhir/oauth2/token": {
     summary:
       "SMART Backend Services token mint (R3). Verifies the client_assertion JWT against the client's jwks_uri. Phase-1 fail-closed (`invalid_client`) until the platform-bypass client-resolution path is bound — no external client is provisioned yet",
     body: M28TokenFormBody,
-  },
-  "GET /fhir/r4/:resourceType/:id": {
-    summary:
-      "Single-resource read (R4). Bearer scope `system/{ResourceType}.read` required; the disclosure is D15-audited. Phase 1 returns a well-formed not-found OperationOutcome — the projection reader seams are fail-closed deny-stubs this wave",
-  },
-  "GET /fhir/r4/:resourceType": {
-    summary:
-      "Type-level search (R5). `patient` is the W-FHIR-14 US Core parameter. Returns a well-formed empty searchset Bundle in Phase 1; the scope check + disclosure audit are real",
-    query: M28ResourceSearchQuery,
-  },
-  "GET /fhir/r4/Patient/:id/$everything": {
-    summary:
-      "Patient $everything (R6, D5). Requires read scope for every linked resource type; D15-audited. Returns a well-formed empty Bundle in Phase 1",
   },
   "POST /fhir/r4/$export": {
     summary:
@@ -10044,46 +7827,15 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Group-scoped bulk export (R8). Same scope + concurrency posture as the system export",
     query: M28ExportQuery,
   },
-  "GET /fhir/r4/$export-poll-status/:jobId": {
-    summary:
-      "Poll a bulk-export job (R10). 202 In-Progress | 200 Completed (with the output manifest) | 410 Expired once the 24h NDJSON TTL has passed",
-  },
   "DELETE /fhir/r4/$export-poll-status/:jobId": {
     summary: "Cancel a bulk-export job (R11). 202 Accepted; the job's in-flight status is closed",
-  },
-  "GET /fhir/r4/CodeSystem/:system": {
-    summary:
-      "CodeSystem read (R12). Requires `system/CodeSystem.read`. Not served in Phase 1 (a warning OperationOutcome), which the terminology seam fills when M38 binds live",
   },
   "POST /fhir/r4/CodeSystem/$validate-code": {
     summary:
       "CodeSystem $validate-code (R13). Requires `system/CodeSystem.read`; resolves the supplied Parameters (`url` or `system`, plus `code`) through M38 terminology and returns the answer as Parameters. 400 when either is missing; 404 `not-supported` for a code system this server does not serve",
     body: M28ValidateCodeBody,
   },
-  "GET /fhir/r4/ValueSet/:vs": {
-    summary: "ValueSet read (R14). Requires `system/ValueSet.read`; not served in Phase 1",
-  },
-  "GET /fhir/r4/ValueSet/:vs/$expand": {
-    summary:
-      "ValueSet $expand (R15). Requires `system/ValueSet.read`; returns a well-formed empty expansion in Phase 1",
-  },
-  "POST /fhir/r4/:resourceType": {
-    summary:
-      "Inbound staging (R16, D8). Requires `system/{ResourceType}.write`. M28 NEVER writes a native record — it stages the resource as a PROPOSAL the owner module (m5/m12) reviews; an unsupported resource type is a 501",
-  },
-  "GET /fhir/r5/*": {
-    summary:
-      "FHIR R5 is not supported (R17, D1/D7) — 415 Unsupported Media Type + OperationOutcome",
-  },
-  "GET /fhir/r6/*": {
-    summary:
-      "FHIR R6 is not supported (R18, D1/D7) — 415 Unsupported Media Type + OperationOutcome",
-  },
   // --- client registry admin (R23-R30) ---
-  "GET /api/v1/fhir/clients": {
-    summary: "List the org's registered FHIR clients (R23)",
-    query: M28ClientListQuery,
-  },
   "POST /api/v1/fhir/clients": {
     summary:
       "Propose a new FHIR client (R24, D12). The proposing Org Admin is stamped as the FIRST of the two DISTINCT dual-approval approvers; `rate_limit_rps` is platform-floor / tighten-only and an override may only LOWER the tier floor",
@@ -10108,17 +7860,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Rotate the API-key credential (R28). The prior credential is retired with a 30-day overlap; the plaintext secret is returned ONCE and never persisted in the clear",
   },
-  "GET /api/v1/fhir/clients/:id/sessions": {
-    summary: "List a client's active bearer sessions (R29)",
-  },
   "POST /api/v1/fhir/clients/:id/sessions/:jti/revoke": {
     summary: "Manually revoke one session (R30) — a leaked bearer token dies immediately",
   },
   // --- bulk export admin (R31-R33) ---
-  "GET /api/v1/fhir/bulk-export-jobs": {
-    summary: "List the org's bulk-export jobs (R31)",
-    query: M28BulkExportListQuery,
-  },
   "POST /api/v1/fhir/bulk-export-jobs": {
     summary:
       "Operator-initiated bulk export (R32). The acting membership is stamped as the initiator, which is what `bulk_export_initiator_or_admin` reads at cancel time",
@@ -10129,10 +7874,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Cancel a job (R33). Gated on `bulk_export_initiator_or_admin` (§4.7) — the initiator, the bearer client, or a cancel-permitted operator",
   },
   // --- inbound proposal review (R34-R36) ---
-  "GET /api/v1/fhir/inbound-proposals": {
-    summary: "The operator review queue of staged inbound proposals (R34)",
-    query: M28InboundListQuery,
-  },
   "POST /api/v1/fhir/inbound-proposals/:id/accept": {
     summary:
       "Accept a staged proposal (R35, D8). Gated on `fhir_inbound_owner_module_match` — only a reviewer holding the owner module's native write path may decide it. The owner module now owns the native record it created",
@@ -10144,9 +7885,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M28RejectProposalBody,
   },
   // --- tenant config (R37-R39) ---
-  "GET /api/v1/fhir/config": {
-    summary: "Read the tenant's FHIR config (R37)",
-  },
   "PUT /api/v1/fhir/config": {
     summary: "Upsert the tenant's FHIR host + identifier-URI base + review/dedup knobs (R38)",
     body: M28PutConfigBody,
@@ -10162,25 +7900,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // route the scanner discovers (openapi:coverage floor for a new module is 0 — an unenriched route fails).
 Object.assign(ROUTE_ENRICHMENTS, {
   // §4.1.1 feed + credential admin
-  "GET /api/admin/external-interfaces/feeds": {
-    summary: "List the org's HL7/NPPES feeds, filterable by kind/status (§4.1.1)",
-    query: M29FeedListQuery,
-  },
   "POST /api/admin/external-interfaces/feeds": {
     summary:
       "Create a feed (step-up, D18). Lands `pending_approval`: the proposing operator is stamped as the first of two DISTINCT dual-approval actors; a compliance officer activates (§4.1.1)",
     body: M29CreateFeedBody,
   },
-  "GET /api/admin/external-interfaces/feeds/:feedId": {
-    summary: "Single feed detail incl. redacted credential metadata — NEVER ciphertext (§4.1.1)",
-  },
   "PATCH /api/admin/external-interfaces/feeds/:feedId": {
     summary: "Edit non-credential feed metadata (step-up, D18) (§4.1.1)",
     body: M29UpdateFeedBody,
-  },
-  "POST /api/admin/external-interfaces/feeds/:feedId/activate": {
-    summary:
-      "Activate a feed: pending_approval → active. Requires a compliance co-approver DISTINCT from the operator (D18) AND the M40 BAA gate (`external_feed_baa_satisfied`, D16) (§4.1.1)",
   },
   "POST /api/admin/external-interfaces/feeds/:feedId/suspend": {
     summary: "Suspend an active feed; the listener unbinds (reason required, step-up) (§4.1.1)",
@@ -10196,21 +7923,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Mint / rotate a channel credential (step-up, D18). The prior active credential of the kind is retired; the secret is stored as its sha256 digest (no DEK bound in Phase 1) and never returned in the clear (§4.1.1)",
     body: M29MintCredentialBody,
   },
-  "GET /api/admin/external-interfaces/feeds/:feedId/credentials": {
-    summary: "List credential metadata (fingerprint + status only, NEVER ciphertext) (§4.1.1)",
-  },
-  "GET /api/admin/external-interfaces/feeds/:feedId/health": {
-    summary: "Current rolling per-hour health snapshot for a feed (§4.1.1)",
-  },
   // §4.1.2 ADT proposal review
-  "GET /api/admin/external-interfaces/inbound-proposals": {
-    summary:
-      "List the propose-then-review ADT queue, filterable by status/owner_module/feed (§4.1.2)",
-    query: M29ProposalListQuery,
-  },
-  "GET /api/admin/external-interfaces/inbound-proposals/:proposalId": {
-    summary: "Single ADT proposal detail (owner-module-scoped, D5) (§4.1.2)",
-  },
   "POST /api/admin/external-interfaces/inbound-proposals/:proposalId/accept": {
     summary:
       "Adjudicate ACCEPT — apply via the owner module's native write path (`hl7_inbound_proposal_owner_module_match`, step-up D18). Decided-is-decided (§4.1.2)",
@@ -10226,14 +7939,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M29DeferProposalBody,
   },
   // §4.1.3 message search / replay / retry / decrypt
-  "GET /api/admin/external-interfaces/messages/inbound": {
-    summary: "Search inbound HL7 messages (metadata only, no plaintext) (§4.1.3)",
-    query: M29InboundMessageListQuery,
-  },
-  "GET /api/admin/external-interfaces/messages/inbound/:messageId": {
-    summary:
-      "Single inbound message — metadata only; plaintext is the dedicated decrypt route (§4.1.3)",
-  },
   "POST /api/admin/external-interfaces/messages/inbound/:messageId/decrypt": {
     summary:
       "Server-side plaintext decrypt for compliance review (step-up; a §164.528 disclosure). Phase-1 fail-closed 501 until the per-tenant DEK envelope binds (§4.1.3)",
@@ -10242,52 +7947,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Re-enqueue a parse_error/rejected inbound message for parsing/matching (step-up) (§4.1.3)",
   },
-  "GET /api/admin/external-interfaces/messages/outbound": {
-    summary: "Search outbound HL7 messages, filterable by placer order / dispatch status (§4.1.3)",
-    query: M29OutboundMessageListQuery,
-  },
-  "GET /api/admin/external-interfaces/messages/outbound/:messageId": {
-    summary: "Single outbound message incl. the ACK/NACK chain (§4.1.3)",
-  },
   "POST /api/admin/external-interfaces/messages/outbound/:messageId/retry": {
     summary:
       "Manual retry of a failed/dlq outbound message after a DLQ landing (D9; step-up) (§4.1.3)",
   },
   // §4.1.4 NPPES administration
-  "GET /api/admin/external-interfaces/nppes/providers/:npi": {
-    summary: "Read one cached platform-shared NPPES provider (public directory, no PHI) (§4.1.4)",
-  },
-  "GET /api/admin/external-interfaces/nppes/sync-runs": {
-    summary: "List NPPES sync-run history (§4.1.4)",
-    query: M29NppesSyncRunListQuery,
-  },
   "POST /api/admin/external-interfaces/nppes/sync-runs": {
     summary:
       "Trigger a manual NPPES sync — platform-only (`nppes_platform_job_caller`, W-XI-12; step-up). A tenant session is refused; the real sync runs under the platform scheduler (§4.1.4)",
     body: M29NppesSyncTriggerBody,
   },
-  // §4.1.5 ops
-  "GET /api/admin/external-interfaces/health/aggregate": {
-    summary:
-      "Tenant feed-health overview — listener up/down, message + parse-error counts (§4.1.5)",
-  },
-  "GET /api/admin/external-interfaces/metrics/listener-status": {
-    summary: "Per-feed listener socket status (up/down + last message time) (§4.1.5)",
-  },
   // §4.2 clinician lab surface
-  "GET /api/clinical/labs/observations": {
-    summary: "List caseload lab observations, filterable by patient/loinc/abnormal-flag (§4.2)",
-    query: M29ObservationListQuery,
-  },
-  "GET /api/clinical/labs/observations/unmatched": {
-    summary:
-      "The unmatched-lab review queue (failed patient-match cascade, D6; review-unmatched role) (§4.2)",
-    query: M29ObservationListQuery,
-  },
-  "GET /api/clinical/labs/observations/:observationId": {
-    summary:
-      "Single observation with its value rows (`lab_observation_patient_caseload_or_scope`, D20) (§4.2)",
-  },
   "POST /api/clinical/labs/observations/:observationId/attach-patient": {
     summary:
       "Manual patient attach for an unmatched result (step-up). Phase-1 fail-closed 501: materializing a lab_observation from the stored wire message lands in T-29.13 (§4.2)",
@@ -10594,7 +8264,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // nothing off `request.body`, the honest contract is "no body fields" — a locally-authored empty-object
 // schema (matches the same `Type.Object({}, { additionalProperties: false })` shape M02/M19 use for their
 // genuinely-empty action bodies) rather than inventing fields the service layer never consumes.
-const M35EmptyActionBody = Type.Object({}, { additionalProperties: false });
+const _M35EmptyActionBody = Type.Object({}, { additionalProperties: false });
 
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/admin/dunning/:subscriptionId/reset": {
@@ -10650,7 +8320,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // "PATCH /api/v1/denials/:id/start", "POST /api/v1/denials/:id/close", and "PATCH /api/v1/appeals/:id/ack")
 // and adds an explicit empty-object `body` schema — honest to what the handler actually accepts (nothing).
 
-const M25RemittanceEmptyBodySchema = Type.Object(
+const _M25RemittanceEmptyBodySchema = Type.Object(
   {},
   {
     additionalProperties: false,
@@ -10680,7 +8350,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // — no `parse(...)`/`request.body` read on any of them), so the accurate contract is an empty object body,
 // not an invented shape. `summary`/`response` below are copied verbatim from the existing entries for these
 // same keys earlier in this file so this Object.assign only ADDS `body` and does not regress them.
-const M31EmptyBody = Type.Object({}, { additionalProperties: false });
+const _M31EmptyBody = Type.Object({}, { additionalProperties: false });
 
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/admin/portal-invitations/:id/revoke": {
@@ -10735,7 +8405,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
 });
 
 // ── WX-PR-015 body/response gap-fill — 30-quality ─────────────────────────────────────────
-const M30EmptyIncidentActionBody = Type.Object({});
+const _M30EmptyIncidentActionBody = Type.Object({});
 
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/quality/incidents/:incidentId/submit": {
@@ -12356,71 +10026,94 @@ const M32EvaluationDetailResponse = M32EvaluationRunRowSchema;
 // — spread-preserve it and add ONLY `response`, so this pass cannot clobber that work.
 Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/ai/capabilities": {
-    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/capabilities"],
+    summary:
+      "List the platform-shared capability registry (R2). §6 grants the read to every clinical role — a clinician offered an AI-enhanced note may look up what the capability is and which lifecycle state it is in. `hotPhase1` is an INVENTORY fact, not a column, and the response reports the filter as unapplied rather than silently ignoring it",
+    query: M32CapabilityListQuery,
     response: M32CapabilityListResponse,
   },
   "GET /api/v1/ai/capabilities/:capabilityId": {
-    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/capabilities/:capabilityId"],
+    summary:
+      "Capability detail (R3): the row, the §2.2 posture it publishes to consumers, its lifecycle ledger, its calibration trail and the states it can reach next — one read, because four would show a capability mid-transition as four inconsistent panels",
     response: M32CapabilityDetailResponse,
   },
   "GET /api/v1/ai/capabilities/:capabilityId/calibration/history": {
-    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/capabilities/:capabilityId/calibration/history"],
+    summary:
+      "Calibration trail (R6). Behind `ai_safety_owner` rather than the open capability read: a calibration row states the decision boundary a model is held to, which is the one piece of the registry an adversary could use to shape an input that lands just inside it (§8.1 tampering)",
     response: M32CalibrationHistoryResponse,
   },
   "GET /api/v1/ai/clinician-opt-out": {
-    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/clinician-opt-out"],
+    summary:
+      "Her own opt-out history, reverted rows included — that IS the history (R15). Scoped to the SESSION's membership inside the service",
     response: M32ClinicianOptOutListResponse,
   },
   "GET /api/v1/ai/drift/recent": {
-    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/drift/recent"],
+    summary:
+      "Drift findings within the last N hours (R31). M32 owns NO drift table: §4.8's sweep publishes `m32.drift.detected` and writes a `drift_response` EVALUATION RUN, which is the durable record — so the response names its `source`, and an empty list cannot be mistaken for 'no drift' when it may mean 'no sweep has run'",
+    query: M32DriftQuery,
     response: M32DriftRecentResponse,
   },
   "GET /api/v1/ai/evaluations": {
-    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/evaluations"],
+    summary: "Recent evaluation runs, filterable by capability and status (R27)",
+    query: M32EvaluationRunQuery,
     response: M32EvaluationListResponse,
   },
   "GET /api/v1/ai/evaluations/:runId": {
-    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/evaluations/:runId"],
+    summary:
+      "One evaluation run with its metric snapshot and MLflow handle (R28). MLflow stays the record of the run; `summary_metrics` is the headline §3.2.11 keeps so a governance review need not reach into a second system to see why an edge was approved",
     response: M32EvaluationDetailResponse,
   },
   "GET /api/v1/ai/hallucination-reports": {
-    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/hallucination-reports"],
+    summary:
+      "The triage queue (R19). Defaults to the two OPEN statuses §3.2.10's partial index covers — that IS the working set; a queue that opened on every closed report ever filed would need a filter before it was usable",
+    query: M32HallucinationQueueQuery,
     response: M32HallucinationListResponse,
   },
   "GET /api/v1/ai/health": {
-    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/health"],
+    summary:
+      "Liveness plus per-backend health (R32). Reports `ok` in capability-shell mode: with `ai.full` OFF, 'no healthy backend' is the EXPECTED state, and reporting `degraded` for the platform's intended posture is the fastest way to teach an operator to ignore the endpoint. `lastHealthStatus: 'unknown'` is a real state — a backend nobody has probed is not healthy",
     response: M32HealthResponse,
   },
   "GET /api/v1/ai/invocations": {
-    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/invocations"],
+    summary:
+      "The compliance search over `ai_invocation` (R16) — the §164.528 disclosure ledger. PHI masking is STRUCTURAL: the projection has no field for the prompt, the response or the chart context at all, and `wardenx.phi.full_read` unlocks only the patient identity and the free-text error. Without it a row still reports `touchedPatientChart`, which is the fact the accounting turns on. Default window: 90 days (the table is RANGE-partitioned on `invoked_at`)",
+    query: M32InvocationSearchQuery,
     response: M32InvocationSearchResponse,
   },
   "GET /api/v1/ai/invocations/:invocationId": {
-    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/invocations/:invocationId"],
+    summary:
+      "One invocation (R17). 404-on-deny, not 403: an invocation id is 1:1 with 'this named patient's chart went to a model vendor at this hour', which §8.2's isolation test asks to be unprobeable",
     response: M32InvocationDetailResponse,
   },
   "GET /api/v1/ai/kill-switches": {
-    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/kill-switches"],
+    summary:
+      "The §5.1.3 dashboard (R9) — the DISJUNCTION of this org's rows and the platform rows, which is the same disjunction the gate applies. A view of only the tenant's own rows would tell an agency a capability was running while a platform switch had it stopped",
     response: M32KillSwitchListResponse,
   },
   "GET /api/v1/ai/prompts/:capabilityKey/active": {
-    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/prompts/:capabilityKey/active"],
+    summary:
+      "The active template's METADATA (R29) — never its body. §8.5: the body is the platform's prompt-injection surface, PR-gated in `packages/prompts` with a clinical-reviewer attestation, and an HTTP route serving it would be a second distribution channel with none of that review attached. 404 when the capability genuinely has no active template",
     response: M32PromptActiveResponse,
   },
   "GET /api/v1/ai/routing-overrides": {
-    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/routing-overrides"],
+    summary:
+      "List routing overrides including EXPIRED rows (R25) — the question a data-residency review asks is 'what was in force in March', not 'what is in force now'",
     response: M32RoutingOverrideListResponse,
   },
   "GET /api/v1/ai/tenant-opt-in": {
-    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/tenant-opt-in"],
+    summary:
+      "The org's opt-in records (R12). Granted to `tenant_admin` and `compliance_officer`: the frozen acknowledgment evidence is what a privacy review reads to answer who agreed to what, and when",
     response: M32TenantOptInListResponse,
   },
   "GET /api/v1/ai/tokens/forecast": {
-    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/tokens/forecast"],
+    summary:
+      "Spend vs. caps with a linear burn-rate projection (R22). Nothing here predicts. `softCap`, `hardCap` and `projectedBreach` are ALL `null` when M2 states no budget — an absent bound is not an unbounded one, and a green 'no breach projected' tile minted from a missing configuration is the failure this avoids",
+    query: M32TokenForecastQuery,
     response: M32TokenForecastResponse,
   },
   "GET /api/v1/ai/tokens/ledger": {
-    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/tokens/ledger"],
+    summary:
+      "The token ledger plus the window total (R21). The window is the CALENDAR MONTH, because that is what §3.8 partitions `ai_token_ledger` by and what §1.1's budget is stated in — a rolling 30 days would straddle two partitions and answer a different question from the one the cap enforces",
+    query: M32TokenLedgerQuery,
     response: M32TokenLedgerResponse,
   },
 });
