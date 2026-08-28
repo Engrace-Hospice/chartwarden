@@ -1147,6 +1147,7 @@ export const MODULES: ModuleDef[] = [
       "ipu_remote_inpatient_episode",
       "ipu_restraint_event",
       "ipu_restraint_reassessment",
+      "ipu_rn_break_glass",
       "ipu_rn_coverage_window",
       "ipu_room",
       "ipu_shift",

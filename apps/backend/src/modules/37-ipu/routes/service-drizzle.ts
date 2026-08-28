@@ -32,7 +32,7 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import type { PatientPrivacyFlagReader, PatientRoomingFacts } from "@wardenx/types";
 import { ConflictError, NotFoundError } from "@wardenx/types";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 import type { IpuReadActor, IpuWriteActor } from "./actor";
 import type {
   AdvanceBodyReleaseBody,
@@ -53,6 +53,7 @@ import type {
   CreateUnitBody,
   DischargeBody,
   InitiateTransferBody,
+  InvokeRnBreakGlassBody,
   IrcOverrideBody,
   LiftVisitorRestrictionBody,
   LogInspectionBody,
@@ -81,6 +82,7 @@ import type {
   MealView,
   RestraintDetailView,
   RestraintView,
+  RnBreakGlassView,
   RnCoverageView,
   RoomView,
   ShiftView,
@@ -247,6 +249,45 @@ export function buildDrizzleIpuRouteService(
   const admissionsDep = deps.admissions ?? UNBOUND_ADMISSIONS;
   const admissionReader = (): AdmissionDischargeReader =>
     typeof admissionsDep === "function" ? admissionsDep() : admissionsDep;
+
+  /**
+   * F-071 — the ONE §2.3 D3 coverage answer the four write paths share.
+   *
+   * Four call sites used to inline the same `ipu_rn_coverage_window` lookup, and the break-glass override
+   * was consulted by none of them: `invokeRnBreakGlass` published an outbox event and wrote nothing, so
+   * the documented escape hatch from an uncovered unit changed no gate's answer. It now writes a row, and
+   * this is what reads it.
+   *
+   * A live override is DELIBERATELY not written into the coverage grid. That table answers "was an RN on
+   * duty for this hour?" and is the platform's compliance record for the question; an override is the
+   * different fact that someone accepted the risk of running uncovered. Keeping them apart is what lets
+   * the gate pass while the coverage report still shows the gap.
+   */
+  const coverageActiveFor = async (
+    t: DbClient,
+    unitId: string,
+    at: Date,
+  ): Promise<{ covered: boolean; viaBreakGlass: boolean }> => {
+    const hourStart = new Date(Math.floor(at.getTime() / 3_600_000) * 3_600_000);
+    const [cov] = await t
+      .select()
+      .from(schema.ipuRnCoverageWindow)
+      .where(
+        and(
+          eq(schema.ipuRnCoverageWindow.unitId, unitId),
+          eq(schema.ipuRnCoverageWindow.hourStartAt, hourStart),
+        ),
+      )
+      .limit(1);
+    if (cov?.isCovered === true) return { covered: true, viaBreakGlass: false };
+    const BG = schema.ipuRnBreakGlass;
+    const [bg] = await t
+      .select({ id: BG.id })
+      .from(BG)
+      .where(and(eq(BG.unitId, unitId), isNull(BG.revokedAt), gt(BG.expiresAt, at)))
+      .limit(1);
+    return { covered: bg !== undefined, viaBreakGlass: bg !== undefined };
+  };
   const U = schema.inpatientUnit;
   const A = schema.ipuAdmission;
   const H = schema.ipuAdmissionStateHistory;
@@ -771,18 +812,7 @@ export function buildDrizzleIpuRouteService(
         // bypasses). Fail-closed: an unbuilt coverage grid reads uncovered. The machine re-asserts.
         let rnCoverageActive = false;
         if (body.kind !== "arranged" && body.unitId) {
-          const hourStart = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000);
-          const [cov] = await t
-            .select()
-            .from(schema.ipuRnCoverageWindow)
-            .where(
-              and(
-                eq(schema.ipuRnCoverageWindow.unitId, body.unitId),
-                eq(schema.ipuRnCoverageWindow.hourStartAt, hourStart),
-              ),
-            )
-            .limit(1);
-          rnCoverageActive = cov?.isCovered === true;
+          rnCoverageActive = (await coverageActiveFor(t, body.unitId, new Date())).covered;
         }
         // Drive the pure machine (throws IPU_RN_COVERAGE_UNAVAILABLE when a GIP/IRC unit is uncovered).
         const plan = planOpenAdmission(body.kind, { rnCoverageActive });
@@ -837,17 +867,7 @@ export function buildDrizzleIpuRouteService(
         const [adm] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         if (!adm) throw new NotFoundError("ipu_admission not found");
         const [unit] = await t.select().from(U).where(eq(U.id, body.unitId)).limit(1);
-        const hourStart = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000);
-        const [cov] = await t
-          .select()
-          .from(schema.ipuRnCoverageWindow)
-          .where(
-            and(
-              eq(schema.ipuRnCoverageWindow.unitId, body.unitId),
-              eq(schema.ipuRnCoverageWindow.hourStartAt, hourStart),
-            ),
-          )
-          .limit(1);
+        const coverage = await coverageActiveFor(t, body.unitId, new Date());
         const readyBeds = await t
           .select({ id: B.id })
           .from(B)
@@ -856,7 +876,7 @@ export function buildDrizzleIpuRouteService(
         const transition = transitionAdmission(adm.state, adm.kind, {
           type: "requestBed",
           unitActive: unit?.isActive === true,
-          rnCoverageActive: cov?.isCovered === true,
+          rnCoverageActive: coverage.covered,
           hasReadyBed: readyBeds.length > 0,
         });
         await applyAdmissionTransition(t, actor, adm, transition);
@@ -990,18 +1010,8 @@ export function buildDrizzleIpuRouteService(
         // For a to_unit transfer, resolve the destination unit's RN coverage for the current hour.
         let destinationRnCoverage = true;
         if (body.targetKind === "to_unit" && body.destinationUnitId) {
-          const hourStart = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000);
-          const [cov] = await t
-            .select()
-            .from(schema.ipuRnCoverageWindow)
-            .where(
-              and(
-                eq(schema.ipuRnCoverageWindow.unitId, body.destinationUnitId),
-                eq(schema.ipuRnCoverageWindow.hourStartAt, hourStart),
-              ),
-            )
-            .limit(1);
-          destinationRnCoverage = cov?.isCovered === true;
+          destinationRnCoverage = (await coverageActiveFor(t, body.destinationUnitId, new Date()))
+            .covered;
         }
         const transition = transitionAdmission(adm.state, adm.kind, {
           type: "initiateTransfer",
@@ -1286,23 +1296,72 @@ export function buildDrizzleIpuRouteService(
       });
     },
 
-    async invokeRnBreakGlass(actor: IpuWriteActor, unitId: string) {
+    async invokeRnBreakGlass(actor: IpuWriteActor, unitId: string, body: InvokeRnBreakGlassBody) {
       return withOrgContext(db, ctx(actor), async (tx) => {
-        // §2.3 — the break-glass override is a compliance signal; emit it (M36 critical + compliance log). The
-        // override window semantics live in the @wardenx/inpatient break-glass kernel; there is no dedicated
-        // persistence table, so the ABAC predicate reads the coverage window + this event stream.
-        await outbox.publish(tx as DbClient, {
+        const t = tx as DbClient;
+        const BG = schema.ipuRnBreakGlass;
+        // F-071 — this used to publish an outbox event and write NOTHING, and its own comment said "the
+        // ABAC predicate reads the coverage window + this event stream". That predicate was removed (it
+        // was unreachable by construction — see ipu.routes.ts), and the service-layer check that
+        // replaced it reads only the coverage window. So the documented escape hatch from an uncovered
+        // unit changed no gate's answer: a 200 that did nothing, guarding the one state that blocks
+        // admission, transfer and restraint.
+        const [unit] = await t.select({ id: U.id }).from(U).where(eq(U.id, unitId)).limit(1);
+        if (!unit) throw new NotFoundError("inpatient_unit not found");
+
+        const now = new Date();
+        // One LIVE override per unit (partial unique index). A second invocation while one is running
+        // REPORTS the existing one rather than stacking an extension — otherwise "break glass again"
+        // silently becomes an unbounded window, which is the property the 4-hour cap exists to deny.
+        const [live] = await t
+          .select({ id: BG.id, expiresAt: BG.expiresAt })
+          .from(BG)
+          .where(and(eq(BG.unitId, unitId), isNull(BG.revokedAt), gt(BG.expiresAt, now)))
+          .limit(1);
+        if (live) {
+          return {
+            unitId,
+            invoked: true,
+            expiresAt: iso(live.expiresAt),
+            alreadyActive: true,
+          } satisfies RnBreakGlassView;
+        }
+
+        const expiresAt = new Date(now.getTime() + body.durationMinutes * 60_000);
+        const [row] = await t
+          .insert(BG)
+          .values({
+            organizationId: actor.organizationId,
+            unitId,
+            invokedByMembershipId: actor.membershipId,
+            invokedAt: now,
+            expiresAt,
+            reason: body.reason,
+          })
+          .returning();
+        if (!row) throw new ConflictError("rn break-glass insert failed");
+
+        // The compliance signal still fires (M36 critical + compliance log) — in the SAME transaction as
+        // the row, so an override can never be in force with no record of it having been raised.
+        await outbox.publish(t, {
           eventName: "m37.rn_coverage.break_glass_invoked",
           payload: {
             unitId,
             organizationId: actor.organizationId,
-            invokedAt: new Date().toISOString(),
+            invokedAt: now.toISOString(),
+            expiresAt: expiresAt.toISOString(),
+            invokedByMembershipId: actor.membershipId,
           },
           organizationId: actor.organizationId,
           aggregateKind: "inpatient_unit",
           aggregateId: unitId,
         });
-        return { unitId, invoked: true };
+        return {
+          unitId,
+          invoked: true,
+          expiresAt: iso(expiresAt),
+          alreadyActive: false,
+        } satisfies RnBreakGlassView;
       });
     },
 
@@ -1532,19 +1591,13 @@ export function buildDrizzleIpuRouteService(
         // and denied every caller unconditionally — TASK-050A/TEST-003 finding). The preHandler is removed
         // (see routes/guards.ts, routes/ipu-routes.ts); this is now the sole enforcement point.
         if (adm.kind !== "arranged" && adm.unitId) {
-          const hourStart = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000);
-          const [cov] = await t
-            .select()
-            .from(schema.ipuRnCoverageWindow)
-            .where(
-              and(
-                eq(schema.ipuRnCoverageWindow.unitId, adm.unitId),
-                eq(schema.ipuRnCoverageWindow.hourStartAt, hourStart),
-              ),
-            )
-            .limit(1);
+          // F-071 — a live break-glass override satisfies this too. §2.3 D3 says so in as many words
+          // ("no admission, transfer, restraint, or order may be executed against the unit until
+          // coverage is restored OR break-glass invoked"), and the alternative — a restraint gate that
+          // an override cannot reach — would leave the one path with no escape hatch at all.
+          const coverage = await coverageActiveFor(t, adm.unitId, new Date());
           requireIpu(
-            cov?.isCovered === true,
+            coverage.covered,
             "IPU_RN_COVERAGE_UNAVAILABLE",
             "The unit's 24/7 RN coverage is inactive; restraint application is blocked (D3).",
           );

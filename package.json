@@ -111,6 +111,7 @@
     "test:m29:unmatched-lab-review:live": "vitest run apps/backend/__tests__/gap-044-m29-unmatched-lab-review.live.test.ts",
     "test:m37:write:live": "vitest run apps/backend/__tests__/m37-ipu-write.live.test.ts",
     "test:m37:privacy-gates:live": "vitest run apps/backend/__tests__/gap-061-062-m37-privacy-gates.live.test.ts",
+    "test:m37:coverage:live": "vitest run apps/backend/__tests__/m37-rn-coverage.live.test.ts",
     "test:m3:break-glass:live": "vitest run apps/backend/__tests__/ac-01-break-glass-cosign.live.test.ts",
     "test:m2:step-up-override:live": "vitest run apps/backend/__tests__/ac-03-step-up-tighten-only.live.test.ts",
     "test:m2:pre-org-picker:live": "vitest run apps/backend/__tests__/f-001-pre-org-membership-picker.live.test.ts",

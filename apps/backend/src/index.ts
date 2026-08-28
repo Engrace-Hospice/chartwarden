@@ -674,7 +674,9 @@ import {
 import {
   type IpuAiPromptRegistryPort,
   M37_OUTBOX_EVENTS,
+  M37_PLATFORM_JOB_ID,
   buildDrizzleIpuRouteService,
+  buildM37WorkerDeps,
   getIpuAdmissionStatusReader,
   getIpuOrderReader,
   getIpuRoomingFactsReader,
@@ -683,7 +685,10 @@ import {
   registerIpuErasers,
   registerIpuSeams,
   registerM37AbacPredicates,
+  registerM37CronWorkers,
+  scheduleM37Jobs,
   validateIpuAIBlock,
+  wireM37Tenancy,
 } from "./modules/37-ipu/index";
 import {
   createDbTerminologyStore,
@@ -1302,6 +1307,10 @@ export function wireModuleSeams(
   wireM9Tenancy();
   wireM10Tenancy();
   wireM14Tenancy(); // GAP-092 — allowlist the cron job id so idg.review-clock-sweep may enter withPlatformContext
+  // F-071/#174 — allowlist M37's cron job id so ipu.rn-coverage-watchdog may enter withPlatformContext.
+  // Without the watchdog nothing ever wrote `ipu_rn_coverage_window`, and the four write paths that read
+  // it treat an absent row as uncovered — so every GIP and respite admission was refused at open.
+  wireM37Tenancy();
   // F-033/#93 — allowlist the platform partition-rotation job. Unlike the module crons above this one
   // belongs to no module: the 43 time-RANGE tables it keeps ahead are spread across ~20 modules and no
   // module can see the others', so it is registered here with them rather than from a module wiring file.
@@ -4069,6 +4078,45 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     app.log.info(
       { queues: m14Workers.length },
       "M14 §4.8 BullMQ review-clock-sweep cron constructed",
+    );
+
+    // ── M37 §4.8 `ipu.rn-coverage-watchdog` cron (F-071/#174 — the M14 worker-runner shape) ──────────────
+    //
+    // The producer that did not exist. `ipu_rn_coverage_window` is a MATERIALIZED invariant that
+    // `openAdmission`, `requestBed`, `initiateTransfer` and `applyRestraint` all read, each treating an
+    // absent row as uncovered (correctly, fail-closed). Nothing ever wrote a row, and
+    // `planOpenAdmission` refuses every non-`arranged` admission on that flag — so no GIP and no
+    // inpatient-respite admission could be opened on any deployment. The pure grid builder
+    // (`@wardenx/inpatient` `buildCoverageWindows`) has existed and been unit-tested since M37-T07; this
+    // is the worker its own header named and that was never built.
+    const m37ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M37_PLATFORM_JOB_ID,
+      reason: "M37 §4.8 ipu.rn-coverage-watchdog cron fan-out (active-org enumeration)",
+    });
+    const m37WorkerDeps = buildM37WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m37OutboxPublisher,
+      activeOrgs: m37ActiveOrgs,
+    });
+    const m37Workers = registerM37CronWorkers(m37WorkerDeps);
+    attachDlqAlertsToAll(m37Workers, "m37");
+    app.addHook("onClose", async () => {
+      await Promise.all(m37Workers.map((w) => w.close()));
+    });
+    try {
+      const m37ScheduleQueues = await scheduleM37Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m37ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M37 cron-schedule registration failed");
+    }
+    app.log.info(
+      { queues: m37Workers.length },
+      "M37 §4.8 BullMQ rn-coverage-watchdog cron constructed",
     );
 
     // ── M29 D11 — the platform NPPES sync worker + its 02:30 UTC nightly repeatable (GAP-045) ────────────

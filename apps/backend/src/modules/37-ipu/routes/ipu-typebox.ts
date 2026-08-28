@@ -310,7 +310,29 @@ export const RnCoverageViewSchema = Type.Object({
   unitId: id,
   items: Type.Array(Type.Object({ hourStartAt: Type.String(), isCovered: Type.Boolean() })),
 });
-export const RnBreakGlassViewSchema = Type.Object({ unitId: id, invoked: Type.Boolean() });
+/**
+ * F-071 — the break-glass now takes a REASON and a bounded window, because it now does something.
+ *
+ * It used to take no body at all, which was consistent with what it did: publish an event and return
+ * `{invoked: true}`. A control that overrides the CoP 418.110(e) 24-hour-RN requirement is the last place
+ * that should be a bare POST — the row it writes is what a post-incident review reads.
+ */
+export const InvokeRnBreakGlassBodySchema = Type.Object({
+  reason: Type.String({ minLength: 40, maxLength: 2000 }),
+  /** §2.3 caps the override at 4 hours; the DB CHECK is the backstop. */
+  durationMinutes: Type.Integer({ minimum: 15, maximum: 240 }),
+});
+export type InvokeRnBreakGlassBody = Static<typeof InvokeRnBreakGlassBodySchema>;
+
+export const RnBreakGlassViewSchema = Type.Object({
+  unitId: id,
+  invoked: Type.Boolean(),
+  /** When this override stops passing the coverage gate. Null only when nothing was written. */
+  expiresAt: Type.Union([Type.String(), Type.Null()]),
+  /** True when a LIVE override already existed — the call is a no-op that reports it, never a stacked
+   *  extension (the partial unique index makes a second live row impossible anyway). */
+  alreadyActive: Type.Boolean(),
+});
 
 // ── restraint (§4.1 routes 22–24) ──────────────────────────────────────────────────────────────────────
 // No `orderingPhysicianId` (F-069). It was a SECOND client-supplied uuid for a fact the order already

@@ -136,6 +136,8 @@ function createIpuTestBackend(): IpuRouteService {
   >(); // keyed by admissionId
   const shifts = new Map<string, ShiftView & { organizationId: string }>();
   const staffAssignments = new Map<string, StaffAssignmentView & { organizationId: string }>();
+  /** F-071 — unitId → the override's expiry epoch ms. */
+  const breakGlass = new Map<string, number>();
   const restraints = new Map<string, RestraintView & { organizationId: string }>();
   const visitors = new Map<
     string,
@@ -447,9 +449,27 @@ function createIpuTestBackend(): IpuRouteService {
       void actor;
       return { unitId, items: [{ hourStartAt: NOW, isCovered: true }] };
     },
-    async invokeRnBreakGlass(actor, unitId) {
+    async invokeRnBreakGlass(actor, unitId, body) {
       void actor;
-      return { unitId, invoked: true };
+      // F-071 — the fake mirrors the production shape: an override has a bounded window and reports
+      // whether one was already live rather than stacking a second.
+      const existing = breakGlass.get(unitId);
+      if (existing && existing > Date.now()) {
+        return {
+          unitId,
+          invoked: true,
+          expiresAt: new Date(existing).toISOString(),
+          alreadyActive: true,
+        };
+      }
+      const expiresAt = Date.now() + body.durationMinutes * 60_000;
+      breakGlass.set(unitId, expiresAt);
+      return {
+        unitId,
+        invoked: true,
+        expiresAt: new Date(expiresAt).toISOString(),
+        alreadyActive: false,
+      };
     },
     async transitionBed(actor, bedId, body) {
       const row = beds.get(bedId);
@@ -1210,15 +1230,83 @@ describe("M37-T11 §4.1 shifts + staff + RN coverage (routes 25-28)", () => {
     expect(coverage.statusCode).toBe(200);
     expect(coverage.json().unitId).toBe(unitId);
 
-    // 28 — break-glass override (step-up)
-    const breakGlass = await app.inject({
+    // 28 — break-glass override (step-up). F-071 — a reason and a bounded window are REQUIRED now.
+    const breakGlassRes = await app.inject({
       method: "POST",
       url: `/api/v1/ipu-units/${unitId}/rn-coverage/break-glass`,
       headers: SUPER,
+      payload: {
+        reason: "Night RN called out; charge nurse covering from the adjacent unit until 06:00.",
+        durationMinutes: 120,
+      },
     });
-    expect(breakGlass.statusCode).toBe(200);
-    expect(breakGlass.json().invoked).toBe(true);
+    expect(breakGlassRes.statusCode).toBe(200);
+    expect(breakGlassRes.json().invoked).toBe(true);
+    expect(breakGlassRes.json().alreadyActive).toBe(false);
+    expect(typeof breakGlassRes.json().expiresAt).toBe("string");
 
+    await app.close();
+  });
+
+  // ── F-071 ──────────────────────────────────────────────────────────────────────────────────────────
+
+  it("break-glass REFUSES a bare POST — it used to take no body because it did nothing", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-units/${randomUUID()}/rn-coverage/break-glass`,
+      headers: SUPER,
+    });
+    // Before F-071 this was a 200. The route now writes the row the coverage gate reads, so a caller
+    // overriding the CoP 418.110(e) 24-hour-RN requirement has to say why and for how long.
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("break-glass refuses a reason below the 40-character floor and a window past 4 hours", async () => {
+    const { app } = makeServer();
+    const unitId = randomUUID();
+    const short = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-units/${unitId}/rn-coverage/break-glass`,
+      headers: SUPER,
+      payload: { reason: "short", durationMinutes: 60 },
+    });
+    expect(short.statusCode).toBe(422);
+    const tooLong = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-units/${unitId}/rn-coverage/break-glass`,
+      headers: SUPER,
+      payload: { reason: "x".repeat(60), durationMinutes: 300 },
+    });
+    expect(tooLong.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("a second break-glass while one is live REPORTS it rather than stacking a second window", async () => {
+    const { app } = makeServer();
+    const unitId = randomUUID();
+    const body = {
+      reason: "Night RN called out; charge nurse covering from the adjacent unit until 06:00.",
+      durationMinutes: 120,
+    };
+    const first = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-units/${unitId}/rn-coverage/break-glass`,
+      headers: SUPER,
+      payload: body,
+    });
+    expect(first.json().alreadyActive).toBe(false);
+    const second = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-units/${unitId}/rn-coverage/break-glass`,
+      headers: SUPER,
+      payload: { ...body, durationMinutes: 240 },
+    });
+    // "Break glass again" must not silently become an unbounded window — the 4-hour cap exists to deny
+    // exactly that, and the DB's partial unique index makes a second live row impossible anyway.
+    expect(second.json().alreadyActive).toBe(true);
+    expect(second.json().expiresAt).toBe(first.json().expiresAt);
     await app.close();
   });
 });

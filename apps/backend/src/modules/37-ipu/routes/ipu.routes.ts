@@ -39,6 +39,7 @@ import {
   DischargeBodySchema,
   IdParamsSchema,
   InitiateTransferBodySchema,
+  InvokeRnBreakGlassBodySchema,
   IrcOverrideBodySchema,
   LiftVisitorRestrictionBodySchema,
   LogInspectionBodySchema,
@@ -503,7 +504,14 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
-      return service.invokeRnBreakGlass(actor, id);
+      // F-071 — a reason and a bounded window are now REQUIRED. This route took no body at all, which
+      // was consistent with what it did (publish an event, write nothing); it now writes the row the
+      // coverage gate reads, and that row is what a post-incident review reads too.
+      return service.invokeRnBreakGlass(
+        actor,
+        id,
+        parse(InvokeRnBreakGlassBodySchema, request.body),
+      );
     },
   );
 
