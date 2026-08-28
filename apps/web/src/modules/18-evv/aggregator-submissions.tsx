@@ -9,11 +9,21 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/18-evv — Aggregator Submission Queue (M18 §5.1 `/app/evv/aggregator-submissions`,
-// Track B / ADR-0030). Server-side state_code/status narrowing remains authoritative; this view focuses on
-// queue scanning, retries-at-risk, and submission status review.
+// Track B / ADR-0030).
+//
+// #91 — the two §2.2.5 D7 operator actions are here now. This is the last hop of an EVV visit: the state's
+// aggregator either accepts the submission or the Medicaid claim behind it is denied. A rejection is
+// fixed and RESUBMITTED by a person (§7.9, attempt_count++); a submission for a voided visit is CANCELLED
+// so the state never sees it. Neither had a caller, so a rejected row stayed rejected forever and nothing
+// on this platform could retry it.
+//
+// `submissionActions` narrows which button a row OFFERS — an affordance over the D7 graph, not a gate.
+// Server-side state_code/status narrowing and the transition machine remain authoritative (ADR-0030).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
+import { type AggregatorSubmissionView, submissionActions } from "./evv-api";
+import { type SubmissionAction, SubmissionActionModal } from "./evv-modals";
 import { EVV_SUBMISSION_TONE, stateLabel } from "./evv-shared";
 
 interface SubmissionRow {
@@ -43,6 +53,10 @@ export function EvvAggregatorSubmissions(): JSX.Element {
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<{ action: SubmissionAction; row: SubmissionRow } | null>(
+    null,
+  );
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -114,202 +128,238 @@ export function EvvAggregatorSubmissions(): JSX.Element {
     setPage(1);
   };
 
+  const applySubmission = (updated: AggregatorSubmissionView): void => {
+    setRows((prev) =>
+      prev.map((r) =>
+        r.id === updated.id
+          ? { ...r, status: updated.status, attemptCount: updated.attemptCount }
+          : r,
+      ),
+    );
+    setNotice(`Submission ${updated.id.slice(0, 8)} is now ${stateLabel(updated.status)}.`);
+  };
+
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader
-          title="Aggregator Submissions"
-          breadcrumb="Admin / EVV"
-          actions={
-            <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
-              Refresh
-            </Button>
-          }
-        >
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Monitor state aggregator handoffs, retries, and rejected submissions.
-          </div>
-        </PageHeader>
-      }
-      filters={
-        <div style={filterShellStyle}>
-          {error ? (
-            <div role="alert" style={errorBannerStyle}>
-              <span>{error}</span>
-              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
-                x
-              </button>
+    <>
+      {pending ? (
+        <SubmissionActionModal
+          open
+          action={pending.action}
+          submissionId={pending.row.id}
+          stateCode={pending.row.stateCode}
+          attemptCount={pending.row.attemptCount}
+          onClose={() => setPending(null)}
+          onDone={applySubmission}
+        />
+      ) : null}
+      <WorkQueueLayout
+        header={
+          <PageHeader
+            title="Aggregator Submissions"
+            breadcrumb="Admin / EVV"
+            actions={
+              <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
+                Refresh
+              </Button>
+            }
+          >
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Monitor state aggregator handoffs, retries, and rejected submissions.
             </div>
-          ) : null}
-          <div style={toolbarStyle}>
-            <div style={toolbarTitleStyle}>
-              <span style={toolbarEyebrowStyle}>Submission queue</span>
-              <strong>{sortedRows.length} matching submissions</strong>
-            </div>
-            <div style={controlGroupStyle}>
-              <div style={searchWrapStyle}>
-                <input
-                  type="search"
-                  placeholder="Search submission, visit, state, vendor..."
-                  value={searchQuery}
+          </PageHeader>
+        }
+        filters={
+          <div style={filterShellStyle}>
+            {error ? (
+              <div role="alert" style={errorBannerStyle}>
+                <span>{error}</span>
+                <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
+                  x
+                </button>
+              </div>
+            ) : null}
+            <div style={toolbarStyle}>
+              <div style={toolbarTitleStyle}>
+                <span style={toolbarEyebrowStyle}>Submission queue</span>
+                <strong>{sortedRows.length} matching submissions</strong>
+                {notice ? (
+                  <output style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
+                    {notice}
+                  </output>
+                ) : null}
+              </div>
+              <div style={controlGroupStyle}>
+                <div style={searchWrapStyle}>
+                  <input
+                    type="search"
+                    placeholder="Search submission, visit, state, vendor..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setPage(1);
+                    }}
+                    aria-label="Search aggregator submissions"
+                    style={searchInputStyle}
+                  />
+                </div>
+                <select
+                  aria-label="Submission status"
+                  value={statusFilter}
                   onChange={(e) => {
-                    setSearchQuery(e.target.value);
+                    setStatusFilter(e.target.value);
                     setPage(1);
                   }}
-                  aria-label="Search aggregator submissions"
-                  style={searchInputStyle}
-                />
-              </div>
-              <select
-                aria-label="Submission status"
-                value={statusFilter}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="all">Status: All</option>
-                {statusOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {stateLabel(option)}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="State code"
-                value={stateFilter}
-                onChange={(e) => {
-                  setStateFilter(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="all">State: All</option>
-                {stateOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Aggregator vendor"
-                value={vendorFilter}
-                onChange={(e) => {
-                  setVendorFilter(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="all">Vendor: All</option>
-                {vendorOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {stateLabel(option)}
-                  </option>
-                ))}
-              </select>
-              {activeFilters > 0 ? (
-                <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                  Clear
-                </Button>
-              ) : null}
-            </div>
-          </div>
-          {stateCode || status ? (
-            <div role="note" style={noteStyle}>
-              <StatusPill label="Server scoped" tone="progress" />
-              <span>
-                URL state/status filters are applied by the server before local filtering.
-              </span>
-            </div>
-          ) : null}
-        </div>
-      }
-      table={
-        error && rows.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState title="Unavailable" description={error} />
-          </div>
-        ) : loading ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : sortedRows.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState
-              title={activeFilters > 0 ? "No matching submissions" : "No submissions"}
-              description={
-                activeFilters > 0
-                  ? "Try adjusting the submission filters."
-                  : "No aggregator submissions match your server-scoped request."
-              }
-              action={
-                activeFilters > 0 ? (
-                  <Button size="sm" tone="secondary" onClick={clearFilters}>
-                    Clear filters
+                  style={selectStyle}
+                >
+                  <option value="all">Status: All</option>
+                  {statusOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {stateLabel(option)}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="State code"
+                  value={stateFilter}
+                  onChange={(e) => {
+                    setStateFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="all">State: All</option>
+                  {stateOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Aggregator vendor"
+                  value={vendorFilter}
+                  onChange={(e) => {
+                    setVendorFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="all">Vendor: All</option>
+                  {vendorOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {stateLabel(option)}
+                    </option>
+                  ))}
+                </select>
+                {activeFilters > 0 ? (
+                  <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                    Clear
                   </Button>
-                ) : undefined
-              }
-            />
+                ) : null}
+              </div>
+            </div>
+            {stateCode || status ? (
+              <div role="note" style={noteStyle}>
+                <StatusPill label="Server scoped" tone="progress" />
+                <span>
+                  URL state/status filters are applied by the server before local filtering.
+                </span>
+              </div>
+            ) : null}
           </div>
-        ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr style={headerRowStyle}>
-                  <th style={{ ...thStyle, width: "24%" }}>Submission</th>
-                  <th style={{ ...thStyle, width: "18%" }}>Visit</th>
-                  <th style={{ ...thStyle, width: "10%" }}>State</th>
-                  <th style={{ ...thStyle, width: "18%" }}>Vendor</th>
-                  <th style={{ ...thStyle, width: "12%" }}>Attempts</th>
-                  <th style={{ ...thStyle, width: "18%", textAlign: "right" }}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedRows.map((row) => (
-                  <tr key={row.id} style={rowStyle}>
-                    <td style={tdStyle}>
-                      <code className="wx-data-md" style={codeStyle}>
-                        {shortId(row.id)}
-                      </code>
-                    </td>
-                    <td style={tdStyle}>
-                      <code className="wx-data-md" style={codeStyle}>
-                        {shortId(row.visitId)}
-                      </code>
-                    </td>
-                    <td style={tdStyle}>{row.stateCode}</td>
-                    <td style={tdStyle}>{stateLabel(row.aggregatorVendor)}</td>
-                    <td className="tabular-nums" style={tdStyle}>
-                      {row.attemptCount}
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: "right" }}>
-                      <StatusPill
-                        label={stateLabel(row.status)}
-                        tone={EVV_SUBMISSION_TONE[row.status] ?? "neutral"}
-                      />
-                    </td>
+        }
+        table={
+          error && rows.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState title="Unavailable" description={error} />
+            </div>
+          ) : loading ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : sortedRows.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title={activeFilters > 0 ? "No matching submissions" : "No submissions"}
+                description={
+                  activeFilters > 0
+                    ? "Try adjusting the submission filters."
+                    : "No aggregator submissions match your server-scoped request."
+                }
+                action={
+                  activeFilters > 0 ? (
+                    <Button size="sm" tone="secondary" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : (
+            <div style={tableWrapStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={headerRowStyle}>
+                    <th style={{ ...thStyle, width: "18%" }}>Submission</th>
+                    <th style={{ ...thStyle, width: "16%" }}>Visit</th>
+                    <th style={{ ...thStyle, width: "8%" }}>State</th>
+                    <th style={{ ...thStyle, width: "14%" }}>Vendor</th>
+                    <th style={{ ...thStyle, width: "10%" }}>Attempts</th>
+                    <th style={{ ...thStyle, width: "14%" }}>Status</th>
+                    <th style={{ ...thStyle, width: "20%", textAlign: "right" }}>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <OffsetPagination
-              page={activePage}
-              pageSize={pageSize}
-              totalItems={sortedRows.length}
-              onPageChange={setPage}
-              onPageSizeChange={(nextPageSize) => {
-                setPageSize(nextPageSize);
-                setPage(1);
-              }}
-              pageSizeOptions={PAGE_SIZES}
-              noun="submissions"
-            />
-          </div>
-        )
-      }
-      fullPageScroll
-    />
+                </thead>
+                <tbody>
+                  {pagedRows.map((row) => (
+                    <tr key={row.id} style={rowStyle}>
+                      <td style={tdStyle}>
+                        <code className="wx-data-md" style={codeStyle}>
+                          {shortId(row.id)}
+                        </code>
+                      </td>
+                      <td style={tdStyle}>
+                        <code className="wx-data-md" style={codeStyle}>
+                          {shortId(row.visitId)}
+                        </code>
+                      </td>
+                      <td style={tdStyle}>{row.stateCode}</td>
+                      <td style={tdStyle}>{stateLabel(row.aggregatorVendor)}</td>
+                      <td className="tabular-nums" style={tdStyle}>
+                        {row.attemptCount}
+                      </td>
+                      <td style={tdStyle}>
+                        <StatusPill
+                          label={stateLabel(row.status)}
+                          tone={EVV_SUBMISSION_TONE[row.status] ?? "neutral"}
+                        />
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                        <SubmissionRowActions
+                          row={row}
+                          onPick={(action) => setPending({ action, row })}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <OffsetPagination
+                page={activePage}
+                pageSize={pageSize}
+                totalItems={sortedRows.length}
+                onPageChange={setPage}
+                onPageSizeChange={(nextPageSize) => {
+                  setPageSize(nextPageSize);
+                  setPage(1);
+                }}
+                pageSizeOptions={PAGE_SIZES}
+                noun="submissions"
+              />
+            </div>
+          )
+        }
+        fullPageScroll
+      />
+    </>
   );
 }
 
@@ -430,3 +480,31 @@ const codeStyle = {
   padding: "0.1rem 0.3rem",
   fontSize: "0.75rem",
 };
+
+/**
+ * The D7 operator actions a row can take. `submissionActions` narrows which to OFFER; the machine
+ * decides whether each is legal, and a status this build has never heard of keeps both rather than
+ * losing them to a stale frontend.
+ */
+function SubmissionRowActions({
+  row,
+  onPick,
+}: { row: SubmissionRow; onPick: (action: SubmissionAction) => void }): JSX.Element {
+  const can = submissionActions(row.status);
+  if (!can.resubmit && !can.cancel)
+    return <span style={{ color: "var(--color-on-surface-variant)" }}>—</span>;
+  return (
+    <div style={{ display: "flex", gap: "0.35rem", justifyContent: "flex-end" }}>
+      {can.resubmit ? (
+        <Button size="sm" onClick={() => onPick("resubmit")}>
+          Resubmit
+        </Button>
+      ) : null}
+      {can.cancel ? (
+        <Button size="sm" tone="tertiary" onClick={() => onPick("cancel")}>
+          Cancel
+        </Button>
+      ) : null}
+    </div>
+  );
+}

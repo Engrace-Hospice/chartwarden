@@ -1,15 +1,23 @@
 import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/18-evv — M18 EVV screen registration (Track B, ADR-0030, M18-T07).
-// The §5.1 EVV read screens that have a backing M18 read route on the generated client: the org-wide EVV
-// Dashboard + Metrics (the EvvMetricsProvider seam), the coordinate-free Event Ledger + single Event Detail,
-// the Missing-EVV Resolution queue, the per-state Aggregator Submission queue, the Geofence Policy view, the
-// Devices-pending roster, and the clinician self-service My Devices. Nav visibility is gated by the matching
-// M18 permission key; the SERVER stays the only enforcement point (no frontend authz, ADR-0030 — out-of-scope
-// events 404, never 403; the §4.7 capture ABAC + RLS narrow every read). Coordinates are NEVER projected by
-// these read paths (D10 — evv.read_coords is a separate permission/path). The check-in/check-out capture
-// surfaces are the Capacitor mobile flow (§5.2, owned by the M17 visit-detail CTA), not web screens; the
-// resolution-attest / device-approve / policy-edit / resubmit write surfaces and the M31 portal arrival view
-// fill in as those write/Phase-2 paths land.
+// The §5.1 EVV screens: the org-wide EVV Dashboard + Metrics (the EvvMetricsProvider seam), the
+// coordinate-free Event Ledger + single Event Detail, the Missing-EVV Resolution queue, the per-state
+// Aggregator Submission queue, the Geofence Policy view, the Devices-pending roster, and the clinician
+// self-service My Devices. Nav visibility is gated by the matching M18 permission key; the SERVER stays the
+// only enforcement point (no frontend authz, ADR-0030 — out-of-scope events 404, never 403; the §4.7
+// capture ABAC + RLS narrow every read). Coordinates are NEVER projected by these read paths (D10 —
+// evv.read_coords is a separate permission/path).
+//
+// #91 — the FOUR write surfaces this header used to defer are built (`evv-api.ts` + `evv-modals.tsx`):
+// device approve/reject/suspend/retire on the roster, the two D6 human closes on the resolution queue,
+// resubmit/cancel on the aggregator queue, and the tenant + per-address geofence edits. Device actions
+// appear on the supervisor roster only; `/me/evv/devices` is a clinician looking at their own handsets,
+// and approving one is an act on someone else's.
+//
+// STILL NOT HERE, and neither is a deferral: the check-in/check-out CAPTURE surfaces are the Capacitor
+// mobile flow (§5.2, owned by the M17 visit-detail CTA) — a browser has no attested device and no §12.4
+// posture to report, so there is nothing for a web screen to do. Device SELF-registration is the same
+// flow. The M31 portal arrival view is M31's surface, not this one.
 import { lazy } from "react";
 import type { ComponentType } from "react";
 const EvvAggregatorSubmissions = lazy(() =>
