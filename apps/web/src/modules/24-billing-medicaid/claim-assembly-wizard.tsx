@@ -240,7 +240,15 @@ export function MedicaidAssemblyWizard(): JSX.Element {
               <PatientLookupField
                 label="Patient"
                 value={patientId}
-                onChange={setPatientId}
+                // F-066 — changing the patient CLEARS the admission. `step1Valid` only checks that the
+                // admission is uuid-shaped, so a stale id from the previously selected patient would
+                // have passed every client-side check and assembled a Medicaid claim against another
+                // patient's admission. The server re-derives and would refuse, but a wizard that lets
+                // you get that far has already made the mistake.
+                onChange={(next) => {
+                  setPatientId(next);
+                  setAdmissionId("");
+                }}
                 required
               />
               <AdmissionLookupField
