@@ -24,6 +24,19 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 //   • `admissionId` had no patient-scoped lookup until F-065 (see #161). With no open admission the
 //     Record control is absent rather than present-and-certain-to-fail.
 //
+// F-076 (#91 AC5) — `e2e/specs/assessments.spec.ts` drives the primary path in a real browser: capture a
+// PPS, let the SERVER score it, and watch the decline it causes reach the significant-change queue and be
+// acknowledged. Writing it found that the third step could never happen. `detectSignificantChanges` has
+// been pure, complete and unit-tested since M9-T08 — its own header describes "the pure evaluators THE
+// RECORDING TRANSACTION runs after scoring" — and NOTHING called it. No code path inserted a
+// `significant_change_event`: four consumers read that table (the worklist, the seam store, the escalation
+// cron and the eraser) and none wrote to it. So the queue was empty for every patient in every tenant, the
+// Acknowledge action added just above could never be pressed, the escalation cron had nothing to escalate,
+// and the catalogued `m9.assessment.significant_change` was never emitted. Same shape as
+// `hope_submission_item` (#150) and the F-029 step-up routes: a finished core with no caller, which every
+// unit test passes. The producer now runs inside the write transaction (§9.6), and
+// `m9-assessments-write.live.test.ts` pins both an absolute rule and a windowed drop against real rows.
+//
 // STILL DEFERRED: the correction ceremony (`POST .../corrections`, which supersedes rather than edits
 // and belongs beside a capture-detail surface that does not exist yet), the cosignature, and the
 // scale-licence renewal + policy edits (admin surfaces whose reads are built).
