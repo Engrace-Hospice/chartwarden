@@ -3384,7 +3384,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M6SummaryPageResponseSchema,
   },
   "GET /api/v1/admissions/:id": {
-    summary: "The admission aggregate + R-AC-01 activation gate (§5.2.5)",
+    summary: "Admission aggregate + the R-AC-01 activation gate (route 10, §5.2.4/§5.2.5)",
     response: AdmissionDetailResponseSchema,
   },
   "PATCH /api/v1/admissions/:id": { summary: "Update an admission", body: AdmissionUpdateSchema },
@@ -3643,7 +3643,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M8EncounterListResponseSchema,
   },
   "GET /api/v1/encounters/cosignature-queue": {
-    summary: "RN cosignature work queue",
+    summary: "RN/Supervisor cosignature work queue with SLA chips (§5.5)",
     response: M8EncounterListResponseSchema,
   },
   "GET /api/v1/encounters/my-drafts": {
@@ -3651,7 +3651,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M8EncounterListResponseSchema,
   },
   "GET /api/v1/encounters/:encounterId": {
-    summary: "Read one encounter",
+    summary:
+      "Read one encounter (selections + signatures + addenda; §7.6 SUD-redacted per caller, §5.2)",
     response: M8EncounterViewResponseSchema,
   },
   "PATCH /api/v1/encounters/:encounterId/selections": {
@@ -3739,7 +3740,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M8VoidResponseSchema,
   },
   "GET /api/v1/encounters/:encounterId/cosignature": {
-    summary: "Read cosignature-request state",
+    summary: "Read an encounter's cosignature-request state (§5.5)",
     response: M8CosignatureReadResponseSchema,
   },
   "POST /api/v1/encounters/:encounterId/cosignature/acknowledge": {
@@ -3811,7 +3812,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     status: 201,
   },
   "GET /api/v1/patients/:patientId/assessments": {
-    summary: "Patient assessment timeline",
+    summary:
+      "Patient assessment timeline — every captured scale, newest first; §7.6 SUD-redacted per caller (§5.2)",
     query: M9AssessmentListQuerySchema,
     response: M9AssessmentListResponseSchema,
   },
@@ -3828,7 +3830,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M9AssessmentViewResponseSchema,
   },
   "GET /api/v1/patients/:patientId/scales/:scaleType/series": {
-    summary: "Scored series over a [from, to] window",
+    summary:
+      "Per-scale scored series over a [from,to] window with significant-change markers (§5.2)",
     query: M9SeriesQuerySchema,
     response: M9ScaleSeriesResponseSchema,
   },
@@ -3842,7 +3845,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M9CosignatureSchema,
   },
   "GET /api/v1/patients/:patientId/significant-changes": {
-    summary: "Significant-change worklist for a patient",
+    summary:
+      "Per-patient significant-change worklist — open/escalated changes with ack state (§5.2)",
     response: M9SignificantChangeListResponseSchema,
   },
   "POST /api/v1/significant-changes/:eventId/acknowledge": {
@@ -3889,7 +3893,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeScheduleListResponseSchema,
   },
   "GET /api/v1/hope/schedules/:id": {
-    summary: "One schedule with derived window state",
+    summary: "HOPE schedule detail with derived window state (§5.2)",
     response: M10HopeScheduleResponseSchema,
   },
   "POST /api/v1/hope/schedules/:id/skip": {
@@ -3930,7 +3934,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeAssessmentResponseSchema,
   },
   "GET /api/v1/patients/:patientId/hope/assessments": {
-    summary: "Patient HOPE timeline",
+    summary: "Patient HOPE timeline — Admission → HUV1 → HUV2 → SFV(s) → Discharge (§5.1/§5.2)",
     response: M10HopeAssessmentListResponseSchema,
   },
   "POST /api/v1/hope/assessments/:id/summary-pdf": {
@@ -3944,18 +3948,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeValidationResponseSchema,
   },
   "GET /api/v1/hope/sfv": {
-    summary: "Open / overdue / missed SFV worklist",
+    summary:
+      "SFV worklist — open/overdue/missed symptom-follow-up visits across the org (§5.1/§5.2)",
     query: M10SfvWorklistQuerySchema,
     response: M10HopeSfvListResponseSchema,
   },
-  "GET /api/v1/hope/sfv/:id": { summary: "SFV detail", response: M10HopeSfvResponseSchema },
+  "GET /api/v1/hope/sfv/:id": {
+    summary: "SFV detail — triggering symptoms + 2-calendar-day countdown (§5.2)",
+    response: M10HopeSfvResponseSchema,
+  },
   "GET /api/v1/hope/submissions": {
-    summary: "Submission batches per ProviderEntity",
+    summary: "HOPE submission worklist — batches per ProviderEntity, per-period (§5.1/§5.2)",
     query: M10SubmissionListQuerySchema,
     response: M10HopeSubmissionListResponseSchema,
   },
   "GET /api/v1/hope/submissions/:id": {
-    summary: "Submission detail with per-item outcomes",
+    summary: "HOPE submission detail — per-item outcomes, rejection findings, retry control (§5.2)",
     response: M10HopeSubmissionResponseSchema,
   },
   "POST /api/v1/hope/submissions/:id/retry": {
@@ -3984,24 +3992,26 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // ── M11 Orders (28 routes) — supersedes the earlier inline M11 GET entries (later Object.assign wins) ──
 Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/orders": {
-    summary: "List orders by patient / admission / kind / status (ABAC caseload_or_scope)",
+    summary: "List orders by patient / admission / kind / status (§4.1; ABAC caseload_or_scope)",
     query: M11OrderListQuerySchema,
     response: M11OrderListResponseSchema,
   },
   "GET /api/v1/orders/pending-signature": {
-    summary: "Physician pending-signature inbox",
+    summary: "Physician pending-signature inbox — orders in pending_signature (§4.1 / §5.2)",
     response: M11OrderListResponseSchema,
   },
   "GET /api/v1/orders/verbal-expiring": {
-    summary: "RN verbal-expiring queue (live 48h countdown)",
+    summary:
+      "RN verbal-expiring queue — verbal_pending orders with a live 48h countdown (§4.1 / §5.2 D3)",
     response: M11OrderListResponseSchema,
   },
   "GET /api/v1/orders/cosign-pending": {
-    summary: "RN cosign-pending queue",
+    summary:
+      "RN cosign-pending queue — orders awaiting an RN/supervisor cosignature (§4.1 / §5.2 §2.5)",
     response: M11OrderListResponseSchema,
   },
   "GET /api/v1/orders/results-pending-review": {
-    summary: "Lab orders with results awaiting Mark-reviewed (D17)",
+    summary: "Lab orders with results received awaiting clinician Mark-reviewed (§4.1 / §5.2 D17)",
     response: M11OrderListResponseSchema,
   },
   "GET /api/v1/orders/suggestions/:patientId": {
@@ -4017,7 +4027,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     status: 201,
   },
   "GET /api/v1/orders/:id": {
-    summary: "Order detail (lifecycle, signatures, verbal deadline, results state)",
+    summary:
+      "Order detail — lifecycle status, signatures, verbal deadline, transmission/results state (§4.1)",
     response: M11OrderViewResponseSchema,
   },
   "PATCH /api/v1/orders/:id": {
@@ -4067,11 +4078,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M11OrderViewResponseSchema,
   },
   "GET /api/v1/standing-orders": {
-    summary: "Standing-order templates (cadence, next-spawn, count)",
+    summary: "Standing-order templates — cadence, next-spawn, spawn count (§4.1 / §5.2 D5)",
     response: M11StandingOrderListResponseSchema,
   },
   "GET /api/v1/standing-orders/:id": {
-    summary: "Standing-order template detail + spawn history",
+    summary: "Standing-order template detail + spawn history (§4.1 / §5.2 D5)",
     response: M11StandingOrderViewResponseSchema,
   },
   "POST /api/v1/standing-orders": {
@@ -4105,7 +4116,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     status: 201, // the spawn CREATES an order — `reply.code(201)` (#91)
   },
   "GET /api/v1/admin/orders/verbal-policy": {
-    summary: "Org verbal-order policy (window, cosign kinds, floor)",
+    summary:
+      "Org verbal-order policy — window hours, cosign kinds, platform floor (§4.1 / §2.3 D3)",
     response: M11VerbalPolicyViewResponseSchema,
   },
   "PUT /api/v1/admin/orders/verbal-policy": {
@@ -4138,7 +4150,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12MedicationOrderResponseSchema,
   },
   "GET /api/v1/medication-orders/:id": {
-    summary: "One medication order's detail",
+    summary:
+      "Medication-order detail — lifecycle status, signatures, controlled/EPCS posture, refills (§4.1)",
     response: M12MedicationOrderResponseSchema,
   },
   "PATCH /api/v1/medication-orders/:id": {
@@ -4186,15 +4199,16 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12NewOrderIdResponseSchema,
   },
   "GET /api/v1/medication-orders/:id/transmission": {
-    summary: "DoseSpot transmission status + retry history",
+    summary: "DoseSpot transmission status incl. retry history (§4.1 / §2.6)",
     response: M12TransmissionResponseSchema,
   },
   "GET /api/v1/patients/:patientId/medications/active": {
-    summary: "Active medications for a patient",
+    summary: "Active medications for a patient (chart medication list; §4.1 / §6.1)",
     response: M12MedicationOrderListResponseSchema,
   },
   "GET /api/v1/patients/:patientId/medications/history": {
-    summary: "Medication-history list for a patient",
+    summary:
+      "Medication-history records for a patient (DoseSpot MedHx; §4.1 / §6.1 reconciliation)",
     response: M12MedicationHistoryResponseSchema,
   },
   "POST /api/v1/patients/:patientId/medications/history/refresh": {
@@ -4206,11 +4220,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M12ReconcileRequest,
   },
   "GET /api/v1/refills": {
-    summary: "Refill inbox (refill_inbox_scope ABAC)",
+    summary: "Refill inbox — pending refills the caller may decide (§4.1; ABAC refill_inbox_scope)",
     response: M12RefillListResponseSchema,
   },
   "GET /api/v1/refills/:id": {
-    summary: "One refill request's detail",
+    summary:
+      "Refill detail — source order + request fields for approve/deny (§4.1; ABAC refill_inbox_scope)",
     response: M12RefillRequestResponseSchema,
   },
   "POST /api/v1/refills/:id/approve": {
@@ -4223,7 +4238,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M12RxBenefitLookupRequest,
   },
   "GET /api/v1/admin/dosespot-prescribers": {
-    summary: "Per-tenant DoseSpot prescriber roster",
+    summary:
+      "Per-tenant DoseSpot prescriber roster — DEA schedules, IAL2 status, enrollment (§4.1 / §6.1)",
     response: M12PrescriberRosterListResponseSchema,
   },
   "POST /api/v1/admin/dosespot-prescribers/:membershipId/enroll": {
@@ -4235,7 +4251,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M12RevokePrescriberRequest,
   },
   "GET /api/v1/admin/refill-inbox-policy": {
-    summary: "Refill-inbox SLA policy",
+    summary: "Refill-inbox SLA policy — warn/critical hours + platform floors (§4.1 / §2.7 D9)",
     response: M12RefillInboxPolicyResponseSchema,
   },
   "PATCH /api/v1/admin/refill-inbox-policy": {
@@ -4243,7 +4259,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M12RefillInboxPolicyRequest,
   },
   "GET /api/v1/admin/controlled-substance-policy": {
-    summary: "Controlled-substance refill policy",
+    summary:
+      "Controlled-substance policy — refill caps + EPCS certification status (§4.1 / 21 CFR 1306.22 / D18)",
     response: M12ControlledSubstancePolicyResponseSchema,
   },
   "PATCH /api/v1/admin/controlled-substance-policy": {
@@ -4316,7 +4333,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13AdministrationViewSchema,
   },
   "GET /api/v1/administrations/:id": {
-    summary: "Read one administration",
+    summary:
+      "Administration detail — lifecycle, late-entry tier, witness pair, BCMA match (§4.1 / §6.1 #11)",
     response: M13AdministrationViewSchema,
   },
   "GET /api/v1/administrations": {
@@ -4325,7 +4343,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13AdministrationListResponseSchema,
   },
   "GET /api/v1/administrations/iv-sessions/:sessionId": {
-    summary: "Read an IV-continuous session's segment sequence",
+    summary:
+      "IV continuous session — the ordered start→rate_change→stop segment sequence (§4.1 / §6.1 #5)",
     response: M13IvSessionViewSchema,
   },
   "POST /api/v1/administrations/refuse": {
@@ -4341,7 +4360,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13OfflineSyncResponseSchema,
   },
   "GET /api/v1/scheduled-doses": {
-    summary: "Read the scheduled-dose timeline for a patient",
+    summary: "Scheduled-dose timeline for a patient (the eMAR next-24h projection; §4.1 / §6.1 #1)",
     query: M13ScheduledDoseQuerySchema,
     response: M13ScheduledDoseListResponseSchema,
   },
@@ -4360,7 +4379,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13MissedDoseViewSchema,
   },
   "GET /api/v1/reconciliation/worksheets": {
-    summary: "List reconciliation worksheets for a patient",
+    summary:
+      "Reconciliation worksheets for a patient (admission/transfer/discharge/recert; §4.1 / §6.1 #6)",
     query: M13WorksheetQuerySchema,
     response: M13WorksheetListResponseSchema,
   },
@@ -4396,7 +4416,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13WorksheetViewSchema,
   },
   "GET /api/v1/comfort-kits/deployments": {
-    summary: "List comfort-kit deployments for a patient",
+    summary: "Comfort-kit deployments for a patient (drawdown + disposal status; §4.1 / §6.1 #7)",
     query: M13DeploymentQuerySchema,
     response: M13DeploymentListResponseSchema,
   },
@@ -4410,7 +4430,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13DeploymentViewSchema,
   },
   "GET /api/v1/admin/administration-policy": {
-    summary: "Read tenant administration policy",
+    summary:
+      "Tenant administration policy — grace window, PRN reassessment defaults (§4.1 / §6.1 #12)",
     response: M13AdministrationPolicyViewSchema,
   },
   "PUT /api/v1/admin/administration-policy": {
@@ -4532,7 +4553,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M14ActionItemListResponseSchema,
   },
   "GET /api/v1/idg/meetings/:id/minutes": {
-    summary: "Read a meeting's minutes",
+    summary: "A meeting's minutes — in-progress or finalized (§4.1 / §5)",
     response: M14MinutesViewSchema,
   },
   "POST /api/v1/idg/minutes/:id/amendments": {
@@ -4545,12 +4566,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // ── M17 Scheduling & Route Optimization (29 routes) — supersedes the earlier inline Sched* GET block ──
 Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/visits": {
-    summary: "Visits in caseload/scope (clinician/patient/status/date filtered)",
+    summary:
+      "Visits in caseload/scope — clinician/patient/status/date-window filtered (§4.1 / §5.1)",
     query: M17VisitListQuerySchema,
     response: M17VisitListResponseSchema,
   },
   "GET /api/v1/visits/:visitId": {
-    summary: "One visit's detail (status + scheduled window + assignment)",
+    summary:
+      "One visit's detail — status + scheduled window + assignment (§4.1 / §5.1 visit detail)",
     response: M17VisitViewSchema,
   },
   "POST /api/v1/visits": {
@@ -4589,7 +4612,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17VisitViewSchema,
   },
   "GET /api/v1/visit-proposals": {
-    summary: "The scheduler proposal inbox",
+    summary:
+      "The scheduler proposal inbox — pending frequency/order/IDG/supervisory proposals (§5.1)",
     query: M17ProposalListQuerySchema,
     response: M17ProposalListResponseSchema,
   },
@@ -4603,7 +4627,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17ProposalViewSchema,
   },
   "GET /api/v1/recurring-visits": {
-    summary: "A patient's recurring-visit policies",
+    summary: "A patient's recurring-visit policies — active/discontinued (§5.1 recurring)",
     query: M17RecurringListQuerySchema,
     response: M17RecurringListResponseSchema,
   },
@@ -4618,7 +4642,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17RecurringViewSchema,
   },
   "GET /api/v1/availability": {
-    summary: "A membership's weekly availability pattern",
+    summary: "A membership's weekly availability pattern (§5.1 availability editor)",
     query: M17AvailabilityQuerySchema,
     response: M17AvailabilityViewSchema,
   },
@@ -4628,7 +4652,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17AvailabilityViewSchema,
   },
   "GET /api/v1/time-off": {
-    summary: "Time-off requests (approval queue / my-PTO)",
+    summary: "Time-off requests — approval queue / my-PTO, membership/state/date filtered (§5.1)",
     query: M17TimeOffListQuerySchema,
     response: M17TimeOffListResponseSchema,
   },
@@ -4653,17 +4677,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17TimeOffViewSchema,
   },
   "GET /api/v1/day-view": {
-    summary: "Day-view grid (a clinician's visits for one date)",
+    summary: "Day-view grid — a clinician's visits for one service date (§5.1 day)",
     query: M17DayViewQuerySchema,
     response: M17DayViewResponseSchema,
   },
   "GET /api/v1/week-view": {
-    summary: "Week-view grid (a clinician's visits across a week)",
+    summary: "Week-view grid — a clinician's visits across a week (§5.1 week)",
     query: M17WeekViewQuerySchema,
     response: M17WeekViewResponseSchema,
   },
   "GET /api/v1/map-view": {
-    summary: "Map-view ordered stops (coords-only polylines, D9)",
+    summary: "Map-view ordered stops for a clinician day (coords-only polylines, D9; §5.1 map)",
     query: M17MapViewQuerySchema,
     response: M17MapViewResponseSchema,
   },
@@ -4678,12 +4702,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17PortalUpcomingResponseSchema,
   },
   "GET /api/v1/metrics/visits": {
-    summary: "Org-wide visit metrics (on-time / no-show / reschedule)",
+    summary:
+      "Org-wide visit metrics — on-time / no-show / reschedule rates (§5.1 scheduling-metrics)",
     query: M17MetricsQuerySchema,
     response: M17VisitMetricsResponseSchema,
   },
   "GET /api/v1/metrics/route-efficiency": {
-    summary: "Per-clinician route-efficiency metrics",
+    summary: "Per-clinician route-efficiency metrics — proposed miles + override rate (§5.1)",
     query: M17RouteEfficiencyQuerySchema,
     response: M17RouteEfficiencyResponseSchema,
   },
@@ -4768,7 +4793,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvDeviceView,
   },
   "GET /api/v1/evv/geofence-policy": {
-    summary: "Read geofence policy (tenant + per-address overrides)",
+    summary:
+      "EVV geofence policy — tenant tighten-only default + per-address overrides (§5.1 geofence-policy)",
     response: M18EvvGeofencePolicyView,
   },
   "PATCH /api/v1/evv/geofence-policy/tenant": {
@@ -4782,7 +4808,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvGeofencePolicyView,
   },
   "GET /api/v1/evv/missing-resolutions": {
-    summary: "Open + recently-closed resolution queue",
+    summary:
+      "EVV missing-resolution queue — open + recently-closed late-checkout resolutions (§5.1 missing-resolutions)",
     query: M18MissingResolutionListQuery,
     response: M18EvvMissingResolutionListResponse,
   },
@@ -4797,7 +4824,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvMissingResolutionView,
   },
   "GET /api/v1/evv/aggregator-submissions": {
-    summary: "Per-state aggregator submission queue + status",
+    summary:
+      "EVV aggregator submission queue — per-state submission status + rejection detail (§5.1 aggregator-submissions)",
     query: M18AggregatorListQuery,
     response: M18EvvAggregatorSubmissionListResponse,
   },
@@ -4849,7 +4877,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M22UploadDocumentRequest,
   },
   "GET /api/v1/documents": {
-    summary: "List documents (filtered, cursor-paginated)",
+    summary:
+      "List documents — filtered by patient / aggregate / retention class, cursor-paginated (§4.1 / §5.1 DOC.Explorer)",
     query: M22DocumentListQuerySchema,
     response: M22DocumentListResponseSchema,
   },
@@ -4872,7 +4901,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M22VersionViewSchema,
   },
   "GET /api/v1/documents/:id": {
-    summary: "Read document metadata + current version",
+    summary:
+      "Document metadata + current version metadata (§4.1 / §5.1 DOC.SignedUrlPreview header)",
     response: M22DocumentViewSchema,
   },
   "PATCH /api/v1/documents/:id": {
@@ -4907,7 +4937,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M22ConfirmClassificationRequest,
   },
   "GET /api/v1/intake/uploads/:id/jobs": {
-    summary: "Extraction jobs for the batch (cursor-paginated)",
+    summary:
+      "Extraction jobs for a batch — per-job pipeline status, cursor-paginated (§4.1 / §5.1 INTAKE.BatchDetail)",
     query: M22JobsListQuerySchema,
     response: M22IntakeJobListResponseSchema,
   },
@@ -5007,7 +5038,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   // M2 identity routes (routes/identity-routes.ts — §7.1–7.7). Bodies read manually via
   // readString/readStringArray; DTOs mirror the routes' real shapes (MembershipView/OrgBinding pinned).
   "GET /api/v1/auth/memberships": {
-    summary: "List the caller's memberships (pre-org, §7.2)",
+    summary: "List the caller's memberships (pre-org-bind, §7.2)",
     response: M2MembershipListResponseSchema,
   },
   "GET /api/v1/auth/context": {
@@ -5982,7 +6013,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M20RaiseSosResponse,
   },
   "POST /api/v1/safety/sos/:sosAlertId/cancel": {
-    summary: "D5 cancel (a rejected cancel is a 200, never a 4xx)",
+    summary:
+      "The D5 mid-visit cancel (biometric). A REJECTED cancel is a 200 carrying `cancel_attempted_but_rejected`, never a 4xx — an error would tell a hostile actor holding the device that their tap did something (§4.1 #6)",
     body: M20CancelSosBody,
     response: M20CancelSosResponse,
   },
@@ -6037,7 +6069,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M20SafetyIncidentResponse,
   },
   "POST /api/v1/safety/incidents/:incidentId/state": {
-    summary: "The supervisor state machine (§2.2.3; reopened re-enters review)",
+    summary:
+      "The supervisor state machine (§2.2.3) — `reopened` re-enters review on the SAME row, because a second row would break the workers-comp timeline an insurer reads (§4.1 #16)",
     body: M20TransitionIncidentBody,
     response: M20SafetyIncidentResponse,
   },
@@ -6049,7 +6082,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
 
   // admin.routes.ts (rows 18-25)
   "GET /api/v1/safety/policy": {
-    summary: "The effective policy (asOf is the §2.2.4 replay arm)",
+    summary:
+      "The effective policy — §2.2.4's `asOf` is the REPLAY arm: a 2031 review of a 2026 incident has to read the 2026 thresholds, and reading today's would turn a policy that tightened into a regression that never happened (§4.1 #18)",
     query: M20PolicyQuery,
     response: M20SafetyPolicyEffectiveResponse,
   },
@@ -6059,7 +6093,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M20SafetyPolicyEffectiveResponse,
   },
   "GET /api/v1/safety/supervisor-subscriptions": {
-    summary: "Who watches whom (§2.2.5 / D8)",
+    summary:
+      "Who watches whom (§2.2.5 / D8) — dashboard VISIBILITY is RBAC+ABAC and deliberately independent: a supervisor may SEE a board she is not paged for, and D8 exists because the inverse (visible to everyone, paged by nobody) is the §7.8 failure (§4.1 #20)",
     query: M20SubscriptionListQuery,
     response: M20SafetySubscriptionPageResponse,
   },
@@ -6073,7 +6108,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M20DeleteSubscriptionResponse,
   },
   "GET /api/v1/safety/high-risk-areas": {
-    summary: "The advisory polygons in force (includeExpired defaults false)",
+    summary:
+      "The advisory polygons in force — `includeExpired` defaults FALSE so the pre-visit advisory never surfaces a polygon retired last winter; the editor asks for history explicitly (§4.1 #23)",
     query: M20HighRiskAreaListQuery,
     response: M20SafetyHighRiskAreaPageResponse,
   },
@@ -6105,7 +6141,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M20SafetyConsentResponse,
   },
   "POST /api/v1/safety/consent/revoke": {
-    summary: "Revoke one purpose (writes revoked, never expired)",
+    summary:
+      "Revoke one purpose — writes `revoked`, never `expired`: the rotation sweep owns the second, and a coercion review reads exactly that difference (§2.2.8, §4.1 #29)",
     body: M20RevokeConsentBody,
     response: M20SafetyConsentResponse,
   },
@@ -6120,7 +6157,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M21CreateSupplyRequestResultSchema,
   },
   "GET /api/v1/supplies/supply-requests": {
-    summary: "Supply-team worklist (cursor-paginated; openOnly default)",
+    summary:
+      "The supply-team worklist — cursor-paginated; `openOnly` narrows to the §2.2 non-terminal set, which is the dashboard's default view (§4.1 #2)",
     query: M21ListSupplyRequestsQuery,
     response: M21SupplyRequestListResponseSchema,
   },
@@ -6166,7 +6204,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
 
   // catalog.routes.ts — §4.1 rows 11–19 (D11 SKU catalog + §2.3 kit templates)
   "GET /api/v1/supplies/supply-items": {
-    summary: "SKU catalog (platform rows UNION the tenant overlay)",
+    summary:
+      "The D11 SKU catalog — the platform rows UNION the tenant overlay, one browsable list (§4.1 #11)",
     query: M21ListSupplyItemsQuery,
     response: M21SupplyItemListResponseSchema,
   },
@@ -6190,7 +6229,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M21SupplyItemViewSchema,
   },
   "PUT /api/v1/supplies/tenant-supply-items/:id": {
-    summary: "Edit a tenant-local item",
+    summary: "Edit a tenant-local overlay item (§4.1 #16)",
     body: M21UpsertTenantSupplyItemBody,
     response: M21SupplyItemViewSchema,
   },
@@ -6217,7 +6256,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M21DispatchDetailSchema,
   },
   "GET /api/v1/supplies/comfort-kit-dispatches": {
-    summary: "Dispatch list (per patient / Location / IPU room)",
+    summary:
+      "Dispatch list — per patient, per Location, or per IPU room for the D17 stock-kit view (§4.1 #21)",
     query: M21ListDispatchesQuery,
     response: M21DispatchListResponseSchema,
   },
@@ -6240,7 +6280,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M21ComfortKitReturnDetailSchema,
   },
   "GET /api/v1/supplies/comfort-kit-returns": {
-    summary: "Reconciliation worklist (oldest due first; daysOverdue read-time)",
+    summary:
+      "The reconciliation worklist — OLDEST due first, with `daysOverdue` computed at read time from `return_due_at` (§4.1 #25)",
     query: M21ListReturnsQuery,
     response: M21ComfortKitReturnListResponseSchema,
   },
@@ -6277,7 +6318,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M21VendorRoutingRuleViewSchema,
   },
   "PUT /api/v1/supplies/vendor-routing-rules/:ruleId": {
-    summary: "Edit a routing rule",
+    summary: "Edit a routing rule (§4.1 #30)",
     body: M21UpsertRoutingRuleBody,
     response: M21VendorRoutingRuleViewSchema,
   },

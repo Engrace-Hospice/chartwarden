@@ -9402,7 +9402,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Read tenant administration policy",
+        "summary": "Tenant administration policy — grace window, PRN reassessment defaults (§4.1 / §6.1 #12)",
         "parameters": [],
         "responses": {
           "200": {
@@ -9513,7 +9513,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Controlled-substance refill policy",
+        "summary": "Controlled-substance policy — refill caps + EPCS certification status (§4.1 / 21 CFR 1306.22 / D18)",
         "parameters": [],
         "responses": {
           "200": {
@@ -9593,7 +9593,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Per-tenant DoseSpot prescriber roster",
+        "summary": "Per-tenant DoseSpot prescriber roster — DEA schedules, IAL2 status, enrollment (§4.1 / §6.1)",
         "parameters": [],
         "responses": {
           "200": {
@@ -10673,7 +10673,7 @@
         "tags": [
           "11-orders"
         ],
-        "summary": "Org verbal-order policy (window, cosign kinds, floor)",
+        "summary": "Org verbal-order policy — window hours, cosign kinds, platform floor (§4.1 / §2.3 D3)",
         "parameters": [],
         "responses": {
           "200": {
@@ -11763,7 +11763,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Refill-inbox SLA policy",
+        "summary": "Refill-inbox SLA policy — warn/critical hours + platform floors (§4.1 / §2.7 D9)",
         "parameters": [],
         "responses": {
           "200": {
@@ -14118,7 +14118,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Read one administration",
+        "summary": "Administration detail — lifecycle, late-entry tier, witness pair, BCMA match (§4.1 / §6.1 #11)",
         "parameters": [
           {
             "name": "id",
@@ -15918,7 +15918,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Read an IV-continuous session's segment sequence",
+        "summary": "IV continuous session — the ordered start→rate_change→stop segment sequence (§4.1 / §6.1 #5)",
         "parameters": [
           {
             "name": "sessionId",
@@ -18110,7 +18110,7 @@
         "tags": [
           "06-admission"
         ],
-        "summary": "The admission aggregate + R-AC-01 activation gate (§5.2.5)",
+        "summary": "Admission aggregate + the R-AC-01 activation gate (route 10, §5.2.4/§5.2.5)",
         "parameters": [
           {
             "name": "id",
@@ -27215,7 +27215,7 @@
         "tags": [
           "02-identity"
         ],
-        "summary": "List the caller's memberships (pre-org, §7.2)",
+        "summary": "List the caller's memberships (pre-org-bind, §7.2)",
         "parameters": [],
         "responses": {
           "200": {
@@ -27426,7 +27426,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "A membership's weekly availability pattern",
+        "summary": "A membership's weekly availability pattern (§5.1 availability editor)",
         "parameters": [
           {
             "name": "membership",
@@ -49696,7 +49696,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "List comfort-kit deployments for a patient",
+        "summary": "Comfort-kit deployments for a patient (drawdown + disposal status; §4.1 / §6.1 #7)",
         "parameters": [
           {
             "name": "patient",
@@ -64604,7 +64604,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Day-view grid (a clinician's visits for one date)",
+        "summary": "Day-view grid — a clinician's visits for one service date (§5.1 day)",
         "parameters": [
           {
             "name": "membership",
@@ -70892,7 +70892,7 @@
         "tags": [
           "22-documents"
         ],
-        "summary": "List documents (filtered, cursor-paginated)",
+        "summary": "List documents — filtered by patient / aggregate / retention class, cursor-paginated (§4.1 / §5.1 DOC.Explorer)",
         "parameters": [
           {
             "name": "patientId",
@@ -71234,7 +71234,7 @@
         "tags": [
           "22-documents"
         ],
-        "summary": "Read document metadata + current version",
+        "summary": "Document metadata + current version metadata (§4.1 / §5.1 DOC.SignedUrlPreview header)",
         "parameters": [
           {
             "name": "id",
@@ -72959,7 +72959,7 @@
         "tags": [
           "08-encounters"
         ],
-        "summary": "Read one encounter",
+        "summary": "Read one encounter (selections + signatures + addenda; §7.6 SUD-redacted per caller, §5.2)",
         "parameters": [
           {
             "name": "encounterId",
@@ -73846,7 +73846,7 @@
         "tags": [
           "08-encounters"
         ],
-        "summary": "Read cosignature-request state",
+        "summary": "Read an encounter's cosignature-request state (§5.5)",
         "parameters": [
           {
             "name": "encounterId",
@@ -76430,7 +76430,7 @@
         "tags": [
           "08-encounters"
         ],
-        "summary": "RN cosignature work queue",
+        "summary": "RN/Supervisor cosignature work queue with SLA chips (§5.5)",
         "parameters": [],
         "responses": {
           "200": {
@@ -78197,7 +78197,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Per-state aggregator submission queue + status",
+        "summary": "EVV aggregator submission queue — per-state submission status + rejection detail (§5.1 aggregator-submissions)",
         "parameters": [
           {
             "name": "stateCode",
@@ -80310,7 +80310,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Read geofence policy (tenant + per-address overrides)",
+        "summary": "EVV geofence policy — tenant tighten-only default + per-address overrides (§5.1 geofence-policy)",
         "parameters": [],
         "responses": {
           "200": {
@@ -80664,7 +80664,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Open + recently-closed resolution queue",
+        "summary": "EVV missing-resolution queue — open + recently-closed late-checkout resolutions (§5.1 missing-resolutions)",
         "parameters": [
           {
             "name": "status",
@@ -85281,7 +85281,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "One schedule with derived window state",
+        "summary": "HOPE schedule detail with derived window state (§5.2)",
         "parameters": [
           {
             "name": "id",
@@ -85591,7 +85591,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Open / overdue / missed SFV worklist",
+        "summary": "SFV worklist — open/overdue/missed symptom-follow-up visits across the org (§5.1/§5.2)",
         "parameters": [
           {
             "name": "state",
@@ -85700,7 +85700,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "SFV detail",
+        "summary": "SFV detail — triggering symptoms + 2-calendar-day countdown (§5.2)",
         "parameters": [
           {
             "name": "id",
@@ -85797,7 +85797,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Submission batches per ProviderEntity",
+        "summary": "HOPE submission worklist — batches per ProviderEntity, per-period (§5.1/§5.2)",
         "parameters": [
           {
             "name": "providerEntityId",
@@ -85921,7 +85921,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Submission detail with per-item outcomes",
+        "summary": "HOPE submission detail — per-item outcomes, rejection findings, retry control (§5.2)",
         "parameters": [
           {
             "name": "id",
@@ -89585,7 +89585,7 @@
         "tags": [
           "14-idg"
         ],
-        "summary": "Read a meeting's minutes",
+        "summary": "A meeting's minutes — in-progress or finalized (§4.1 / §5)",
         "parameters": [
           {
             "name": "id",
@@ -92088,7 +92088,7 @@
         "tags": [
           "22-documents"
         ],
-        "summary": "Extraction jobs for the batch (cursor-paginated)",
+        "summary": "Extraction jobs for a batch — per-job pipeline status, cursor-paginated (§4.1 / §5.1 INTAKE.BatchDetail)",
         "parameters": [
           {
             "name": "id",
@@ -99577,7 +99577,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Map-view ordered stops (coords-only polylines, D9)",
+        "summary": "Map-view ordered stops for a clinician day (coords-only polylines, D9; §5.1 map)",
         "parameters": [
           {
             "name": "membership",
@@ -107336,7 +107336,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "One medication order's detail",
+        "summary": "Medication-order detail — lifecycle status, signatures, controlled/EPCS posture, refills (§4.1)",
         "parameters": [
           {
             "name": "id",
@@ -108421,7 +108421,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "DoseSpot transmission status + retry history",
+        "summary": "DoseSpot transmission status incl. retry history (§4.1 / §2.6)",
         "parameters": [
           {
             "name": "id",
@@ -110189,7 +110189,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Per-clinician route-efficiency metrics",
+        "summary": "Per-clinician route-efficiency metrics — proposed miles + override rate (§5.1)",
         "parameters": [
           {
             "name": "membership",
@@ -110262,7 +110262,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Org-wide visit metrics (on-time / no-show / reschedule)",
+        "summary": "Org-wide visit metrics — on-time / no-show / reschedule rates (§5.1 scheduling-metrics)",
         "parameters": [
           {
             "name": "from",
@@ -114586,7 +114586,7 @@
         "tags": [
           "11-orders"
         ],
-        "summary": "List orders by patient / admission / kind / status (ABAC caseload_or_scope)",
+        "summary": "List orders by patient / admission / kind / status (§4.1; ABAC caseload_or_scope)",
         "parameters": [
           {
             "name": "patientId",
@@ -115383,7 +115383,7 @@
         "tags": [
           "11-orders"
         ],
-        "summary": "Order detail (lifecycle, signatures, verbal deadline, results state)",
+        "summary": "Order detail — lifecycle status, signatures, verbal deadline, transmission/results state (§4.1)",
         "parameters": [
           {
             "name": "id",
@@ -118931,7 +118931,7 @@
         "tags": [
           "11-orders"
         ],
-        "summary": "RN cosign-pending queue",
+        "summary": "RN cosign-pending queue — orders awaiting an RN/supervisor cosignature (§4.1 / §5.2 §2.5)",
         "parameters": [],
         "responses": {
           "200": {
@@ -119246,7 +119246,7 @@
         "tags": [
           "11-orders"
         ],
-        "summary": "Physician pending-signature inbox",
+        "summary": "Physician pending-signature inbox — orders in pending_signature (§4.1 / §5.2)",
         "parameters": [],
         "responses": {
           "200": {
@@ -119561,7 +119561,7 @@
         "tags": [
           "11-orders"
         ],
-        "summary": "Lab orders with results awaiting Mark-reviewed (D17)",
+        "summary": "Lab orders with results received awaiting clinician Mark-reviewed (§4.1 / §5.2 D17)",
         "parameters": [],
         "responses": {
           "200": {
@@ -119973,7 +119973,7 @@
         "tags": [
           "11-orders"
         ],
-        "summary": "RN verbal-expiring queue (live 48h countdown)",
+        "summary": "RN verbal-expiring queue — verbal_pending orders with a live 48h countdown (§4.1 / §5.2 D3)",
         "parameters": [],
         "responses": {
           "200": {
@@ -122809,7 +122809,7 @@
         "tags": [
           "09-assessments"
         ],
-        "summary": "Patient assessment timeline",
+        "summary": "Patient assessment timeline — every captured scale, newest first; §7.6 SUD-redacted per caller (§5.2)",
         "parameters": [
           {
             "name": "patientId",
@@ -126198,7 +126198,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Patient HOPE timeline",
+        "summary": "Patient HOPE timeline — Admission → HUV1 → HUV2 → SFV(s) → Discharge (§5.1/§5.2)",
         "parameters": [
           {
             "name": "patientId",
@@ -126470,7 +126470,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Active medications for a patient",
+        "summary": "Active medications for a patient (chart medication list; §4.1 / §6.1)",
         "parameters": [
           {
             "name": "patientId",
@@ -126859,7 +126859,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Medication-history list for a patient",
+        "summary": "Medication-history records for a patient (DoseSpot MedHx; §4.1 / §6.1 reconciliation)",
         "parameters": [
           {
             "name": "patientId",
@@ -127413,7 +127413,7 @@
         "tags": [
           "09-assessments"
         ],
-        "summary": "Scored series over a [from, to] window",
+        "summary": "Per-scale scored series over a [from,to] window with significant-change markers (§5.2)",
         "parameters": [
           {
             "name": "patientId",
@@ -127598,7 +127598,7 @@
         "tags": [
           "09-assessments"
         ],
-        "summary": "Significant-change worklist for a patient",
+        "summary": "Per-patient significant-change worklist — open/escalated changes with ack state (§5.2)",
         "parameters": [
           {
             "name": "patientId",
@@ -143444,7 +143444,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "List reconciliation worksheets for a patient",
+        "summary": "Reconciliation worksheets for a patient (admission/transfer/discharge/recert; §4.1 / §6.1 #6)",
         "parameters": [
           {
             "name": "patient",
@@ -144732,7 +144732,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "A patient's recurring-visit policies",
+        "summary": "A patient's recurring-visit policies — active/discontinued (§5.1 recurring)",
         "parameters": [
           {
             "name": "patient",
@@ -145865,7 +145865,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "Refill inbox (refill_inbox_scope ABAC)",
+        "summary": "Refill inbox — pending refills the caller may decide (§4.1; ABAC refill_inbox_scope)",
         "parameters": [],
         "responses": {
           "200": {
@@ -145967,7 +145967,7 @@
         "tags": [
           "12-dosespot"
         ],
-        "summary": "One refill request's detail",
+        "summary": "Refill detail — source order + request fields for approve/deny (§4.1; ABAC refill_inbox_scope)",
         "parameters": [
           {
             "name": "id",
@@ -156273,7 +156273,7 @@
         "tags": [
           "20-field-safety"
         ],
-        "summary": "Revoke one purpose (writes revoked, never expired)",
+        "summary": "Revoke one purpose — writes `revoked`, never `expired`: the rotation sweep owns the second, and a coercion review reads exactly that difference (§2.2.8, §4.1 #29)",
         "parameters": [],
         "responses": {
           "200": {
@@ -156773,7 +156773,7 @@
         "tags": [
           "20-field-safety"
         ],
-        "summary": "The advisory polygons in force (includeExpired defaults false)",
+        "summary": "The advisory polygons in force — `includeExpired` defaults FALSE so the pre-visit advisory never surfaces a polygon retired last winter; the editor asks for history explicitly (§4.1 #23)",
         "parameters": [
           {
             "name": "limit",
@@ -160111,7 +160111,7 @@
         "tags": [
           "20-field-safety"
         ],
-        "summary": "The supervisor state machine (§2.2.3; reopened re-enters review)",
+        "summary": "The supervisor state machine (§2.2.3) — `reopened` re-enters review on the SAME row, because a second row would break the workers-comp timeline an insurer reads (§4.1 #16)",
         "parameters": [
           {
             "name": "incidentId",
@@ -161118,7 +161118,7 @@
         "tags": [
           "20-field-safety"
         ],
-        "summary": "The effective policy (asOf is the §2.2.4 replay arm)",
+        "summary": "The effective policy — §2.2.4's `asOf` is the REPLAY arm: a 2031 review of a 2026 incident has to read the 2026 thresholds, and reading today's would turn a policy that tightened into a regression that never happened (§4.1 #18)",
         "parameters": [
           {
             "name": "asOf",
@@ -162836,7 +162836,7 @@
         "tags": [
           "20-field-safety"
         ],
-        "summary": "D5 cancel (a rejected cancel is a 200, never a 4xx)",
+        "summary": "The D5 mid-visit cancel (biometric). A REJECTED cancel is a 200 carrying `cancel_attempted_but_rejected`, never a 4xx — an error would tell a hostile actor holding the device that their tap did something (§4.1 #6)",
         "parameters": [
           {
             "name": "sosAlertId",
@@ -163735,7 +163735,7 @@
         "tags": [
           "20-field-safety"
         ],
-        "summary": "Who watches whom (§2.2.5 / D8)",
+        "summary": "Who watches whom (§2.2.5 / D8) — dashboard VISIBILITY is RBAC+ABAC and deliberately independent: a supervisor may SEE a board she is not paged for, and D8 exists because the inverse (visible to everyone, paged by nobody) is the §7.8 failure (§4.1 #20)",
         "parameters": [
           {
             "name": "limit",
@@ -164237,7 +164237,7 @@
         "tags": [
           "13-emar"
         ],
-        "summary": "Read the scheduled-dose timeline for a patient",
+        "summary": "Scheduled-dose timeline for a patient (the eMAR next-24h projection; §4.1 / §6.1 #1)",
         "parameters": [
           {
             "name": "patient",
@@ -164675,7 +164675,7 @@
         "tags": [
           "11-orders"
         ],
-        "summary": "Standing-order templates (cadence, next-spawn, count)",
+        "summary": "Standing-order templates — cadence, next-spawn, spawn count (§4.1 / §5.2 D5)",
         "parameters": [],
         "responses": {
           "200": {
@@ -165096,7 +165096,7 @@
         "tags": [
           "11-orders"
         ],
-        "summary": "Standing-order template detail + spawn history",
+        "summary": "Standing-order template detail + spawn history (§4.1 / §5.2 D5)",
         "parameters": [
           {
             "name": "id",
@@ -167533,7 +167533,7 @@
         "tags": [
           "21-supplies"
         ],
-        "summary": "Dispatch list (per patient / Location / IPU room)",
+        "summary": "Dispatch list — per patient, per Location, or per IPU room for the D17 stock-kit view (§4.1 #21)",
         "parameters": [
           {
             "name": "cursor",
@@ -169321,7 +169321,7 @@
         "tags": [
           "21-supplies"
         ],
-        "summary": "Reconciliation worklist (oldest due first; daysOverdue read-time)",
+        "summary": "The reconciliation worklist — OLDEST due first, with `daysOverdue` computed at read time from `return_due_at` (§4.1 #25)",
         "parameters": [
           {
             "name": "cursor",
@@ -172773,7 +172773,7 @@
         "tags": [
           "21-supplies"
         ],
-        "summary": "SKU catalog (platform rows UNION the tenant overlay)",
+        "summary": "The D11 SKU catalog — the platform rows UNION the tenant overlay, one browsable list (§4.1 #11)",
         "parameters": [
           {
             "name": "cursor",
@@ -173787,7 +173787,7 @@
         "tags": [
           "21-supplies"
         ],
-        "summary": "Supply-team worklist (cursor-paginated; openOnly default)",
+        "summary": "The supply-team worklist — cursor-paginated; `openOnly` narrows to the §2.2 non-terminal set, which is the dashboard's default view (§4.1 #2)",
         "parameters": [
           {
             "name": "cursor",
@@ -179937,7 +179937,7 @@
         "tags": [
           "21-supplies"
         ],
-        "summary": "Edit a tenant-local item",
+        "summary": "Edit a tenant-local overlay item (§4.1 #16)",
         "parameters": [
           {
             "name": "id",
@@ -180842,7 +180842,7 @@
         "tags": [
           "21-supplies"
         ],
-        "summary": "Edit a routing rule",
+        "summary": "Edit a routing rule (§4.1 #30)",
         "parameters": [
           {
             "name": "ruleId",
@@ -186263,7 +186263,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Time-off requests (approval queue / my-PTO)",
+        "summary": "Time-off requests — approval queue / my-PTO, membership/state/date filtered (§5.1)",
         "parameters": [
           {
             "name": "membership",
@@ -204314,7 +204314,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "The scheduler proposal inbox",
+        "summary": "The scheduler proposal inbox — pending frequency/order/IDG/supervisory proposals (§5.1)",
         "parameters": [
           {
             "name": "patient",
@@ -204860,7 +204860,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Visits in caseload/scope (clinician/patient/status/date filtered)",
+        "summary": "Visits in caseload/scope — clinician/patient/status/date-window filtered (§4.1 / §5.1)",
         "parameters": [
           {
             "name": "clinician",
@@ -205517,7 +205517,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "One visit's detail (status + scheduled window + assignment)",
+        "summary": "One visit's detail — status + scheduled window + assignment (§4.1 / §5.1 visit detail)",
         "parameters": [
           {
             "name": "visitId",
@@ -208540,7 +208540,7 @@
         "tags": [
           "17-scheduling"
         ],
-        "summary": "Week-view grid (a clinician's visits across a week)",
+        "summary": "Week-view grid — a clinician's visits across a week (§5.1 week)",
         "parameters": [
           {
             "name": "membership",

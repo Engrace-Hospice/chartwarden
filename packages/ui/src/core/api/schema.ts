@@ -1006,7 +1006,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read tenant administration policy */
+        /** Tenant administration policy — grace window, PRN reassessment defaults (§4.1 / §6.1 #12) */
         get: operations["getApiV1AdminAdministrationpolicy"];
         /** Update tenant administration policy */
         put: operations["putApiV1AdminAdministrationpolicy"];
@@ -1024,7 +1024,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Controlled-substance refill policy */
+        /** Controlled-substance policy — refill caps + EPCS certification status (§4.1 / 21 CFR 1306.22 / D18) */
         get: operations["getApiV1AdminControlledsubstancepolicy"];
         put?: never;
         post?: never;
@@ -1042,7 +1042,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Per-tenant DoseSpot prescriber roster */
+        /** Per-tenant DoseSpot prescriber roster — DEA schedules, IAL2 status, enrollment (§4.1 / §6.1) */
         get: operations["getApiV1AdminDosespotprescribers"];
         put?: never;
         post?: never;
@@ -1263,7 +1263,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Org verbal-order policy (window, cosign kinds, floor) */
+        /** Org verbal-order policy — window hours, cosign kinds, platform floor (§4.1 / §2.3 D3) */
         get: operations["getApiV1AdminOrdersVerbalpolicy"];
         /** Update org verbal-order policy (tighten-only, <=48h) */
         put: operations["putApiV1AdminOrdersVerbalpolicy"];
@@ -1435,7 +1435,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Refill-inbox SLA policy */
+        /** Refill-inbox SLA policy — warn/critical hours + platform floors (§4.1 / §2.7 D9) */
         get: operations["getApiV1AdminRefillinboxpolicy"];
         put?: never;
         post?: never;
@@ -1693,7 +1693,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read one administration */
+        /** Administration detail — lifecycle, late-entry tier, witness pair, BCMA match (§4.1 / §6.1 #11) */
         get: operations["getApiV1AdministrationsById"];
         put?: never;
         post?: never;
@@ -1795,7 +1795,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read an IV-continuous session's segment sequence */
+        /** IV continuous session — the ordered start→rate_change→stop segment sequence (§4.1 / §6.1 #5) */
         get: operations["getApiV1AdministrationsIvsessionsBySessionId"];
         put?: never;
         post?: never;
@@ -1915,7 +1915,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The admission aggregate + R-AC-01 activation gate (§5.2.5) */
+        /** Admission aggregate + the R-AC-01 activation gate (route 10, §5.2.4/§5.2.5) */
         get: operations["getApiV1AdmissionsById"];
         put?: never;
         post?: never;
@@ -2980,7 +2980,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List the caller's memberships (pre-org, §7.2) */
+        /** List the caller's memberships (pre-org-bind, §7.2) */
         get: operations["getApiV1AuthMemberships"];
         put?: never;
         post?: never;
@@ -3014,7 +3014,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** A membership's weekly availability pattern */
+        /** A membership's weekly availability pattern (§5.1 availability editor) */
         get: operations["getApiV1Availability"];
         put?: never;
         post?: never;
@@ -4825,7 +4825,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List comfort-kit deployments for a patient */
+        /** Comfort-kit deployments for a patient (drawdown + disposal status; §4.1 / §6.1 #7) */
         get: operations["getApiV1ComfortkitsDeployments"];
         put?: never;
         post?: never;
@@ -5975,7 +5975,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Day-view grid (a clinician's visits for one date) */
+        /** Day-view grid — a clinician's visits for one service date (§5.1 day) */
         get: operations["getApiV1Dayview"];
         put?: never;
         post?: never;
@@ -6639,7 +6639,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List documents (filtered, cursor-paginated) */
+        /** List documents — filtered by patient / aggregate / retention class, cursor-paginated (§4.1 / §5.1 DOC.Explorer) */
         get: operations["getApiV1Documents"];
         put?: never;
         /** Upload a new document (creates version v1) */
@@ -6657,7 +6657,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read document metadata + current version */
+        /** Document metadata + current version metadata (§4.1 / §5.1 DOC.SignedUrlPreview header) */
         get: operations["getApiV1DocumentsById"];
         put?: never;
         post?: never;
@@ -6881,7 +6881,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read one encounter */
+        /** Read one encounter (selections + signatures + addenda; §7.6 SUD-redacted per caller, §5.2) */
         get: operations["getApiV1EncountersByEncounterId"];
         put?: never;
         post?: never;
@@ -7018,7 +7018,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read cosignature-request state */
+        /** Read an encounter's cosignature-request state (§5.5) */
         get: operations["getApiV1EncountersByEncounterIdCosignature"];
         put?: never;
         post?: never;
@@ -7276,7 +7276,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** RN cosignature work queue */
+        /** RN/Supervisor cosignature work queue with SLA chips (§5.5) */
         get: operations["getApiV1EncountersCosignaturequeue"];
         put?: never;
         post?: never;
@@ -7429,7 +7429,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Per-state aggregator submission queue + status */
+        /** EVV aggregator submission queue — per-state submission status + rejection detail (§5.1 aggregator-submissions) */
         get: operations["getApiV1EvvAggregatorsubmissions"];
         put?: never;
         post?: never;
@@ -7684,7 +7684,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read geofence policy (tenant + per-address overrides) */
+        /** EVV geofence policy — tenant tighten-only default + per-address overrides (§5.1 geofence-policy) */
         get: operations["getApiV1EvvGeofencepolicy"];
         put?: never;
         post?: never;
@@ -7752,7 +7752,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Open + recently-closed resolution queue */
+        /** EVV missing-resolution queue — open + recently-closed late-checkout resolutions (§5.1 missing-resolutions) */
         get: operations["getApiV1EvvMissingresolutions"];
         put?: never;
         post?: never;
@@ -8334,7 +8334,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** One schedule with derived window state */
+        /** HOPE schedule detail with derived window state (§5.2) */
         get: operations["getApiV1HopeSchedulesById"];
         put?: never;
         post?: never;
@@ -8368,7 +8368,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Open / overdue / missed SFV worklist */
+        /** SFV worklist — open/overdue/missed symptom-follow-up visits across the org (§5.1/§5.2) */
         get: operations["getApiV1HopeSfv"];
         put?: never;
         post?: never;
@@ -8385,7 +8385,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** SFV detail */
+        /** SFV detail — triggering symptoms + 2-calendar-day countdown (§5.2) */
         get: operations["getApiV1HopeSfvById"];
         put?: never;
         post?: never;
@@ -8402,7 +8402,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Submission batches per ProviderEntity */
+        /** HOPE submission worklist — batches per ProviderEntity, per-period (§5.1/§5.2) */
         get: operations["getApiV1HopeSubmissions"];
         put?: never;
         post?: never;
@@ -8419,7 +8419,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Submission detail with per-item outcomes */
+        /** HOPE submission detail — per-item outcomes, rejection findings, retry control (§5.2) */
         get: operations["getApiV1HopeSubmissionsById"];
         put?: never;
         post?: never;
@@ -8694,7 +8694,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read a meeting's minutes */
+        /** A meeting's minutes — in-progress or finalized (§4.1 / §5) */
         get: operations["getApiV1IdgMeetingsByIdMinutes"];
         put?: never;
         post?: never;
@@ -9172,7 +9172,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Extraction jobs for the batch (cursor-paginated) */
+        /** Extraction jobs for a batch — per-job pipeline status, cursor-paginated (§4.1 / §5.1 INTAKE.BatchDetail) */
         get: operations["getApiV1IntakeUploadsByIdJobs"];
         put?: never;
         post?: never;
@@ -10149,7 +10149,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Map-view ordered stops (coords-only polylines, D9) */
+        /** Map-view ordered stops for a clinician day (coords-only polylines, D9; §5.1 map) */
         get: operations["getApiV1Mapview"];
         put?: never;
         post?: never;
@@ -10700,7 +10700,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** One medication order's detail */
+        /** Medication-order detail — lifecycle status, signatures, controlled/EPCS posture, refills (§4.1) */
         get: operations["getApiV1MedicationordersById"];
         put?: never;
         post?: never;
@@ -10871,7 +10871,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** DoseSpot transmission status + retry history */
+        /** DoseSpot transmission status incl. retry history (§4.1 / §2.6) */
         get: operations["getApiV1MedicationordersByIdTransmission"];
         put?: never;
         post?: never;
@@ -11130,7 +11130,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Per-clinician route-efficiency metrics */
+        /** Per-clinician route-efficiency metrics — proposed miles + override rate (§5.1) */
         get: operations["getApiV1MetricsRouteefficiency"];
         put?: never;
         post?: never;
@@ -11147,7 +11147,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Org-wide visit metrics (on-time / no-show / reschedule) */
+        /** Org-wide visit metrics — on-time / no-show / reschedule rates (§5.1 scheduling-metrics) */
         get: operations["getApiV1MetricsVisits"];
         put?: never;
         post?: never;
@@ -11610,7 +11610,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List orders by patient / admission / kind / status (ABAC caseload_or_scope) */
+        /** List orders by patient / admission / kind / status (§4.1; ABAC caseload_or_scope) */
         get: operations["getApiV1Orders"];
         put?: never;
         /** Create a draft order (discipline_can_order ABAC) */
@@ -11628,7 +11628,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Order detail (lifecycle, signatures, verbal deadline, results state) */
+        /** Order detail — lifecycle status, signatures, verbal deadline, transmission/results state (§4.1) */
         get: operations["getApiV1OrdersById"];
         put?: never;
         post?: never;
@@ -11782,7 +11782,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** RN cosign-pending queue */
+        /** RN cosign-pending queue — orders awaiting an RN/supervisor cosignature (§4.1 / §5.2 §2.5) */
         get: operations["getApiV1OrdersCosignpending"];
         put?: never;
         post?: never;
@@ -11799,7 +11799,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Physician pending-signature inbox */
+        /** Physician pending-signature inbox — orders in pending_signature (§4.1 / §5.2) */
         get: operations["getApiV1OrdersPendingsignature"];
         put?: never;
         post?: never;
@@ -11816,7 +11816,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Lab orders with results awaiting Mark-reviewed (D17) */
+        /** Lab orders with results received awaiting clinician Mark-reviewed (§4.1 / §5.2 D17) */
         get: operations["getApiV1OrdersResultspendingreview"];
         put?: never;
         post?: never;
@@ -11850,7 +11850,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** RN verbal-expiring queue (live 48h countdown) */
+        /** RN verbal-expiring queue — verbal_pending orders with a live 48h countdown (§4.1 / §5.2 D3) */
         get: operations["getApiV1OrdersVerbalexpiring"];
         put?: never;
         post?: never;
@@ -12144,7 +12144,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Patient assessment timeline */
+        /** Patient assessment timeline — every captured scale, newest first; §7.6 SUD-redacted per caller (§5.2) */
         get: operations["getApiV1PatientsByPatientIdAssessments"];
         put?: never;
         /** Record a scale capture (server-scored; discipline-matrix ABAC) */
@@ -12317,7 +12317,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Patient HOPE timeline */
+        /** Patient HOPE timeline — Admission → HUV1 → HUV2 → SFV(s) → Discharge (§5.1/§5.2) */
         get: operations["getApiV1PatientsByPatientIdHopeAssessments"];
         put?: never;
         post?: never;
@@ -12351,7 +12351,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Active medications for a patient */
+        /** Active medications for a patient (chart medication list; §4.1 / §6.1) */
         get: operations["getApiV1PatientsByPatientIdMedicationsActive"];
         put?: never;
         post?: never;
@@ -12368,7 +12368,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Medication-history list for a patient */
+        /** Medication-history records for a patient (DoseSpot MedHx; §4.1 / §6.1 reconciliation) */
         get: operations["getApiV1PatientsByPatientIdMedicationsHistory"];
         put?: never;
         post?: never;
@@ -12436,7 +12436,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Scored series over a [from, to] window */
+        /** Per-scale scored series over a [from,to] window with significant-change markers (§5.2) */
         get: operations["getApiV1PatientsByPatientIdScalesByScaleTypeSeries"];
         put?: never;
         post?: never;
@@ -12453,7 +12453,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Significant-change worklist for a patient */
+        /** Per-patient significant-change worklist — open/escalated changes with ack state (§5.2) */
         get: operations["getApiV1PatientsByPatientIdSignificantchanges"];
         put?: never;
         post?: never;
@@ -14666,7 +14666,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List reconciliation worksheets for a patient */
+        /** Reconciliation worksheets for a patient (admission/transfer/discharge/recert; §4.1 / §6.1 #6) */
         get: operations["getApiV1ReconciliationWorksheets"];
         put?: never;
         post?: never;
@@ -14785,7 +14785,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** A patient's recurring-visit policies */
+        /** A patient's recurring-visit policies — active/discontinued (§5.1 recurring) */
         get: operations["getApiV1Recurringvisits"];
         put?: never;
         /** Create a recurring policy (validates RRULE subset; 201) */
@@ -14907,7 +14907,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Refill inbox (refill_inbox_scope ABAC) */
+        /** Refill inbox — pending refills the caller may decide (§4.1; ABAC refill_inbox_scope) */
         get: operations["getApiV1Refills"];
         put?: never;
         post?: never;
@@ -14924,7 +14924,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** One refill request's detail */
+        /** Refill detail — source order + request fields for approve/deny (§4.1; ABAC refill_inbox_scope) */
         get: operations["getApiV1RefillsById"];
         put?: never;
         post?: never;
@@ -15870,7 +15870,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke one purpose (writes revoked, never expired) */
+        /** Revoke one purpose — writes `revoked`, never `expired`: the rotation sweep owns the second, and a coercion review reads exactly that difference (§2.2.8, §4.1 #29) */
         post: operations["postApiV1SafetyConsentRevoke"];
         delete?: never;
         options?: never;
@@ -15902,7 +15902,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The advisory polygons in force (includeExpired defaults false) */
+        /** The advisory polygons in force — `includeExpired` defaults FALSE so the pre-visit advisory never surfaces a polygon retired last winter; the editor asks for history explicitly (§4.1 #23) */
         get: operations["getApiV1SafetyHighriskareas"];
         put?: never;
         /** Draw an advisory polygon (M20-F07: ring validity in app code, no PostGIS) */
@@ -15992,7 +15992,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** The supervisor state machine (§2.2.3; reopened re-enters review) */
+        /** The supervisor state machine (§2.2.3) — `reopened` re-enters review on the SAME row, because a second row would break the workers-comp timeline an insurer reads (§4.1 #16) */
         post: operations["postApiV1SafetyIncidentsByIncidentIdState"];
         delete?: never;
         options?: never;
@@ -16024,7 +16024,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The effective policy (asOf is the §2.2.4 replay arm) */
+        /** The effective policy — §2.2.4's `asOf` is the REPLAY arm: a 2031 review of a 2026 incident has to read the 2026 thresholds, and reading today's would turn a policy that tightened into a regression that never happened (§4.1 #18) */
         get: operations["getApiV1SafetyPolicy"];
         put?: never;
         post?: never;
@@ -16095,7 +16095,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** D5 cancel (a rejected cancel is a 200, never a 4xx) */
+        /** The D5 mid-visit cancel (biometric). A REJECTED cancel is a 200 carrying `cancel_attempted_but_rejected`, never a 4xx — an error would tell a hostile actor holding the device that their tap did something (§4.1 #6) */
         post: operations["postApiV1SafetySosBySosAlertIdCancel"];
         delete?: never;
         options?: never;
@@ -16161,7 +16161,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Who watches whom (§2.2.5 / D8) */
+        /** Who watches whom (§2.2.5 / D8) — dashboard VISIBILITY is RBAC+ABAC and deliberately independent: a supervisor may SEE a board she is not paged for, and D8 exists because the inverse (visible to everyone, paged by nobody) is the §7.8 failure (§4.1 #20) */
         get: operations["getApiV1SafetySupervisorsubscriptions"];
         put?: never;
         /** Add a subscription (scope-selector pairing re-checked in service) */
@@ -16196,7 +16196,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read the scheduled-dose timeline for a patient */
+        /** Scheduled-dose timeline for a patient (the eMAR next-24h projection; §4.1 / §6.1 #1) */
         get: operations["getApiV1Scheduleddoses"];
         put?: never;
         post?: never;
@@ -16281,7 +16281,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Standing-order templates (cadence, next-spawn, count) */
+        /** Standing-order templates — cadence, next-spawn, spawn count (§4.1 / §5.2 D5) */
         get: operations["getApiV1Standingorders"];
         put?: never;
         /** Create a standing-order template (D5 eligibility) */
@@ -16299,7 +16299,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Standing-order template detail + spawn history */
+        /** Standing-order template detail + spawn history (§4.1 / §5.2 D5) */
         get: operations["getApiV1StandingordersById"];
         put?: never;
         post?: never;
@@ -16490,7 +16490,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Dispatch list (per patient / Location / IPU room) */
+        /** Dispatch list — per patient, per Location, or per IPU room for the D17 stock-kit view (§4.1 #21) */
         get: operations["getApiV1SuppliesComfortkitdispatches"];
         put?: never;
         /** Dispatch a comfort kit (§2.5 five refusals + DEA outbound log, one tx; step-up; 201) */
@@ -16559,7 +16559,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Reconciliation worklist (oldest due first; daysOverdue read-time) */
+        /** The reconciliation worklist — OLDEST due first, with `daysOverdue` computed at read time from `return_due_at` (§4.1 #25) */
         get: operations["getApiV1SuppliesComfortkitreturns"];
         put?: never;
         /** Open a return obligation (refused before M13 acks the deployment; 201) */
@@ -16731,7 +16731,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** SKU catalog (platform rows UNION the tenant overlay) */
+        /** The D11 SKU catalog — the platform rows UNION the tenant overlay, one browsable list (§4.1 #11) */
         get: operations["getApiV1SuppliesSupplyitems"];
         put?: never;
         /** Create a canonical HCPCS-keyed SKU (PLATFORM-ONLY; 201) */
@@ -16783,7 +16783,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Supply-team worklist (cursor-paginated; openOnly default) */
+        /** The supply-team worklist — cursor-paginated; `openOnly` narrows to the §2.2 non-terminal set, which is the dashboard's default view (§4.1 #2) */
         get: operations["getApiV1SuppliesSupplyrequests"];
         put?: never;
         /** Create a supply / DME / comfort-kit request (freezes the D4 routing record; 201) */
@@ -16955,7 +16955,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Edit a tenant-local item */
+        /** Edit a tenant-local overlay item (§4.1 #16) */
         put: operations["putApiV1SuppliesTenantsupplyitemsById"];
         post?: never;
         delete?: never;
@@ -16990,7 +16990,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Edit a routing rule */
+        /** Edit a routing rule (§4.1 #30) */
         put: operations["putApiV1SuppliesVendorroutingrulesByRuleId"];
         post?: never;
         /** Retire a routing rule (is_active=false; NOT a delete — history must resolve) */
@@ -17655,7 +17655,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Time-off requests (approval queue / my-PTO) */
+        /** Time-off requests — approval queue / my-PTO, membership/state/date filtered (§5.1) */
         get: operations["getApiV1Timeoff"];
         put?: never;
         /** Request PTO (201) */
@@ -18118,7 +18118,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The scheduler proposal inbox */
+        /** The scheduler proposal inbox — pending frequency/order/IDG/supervisory proposals (§5.1) */
         get: operations["getApiV1Visitproposals"];
         put?: never;
         post?: never;
@@ -18169,7 +18169,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Visits in caseload/scope (clinician/patient/status/date filtered) */
+        /** Visits in caseload/scope — clinician/patient/status/date-window filtered (§4.1 / §5.1) */
         get: operations["getApiV1Visits"];
         put?: never;
         /** Manual visit create (runs the D8 pre-schedule gate) */
@@ -18187,7 +18187,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** One visit's detail (status + scheduled window + assignment) */
+        /** One visit's detail — status + scheduled window + assignment (§4.1 / §5.1 visit detail) */
         get: operations["getApiV1VisitsByVisitId"];
         put?: never;
         post?: never;
@@ -18393,7 +18393,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Week-view grid (a clinician's visits across a week) */
+        /** Week-view grid — a clinician's visits across a week (§5.1 week) */
         get: operations["getApiV1Weekview"];
         put?: never;
         post?: never;
