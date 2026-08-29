@@ -15,6 +15,7 @@ import { Button, Modal, SelectField, TextAreaField, TextField, useApiClient } fr
 // what is about to be committed, sends the request, and renders a 412 as the re-authentication prompt.
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   type ActionItemView,
   type AgendaItemView,
@@ -83,24 +84,30 @@ const footer = { display: "flex", gap: "0.5rem", justifyContent: "flex-end" } as
 function useCeremony<T>(open: boolean, onDone: (v: T) => void, onClose: () => void) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // F-081 — the refusal's STATUS, not just its copy. 412 is the D13 step-up, and the difference between
+  // telling someone to re-authenticate and taking them somewhere they can is the whole of this field.
+  const [status, setStatus] = useState<number | null>(null);
   useEffect(() => {
     if (!open) return;
     setBusy(false);
     setError(null);
+    setStatus(null);
   }, [open]);
   const run = async (fn: () => Promise<WriteResult<T>>): Promise<void> => {
     setBusy(true);
     setError(null);
+    setStatus(null);
     const res = await fn();
     setBusy(false);
     if (!res.ok) {
       setError(res.message);
+      setStatus(res.status);
       return;
     }
     onDone(res.value);
     onClose();
   };
-  return { busy, error, run };
+  return { busy, error, status, run };
 }
 
 // ── §2.7 attendance check-in ───────────────────────────────────────────────────────────────────────────
@@ -393,7 +400,9 @@ export function LifecycleModal({
   onDone,
 }: LifecycleModalProps): JSX.Element | null {
   const client = useApiClient();
-  const { busy, error, run } = useCeremony<MeetingView>(open, onDone, onClose);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { busy, error, status, run } = useCeremony<MeetingView>(open, onDone, onClose);
   const [reason, setReason] = useState("");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
@@ -469,6 +478,30 @@ export function LifecycleModal({
         ) : null}
 
         <div style={footer}>
+          {/*
+            F-081 — the way to DO what the refusal asks. The dialog told a coordinator to
+            "re-authenticate and adjourn again" and offered no route to it: `/step-up` is a chromeless
+            screen with no nav entry, reached only by a redirect, and M14 was the one module that
+            described the requirement without performing that redirect (M6/M8/M23/M39 all route a
+            step-up-shaped refusal through their own `authFailureRedirect`). So the instruction was
+            unfollowable and the D13 commit point had no path through it from the UI at all.
+
+            Offered only on the 412, and only after one has actually happened: a permanent "step up"
+            button next to every commit point would train people to re-authenticate before they are
+            asked, which is the opposite of what a freshness window is for.
+          */}
+          {status === 412 ? (
+            <Button
+              tone="secondary"
+              onClick={() =>
+                navigate(
+                  `/step-up?returnTo=${encodeURIComponent(location.pathname + location.search)}`,
+                )
+              }
+            >
+              Re-authenticate
+            </Button>
+          ) : null}
           <Button tone="tertiary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>

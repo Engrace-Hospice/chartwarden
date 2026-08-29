@@ -81,3 +81,64 @@ export async function expectNoAxeViolations(
   );
   expect(summary, `axe violations:\n${summary.join("\n")}`).toEqual([]);
 }
+
+/**
+ * Enrol a WebAuthn passkey on the current session, so the account can satisfy a step-up gate (F-081).
+ *
+ * A Chromium VIRTUAL AUTHENTICATOR (CDP `WebAuthn.addVirtualAuthenticator`) stands in for the
+ * hardware. Everything else is the product's own path: the real `/security/passkeys` screen, the real
+ * `navigator.credentials.create` ceremony, Better Auth's real `verify-registration`, and the real row
+ * in `passkey`. Nothing is faked at the API boundary — the point of driving step-up from a browser at
+ * all is that this is the ONE layer no server-side test can reach, and the three defects it found were
+ * each invisible from every other layer.
+ *
+ * Completion is judged by the VIRTUAL AUTHENTICATOR holding a credential, not by the screen's list
+ * losing its empty state. A passkey row survives in the database from an earlier run while the private
+ * key does not — it lived in that run's virtual authenticator, which is gone — so "the list is not
+ * empty" is true before this call does anything, and the step-up that followed then asked a fresh
+ * authenticator to assert a credential it had never held. That failure surfaces as "Passkey
+ * verification was cancelled or failed", which reads like a flaky ceremony rather than a stale fixture.
+ */
+export async function enrolPasskey(page: Page): Promise<string> {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("WebAuthn.enable", { enableUI: false });
+  const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", {
+    options: {
+      protocol: "ctap2",
+      ctap2Version: "ctap2_1",
+      transport: "internal",
+      hasResidentKey: true,
+      hasUserVerification: true,
+      // The ceremony asks for `userVerification: "required"`, and a real device would prompt for a
+      // biometric here. These two make the virtual authenticator answer the prompt itself.
+      isUserVerified: true,
+      automaticPresenceSimulation: true,
+    },
+  });
+  await page.goto("/security/passkeys");
+  await expect(page.getByRole("heading", { name: "Passkeys" })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Register passkey" }).click();
+  await expect
+    .poll(
+      async () =>
+        (await cdp.send("WebAuthn.getCredentials", { authenticatorId })).credentials.length,
+      { timeout: 20_000, message: "the virtual authenticator never received a credential" },
+    )
+    .toBeGreaterThan(0);
+  // …and the server stored it: the screen's list is what a second, independent read looks like. It
+  // renders `name ?? "Passkey"`, and nothing here types a name — `passkey.name` is nullable (0234).
+  await expect(page.getByText("No passkeys")).toBeHidden({ timeout: 15_000 });
+  return authenticatorId;
+}
+
+/**
+ * Complete a step-up re-authentication with the passkey `enrolPasskey` registered, landing back on
+ * `returnTo`. This is the real `/step-up` screen and the real `POST /api/v1/sessions/step-up`, which
+ * paired-writes `session.last_step_up_at` — the fact 138 `requireStepUp` guards across 23 modules read.
+ */
+export async function stepUpWithPasskey(page: Page, returnTo: string): Promise<void> {
+  await page.goto(`/step-up?returnTo=${encodeURIComponent(returnTo)}`);
+  await page.getByRole("button", { name: "Verify with a passkey" }).click();
+  // Success navigates to `returnTo`; a failure keeps the screen up carrying the server's message.
+  await page.waitForURL((url) => url.pathname + url.search === returnTo, { timeout: 20_000 });
+}

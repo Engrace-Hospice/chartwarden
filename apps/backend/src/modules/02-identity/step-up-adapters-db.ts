@@ -3,7 +3,7 @@ import {
   createDbTotpEnrolmentStore,
   createTotpStepUpVerifier,
   createWebauthnAssertionVerifier,
-  resolvePasskeyOrigin,
+  resolvePasskeyOrigins,
   resolvePasskeyRpId,
 } from "@wardenx/auth";
 // apps/backend/src/modules/02-identity/step-up-adapters-db.ts — M2 §4.4, the PRODUCTION step-up
@@ -150,7 +150,7 @@ export function createDbMfaVerifier(db: DbClient): MfaVerifier {
           userId,
           expectedChallenge: webauthnChallenge,
           assertion,
-          expectedOrigin: resolvePasskeyOrigin(),
+          expectedOrigin: resolvePasskeyOrigins(),
           expectedRPID: resolvePasskeyRpId(),
         });
       }

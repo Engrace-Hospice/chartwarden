@@ -65,8 +65,8 @@ const registry = createScreenRegistry();
 // TASK-033: every response the client observes is fed through the global signal so the shell can
 // react (401 → /expired, 503 → /maintenance) regardless of which screen made the call.
 const client = createApiClient({
-  onResponseStatus: (status) => {
-    const signal = signalForStatus(status);
+  onResponseStatus: (status, url) => {
+    const signal = signalForStatus(status, url);
     if (signal) setGlobalResponseSignal(signal); // only 401/503 notify — don't re-render on every 2xx
   },
 });
