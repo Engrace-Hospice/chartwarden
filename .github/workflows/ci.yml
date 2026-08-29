@@ -271,6 +271,11 @@ jobs:
           # `ON CONFLICT` inference over it, and migration 0002's own-org-OR-global read policy — none
           # of which an in-memory double can be wrong about.
           - { name: "M1 feature flags", scripts: "test:m1:feature-flags:live" }
+          # F-093: the §3.4.1 `system_locked` CoP floor existed only in the in-memory RoleStore the route
+          # tests use; the Drizzle store production mounts had neither the floor check nor the delete
+          # refusal. LIVE by necessity — a test against the double proves the double, which is precisely
+          # what every suite had been doing while the deployed control was absent.
+          - { name: "M3 role catalog floor", scripts: "test:m3:role-floor:live" }
           # F-073 (#182) — LIVE by necessity: the in-memory IdempotencyStore is a Map with no
           # constraint, so it accepts the bodiless completion Postgres refused. Every unit, DOM and
           # inject test passed while all 24 `code(204)` routes 500'd on the production store.

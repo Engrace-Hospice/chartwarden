@@ -310,6 +310,38 @@ the prose docs in `docs/architecture/`.
   than maintained by hand. `org_admin` is deliberately NOT included even though ~10 predicates treat it
   as the tenant's top authority: it carries no `patient.read` floor, so the platform has never asserted
   that role reads charts.
+**The §3.4.1 CoP role floor was enforced in the test double and nowhere else (F-093).** Two files each
+named the other as the enforcer: `role-store.ts` — the Drizzle `RoleStore` the composition root mounts —
+said "the route layer enforces the `system_locked` CoP floor before calling the store", while
+`authz-routes.ts` says "the §3.4.1 floor check IN THE STORE is what refuses it" and only TRANSLATES a
+`RoleLockedError` into a 409. The store that raises it is `createInMemoryRoleStore`, the slice every
+route test runs against; the production one deleted and re-inserted `role_permission` unconditionally and
+deleted any role row handed to it. So `PATCH /api/v1/roles/:id { permissionKeys: [] }` stripped the
+Medical Director's CoP floor and `DELETE` removed the Compliance Officer role — M03-F06, the control CoP
+418.102 / 418.64(a) / 418.52 rest on. **Two more defects sat under it.** (1) The pre-read ran on the bare
+pool — `db.select().where(eq(roles.id, id))` with no `withOrgContext`, so `app.org_id` was unset, the
+policy predicate was NULL and it matched nothing: under real RLS every role edit was a raw 500 and every
+delete a silent no-op. It looked fine in development because `db:migrate` grants `wardenx_app` BYPASSRLS
+there, which is exactly the gap the live-suite convention exists to cross. (2) **Eight of the
+twenty-seven floor keys named permissions no module registers** — `cti.sign` where M6 registers
+`cti.sign_hospice_md`, `order.cosign` where M11 registers `orders.cosign`, `security_event.read` for a
+resource with no table, no route and no key anywhere. `role_permission.permission_key` REFERENCES
+`permission.key`, so those floors were UNGRANTABLE, and `floorViolations` reports an ungrantable key as
+stripped on every edit — enforcing §3.4.1 without fixing them would have made locked roles permanently
+uneditable. The floors now name catalog keys, `permission-catalog.test.ts` pins the resolution invariant
+in both directions (floors and template `grants`), and `role-templates.test.ts` no longer pins the spec's
+§3.4.1 table verbatim: pinning the spec is what preserved the eight dangling names, and `catalog.ts`'s own
+rule — "the permission catalog is CODE, the single source of truth" — plus the authority rule (a module
+spec is an implementation proposal) settle which side is normative. `m3-role-catalog-floor.live.test.ts`
+is the proof and is LIVE by necessity: a test against the double proves the double, which is what every
+suite had been doing while the deployed control was absent. All 10 of its cases fail against the
+pre-fix store. **Two related absences are reported, not fixed**: nothing materializes `ROLE_TEMPLATES`
+into the `role` table (the `permission` catalog has `db:sync:permissions`; roles have no sibling), so
+every row in every database is org-owned with `system_default`/`system_locked` FALSE and migration 0025's
+org-NULL read widening admits template rows nothing creates — which is why the lock check keys on the
+role KEY and treats the column as a second arm; and this file ships 13 templates where the spec's
+Appendix A enumerates ≈60.
+
 - `scripts/check-request-header-auth.ts` — **request-header authorization gate** (F-028,
   `bun run arch:request-header-auth`, in `arch:fitness`). A request header is whatever the caller
   typed; deciding an AUTHORIZATION question from one, unverified, hands the decision to the party
