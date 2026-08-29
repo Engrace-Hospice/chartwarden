@@ -56,10 +56,14 @@ export interface RoleView {
   readonly permissionKeys: readonly string[];
 }
 
-/** A `system_locked` role cannot be deleted or stripped below its CoP floor (§3.4.1). */
+/**
+ * A `system_locked` role cannot be deleted or stripped below its CoP floor (§3.4.1); a platform
+ * template cannot be written by a tenant at all. `kind` is diagnostic — the route maps every variant
+ * to one 409 `ROLE_LOCKED` — so a new member widens the vocabulary without changing any response.
+ */
 export class RoleLockedError extends Error {
   constructor(
-    readonly kind: "delete" | "floor",
+    readonly kind: "delete" | "floor" | "template",
     message: string,
     readonly strippedKeys: readonly string[] = [],
   ) {
