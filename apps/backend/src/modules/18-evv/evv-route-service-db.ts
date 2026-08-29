@@ -515,10 +515,20 @@ export function createDbEvvBackend(
     /**
      * §7.7 correction-of-record — the route's `:eventId` and its ≥60-char `correctionReason` used to be
      * parsed and dropped, and the handler called plain `recordCapture` (F-068 §1). Against the real
-     * per-leaf `UNIQUE (organization_id, visit_id, kind) WHERE superseded_by_event_id IS NULL` that could
-     * not even succeed: the original stayed live, so a same-day correction — the same visit, the same
-     * kind, the same monthly partition — hit the index, and one filed across a month boundary landed in
-     * a different leaf, missed the backstop, and left two live events for one leg of the bracket.
+     * per-leaf `UNIQUE (organization_id, visit_id, kind)` backstop that could not even succeed: the
+     * original stayed live, so a same-day correction — the same visit, the same kind, the same monthly
+     * partition — hit the index, and one filed across a month boundary landed in a different leaf,
+     * missed the backstop, and left two live events for one leg of the bracket.
+     *
+     * F-088 — AND NEITHER COULD THE FIX, for two years' worth of the same reason one layer down. 0047
+     * defined the index's ACTIVE as `superseded_by_event_id IS NULL`; that column points at the row
+     * that REPLACES this one, so nothing can set it before the replacement is inserted, and at the
+     * moment of the insert both rows satisfied the predicate. Every correction, every tenant, 23505.
+     * The ordering below is the tell: `superseded_at` is stamped BEFORE the insert precisely because
+     * it is the marker a transaction can set with nothing to point at yet — the service and the index
+     * simply disagreed about which column means superseded, and the index won. 0236 keys it on
+     * `superseded_at`, and `m18-evv-write.live.test.ts` proves the backstop still refuses a genuine
+     * second active event.
      *
      * The decision is the pure `correctEvent` machine in `domain/event-lifecycle.ts`, which has been
      * complete and uncalled since M18-T03. This applies the five §2.4 effects it declares, in the order
