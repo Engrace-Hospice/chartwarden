@@ -13,10 +13,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
   type PatientView,
+  createInMemoryCaseloadStore,
   createInMemoryPatientRouteService,
   registerPatientRoutes,
 } from "../src/modules/05-patient/index";
 import type { MatchCandidate } from "../src/modules/05-patient/matching/index";
+import { registerCaseloadSeam } from "../src/modules/05-patient/seams/index";
 import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/index";
 
 function headerAuth(request: FastifyRequest): void {
@@ -104,6 +106,19 @@ function makeServer() {
     },
   });
   registerPredicateIdempotent("caseload_or_scope", predicates.caseload_or_scope);
+  // F-096 — the CENSUS narrowing reads the same caseload through M5's own `CaseloadProvider` seam
+  // (`caseloadPatientIds`, the `patient_id = ANY(:ids)` set) rather than through the predicate, because
+  // a preHandler can refuse a collection but cannot filter one. Seeded from the SAME `CASELOAD` set the
+  // predicate resolves, so the list half and the chart half cannot disagree in this harness about who
+  // is on whose caseload.
+  registerCaseloadSeam({
+    store: createInMemoryCaseloadStore(
+      [...CASELOAD].map((row) => {
+        const [organizationId, userId, patientId] = row.split(":") as [string, string, string];
+        return { organizationId, userId, patientId };
+      }),
+    ).store,
+  });
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerPatientRoutes(app, { service });
   return { app, events };
@@ -494,7 +509,7 @@ describe("M5-T09 — patient routes (§4.2, §4.7 gating, §7.1/§7.4/§7.7)", (
     await app.close();
   });
 
-  it("F-092 a per-chart WRITE is scoped too (add address), and the census list is not", async () => {
+  it("F-092 a per-chart WRITE is scoped too (add address)", async () => {
     const { app } = makeServer();
     const write = await app.inject({
       method: "POST",
@@ -503,13 +518,62 @@ describe("M5-T09 — patient routes (§4.2, §4.7 gating, §7.1/§7.4/§7.7)", (
       payload: { line1: "1 Elm", city: "Springfield", state: "IL", postalCode: "62701" },
     });
     expect(write.statusCode).toBe(403); // no patient.edit — RBAC refuses before the scope guard
+    await app.close();
+  });
 
-    // The census list is deliberately NOT narrowed (§7.5's `caseloadPatientIds` filter is unimplemented
-    // and applying it is a product decision). Asserted so the gap is a KNOWN state rather than a
-    // silent one: if someone narrows the list later, this test is where they will say so.
+  // ── F-096: §7.5's OTHER half — the census list ─────────────────────────────────────────────────
+  //
+  // The assertion this block replaces read "the census list is not [narrowed]", and said: "asserted so
+  // the gap is a KNOWN state rather than a silent one: if someone narrows the list later, this test is
+  // where they will say so." This is that. Until now any holder of `patient.read` listed every patient
+  // in the tenant, which is the larger of the two disclosures F-092 split: a chart read leaks one
+  // patient to someone who guessed an id; a census leaks the identity of every patient the agency
+  // serves to everyone who can log in.
+
+  const idsOf = (res: { json: () => { items: { id: string }[] } }) =>
+    res.json().items.map((p) => p.id);
+
+  it("F-096 a patient.read holder on NO caseload gets an EMPTY census, not the tenant's", async () => {
+    const { app } = makeServer();
     const list = await app.inject({ url: "/api/v1/patients", headers: OFF_CASELOAD });
     expect(list.statusCode).toBe(200);
-    expect(list.json().items.map((p: { id: string }) => p.id)).toContain(EXISTING);
+    // 200 with nothing in it, not 403: the actor may ask for a census, they simply have none. The
+    // failure shape this pins is `if (ids.length > 0) narrow(ids)`, which would return the whole tenant
+    // here — for precisely the actor who should see least.
+    expect(idsOf(list)).toEqual([]);
+    await app.close();
+  });
+
+  it("F-096 an assigned clinician sees their caseload — narrowing is not closing", async () => {
+    const { app } = makeServer();
+    const list = await app.inject({ url: "/api/v1/patients", headers: EDIT });
+    expect(list.statusCode).toBe(200);
+    expect(idsOf(list)).toEqual([EXISTING]);
+    await app.close();
+  });
+
+  it("F-096 an org-wide oversight role still sees the whole census", async () => {
+    // The DON is on no caseload at all. `hasOrgWideScope` answers for the LIST exactly as it answers
+    // for the chart guard — one derivation, so the two halves of §7.5 cannot disagree about who is
+    // org-wide. Before F-096 this role was absent from three of the five copies of that list.
+    const { app } = makeServer();
+    const list = await app.inject({ url: "/api/v1/patients", headers: DON });
+    expect(list.statusCode).toBe(200);
+    expect(idsOf(list)).toContain(EXISTING);
+    await app.close();
+  });
+
+  it("F-096 the q-filter cannot widen the census past the caseload", async () => {
+    // Narrowing has to survive every other filter the route accepts, or a search box becomes the
+    // bypass: the caseload predicate is ANDed into the same WHERE as `status` and `q`, never applied
+    // after them.
+    const { app } = makeServer();
+    const list = await app.inject({
+      url: `/api/v1/patients?q=${existing.lastName}`,
+      headers: OFF_CASELOAD,
+    });
+    expect(list.statusCode).toBe(200);
+    expect(idsOf(list)).toEqual([]);
     await app.close();
   });
 });

@@ -209,6 +209,7 @@
     "client:check": "openapi-typescript docs/api/openapi.json -o /tmp/wardenx-client-schema.ts && diff -q packages/ui/src/core/api/schema.ts /tmp/wardenx-client-schema.ts || (echo 'FAIL packages/ui/src/core/api/schema.ts is out of date. Run: bun run client:gen' && exit 1)",
         "test:m4:compliance-routes:live": "vitest run apps/backend/__tests__/gap-003-compliance-routes.live.test.ts",
     "test:m5:death-cascade:live": "vitest run apps/backend/__tests__/gap-004-death-cascade.live.test.ts",
+    "test:m5:census-scope:live": "vitest run apps/backend/__tests__/m5-census-caseload-scope.live.test.ts",
     "test:m7:conformance:live": "vitest run apps/backend/__tests__/care-plan-conformance.live.test.ts",
     "test:m7:consent-wiring:live": "vitest run apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
     "test:m14:clinical-event-consumers:live": "vitest run apps/backend/__tests__/clinical-event-consumers.live.test.ts",

@@ -355,6 +355,7 @@ jobs:
           # it names — the M5 §7.8 death cascade, the M25 835 receive→post pipeline, the M26→M27 cap
           # seam CLAUDE.md cites by filename, M31's right-to-erasure eraser, M36's real AlertEmitter.
           - { name: "M5 Patient death cascade", scripts: "test:m5:death-cascade:live" }
+          - { name: "M5 census caseload scope (F-096)", scripts: "test:m5:census-scope:live" }
           - {
               name: "M25 Remittance",
               scripts: "test:m25:835-ingestion:live test:m25:interim-payments-seam:live",
