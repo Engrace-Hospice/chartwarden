@@ -169,7 +169,14 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-f062','A','A')",
       [ORG_A],
     );
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'f062@x.test')`, [USER]);
+    // MD and ATTENDING are real `user` rows, not free-floating uuids:
+    // `face_to_face_encounter.performed_by_user_id` carries an FK to `user`, so `attestF2f` — the whole
+    // premise of the two R-F2F-04 cases — raises 23503 without them. The CTI columns have no such FK,
+    // which is why `activate()` never noticed.
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'f062@x.test'), ($2,'f062-md@x.test'), ($3,'f062-att@x.test')`,
+      [USER, MD, ATTENDING],
+    );
     await admin.query(
       `INSERT INTO provider_entity (id,organization_id,legal_name,ccn,npi,tax_id_encrypted,fiscal_year_end)
          VALUES ($1,$2,'A Hospice','341234','1111111111','\\x00','12-31'),
@@ -376,7 +383,11 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
       await expect(
         svc.signElection(ORG_A, es.id, es.version, USER, {
           signingPatientName: "Rep Resentative",
-          signingRole: "representative",
+          // `legal_representative` is the WIRE vocabulary (`ElectionSignSchema`); `representative` is the
+          // COLUMN enum, and `SIGNER_KIND_BY_ROLE` exists to map between them. This case used to pass the
+          // column value, which is not a key of that map — so `signerKind` was `undefined` and R-EL-01 was
+          // skipped entirely (F-089). `apps/backend/tsconfig.json` includes only `src`, so nothing objected.
+          signingRole: "legal_representative",
         }),
       ).rejects.toMatchObject({ code: "REPRESENTATIVE_AUTHORITY_MISSING", statusCode: 403 });
     });
@@ -387,7 +398,7 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
       const es = await svc.draftElectionStatement(ORG_A, a.admissionId, a.periodId, DRAFT);
       const signed = await svc.signElection(ORG_A, es.id, es.version, USER, {
         signingPatientName: "Rep Resentative",
-        signingRole: "representative",
+        signingRole: "legal_representative",
       });
       expect(signed.state).toBe("signed");
     });
@@ -408,27 +419,61 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
       await expect(
         svcNoDpoa.signElection(ORG_A, es.id, es.version, USER, {
           signingPatientName: "Rep Resentative",
-          signingRole: "representative",
+          signingRole: "legal_representative",
         }),
       ).rejects.toMatchObject({ code: "REPRESENTATIVE_AUTHORITY_MISSING" });
     });
   });
 
   describe("R-EL-02 / the overlap guard — one election at a time", () => {
+    /**
+     * A PRIOR admission for this patient, discharged, whose election period was never completed —
+     * seeded directly, because it is the only shape in which these two guards can fire (F-089).
+     *
+     * Both cases used to build a second CONCURRENT admission through `admit(patientId)`, and died in
+     * the helper rather than in the machine they name. They have never passed, and could not have:
+     * a patient cannot hold two open admissions in an org at ALL. `acceptReferral` runs the
+     * `createAdmission` transition first, whose `hasOtherOpenAdmission` guard refuses it, and beneath
+     * that `admission_patient_open_idx` (0026) is a DATABASE unique index on (organization_id,
+     * patient_id) WHERE status NOT IN ('discharged','bereavement','closed'). Two layers, neither of
+     * which the election machine is behind.
+     *
+     * What `concurrentElectionFacts` actually asks is narrower than "concurrent admission" and is
+     * what makes the guards live code: it looks for a non-`completed` election period on a DIFFERENT
+     * admission of the same patient. A properly discharged admission completes its period — which is
+     * why the re-election case below passes — so this fires exactly when a prior election was left
+     * open: a discharge that did not complete the period, an import, a repair. Then a re-election is
+     * refused, as PATIENT_ALREADY_ELECTED when the stale period sits at another provider entity and
+     * as ELECTION_PERIOD_OVERLAP when it sits at this one (`checkNoConcurrentElection` runs first,
+     * and only it is provider-entity-sensitive).
+     */
+    async function seedStalePriorElection(patientId: string, providerEntityId: string) {
+      const admissionId = (
+        await admin.query(
+          `INSERT INTO admission (organization_id, patient_id, provider_entity_id, status)
+           VALUES ($1,$2,$3,'discharged') RETURNING id`,
+          [ORG_A, patientId, providerEntityId],
+        )
+      ).rows[0].id as string;
+      await admin.query(
+        `INSERT INTO election_period (organization_id, admission_id, sequence_number, period_kind, status)
+         VALUES ($1,$2,1,'ninety_day','active')`,
+        [ORG_A, admissionId],
+      );
+      return admissionId;
+    }
+
     it("refuses to elect a patient who is already elected at another provider entity", async () => {
       const patientId = randomUUID();
-      await activate(patientId); // active election at PROVIDER_ENTITY
+      await seedStalePriorElection(patientId, PROVIDER_ENTITY_2);
 
       const second = await admit(patientId);
-      // Site the second admission at the OTHER hospice, which is what R-EL-02 names.
-      await admin.query("UPDATE admission SET provider_entity_id=$1 WHERE id=$2", [
-        PROVIDER_ENTITY_2,
+      const es = await svc.draftElectionStatement(
+        ORG_A,
         second.admissionId,
-      ]);
-      const es = await svc.draftElectionStatement(ORG_A, second.admissionId, second.periodId, {
-        ...DRAFT,
-        electedProviderEntityId: PROVIDER_ENTITY_2,
-      });
+        second.periodId,
+        DRAFT,
+      );
       await expect(svc.signElection(ORG_A, es.id, es.version, USER, SIGN)).rejects.toMatchObject({
         code: "PATIENT_ALREADY_ELECTED",
         statusCode: 409,
@@ -437,7 +482,7 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
 
     it("refuses a second concurrent election at the SAME hospice as an overlap", async () => {
       const patientId = randomUUID();
-      await activate(patientId);
+      await seedStalePriorElection(patientId, PROVIDER_ENTITY);
       const second = await admit(patientId);
       const es = await svc.draftElectionStatement(
         ORG_A,
@@ -449,6 +494,14 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
         code: "ELECTION_PERIOD_OVERLAP",
         statusCode: 409,
       });
+    });
+
+    // …and the outer gate those two step around is asserted here, so stepping around it cannot
+    // quietly become a way of not testing it. This is the refusal the old versions actually got.
+    it("the referral path refuses a second OPEN admission before the election machine is reached", async () => {
+      const patientId = randomUUID();
+      await activate(patientId);
+      await expect(admit(patientId)).rejects.toMatchObject({ code: "PATIENT_ALREADY_ELECTED" });
     });
 
     it("allows a re-election once the prior admission has been discharged", async () => {
