@@ -491,10 +491,41 @@ WebAuthn half already existed and was wired to nothing; the TOTP half did not ex
 published primitives rather than reimplementing them, and refusing rather than throwing on every failure
 so the route's contract can turn a false into the 401 the lockout counter is built on. `resolvePasskeyRpId`
 /`resolvePasskeyOrigin` are now shared with enrolment, because a step-up that resolved its own RP identity
-would refuse every passkey this instance ever issued and report it as "assertion invalid". **Known gap
-left open:** a route can still be in the published contract and mounted by nothing — the reachability
-analysis a gate would need is a call graph from the composition root, and the obvious cheap proxy
-(is the registrar referenced anywhere?) would NOT have caught this one, since M2's index re-exported it.
+would refuse every passkey this instance ever issued and report it as "assertion invalid". **The gap this
+left open is now closed (F-090):** a route could still be in the published contract and mounted by
+nothing, and `scripts/check-route-reachability.ts` is the call graph from the composition root that
+F-029 said it would take. See its entry below — it found two more surfaces in exactly that state.
+- `scripts/check-route-reachability.ts` — **route reachability from the composition root** (F-090,
+  `bun run arch:route-reachability`, in `arch:fitness`). Every function that registers an HTTP route
+  must be REACHED from `apps/backend/src/index.ts`. `scan-routes.ts` reads SOURCE, so an unmounted
+  registrar is published in `docs/api/openapi.json` exactly like a mounted one and answers **404** —
+  the contract advertises a surface that does not exist. F-029 was the instance that made the point
+  (`registerSessionStepUpRoutes` had production-shaped adapters and exactly one caller, its own test,
+  so `session.last_step_up_at` was written by nobody and every step-up gate on the platform answered
+  "not fresh" forever) and it named both the gate needed and the trap in the cheap version: **a
+  barrel's `export { registerFooRoutes } from "./foo"` is a reference, not an execution**, so "is it
+  referenced anywhere?" answers yes for a registrar nothing calls. Grep cannot separate those; the
+  AST can, because a re-export is an `ExportDeclaration` whose names are `ExportSpecifier` nodes — a
+  kind that never appears in executable code — and skipping exactly that kind is the whole difference.
+  Syntax-only (`ts.createSourceFile`, no type checker) so it runs in ~0.7s like the other gates. It
+  found **two** surfaces in that state, both re-exported and called by nothing: **M22's DocLens
+  extraction** (`POST /api/v1/intake/uploads/{id}/extraction/run` + `/jobs/{id}/extraction/commit`)
+  and **M36's three inbound vendor webhooks**. DocLens is now mounted — everything it needs existed,
+  and the module spends a paragraph specifying `503 EXTRACTION_DISABLED` + `Retry-After: 0` as the
+  Phase-1 answer, which is a different statement from 404 (the capability is off for this tenant vs.
+  the endpoint does not exist); it also meant `documents.doclens`, the capability flag whose whole job
+  is to turn the surface on when M32 lands, was **an activation switch wired to nothing**. No flag
+  reader is threaded and that is the accurate state, not an omission: nothing at boot reads the
+  `feature_flag` table — M1's `createDefaultFeatureFlagReader` answers `{}` for every org and M34's
+  admin surface only WRITES flags, **which is a standing finding of its own**. M36's webhooks are a
+  registered `DEFERRED` entry, the `deviceAttestationValid` rule at route-surface granularity: the
+  routes and both §4.9 verification layers are built but `MessagingWebhookService` — the
+  delivery-reconcile port every handler ends in — has **no implementation anywhere in the repo**, the
+  Twilio/Postmark secrets have no resolver, and `@fastify/formbody`, which that file's own header says
+  production registers so the urlencoded body parses into the map the HMAC is computed over, is
+  registered nowhere and is not a dependency. Mounting it would answer Twilio with a signature check
+  over an empty body and then call a service that does not exist. An entry that gains a mount fails
+  ("outlived its reason"), one whose registrar disappears fails, and an empty reason fails.
 - `scripts/check-live-suite-coverage.ts` — **live-suite CI coverage** (`bun run arch:live-suites`).
   Every live-database / live-Redis / browser suite in `package.json` must be invoked by a job in
   `.github/workflows/ci.yml`. A live suite is `describe.skipIf(!WARDENX_TEST_DATABASE_URL)`, so
