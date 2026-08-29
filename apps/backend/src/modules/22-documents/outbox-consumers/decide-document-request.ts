@@ -47,6 +47,17 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   // M33 has declared `declaredConsumers: ["m22"]` on it since it landed; with nothing bound, every render
   // request — including the scheduled path, which genuinely emits — sat `pending` forever.
   "m33.scheduled_report.render_requested", // report_export | scheduled_report
+  // ── F-099 — six requests that were LIVE-emitted from production write paths and consumed by nothing.
+  // Every one of them is the REQUEST spelling, which is what makes this different from the ~70 SOURCE
+  // clinical events that also declare `m22`: those are the handshake spelled a second way and the request
+  // half is wired; these ARE the request half, and nothing drained them. Each emit site's own comment says
+  // M22 renders it, and M37's back-ref column names the template.
+  "m10.hope.summary_requested", // hope_summary
+  "m16.bereavement.outreach_artifact_requested", // bereavement_welcome_packet (payload names the key)
+  "m20.safety.incident_report_requested", // safety_incident_report
+  "m25.appeal_packet.render_requested", // appeal_packet
+  "m27.artifact.render_requested", // cost_report_ecr | cost_report_pi | cost_report_supporting_doc
+  "m37.body_release.document_requested", // body_release_authorization
 ] as const;
 
 /** §4.11 render-request events the SPEC anticipates but no module's event catalog declares yet. Listed —
@@ -56,15 +67,22 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
  * `REQUEST_SHAPES` in ./render-consumer.ts gains its payload adapter, and M22 publishes a template
  * descriptor for every artifact it can ask for (M21's move needed mig 0196 for the two aggregate types).
  *
- * `m37.body_release.document_requested` is declared but has no emitter and no published template; the rest
- * are declared by no catalog at all. */
+ * Every name here is declared by no catalog under any spelling, EXCEPT where noted. This list used to
+ * carry `m37.body_release.document_requested` as "declared but has no emitter and no published template" —
+ * it is catalogued, M37's body-release machine emits it on `identifyFuneralHome`, and
+ * `ipu_body_release.release_document_id` was built to hold the result. It is now consumed (F-099), and the
+ * mistaken note is why it sat unconsumed: a wrong entry on a deferral list is indistinguishable from a
+ * correct one, and reads as a decision rather than an oversight. */
 export const M22_ANTICIPATED_DOCUMENT_REQUEST_EVENTS = [
   "m6.document_requested", // election_statement / cti / f2f / nor / revocation / discharge_summary
   "m9.assessment.document_requested", // assessment record PDF
-  "m13.administration_record.document_requested", // eMAR record PDF (GAP-025, declared but never emitted)
+  // CATALOGUED (`events-by-m13.ts`) and NOT emitted: the M13 machine pushes the outbox effect on
+  // `perAdministrationPdfRequired`, and the backend service that interprets M13's effects has no `outbox`
+  // arm at all — so the pure decider's request never becomes a row. Producer-side; kept here rather than
+  // subscribed, because a consumer bound to a name nothing emits is indistinguishable from working.
+  "m13.administration_record.document_requested", // eMAR record PDF (GAP-025)
   "m14.packet.document_requested", // idg_patient_packet / idg_minutes
   "m16.bereavement.document_requested", // bereavement_letter (letterKind discriminator)
-  "m37.body_release.document_requested", // IPU body-release record
 ] as const;
 
 /** One of the §4.11 render-request event names M22 consumes. */

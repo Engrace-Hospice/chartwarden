@@ -1953,6 +1953,17 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   "comfort_kit_return_receipt", // M21 — the DEA-1304 controlled-substance return receipt (mig 0196)
   "report_export", // M33 — an ad-hoc "export now" PDF/XLSX render (mig 0197)
   "report_schedule_run", // M33 — one scheduled-report OCCURRENCE's rendered artifact (mig 0197)
+  // F-099 (mig 0239) — the artifacts behind six render requests that were emitted from production write
+  // paths and consumed by nothing. M16's welcome packet files against `bereavement_letter` below, so it
+  // needs no value of its own; M27's three artifact kinds are three types because they are separately
+  // retained and separately superseded.
+  "hope_summary", // M10 — the printable HOPE assessment summary
+  "safety_incident_report", // M20 — the incident report PDF (M20 ships no PDF code)
+  "appeal_packet", // M25 — the tier-specific denial-appeal letter
+  "cost_report_ecr", // M27 — the electronic cost report itself
+  "cost_report_pi", // M27 — the provider-information supplement
+  "cost_report_supporting_doc", // M27 — a supporting document filed with the submission
+  "body_release_authorization", // M37 — `ipu_body_release.release_document_id`'s target
   "idg_patient_packet",
   "idg_minutes",
   "aide_poc",

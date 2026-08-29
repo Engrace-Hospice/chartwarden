@@ -1081,10 +1081,14 @@ export function createDbHopeBackend(
     async requestSummaryPdf(organizationId, userId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        await loadA(t, id); // 404 before emit if absent/cross-tenant
+        const a = await loadA(t, id); // 404 before emit if absent/cross-tenant
         await emit(t, organizationId, "m10.hope.summary_requested", "hope_assessment", id, {
           assessmentId: id,
           requestedBy: userId,
+          // F-099 — the chart target. M22 files a render against `document.patient_id`, and it reads the
+          // value off THIS payload; the row was already loaded for the 404, so carrying it costs no query.
+          // Without it the summary rendered patient-independent — on no chart, for a patient-scoped record.
+          patientId: a.patientId,
         });
         return { assessmentId: id, requested: true as const };
       });

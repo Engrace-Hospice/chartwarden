@@ -2289,6 +2289,10 @@ export function buildDrizzleIpuRouteService(
               payload: {
                 organizationId: actor.organizationId,
                 bodyReleaseId: br.id,
+                // F-099 — the decedent's chart, which every body-release artifact belongs to.
+                // `ipu_body_release.patient_id` is NOT NULL, so this is never absent; M22 reads it off
+                // the payload to file `body_release_authorization` against the right chart.
+                patientId: br.patientId,
                 ...(eff.event === "m37.body_release.funeral_home_identified" && body.funeralHomeId
                   ? { funeralHomeId: body.funeralHomeId }
                   : {}),

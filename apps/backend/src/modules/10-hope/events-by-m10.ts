@@ -233,6 +233,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       assessmentId: Type.String({ minLength: 1 }),
       requestedBy: Type.String({ minLength: 1 }),
+      /** The chart target M22 files the rendered summary against (F-099). */
+      patientId: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: ["m22"],
     isOutboxOnly: true,

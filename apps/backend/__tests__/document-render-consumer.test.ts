@@ -6,9 +6,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { DispatchableOutboxEvent } from "../src/bootstrap/outbox-dispatcher";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
+import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
 import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
+import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
+import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
 import {
   M22_DOCUMENT_REQUEST_EVENTS,
@@ -20,7 +23,10 @@ import {
   normalizeDocumentRequest,
 } from "../src/modules/22-documents/index";
 import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
+import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
+import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
+import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 
 const ORG = "00000000-0000-4000-8000-0000000000ee";
 const PAT = "00000000-0000-4000-8000-0000000000aa";
@@ -239,6 +245,142 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
     expect(adhoc.payload.aggregateId).toBe(EXPORT);
   });
 
+  // ── F-099 — the six that were emitted and drained by nothing ─────────────────────────────────────────
+  // Each case pins the two things that decide whether a rendered document is FINDABLE: the aggregate
+  // identity it back-refs, and the chart it lands on. Both were wrong-by-omission before this: M22
+  // rendered none of these at all, and four of the payloads carried no patient.
+
+  it("reads M10's HOPE summary request, filing it on the assessment's own patient chart", () => {
+    const { event, payload } = normalizeDocumentRequest({
+      eventType: "m10.hope.summary_requested",
+      organizationId: ORG,
+      payload: { assessmentId: ORDER, requestedBy: "user_1", patientId: PAT },
+    });
+    expect(event).toBe("m10.hope.summary_requested");
+    expect(payload.templateKey).toBe("hope_summary");
+    expect(payload.aggregateId).toBe(ORDER);
+    // The chart target. Without `patientId` on the wire this is null and a patient-scoped clinical
+    // summary files against no chart — the reason the producer payload gained the field.
+    expect(payload.patientId).toBe(PAT);
+  });
+
+  // The aggregate is the PLAN, not the contact: one welcome packet per plan. Keying it on `contactId`
+  // would make each additional bereaved contact a fresh render of a document the family already has.
+  it("reads M16's welcome packet against the PLAN, with the decedent as the chart", () => {
+    const { payload } = normalizeDocumentRequest({
+      eventType: "m16.bereavement.outreach_artifact_requested",
+      organizationId: ORG,
+      payload: {
+        planId: ORDER,
+        patientId: PAT,
+        contactId: DISPATCH,
+        outreachId: null,
+        templateKey: "bereavement_welcome_packet",
+        payloadJsonb: { deathDate: "2026-08-01" },
+      },
+    });
+    expect(payload.templateKey).toBe("bereavement_welcome_packet");
+    expect(payload.aggregateId).toBe(ORDER);
+    expect(payload.patientId).toBe(PAT);
+    expect(payload.content).toEqual({ deathDate: "2026-08-01" });
+  });
+
+  it("reads M20's incident report, and a STAFF-safety incident renders with no chart", () => {
+    const patientHarm = normalizeDocumentRequest({
+      eventType: "m20.safety.incident_report_requested",
+      organizationId: ORG,
+      payload: { incidentId: ORDER, patientId: PAT, renderTargetKind: "pdf" },
+    });
+    expect(patientHarm.payload.templateKey).toBe("safety_incident_report");
+    expect(patientHarm.payload.aggregateId).toBe(ORDER);
+    expect(patientHarm.payload.patientId).toBe(PAT);
+
+    // `safety_incident.patient_id` is nullable because a vehicle accident or a workplace injury has no
+    // patient. Null here is the CORRECT outcome — filing that report on someone's chart is worse than
+    // filing it on none — which is why the producer sends an explicit null rather than omitting it.
+    const staffInjury = normalizeDocumentRequest({
+      eventType: "m20.safety.incident_report_requested",
+      organizationId: ORG,
+      payload: { incidentId: ORDER, patientId: null, renderTargetKind: "pdf" },
+    });
+    expect(staffInjury.payload.patientId).toBeNull();
+  });
+
+  // M25 holds no patient link at all — `appeal_case` reaches a chart only through a NULLABLE `claim_id`
+  // into M23 — so this artifact is patient-independent by construction, not by omission. `tier` selects
+  // the letter's CONTENT, not a different artifact, so it stays in the content blob.
+  it("reads M25's appeal packet as patient-independent, tier riding the content", () => {
+    const { payload } = normalizeDocumentRequest({
+      eventType: "m25.appeal_packet.render_requested",
+      organizationId: ORG,
+      payload: { appealCaseId: ORDER, tier: "alj", payload: { denialReason: "MUE" } },
+    });
+    expect(payload.templateKey).toBe("appeal_packet");
+    expect(payload.aggregateId).toBe(ORDER);
+    expect(payload.patientId).toBeNull();
+    expect(payload.content).toEqual({ denialReason: "MUE" });
+  });
+
+  // Three artifacts on one wire name. The aggregate is the SUBMISSION: a reopened cost report submits
+  // again, and filing both against `costReportId` would make the second render an idempotent skip.
+  it("splits M27's three artifact kinds, keyed on the submission rather than the report", () => {
+    const kinds = {
+      ecr: "cost_report_ecr",
+      pi: "cost_report_pi",
+      supporting_doc: "cost_report_supporting_doc",
+    };
+    for (const [artifactKind, templateKey] of Object.entries(kinds)) {
+      const { payload } = normalizeDocumentRequest({
+        eventType: "m27.artifact.render_requested",
+        organizationId: ORG,
+        payload: {
+          costReportId: RUN,
+          submissionId: ORDER,
+          artifactKind,
+          payloadRef: EXPORT,
+          retentionClass: "compliance",
+        },
+      });
+      expect(payload.templateKey).toBe(templateKey);
+      expect(payload.aggregateId).toBe(ORDER);
+      expect(payload.patientId).toBeNull();
+    }
+  });
+
+  it("throws on an M27 artifactKind M22 has no template for", () => {
+    expect(() =>
+      normalizeDocumentRequest({
+        eventType: "m27.artifact.render_requested",
+        organizationId: ORG,
+        payload: { submissionId: ORDER, artifactKind: "worksheet_s10" },
+      }),
+    ).toThrow(/worksheet_s10' maps to no M22 template/);
+  });
+
+  // `ipu_body_release.release_document_id` is the column this fills, and its schema comment names this
+  // template. `patient_id` on that row is NOT NULL, so the decedent's chart is always resolvable.
+  it("reads M37's body-release request onto the decedent's chart", () => {
+    const { payload } = normalizeDocumentRequest({
+      eventType: "m37.body_release.document_requested",
+      organizationId: ORG,
+      aggregateId: DISPATCH, // the envelope also carries it; the BODY is what the catalog pins
+      payload: { organizationId: ORG, bodyReleaseId: ORDER, patientId: PAT },
+    });
+    expect(payload.templateKey).toBe("body_release_authorization");
+    expect(payload.aggregateId).toBe(ORDER);
+    expect(payload.patientId).toBe(PAT);
+  });
+
+  it("throws on an M37 body-release request carrying no bodyReleaseId", () => {
+    expect(() =>
+      normalizeDocumentRequest({
+        eventType: "m37.body_release.document_requested",
+        organizationId: ORG,
+        payload: { organizationId: ORG, patientId: PAT },
+      }),
+    ).toThrow(/names no aggregate id/);
+  });
+
   it("throws on an M33 aggregateType M22 has no template for", () => {
     expect(() =>
       normalizeDocumentRequest({
@@ -315,7 +457,7 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
     expect(doc).not.toBeNull();
   });
 
-  it("subscribes to the events M11/M12/M13/M21/M23/M33 declare — and nothing else", () => {
+  it("subscribes to every declared render request — and nothing else", () => {
     expect(harness().consumer.eventTypes).toEqual([
       "m11.order.document_requested",
       "m12.medication_order.document_requested",
@@ -323,6 +465,13 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       "m21.supply_request.document_requested",
       "m23.abn.required",
       "m33.scheduled_report.render_requested",
+      // F-099 — six that were emitted from production write paths and drained by nothing.
+      "m10.hope.summary_requested",
+      "m16.bereavement.outreach_artifact_requested",
+      "m20.safety.incident_report_requested",
+      "m25.appeal_packet.render_requested",
+      "m27.artifact.render_requested",
+      "m37.body_release.document_requested",
     ]);
   });
 
@@ -333,14 +482,24 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
   // survivable because nothing was ever bound. This pins each subscribed name to a real producer
   // declaration that names m22 as a consumer, so a producer-side rename fails here rather than at boot.
   it("every subscribed event is declared by its producer, with m22 among its consumers", () => {
+    // Hand-listed on purpose, and SELF-CHECKING: a subscribed event whose producer catalog is missing
+    // from this list fails below as "not declared by any producer catalog", exactly as if the producer
+    // had renamed it. So the list cannot silently fall behind — adding a producer module to
+    // M22_DOCUMENT_REQUEST_EVENTS and not to this import list is a red test, never a quiet pass.
     const declared = new Map(
       [
+        ...M10_OUTBOX_EVENTS,
         ...M11_OUTBOX_EVENTS,
         ...M12_OUTBOX_EVENTS,
         ...M13_OUTBOX_EVENTS,
+        ...M16_OUTBOX_EVENTS,
+        ...M20_OUTBOX_EVENTS,
         ...M21_OUTBOX_EVENTS,
         ...M23_OUTBOX_EVENTS,
+        ...M25_OUTBOX_EVENTS,
+        ...M27_OUTBOX_EVENTS,
         ...M33_OUTBOX_EVENTS,
+        ...M37_OUTBOX_EVENTS,
       ].map((e) => [e.eventName, e]),
     );
     for (const eventName of M22_DOCUMENT_REQUEST_EVENTS) {
@@ -389,6 +548,101 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
     );
     expect(h.rendered).toHaveLength(0);
     expect(h.refusals).toEqual([{ kind: "sud_consent_absent", detail: "order_record" }]);
+  });
+
+  // F-099 end-to-end: the six requests that were emitted with nothing draining them now produce a real
+  // `document` row through the SAME decide → render → back-ref path M11's does. The per-source assertion
+  // is `renderedDocumentForAggregate`, because the (aggregate_type, aggregate_id) pair IS how a source
+  // module finds its own document — a render filed under the wrong pair is as lost as one never made.
+  it("renders each of the six previously-undrained requests against its own aggregate", async () => {
+    const cases = [
+      {
+        eventType: "m10.hope.summary_requested",
+        aggregateKind: "hope_assessment",
+        payload: { assessmentId: ORDER, requestedBy: "user_1", patientId: PAT },
+        templateKey: "hope_summary",
+        aggregateType: "hope_summary",
+        patientId: PAT,
+      },
+      {
+        eventType: "m16.bereavement.outreach_artifact_requested",
+        aggregateKind: "bereavement_plan",
+        payload: {
+          planId: ORDER,
+          patientId: PAT,
+          contactId: DISPATCH,
+          outreachId: null,
+          templateKey: "bereavement_welcome_packet",
+          payloadJsonb: {},
+        },
+        templateKey: "bereavement_welcome_packet",
+        aggregateType: "bereavement_letter",
+        patientId: PAT,
+      },
+      {
+        eventType: "m20.safety.incident_report_requested",
+        aggregateKind: "safety_incident",
+        payload: { incidentId: ORDER, patientId: null, renderTargetKind: "pdf" },
+        templateKey: "safety_incident_report",
+        aggregateType: "safety_incident_report",
+        patientId: null,
+      },
+      {
+        eventType: "m25.appeal_packet.render_requested",
+        aggregateKind: "appeal_case",
+        payload: { appealCaseId: ORDER, tier: "redetermination", payload: {} },
+        templateKey: "appeal_packet",
+        aggregateType: "appeal_packet",
+        patientId: null,
+      },
+      {
+        eventType: "m27.artifact.render_requested",
+        aggregateKind: "ecr_submission",
+        payload: {
+          costReportId: RUN,
+          submissionId: ORDER,
+          artifactKind: "ecr",
+          payloadRef: EXPORT,
+          retentionClass: "compliance",
+        },
+        templateKey: "cost_report_ecr",
+        aggregateType: "cost_report_ecr",
+        patientId: null,
+      },
+      {
+        eventType: "m37.body_release.document_requested",
+        aggregateKind: "ipu_body_release",
+        payload: { organizationId: ORG, bodyReleaseId: ORDER, patientId: PAT },
+        templateKey: "body_release_authorization",
+        aggregateType: "body_release_authorization",
+        patientId: PAT,
+      },
+    ] as const;
+
+    for (const c of cases) {
+      const h = harness();
+      await h.consumer.handle(
+        delivered({
+          eventType: c.eventType,
+          aggregateKind: c.aggregateKind,
+          aggregateId: ORDER,
+          payload: c.payload,
+        }),
+      );
+      expect(h.refusals, `${c.eventType} was refused`).toEqual([]);
+      expect(h.rendered, `${c.eventType} rendered nothing`).toHaveLength(1);
+      expect(h.rendered[0]?.templateKey).toBe(c.templateKey);
+      const doc = await h.store.renderedDocumentForAggregate({
+        aggregateType: c.aggregateType,
+        aggregateId: ORDER,
+        organizationId: ORG,
+      });
+      expect(doc, `${c.eventType} filed no document row`).not.toBeNull();
+      expect(h.rendered[0]?.payload).toMatchObject({ aggregateId: ORDER });
+      // The chart target reaches the renderer, including the deliberate nulls (a staff-safety incident,
+      // an appeal M25 cannot link to a patient, an org-level cost-report artifact).
+      expect((h.rendered[0]?.payload as { patientId: string | null }).patientId).toBe(c.patientId);
+    }
   });
 
   it("renders the SUD-class request when M39 returns an active consent", async () => {
