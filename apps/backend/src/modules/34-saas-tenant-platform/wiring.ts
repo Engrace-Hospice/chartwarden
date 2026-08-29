@@ -292,6 +292,10 @@ export function buildDrizzlePlatformService(deps: {
   /** #107 — the live transactional-outbox publisher (callerModule-pinned 'm34'). When omitted the lifecycle
    *  outbox stays fail-closed (the §2.5 emit throws, never a silent no-op). */
   outbox?: OutboxPublishPort;
+  /** F-091 — M1's `FeatureFlagAdmin` seam (§4.7 / D13). M1 owns the `feature_flag` schema, so the
+   *  implementation is bound in the composition root and passed in here rather than constructed
+   *  locally; omitted, the three admin routes keep the fail-closed stub below. */
+  featureFlags?: FeatureFlagAdminPort;
 }): { service: TenantPlatformRouteService } {
   const outbox: OutboxPublishPort = deps.outbox ?? {
     async publish(_tx, input) {
@@ -301,7 +305,12 @@ export function buildDrizzlePlatformService(deps: {
       );
     },
   };
-  const featureFlags: FeatureFlagAdminPort = {
+  // F-091 — bound in production. The stub below is the no-accessor fallback (a slice/no-db boot), NOT
+  // the deployed state any more: until F-091 this stub WAS the production binding, so all three §4.7
+  // admin routes answered 5xx and the `feature_flag` table had no writer at all. `setKillSwitch` still
+  // refuses even when bound — the reason lives with the implementation (M1's `KILL_SWITCH_BLOCKED_REASON`)
+  // because it is a fact about the alert taxonomy, not about this wiring.
+  const featureFlags: FeatureFlagAdminPort = deps.featureFlags ?? {
     async list() {
       throw new M34InfraPortUnbound(
         "featureFlags.list",

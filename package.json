@@ -107,6 +107,7 @@
     "test:m40:governance:live": "vitest run apps/backend/__tests__/gap-060-m40-governance-writes.live.test.ts",
     "test:m29:nppes-sync:live": "vitest run apps/backend/__tests__/gap-045-m29-nppes-sync.live.test.ts",
     "test:m1:platform-outbox:live": "vitest run apps/backend/__tests__/gap-099-platform-outbox-delivery.live.test.ts",
+    "test:m1:feature-flags:live": "vitest run apps/backend/__tests__/m1-feature-flags.live.test.ts",
     "test:m1:outbox-dispatcher:live": "vitest run apps/backend/__tests__/outbox-dispatcher.live.test.ts",
     "test:m38:admin:live": "vitest run apps/backend/__tests__/gap-063-terminology-admin.live.test.ts",
     "test:m34:tenant-key-provider:live": "vitest run apps/backend/__tests__/m34-tenant-key-provider.live.test.ts",

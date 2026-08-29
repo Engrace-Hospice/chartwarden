@@ -1,0 +1,33 @@
+-- F-091 — `feature_flag_key_org_idx` did not constrain PLATFORM-GLOBAL flags at all.
+--
+-- The index is `UNIQUE (flag_key, organization_id)` and `organization_id` is NULL for a platform-global
+-- flag (M1 §3.10). In Postgres two NULLs are DISTINCT for uniqueness purposes unless the index says
+-- otherwise, so the constraint that reads as "one row per (key, scope)" has never applied to the global
+-- scope: `('ai.full', NULL)` may be inserted any number of times, each row a different value, with no
+-- error and nothing to say which one wins.
+--
+-- It is not only a duplicate-row problem, and the second half is the one that bites first. An UPSERT
+-- keyed on this index — `ON CONFLICT (flag_key, organization_id) DO UPDATE` — cannot MATCH a global row
+-- either, for the same reason: there is no conflict to detect. So the M34 §4.7 admin write, whose whole
+-- contract is create-or-update, silently degrades to create-only for exactly the flags a platform
+-- operator sets, and the second edit of a global flag appends a rival row rather than changing the first.
+-- Verified against a live schema before this migration was written: two plain inserts of the same global
+-- key both succeed, and two ON CONFLICT upserts of the same global key leave TWO rows, neither updated.
+--
+-- Nothing had ever exercised it. Until F-091 the `feature_flag` table had no writer in the running
+-- system at all (M34's `FeatureFlagAdminPort` was bound to a stub that threw on all three methods), so
+-- the only INSERTs it ever saw were per-tenant rows in tests, where the index works correctly.
+--
+-- `NULLS NOT DISTINCT` makes the NULL scope behave like every other scope: one row per (key, global).
+-- The precedent is migration 0110's `sss_active_pair_uniq`, where the same clause is likewise
+-- load-bearing rather than cosmetic. A partial-index pair (one for the org scope, one
+-- `WHERE organization_id IS NULL`) would restore uniqueness but NOT the upsert, because inference would
+-- then need the predicate spelled at every call site; this keeps one index and one inference target.
+--
+-- Idempotent by construction: DROP … IF EXISTS then CREATE, no data change. If a deployment somehow
+-- already holds duplicate global rows this CREATE fails loudly rather than silently keeping one — which
+-- is correct, because which of two rival platform-global flag values is the real one is not a decision a
+-- migration may take.
+DROP INDEX IF EXISTS "feature_flag_key_org_idx";--> statement-breakpoint
+CREATE UNIQUE INDEX "feature_flag_key_org_idx"
+  ON "feature_flag" USING btree ("flag_key", "organization_id") NULLS NOT DISTINCT;
