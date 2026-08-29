@@ -93,6 +93,7 @@
     "test:m17:write:live": "vitest run apps/backend/__tests__/m17-scheduling-write.live.test.ts",
     "test:m18:read:live": "vitest run apps/backend/__tests__/m18-evv-read-service.live.test.ts",
     "test:m18:write:live": "vitest run apps/backend/__tests__/m18-evv-write.live.test.ts",
+    "test:m19:inbound-triggers:live": "vitest run apps/backend/__tests__/m19-inbound-triggers.live.test.ts",
     "test:m20:consumers:live": "vitest run apps/backend/__tests__/m20-field-safety-consumers.live.test.ts",
     "test:f073:idempotency-bodiless:live": "vitest run apps/backend/__tests__/f-073-idempotency-bodiless-response.live.test.ts",
     "test:m28:fhir-gateway:live": "vitest run apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
