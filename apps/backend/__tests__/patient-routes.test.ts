@@ -2,7 +2,9 @@
 // (§4.2; §4.7 permission handshake; §7.1 admit-no-dup / §7.4 address cascade / §7.7 right-to-amend).
 import {
   createInMemoryEffectivePermissionStore,
+  registerAbacRegistry,
   registerEffectivePermissionResolver,
+  registerPredicateIdempotent,
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
@@ -15,6 +17,7 @@ import {
   registerPatientRoutes,
 } from "../src/modules/05-patient/index";
 import type { MatchCandidate } from "../src/modules/05-patient/matching/index";
+import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/index";
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
@@ -47,7 +50,24 @@ const PERMISSION_SEED = [
   { userId: "edit_1", permissions: ["patient.edit", "patient.read"] },
   { userId: "amend_1", permissions: ["patient.amend_request_record", "patient.amend_review"] },
   { userId: "noperm_1", permissions: [] },
+  // F-092 — holds `patient.read` and is on NO caseload. Before the ABAC guard this actor read every
+  // chart in the tenant; the catalog has declared `patient.read` caseload-scoped the whole time.
+  { userId: "offcaseload_1", permissions: ["patient.read"] },
+  // …and the oversight arm: same absence of a caseload row, org-wide by ROLE.
+  { userId: "don_1", permissions: ["patient.read"] },
 ];
+
+/** Open `patient_assignment` rows, as `caseload_or_scope` resolves them through M5's CaseloadProvider. */
+const CASELOAD = new Set([
+  `${ORG}:edit_1:${EXISTING}`,
+  `${ORG}:admit_1:${EXISTING}`,
+  // §7.7 amendment INTAKE is caseload-scoped because the catalog declares
+  // `patient.amend_request_record: abac: "caseload_or_scope"`. (Its sibling `patient.amend_review` is
+  // `abac: "none"` — deciding an amendment is a records-management act, recording the patient's request
+  // is a care-team one.) Honouring the declaration is the whole point of F-092: leaving one unenforced
+  // because the workflow is arguable is how all nine came to be unenforced.
+  `${ORG}:amend_1:${EXISTING}`,
+]);
 
 function makeServer() {
   const { service, events } = createInMemoryPatientRouteService({
@@ -62,6 +82,28 @@ function makeServer() {
     })),
   );
   registerEffectivePermissionResolver(grantStore.store);
+  // F-092 — the §7.5 chart-scope guard is REAL here: M7's own `caseload_or_scope` predicate, over an
+  // injected caseload, behind the same registry the composition root installs. A stub would prove the
+  // route composes *a* guard; this proves it composes the one the permission catalog names, with a
+  // target the predicate can actually resolve.
+  registerAbacRegistry();
+  const predicates = buildCarePlanAbacPredicates({
+    resolver: {
+      async loadPlan() {
+        return null;
+      },
+      async loadProblem() {
+        return null;
+      },
+      async loadVersion() {
+        return null;
+      },
+    },
+    async isInCaseload({ organizationId, userId, patientId }) {
+      return CASELOAD.has(`${organizationId}:${userId}:${patientId}`);
+    },
+  });
+  registerPredicateIdempotent("caseload_or_scope", predicates.caseload_or_scope);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerPatientRoutes(app, { service });
   return { app, events };
@@ -71,6 +113,8 @@ const ADMIT = { "x-test-user": "admit_1", "x-test-org": ORG, "x-test-roles": "ad
 const EDIT = { "x-test-user": "edit_1", "x-test-org": ORG, "x-test-roles": "rn" };
 const AMEND = { "x-test-user": "amend_1", "x-test-org": ORG, "x-test-roles": "compliance" };
 const NOPERM = { "x-test-user": "noperm_1", "x-test-org": ORG, "x-test-roles": "intern" };
+const OFF_CASELOAD = { "x-test-user": "offcaseload_1", "x-test-org": ORG, "x-test-roles": "rn" };
+const DON = { "x-test-user": "don_1", "x-test-org": ORG, "x-test-roles": "director_of_nursing" };
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -391,6 +435,81 @@ describe("M5-T09 — patient routes (§4.2, §4.7 gating, §7.1/§7.4/§7.7)", (
     });
     expect(a.statusCode).toBe(404);
     expect(b.statusCode).toBe(404);
+    await app.close();
+  });
+
+  // ── F-092: the §7.5 chart-scope guard the catalog has always declared ───────────────────────────
+  //
+  // Before this, M5 composed no ABAC of any kind: `patient.read` declared `caseload_or_scope` in the
+  // permission catalog, nothing read that declaration (`requirePermission` never looks at
+  // `defaultAbac`), and six route comments claimed a "non-caseload → 404" that the service had no
+  // caseload input to perform.
+
+  it("F-092 refuses a chart read to a patient.read holder who is on no caseload — as a 404", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({ url: `/api/v1/patients/${EXISTING}`, headers: OFF_CASELOAD });
+    // 404, not 403: a 403 on a chart id confirms the chart exists, which is the disclosure the guard
+    // is here to prevent. This is what `notFoundOnDeny` buys.
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("F-092 the same actor is refused every per-chart TAB, not only the resolve route", async () => {
+    const { app } = makeServer();
+    for (const tab of [
+      "demographics",
+      "identifiers",
+      "payers",
+      "care-team",
+      "privacy-flags",
+      "addresses",
+    ]) {
+      const res = await app.inject({
+        url: `/api/v1/patients/${EXISTING}/${tab}`,
+        headers: OFF_CASELOAD,
+      });
+      expect([tab, res.statusCode]).toEqual([tab, 404]);
+    }
+    await app.close();
+  });
+
+  it("F-092 an assigned clinician still reads the chart (the guard narrows, it does not close)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({ url: `/api/v1/patients/${EXISTING}`, headers: EDIT });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().id).toBe(EXISTING);
+    await app.close();
+  });
+
+  it("F-092 a Director of Nursing reads any chart with no caseload row at all", async () => {
+    // The DON is on NO caseload here. CoP 418.64(a) makes them responsible for all nursing services,
+    // and M3's `SYSTEM_LOCKED_FLOORS` locks `patient.read` AND `assignment.manage` onto the role — a
+    // permission to put clinicians on caseloads that cannot be exercised against invisible patients.
+    // `ORG_WIDE_SCOPE_ROLES` named only three roles and this was not one, so M7/M9/M20/M23 have been
+    // refusing the DON every care plan, assessment and safety row outside their own caseload; it is
+    // now DERIVED from the floors rather than listed by hand.
+    const { app } = makeServer();
+    const res = await app.inject({ url: `/api/v1/patients/${EXISTING}`, headers: DON });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("F-092 a per-chart WRITE is scoped too (add address), and the census list is not", async () => {
+    const { app } = makeServer();
+    const write = await app.inject({
+      method: "POST",
+      url: `/api/v1/patients/${EXISTING}/addresses`,
+      headers: OFF_CASELOAD,
+      payload: { line1: "1 Elm", city: "Springfield", state: "IL", postalCode: "62701" },
+    });
+    expect(write.statusCode).toBe(403); // no patient.edit — RBAC refuses before the scope guard
+
+    // The census list is deliberately NOT narrowed (§7.5's `caseloadPatientIds` filter is unimplemented
+    // and applying it is a product decision). Asserted so the gap is a KNOWN state rather than a
+    // silent one: if someone narrows the list later, this test is where they will say so.
+    const list = await app.inject({ url: "/api/v1/patients", headers: OFF_CASELOAD });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().items.map((p: { id: string }) => p.id)).toContain(EXISTING);
     await app.close();
   });
 });
