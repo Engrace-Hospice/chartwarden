@@ -59,7 +59,7 @@ export const M22_OUTBOX_EVENTS: ModuleEventContribution = [
       sourceModule: Id,
       renderedAt: Iso,
     }),
-    declaredConsumers: ["m11", "m12", "m13", "m21", "m33"],
+    declaredConsumers: ["m6", "m11", "m12", "m13", "m21", "m33"],
     isOutboxOnly: true,
   },
 ];

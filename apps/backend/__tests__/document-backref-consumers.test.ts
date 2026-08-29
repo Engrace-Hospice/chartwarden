@@ -9,13 +9,19 @@
 // entire routing mechanism. A consumer that stamped on a document another module requested would write a
 // foreign document id onto a clinical row, silently, with every gate green.
 import { describe, expect, it } from "vitest";
+import {
+  M6_BACKREF_AGGREGATE_TYPES,
+  buildM6DocumentBackrefConsumer,
+} from "../src/modules/06-admission/index";
 import { buildM11DocumentBackrefConsumer } from "../src/modules/11-orders/index";
 import { buildM12DocumentBackrefConsumer } from "../src/modules/12-dosespot/index";
 import { buildM13DocumentBackrefConsumer } from "../src/modules/13-emar/index";
 import { buildM21DocumentBackrefConsumer } from "../src/modules/21-supplies/index";
 import {
   M22_DOCUMENT_RENDERED_EVENT,
+  M22_DOCUMENT_REQUEST_EVENTS,
   M22_OUTBOX_EVENTS,
+  PLATFORM_TEMPLATE_TABLE,
   buildM22DocumentRequestConsumer,
   createDocumentRenderer,
   createInMemoryDocumentSeamStore,
@@ -60,7 +66,8 @@ describe("m22.document.rendered — the event that did not exist", () => {
     // deployment rule — so each is added on the commit that binds its handler. (M33 arrived on GAP-051's.)
     // It cuts both ways: the dispatcher THROWS at construction on a module that binds an event it is not
     // declared for, so this list and the bound set move together or boot fails.
-    expect(entry?.declaredConsumers).toEqual(["m11", "m12", "m13", "m21", "m33"]);
+    // F-100 — m6 joined on the commit that bound its stamper. Six `document_id` columns, one consumer.
+    expect(entry?.declaredConsumers).toEqual(["m6", "m11", "m12", "m13", "m21", "m33"]);
   });
 
   it("announces the render with the routing the requesting module keys on", async () => {
@@ -118,8 +125,47 @@ describe("m22.document.rendered — the event that did not exist", () => {
 
 // ── the four stampers, on every off-path ────────────────────────────────────────────────────────────────
 
+// F-100 — the agreement that makes M6's six-into-one consumer safe. Asserting the six names on both
+// sides would be a list compared to a copy of itself (the F-094/F-095 shape); this DERIVES M22's side —
+// which m6 events the request consumer subscribes to, through the template each resolves to, to the
+// `document_aggregate_type` that template files under — and requires it to equal M6's stamp table
+// exactly. A template M22 renders for M6 with no stamper leaves the column NULL, which is the bug this
+// closed; a stamper for a type M22 never renders is dead code that looks like coverage.
+describe("M6's back-ref map covers exactly what M22 renders for M6", () => {
+  /** `m6.*` → the M22 template key its REQUEST_SHAPES entry fixes. Mirrors the consumer's own table. */
+  const M6_TEMPLATE_BY_EVENT: Readonly<Record<string, string>> = {
+    "m6.election.signed": "election_statement",
+    "m6.cti.signed": "cti",
+    "m6.f2f.attested": "f2f",
+    "m6.nor.acknowledged": "nor",
+    "m6.revocation.created": "revocation",
+    "m6.discharge.created": "discharge_summary",
+  };
+
+  it("every m6 event M22 subscribes to resolves to a published template", () => {
+    const subscribed = (M22_DOCUMENT_REQUEST_EVENTS as readonly string[]).filter((e) =>
+      e.startsWith("m6."),
+    );
+    expect(subscribed.sort()).toEqual(Object.keys(M6_TEMPLATE_BY_EVENT).sort());
+    for (const key of Object.values(M6_TEMPLATE_BY_EVENT)) {
+      expect(PLATFORM_TEMPLATE_TABLE[key], `no published template '${key}'`).toBeDefined();
+    }
+  });
+
+  it("the stamp table is exactly the aggregate types those templates file under", () => {
+    const rendered = Object.values(M6_TEMPLATE_BY_EVENT)
+      .map((key) => PLATFORM_TEMPLATE_TABLE[key]?.aggregateType)
+      .sort();
+    expect([...M6_BACKREF_AGGREGATE_TYPES].sort()).toEqual(rendered);
+  });
+});
+
 describe("the back-ref consumers ignore every document they did not request", () => {
   const cases = [
+    // F-100 — M6 stamps SIX aggregate types through one consumer, so its "not mine" arm has to reject on
+    // the type as well as the module. `cti` stands in for the six here; the mapping itself is asserted
+    // against M22's own subscriptions below.
+    { name: "M6", build: buildM6DocumentBackrefConsumer, module: "m6", type: "cti" },
     { name: "M11", build: buildM11DocumentBackrefConsumer, module: "m11", type: "order_record" },
     {
       name: "M12",
@@ -151,8 +197,10 @@ describe("the back-ref consumers ignore every document they did not request", ()
       });
 
       it("does nothing for a document another module requested", async () => {
+        // `m99` rather than a real module id: with M6 in this table, hard-coding one module's name as
+        // "the other one" makes exactly one row of the table assert nothing.
         await expect(
-          consumer.handle(rendered({ sourceModule: "m6", aggregateType: c.type })),
+          consumer.handle(rendered({ sourceModule: "m99", aggregateType: c.type })),
         ).resolves.toBeUndefined();
       });
 

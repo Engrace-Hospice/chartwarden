@@ -227,6 +227,12 @@ export {
 // the §4.3 BullMQ job catalog with the two pure, idempotent compliance-window scans (recompute +
 // window-alert). check-fitness-gaps.ts scans events-by-m6.ts for naming / ownership / consumers.
 export { M6_OUTBOX_EVENTS } from "./events-by-m6";
+// F-100 — the §4.11 render handshake's downstream half: six `document_id` columns that had no writer.
+export {
+  M6_DOCUMENT_BACKREF_CONSUMER,
+  M6_BACKREF_AGGREGATE_TYPES,
+  buildM6DocumentBackrefConsumer,
+} from "./outbox-consumers/m22-document-rendered";
 export {
   M6_QUEUES,
   M6_JOB_SCHEDULES,

@@ -58,6 +58,17 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   "m25.appeal_packet.render_requested", // appeal_packet
   "m27.artifact.render_requested", // cost_report_ecr | cost_report_pi | cost_report_supporting_doc
   "m37.body_release.document_requested", // body_release_authorization
+  // ── F-100 — M6's six CoP compliance documents. Unlike every other source module, M6 emits NO
+  // `*.document_requested`: the M22 spec's own consumer table routes the SOURCE events here, one template
+  // each, and M6's catalog has declared `m22` on exactly these six since it landed. All six templates have
+  // been published in PLATFORM_TEMPLATE_TABLE the whole time, and seven `document_id` columns on the M6
+  // tables — each commented "M22 document" — were waiting for the back-ref. Nothing consumed any of them.
+  "m6.election.signed", // election_statement
+  "m6.cti.signed", // cti
+  "m6.f2f.attested", // f2f
+  "m6.nor.acknowledged", // nor
+  "m6.revocation.created", // revocation
+  "m6.discharge.created", // discharge_summary
 ] as const;
 
 /** §4.11 render-request events the SPEC anticipates but no module's event catalog declares yet. Listed —
@@ -74,7 +85,11 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
  * mistaken note is why it sat unconsumed: a wrong entry on a deferral list is indistinguishable from a
  * correct one, and reads as a decision rather than an oversight. */
 export const M22_ANTICIPATED_DOCUMENT_REQUEST_EVENTS = [
-  "m6.document_requested", // election_statement / cti / f2f / nor / revocation / discharge_summary
+  // `m6.document_requested` used to head this list. It is gone rather than promoted: it never existed in
+  // any catalog, and M6 does not need it — the M22 spec routes M6's SOURCE events straight here (§4.11's
+  // "the form template differs but the boundary protocol is one"), which is the shape `m23.abn.required`
+  // already uses. Inventing a seventh spelling would have been a new event on the platform's busiest
+  // clinical module to say what six existing events already say.
   "m9.assessment.document_requested", // assessment record PDF
   // CATALOGUED (`events-by-m13.ts`) and NOT emitted: the M13 machine pushes the outbox effect on
   // `perAdministrationPdfRequired`, and the backend service that interprets M13's effects has no `outbox`

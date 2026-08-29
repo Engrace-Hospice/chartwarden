@@ -179,6 +179,38 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     aggregateIdFields: ["bodyReleaseId"],
     templateKey: "body_release_authorization",
   },
+  // ── F-100 — M6's six CoP compliance documents ────────────────────────────────────────────────────────
+  // The event NAME is the template, the way `m23.abn.required`'s is: M6 emits no `*.document_requested`,
+  // and the M22 spec's consumer table routes these six source events here one template each. No
+  // `contentField` on any of them — the whole payload is what the form renders from, and each carries
+  // exactly the identifiers its template needs.
+  "m6.election.signed": {
+    aggregateIdFields: ["electionStatementId"],
+    templateKey: "election_statement",
+  },
+  "m6.cti.signed": { aggregateIdFields: ["ctiId"], templateKey: "cti" },
+  "m6.f2f.attested": { aggregateIdFields: ["f2fId"], templateKey: "f2f" },
+  "m6.nor.acknowledged": {
+    // The outbox ENVELOPE for this one is the ADMISSION (the transition runs on the admission row), so
+    // the identity must come from the body — reading the envelope would file every tenant's NOR against
+    // an admission id and collide with anything else that renders under an admission.
+    aggregateIdFields: ["norAcknowledgmentId"],
+    templateKey: "nor",
+  },
+  "m6.revocation.created": {
+    aggregateIdFields: ["revocationEventId"],
+    templateKey: "revocation",
+  },
+  // `m6.discharge.cosigned` and `m6.transfer.created` are deliberately NOT here. The cosign fires on the
+  // SAME `discharge_event` id, so it is a new VERSION of this document rather than a new one, and the
+  // decider answers `idempotent_skip` — the W2 append path has to be built before it can be bound. The
+  // transfer wants what the M22 spec calls "discharge_summary (transfer variant)", and no variant exists;
+  // rendering the base template would file a document titled Discharge Summary for a patient who was
+  // transferred, not discharged.
+  "m6.discharge.created": {
+    aggregateIdFields: ["dischargeEventId"],
+    templateKey: "discharge_summary",
+  },
 };
 
 /** Raised when a delivered render request cannot be read into M22's canonical shape (unknown event name,
@@ -459,11 +491,18 @@ export function buildM22DocumentRequestConsumer(
           return; // §4.12 — settled refusal; no out-of-network disclosure without an active BAA.
         case "render": {
           const { render } = action;
+          // The RESOLVED routing wins over the content blob, which is why it is spread first (F-100).
+          // The other way round, a source module whose payload happens to carry an `aggregateId` or
+          // `patientId` of its own silently overwrites the identity the normalizer just decided — and it
+          // is not hypothetical: `runEffects` in M6 puts the TRANSITION's aggregate in the body, so every
+          // NOR rendered under its ADMISSION's id and `notice_of_rights_acknowledgment.document_id` could
+          // never be stamped. The document existed, addressed to the wrong row, which is the one failure
+          // mode a back-ref cannot recover from.
           await renderer().render({ orgId: payload.organizationId }, render.templateKey, {
+            ...render.content,
             aggregateId: render.aggregateId,
             patientId: render.patientId,
             ...(render.title ? { title: render.title } : {}),
-            ...render.content,
             ...(render.sudRedacted ? { sudRedacted: true } : {}),
           });
           // Re-read rather than trusting the renderer's `{documentId}`: the leaf-typed `DocumentRenderer`

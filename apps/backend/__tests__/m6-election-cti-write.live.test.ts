@@ -15,6 +15,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { validatingM6Outbox } from "./_m6-outbox";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -119,7 +120,12 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
         return rows.length > 0;
       },
     };
-    svc = createDbAdmissionRouteService(handle.db, undefined, undefined, providerEntityOrgCheck);
+    svc = createDbAdmissionRouteService(
+      handle.db,
+      validatingM6Outbox(), // F-100
+      undefined,
+      providerEntityOrgCheck,
+    );
     svcWithDpoa = createDbAdmissionRouteService(
       handle.db,
       undefined,
@@ -274,7 +280,7 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
     });
 
     it("fails CLOSED when the org-check port is unbound, rather than writing an unverified hospice", async () => {
-      const unchecked = createDbAdmissionRouteService(handle.db);
+      const unchecked = createDbAdmissionRouteService(handle.db, validatingM6Outbox());
       const { admissionId, periodId } = await admitFor(randomUUID());
       await expect(
         unchecked.draftElectionStatement(ORG_A, admissionId, periodId, DRAFT),

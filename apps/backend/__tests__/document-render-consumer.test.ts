@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { DispatchableOutboxEvent } from "../src/bootstrap/outbox-dispatcher";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
+import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
@@ -381,6 +382,54 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
     ).toThrow(/names no aggregate id/);
   });
 
+  // ── F-100 — M6's six CoP compliance documents ────────────────────────────────────────────────────────
+  // These are the artifacts Medicare surveys ask for: the certification of terminal illness, the election
+  // statement, the face-to-face encounter, the notice of rights, the revocation and the discharge summary.
+  // Every one has a published template and a `document_id` column, and none was ever rendered.
+
+  it.each([
+    ["m6.election.signed", "election_statement", { electionStatementId: ORDER }],
+    ["m6.cti.signed", "cti", { ctiId: ORDER }],
+    ["m6.f2f.attested", "f2f", { f2fId: ORDER }],
+    ["m6.nor.acknowledged", "nor", { norAcknowledgmentId: ORDER }],
+    ["m6.revocation.created", "revocation", { revocationEventId: ORDER }],
+    ["m6.discharge.created", "discharge_summary", { dischargeEventId: ORDER }],
+  ])("%s renders %s against its own row, on the patient's chart", (eventType, templateKey, ids) => {
+    const { event, payload } = normalizeDocumentRequest({
+      eventType,
+      organizationId: ORG,
+      // The ENVELOPE deliberately carries a different id — for `m6.nor.acknowledged` it is genuinely the
+      // ADMISSION, because that transition runs on the admission row. Reading the envelope would file
+      // every NOR against an admission id and collide with anything else rendered under one.
+      aggregateId: DISPATCH,
+      payload: { ...ids, patientId: PAT },
+    });
+    expect(event).toBe(eventType);
+    expect(payload.templateKey).toBe(templateKey);
+    expect(payload.aggregateId).toBe(ORDER);
+    expect(payload.patientId).toBe(PAT);
+  });
+
+  it("throws on an M6 request whose payload names no source row", () => {
+    expect(() =>
+      normalizeDocumentRequest({
+        eventType: "m6.cti.signed",
+        organizationId: ORG,
+        aggregateId: DISPATCH,
+        payload: { electionPeriodId: ORDER, patientId: PAT },
+      }),
+    ).toThrow(/names no aggregate id/);
+  });
+
+  // Both are named by the M22 spec and both are deliberately unbound — see REQUEST_SHAPES for why.
+  // Pinned so that binding either one is a deliberate edit here rather than a silent widening.
+  it.each(["m6.discharge.cosigned", "m6.transfer.created"])(
+    "does not consume %s — it is a documented deferral, not an oversight",
+    (eventType) => {
+      expect(M22_DOCUMENT_REQUEST_EVENTS as readonly string[]).not.toContain(eventType);
+    },
+  );
+
   it("throws on an M33 aggregateType M22 has no template for", () => {
     expect(() =>
       normalizeDocumentRequest({
@@ -472,6 +521,14 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       "m25.appeal_packet.render_requested",
       "m27.artifact.render_requested",
       "m37.body_release.document_requested",
+      // F-100 — M6's six CoP compliance documents. No `m6.document_requested`: the M22 spec routes the
+      // SOURCE events here, one template each, which is the `m23.abn.required` shape.
+      "m6.election.signed",
+      "m6.cti.signed",
+      "m6.f2f.attested",
+      "m6.nor.acknowledged",
+      "m6.revocation.created",
+      "m6.discharge.created",
     ]);
   });
 
@@ -488,6 +545,7 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
     // M22_DOCUMENT_REQUEST_EVENTS and not to this import list is a red test, never a quiet pass.
     const declared = new Map(
       [
+        ...M6_OUTBOX_EVENTS,
         ...M10_OUTBOX_EVENTS,
         ...M11_OUTBOX_EVENTS,
         ...M12_OUTBOX_EVENTS,
@@ -643,6 +701,50 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       // an appeal M25 cannot link to a patient, an org-level cost-report artifact).
       expect((h.rendered[0]?.payload as { patientId: string | null }).patientId).toBe(c.patientId);
     }
+  });
+
+  // F-100 — the resolved routing must WIN over the content blob. This is not a style point: M6's
+  // `runEffects` puts the TRANSITION's aggregate in the payload body, so with the blob spread last every
+  // NOR rendered under its ADMISSION's id. The document existed, addressed to the wrong row, and the
+  // back-ref could never match — the one failure mode a back-ref cannot recover from, because there IS a
+  // document and it looks fine.
+  it("a content blob carrying its own aggregateId/patientId never overrides the resolved routing", async () => {
+    const h = harness();
+    const ADMISSION = "00000000-0000-4000-8000-00000000ad01";
+    const OTHER_PATIENT = "00000000-0000-4000-8000-00000000ad02";
+    await h.consumer.handle(
+      delivered({
+        eventType: "m6.nor.acknowledged",
+        aggregateKind: "admission",
+        aggregateId: ADMISSION,
+        payload: {
+          norAcknowledgmentId: ORDER,
+          patientId: PAT,
+          // Exactly what `runEffects` writes: the transition ran on the ADMISSION, so its id is in the
+          // body beside the NOR's own.
+          aggregateId: ADMISSION,
+          admissionId: ADMISSION,
+          otherPatientId: OTHER_PATIENT,
+        },
+      }),
+    );
+    expect(h.rendered).toHaveLength(1);
+    expect(h.rendered[0]?.payload).toMatchObject({ aggregateId: ORDER, patientId: PAT });
+    // And the row is filed against the NOR, which is what makes it findable from the NOR.
+    expect(
+      await h.store.renderedDocumentForAggregate({
+        aggregateType: "nor",
+        aggregateId: ORDER,
+        organizationId: ORG,
+      }),
+    ).not.toBeNull();
+    expect(
+      await h.store.renderedDocumentForAggregate({
+        aggregateType: "nor",
+        aggregateId: ADMISSION,
+        organizationId: ORG,
+      }),
+    ).toBeNull();
   });
 
   it("renders the SUD-class request when M39 returns an active consent", async () => {

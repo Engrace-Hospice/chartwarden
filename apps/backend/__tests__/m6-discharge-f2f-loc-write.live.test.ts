@@ -18,6 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import { buildIpuSeams } from "../src/modules/37-ipu/seams";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { validatingM6Outbox } from "./_m6-outbox";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -153,7 +154,7 @@ describe.skipIf(!DB_URL)(
       // T3 suite does; the deliberately-unbound case is asserted there.
       svc = createDbAdmissionRouteService(
         handle.db,
-        undefined,
+        validatingM6Outbox(), // F-100 — not `undefined`; see ./_m6-outbox.ts
         buildIpuSeams(handle.db).IpuBedAssignmentProvider,
         {
           async belongsToOrg(organizationId, providerEntityId) {

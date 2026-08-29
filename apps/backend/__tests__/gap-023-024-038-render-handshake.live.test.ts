@@ -29,6 +29,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS, buildM11DocumentBackrefConsumer } from "../src/modules/11-orders/index";
 import {
@@ -228,6 +229,11 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
       // here for the same two reasons M33 is: the dispatcher refuses to construct on an event its catalog
       // does not know, and `buildTxOutboxPublisher` validates each payload against the catalog schema —
       // which is what makes the `patientId` these payloads gained a checked fact rather than a comment.
+      // F-100 — M6's six CoP events, which M22's ONE render consumer now also binds. The dispatcher
+      // refuses to CONSTRUCT on an event its catalog does not carry, so this contribution is not
+      // optional: without it every test in the file reports "skipped" beside a failed suite, which is a
+      // read this suite's `describe.skipIf(!DB_URL)` guard makes easy to mistake for "no database".
+      M6_OUTBOX_EVENTS,
       M10_OUTBOX_EVENTS,
       M16_OUTBOX_EVENTS,
       M20_OUTBOX_EVENTS,
