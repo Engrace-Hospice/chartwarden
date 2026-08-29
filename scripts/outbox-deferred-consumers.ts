@@ -788,18 +788,6 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
     ],
   },
   {
-    module: "m20",
-    kind: "handlers-unbound",
-    reason:
-      "M20 carries seven handler files (m17-no-show, m17-visit-cadence, m18-evv-brackets, m18-gps-spoof, m19-after-hours, schedule-plan, seam-context) and yields no live binding at all.",
-    events: [
-      "m17.visit.assigned",
-      "m18.evv.geofence_breach_recorded",
-      "m18.evv.gps_spoof_suspected",
-      "m19.oncall_shift.activated",
-    ],
-  },
-  {
     module: "m2",
     kind: "no-consumer-surface",
     reason: "M2 has no consumer directory and binds nothing.",

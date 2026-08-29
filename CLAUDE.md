@@ -683,6 +683,40 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   `outbox-dispatcher.live.test.ts` already proves. The two largest groups are one decision each, not
   hundreds of forgotten consumers: **m36** (272) routes alerts through the `AlertEmitter` **seam**, and
   **m33** (319) pulls metrics from `report_mv.*` materialized views.
+  **M20 is the first module bound out of the registry entirely** (542 → 538 pairs, 33 → 32 modules), and it
+  is the shape the `handlers-unbound` list was named for. Six deciders — the §7.1 cadence materializer, the
+  reassignment re-point, the completion retirement, the §4.8 no-show inquiry and both EVV bracket
+  re-anchors — were complete, exported and unit-tested since M20-T04 with **no factory yielding a
+  binding**, so their only caller was their own test file. One layer down that meant **no INSERT into
+  `safety_check_in_schedule` existed anywhere in the repository**: the only write was the fulfilment UPDATE,
+  which can close a row but not make one, so the §4.2 supervisor board, the §4.3 badge trio, the §4.8
+  overdue detector and the clinician's own `/me/today` had always read an EMPTY SET. A safety board that
+  answers "nobody is overdue" because nobody was ever OBLIGED is indistinguishable from one where everyone
+  is fine. **Both halves had to land together**, because the catalog declared `m20` on neither
+  `m17.visit.published` / `.completed` / `.no_show_detected` nor `m18.evv.check_in_recorded` /
+  `.check_out_recorded` — a binding without the declaration is routed nothing — and two declarations it DID
+  carry (`m18.evv.geofence_breach_recorded`, `m19.oncall_shift.activated`) name a consumer M20's own
+  `consumers/index.ts` explains it will never write, so they deferred every emission forever. Three things
+  only running it found. `seam-context`'s `readVisitAnchors` — written FOR these consumers — returns `null`
+  on both "no such visit" and "the seam threw", correct for the §4.2 board and wrong for a consumer, and
+  M17's seam store opens `withOrgContextFromRequest`, which throws outside a request scope: a binding that
+  used the helper would have caught that on every single delivery and no-op'd forever, green. Each handler
+  opens `runWithRequestContext` and reads the seam directly. And `wardenx_app` **had no DELETE grant on the
+  table** while `consumers/schedule-plan.ts` defines retirement AS a delete and argues no member of
+  `safety_check_in_state` can truthfully say "invalidated" — migration 0111's header says the app role gets
+  DELETE on nothing in M20 and both statements were written before anything executed one. Migration 0238
+  grants it on that one table: a `proposed` row is a plan the system MADE, not evidence of anything that
+  happened, and 0111's own M4 trigger fires on DELETE so the retirement stays on the record.
+  **The standing finding this surfaced is one level up again.** Six modules publish an
+  `M*_SUBSCRIBED_EVENT_NAMES` constant whose doc comment says it exists "so an upstream rename breaks the
+  build rather than silently orphaning a handler" — and **nothing compares any of them to the catalog**.
+  Measured across M16/M19/M20/M21/M31/M35: **7 subscribed names are in no catalog at all** (M35's four
+  `m2.*`, `m17.shift_changed`, and `m36.notification.delivery_failed`, which M19, M20 and M26 each name and
+  which cannot exist because **M36 contributes no event catalog to the boot dispatcher** — there is no
+  `M36_OUTBOX_EVENTS`); **26 (module, event) pairs** are subscribed by the module and undeclared in the
+  catalog, so the relay routes them to nobody; and **32** are the reverse. That is the F-025/F-043 unasked
+  direction at a third level — binding → catalog and catalog → binding are both now checked, module
+  subscription list → catalog is not.
 
 - `scripts/check-architecture-docs.ts` — **architecture-corpus freshness gate**
   (`bun run arch:architecture-docs`, in `arch:fitness` since 2026-08-14). The authority rule makes

@@ -39,17 +39,27 @@ describe("clinical outbox consumer contract reconciliation", () => {
     expect(plan.deferred.has(entry.eventName)).toBe(false);
   });
 
-  it("fully binds the two M17 visit-publication command consumers", () => {
+  // F-043/#103 — M20 is the THIRD consumer of a visit publication: `m20.materialize-cadence` is the only
+  // producer of `safety_check_in_schedule` rows on the platform. It was absent from `declaredConsumers`
+  // while `M20_SUBSCRIBED_EVENT_NAMES` had named the topic since M20-T01, so the relay routed the
+  // publication to M8 and M18 and to nobody in M20. This assertion is what keeps the three in step: the
+  // list is pinned EXACTLY, so adding a fourth consumer without a binding fails here rather than deferring
+  // every publication silently.
+  it("fully binds the three M17 visit-publication command consumers", () => {
     const entry = M17_OUTBOX_EVENTS.find(
       (candidate) => candidate.eventName === "m17.visit.published",
     );
     if (!entry) throw new Error("missing m17.visit.published catalog entry");
-    expect(entry.declaredConsumers).toEqual(["m8", "m18"]);
+    expect(entry.declaredConsumers).toEqual(["m8", "m18", "m20"]);
     const plan = buildOutboxRoutingPlan(new Map([[entry.eventName, entry]]), [
       binding("m8", M8_VISIT_PUBLISHED_CONSUMER),
       binding("m18", M18_VISIT_PUBLISHED_CONSUMER),
+      binding("m20", {
+        eventName: "m17.visit.published",
+        consumerName: "m20.materialize-cadence",
+      }),
     ]);
-    expect(plan.live.get(entry.eventName)).toHaveLength(2);
+    expect(plan.live.get(entry.eventName)).toHaveLength(3);
     expect(plan.deferred.has(entry.eventName)).toBe(false);
   });
 });

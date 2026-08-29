@@ -189,7 +189,12 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
       externalActorId: nullableId,
       openedAt: isoInstant,
     }),
-    declaredConsumers: ["m20"],
+    // F-043/#103 — M20's own `consumers/index.ts` states why it has no consumer for this and never will:
+    // the topic exists in `M20_SUBSCRIBED_EVENT_NAMES` as the re-sync trigger for a CACHED on-call
+    // resolution, and M20 caches none — the D14 union is resolved live at fan-out, because a cached
+    // roster is a 3 a.m. staleness bug. Nothing to re-sync, nothing to consume, and a declaration with no
+    // consumer behind it deferred every shift activation forever.
+    declaredConsumers: [],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
