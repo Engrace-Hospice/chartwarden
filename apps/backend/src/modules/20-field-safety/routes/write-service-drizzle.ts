@@ -1497,6 +1497,10 @@ export function buildDrizzleM20WriteService(
           payload: {
             ...eventBase(row.providerEntityId, actor, at),
             incidentId,
+            // F-099 — the chart target, and legitimately NULL: `safety_incident.patient_id` is nullable
+            // because a staff-safety incident (a vehicle accident, a workplace injury) has no patient, and
+            // filing that report on someone's chart would be worse than filing it on none.
+            patientId: row.patientId ?? null,
             renderTargetKind: "pdf",
           },
         });

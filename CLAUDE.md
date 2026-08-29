@@ -831,6 +831,57 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   null for a call that exists is a duplicate welfare call on every redelivery, which is exactly what D10's
   guard exists to prevent. Loud on a busy connection, silent on a fresh one, wrong on both.
 
+  **The m22 group's REASON was wrong about six of its members (F-099, #103).** The registry groups by
+  (module, kind) "so the reason lives once — m22 is declared on 85 events for one reason, not 85 reasons",
+  and m22's read: M22 renders on REQUEST, a module that wants a document emits a render request, and
+  "these declarations name M22 as a consumer of the SOURCE clinical/billing event instead — the same
+  handshake spelled a second way, and only the request spelling is wired." True of ~70. **False of six,
+  which ARE the request spelling and were being emitted from production write paths with nothing draining
+  them**: `m10.hope.summary_requested` (`POST /hope/assessments/:id/summary-pdf`),
+  `m16.bereavement.outreach_artifact_requested` (the D14 welcome packet at plan open),
+  `m20.safety.incident_report_requested` (whose catalog entry says "M22's renderer consumes it; M20 ships
+  no PDF code"), `m25.appeal_packet.render_requested`, `m27.artifact.render_requested` and
+  `m37.body_release.document_requested`. Each declares `["m22"]` and nothing else, so no other module was
+  covering for the absence, and each emit site's own comment says M22 renders it. Every one of those rows
+  has sat `pending` since its producer landed — re-claimed every thirty minutes, never dead-lettered,
+  never purged. **This is the grouping's own failure mode**: a reason that fits most of a group reads as a
+  decision covering all of it, and the entry is then the LAST place anyone re-derives, because it looks
+  like the question was already asked. `M22_ANTICIPATED_DOCUMENT_REQUEST_EVENTS` compounded it from the
+  other side — its header called `m37.body_release.document_requested` "declared but has no emitter and no
+  published template" when M37's body-release machine emits it on `identifyFuneralHome` and
+  `ipu_body_release.release_document_id` is the column waiting for it, **named in that column's own schema
+  comment**. Binding them needed migration 0239 (seven `document_aggregate_type` values; M16's packet
+  files against the existing `bereavement_letter`, one aggregate type with several template keys) plus
+  eight template descriptors and six `REQUEST_SHAPES` rows — the infrastructure was entirely general, the
+  0196/0197 precedent a third time. **The second defect underneath, which only writing the adapters
+  surfaced: four of the six payloads carry no patient.** `DocumentRequestPayload.patientId` is what
+  `document.patient_id` is written from, M22 `dependsOn [1, 5]` and cannot read M10/M16/M20/M37's tables
+  to resolve one, and every emit site already had it in hand (`hope_assessment.patient_id`,
+  `bereavement_plan.patient_id`, `ipu_body_release.patient_id` — all NOT NULL — and
+  `safety_incident.patient_id`, nullable for a reason). So binding alone would have rendered a HOPE
+  summary, a bereavement packet and a decedent's release authorization onto NO chart, which is a
+  strictly worse outcome than not rendering them: an unrendered request is a visible `pending` row, an
+  off-chart clinical document is a filed one nobody can find. The producers now publish it, declared in
+  their catalogs; M20 sends an explicit `null` because a vehicle accident has no patient and filing that
+  report on someone's chart is worse than filing it on none, and **M25 is patient-independent by
+  construction** — `appeal_case` reaches a chart only through a nullable `claim_id` into M23, so
+  asserting one would mean inventing a link M25 does not hold. Proven live end-to-end (real publisher →
+  real dispatcher → real renderer → real `document` row under RLS): 7 of `gap-023-024-038-render-handshake
+  .live.test.ts`'s 14 fail against the pre-fix consumer, and 11 of the two unit suites' cases do.
+  538 → 533 pairs, 36 → 42 catalogued events covered. **What remains in the m22 group now divides again**,
+  and the registry says so: for M11/M12/M13/M21/M23/M33 the source-event declaration is redundant because
+  the request half IS wired; for M6/M7/M8/M9/M14/M15/M18/M24/M30/M39 the module has **no request event at
+  all**. M6 is the one that matters — seven `document_id` columns on `certification`, `election_statement`,
+  `f2f_encounter`, `nor_acknowledgment`, `revocation_event`, `discharge_event` and `transfer_event`, each
+  commented "M22 document", all NULL forever, with all six templates (`cti`, `election_statement`, `f2f`,
+  `nor`, `revocation`, `discharge_summary`) already published in `PLATFORM_TEMPLATE_TABLE` and
+  `m6.document_requested` catalogued by nothing. Those are the CoP compliance documents.
+  **Reported, not fixed**: `m13.administration_record.document_requested` is catalogued and its pure
+  machine pushes the outbox effect on `perAdministrationPdfRequired`, but M13's backend effect interpreter
+  has **no `outbox` arm at all**, so the request never becomes a row — producer-side, and it stays on the
+  anticipated list rather than being subscribed, because a consumer bound to a name nothing emits is
+  indistinguishable from working.
+
   **Rule 6 (F-094, #205) is the direction rule 4 still did not run.** Six modules publish an
   `M*_SUBSCRIBED_EVENT_NAMES` constant, and each carries the same doc comment — it exists "so an upstream
   rename breaks the build rather than silently orphaning a handler". **Nothing compared any of them to

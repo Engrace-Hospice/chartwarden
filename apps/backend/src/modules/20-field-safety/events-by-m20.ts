@@ -303,6 +303,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       ...base,
       incidentId: Id,
+      /** The chart target, or null for a staff-safety incident with no patient (F-099). */
+      patientId: Type.Union([Id, Type.Null()]),
       renderTargetKind: Type.Literal("pdf"),
     }),
     declaredConsumers: ["m22"],

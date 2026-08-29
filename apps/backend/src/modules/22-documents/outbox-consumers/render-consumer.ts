@@ -125,6 +125,60 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
       },
     },
   },
+  // ── F-099 — the six request-spelled events that were emitted and drained by nothing ───────────────────
+  // M10 §2.4 — `POST /hope/assessments/:id/summary-pdf`. One artifact, so the key is fixed; no
+  // `contentField`, because the whole payload (the assessment id + who asked) is what the summary renders
+  // from. `patientId` rides the payload as of F-099 — see the note at the head of the file about why the
+  // chart target has to be on the wire rather than resolved here.
+  "m10.hope.summary_requested": {
+    aggregateIdFields: ["assessmentId"],
+    templateKey: "hope_summary",
+  },
+  // M16 D14 — the payload names its own template key (`bereavement_welcome_packet`), the M11/M12
+  // `formTemplate` shape. The aggregate is the PLAN, not the contact: one welcome packet per plan, and
+  // filing it against `contactId` would make a second contact's packet a fresh render of a document the
+  // family already has. `outreachId` is legitimately null at plan-open and is not an identity here.
+  "m16.bereavement.outreach_artifact_requested": {
+    aggregateIdFields: ["planId"],
+    templateKeyField: "templateKey",
+    contentField: "payloadJsonb",
+  },
+  // M20 §4.10 — "M22's renderer consumes it; M20 ships no PDF code". `renderTargetKind` is a literal
+  // `"pdf"`, so it discriminates nothing and the key is fixed.
+  "m20.safety.incident_report_requested": {
+    aggregateIdFields: ["incidentId"],
+    templateKey: "safety_incident_report",
+  },
+  // M25 — the tier-specific appeal letter. `tier` selects the letter's CONTENT, not a different artifact
+  // (an ALJ appeal is the same document class as a redetermination), so it stays in the content blob
+  // rather than becoming a template discriminator.
+  "m25.appeal_packet.render_requested": {
+    aggregateIdFields: ["appealCaseId"],
+    templateKey: "appeal_packet",
+    contentField: "payload",
+  },
+  // M27 §4.10 — ONE wire name, THREE artifacts, discriminated by `artifactKind`. The aggregate is the
+  // SUBMISSION (`submissionId`), not the cost report: a reopened report submits again, and filing both
+  // against `costReportId` would make the second render an idempotent skip of the first.
+  "m27.artifact.render_requested": {
+    aggregateIdFields: ["submissionId"],
+    templateKeyByField: {
+      field: "artifactKind",
+      map: {
+        ecr: "cost_report_ecr",
+        pi: "cost_report_pi",
+        supporting_doc: "cost_report_supporting_doc",
+      },
+    },
+  },
+  // M37 §2.11 — emitted by the body-release machine on `identifyFuneralHome`.
+  // `ipu_body_release.release_document_id` is the column waiting for it, and its schema comment names this
+  // template. The identity is on the BODY (`bodyReleaseId`), which the service publishes as the envelope
+  // aggregate too — the body is used because it is the field the catalog pins.
+  "m37.body_release.document_requested": {
+    aggregateIdFields: ["bodyReleaseId"],
+    templateKey: "body_release_authorization",
+  },
 };
 
 /** Raised when a delivered render request cannot be read into M22's canonical shape (unknown event name,

@@ -140,6 +140,62 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "operational",
     defaultTitle: "Visit Verification",
   },
+  // ── F-099: the six render requests that were emitted from production write paths and rendered by
+  // nothing. Adding a source module is one REQUEST_SHAPES row plus its descriptor(s) here; these are the
+  // descriptors. Retention is the artifact's own class, not the requesting module's.
+  //
+  // M10 — the printable HOPE summary. A `clinical_record`: it is the assessment as filed, on the chart.
+  hope_summary: {
+    aggregateType: "hope_summary",
+    retentionClass: "clinical_record",
+    defaultTitle: "HOPE Assessment Summary",
+  },
+  // M16 — the D14 welcome packet. `bereavement_letter` is ONE aggregate type with several template keys
+  // (the letter kinds), so this needs no new type; only this key is emitted today. A key M16 has not
+  // started emitting deliberately gets NO descriptor: an unpublished template is a visible
+  // retry-then-DLQ, and publishing descriptors for renders nobody requests would manufacture coverage.
+  bereavement_welcome_packet: {
+    aggregateType: "bereavement_letter",
+    retentionClass: "bereavement",
+    defaultTitle: "Bereavement Welcome Packet",
+  },
+  // M20 — `compliance`, not `operational`: an OSHA-recordable workplace-injury report is retained
+  // evidence, and the patient-safety ones feed M30's QAPI review.
+  safety_incident_report: {
+    aggregateType: "safety_incident_report",
+    retentionClass: "compliance",
+    defaultTitle: "Safety Incident Report",
+  },
+  // M25 — the tier-specific denial-appeal letter as submitted to the MAC/QIC/ALJ.
+  appeal_packet: {
+    aggregateType: "appeal_packet",
+    retentionClass: "compliance",
+    defaultTitle: "Appeal Packet",
+  },
+  // M27's three, keyed by the `artifactKind` discriminator. The event's own payload schema pins
+  // `retentionClass: "compliance"` for all three, which is what these carry.
+  cost_report_ecr: {
+    aggregateType: "cost_report_ecr",
+    retentionClass: "compliance",
+    defaultTitle: "Electronic Cost Report",
+  },
+  cost_report_pi: {
+    aggregateType: "cost_report_pi",
+    retentionClass: "compliance",
+    defaultTitle: "Provider Information Supplement",
+  },
+  cost_report_supporting_doc: {
+    aggregateType: "cost_report_supporting_doc",
+    retentionClass: "compliance",
+    defaultTitle: "Cost Report Supporting Document",
+  },
+  // M37 — the artifact `ipu_body_release.release_document_id` was built to point at; the schema comment
+  // on that column already names this template.
+  body_release_authorization: {
+    aggregateType: "body_release_authorization",
+    retentionClass: "compliance",
+    defaultTitle: "Body Release Authorization",
+  },
   consent_record: {
     aggregateType: "consent_record",
     retentionClass: "compliance",

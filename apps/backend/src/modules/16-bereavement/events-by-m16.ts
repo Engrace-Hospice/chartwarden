@@ -261,6 +261,9 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       "D14 — the outbox-only handoff to M22 for a sympathy card / letter / anniversary letter. M16 never renders a PDF and imports no M22 schema; M22 answers with `m22.document.rendered`. `outreachId` is nullable: the plan-opened transition that fires the welcome-packet request happens BEFORE `seedRosterAndSchedule`'s per-contact loop materializes any `bereavement_outreach` rows (`write-service-drizzle.ts`), so no single outreach row exists yet to name — the write path previously passed a literal `''`, which this schema's own `minLength:1` (via `Id`) rejected on every single call, rolling back the whole roster-seed transaction. Confirmed live.",
     payloadSchema: Type.Object({
       planId: Id,
+      /** The DECEDENT — the chart M22 files the rendered artifact against (F-099). Distinct from
+       *  `contactId`, which is the bereaved recipient the letter is addressed to. */
+      patientId: Id,
       contactId: Id,
       outreachId: Type.Union([Id, Type.Null()]),
       templateKey: Str,

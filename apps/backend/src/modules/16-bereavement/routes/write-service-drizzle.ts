@@ -820,6 +820,9 @@ export function buildDrizzleM16WriteService(
             // D14 — the M22 welcome-packet render handshake rides the plan-opened transition.
             "m16.bereavement.outreach_artifact_requested": {
               planId: plan.id,
+              // F-099 — the chart target M22 files the rendered packet against. The decedent, whose chart
+              // the bereavement record belongs to; `contactId` below is the recipient, not the chart.
+              patientId: plan.patientId,
               contactId: existing[0]?.id ?? "",
               // No `bereavement_outreach` row exists yet at plan-open — those materialize per-contact in
               // the loop below, after this effects call. See the schema's own comment for why this is
