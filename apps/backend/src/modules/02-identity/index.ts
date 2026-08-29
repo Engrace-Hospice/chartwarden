@@ -273,7 +273,15 @@ export function mountIdentityRoutes(
   // TASK-030 — the M36 transactional-email transport + the web app's origin, threaded from the
   // composition root so the invite-create/resend routes can deliver (or admin-visibly echo) the
   // accept link. Both optional: omitted, invites still record — they just stay copy-link-only.
-  invite?: { emailTransport?: IdentityRouteDeps["emailTransport"]; webAppBaseUrl?: string },
+  // F-097 — `roleAttacher` is M3's implementation, threaded from the composition root rather than
+  // constructed here: M2 is `dependsOn: [1]`, so importing `03-authorization` from this file is an
+  // import-boundary violation. Same reason `emailTransport` arrives as a parameter instead of an M36
+  // import. Omitted → the accept route reports `rolesAttached: null` rather than an empty grant set.
+  invite?: {
+    emailTransport?: IdentityRouteDeps["emailTransport"];
+    webAppBaseUrl?: string;
+    roleAttacher?: IdentityRouteDeps["roleAttacher"];
+  },
 ): void {
   const deps: IdentityRouteDeps = {
     actors: _ctxActor(),
@@ -289,6 +297,7 @@ export function mountIdentityRoutes(
     elevatedApprovals: _elevatedApprovalService(_drizzleElevatedApprovalStore(db)),
     ...(invite?.emailTransport ? { emailTransport: invite.emailTransport } : {}),
     ...(invite?.webAppBaseUrl ? { webAppBaseUrl: invite.webAppBaseUrl } : {}),
+    ...(invite?.roleAttacher ? { roleAttacher: invite.roleAttacher } : {}),
   };
   _registerIdentityRoutes(app, deps);
 }

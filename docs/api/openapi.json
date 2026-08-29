@@ -95347,7 +95347,8 @@
                   "required": [
                     "membershipId",
                     "organizationId",
-                    "status"
+                    "status",
+                    "rolesAttached"
                   ],
                   "properties": {
                     "membershipId": {
@@ -95369,6 +95370,34 @@
                         {
                           "const": "revoked",
                           "type": "string"
+                        }
+                      ]
+                    },
+                    "rolesAttached": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "attached",
+                            "unresolved"
+                          ],
+                          "properties": {
+                            "attached": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "unresolved": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          }
                         }
                       ]
                     }

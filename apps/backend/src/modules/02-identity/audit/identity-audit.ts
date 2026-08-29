@@ -76,6 +76,45 @@ export async function auditMembershipAccepted(
   });
 }
 
+/**
+ * Record the §D3 role attach that runs on accept (F-097).
+ *
+ * `m3.role.assigned` rather than a new `m2.*` action: the grant is M3's row and M3's compliance
+ * record, and the admin surface that answers "who gave this person this role, and when" reads that
+ * action. Emitting a second, M2-flavoured name for the same fact would split that answer in two.
+ *
+ * `unresolved` is on the record on purpose. A key the org has no role for means the invitation asked
+ * for access the tenant cannot express, and the audit trail is the only place that fact survives — the
+ * invitee sees a working login and the inviting admin sees an invitation marked accepted.
+ */
+export async function auditRolesAttachedOnAccept(
+  tx: AuditExecutor,
+  ctx: AuditContext,
+  input: {
+    membershipId: string;
+    organizationId: string;
+    attached: readonly string[];
+    unresolved: readonly string[];
+  },
+): Promise<void> {
+  await audit(tx, ctx, {
+    eventType: "m3.role.assigned",
+    resourceKind: "membership",
+    resourceId: input.membershipId,
+    // `audit_outcome` is (success | failure | denied) — there is no `partial`. A grant set that came
+    // back EMPTY while the invitation asked for roles is a failure of this step, whatever the accept
+    // did; anything attached is a success carrying the unresolved names as detail.
+    outcome: input.attached.length === 0 ? "failure" : "success",
+    retentionClass: "compliance",
+    after: {
+      organizationId: input.organizationId,
+      attachedRoleKeys: [...input.attached],
+      unresolvedRoleKeys: [...input.unresolved],
+      source: "invitation_accept",
+    },
+  });
+}
+
 /** Record a membership status change (suspend / reinstate / generic update; spec §7.5). */
 export async function auditMembershipStatusChanged(
   tx: AuditExecutor,

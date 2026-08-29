@@ -329,6 +329,47 @@ the prose docs in `docs/architecture/`.
   claimed in its own comment to "mirror M7's". There is now one `hasOrgWideScope` in `@wardenx/auth`,
   beside the `SYSTEM_LOCKED_FLOORS` it derives from, and `org-wide-scope.test.ts` pins the DERIVATION
   rather than the four names — asserting the output would rebuild the thing that failed.
+**Every invitation the platform ever issued produced a membership with NO role grants (F-097, #210).**
+M2 §D3 is recorded as **Decided** — "Membership→role assignment is Module 3. M2 carries
+`proposedRoleKeys` … and creates the membership; M3 attaches roles on accept" — and its §11 "Done means"
+repeats it. Nothing performed it. `POST /api/v1/invitations/accept` consumed the token, created the
+membership, and returned, carrying the comment "proposedRoleKeys are carried to M3 on accept (role attach
+is M3-owned, §7.1)" — a line naming the mechanism as someone else's while nobody had it. There is no event
+path either: **M2 contributes no outbox catalog at all** (the absence #205 already recorded as the blocker
+for M35's four `m2.*` subscriptions), so `m2.membership.accepted` is an AUDIT action and nothing can
+subscribe to it. An admin invites an RN as `clinical_rn`, the RN accepts, the RN holds nothing — no error,
+no warning, and the `organization_invitation` row still lists the roles that were requested, so the admin
+surface reports access the user does not have. The handshake is now performed by
+`03-authorization/proposed-role-attacher.ts`, bound at the composition root because M2 is `dependsOn: [1]`
+and cannot import M3 (the `emailTransport` precedent). It resolves keys to THIS org's enabled roles and
+grants them in one RLS-scoped transaction, idempotent by the UNIQUE `(membership_id, role_id)` index
+rather than by a pre-read (a replayed accept is expected — the invitation `consume` already races
+atomically). **The `organization_id` predicate on the role lookup is load-bearing and not redundant with
+RLS**: migration 0025 widened the role READ policy to admit org-NULL platform TEMPLATE rows, so RLS alone
+lets a template resolve and be granted into a tenant that never created it —
+`m3-proposed-role-attach.live.test.ts` fails on exactly that case when the predicate is removed.
+**An unresolvable key is REPORTED, never dropped** (`rolesAttached: { attached, unresolved }` on the wire,
+audited as `m3.role.assigned` with outcome `failure` when nothing attached): silence would reproduce the
+defect one layer down, and it is the state a freshly provisioned tenant is in for EVERY key —
+**M34's provisioning worker seeds a key ring, storage prefixes, an organization, onboarding tasks and the
+first-admin invitation, and NO `role` rows.** `ROLE_TEMPLATES` still has no materializer (the `permission`
+catalog has `db:sync:permissions`; roles have no sibling), so outside the dev seed scripts the table starts
+empty — and the M34 onboarding template `first_admin_invited` gates on
+`orgAdminAcceptedMembershipCount > 0`, an `org_admin` grant that cannot exist. **That half is reported, not
+fixed**: which roles a new tenant gets by default is a product decision, and only 13 of the spec's ≈60
+Appendix-A templates are coded (F-093), so seeding "the 7 tenant ones" would quietly make that mismatch
+normative. `packages/saas-tenant-platform/src/onboarding/context.ts` also has no production builder, so the
+precondition DSL evaluates nowhere.
+**The regression that proves the standing test-corpus finding.** F-096 made
+`PatientRouteService.list`'s narrowing argument REQUIRED, and a two-argument caller in
+`auth.live.test.ts` survived a full green `typecheck` + `test` run: `apps/backend/tsconfig.json` is
+`"include": ["src"]`, so **all 136 backend suite files are never typechecked**, and a live suite
+additionally self-skips without a database — invisible on two axes at once. Measured today: ~730 real
+type errors across `apps/backend/__tests__` (plus 1208 TS6307 project-config artifacts). Fixing that is
+its own change; the broken caller and the census-narrowing fallout in that suite are fixed here, and
+TEST-003 now seeds a real `patient_assignment` and registers the real `CaseloadProvider`, so it proves
+the §7.5 narrowing end-to-end under a genuine session cookie rather than a header shim.
+
 **The §3.4.1 CoP role floor was enforced in the test double and nowhere else (F-093).** Two files each
 named the other as the enforcer: `role-store.ts` — the Drizzle `RoleStore` the composition root mounts —
 said "the route layer enforces the `system_locked` CoP floor before calling the store", while

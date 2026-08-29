@@ -133,6 +133,7 @@ import {
   registerIdentitySeams,
 } from "./modules/02-identity/index";
 import {
+  createDbProposedRoleAttacher,
   mountAuthorizationRoutes,
   registerAuthorizationAbacPredicates,
 } from "./modules/03-authorization/index";
@@ -2598,9 +2599,15 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // M2 — member roster on the real MembershipRepository; isAdmin via the M3 admin reader.
           // TASK-030 — invite delivery: the SAME M36 transport bound to Better Auth's reset/magic-link
           // above, reused here so the invite-create/resend routes can email the accept link too.
+          // F-097 — the §D3 M2→M3 handshake. M2's spec records it as Decided and nothing performed it:
+          // the accept route consumed the invitation, created the membership, dropped `proposedRoleKeys`
+          // and returned, so every invitation the platform has ever issued produced a membership with no
+          // role grants. M3 owns the grant, so M3's attacher is bound here rather than imported inside
+          // M2 (which is `dependsOn: [1]`).
           mountIdentityRoutes(app, dbHandle.db, createDbAdminMembershipReader(dbHandle.db), {
             emailTransport,
             webAppBaseUrl,
+            roleAttacher: createDbProposedRoleAttacher(dbHandle.db),
           });
           // TASK-001 ledger — the external-collaborator magic-link store is process-local: there is
           // no M2 table for pending tokens (see mountIdentityRoutes' header), so a minted link exists

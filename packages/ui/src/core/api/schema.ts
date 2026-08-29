@@ -44353,6 +44353,10 @@ export interface operations {
                         membershipId: string;
                         organizationId: string;
                         status: "active" | "suspended" | "revoked";
+                        rolesAttached: null | {
+                            attached: string[];
+                            unresolved: string[];
+                        };
                     };
                 };
             };

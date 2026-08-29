@@ -190,6 +190,29 @@ export interface InvitationEmailTransport {
   }): Promise<void>;
 }
 
+/**
+ * Attaches an accepted invitation's `proposedRoleKeys` to the new membership.
+ *
+ * Declared locally, like {@link InvitationEmailTransport} above and for the same reason: the
+ * implementation is M3's (`03-authorization/proposed-role-attacher.ts`) and M2 is `dependsOn: [1]`, so
+ * the composition root binds it by structural typing rather than M2 taking an edge on M3.
+ *
+ * F-097 — M2 §D3 records this handshake as **Decided** ("M2 carries `proposedRoleKeys` … and creates
+ * the membership; M3 attaches roles on accept") and nothing ever performed it. The accept route
+ * consumed the invitation, created the membership, and dropped the keys with a comment naming M3 as the
+ * owner of a step no code took. So every invitation on the platform produced a membership with no
+ * grants: the invitee holds nothing, no error is raised, and the invitation row still lists the roles
+ * that were asked for.
+ */
+export interface ProposedRoleAttacher {
+  attach(input: {
+    readonly organizationId: string;
+    readonly membershipId: string;
+    readonly roleKeys: readonly string[];
+    readonly grantedByUserId: string;
+  }): Promise<{ readonly attached: readonly string[]; readonly unresolved: readonly string[] }>;
+}
+
 /** Mint / consume / rescind / re-mint / peek org invitations (M2-owned table). */
 export interface InvitationStore {
   pendingExists(organizationId: string, email: string): Promise<boolean> | boolean;
@@ -284,6 +307,14 @@ export interface IdentityRouteDeps {
    * persist: a 404 on an unmounted route is honest, a 200 from a write nobody can read back is not.
    */
   elevatedApprovals?: import("./elevated-approvals").ElevatedApprovalService;
+  /**
+   * F-097 — the §D3 M3 role attach on accept. Optional because a no-db slice boot has no M3 store to
+   * bind; when it is absent the accept route SAYS SO in its response (`rolesAttached: null`) rather
+   * than reporting an empty grant set as if the invitation had proposed none. The difference matters:
+   * "this deployment cannot attach roles" and "this invitation asked for none" are different facts, and
+   * conflating them is how the missing handshake stayed invisible for as long as it did.
+   */
+  roleAttacher?: ProposedRoleAttacher;
 }
 
 // --- Slice in-memory adapters ------------------------------------------------------------

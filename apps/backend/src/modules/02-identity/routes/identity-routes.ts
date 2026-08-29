@@ -42,6 +42,7 @@ import {
   auditMembershipAccepted,
   auditMembershipRevoked,
   auditMembershipStatusChanged,
+  auditRolesAttachedOnAccept,
   auditUserDeactivated,
   auditUserInvited,
 } from "../audit/identity-audit";
@@ -376,11 +377,52 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
         userId: actor.userId,
       },
     );
-    // proposedRoleKeys are carried to M3 on accept (role attach is M3-owned, §7.1).
+
+    // F-097 — the §D3 handshake, performed. This line used to be the comment
+    // "proposedRoleKeys are carried to M3 on accept (role attach is M3-owned, §7.1)" followed by a
+    // return: the keys reached here and went nowhere, so every invitation produced a membership with no
+    // grants at all. There is no event path to fall back on — M2 contributes no outbox catalog, so
+    // `m2.membership.accepted` is an audit action and nothing can subscribe to it.
+    //
+    // AFTER the membership audit, deliberately: the membership exists whether or not the grants land,
+    // and an attach failure must not roll back an invitation that has already been atomically consumed
+    // (the token is one-time — a thrown accept would leave the invitee with no membership and no way to
+    // retry). A failure is audited and reported, not swallowed and not escalated into losing the seat.
+    const rolesAttached = deps.roleAttacher
+      ? await deps.roleAttacher.attach({
+          organizationId: detail.organizationId,
+          membershipId: membership.membershipId,
+          roleKeys: detail.proposedRoleKeys,
+          grantedByUserId: actor.userId,
+        })
+      : null;
+
+    if (
+      rolesAttached &&
+      (rolesAttached.attached.length > 0 || rolesAttached.unresolved.length > 0)
+    ) {
+      await auditRolesAttachedOnAccept(
+        deps.audit,
+        auditContextFor(request, { organizationId: detail.organizationId, userId: actor.userId }),
+        {
+          membershipId: membership.membershipId,
+          organizationId: detail.organizationId,
+          attached: rolesAttached.attached,
+          unresolved: rolesAttached.unresolved,
+        },
+      );
+    }
+
+    // `rolesAttached` is on the wire so the caller can tell the three states apart: roles granted, roles
+    // REQUESTED BUT UNRESOLVABLE (the org has no such role — which is every key in a freshly provisioned
+    // tenant, since nothing materializes ROLE_TEMPLATES), and no attacher bound at all. Reporting only
+    // the membership id, as before, is what made an invitation that granted nothing indistinguishable
+    // from one that worked.
     return reply.code(200).send({
       membershipId: membership.membershipId,
       organizationId: detail.organizationId,
       status: membership.status,
+      rolesAttached,
     });
   });
 
