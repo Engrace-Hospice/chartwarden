@@ -445,9 +445,14 @@ export const M19_EVENT_IDEMPOTENCY_KEYS = {
  * upstream rename breaks the build rather than silently orphaning a handler. M19 owns none of these
  * prefixes; consuming them needs no `dependsOn` edge.
  *
- * NAME READ: §4.8's queue table spells the M36 trigger `m36.delivery_failed` (two segments). The topic
- * M36 actually emits is `m36.notification.delivery_failed`, which is also what §3.1's consumer filename
- * comment names and the only form that satisfies the three-segment convention. The real name is used.
+ * NAME READ: §4.8's queue table spells the M36 trigger `m36.delivery_failed` (two segments). The form used
+ * here — `m36.notification.delivery_failed` — is what §3.1's consumer filename comment names and the only
+ * one satisfying the three-segment convention. F-094/#205 corrects what this paragraph used to assert: M36
+ * does not "actually emit" it, under that name or any other. M36 contributes NO event catalog to the boot
+ * dispatcher (there is no `M36_OUTBOX_EVENTS`), so `./consumers/m36-delivery-failed.ts` waits on a topic no
+ * producer can publish. Registered in `scripts/outbox-subscription-exceptions.ts` rather than deleted: the
+ * handler and M20's matching `delivery_failed` SOS escalation reason are the record that this integration
+ * is intended and unbuilt.
  *
  * `m17.visit.assigned` is M17's canonical roster-change signal (M17 §4.11 emits no separate
  * `m17.roster.changed`), and is what the debounced Direct-model shift-sync reconciles on.
@@ -456,6 +461,17 @@ export const M19_SUBSCRIBED_EVENT_NAMES = [
   "m17.visit.no_show_detected",
   "m17.visit.assigned",
   "m18.evv.late_check_out_detected",
+  // F-094/#205 — catalogued AND declaring `m19`, and absent from this list until the two were first
+  // compared. The relay routes each of them here; §4.8's triage-intake, roster and safety-escalation
+  // consumers are what will answer them.
+  "m17.visit.unassigned",
+  "m17.time_off.approved",
+  "m17.reassignment_needed",
+  "m20.safety.sos_alert_raised",
+  "m20.safety.check_in_escalated",
+  "m39.consent.delegated_access.granted",
+  "m39.consent.delegated_access.revoked",
+  // Subscribed and NOT routed here — each registered in `scripts/outbox-subscription-exceptions.ts`.
   "m36.notification.delivery_failed",
   "m8.encounter.signed",
   "m11.order.verbal_expired_unsigned",

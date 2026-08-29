@@ -43,6 +43,22 @@
  *   4. every module a catalogued event names in `declaredConsumers` has a LIVE BINDING for it —
  *      or the (module, event) pair is named in `outbox-deferred-consumers.ts` with a reason.
  *
+ * Rule 6 is the direction rule 4 still did not run (F-094, issue #205):
+ *   6. a module that publishes an `M<N>_SUBSCRIBED_EVENT_NAMES` constant must agree with the catalog
+ *      about what it subscribes to, BOTH WAYS — every name it lists is catalogued and declares that
+ *      module, and every catalogued event declaring that module is in its list.
+ *
+ * Six modules publish such a constant, and each carries a doc comment of the same form: "Listed here —
+ * not only in the worker files — so the consumer wiring and the §9 tests share one source of truth, and
+ * so an upstream rename breaks the build rather than silently orphaning a handler." Nothing compared any
+ * of them to anything. They are string-literal tuples, and the tests that reference them assert the
+ * list's SHAPE (three dot-separated segments, no self-consumption, contains one particular corrected
+ * name) and never that a name EXISTS. So the six lists and the catalog disagreed on 65 facts, in both
+ * directions, and the direction that costs most is neither of rule 4's: a name the catalog does not
+ * declare is a handler the relay routes NOTHING to, which is what #204 had to fix before M20's binding
+ * did anything at all. Writing the binding is not enough if the declaration is missing, and before this
+ * rule nothing told you which case you were in.
+ *
  * All three original rules run binding -> catalog. An event declaring `["m33", "m36"]` with zero
  * consumers anywhere satisfied every one of them and passed green, so the catalog read as if all 599
  * of its consumer-declaring entries were wired when 570 of them were not. Same unasked-direction
@@ -75,6 +91,7 @@ import { buildBootOutboxCatalog } from "../apps/backend/src/bootstrap/outbox-per
 import { MODULES } from "../architecture/module-manifest";
 import type { ModuleEventContribution, OutboxEventEntry } from "../packages/types/src/index";
 import { DEFERRED_CONSUMERS, type DeferredConsumerGroup } from "./outbox-deferred-consumers";
+import { SUBSCRIPTION_EXCEPTIONS } from "./outbox-subscription-exceptions";
 
 /**
  * Every real module token. `ModuleToken` is the template-literal type `m${number}`, so the compiler
@@ -255,6 +272,15 @@ interface Pair {
 
 const pairKey = (eventType: string, module: string): string => `${module}::${eventType}`;
 
+const SUBSCRIPTION_EXCEPTION_NAME = "outbox-subscription-exceptions.ts";
+const SUBSCRIPTION_EXCEPTED = new Set(
+  SUBSCRIPTION_EXCEPTIONS.flatMap((group) =>
+    group.events.map((eventType) => pairKey(eventType, group.module)),
+  ),
+);
+const subscriptionExcepted = (module: string, eventType: string): boolean =>
+  SUBSCRIPTION_EXCEPTED.has(pairKey(eventType, module));
+
 /**
  * Rewrite ONLY the `events: [...]` arrays in the register, preserving every hand-written `reason`, and
  * append a stub group for a consumer module that has newly acquired unbound pairs. The stub is written
@@ -298,6 +324,88 @@ function regenerate(source: string, unbound: readonly Pair[]): string {
     out = out.replace(/\n\];\n$/, `\n${stubs}];\n`);
   }
   return out;
+}
+
+/** What rule 6 needs to know about one catalogued event. Narrower than `OutboxEventEntry` so the pure
+ *  check below can be exercised without building a boot catalog. */
+export interface CatalogFacts {
+  has(eventType: string): boolean;
+  declaredConsumers(eventType: string): readonly string[] | undefined;
+}
+
+/** A `ReadonlyMap<string, OutboxEventEntry>` as {@link CatalogFacts}. */
+export function catalogFactsOf(
+  catalog: ReadonlyMap<string, { readonly declaredConsumers: readonly string[] }>,
+): CatalogFacts {
+  return {
+    has: (eventType) => catalog.has(eventType),
+    declaredConsumers: (eventType) => catalog.get(eventType)?.declaredConsumers,
+  };
+}
+
+/**
+ * Rule 6, as a pure function: every disagreement between the modules' own subscription lists and the
+ * catalog, in BOTH directions, minus the pairs `excepted` names.
+ *
+ * Extracted so the rule is testable without a boot catalog — the shapes it has to get right (a name in
+ * no catalog at all, a name the catalog carries but does not route to this module, and a declaration the
+ * module's list omits) are exactly the three the six lists were wrong about.
+ */
+export function subscriptionDisagreements(
+  subscriptionLists: ReadonlyMap<string, readonly string[]>,
+  catalog: CatalogFacts,
+  excepted: (module: string, eventType: string) => boolean,
+): string[] {
+  const failures: string[] = [];
+  for (const [module, subscribed] of [...subscriptionLists].sort()) {
+    const listName = `M${module.slice(1)}_SUBSCRIBED_EVENT_NAMES`;
+    const seen = new Set<string>();
+    for (const eventType of subscribed) {
+      if (seen.has(eventType)) failures.push(`${listName}: '${eventType}' is listed twice`);
+      seen.add(eventType);
+      if (excepted(module, eventType)) continue;
+      if (!catalog.has(eventType)) {
+        failures.push(
+          `${listName}: '${eventType}' is in no boot catalog entry — no module owns or emits it, so the handler behind this name can never run. Catalogue the event (and register its MNN_OUTBOX_EVENTS in ${COMPOSITION_ROOT}), correct the name, drop it, or register the exception in ${SUBSCRIPTION_EXCEPTION_NAME}.`,
+        );
+        continue;
+      }
+      const declared = catalog.declaredConsumers(eventType) ?? [];
+      if (!declared.includes(module)) {
+        failures.push(
+          `${listName}: '${eventType}' does not declare '${module}' [${declared.join(", ")}] — the relay routes this event to nobody in ${module}, so a binding for it would deliver nothing. Add '${module}' to declaredConsumers, drop the subscription, or register the exception in ${SUBSCRIPTION_EXCEPTION_NAME}.`,
+        );
+      }
+    }
+  }
+  return failures;
+}
+
+/**
+ * The converse half of rule 6: a catalogued event that declares a module whose own subscription list does
+ * not name it. Separate from {@link subscriptionDisagreements} because it walks the CATALOG rather than
+ * the lists, and because it is the cheap direction to fix — the catalog is what the relay reads, so the
+ * list is simply wrong.
+ */
+export function undeclaredSubscriptions(
+  subscriptionLists: ReadonlyMap<string, readonly string[]>,
+  catalogEntries: Iterable<readonly [string, { readonly declaredConsumers: readonly string[] }]>,
+  excepted: (module: string, eventType: string) => boolean,
+): string[] {
+  const failures: string[] = [];
+  const entries = [...catalogEntries];
+  for (const [module, subscribed] of [...subscriptionLists].sort()) {
+    const listName = `M${module.slice(1)}_SUBSCRIBED_EVENT_NAMES`;
+    const seen = new Set(subscribed);
+    for (const [eventType, entry] of entries) {
+      if (!entry.declaredConsumers.includes(module)) continue;
+      if (seen.has(eventType) || excepted(module, eventType)) continue;
+      failures.push(
+        `catalog: '${eventType}' declares consumer '${module}', which ${listName} does not list — the module's own source of truth and the catalog disagree about whether it subscribes. Add it to the list, drop '${module}' from declaredConsumers, or register the exception in ${SUBSCRIPTION_EXCEPTION_NAME}.`,
+      );
+    }
+  }
+  return failures;
 }
 
 async function main(): Promise<void> {
@@ -421,6 +529,84 @@ async function main(): Promise<void> {
     );
   }
 
+  // ── rule 6: module subscription list ↔ catalog, both ways (F-094 / #205) ─────────────────────
+  //
+  // DISCOVERY IS BY EVALUATION, like the bindings. The six constants are enumerated off the
+  // `@wardenx/types` barrel rather than found by scanning files, so a seventh module publishing one is
+  // checked the day it lands with no edit here — and a module that DELETES its list silently stops
+  // being checked, which is why `SUBSCRIPTION_EXCEPTIONS` keys on the pair and not on the module.
+  const typesBarrel = (await import(join(REPO_ROOT, "packages/types/src/index.ts"))) as Record<
+    string,
+    unknown
+  >;
+  const subscriptionLists = new Map<string, readonly string[]>();
+  for (const [name, value] of Object.entries(typesBarrel)) {
+    const match = /^M(\d+)_SUBSCRIBED_EVENT_NAMES$/.exec(name);
+    if (!match || !Array.isArray(value)) continue;
+    subscriptionLists.set(`m${Number(match[1])}`, value as readonly string[]);
+  }
+  if (subscriptionLists.size === 0) {
+    failures.push(
+      "packages/types: no M<N>_SUBSCRIBED_EVENT_NAMES constant is exported — rule 6 checked nothing, which must not look like a pass",
+    );
+  }
+
+  failures.push(
+    ...subscriptionDisagreements(subscriptionLists, catalogFactsOf(catalog), subscriptionExcepted),
+  );
+  failures.push(...undeclaredSubscriptions(subscriptionLists, catalog, subscriptionExcepted));
+
+  // An exception that has been reconciled must not outlive its reason — the deferral register's rule,
+  // applied to the register that lets a divergence be deliberate.
+  const seenExceptions = new Set<string>();
+  for (const group of SUBSCRIPTION_EXCEPTIONS) {
+    if (group.reason.trim().length === 0) {
+      failures.push(
+        `${SUBSCRIPTION_EXCEPTION_NAME}: group (${group.module}, ${group.kind}) carries no reason — an unexplained exception is exactly what this register exists to end`,
+      );
+    }
+    const subscribed = subscriptionLists.get(group.module);
+    for (const eventType of group.events) {
+      const key = pairKey(eventType, group.module);
+      if (seenExceptions.has(key)) {
+        failures.push(
+          `${SUBSCRIPTION_EXCEPTION_NAME}: (${group.module}, ${eventType}) is listed twice`,
+        );
+      }
+      seenExceptions.add(key);
+      if (!subscribed) {
+        failures.push(
+          `${SUBSCRIPTION_EXCEPTION_NAME}: (${group.module}, ${eventType}) names a module that publishes no subscription list — delete the entry`,
+        );
+        continue;
+      }
+      const listed = subscribed.includes(eventType);
+      const declared = catalog.get(eventType)?.declaredConsumers.includes(group.module as never);
+      if (listed && declared === true) {
+        failures.push(
+          `${SUBSCRIPTION_EXCEPTION_NAME}: (${group.module}, ${eventType}) is now both subscribed and declared — the exception has outlived its reason; delete the entry`,
+        );
+      }
+      if (!listed) {
+        failures.push(
+          `${SUBSCRIPTION_EXCEPTION_NAME}: (${group.module}, ${eventType}) is no longer in ${`M${group.module.slice(1)}_SUBSCRIBED_EVENT_NAMES`} — there is no divergence left to except; delete the entry`,
+        );
+      }
+      // `no-producer` says the event is in no catalog. If one appears, the reason is stale even when the
+      // pair still diverges — the blocker it names has been lifted and the entry must be re-decided.
+      if (group.kind === "no-producer" && catalog.has(eventType)) {
+        failures.push(
+          `${SUBSCRIPTION_EXCEPTION_NAME}: (${group.module}, ${eventType}) is classed 'no-producer' but the boot catalog now carries it — the blocker has lifted; declare the consumer or reclassify the entry`,
+        );
+      }
+      if (group.kind !== "no-producer" && !catalog.has(eventType)) {
+        failures.push(
+          `${SUBSCRIPTION_EXCEPTION_NAME}: (${group.module}, ${eventType}) is classed '${group.kind}' but the boot catalog does not carry the event at all — that is 'no-producer'`,
+        );
+      }
+    }
+  }
+
   // An entry that gained a binding, or whose event/declaration went away, must not outlive its reason.
   for (const group of DEFERRED_CONSUMERS) {
     for (const eventType of group.events) {
@@ -473,18 +659,51 @@ async function main(): Promise<void> {
     }
   }
 
+  // Rule 6's standing finding (F-094 / #205), printed every run for the same reason: a subscription the
+  // relay routes to nobody is a handler that can never fire, and an excepted one is still that.
+  const exceptionsByKind = new Map<string, number>();
+  for (const group of SUBSCRIPTION_EXCEPTIONS) {
+    exceptionsByKind.set(group.kind, (exceptionsByKind.get(group.kind) ?? 0) + group.events.length);
+  }
+  const exceptionCount = [...exceptionsByKind.values()].reduce((a, b) => a + b, 0);
+  const subscribedCount = [...subscriptionLists.values()].reduce((a, l) => a + l.length, 0);
+  console.log(
+    `Subscription lists: ${subscriptionLists.size} module(s), ${subscribedCount} subscribed name(s), ` +
+      `${exceptionCount} not routed by the catalog — ` +
+      `${[...exceptionsByKind.entries()]
+        .sort()
+        .map(([kind, n]) => `${kind} ${n}`)
+        .join(", ")}`,
+  );
+  const noProducer = SUBSCRIPTION_EXCEPTIONS.filter((g) => g.kind === "no-producer");
+  if (noProducer.length > 0) {
+    const owners = new Set(
+      noProducer.flatMap((g) => g.events.map((e) => e.slice(0, e.indexOf(".")))),
+    );
+    console.log(
+      `\n  ⚠ ${noProducer.reduce((n, g) => n + g.events.length, 0)} subscribed name(s) have NO PRODUCER (#205) — ` +
+        `${[...owners].sort().join(", ")} contribute no event catalog to the boot dispatcher:`,
+    );
+    for (const group of noProducer) {
+      console.log(`      · ${group.module} — ${group.events.join(", ")}`);
+    }
+  }
+
   if (failures.length > 0) {
     console.error(`\n✗ ${failures.length} outbox binding/catalog disagreement(s):\n`);
     for (const failure of failures) console.error(`  · ${failure}`);
     console.error(
-      "\nThe outbox dispatcher throws on each of these at boot, before server.listen(). Fix the\n" +
-        "catalog entry (events-by-mNN.ts) or the binding — do not relax this gate.",
+      "\nRules 1-5 are what the outbox dispatcher throws on at boot, before server.listen(); rule 6 is\n" +
+        "what silently routes an event to nobody. Fix the catalog entry (events-by-mNN.ts), the binding,\n" +
+        "or the module's own subscription list — do not relax this gate.",
     );
     process.exit(1);
   }
   console.log(
-    "✓ every live outbox binding agrees with the boot event catalog, and every declared consumer is bound or registered as deferred.",
+    "✓ every live outbox binding agrees with the boot event catalog, every declared consumer is bound or registered as deferred, and every subscription list agrees with the catalog both ways.",
   );
 }
 
-await main();
+// Guarded so the pure rule-6 helpers above can be imported by `scripts/__tests__/` without running the
+// whole gate as an import side effect (the `check-live-suite-coverage.ts` convention).
+if (import.meta.main) await main();
