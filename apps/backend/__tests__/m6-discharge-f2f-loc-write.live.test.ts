@@ -624,7 +624,24 @@ describe.skipIf(!DB_URL)(
       expect(ctis.rows[0].election_period_id).toBe(seqs.rows[1].id);
       expect(ctis.rows[0].hospice_md_id).toBe(MD);
       expect(ctis.rows[0].status).toBe("drafted");
-      // Signing it (hospice-MD alone, since sequence 4 !== 1) fully signs AND activates the period.
+      // F-089 — sequence 4 is a third-or-later benefit period, so 42 CFR 418.22(a)(4) requires an
+      // attested face-to-face encounter before the recertification. This assertion used to read
+      // "signing it (hospice-MD alone, since sequence 4 !== 1) fully signs AND activates the period",
+      // which was true until F-062 (#143) reached `transitionElectionPeriod` for real and its
+      // R-F2F-04 guard started running. Transferring in does not exempt the receiving hospice: it is
+      // the one recertifying for the next period, so the encounter is ITS obligation.
+      await expect(
+        svc.signCtiHospiceMd(ORG_A, ctis.rows[0].id, Number(ctis.rows[0].version), USER),
+      ).rejects.toMatchObject({ code: "F2F_REQUIRED_FOR_RECERT" });
+
+      await admin.query(
+        `INSERT INTO face_to_face_encounter (organization_id, election_period_id, performed_by_user_id,
+                                             performer_role, encounter_date, status,
+                                             attestation_signed_at, attestation_narrative)
+         VALUES ($1,$2,$3,'hospice_md', now()::date, 'attested', now(), $4)`,
+        [ORG_A, seqs.rows[1].id, MD, "x".repeat(120)],
+      );
+      // Now the same call signs AND activates the period.
       const signed = await svc.signCtiHospiceMd(
         ORG_A,
         ctis.rows[0].id,

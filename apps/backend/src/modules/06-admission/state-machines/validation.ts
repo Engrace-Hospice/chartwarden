@@ -76,12 +76,24 @@ export function daysBetween(a: LocalDate, b: LocalDate): number {
 
 // ── §2.4.1 synchronous validators (each raises the catalogued code on failure) ──────────────────────
 
-/** R-EL-01: a representative signer needs an active M39 `dpoa_healthcare` consent (resolved upstream). */
+/**
+ * R-EL-01: a representative signer needs an active M39 `dpoa_healthcare` consent (resolved upstream).
+ *
+ * The early return names `patient` rather than negating `representative`, and that is the whole of the
+ * difference between failing closed and failing open (F-089). The caller reaches this through
+ * `SIGNER_KIND_BY_ROLE[input.signingRole]`, an index into a two-key map — the wire vocabulary says
+ * `legal_representative` while the column enum says `representative`, so the mapping exists precisely
+ * because they differ. An index that misses yields `undefined`, `undefined !== "representative"` is
+ * true, and the §418.24(b)(1) authority check was SKIPPED: the election signed, with no DPOA consult,
+ * for a signer whose kind the platform could not name. Written this way an unrecognised kind is a
+ * representative until something proves otherwise, which is the direction an authority control has to
+ * fail in.
+ */
 export function checkRepresentativeAuthority(input: {
   signerKind: "patient" | "representative";
   hasActiveDpoaConsent: boolean;
 }): void {
-  if (input.signerKind !== "representative") return;
+  if (input.signerKind === "patient") return;
   require_(
     input.hasActiveDpoaConsent,
     "REPRESENTATIVE_AUTHORITY_MISSING",
