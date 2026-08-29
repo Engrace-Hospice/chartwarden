@@ -27,6 +27,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import type { HopeDischargeReason, HopeRfaKind, HopeSubmissionStatus } from "@wardenx/types";
 import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { correctsIqiesRecordIdSql } from "./correlated-sql";
 
 const ASSESS = schema.hopeAssessments;
 const SUB = schema.hopeSubmissions;
@@ -136,9 +137,10 @@ export async function pendingItemsForSubmission(
       targetDate: ASSESS.targetDate,
       providerEntityId: ASSESS.providerEntityId,
       locationId: ASSESS.locationId,
-      correctsIqiesRecordId: sql<
-        string | null
-      >`(select o.iqies_record_id from hope_assessment o where o.id = ${ASSESS.correctsAssessmentId} limit 1)`,
+      // Correct here TODAY only because this select has a join and Drizzle therefore qualifies the
+      // column; the identical fragment one file over did not, and answered null for every correction
+      // ever assembled. Through the shared helper so it cannot depend on that again (F-086).
+      correctsIqiesRecordId: correctsIqiesRecordIdSql(ASSESS, ASSESS.correctsAssessmentId),
     })
     .from(ITEM)
     .innerJoin(ASSESS, eq(ASSESS.id, ITEM.hopeAssessmentId))
