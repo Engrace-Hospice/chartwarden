@@ -106,9 +106,21 @@ creates `wardenx_platform_login` (inherits the enumerated `wardenx_platform` car
 BYPASSRLS **attribute** — attributes are not inherited, so it sits on the login role) and
 `wardenx_destruction_login` (`IN ROLE wardenx_destruction`, migration 0157, NOBYPASSRLS). Then set
 `DATABASE_PLATFORM_URL` (admin console, platform crons, the outbox relay's org enumeration, the
-M34 offboarding eraser) and `DATABASE_DESTRUCTION_URL` (right-to-erasure over the append-only
-clinical/billing tables + `audit_event`). Without them the affected paths refuse loudly — the
-boot log says exactly what is off. Re-running the script rotates passwords; a missing grant
+M34 offboarding eraser, **and every per-tenant PHI cipher**) and `DATABASE_DESTRUCTION_URL`
+(right-to-erasure over the append-only clinical/billing tables + `audit_event`). Without them the
+affected paths refuse loudly — the boot log says exactly what is off.
+
+**The PHI-cipher half is easy to miss, so it is spelled out (F-082).** Migration 0052 §5 REVOKES
+`wardenx_app`'s SELECT on `tenant_key_ring` by design — the request path reads only the
+ciphertext-free metadata view — so the platform login is the only credential that can resolve a
+wrapped tenant DEK. With `DATABASE_PLATFORM_URL` unset, `dekForOrg` refuses and so does everything
+composed over it: M8's HearthNote narrative (an encounter cannot be FINALIZED, and therefore never
+reaches signing), M27's raw cost-report payloads, M29's stored HL7 payloads, M31's portal contact
+ciphers, M39's consent notes. Each answers a fail-closed 503 naming the DEK, which reads the same
+whether the KEK, the credential, or the key ring itself is what is missing. `M34_TENANT_KEK` (the
+platform key that WRAPS the DEK, `.env.example`) is required alongside it, and `bun run db:seed`
+provisions the demo org's `tenant_account` + `tenant_key_ring` through the same SECURITY DEFINER
+function the production provision worker calls — it skips with a printed note when no KEK is set. Re-running the script rotates passwords; a missing grant
 surfaces as a 42501 and is fixed by one reviewed line in
 `scripts/db/provision-runtime-roles.ts`, never a blanket `ALL`.
 

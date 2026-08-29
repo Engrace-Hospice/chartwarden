@@ -667,6 +667,25 @@ jobs:
       # reads as missing seed data. 3000 is ~2.7x the measured peak, so the remaining eight modules can
       # land their specs without re-tripping it. Production default untouched.
       RATE_LIMIT_AUTHENTICATED_PER_MINUTE: "3000"
+      # F-082 — the four vars M8's finalize (and M27's, M29's, M31's and M39's payload ciphers) need.
+      #
+      # `POST /encounters/:id/finalize` seals the assembled narrative under the tenant DEK, which needs
+      # BOTH halves of M34's key envelope: the platform KEK that wraps it (`M34_TENANT_KEK`) and a
+      # credential that may SELECT `tenant_key_ring` — migration 0052 §5 REVOKES that from `wardenx_app`
+      # by design, so the request path physically cannot read a wrapped DEK and the platform login is
+      # what resolves it. Without them the finalize is a 503 `HEARTHNOTE_CIPHER_UNBOUND`, which is the
+      # fail-closed answer working correctly and which no spec could get past.
+      #
+      # This makes the e2e job the SECOND to boot in the documented production configuration. That is a
+      # gain, not a cost: `outbox-boot` proves the platform-credential branch STARTS, and this now runs
+      # the product across it — the relay, the audited active-org enumerator and the platform crons are
+      # live for the whole suite rather than a branch nothing but a boot check has taken.
+      PROVISION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_e2e
+      WARDENX_PLATFORM_PASSWORD: ci-platform-password-0123456789
+      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:ci-platform-password-0123456789@localhost:5432/wardenx_e2e
+      # A throwaway 32-byte test KEK. It wraps DEKs minted by this run's seed and nothing else; a real
+      # deployment's lives in its secret manager (ADR-0045).
+      M34_TENANT_KEK: kek-1:Y2ktdGVuYW50LWtlay10ZXN0LTAxMjM0NTY3ODlhYmM=
     steps:
       - uses: actions/checkout@v4
       - name: Install Bun
@@ -692,6 +711,11 @@ jobs:
         run: bunx playwright install --with-deps chromium
       - name: Migrate
         run: bun run db:migrate
+      # A REAL provisioned role (carrier + BYPASSRLS), not a superuser alias — same as `outbox-boot`.
+      # Booting against a superuser would prove nothing about the grants production actually has, and
+      # the key-ring read is exactly a grant question.
+      - name: Provision the platform login role
+        run: bun run db:provision-roles
       # Backgrounded because the suite needs the stack UP for its whole run — unlike `check:boot:platform`,
       # which boots, asserts and kills. The log is captured to a file so a failure shows the backend's own
       # output (see the artifact step) instead of an unexplained browser timeout.

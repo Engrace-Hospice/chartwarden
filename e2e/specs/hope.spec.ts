@@ -26,13 +26,32 @@
 // use one id for both, which M12's `actorOf` header had already written down. A real server is the only
 // thing that disagrees, which is what this spec is.
 //
-// THIS SPEC BRINGS ITS OWN SUBJECT. Unlike the orders and eMAR specs it does not consume a seeded queue
-// row — it records the draft it then signs, so it is re-runnable against the same database. The seed
-// leaves exactly one HOPE assessment (`01_admission`, already `signed`), and `hope_timepoint_schedule` is
-// EMPTY on a seeded stack because schedules are written by the M6 outbox consumer rather than by any seed
-// — so `/hope`, the dashboard, has no open window to record against and the patient timeline's
-// unscheduled capture is the only authoring surface that works here. That is a real gap in the seed, not
-// in the screen; it is left as a finding rather than papered over with a hand-inserted schedule row.
+// THIS SPEC BRINGS ITS OWN SUBJECT: it records the draft it then signs, rather than consuming a seeded
+// queue row the way the orders and eMAR specs do.
+//
+// IT MOVED PATIENTS, AND WHY IT HAD TO IS A FOURTH DEFECT (F-085). It used to record an UNSCHEDULED
+// HUV1 on Whitfield, and its header explained that choice: "`hope_timepoint_schedule` is EMPTY on a
+// seeded stack because schedules are written by the M6 outbox consumer rather than by any seed". True,
+// and the cause was one layer further out — the outbox RELAY only runs when `DATABASE_PLATFORM_URL` is
+// configured, and no local stack and no CI job had ever set it, so the consumer that writes the
+// schedules had never run ANYWHERE. F-082 gave the e2e job the platform credential (M8's finalize needs
+// it to resolve the tenant DEK); the schedules now exist, and this spec immediately went red with
+// `409 M10_TIMEPOINT_NOT_OPEN` — HUV1 opens on day 6 of the benefit period. The old path had been
+// passing because the schedule was absent.
+//
+// Recording against an OPEN window meant recording the ADMISSION timepoint, which meant a patient who
+// does not already have one — and that could not be done at all. The timeline's "Record timepoint"
+// control renders only when `admissionId` resolves, and `admissionId` came off `items[0]`: the newest
+// EXISTING timepoint. A patient with none got no control, and the header named the intended exit —
+// "the schedule worklist … is the entry point for the first capture" — which is `/hope`, an org-wide
+// read that M10's own `hope.scope` predicate admits only for `medical_director` /`compliance_officer` /
+// `survey_coordinator`, with no patient filter in the UI. So the CMS admission timepoint, due within 5
+// days of election for every newly admitted patient, was recordable from nowhere by an RN. Same missing
+// fact as F-065 (M12) and F-083 (M8): the patient's `admissionId`.
+//
+// Samuel Okonkwo rather than Eleanor Whitfield, then: his admission is ACTIVE (the capture route refuses
+// a closed one, `409 M10_ADMISSION_NOT_ACTIVE`), his admission window is open, and he has NO HOPE
+// timepoint — which is exactly the state that could not be authored.
 //
 // The D4 symptom-follow-up assertion is folded into the main path rather than standing as its own test,
 // because a separate test would have to assume either an execution ORDER or a fixed row count — and the
@@ -51,8 +70,13 @@ import { RN_ACCOUNT } from "../fixtures/credentials";
 import { expectNoAxeViolations, signInAs } from "../fixtures/helpers";
 import { openPatientChartByLastName } from "../fixtures/patients";
 
-/** The flagship seeded patient — `db:seed:scenario-clinical` gives only her a HOPE assessment. */
-const PATIENT_LAST_NAME = "Whitfield";
+/**
+ * An admitted patient with an OPEN admission window and no HOPE timepoint yet — the state the CMS
+ * admission assessment exists for, and the one F-085 made authorable. Deliberately NOT Whitfield: the
+ * seed already records and signs her admission timepoint, so her window is `completed` and the only
+ * thing left to record on her is a HUV1 whose window has not opened.
+ */
+const PATIENT_LAST_NAME = "Okonkwo";
 
 test.describe("HOPE", () => {
   test("main path: an RN records a HOPE timepoint and signs it", async ({ page }) => {
@@ -62,25 +86,25 @@ test.describe("HOPE", () => {
     await page.goto(`/patients/${patientId}/hope`);
     await expect(page.getByRole("heading", { name: "HOPE Timeline" })).toBeVisible();
 
-    // The timeline is the authoring surface. "Record timepoint" renders only once the patient has at
-    // least one HOPE row (the admission id is read off the newest of them), which the seed guarantees.
+    // THE REGRESSION GUARD for F-085. The control is offered on a patient with NO timepoints — the
+    // admission id now resolves from the patient's own admission rather than from a timepoint that does
+    // not exist. Before the fix this button is simply absent and the spec cannot start.
     //
     // Selected by the `button` role, not `row`: each `<tr>` carries `role="button"` so the whole row is
     // keyboard-actionable, and an explicit role REPLACES the implicit one — `getByRole("row")` matches
     // only the header. Same trap F-023 documents in `e2e/fixtures/patients.ts`, from the other side.
     const rows = page.getByRole("table").getByRole("button");
-    await expect.poll(() => rows.count(), { timeout: 15_000 }).toBeGreaterThan(0);
     const before = await rows.count();
 
     await page.getByRole("button", { name: "Record timepoint" }).click();
     const dialog = page.getByRole("dialog", { name: "Record HOPE timepoint" });
     await expect(dialog).toBeVisible();
 
-    // HUV1 rather than a second Admission: it is a legitimately distinct timepoint on the same
-    // admission, and selecting it also exercises the RFA control, which is disabled when a schedule
-    // window pins it and free here because this capture is unscheduled.
-    await dialog.getByLabel("Reason for assessment").selectOption("02_huv1");
-    await expect(dialog.getByRole("heading", { name: "Record HUV1" })).toBeVisible();
+    // The ADMISSION timepoint, because it is the one whose window is open. `assertCaptureAllowed`
+    // classifies the target date against the STORED window, so which RFA this is is not a preference —
+    // it is the only one the server will accept today.
+    await dialog.getByLabel("Reason for assessment").selectOption("01_admission");
+    await expect(dialog.getByRole("heading", { name: "Record Admission" })).toBeVisible();
 
     // THE REGRESSION GUARD for defect 1. The value is the CMS discipline code the route accepts, not the
     // M3 role key the select used to carry. Rita holds two nursing roles and only `rn` normalizes into
@@ -103,13 +127,14 @@ test.describe("HOPE", () => {
     // Open the draft. The row navigates to the assessment detail, where signing lives.
     //
     // Filtered on "Draft" as well as the RFA, which is what makes this spec re-runnable: a second run
-    // against the same database finds the FIRST run's HUV1 sitting there signed, and matching on the RFA
-    // alone would open that one and then fail on a Sign button a signed assessment does not offer.
-    const draftRow = rows.filter({ hasText: "HUV1" }).filter({ hasText: "Draft" }).first();
+    // against the same database finds the FIRST run's timepoint sitting there signed, and matching on
+    // the RFA alone would open that one and then fail on a Sign button a signed assessment does not
+    // offer.
+    const draftRow = rows.filter({ hasText: "Admission" }).filter({ hasText: "Draft" }).first();
     await expect(draftRow).toBeVisible();
     await draftRow.click();
     await page.waitForURL(/\/hope\/assessments\/[^/]+$/);
-    await expect(page.getByRole("heading", { name: "HOPE — HUV1 timepoint" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "HOPE — Admission timepoint" })).toBeVisible();
 
     // An unsigned assessment cannot reach iQIES, and the footer says so rather than offering submission.
     // The count is asserted as a pattern, not a number: it is one blocking `REQUIRED_SECTION_MISSING`
@@ -140,8 +165,11 @@ test.describe("HOPE", () => {
     // stuck at 10 after repeated local runs while the trigger was firing correctly every time.
     await page.goto(`/patients/${patientId}/hope`);
     await expect(page.getByRole("heading", { name: "HOPE Timeline" })).toBeVisible();
-    const signedHuv1 = rows.filter({ hasText: "HUV1" }).filter({ hasText: "Signed" }).first();
-    await expect(signedHuv1).toContainText("SFV", { timeout: 15_000 });
+    const signedAdmission = rows
+      .filter({ hasText: "Admission" })
+      .filter({ hasText: "Signed" })
+      .first();
+    await expect(signedAdmission).toContainText("SFV", { timeout: 15_000 });
   });
 
   test("the HOPE timeline is accessible (WCAG 2.1 A/AA)", async ({ page }) => {

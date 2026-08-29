@@ -13,9 +13,15 @@
  *     live re-authentication ceremony (WebAuthn assertion or a TOTP code) that a script cannot perform.
  *     The routes themselves are mounted as of #90 — the older note here that they were never mounted
  *     is no longer true. Encounters stop at `finalized` rather than `signed`.
- *   - M8 FINALIZE pins the assembled narrative under the tenant DEK (#122), and no KEK/KMS adapter is
- *     bound (#105), so on a local stack it refuses with 503 HEARTHNOTE_CIPHER_UNBOUND. Reported as a
- *     named platform gap (⊘) rather than a seed failure; the encounters stay in `draft`.
+ *   - M8 FINALIZE pins the assembled narrative under the tenant DEK (#122). This used to refuse with
+ *     503 HEARTHNOTE_CIPHER_UNBOUND on every local stack and the note here blamed #105, the unbound
+ *     KEK adapter. That was wrong twice over: #105 was fixed when `bootstrap/tenant-kek.ts` landed,
+ *     and the KEK was never the missing piece. Two things were — a `tenant_key_ring` row, which the
+ *     base seed did not create because it INSERTs its organization directly rather than provisioning
+ *     it through M34 (F-082, now fixed in `seed.ts`), and `DATABASE_PLATFORM_URL`, because migration
+ *     0052 §5 REVOKES `wardenx_app`'s SELECT on that table by design so only the platform credential
+ *     can resolve a wrapped DEK. With both configured the finalize succeeds; the ⊘ branch below is
+ *     kept because a stack with no `M34_TENANT_KEK` still legitimately reaches it.
  *   - M9's scale scorer only implements 4 of 14 scale types (`pps`, `fast`, `painad`, `esas_r`) —
  *     every other `scaleType` 500s (`SCALE_SCORER_UNAVAILABLE`). Only those 4 are used here.
  *     `pps`/`fast` also need an active `scale_license` row first (D3) — created here.
@@ -310,13 +316,14 @@ async function main(): Promise<void> {
     });
     void enc2;
 
-    // Finalize now PINS the assembled narrative under the tenant DEK (#122), and the M34 key ring is a
-    // deny-stub until #105 binds the KEK adapter — so on a local stack this refuses. That is a platform
-    // gap, not a seeding bug: report it as one, by name, instead of failing the whole chain.
+    // Finalize PINS the assembled narrative under the tenant DEK (#122). A deployment that has both
+    // halves of M34's key envelope configured — `M34_TENANT_KEK` and `DATABASE_PLATFORM_URL` — seals it
+    // and succeeds. One that has neither cannot key this tenant's PHI at all, which is a CONFIGURATION
+    // state rather than a seeding bug: name it and carry on rather than failing the whole chain.
     const finErr = fin.error as { error?: { code?: string } } | undefined;
     if (finErr?.error?.code === "HEARTHNOTE_CIPHER_UNBOUND") {
       log.blocked(
-        "Encounters: 2 draft visits (vitals + HearthNote captured) — finalize refused, no tenant DEK is bound to seal the assembled narrative (#105)",
+        "Encounters: 2 draft visits (vitals + HearthNote captured) — finalize refused, no tenant DEK could be resolved to seal the assembled narrative (set M34_TENANT_KEK + DATABASE_PLATFORM_URL, then re-run db:seed)",
       );
     } else if (fin.error) {
       throw new Error(`encounter finalize failed: ${JSON.stringify(fin.error)}`);

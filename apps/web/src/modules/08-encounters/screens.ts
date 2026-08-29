@@ -16,6 +16,12 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // `GET .../template` is that menu, served rather than shipped so the client cannot hold a second,
 // divergent copy of the rules `assembleSelections` enforces.
 //
+// …AND IT CAN NOW BE STARTED (F-083). The paragraph above was written from inside the composer, which is
+// where the gap hid: `createDraft` has been exported from `encounters-api.ts` since that change with NO
+// CALLER, and no screen offered a control that produced an encounter. Everything downstream of an
+// encounter id worked and nothing produced one — every encounter in the product came from a seed script.
+// `new-encounter-modal.tsx` is that control, on the patient encounters list.
+//
 // STILL DEFERRED, each for a reason:
 //   • Layer-2 (`hearthnote/enhance` + the modification decisions) — the §2.6 D5 AI ladder is its own
 //     ceremony with its own governance surface, not part of authoring the deterministic note.

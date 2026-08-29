@@ -15,7 +15,7 @@ import {
   requireStepUp,
   resetAuthorizationContract,
 } from "@wardenx/auth";
-import { ForbiddenError, type HttpRequestContext } from "@wardenx/types";
+import { type HttpRequestContext, StepUpRequiredError } from "@wardenx/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest } from "../src/bootstrap/seams/registry";
 import { wireModuleSeams } from "../src/index";
@@ -77,7 +77,17 @@ describe("ABAC boot wiring (wireModuleSeams)", () => {
     // No wireModuleSeams() — the contract is at its reset default.
     await expect(
       requireStepUp("documents.export_phi_bundle")(makeRequest()),
-    ).rejects.toBeInstanceOf(ForbiddenError);
+    ).rejects.toBeInstanceOf(StepUpRequiredError);
+  });
+
+  // F-084 — the ENVELOPE, not just the class. `code` is what five modules' `authFailureRedirect`
+  // helpers branch on to route a refused ceremony to `/step-up`; the status stays 403 because the
+  // request is refused, and because 138 route guards declare that response.
+  it("denies with 403 STEP_UP_REQUIRED, distinguishable from a permission refusal", async () => {
+    bootWithSession(new Date(Date.now() - 10 * 60_000), "totp");
+    await expect(requireStepUp("documents.export_phi_bundle")(makeRequest())).rejects.toMatchObject(
+      { code: "STEP_UP_REQUIRED", statusCode: 403 },
+    );
   });
 
   it("allows a fresh step-up with a qualifying factor after wiring", async () => {
@@ -91,20 +101,20 @@ describe("ABAC boot wiring (wireModuleSeams)", () => {
     bootWithSession(new Date(Date.now() - 10 * 60_000), "totp"); // 10 min ago, past the 300s floor
     await expect(
       requireStepUp("documents.export_phi_bundle")(makeRequest()),
-    ).rejects.toBeInstanceOf(ForbiddenError);
+    ).rejects.toBeInstanceOf(StepUpRequiredError);
   });
 
   it("denies a non-qualifying factor (SMS) even when fresh", async () => {
     bootWithSession(new Date(Date.now() - 5_000), "sms");
     await expect(
       requireStepUp("documents.export_phi_bundle")(makeRequest()),
-    ).rejects.toBeInstanceOf(ForbiddenError);
+    ).rejects.toBeInstanceOf(StepUpRequiredError);
   });
 
   it("denies when the request carries no session id (fail-closed)", async () => {
     bootWithSession(new Date(Date.now() - 60_000), "totp");
     await expect(
       requireStepUp("documents.export_phi_bundle")(makeRequest({ attributes: {} })),
-    ).rejects.toBeInstanceOf(ForbiddenError);
+    ).rejects.toBeInstanceOf(StepUpRequiredError);
   });
 });
