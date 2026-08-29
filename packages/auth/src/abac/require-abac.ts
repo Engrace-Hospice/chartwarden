@@ -15,6 +15,7 @@ import {
   ForbiddenError,
   type HttpRequestContext,
   NotFoundError,
+  StepUpRequiredError,
   UnauthorizedError,
 } from "@wardenx/types";
 import {
@@ -150,6 +151,12 @@ export interface RequireAbacOptions {
    * ceremony exists to demand. See `requireStepUp`.
    */
   readonly breakGlassBypassable?: boolean;
+  /**
+   * Deny with `403 STEP_UP_REQUIRED` rather than `403 FORBIDDEN` (F-084). Set by
+   * {@link requireStepUp} and by nothing else: the two refusals carry opposite remedies, and a
+   * caller who cannot re-authenticate their way past a gate must never be told to try.
+   */
+  readonly stepUpOnDeny?: boolean;
 }
 
 function defaultTarget(request: GuardRequest): AbacTarget {
@@ -194,6 +201,12 @@ export function requireAbac(
     }
 
     if (options.notFoundOnDeny) throw new NotFoundError("resource");
+    if (options.stepUpOnDeny) {
+      // No predicate name in the message: this one is rendered to a clinician mid-ceremony, and
+      // `abac predicate 'step_up_recent' denied` is not what they need to read. Every other denial
+      // keeps the diagnostic text — those are read by whoever is debugging a guard.
+      throw new StepUpRequiredError();
+    }
     throw new ForbiddenError(`abac predicate '${predicate}' denied for '${action}'`);
   };
 }
@@ -206,6 +219,9 @@ export function requireAbac(
 export function requireStepUp(operationKey: string): GuardHandler {
   return requireAbac(operationKey, "step_up_recent", {
     getTarget: () => ({ operationKey }),
+    // F-084 — a step-up refusal is not a permission refusal. Five modules' `authFailureRedirect`
+    // helpers have branched on this code since before it could be emitted.
+    stepUpOnDeny: true,
     // audit C2 — a step-up ceremony is never satisfiable by an emergency grant. See the
     // break-glass branch in `requireAbac`: this is the one guard that opts out of it.
     breakGlassBypassable: false,

@@ -184,11 +184,11 @@ export function ConsentCapture(): JSX.Element {
   const branch = useCallback(
     (
       status: number | undefined,
-      message: string | undefined,
+      code: string | undefined,
       fallback: string,
       setErr: (m: string | null) => void,
     ): boolean => {
-      const redirect = authFailureRedirect(status, message, window.location.pathname);
+      const redirect = authFailureRedirect(status, code, window.location.pathname);
       if (redirect) {
         navigate(redirect);
         return true;
@@ -223,12 +223,7 @@ export function ConsentCapture(): JSX.Element {
     });
     setDraftBusy(false);
     if (err || !data) {
-      branch(
-        response?.status,
-        err?.error?.message,
-        "The draft could not be created.",
-        setDraftError,
-      );
+      branch(response?.status, err?.error?.code, "The draft could not be created.", setDraftError);
       return;
     }
     setDraft(data.data as ConsentDraft);
@@ -260,7 +255,7 @@ export function ConsentCapture(): JSX.Element {
     if (err || !data) {
       branch(
         response?.status,
-        err?.error?.message,
+        err?.error?.code,
         "The recipient could not be added.",
         setRecipientError,
       );
@@ -297,7 +292,7 @@ export function ConsentCapture(): JSX.Element {
     if (err || !data) {
       branch(
         response?.status,
-        err?.error?.message,
+        err?.error?.code,
         "The DPOA agent could not be added.",
         setAgentError,
       );
@@ -333,12 +328,7 @@ export function ConsentCapture(): JSX.Element {
     });
     setSignBusy(false);
     if (err || !data) {
-      branch(
-        response?.status,
-        err?.error?.message,
-        "The consent could not be signed.",
-        setSignError,
-      );
+      branch(response?.status, err?.error?.code, "The consent could not be signed.", setSignError);
       return;
     }
     setCeremonyOpen(false);

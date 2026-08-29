@@ -1101,11 +1101,41 @@ describe.skipIf(!DB_URL)("session_scope_chk (F-030) — live", () => {
     expect(rows[0]?.scope).toEqual({ portalAccountId: "acct-1", patientId: "pt-9" });
   });
 
-  it("accepts the two vendor classes with no scope, like staff", async () => {
+  // This assertion INVERTED at migration 0223, and the inversion is the point.
+  //
+  // 0220 gave the two vendor classes no scope requirement, like `staff`, reasoning that an M19
+  // answering-service session is scoped to the organization rather than to a patient. That is true and
+  // the conclusion does not follow: a session that is not PATIENT-scoped is not therefore UNSCOPED, and
+  // these are VENDOR-scoped. Nothing carried the vendor, so `external_triage_actor` — which compares the
+  // SHIFT's `external_actor_id` against the SESSION's — could never admit one. 0223 makes
+  // `externalActorId` a requirement of both classes, so a vendor session with no vendor on it is now
+  // refused at the database instead of being minted into a permanent refusal.
+  it("requires a vendor on a vendor-class session, and nothing on a staff one", async () => {
     const db = client();
     await db.connect();
-    expect(await insertSession(db, "f030-d", "external_triage_vendor", null)).toBeNull();
-    expect(await insertSession(db, "f030-e", "external_triage_operator", null)).toBeNull();
+    expect(await insertSession(db, "f030-d", "external_triage_vendor", null)).toBe(
+      "session_scope_chk",
+    );
+    expect(await insertSession(db, "f030-e", "external_triage_operator", null)).toBe(
+      "session_scope_chk",
+    );
+    // …and accepted WITH it, so 0223 tightened exactly the unscoped case and nothing else.
+    expect(
+      await insertSession(
+        db,
+        "f030-d2",
+        "external_triage_vendor",
+        '{"externalActorId":"vendor-1"}',
+      ),
+    ).toBeNull();
+    expect(
+      await insertSession(
+        db,
+        "f030-e2",
+        "external_triage_operator",
+        '{"externalActorId":"vendor-1"}',
+      ),
+    ).toBeNull();
     expect(await insertSession(db, "f030-f", "staff", null)).toBeNull();
     await db.end();
   });

@@ -18,6 +18,11 @@ import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { allPermissionMirrorRows } from "@wardenx/auth";
 import { Client } from "pg";
+import {
+  ACTIVE_KEK_ENV,
+  createPlatformKekAdapter,
+  loadPlatformKekRing,
+} from "../../apps/backend/src/bootstrap/tenant-kek";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
 import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
 import { firstRow } from "./lib/query-rows";
@@ -133,6 +138,68 @@ function seededTarget(): string {
   }
 }
 
+/**
+ * The M34 tenant spine for the demo org: a `tenant_account` row and the `tenant_key_ring` that hangs
+ * off it, provisioned through the SAME `m34_provision_tenant_key_ring` SECURITY DEFINER function the
+ * production provision worker calls (`apps/backend/src/modules/34-saas-tenant-platform/jobs/saas-jobs.ts`
+ * → `ensureTenantKeyRing`), with a DEK minted and wrapped by the SAME platform KEK adapter.
+ *
+ * WHY THE SEED HAS TO DO THIS (F-082). In production an organization only ever comes into existence
+ * through M34 provisioning, which mints the key ring as step (1) of seven — so "an org with no key
+ * ring" is a state the platform cannot reach. This seed reached it anyway, by inserting the
+ * organization row directly, and every seeded deployment the repo has ever produced has run without
+ * one. `TenantKeyProvider.dekForOrg` answers `TenantKeyMissing` for such an org, which means every
+ * envelope-encrypted PHI write on the platform refuses: M8's HearthNote narrative + free text (so an
+ * encounter cannot be FINALIZED, and therefore never reaches signing), M27's raw cost-report payloads,
+ * M29's stored HL7 payloads, M31's portal contact ciphers, M39's consent notes.
+ *
+ * It was diagnosed as something else, twice, and written down that way: `seed-scenario-clinical-core.ts`
+ * reported the 503 as "#105, no KEK adapter is bound". #105 has been fixed since `bootstrap/tenant-kek.ts`
+ * landed — the adapter binds from `M34_TENANT_KEK` — and the refusal survived it, because the missing
+ * thing was never the KEK. It was the row the KEK wraps a key INTO. A fail-closed 503 that names the
+ * envelope reads the same either way, which is why the stale attribution held.
+ *
+ * No KEK configured is a SKIP, not a failure: a dev boot that sets no `M34_TENANT_KEK` does no tenant
+ * crypto at all (`loadPlatformKekRing` returns null by design), and minting a key ring whose ciphertext
+ * this deployment cannot unwrap would be worse than having none — `dekForOrg` would then fail on the
+ * KEK id instead of on the absent row, one layer further from the cause.
+ */
+async function provisionTenantSpine(db: Client, orgId: string): Promise<void> {
+  const ring = loadPlatformKekRing();
+  if (!ring) {
+    console.log(
+      `tenant key ring: SKIPPED — ${ACTIVE_KEK_ENV} is unset, so this deployment does no tenant crypto.\n  Encounter finalize, cost-report payloads, HL7 storage, portal contacts and consent notes will 503.`,
+    );
+    return;
+  }
+  const account = await db.query<{ id: string }>(
+    `INSERT INTO tenant_account (organization_id, status, legal_business_name,
+                                 billing_contact_email, breach_notification_email,
+                                 provisioned_at, activated_at)
+     VALUES ($1, 'active', $2, $3, $3, now(), now()) RETURNING id`,
+    [orgId, ORG.legal, "admin@wardenx.local"],
+  );
+  const tenantAccountId = firstRow(account, "seed: tenant_account insert").id;
+
+  const { wrappedCiphertextB64, kekId } = await createPlatformKekAdapter(ring).mintAndWrapDek({
+    organizationId: orgId,
+  });
+  // The function reads the wrapped DEK off two transaction-local GUCs rather than taking them as
+  // arguments, so the key material never lands in `pg_stat_statements` alongside the call.
+  await db.query("BEGIN");
+  await db.query(
+    "SELECT set_config('app.dek_kek_wrapped_ciphertext_b64', $1, true), set_config('app.dek_kek_id', $2, true)",
+    [wrappedCiphertextB64, kekId],
+  );
+  const keyRing = await db.query<{ id: string }>("SELECT m34_provision_tenant_key_ring($1) AS id", [
+    tenantAccountId,
+  ]);
+  await db.query("COMMIT");
+  console.log(
+    `tenant account ${tenantAccountId} → key ring ${firstRow(keyRing, "seed: key ring provision").id} (KEK '${kekId}')`,
+  );
+}
+
 async function main(): Promise<void> {
   if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
   const db = new Client({ connectionString: ADMIN_URL });
@@ -173,6 +240,10 @@ async function main(): Promise<void> {
     // audit_event has ON DELETE RESTRICT to organization (and is normally append-only);
     // as the seed superuser we clear the demo org's trail so the org row can be removed.
     await db.query("DELETE FROM audit_event WHERE organization_id = $1", [orgId]).catch(() => {});
+    // The M34 tenant spine, innermost first: both FK the organization ON DELETE RESTRICT, so without
+    // this the re-run's org DELETE fails once the seed has provisioned a key ring even once.
+    await db.query("DELETE FROM tenant_key_ring WHERE organization_id = $1", [orgId]);
+    await db.query("DELETE FROM tenant_account WHERE organization_id = $1", [orgId]);
     await db.query("DELETE FROM organization WHERE id = $1", [orgId]);
   }
   // Better Auth child rows (FKs vary) then the user rows.
@@ -196,6 +267,8 @@ async function main(): Promise<void> {
   );
   const orgId = firstRow(org, "seed: organization insert").id;
   console.log(`org ${ORG.slug} → ${orgId}`);
+
+  await provisionTenantSpine(db, orgId);
 
   const creds: Array<{ user: SeedUser; password: string; userId: string; perms: number }> = [];
 

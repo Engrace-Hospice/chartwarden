@@ -29,6 +29,7 @@
 //   • The Layer-1 NARRATIVE. `layer1Preview` comes back from the read and from every PATCH: the note as
 //     it currently reads, assembled deterministically server-side. The composer never assembles prose.
 //   • §2.2 the encounter lifecycle, and the late-entry tier the service date implies.
+import { ENCOUNTER_DISCIPLINE_RULES } from "@wardenx/types";
 import type { ApiClient, operations } from "@wardenx/ui";
 
 // ── schema-derived type extraction (the four helpers every module's api layer uses) ─────────────────────
@@ -69,6 +70,56 @@ export type EncounterType = CreateEncounterBody["encounterType"];
 export type EncounterDiscipline = CreateEncounterBody["discipline"];
 /** The mileage provenance the server accepts (`odometer` | `route_calc` | `manual_override`). */
 export type MileageSource = CaptureMileageBody["source"];
+
+// ── §2.2 the (encounter type × discipline) matrix, and the caller's own half of it (F-083) ────────────
+//
+// `ENCOUNTER_DISCIPLINE_RULES` is the ONE declaration of which discipline may author which encounter
+// type — read by the server's `checkEncounterDisciplinePair` (422 `INVALID_ENCOUNTER_DISCIPLINE_PAIR`),
+// by the DB CHECK behind it, and by the HearthNote template registry, which builds a template for every
+// legal pair and none for an illegal one. Imported rather than re-typed here for exactly that reason: a
+// second copy could offer a pair with no template, i.e. an encounter that creates and then cannot be
+// composed.
+//
+// The `satisfies` pin is what keeps the two vocabularies in step. The types above are derived from the
+// generated OpenAPI client, `ENCOUNTER_DISCIPLINE_RULES` from `@wardenx/types`; they are the same
+// vocabulary by construction and NOTHING checked that. A route that gained an encounter type would
+// leave this map short of a key, and the composer would silently stop offering it.
+const DISCIPLINE_RULES = ENCOUNTER_DISCIPLINE_RULES satisfies {
+  readonly [K in EncounterType]: readonly EncounterDiscipline[];
+};
+
+/** The disciplines that may author `encounterType` (§2.2). */
+export function legalDisciplinesFor(encounterType: EncounterType): readonly EncounterDiscipline[] {
+  return DISCIPLINE_RULES[encounterType];
+}
+
+/**
+ * The caller's clinical disciplines, derived from their M3 role keys.
+ *
+ * The `discipline-derivation.test.ts` rule: "M3's `RoleGrant.roleKey` is the platform's one
+ * authority-derivation input" (M19's `TRIAGE_DISCIPLINE_FOR_ROLE_KEY` states it, M17's
+ * `resolveDisciplinesTx` implements it, M10's `authorDisciplinesForRoles` is the same intersection one
+ * vocabulary over). A role key that is not a discipline (`rn_case_manager`, `administrator`) simply
+ * does not intersect, which is why this is an intersection and not a lookup table.
+ *
+ * NOT a check — the server decides. This exists so the modal offers the caller pairs that can succeed
+ * rather than a menu whose other entries only ever produce a 403.
+ */
+export function disciplinesForRoles(roles: readonly string[]): readonly EncounterDiscipline[] {
+  const held = new Set(roles.map((r) => r.toLowerCase()));
+  const all = new Set<EncounterDiscipline>();
+  for (const ds of Object.values(DISCIPLINE_RULES)) for (const d of ds) all.add(d);
+  return [...all].filter((d) => held.has(d));
+}
+
+/** The encounter types at least one of `disciplines` may author, in the §2.2 declaration order. */
+export function encounterTypesForDisciplines(
+  disciplines: readonly EncounterDiscipline[],
+): readonly EncounterType[] {
+  return (Object.keys(DISCIPLINE_RULES) as EncounterType[]).filter((k) =>
+    DISCIPLINE_RULES[k].some((d) => disciplines.includes(d)),
+  );
+}
 
 /**
  * The outcome of one write. A DISCRIMINATED result rather than a thrown error: a clinician composing a
@@ -169,6 +220,30 @@ export async function loadMileage(
 }
 
 // ── authoring writes ───────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The patient's admissions, newest first — the `admissionId` `POST /api/v1/encounters` requires.
+ *
+ * The same route M12 had to add for the same reason (F-065): the org-wide census takes no patient
+ * filter and its items carry no `patientId`, so nothing else in the app can answer "which admission is
+ * this patient on". Read here rather than threaded down as a prop, so the modal is self-contained.
+ */
+export async function loadPatientAdmissions(
+  client: ApiClient,
+  patientId: string,
+): Promise<
+  { id: string; state: string; admissionAt: string | null; dischargedAt: string | null }[]
+> {
+  const { data } = await client.GET("/api/v1/patients/{patientId}/admissions", {
+    params: { path: { patientId } },
+  });
+  return (data?.items ?? []) as {
+    id: string;
+    state: string;
+    admissionAt: string | null;
+    dischargedAt: string | null;
+  }[];
+}
 
 /** §2.2 — open a draft encounter. The server derives the template and the late-entry tier from it. */
 export async function createDraft(

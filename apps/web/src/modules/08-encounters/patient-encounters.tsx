@@ -23,6 +23,7 @@ import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
+import { NewEncounterModal } from "./new-encounter-modal";
 
 interface EncounterRow {
   id: string;
@@ -53,6 +54,7 @@ export function PatientEncounters(): JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [newOpen, setNewOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!patientId) return;
@@ -128,20 +130,28 @@ export function PatientEncounters(): JSX.Element {
             >
               Encounters / Visits
             </h1>
-            <select
-              aria-label="Encounter status"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              style={selectStyle}
-            >
-              <option value="">Any status</option>
-              <option value="draft">Draft</option>
-              <option value="finalized">Finalized</option>
-              <option value="signed">Signed</option>
-              <option value="cosign_pending">Cosign Pending</option>
-              <option value="cosigned">Cosigned</option>
-              <option value="voided">Voided</option>
-            </select>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <select
+                aria-label="Encounter status"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                style={selectStyle}
+              >
+                <option value="">Any status</option>
+                <option value="draft">Draft</option>
+                <option value="finalized">Finalized</option>
+                <option value="signed">Signed</option>
+                <option value="cosign_pending">Cosign Pending</option>
+                <option value="cosigned">Cosigned</option>
+                <option value="voided">Voided</option>
+              </select>
+              {/* F-083 — the authored path's first step. `createDraft` has existed in this module's
+                  api layer with no caller since #91/F-063 built the composer; nothing in the product
+                  could open the draft the composer composes. */}
+              <button type="button" onClick={() => setNewOpen(true)} style={primaryBtn}>
+                New encounter
+              </button>
+            </div>
           </div>
 
           {error ? (
@@ -269,6 +279,18 @@ export function PatientEncounters(): JSX.Element {
           )}
         </aside>
       </div>
+
+      <NewEncounterModal
+        open={newOpen}
+        patientId={patientId ?? ""}
+        onClose={() => setNewOpen(false)}
+        onCreated={(encounterId) => {
+          setNewOpen(false);
+          // Straight into the composer: an empty draft is not the goal, the note is. The list is
+          // reloaded on the way back rather than now, so the navigation is not waiting on a read.
+          navigate(`/patients/${patientId}/encounters/${encounterId}/compose`);
+        }}
+      />
     </PatientWorkspaceLayout>
   );
 }

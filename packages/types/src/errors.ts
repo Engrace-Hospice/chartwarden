@@ -42,6 +42,13 @@ export const ERROR_CODES = {
   CONFLICT: 409,
   RATE_LIMITED: 429,
   CSRF_VALIDATION_FAILED: 403,
+  /**
+   * The session is authenticated and authorized, and is not FRESH enough for this operation
+   * (M3 §4.2.1 `step_up_recent`). 403 like FORBIDDEN — the status is a statement about this
+   * request, and this request IS refused — but a DIFFERENT code, because the two refusals have
+   * opposite remedies: FORBIDDEN means stop, STEP_UP_REQUIRED means re-authenticate and retry.
+   */
+  STEP_UP_REQUIRED: 403,
   IDEMPOTENCY_CONFLICT: 409,
   DEGRADED: 503,
   INTERNAL_ERROR: 500,
@@ -92,6 +99,35 @@ export class ForbiddenError extends WardenXError {
   constructor(message = "Forbidden") {
     super("FORBIDDEN", message, ERROR_CODES.FORBIDDEN);
     this.name = "ForbiddenError";
+  }
+}
+
+/**
+ * A step-up (re-authentication) refusal — `requireStepUp`'s denial, distinguishable from every other
+ * 403 (F-084).
+ *
+ * WHY THIS EXISTS. `requireStepUp` is a thin `requireAbac` over `step_up_recent`, so its denial was a
+ * plain `ForbiddenError` and reached the browser as `FORBIDDEN` — indistinguishable from "your role
+ * does not grant this". FIVE modules had already written the branch that needs to tell them apart and
+ * shipped it dead: M6, M8, M23, M24 and M39 each carry an `authFailureRedirect` that routes a
+ * `STEP_UP_REQUIRED` code to the `/step-up` screen, and M8's own header says why it never fires —
+ * "packages/auth's requireAbac/requireStepUp still don't emit a distinguishable STEP_UP_REQUIRED error
+ * code on denial (a pre-existing, cross-module gap — every requireStepUp caller, not just M8)".
+ *
+ * The cost of the generic code is not cosmetic. A clinician who must re-authenticate to sign a visit
+ * note was told "You do not have permission for this action" — a statement about their ROLE, which is
+ * false, and which no amount of retrying fixes. The remedy was one screen away and nothing pointed at
+ * it. Until the step-up ceremony itself could be completed (F-081) pointing there would have been a
+ * loop, which is the honest reason this waited.
+ *
+ * Still 403, deliberately: the status describes THIS request, and this request is refused. Changing it
+ * to 412 would rewrite the declared responses of 138 route guards to say something about a
+ * precondition header they do not have.
+ */
+export class StepUpRequiredError extends WardenXError {
+  constructor(message = "A recent re-authentication is required for this operation") {
+    super("STEP_UP_REQUIRED", message, ERROR_CODES.STEP_UP_REQUIRED);
+    this.name = "StepUpRequiredError";
   }
 }
 

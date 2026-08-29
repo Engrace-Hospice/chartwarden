@@ -157,8 +157,8 @@ export function ConsentDetail(): JSX.Element {
   }, []);
 
   const branch = useCallback(
-    (status: number | undefined, message: string | undefined, fallback: string): boolean => {
-      const redirect = authFailureRedirect(status, message, window.location.pathname);
+    (status: number | undefined, code: string | undefined, fallback: string): boolean => {
+      const redirect = authFailureRedirect(status, code, window.location.pathname);
       if (redirect) {
         navigate(redirect);
         return true;
@@ -193,7 +193,7 @@ export function ConsentDetail(): JSX.Element {
       },
     });
     if (err) {
-      branch(response?.status, err?.error?.message, "The consent could not be revoked.");
+      branch(response?.status, err?.error?.code, "The consent could not be revoked.");
       return;
     }
     setBusy(false);
@@ -223,7 +223,7 @@ export function ConsentDetail(): JSX.Element {
       },
     });
     if (err || !data) {
-      branch(response?.status, err?.error?.message, "The consent could not be superseded.");
+      branch(response?.status, err?.error?.code, "The consent could not be superseded.");
       return;
     }
     setBusy(false);
@@ -265,7 +265,7 @@ export function ConsentDetail(): JSX.Element {
       },
     });
     if (err || !data) {
-      branch(response?.status, err?.error?.message, "The consent could not be renewed.");
+      branch(response?.status, err?.error?.code, "The consent could not be renewed.");
       return;
     }
     setBusy(false);
