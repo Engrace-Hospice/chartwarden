@@ -226,6 +226,11 @@ jobs:
                 test:m17:membership-credential:live",
             }
           - { name: "M18 EVV", scripts: "test:m18:read:live test:m18:write:live" }
+          # F-043/#103: M20's field-safety visit consumers — the first producer `safety_check_in_schedule`
+          # has ever had. Live because the materializer's idempotence, the `mark_overdue` stamp constraint
+          # and the policy-version FK are all statements about Postgres, and because `readAnchors` reaches
+          # M17's seam under the ambient scope each binding establishes.
+          - { name: "M20 Field-safety consumers", scripts: "test:m20:consumers:live" }
           - {
               name: "M22 Documents",
               scripts:

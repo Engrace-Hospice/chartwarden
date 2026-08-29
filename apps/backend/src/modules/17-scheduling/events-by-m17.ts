@@ -70,7 +70,7 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
     eventName: "m17.visit.published",
     moduleOwner: "m17",
     description:
-      "A proposal/manual create cleared the D8 pre-schedule gate and published — CLOSES M8's visit-seeding inert consumer (M8 D9); M18 seeds the EVV geofence; M31 portal upcoming-visit (Phase 2).",
+      "A proposal/manual create cleared the D8 pre-schedule gate and published — CLOSES M8's visit-seeding inert consumer (M8 D9); M18 seeds the EVV geofence; M20 materializes the D2 safety-check-in cadence; M31 portal upcoming-visit (Phase 2).",
     payloadSchema: Type.Object({
       visitId: id,
       patientId: id,
@@ -91,7 +91,10 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       parentRecurringVisitId: nullableId,
       parentProposalId: nullableId,
     }),
-    declaredConsumers: ["m8", "m18"],
+    // F-043/#103 — `m20` was absent while M20's own `M20_SUBSCRIBED_EVENT_NAMES` has named this topic
+    // since M20-T01. This is the trigger for `m20.materialize-cadence`, the ONLY producer of
+    // `safety_check_in_schedule` rows: without the declaration the relay routes the row to nobody.
+    declaredConsumers: ["m8", "m18", "m20"],
     isOutboxOnly: true,
   },
   {
@@ -144,7 +147,8 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       encounterId: nullableId,
       evvBracketState: id,
     }),
-    declaredConsumers: ["m18", "m30"],
+    // F-043/#103 — M20 retires the mid-visit prompts a short visit outran (`m20.retire-cadence`).
+    declaredConsumers: ["m18", "m20", "m30"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -190,7 +194,10 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       scheduledStartedAt: isoInstant,
       reason: Type.String(),
     }),
-    declaredConsumers: ["m19"],
+    // F-043/#103 — the two arms of one no-show: M19's is the PATIENT's welfare check (§7.6), M20's is the
+    // CLINICIAN's — the §4.8 warn-severity supervisor inquiry, plus retiring the obligations a visit that
+    // never happened made moot. Only M19's was declared.
+    declaredConsumers: ["m19", "m20"],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },

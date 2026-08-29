@@ -7,6 +7,14 @@
 //   • ./m18-gps-spoof      §7.7 — the 12-hour defensive badge (M18 owns the response, M20 shows it)
 //   • ./m19-after-hours    §7.5 D14 — the on-call parallel recipient set, three-valued
 //   • ./seam-context       the IO half: the M17 / M18 / M5 reads behind the M1 registry
+//   • ./schedule-store     the WRITE half — the executor for the mutations the deciders return
+//   • ./bindings           the live `OutboxConsumerBinding`s the composition root registers
+//
+// UNTIL F-043 (#103) THIS DIRECTORY HAD NO BINDING AT ALL. Every decider above was complete, exported and
+// unit-tested, and its only caller was `field-safety-consumers.test.ts` — so `check-outbox-bindings.ts`
+// found no live consumer for m20 and the relay deferred each of M20's declared events forever. One layer
+// down that meant `safety_check_in_schedule` had no INSERT anywhere in the repository, and the §4.2
+// supervisor board, the §4.3 badge trio, the §4.8 detector and `/me/today` had always read an empty set.
 //
 // TWO SUBSCRIBED TOPICS HAVE NO CONSUMER HERE, ON PURPOSE:
 //
@@ -19,10 +27,12 @@
 //
 //   • `m36.notification.delivery_failed` and `m5.patient.deceased` are M20-T06's (the M36 alert wiring and
 //     the §4.8 delivery-failed escalation), not part of the M17/M18/M19 binding this task owns.
+export * from "./bindings";
 export * from "./m17-no-show";
 export * from "./m17-visit-cadence";
 export * from "./m18-evv-brackets";
 export * from "./m18-gps-spoof";
 export * from "./m19-after-hours";
 export * from "./schedule-plan";
+export * from "./schedule-store";
 export * from "./seam-context";

@@ -350,12 +350,15 @@ import {
   buildDrizzleM20WriteService,
   buildDrizzleSafetyAbacResolver,
   buildDrizzleSafetySeamStore,
+  buildFieldSafetyConsumers,
   createDrizzleSafetyEraseStore,
+  createSafetyPolicyProvider,
   denyStubSafetyAbacResolver,
   mountM20Routes,
   registerFieldSafetyAbacPredicates,
   registerFieldSafetySeams,
   registerSafetyErasers,
+  safetyClinicianSignalCache,
 } from "./modules/20-field-safety/index";
 import {
   M21_OUTBOX_EVENTS,
@@ -1068,10 +1071,15 @@ export function wireModuleSeams(
   // `SAFETY_COORDINATE_DECIPHER_UNBOUND` rather than reporting every incident as having no geography. The
   // org IANA time zone lands with the same task — until then `getAfterHoursSosCount` refuses rather than
   // counting a Pacific agency's 22:30 presses as business hours. The §7.7 GPS-spoof signal cache is
-  // process-local and is bound by the consumer that fills it (T06's `m18.evv.gps_spoof_suspected`
-  // subscriber); absent, the board shows no spoof badge, which is the documented cost of holding that
-  // suspicion in memory (a MISSING caveat, never a missing alert).
-  if (deps.db) registerFieldSafetySeams({ store: buildDrizzleSafetySeamStore(deps.db) });
+  // process-local, and F-043/#103 bound the consumer that fills it — `m20.gps-spoof-badge`, which shares
+  // THIS instance through `safetyClinicianSignalCache()`. The two ends are wired in different scopes (the
+  // seam registration here, the binding beside the outbox dispatcher), and separate instances would record
+  // every suspicion and show none.
+  if (deps.db)
+    registerFieldSafetySeams({
+      store: buildDrizzleSafetySeamStore(deps.db),
+      signals: safetyClinicianSignalCache(),
+    });
   // M21-T05 — the two §4.4 ABAC predicates M21 OWNS (controlled_substance_dispatcher_eligible /
   // comfort_kit_return_reconciler_eligible) into M3's named-predicate registry. Both guard a
   // controlled-substance movement, so unlike M15's and M16's per-seam split the fail direction here is
@@ -4303,6 +4311,32 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               admissionIsActiveForOrg(dbHandle.db, organizationId, admissionId),
           }),
           buildM18VisitPublishedConsumer({ db: dbHandle.db }),
+          // M20 §4.8 / §7.1 (F-043, #103) — the field-safety visit consumers. Six deciders and a badge
+          // cache had been complete, exported and unit-tested since M20-T04 with NO factory yielding a
+          // binding, so the relay deferred every m20 event and — one layer down — NOTHING in the whole
+          // repository ever inserted a `safety_check_in_schedule` row. The §4.2 supervisor board, the §4.3
+          // badge trio, the §4.8 overdue detector and the clinician's own `/me/today` were therefore all
+          // reading an empty set: the board answered "nobody is overdue" because nobody had ever been
+          // OBLIGED, which is indistinguishable from everyone being fine.
+          //
+          // Unlike M10's admission consumer above, these DO reach through a §4.3 seam: M17 publishes no
+          // org-explicit visit reader, and `VisitReader.visitForEncounter(orgId, visitId)` already takes
+          // the org — it just resolves the tenant from the ambient scope rather than from the argument.
+          // So each handler opens `runWithRequestContext` first, which makes the argument and the scope
+          // agree and lets `assertCallerOrg` verify it. Without that the read would not dead-letter, it
+          // would silently answer null: `seam-context`'s `readVisitAnchors` collapses "no such visit" and
+          // "the seam threw" so the §4.2 board cannot leak another tenant's visit, so the bindings read
+          // the seam directly and let a failure fail the delivery.
+          ...buildFieldSafetyConsumers({
+            db: dbHandle.db,
+            policy: createSafetyPolicyProvider(buildDrizzleSafetySeamStore(dbHandle.db)),
+            outbox: m20OutboxPublisher,
+            // No `alerts` port: M36's emitter is not bound to M20's write path either, so the §4.9
+            // warn-severity inquiry rides the `m20.safety.check_in_overdue` OUTBOX event, which M36
+            // resolves through its own seam. Binding one here and not on the route path would give the
+            // same alert two carriers with different retry semantics.
+            signals: safetyClinicianSignalCache(),
+          }),
           ...(m23SubmissionQueues
             ? [buildM23SubmissionRequestConsumer(m23SubmissionQueues.port)]
             : []),
