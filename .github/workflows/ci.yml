@@ -265,6 +265,12 @@ jobs:
           # job, so nothing had ever run it: the same GAP-086 shape this job was created for. Wired
           # while fixing the two catalog mismatches that kept the relay from booting at all.
           - { name: "M1 outbox dispatcher relay", scripts: "test:m1:outbox-dispatcher:live" }
+          # F-091: the `feature_flag` table had no reader and no writer in the running system, so every
+          # capability gate on the platform read off and the admin surface that would lift one 5xx'd.
+          # LIVE by necessity: the claims are NULL-distinctness in a unique index (migration 0237),
+          # `ON CONFLICT` inference over it, and migration 0002's own-org-OR-global read policy — none
+          # of which an in-memory double can be wrong about.
+          - { name: "M1 feature flags", scripts: "test:m1:feature-flags:live" }
           # F-073 (#182) — LIVE by necessity: the in-memory IdempotencyStore is a Map with no
           # constraint, so it accepts the bodiless completion Postgres refused. Every unit, DOM and
           # inject test passed while all 24 `code(204)` routes 500'd on the production store.

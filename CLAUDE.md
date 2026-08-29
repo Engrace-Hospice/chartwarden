@@ -514,10 +514,39 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   and the module spends a paragraph specifying `503 EXTRACTION_DISABLED` + `Retry-After: 0` as the
   Phase-1 answer, which is a different statement from 404 (the capability is off for this tenant vs.
   the endpoint does not exist); it also meant `documents.doclens`, the capability flag whose whole job
-  is to turn the surface on when M32 lands, was **an activation switch wired to nothing**. No flag
-  reader is threaded and that is the accurate state, not an omission: nothing at boot reads the
-  `feature_flag` table — M1's `createDefaultFeatureFlagReader` answers `{}` for every org and M34's
-  admin surface only WRITES flags, **which is a standing finding of its own**. M36's webhooks are a
+  is to turn the surface on when M32 lands, was **an activation switch wired to nothing**. That entry
+  originally recorded "no flag reader is threaded" as the accurate state and filed the reason as a
+  standing finding — **now resolved, and it was worse than the note said (F-091)**. `feature_flag` had
+  no reader AND no writer in the running system: `createDefaultFeatureFlagReader` answered `{}` for
+  every org because the composition root never passed a reader, and M34's admin surface, which the note
+  credited with WRITING flags, was bound to a stub that threw `M34InfraPortUnbound` on all three §4.7
+  methods. Both halves dead is what hid it — a flag that cannot be set and a flag that reads off are
+  indistinguishable from a Phase-1 capability that is correctly off, so the table, its four governance
+  kinds, the five-key permission family, `feature_flag_write_authority`, the admin screen and the kill
+  switch were all inert with nothing to say so. **And the writer could not have worked anyway**:
+  `feature_flag_key_org_idx` is `UNIQUE (flag_key, organization_id)` and `organization_id` is NULL for a
+  platform-global flag, so Postgres's NULL-distinctness left the global scope unconstrained *and* made
+  `ON CONFLICT (flag_key, organization_id)` unable to match a global row — the create-or-update contract
+  degraded to create-only for exactly the flags a platform operator sets, appending a rival row per
+  edit. Migration 0237 adds `NULLS NOT DISTINCT` (migration 0110's `sss_active_pair_uniq` precedent).
+  `apps/backend/src/bootstrap/feature-flag-store.ts` now binds both ends: the tenant-pool reader
+  (`withOrgContext`, so migration 0002's own-org-OR-global policy is the isolation floor) threaded into
+  the three surfaces that consume the fact — `GET /api/v1/system/feature-flags`, M22's
+  `documents.doclens` gate and M38's §7.7 `ai.full` gate — and the platform-pool admin seam injected
+  into `buildDrizzlePlatformService`. Resolution is a pure function with fail-CLOSED rules, because each
+  has an easy fail-open sibling: a kill switch forces false ahead of everything, an expired flag stops
+  applying, a non-`bool` value type is ABSENT rather than coerced (a non-empty string is truthy), and a
+  `rollout_percent`/`targeting` flag is ABSENT because `forOrg(orgId)` carries no subject and bucketing
+  a rollout by org would resolve every percentage to 0% or 100%. A tenant row wins over the global row
+  **outright** — no fallback — so a lapsing tenant override can never read as the platform re-enabling
+  the key there. **`setKillSwitch` still refuses, deliberately**: §4.7 specifies it as an AUDITED
+  emergency control and both carriers for its alert fail on a global flag (the catalogued outbox payload
+  requires a non-null `actorMembershipId` that a platform-ops actor toggling an org-NULL flag has not;
+  M36's seam is `AlertEmitter.emit(orgId, …)` and a global flag has no org), so writing it silently
+  would be an emergency disable whose security owner is never told — strictly worse than refusing, and
+  `upsert` remains a working disable path. Proven by `m1-feature-flags.live.test.ts`, LIVE by necessity
+  (NULL-distinctness, `ON CONFLICT` inference, and the RLS read policy are all statements about
+  Postgres); three of its ten fail against the pre-0237 schema. M36's webhooks are a
   registered `DEFERRED` entry, the `deviceAttestationValid` rule at route-surface granularity: the
   routes and both §4.9 verification layers are built but `MessagingWebhookService` — the
   delivery-reconcile port every handler ends in — has **no implementation anywhere in the repo**, the

@@ -31,6 +31,10 @@ import Redis, { type RedisOptions } from "ioredis";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
 import { attachDlqPromotionAlert, buildDlqPromotionSink } from "./bootstrap/dlq-alerts";
 import {
+  createDrizzleFeatureFlagAdmin,
+  createDrizzleFeatureFlagReader,
+} from "./bootstrap/feature-flag-store";
+import {
   DEFAULT_RATE_LIMIT_TIERS,
   assertNoInMemoryBindingsOnDbBoot,
   assertProductionEnv,
@@ -2486,9 +2490,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // omits the check entirely (reporting "ok") rather than failing a deployment that has no MinIO.
   const readinessS3Config = s3ObjectStoreConfigFromEnv(process.env);
   const readinessObjectStore = readinessS3Config ? createS3ObjectStore(readinessS3Config) : null;
+  // F-091 — the M1 `feature_flag` reader. Nothing had ever bound one, so `createDefaultFeatureFlagReader()`
+  // stood in every deployment and answered `{}` for every org: `GET /api/v1/system/feature-flags` served an
+  // empty map, and every capability gate reading the same fact through a structurally identical port (M22's
+  // `documents.doclens`, M38's §7.7 `ai.full`) resolved permanently off. Built once here and passed to the
+  // three surfaces that consume it, so the tenant read route and the module gates cannot disagree about
+  // what a tenant's flags are. Undefined on a no-db boot, where the empty default remains correct.
+  const featureFlagReader = dbHandle ? createDrizzleFeatureFlagReader(dbHandle.db) : undefined;
   const app = buildServer({
     db: dbHandle?.db,
     authenticate,
+    ...(featureFlagReader ? { featureFlagReader } : {}),
     // WX-PR-017 — SD-055 rate-limit tiers enforced cluster-wide over the dedicated Valkey connection
     // above when REDIS_URL is set; falls back to the M1 baseline's own per-process default otherwise
     // (a slice/test/no-Redis boot, where a single process IS the whole "cluster").
@@ -2656,8 +2668,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           mountIdgRoutes(app, dbHandle.db, m14OutboxPublisher); // M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
           mountSchedulingRoutes(app, dbHandle.db, m17OutboxPublisher); // M17 — reads + the write lifecycle over Drizzle+RLS, m17.* transactional outbox
           mountEvvRoutes(app, dbHandle.db, m18OutboxPublisher); // M18 — reads + the write lifecycle over Drizzle+RLS, m18.evv.* transactional outbox
-          mountDocumentRoutes(app, dbHandle.db); // M22 — reads + the write lifecycle over Drizzle+RLS (no producer outbox: M22's outbox is the consumer-side render handshake)
-          mountTerminologyRoutes(app, dbHandle.db); // M38 — terminology read surface + tenant value-set extensions (FB-T01), the §4.1 value-set catalog + §7.3 remediation report + the platform-ops admin surface (GAP-063)
+          mountDocumentRoutes(app, dbHandle.db, featureFlagReader); // M22 — reads + the write lifecycle over Drizzle+RLS (no producer outbox: M22's outbox is the consumer-side render handshake); the reader is the `documents.doclens` DocLens gate (F-091)
+          mountTerminologyRoutes(app, dbHandle.db, featureFlagReader); // M38 — terminology read surface + tenant value-set extensions (FB-T01), the §4.1 value-set catalog + §7.3 remediation report + the platform-ops admin surface (GAP-063); the reader is the §7.7 `ai.full` semantic-search gate (F-091)
           mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
           mountConsentRoutes(app, dbHandle.db, {
             outbox: m39OutboxPublisher,
@@ -2680,6 +2692,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               enqueue: m34PlatformEnqueue.enqueue,
               auditBypass: m34PlatformBypassAuditor,
               outbox: m34OutboxPublisher,
+              // F-091 — M1 owns the `feature_flag` schema, so the §4.7 admin seam is built here and
+              // injected rather than constructed inside M34 (which would create a schema import edge the
+              // route file's own header says must not exist). On the PLATFORM pool: migration 0001's write
+              // policies never admit a NULL org, so a platform-global flag is uncreatable from a tenant
+              // connection by design.
+              featureFlags: createDrizzleFeatureFlagAdmin(platformDbHandle?.db ?? dbHandle.db),
             }),
             tenant: buildDrizzleTenantService({
               db: dbHandle.db,

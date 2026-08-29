@@ -24,6 +24,7 @@ import type { FastifyInstance } from "fastify";
 import { registerDocumentAbacPredicates as _registerM22Abac } from "./abac-predicates";
 import { createDbDocumentBackend } from "./documents-route-service-db";
 import {
+  type DocumentFeatureFlagReader as _DocumentFeatureFlagReader,
   createDocLensPipelineService as _createDocLensPipelineService,
   registerDocLensExtractionRoutes as _registerDocLensExtractionRoutes,
   resolveDocLensCapability as _resolveDocLensCapability,
@@ -48,7 +49,11 @@ import {
  * reads as data loss (a WORKING one would hand out PHI from a store with no BAA gate). Replaces the
  * in-memory clinical-core scaffold mount for M22.
  */
-export function mountDocumentRoutes(app: FastifyInstance, db: DbClient): void {
+export function mountDocumentRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  flags?: _DocumentFeatureFlagReader,
+): void {
   const backend = createDbDocumentBackend(db);
   const objectStoreConfig = s3ObjectStoreConfigFromEnv(process.env);
   const objects = objectStoreConfig ? createS3ObjectStore(objectStoreConfig) : null;
@@ -84,13 +89,26 @@ export function mountDocumentRoutes(app: FastifyInstance, db: DbClient): void {
   // flag whose whole job is to turn this surface on when M32 lands; flipping it on an unmounted
   // registrar does nothing at all.
   //
-  // NO flag reader is threaded, and that is the accurate state rather than an omission: nothing at
-  // boot reads the `feature_flag` table (M1's `createDefaultFeatureFlagReader` answers `{}` for every
-  // org, and M34's admin surface only WRITES flags). Passing a reader that cannot say yes would just
-  // move the same falsehood one layer in. Absent reader ⇒ `isDocLensEnabled` is false ⇒ the documented
-  // Phase-1 503, which is exactly today's truth. Binding a real reader is where this line changes.
+  // F-091 — this is where that line changed. The comment here used to say no flag reader was threaded
+  // because nothing at boot read the `feature_flag` table: M1's `createDefaultFeatureFlagReader` answered
+  // `{}` for every org, and M34's admin surface — which the note credited with WRITING flags — was in
+  // fact bound to a stub that threw on all three methods, so the table had neither a reader nor a writer
+  // and `documents.doclens` was unreachable from both ends. The composition root now binds the real M1
+  // reader and passes it here; `flags` stays optional because a no-db/slice boot has none to give, and
+  // absent still resolves to the documented Phase-1 503.
+  //
+  // Turning the flag ON does not, on its own, make DocLens work — the pipeline still needs M32 to bind a
+  // classifier/extractor/vision-verifier, which `_resolveDocLensCapability()` reports. What changes is
+  // that the switch is now connected to something: a tenant that has been granted the capability gets the
+  // capability's own answer instead of a blanket "off" that no operator could lift.
   _registerDocLensExtractionRoutes(app, {
-    pipeline: _createDocLensPipelineService({ capability: _resolveDocLensCapability() }),
+    // Both layers take the reader: the route gate answers 503 before any work, and the pipeline
+    // service re-checks so a caller reaching it by another path cannot skip the capability gate.
+    pipeline: _createDocLensPipelineService({
+      capability: _resolveDocLensCapability(),
+      ...(flags ? { flags } : {}),
+    }),
+    ...(flags ? { flags } : {}),
   });
 }
 

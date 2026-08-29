@@ -51,6 +51,10 @@ export const featureFlags = pgTable(
     updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
   },
   (t) => ({
+    // The normative SQL (migration 0237) adds NULLS NOT DISTINCT. It is load-bearing: organization_id
+    // is NULL for a platform-global flag, and without the clause the global scope is unconstrained —
+    // duplicate global rows for one key are legal AND an `ON CONFLICT (flag_key, organization_id)`
+    // upsert can never match one, so the admin write degrades to create-only (F-091).
     keyOrgUniqueIdx: uniqueIndex("feature_flag_key_org_idx").on(t.flagKey, t.organizationId),
     kindIdx: index("feature_flag_kind_idx").on(t.flagKind),
     expiresIdx: index("feature_flag_expires_idx").on(t.expiresAt),
