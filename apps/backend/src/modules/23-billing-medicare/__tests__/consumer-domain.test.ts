@@ -277,7 +277,7 @@ describe("M26 forward-seam consumer is INERT (deny-stub, fail-closed)", () => {
   it("an m26 cap-projection event fails closed via dispatch (no live binding until M26 lands)", async () => {
     await expect(
       dispatchM23UpstreamEvent(
-        { topic: "m26.cap.projection_updated.v1", payload: { eventId: "e", organizationId: ORG } },
+        { topic: "m26.cap.projection_updated", payload: { eventId: "e", organizationId: ORG } },
         makePorts(),
       ),
     ).rejects.toMatchObject({ code: "FORWARD_SEAM_UNBOUND" });

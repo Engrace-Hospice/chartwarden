@@ -41,4 +41,11 @@ export const M11_OUTBOX_SUBSCRIPTIONS = [
   { eventName: "m9.assessment.significant_change", consumerName: "m11.assessment-trigger" },
   { eventName: "m10.hope.j2051_trigger_fired", consumerName: "m11.hope-trigger" },
   { eventName: "idg.decision_recorded", consumerName: "m11.idg-decision-intake" },
+  // F-095 — M11 BINDS this one live (`outbox-consumers/m22-document-rendered.ts`, the §7.2 W2 back-ref
+  // that stamps `order_record.document_id`) and the catalog declares m11 on it, so it is delivered and
+  // dispatched today. It was missing from this list for the whole of that binding's life: the list is
+  // documented as the shared source of truth for the consumer wiring, and nothing compared it to either
+  // the catalog or the bindings. Same shape as F-094's `idg.decision_recorded` in M16 — the one event a
+  // module binds live that its own subscription list did not name.
+  { eventName: "m22.document.rendered", consumerName: "m11.document-backref" },
 ] as const;

@@ -61,7 +61,36 @@ export type SubscriptionExceptionKind =
    * record and delivers it to nobody. Adding the first consumer changes what the event IS, which is the
    * owning module's decision and not the subscriber's to take unilaterally.
    */
-  | "record-only-target";
+  | "record-only-target"
+  /**
+   * The module subscribes to its OWN event. A `*_UPSTREAM_SUBSCRIPTIONS` map is by construction the
+   * inbound half — what other modules send this one — so a self-consumed topic (a retry consumer, a
+   * staged submit-request worker) is correctly absent from it while the catalog correctly declares it.
+   * The two are describing different things, and the six `M<N>_SUBSCRIBED_EVENT_NAMES` tuples encode the
+   * same convention: their tests assert no self-consumption. Ends only if a module stops self-consuming.
+   */
+  | "self-consumption"
+  /**
+   * The name is in NO boot catalog and its apparent owner DOES contribute one. Unlike `no-producer` this
+   * is not a staging gap that time will close — the owning module has catalogued its events and this is
+   * not among them, so the name was never right. It is kept, rather than deleted, when the SUBSCRIPTION
+   * is meaningful and only the spelling is unknown: deleting it would erase the record that the module
+   * expects this input, and guessing at the intended event would bind a handler to the wrong one. Ends
+   * when the owning module catalogues the event or the intended name is established.
+   */
+  | "no-such-event"
+  /**
+   * The module HAS a decider for this event and no live binding for it, and the catalog does not declare
+   * the module. Distinct from `no-handler`, which is the absence of the handler: here the handler is
+   * written and bound by nothing, so this is #103's `handlers-unbound` set seen from the list side — and
+   * it cannot appear in `outbox-deferred-consumers.ts`, which can only hold pairs the catalog DECLARES.
+   *
+   * Declaring the module without binding it would newly defer the event, so the corpus convention
+   * (`events-by-m22.ts`: "DECLARED CONSUMERS ARE THE BOUND ONES, NOT THE INTERESTED ONES") is that the
+   * declaration lands on the commit that binds the handler. Ends on that commit, in one change, both
+   * halves together — which is exactly what #204 and #207 had to do for M20 and M19.
+   */
+  | "handler-unbound";
 
 /** One module's subscribed-but-unrouted events that share a reason. */
 export interface SubscriptionExceptionGroup {
@@ -175,5 +204,286 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     reason:
       "M35 has no `consumers/` directory. Both events are already deferred by other unbound consumers, so declaring `m35` would cost nothing today and would still be a declaration with nothing behind it. Ends when M35 grows a consumer surface.",
     events: ["m5.patient.deceased", "m5.patient.merged"],
+  },
+  // ── F-095 (#208): the thirteen modules rule 6 could not see until discovery stopped being a naming
+  // convention in one directory. Same register, same rules; the three kinds below were added for facts
+  // the original six lists never presented.
+  {
+    module: "m11",
+    kind: "handler-unbound",
+    reason:
+      "`consumers/admission-discharged-discontinue.ts` and `consumers/hope-trigger.ts` are written deciders whose only caller is their own test. Both events are already deferred by other unbound consumers, so declaring `m11` costs nothing at runtime today — and the declaration still belongs on the commit that binds the handler, not before it.",
+    events: ["m6.admission.discharged", "m10.hope.j2051_trigger_fired"],
+  },
+  {
+    module: "m12",
+    kind: "handler-unbound",
+    reason:
+      "`consumers/sync-triggers.ts` (`decidePatientSyncTrigger` covers all four M5 demographic reasons, plus the M6 MedHx fetch), `admission-discharged-cascade.ts` and `verbal-expired.ts` are written and bound by nothing. Every one of these events is already deferred by another unbound consumer, so the declaration lands with the binding.",
+    events: [
+      "m5.patient.updated",
+      "m5.patient.address_changed",
+      "m5.patient.payer_changed",
+      "m6.admission.discharged",
+      "m6.admission.activated",
+      "m6.cti.signed",
+      "m11.order.verbal_expired_unsigned",
+    ],
+  },
+  {
+    module: "m12",
+    kind: "record-only-target",
+    reason:
+      "M5 catalogues `patient.created` record-only — published for the record and delivered to nobody. M12's `decidePatientSyncTrigger` handles the `created` reason, so unlike its siblings the handler is ready; adding the first consumer to a record-only event is still M5's decision, not M12's.",
+    events: ["m5.patient.created"],
+  },
+  {
+    module: "m13",
+    kind: "no-handler",
+    reason:
+      "M13's `consumers/` holds one decider — the M22 document back-ref — and nothing else. These four M6 lifecycle events are §4.5 eMAR-context inputs with no decider written; declaring them would defer events a dozen other modules are already waiting on and produce no handler.",
+    events: [
+      "m6.admission.activated",
+      "m6.discharge.created",
+      "m6.admission.discharged",
+      "m6.cti.signed",
+    ],
+  },
+  {
+    module: "m13",
+    kind: "no-such-event",
+    reason:
+      "M9 catalogues nine events and none is a PRN-reassessment overdue topic (the nearest are `m9.assessment.significant_change` and the two `m9.scale.license_*` reminders). This is not a staging gap — M9's catalog is landed and registered at boot — so the name was never right. Kept because the SUBSCRIPTION is meaningful: M13's §4.5 PRN follow-up is specified against an M9 overdue signal. Ends when M9 catalogues one.",
+    events: ["m9.prn_reassessment_overdue"],
+  },
+  {
+    module: "m14",
+    kind: "no-handler",
+    reason:
+      "M14's `consumers/` is `index.ts` alone: the D8 auto-close MAPPING (`M14_AUTO_CLOSE_LINKED_KIND` + `planActionItemAutoClose`) ships and is unit-tested, and no handler runs it. So these four are the mapping's own source events with no decider to deliver to — the M19/M20 shape one module over, and the reason M14 is the largest `handlers-unbound` group in #103.",
+    events: [
+      "m11.order.signed",
+      "m11.order.completed",
+      "m11.order.discontinued",
+      "m12.medication_order.signed",
+    ],
+  },
+  {
+    module: "m14",
+    kind: "would-defer-a-bound-event",
+    reason:
+      "`m22.document.rendered` is delivered TODAY — all five declared consumers (m11, m12, m13, m21, m33) bind their back-refs live. M14's §4.4 PDF back-ref has no consumer, so declaring `m14` would stop the event dispatching for those five as well.",
+    events: ["m22.document.rendered"],
+  },
+  {
+    module: "m23",
+    kind: "self-consumption",
+    reason:
+      "All four are M23's OWN events, consumed by M23's `consumers/submit-requests.ts` staged-submission worker. `M23_UPSTREAM_SUBSCRIPTIONS` is by construction the INBOUND half — what other modules send M23 — so a self-consumed topic is correctly absent from it while the catalog correctly declares it. The two describe different things.",
+    events: [
+      "m23.claim.submit_requested",
+      "m23.claim.submission_failed",
+      "m23.noe.submit_requested",
+      "m23.notr.submit_requested",
+    ],
+  },
+  {
+    module: "m23",
+    kind: "handler-unbound",
+    reason:
+      "`consumers/handlers.ts` implements both effects — the `m8.encounter.signed` re-validate fan-out and the M26 cap-projection freeze — and nothing binds them. Both events are already deferred by other unbound consumers.",
+    events: ["m8.encounter.signed", "m26.cap.projection_updated"],
+  },
+  {
+    module: "m23",
+    kind: "record-only-target",
+    reason:
+      "M40 catalogues `canonical.updated` record-only. M23 would freeze new-claim creation on a canonical provider change, which would make M40's reference-data lifecycle a billing input — M40's decision to grant, not M23's to take.",
+    events: ["m40.canonical.updated"],
+  },
+  {
+    module: "m23",
+    kind: "would-defer-a-bound-event",
+    reason:
+      "Same fact as M14's: the render handshake dispatches today for its five bound consumers, and M23's NOE/NOTR/claim back-ref (`consumers/document-render.ts`) is written but unbound. The declaration must land on the commit that binds it.",
+    events: ["m22.document.rendered"],
+  },
+  {
+    module: "m24",
+    kind: "self-consumption",
+    reason:
+      "M24's own staged submission topic, consumed by `consumers/submission-requests.ts`. The upstream map is the inbound half; see the M23 entry.",
+    events: ["m24.medicaid_claim.submit_requested"],
+  },
+  {
+    module: "m24",
+    kind: "handler-unbound",
+    reason:
+      "`M24_SUBSCRIPTION_MAP` routes each topic to a named effect and `consumers/handlers.ts` implements them, so the deciders exist and nothing binds them. All three events are already deferred by other unbound consumers.",
+    events: ["m23.claim.acknowledged", "m5.patient.updated", "m8.encounter.signed"],
+  },
+  {
+    module: "m24",
+    kind: "would-defer-a-bound-event",
+    reason:
+      "Both M25 remittance topics are delivered today — every module they declare binds them. M24's revalidate-on-remittance effect is mapped and unbound, so declaring `m24` would convert two working deliveries into rows re-claimed every thirty minutes, for the other consumers too.",
+    events: ["m25.remittance.claim_paid", "m25.remittance.claim_denied"],
+  },
+  {
+    module: "m24",
+    kind: "no-such-event",
+    reason:
+      "None of the three names exists in its owning module's landed catalog: M6 publishes no `admission.changed` (it publishes the specific transitions — activated, discharged, on_hold, resumed), M18 publishes no `evv.compliance_changed`, and M40's catalog carries `canonical.updated` and `canonical.deactivated` alone with no rate-schedule topic. Each is a §4.4 revalidate trigger whose intent is real and whose spelling never was.",
+    events: [
+      "m6.admission.changed",
+      "m18.evv.compliance_changed",
+      "m40.reference.rate_schedule_loaded",
+    ],
+  },
+  {
+    module: "m25",
+    kind: "self-consumption",
+    reason:
+      "`m25.edi.835_received` is M25's own event and M25's `consumers/live-binding.ts` is the LIVE consumer of it — the one binding this module has. The upstream map is the inbound half, so it correctly does not list it.",
+    events: ["m25.edi.835_received"],
+  },
+  {
+    module: "m25",
+    kind: "would-defer-a-bound-event",
+    reason:
+      "The appeal-packet / resolution-letter back-ref is `M25_SUBSCRIPTION_MAP`'s third effect and is bound by nothing, while the render handshake dispatches today for its five bound consumers.",
+    events: ["m22.document.rendered"],
+  },
+  {
+    module: "m26",
+    kind: "handler-unbound",
+    reason:
+      "`consumers/handlers.ts` implements the patient-death cap effect and nothing binds it; the event is already deferred by other unbound consumers.",
+    events: ["m5.patient.deceased"],
+  },
+  {
+    module: "m26",
+    kind: "no-producer",
+    reason:
+      "The same absence M19 and M20 record: M36 contributes NO event catalog to the boot dispatcher, so this topic has no producer under any name. M26 is the third module subscribed to it.",
+    events: ["m36.notification.delivery_failed"],
+  },
+  {
+    module: "m27",
+    kind: "handler-unbound",
+    reason:
+      "`consumers/handlers.ts` implements the denial-accrual effect and nothing binds it; the event is already deferred by other unbound consumers.",
+    events: ["m25.denial.opened"],
+  },
+  {
+    module: "m27",
+    kind: "would-defer-a-bound-event",
+    reason:
+      "M27's cost-report PDF back-ref is mapped and unbound while the render handshake dispatches today; same fact as M14/M23/M25.",
+    events: ["m22.document.rendered"],
+  },
+  {
+    module: "m27",
+    kind: "no-such-event",
+    reason:
+      "M40's landed catalog carries `canonical.updated` and `canonical.deactivated` and no provider-entity offboarding topic. M27's §4.4 intent — close a cost report when its provider entity leaves — is real; the name is not.",
+    events: ["m40.provider_entity.offboarded"],
+  },
+  {
+    module: "m30",
+    kind: "handler-unbound",
+    reason:
+      "`packages/quality/src/consumers/handlers.ts` implements both effects (the death-discharge measure input and the election-signed HCI denominator) and nothing binds them. Both events are already deferred by other unbound consumers.",
+    events: ["m6.discharge.death", "m6.election.signed"],
+  },
+  {
+    module: "m33",
+    kind: "handler-unbound",
+    reason:
+      "ONE decision, not fifty-four. `M33_MV_REFRESH_SUBSCRIPTIONS` is generated from `OUTBOX_INVALIDATING_TOPICS` — the map of which upstream event invalidates which `report_mv.*` materialized view — and the module's own `M33_MV_REFRESH_SUBSCRIPTIONS_DEFERRED = true` records that the subscriber is written and the dispatcher binding is not. This is the same fact as #103's 319-pair m33 group, which reaches the same conclusion from the catalog side. Declaring m33 on all of these before the binding exists would defer every one of them; the MV tier reads the views on its nightly cadence meanwhile.",
+    events: [
+      "m5.patient.created",
+      "m6.discharge.created",
+      "m6.admission.activated",
+      "m6.admission.discharged",
+      "m6.cti.signed",
+      "m6.f2f.attested",
+      "m7.care_plan.review_overdue",
+      "m7.care_plan.version_signed",
+      "m8.encounter.signed",
+      "m8.encounter.late_entry_override",
+      "m8.encounter.cosigned",
+      "m9.assessment.recorded",
+      "m10.hope.timepoint_signed",
+      "m10.hope.j2051_trigger_fired",
+      "m10.hope.submission_accepted",
+      "m10.hope.submission_rejected",
+      "m11.order.signed",
+      "m11.order.verbal_expired_unsigned",
+      "m12.medication_order.signed",
+      "m12.medication_order.transmitted",
+      "m13.administration.recorded",
+      "m13.scheduled_dose.missed",
+      "m15.aide_supervisory.completed",
+      "m15.volunteer.ratio_recomputed",
+      "m16.bereavement.outreach_completed",
+      "m16.bereavement.outreach_missed",
+      "m16.bereavement.risk_score_computed",
+      "m17.visit.completed",
+      "m17.visit.no_show_detected",
+      "m17.route_optimized",
+      "m18.evv.check_in_recorded",
+      "m18.evv.check_out_recorded",
+      "m18.evv.late_check_resolved",
+      "m18.evv.aggregator_accepted",
+      "m18.evv.aggregator_rejected",
+      "m19.triage_call.opened",
+      "m19.triage_call.closed",
+      "m20.safety.incident_submitted",
+      "m23.claim.submitted",
+      "m23.claim.acknowledged",
+      "m23.claim.paid",
+      "m23.claim.denied",
+      "m23.noe.window_breached",
+      "m24.medicaid_claim.submitted",
+      "m24.medicaid_claim.denied",
+      "m25.remittance.claim_paid",
+      "m25.denial.opened",
+      "m25.appeal.submitted",
+      "m26.cap.accrual_recorded",
+      "m26.cap.projection_updated",
+      "m26.cap.threshold_crossed",
+      "m27.cost_report.created",
+      "m27.cost_report.validation_completed",
+      "m27.cost_report.submitted",
+    ],
+  },
+  {
+    module: "m33",
+    kind: "no-such-event",
+    reason:
+      "M25's landed catalog carries `appeal.submitted` and no appeal DECISION topic — the outcome that `mv_appeal_outcomes_org_month` is keyed on is exactly the event M25 does not publish. The MV and its invalidation intent are real; the name is not.",
+    events: ["m25.appeal.decided"],
+  },
+  {
+    module: "m33",
+    kind: "no-producer",
+    reason:
+      "M28 contributes NO event catalog to the boot dispatcher — there is no `M28_OUTBOX_EVENTS` anywhere in the repo and none is registered in `buildBootOutboxCatalog([...])` — so the FHIR gateway publishes nothing at all, and `mv_fhir_bulk_export_org_month` has no invalidation source. M28 is the THIRD module in this state, after M2 and M36 (#205).",
+    events: ["m28.fhir.bulk_export.completed"],
+  },
+  {
+    module: "m34",
+    kind: "self-consumption",
+    reason:
+      "M34's own provisioning topic, consumed by `outbox-consumers/provision-started.ts`. `M34_DSAR_BACKREF_SUBSCRIPTION` declares the single INBOUND subscription (the M22 render back-ref) and correctly says nothing about M34's own events.",
+    events: ["m34.tenant.provision_started"],
+  },
+  {
+    module: "m34",
+    kind: "would-defer-a-bound-event",
+    reason:
+      "The DSAR-bundle back-ref consumer is written (`packages/saas-tenant-platform/src/consumers/m22-document-backref.ts`) and bound by nothing, while the render handshake dispatches today for its five bound consumers.",
+    events: ["m22.document.rendered"],
   },
 ];
