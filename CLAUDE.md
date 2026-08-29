@@ -279,6 +279,37 @@ the prose docs in `docs/architecture/`.
   inputs do not exist yet is expressed as a *registered* predicate that denies and says why
   (`deviceAttestationValid` in `packages/auth/src/abac/registry.ts`), never as an unregistered
   name — both refuse identically, only the first is distinguishable from a mistake.
+  **The UNASKED DIRECTION is a standing finding (F-092)**, the F-025/F-043 shape a third time. This
+  gate goes guard → declaration, so it cannot see a control that is DECLARED and gated by nothing.
+  Every `PermissionDef` carries an `abac` field — "the default ABAC predicate that guards the key, or
+  `'none'`" — and **545 catalog keys name a non-`none` predicate while only 113 are named by any
+  `requireAbac` guard**. `requirePermission` resolves the actor's grant set and asks `granted.has(key)`;
+  it never reads `defaultAbac`, which exists only to mirror into the `permission` table for the admin
+  UI. So the field is a declaration with no mechanism behind it, and several route files' own headers
+  say the opposite — M13's eMAR routes state their key "maps to the shared `caseload_or_scope`
+  predicate … **bound by the §4.6 default ABAC on each clinical route**", a binding that does not exist.
+  Most of the 466 unguarded keys are defensible (a module composing its own `admission.scope` /
+  `encounter.scope` / `hope.scope` is doing the same job under another name, and `inOrg` at 116 keys is
+  RLS's job), which is why no gate is proposed yet: a 466-entry deferral registry written without
+  verifying each one would manufacture a passing state, the failure `outbox:deferrals:update` is
+  explicitly built to refuse. **M5 was the instance that mattered and is fixed**: it was the only
+  clinical module on the platform composing NO `requireAbac` at all, while nine of its keys declared
+  `caseload_or_scope` and six of its route comments claimed a "§7.5 non-leak · non-caseload → 404" that
+  `service.getPatient(organizationId, id)` has no caseload input to perform — any holder of
+  `patient.read` read any chart in the tenant. The per-chart routes now compose the predicate the
+  catalog names, with `notFoundOnDeny` so a refusal does not itself confirm the chart exists. §7.5's
+  other half — `patient_id = ANY(:caseloadIds)` on the CENSUS list — remains open: a preHandler can
+  refuse a list but cannot filter one, so it needs the read service to take a narrowing set and the
+  org-wide-role determination to move out of the predicate and into the read path.
+  Fixing M5 surfaced a second live defect in the four modules that DO enforce it (M7/M9/M20/M23):
+  `ORG_WIDE_SCOPE_ROLES` listed `medical_director`, `compliance_officer` and `survey_coordinator` and
+  **omitted `director_of_nursing`**, whose `SYSTEM_LOCKED_FLOORS` entry locks on `patient.read` AND
+  `assignment.manage` — a permission to put clinicians on caseloads that cannot be exercised against
+  patients the holder may not see. A DON has been refused every care plan, assessment and safety row
+  outside their own caseload. The list is now DERIVED from the floors that lock `patient.read` rather
+  than maintained by hand. `org_admin` is deliberately NOT included even though ~10 predicates treat it
+  as the tenant's top authority: it carries no `patient.read` floor, so the platform has never asserted
+  that role reads charts.
 - `scripts/check-request-header-auth.ts` — **request-header authorization gate** (F-028,
   `bun run arch:request-header-auth`, in `arch:fitness`). A request header is whatever the caller
   typed; deciding an AUTHORIZATION question from one, unverified, hands the decision to the party

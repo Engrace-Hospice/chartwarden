@@ -21,7 +21,12 @@
 // `dependsOn` 39, so it imports the TYPE from @wardenx/consent and resolves the impl via the opaque M1
 // registry (`getSeam`). Registration is idempotent: the shared registry is single-owner / no-clear, so
 // re-boot (tests) is idempotent via `registerPredicateIdempotent`.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  SYSTEM_LOCKED_FLOORS,
+  registerPredicateIdempotent,
+} from "@wardenx/auth";
 import type { ConsentEvaluator, ConsentTypeKey } from "@wardenx/consent";
 import type { CarePlanSignerRole } from "@wardenx/types";
 import { getSeam } from "../../bootstrap/index";
@@ -38,11 +43,36 @@ export const M7_ABAC_PREDICATES = [
   "discipline_scope",
 ] as const;
 
-/** Roles that read the whole org's care plans without caseload (§6 `caseload_or_scope`). */
+/**
+ * Roles that read the whole org's patients without a caseload assignment (§6 `caseload_or_scope`).
+ *
+ * The first three are M7's own oversight list. The fourth arm is DERIVED, and had to be (F-092): M3's
+ * `SYSTEM_LOCKED_FLOORS` is the platform's statement of which CoP-required roles may never LOSE a
+ * permission, and two of those floors lock `patient.read` on — `medical_director` (CoP 418.102) and
+ * `director_of_nursing` (CoP 418.64(a)). A role the platform refuses to let a tenant strip
+ * `patient.read` from is a role the platform has already decided reads patients; denying it every chart
+ * it is not personally assigned to contradicts that decision in the same codebase. The DON's floor also
+ * carries `assignment.manage` — the permission to PUT clinicians on caseloads — which cannot be
+ * exercised against patients the holder may not see.
+ *
+ * `director_of_nursing` was missing from the literal, and this predicate is bound by name in M7, M9,
+ * M20, M23 and (as of F-092) M5, so a DON has been refused every care plan, assessment and safety row
+ * for a patient outside their own caseload. Deriving rather than adding a fifth literal means the next
+ * CoP floor that locks `patient.read` on does not have to be found by hand.
+ *
+ * `org_admin` is deliberately NOT here, even though ~10 predicates across M20/M22/M23/M24/M25/M32/M33/
+ * M34 treat it as the tenant's top authority and the demo admin holds it. It carries no `patient.read`
+ * floor, so the platform has never asserted that role reads charts, and an org-wide PHI bypass for a
+ * business role is the kind of quiet widening this predicate exists to prevent. An org_admin who needs
+ * a chart holds a clinical role, holds an assignment, or breaks glass — which is audited.
+ */
 const ORG_WIDE_SCOPE_ROLES = [
   "medical_director",
   "compliance_officer",
   "survey_coordinator",
+  ...Object.entries(SYSTEM_LOCKED_FLOORS)
+    .filter(([, floor]) => (floor as readonly string[]).includes("patient.read"))
+    .map(([role]) => role),
 ] as const;
 
 /** The InterventionDiscipline tokens a role key directly names (used to assemble the actor's scope). */
