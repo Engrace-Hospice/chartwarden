@@ -230,6 +230,11 @@ jobs:
           # has ever had. Live because the materializer's idempotence, the `mark_overdue` stamp constraint
           # and the policy-version FK are all statements about Postgres, and because `readAnchors` reaches
           # M17's seam under the ambient scope each binding establishes.
+          # F-043/#103: M19's two D10 inbound triggers — the first proactive triage call the platform can
+          # open. Live because the D10 redelivery guard is a partial unique index, the coalesce grain is a
+          # predicate over `state`, `on_call_shift_id` is NOT NULL (which is why `no_coverage` exists as an
+          # outcome rather than a throw), and the visit read only resolves under the binding's own scope.
+          - { name: "M19 Inbound triggers", scripts: "test:m19:inbound-triggers:live" }
           - { name: "M20 Field-safety consumers", scripts: "test:m20:consumers:live" }
           - {
               name: "M22 Documents",

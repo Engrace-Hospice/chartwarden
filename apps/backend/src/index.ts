@@ -337,6 +337,8 @@ import {
   buildDrizzleOncallAbacResolver,
   buildDrizzleOncallSeamStore,
   buildDrizzleVendorSessionBindReader,
+  buildOncallTriggerConsumers,
+  createDrizzleInboundTriggerPorts,
   createDrizzleTriageEraseStore,
   denyStubOncallAbacResolver,
   mountM19Routes,
@@ -4327,6 +4329,26 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // would silently answer null: `seam-context`'s `readVisitAnchors` collapses "no such visit" and
           // "the seam threw" so the §4.2 board cannot leak another tenant's visit, so the bindings read
           // the seam directly and let a failure fail the delivery.
+          // M19 §4.8 / §7.6 / D10 (F-043, #103) — the two proactive-triage triggers. Both deciders and
+          // their shared core have been complete since M19-T04 with NO factory yielding a binding, so the
+          // relay deferred them forever and `triage_call.source` could only ever hold `manual` or
+          // `paper_origin`: NO proactive welfare check had ever been opened, and `source_outbox_event_id`
+          // — the column D10's redelivery guard `triage_call_source_dedupe_uq` is built on — had never
+          // been written by anything. A clinician who never arrived at a dying patient's home, and one
+          // who never checked out of it, each raised an event delivered to nobody.
+          //
+          // Also the first producer of `m19.oncall_shift.coverage_gap`, which `events-by-m19.ts` records
+          // as declared and never published: when no shift covers the trigger instant the consumer emits
+          // the gap rather than opening a call it cannot anchor (`on_call_shift_id` is NOT NULL) or
+          // throwing, which would park a patient welfare check in a DLQ.
+          ...buildOncallTriggerConsumers({
+            db: dbHandle.db,
+            ports: createDrizzleInboundTriggerPorts(dbHandle.db),
+            outbox: m19OutboxPublisher,
+            // No `alerts` port, matching M19's own route path: the §4.9 pages ride the outbox events,
+            // which M36 resolves through its seam. Binding one here and not there would give the same
+            // alert two carriers with different retry semantics.
+          }),
           ...buildFieldSafetyConsumers({
             db: dbHandle.db,
             policy: createSafetyPolicyProvider(buildDrizzleSafetySeamStore(dbHandle.db)),

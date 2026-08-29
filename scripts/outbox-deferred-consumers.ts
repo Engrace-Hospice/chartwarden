@@ -610,14 +610,12 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
     module: "m19",
     kind: "handlers-unbound",
     reason:
-      "M19 carries five handler files (`consumers/m17-no-show.ts`, `m18-late-checkout.ts`, `m36-delivery-failed.ts`, `inbound-trigger.ts`, `trigger-context.ts`) and yields no live binding at all.",
+      "M19 binds its two D10 inbound triggers live (#204's sibling, F-043: the no-show and late-checkout welfare checks). `m36-delivery-failed.ts` is a written decider whose topic has no producer at all — M36 contributes no event catalog (F-094/#205) — and the eight events below are the §4.8 roster and safety-escalation intakes, forward-declared with no decider written.",
     events: [
       "m17.reassignment_needed",
       "m17.time_off.approved",
       "m17.visit.assigned",
-      "m17.visit.no_show_detected",
       "m17.visit.unassigned",
-      "m18.evv.late_check_out_detected",
       "m20.safety.check_in_escalated",
       "m20.safety.sos_alert_raised",
       "m39.consent.delegated_access.granted",

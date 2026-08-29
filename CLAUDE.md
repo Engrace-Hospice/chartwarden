@@ -707,6 +707,26 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   DELETE on nothing in M20 and both statements were written before anything executed one. Migration 0238
   grants it on that one table: a `proposed` row is a plan the system MADE, not evidence of anything that
   happened, and 0111's own M4 trigger fires on DELETE so the retirement stays on the record.
+  **M19 followed M20 out of the registry's launch-critical tier (F-043, #103).** Its two D10 inbound
+  triggers — `consumers/m17-no-show.ts` and `m18-late-checkout.ts` over the shared `inbound-trigger.ts`
+  core — were complete deciders whose only caller was their own test, so the relay deferred both. What that
+  cost: `triage_call.source` has six enum values and the module's two live insert paths hardcode `manual`
+  and `paper_origin`, so `no_show`, `late_checkout`, `m36_delivery_failure` and `geofence_anomaly` were
+  unreachable and `source_outbox_event_id` — the column D10's redelivery guard
+  `triage_call_source_dedupe_uq` is built on — had **never been written by anything**. No proactive triage
+  call had ever been opened: a clinician who never arrived at a dying patient's home, and one who never
+  checked out of it, each raised an event delivered to nobody. Binding them also gives
+  `m19.oncall_shift.coverage_gap` its first producer, which `events-by-m19.ts`'s own header records as
+  "declared … but never actually published anywhere in this codebase yet". **The defect the live run found
+  is worth keeping**: the ports read M19's OWN tables, so the first draft ran them on the bare pool. That
+  does not fail closed to "no rows". Once ANY transaction on a pooled connection has run
+  `set_config('app.org_id', …, true)`, the GUC reverts after commit to the SESSION value — which for a
+  custom GUC never set at session level is the **empty string, not NULL** — so the RLS predicate's
+  `current_setting('app.org_id', true)::uuid` becomes `''::uuid` and the read throws `22P02`. On an idle
+  connection it would instead have matched nothing silently, and a `findCallBySourceEvent` that answers
+  null for a call that exists is a duplicate welfare call on every redelivery, which is exactly what D10's
+  guard exists to prevent. Loud on a busy connection, silent on a fresh one, wrong on both.
+
   **Rule 6 (F-094, #205) is the direction rule 4 still did not run.** Six modules publish an
   `M*_SUBSCRIBED_EVENT_NAMES` constant, and each carries the same doc comment — it exists "so an upstream
   rename breaks the build rather than silently orphaning a handler". **Nothing compared any of them to
