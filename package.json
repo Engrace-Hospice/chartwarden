@@ -162,6 +162,7 @@
     "arch:manifest-mirror": "bun run scripts/check-manifest-mirror.ts",
     "arch:request-header-auth": "bun run scripts/check-request-header-auth.ts",
     "arch:context-attributes": "bun run scripts/check-context-attributes.ts",
+    "arch:route-reachability": "bun run scripts/check-route-reachability.ts",
     "arch:graph": "depcruise apps packages --config architecture/.dependency-cruiser.cjs --output-type dot | dot -T svg > docs/architecture-graph.svg",
     "arch:gaps": "bun run scripts/check-fitness-gaps.ts",
     "arch:ai-governance": "bun run scripts/check-ai-governance.ts",

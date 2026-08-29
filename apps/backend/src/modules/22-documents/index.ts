@@ -23,6 +23,11 @@ import { DegradedError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { registerDocumentAbacPredicates as _registerM22Abac } from "./abac-predicates";
 import { createDbDocumentBackend } from "./documents-route-service-db";
+import {
+  createDocLensPipelineService as _createDocLensPipelineService,
+  registerDocLensExtractionRoutes as _registerDocLensExtractionRoutes,
+  resolveDocLensCapability as _resolveDocLensCapability,
+} from "./extraction/index";
 import { registerDocumentRoutes as _registerM22Routes } from "./routes/documents-routes";
 import { createSignedUrlService as _createSignedUrlService } from "./routes/signed-url-service";
 import { createVerifiedUploadService } from "./routes/verified-upload";
@@ -65,6 +70,28 @@ export function mountDocumentRoutes(app: FastifyInstance, db: DbClient): void {
     }),
   });
   registerVerifiedUploadRoutes(app, createVerifiedUploadService({ db, objects }));
+
+  // §7.1 W1 / depends-on-32 — the DocLens extraction surface (F-090). It was BUILT and MOUNTED BY
+  // NOTHING: `registerDocLensExtractionRoutes` was re-exported from `extraction/index.ts` and called
+  // from no composition root, so `POST /api/v1/intake/uploads/:id/extraction/run` and
+  // `/api/v1/intake/jobs/:id/extraction/commit` — both of which the published contract advertises,
+  // because `scan-routes.ts` reads SOURCE — answered 404 rather than the 503 this module spends a
+  // paragraph specifying. Those are different statements: 404 tells an integrator the endpoint does
+  // not exist, 503 EXTRACTION_DISABLED with `Retry-After: 0` tells them the capability is off for
+  // this tenant. The second is the true one, and it is what the routes now return.
+  //
+  // It also meant the activation switch was wired to nothing. `documents.doclens` is a CAPABILITY
+  // flag whose whole job is to turn this surface on when M32 lands; flipping it on an unmounted
+  // registrar does nothing at all.
+  //
+  // NO flag reader is threaded, and that is the accurate state rather than an omission: nothing at
+  // boot reads the `feature_flag` table (M1's `createDefaultFeatureFlagReader` answers `{}` for every
+  // org, and M34's admin surface only WRITES flags). Passing a reader that cannot say yes would just
+  // move the same falsehood one layer in. Absent reader ⇒ `isDocLensEnabled` is false ⇒ the documented
+  // Phase-1 503, which is exactly today's truth. Binding a real reader is where this line changes.
+  _registerDocLensExtractionRoutes(app, {
+    pipeline: _createDocLensPipelineService({ capability: _resolveDocLensCapability() }),
+  });
 }
 
 export {

@@ -57,6 +57,7 @@ export const GATES = [
   "arch:abac-predicates",
   "arch:request-header-auth",
   "arch:context-attributes",
+  "arch:route-reachability",
   "arch:live-suites",
   "arch:outbox-bindings",
   "arch:org-indexes",

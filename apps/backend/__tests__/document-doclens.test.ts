@@ -6,16 +6,6 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
-// apps/backend/__tests__/document-doclens.test.ts — M22-T08 the §7.1 W1 DocLens extraction pipeline:
-// (1) the PURE pipeline runs end-to-end when the `documents.doclens` flag is injected ON over a FAKE M32
-// capability (classify → extract → verify → discrepancy → review → decide → provenance);
-// (2) the routes return 503 EXTRACTION_DISABLED with `Retry-After: 0` when the flag is OFF (Phase-1 default);
-// (3) the M32 deny-stub (capability_unavailable) lands the job `stalled` (W1 AC, no auto-retry);
-// (4) D4 — HIGH-risk candidates disable bulk-approve; rejected candidates emit no commit intent but persist;
-// (5) provenance links each committed chart row back to (jobId, fieldPath, sourceDocumentId, sourcePage).
-//
-// The pure pipeline is exercised directly from @wardenx/intake-extraction (no infra). The route 503 gate is
-// exercised through the FULL M1 middleware chain via Fastify `inject` + the REAL Authorization Contract.
 import {
   type DocLensCapabilityPort,
   buildProvenance,
@@ -29,6 +19,17 @@ import {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+// apps/backend/__tests__/document-doclens.test.ts — M22-T08 the §7.1 W1 DocLens extraction pipeline:
+// (1) the PURE pipeline runs end-to-end when the `documents.doclens` flag is injected ON over a FAKE M32
+// capability (classify → extract → verify → discrepancy → review → decide → provenance);
+// (2) the routes return 503 EXTRACTION_DISABLED with `Retry-After: 0` when the flag is OFF (Phase-1 default);
+// (3) the M32 deny-stub (capability_unavailable) lands the job `stalled` (W1 AC, no auto-retry);
+// (4) D4 — HIGH-risk candidates disable bulk-approve; rejected candidates emit no commit intent but persist;
+// (5) provenance links each committed chart row back to (jobId, fieldPath, sourceDocumentId, sourcePage).
+//
+// The pure pipeline is exercised directly from @wardenx/intake-extraction (no infra). The route 503 gate is
+// exercised through the FULL M1 middleware chain via Fastify `inject` + the REAL Authorization Contract.
+import { mountDocumentRoutes } from "../src/modules/22-documents/index";
 import {
   type DocumentFeatureFlagReader,
   createDocLensPipelineService,
@@ -319,6 +320,49 @@ describe("M22-T08 DocLens extraction routes — 503 EXTRACTION_DISABLED when the
     "x-test-org": ORG,
     "x-test-roles": "rn",
     ...extra,
+  });
+
+  // F-090 — the assertion the two cases below CANNOT make. They call `registerDocLensExtractionRoutes`
+  // directly, so they prove the registrar behaves; they say nothing about whether anything mounts it.
+  // Nothing did: the registrar was re-exported from `extraction/index.ts` and called by no composition
+  // root, so both paths — which the published contract advertises, because `scan-routes.ts` reads
+  // SOURCE — answered 404. That is the F-029 shape exactly ("shipped with slice adapters and exactly
+  // one caller, its own test"), and a 404 is a different statement from a 503: one says the endpoint
+  // does not exist, the other says the capability is off for this tenant. Only the second is true.
+  //
+  // Driven through `mountDocumentRoutes`, the function the composition root actually calls, so the
+  // route table under test is the one production builds. `arch:route-reachability` is the static
+  // complement and the durable guard; this is the runtime half.
+  it("the composition-root mount registers the DocLens surface — 503, never 404 (F-090)", async () => {
+    registerEffectivePermissionResolver(
+      createInMemoryEffectivePermissionStore([
+        {
+          orgId: ORG,
+          userId: "rn_1",
+          grants: [
+            { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["intake.review"] },
+          ],
+        },
+      ]).store,
+    );
+    registerAbacRegistry();
+    const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+    // `mountDocumentRoutes` builds its services eagerly but issues no query at mount time, so a bare
+    // handle is enough to exercise the WIRING — which is the whole of what this test is about.
+    mountDocumentRoutes(app, {} as never);
+    await app.ready();
+
+    const res = await app.inject({
+      method: "POST",
+      url: RUN,
+      headers: authed(),
+      payload: { jobId: JOB, pageCount: 3 },
+    });
+    expect(res.statusCode).not.toBe(404);
+    expect(res.statusCode).toBe(503);
+    expect(res.headers["retry-after"]).toBe("0");
+    expect(res.json().error.code).toBe("EXTRACTION_DISABLED");
+    await app.close();
   });
 
   it("returns 503 EXTRACTION_DISABLED with Retry-After: 0 on run when no flag reader (Phase-1 default)", async () => {
