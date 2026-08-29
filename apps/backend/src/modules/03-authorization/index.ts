@@ -65,6 +65,13 @@ export {
 export { registerAuthorizationRoutes } from "./routes/authz-routes";
 export { createDbRoleStore } from "./role-store";
 export { createDbMembershipRoleStore } from "./membership-role-store";
+// F-097 — the M2 §D3 role attach on accept. Exported for the composition root, which binds it into
+// M2's identity routes (M2 is `dependsOn: [1]` and cannot import this module itself).
+export {
+  type ProposedRoleAttachResult,
+  type ProposedRoleAttacher,
+  createDbProposedRoleAttacher,
+} from "./proposed-role-attacher";
 export { createDbBreakGlassStore } from "./break-glass-store";
 
 import type { RbacEngineHandle } from "@wardenx/auth";

@@ -183,6 +183,22 @@ export const InvitationAcceptedResponseSchema = Type.Object({
   membershipId: Type.String(),
   organizationId: Type.String(),
   status: MembershipStatusSchema,
+  /**
+   * F-097 — what the §D3 M3 role attach did with the invitation's `proposedRoleKeys`.
+   *
+   * `null` means no attacher is bound on this deployment (a no-db slice boot), which is a DIFFERENT
+   * fact from an invitation that proposed no roles — conflating the two is how a handshake that never
+   * ran looked like one with nothing to do. `unresolved` names keys this org has no role row for: the
+   * invitation asked for access the tenant cannot express, and the caller is the only party positioned
+   * to notice.
+   */
+  rolesAttached: Type.Union([
+    Type.Null(),
+    Type.Object({
+      attached: Type.Array(Type.String()),
+      unresolved: Type.Array(Type.String()),
+    }),
+  ]),
 });
 
 /** DELETE /api/v1/orgs/:id/invitations/:invId — rescind acknowledgement. */

@@ -642,22 +642,21 @@ describe.skipIf(!DB_URL)(
       await addP(otherOrg, "MRN-O", "Ot", "Other", "active");
 
       // list: org's patients, ordered by (lastName, firstName, id); RLS hides otherOrg.
-      const all = await svc.list(org, {});
+      const all = await svc.list(org, {}, null);
       expect(all.items.map((p) => p.lastName)).toEqual(["Adams", "Brown", "Smith"]);
       expect(all.items.every((p) => p.organizationId === org)).toBe(true);
 
       // q substring (name or MRN); status filter.
-      expect((await svc.list(org, { q: "smit" })).items.map((p) => p.mrn)).toEqual(["MRN-S"]);
-      expect((await svc.list(org, { status: "active" })).items.map((p) => p.lastName)).toEqual([
-        "Adams",
-        "Smith",
-      ]);
+      expect((await svc.list(org, { q: "smit" }, null)).items.map((p) => p.mrn)).toEqual(["MRN-S"]);
+      expect(
+        (await svc.list(org, { status: "active" }, null)).items.map((p) => p.lastName),
+      ).toEqual(["Adams", "Smith"]);
 
       // cursor pagination.
-      const page1 = await svc.list(org, { limit: 2 });
+      const page1 = await svc.list(org, { limit: 2 }, null);
       expect(page1.items.map((p) => p.lastName)).toEqual(["Adams", "Brown"]);
       expect(page1.nextCursor).not.toBeNull();
-      const page2 = await svc.list(org, { limit: 2, cursor: page1.nextCursor as string });
+      const page2 = await svc.list(org, { limit: 2, cursor: page1.nextCursor as string }, null);
       expect(page2.items.map((p) => p.lastName)).toEqual(["Smith"]);
       expect(page2.nextCursor).toBeNull();
 
@@ -692,9 +691,9 @@ describe.skipIf(!DB_URL)(
       } = await import("@wardenx/auth");
       const { createSessionAuthenticate, buildServer } = await import("../src/bootstrap/index");
       const { mountIdentityRoutes } = await import("../src/modules/02-identity/index");
-      const { createDbPatientRouteService, registerPatientRoutes } = await import(
-        "../src/modules/05-patient/index"
-      );
+      const { createDbPatientRouteService, createDrizzleCaseloadStore, registerPatientRoutes } =
+        await import("../src/modules/05-patient/index");
+      const { registerCaseloadSeam } = await import("../src/modules/05-patient/seams/index");
 
       resetAuthorizationContract();
       resetRbacEngine();
@@ -738,10 +737,23 @@ describe.skipIf(!DB_URL)(
         "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
         [org, membership, role],
       );
-      // One patient so the census route has something to prove org-scoping over.
+      // One patient so the census route has something to prove org-scoping over, and an OPEN
+      // `patient_assignment` putting this nurse on its caseload.
+      //
+      // F-096 made the assignment load-bearing: the census is now narrowed to the actor's caseload
+      // (§7.5's list half), so a `patient.read` holder assigned to nobody correctly sees an EMPTY
+      // census. Seeding the assignment keeps this test proving that data reaches the route under a real
+      // cookie, and now additionally proves the narrowing resolves through the REAL CaseloadProvider
+      // seam rather than through the header shim every other suite uses.
+      const patientId = (
+        await admin.query(
+          "INSERT INTO patient (organization_id,mrn,legal_first_name,legal_last_name,dob,sex_assigned_at_birth,status) VALUES ($1,'MRN-SS','Sess','Ion','1990-01-01','M','active') RETURNING id",
+          [org],
+        )
+      ).rows[0].id as string;
       await admin.query(
-        "INSERT INTO patient (organization_id,mrn,legal_first_name,legal_last_name,dob,sex_assigned_at_birth,status) VALUES ($1,'MRN-SS','Sess','Ion','1990-01-01','M','active')",
-        [org],
+        "INSERT INTO patient_assignment (patient_id,organization_id,clinician_user_id,role,assigned_at) VALUES ($1,$2,$3,'primary_rn',CURRENT_DATE)",
+        [patientId, org, userId],
       );
 
       // The exact production wiring (apps/backend/src/index.ts): a live SessionContextResolver over the
@@ -764,6 +776,13 @@ describe.skipIf(!DB_URL)(
         handle11.db as never,
         createDbAdminMembershipReader(handle11.db as never),
       );
+      // The census route resolves its §7.5 narrowing set through M5's `CaseloadProvider` seam, exactly
+      // as the composition root wires it. Without the registration the seam is the Phase-0 deny-stub,
+      // which THROWS, and the route's fail-closed catch would report an empty census — indistinguishable
+      // from a caseload that is genuinely empty.
+      registerCaseloadSeam({
+        store: createDrizzleCaseloadStore(asTenantRole(handle11.db) as never),
+      });
       registerPatientRoutes(app, {
         service: createDbPatientRouteService(asTenantRole(handle11.db) as never),
       });
@@ -906,7 +925,7 @@ describe.skipIf(!DB_URL)(
         actor,
       );
       expect(a.outcome).toBe("created");
-      const census = await svc.list(org, {});
+      const census = await svc.list(org, {}, null);
       expect(census.items.map((p) => p.lastName)).toContain("Nguyen");
 
       // §7.1: a second admit with the SAME MBI hard-blocks on the deterministic mbi rule (→ 409).
@@ -940,7 +959,7 @@ describe.skipIf(!DB_URL)(
         actor,
       );
       expect(b.outcome).toBe("created");
-      expect((await svc.list(org, {})).items.map((p) => p.lastName).sort()).toEqual([
+      expect((await svc.list(org, {}, null)).items.map((p) => p.lastName).sort()).toEqual([
         "Nguyen",
         "Solo",
       ]);

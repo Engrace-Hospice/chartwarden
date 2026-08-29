@@ -99,6 +99,7 @@ function makeServer(
     actors?: Actor | null | "context";
     emailTransport?: IdentityRouteDeps["emailTransport"];
     webAppBaseUrl?: string;
+    roleAttacher?: IdentityRouteDeps["roleAttacher"];
   } = {},
 ) {
   const memberships = createInMemoryMembershipRepository(opts.seed ?? [ADMIN_MEMBERSHIP]);
@@ -144,6 +145,7 @@ function makeServer(
     audit: auditSink.executor,
     ...(opts.emailTransport ? { emailTransport: opts.emailTransport } : {}),
     ...(opts.webAppBaseUrl ? { webAppBaseUrl: opts.webAppBaseUrl } : {}),
+    ...(opts.roleAttacher ? { roleAttacher: opts.roleAttacher } : {}),
   };
   registerIdentityRoutes(app, deps);
   return { app, memberships, sessions, invitations, collaborators, users, auditSink };
@@ -381,6 +383,100 @@ describe("M2-T06 identity route inventory", () => {
       expect(second.statusCode).toBe(409);
       expect(second.json().error.code).toBe("LINK_ALREADY_USED");
       await app.close();
+    });
+
+    // ── F-097: the §D3 M2→M3 role attach ─────────────────────────────────────────────────────────
+    //
+    // M2 §D3 records this as Decided — "M2 carries `proposedRoleKeys` … and creates the membership; M3
+    // attaches roles on accept" — and nothing performed it. The route read the keys off the consumed
+    // invitation and returned, carrying a comment that named M3 as the owner of a step no code took, so
+    // every invitation the platform issued produced a membership with no grants. Nothing failed and
+    // nothing warned; the invitation row still listed the roles that had been requested.
+
+    /** A stand-in for M3's attacher: whatever role keys this org "has". */
+    const attacherOver = (known: readonly string[]) => {
+      const calls: { membershipId: string; roleKeys: readonly string[] }[] = [];
+      return {
+        calls,
+        attacher: {
+          async attach(input: {
+            organizationId: string;
+            membershipId: string;
+            roleKeys: readonly string[];
+            grantedByUserId: string;
+          }) {
+            calls.push({ membershipId: input.membershipId, roleKeys: input.roleKeys });
+            return {
+              attached: input.roleKeys.filter((key) => known.includes(key)),
+              unresolved: input.roleKeys.filter((key) => !known.includes(key)),
+            };
+          },
+        } satisfies NonNullable<IdentityRouteDeps["roleAttacher"]>,
+      };
+    };
+
+    async function acceptWith(
+      roleAttacher: NonNullable<IdentityRouteDeps["roleAttacher"]> | undefined,
+      proposedRoleKeys: readonly string[],
+    ) {
+      const server = makeServer(roleAttacher ? { roleAttacher } : {});
+      await server.app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "roles@example.com", proposedRoleKeys: [...proposedRoleKeys] },
+      });
+      const res = await server.app.inject({
+        method: "POST",
+        url: "/api/v1/invitations/accept",
+        headers: { "x-test-user": "invitee_1" },
+        payload: { token: server.invitations.tokenFor("roles@example.com") },
+      });
+      return { server, res };
+    }
+
+    it("F-097 attaches the invitation's proposedRoleKeys to the new membership", async () => {
+      const { calls, attacher } = attacherOver(["clinical_rn"]);
+      const { server, res } = await acceptWith(attacher, ["clinical_rn"]);
+      expect(res.statusCode).toBe(200);
+      // The keys reach M3 at all — which is the whole defect: before this they reached the end of the
+      // handler and stopped.
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.roleKeys).toEqual(["clinical_rn"]);
+      expect(calls[0]!.membershipId).toBe(res.json().membershipId);
+      expect(res.json().rolesAttached).toEqual({ attached: ["clinical_rn"], unresolved: [] });
+      await server.app.close();
+    });
+
+    it("F-097 reports a proposed role the org has no role row for, rather than dropping it", async () => {
+      // The state every freshly provisioned tenant is in: M34's provision worker seeds a key ring,
+      // storage prefixes, an organization, onboarding tasks and the first-admin invitation, and NO
+      // `role` rows. Silence here would reproduce the defect one layer down.
+      const { attacher } = attacherOver([]);
+      const { server, res } = await acceptWith(attacher, ["org_admin"]);
+      expect(res.json().rolesAttached).toEqual({ attached: [], unresolved: ["org_admin"] });
+      // Audited as a FAILURE — nothing was granted although something was asked for.
+      const row = server.auditSink.rows.find((r) => r.eventType === "m3.role.assigned");
+      expect(row).toBeDefined();
+      expect(row!.outcome).toBe("failure");
+      await server.app.close();
+    });
+
+    it("F-097 says `null` when no attacher is bound — not an empty grant set", async () => {
+      // "This deployment cannot attach roles" and "this invitation proposed none" are different facts.
+      // Reporting the second for the first is exactly how the missing handshake stayed invisible.
+      const { server, res } = await acceptWith(undefined, ["clinical_rn"]);
+      expect(res.json().rolesAttached).toBeNull();
+      await server.app.close();
+    });
+
+    it("F-097 an invitation proposing no roles attaches nothing and audits nothing", async () => {
+      const { calls, attacher } = attacherOver(["clinical_rn"]);
+      const { server, res } = await acceptWith(attacher, []);
+      expect(res.json().rolesAttached).toEqual({ attached: [], unresolved: [] });
+      expect(calls).toHaveLength(1); // called, and correctly found nothing to do
+      expect(server.auditSink.rows.some((r) => r.eventType === "m3.role.assigned")).toBe(false);
+      await server.app.close();
     });
   });
 
