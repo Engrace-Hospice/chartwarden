@@ -761,6 +761,48 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   escalation reason in M20) and M35's four `m2.*` organization/session topics have no producer at all.
   That is half of M35's entire subscription list, and its §4.12 per-seat billing is specified on it.
 
+  **Rule 6 saw six modules of nineteen, and its own comment said otherwise (F-095, #208).** It enumerated
+  `M<N>_SUBSCRIBED_EVENT_NAMES` off the `@wardenx/types` barrel and claimed "a seventh module publishing one
+  is checked the day it lands with no edit here" — false on the day it was written, because THIRTEEN more
+  modules already declared their subscriptions under three other spellings and in another directory
+  (`M<N>_OUTBOX_SUBSCRIPTIONS` / `M<N>_UPSTREAM_SUBSCRIPTIONS` and the `_TOPICS` splits in each module's own
+  `consumers` directory, the frozen `_SUBSCRIPTION_MAP`s, two lone `{ eventName, consumerName }` objects).
+  **The gate written to end "a list compared to nothing" left thirteen lists compared to nothing**, and they
+  disagreed with the catalog on **132 further facts**. Discovery is now the whole point: the NAME pattern is
+  deliberately wide (any `M<N>_…SUBSCRI…` export, anywhere in `apps/` or `packages/`) and the narrowing
+  happens on the VALUE, where it can be checked — a matching name whose value is not one of the four
+  recognised shapes is an **error, not a skip**, so a fifth spelling breaks the build on the commit that
+  introduces it. The one exemption is a `*_DEFERRED` boolean, recognised by `typeof value === "boolean"`
+  rather than by name. **Nothing is double-registered**: 255 of the "catalog declares it, the list omits it"
+  pairs are the same absence `outbox-deferred-consumers.ts` already holds with a reason, so rule 6 skips a
+  pair rule 4 has accepted — and when that deferral is lifted by binding the event, rule 6 starts requiring
+  the list to name it, which is how the list gets corrected on the commit that binds.
+  **Eight names were dead** — in no catalog under any spelling, so the handler behind each could never run.
+  Two are the literal failure these constants' own headers promise to prevent: M14 subscribed to
+  `hope.j2051_trigger_fired` and `hope.sfv_created` while M10 catalogues them `m10.`-prefixed, so the J2051
+  and SFV consumers named nothing. Three more are M33 MV-invalidation topics (`m17.visit.no_show`,
+  `m18.evv.check_in`/`check_out` against the catalogued `…_detected`/`…_recorded`), and three are placeholder
+  spellings M23/M24 carried with a written instruction to rebind "when M40's `events-by-m40.ts` lands" —
+  it landed, and nothing came back (`mdm.canonical_updated` → `m40.canonical.updated`,
+  `m26.cap.*.v1` → the unversioned names, `m23.medicare_claim.acknowledged` → `m23.claim.acknowledged`).
+  A placeholder that names a module's own spelling of an event is indistinguishable from a real subscription
+  at a glance, which is why all eight survived. **M11 was the live one**: it BINDS `m22.document.rendered`
+  (the §7.2 W2 back-ref that stamps `order_record.document_id`) and its own list never named it for the whole
+  of that binding's life — the F-094 `idg.decision_recorded` shape again — while the only test on that list
+  pinned its contents verbatim, which a list and a copy of the same list always satisfy.
+  The remaining **132 are grouped by (module, kind)** in `outbox-subscription-exceptions.ts` with three kinds
+  added for facts the six simple lists never presented: `self-consumption` (a module's own event, correctly
+  absent from an inbound-only map — the one kind that excuses the OPPOSITE direction, so the freshness check
+  inverts for it), `no-such-event` (the owning module has a landed catalog and this is not in it, so waiting
+  will not fix it), and `handler-unbound` (the decider is written and bound by nothing — #103's
+  `handlers-unbound` set seen from the list side, which `outbox-deferred-consumers.ts` cannot hold because it
+  can only carry pairs the catalog DECLARES). The gate DECIDES `no-producer` vs `no-such-event` itself off
+  whether the owning module contributes a catalog, rather than trusting the entry — getting those the wrong
+  way round is how a permanent defect gets filed as a staging gap. **The standing finding grew: M28 is a
+  third module contributing no event catalog**, alongside M2 and M36 — there is no `M28_OUTBOX_EVENTS`
+  anywhere in the repo, so the FHIR gateway publishes nothing and M33's `mv_fhir_bulk_export_org_month` has
+  no invalidation source.
+
 
 - `scripts/check-architecture-docs.ts` — **architecture-corpus freshness gate**
   (`bun run arch:architecture-docs`, in `arch:fitness` since 2026-08-14). The authority rule makes

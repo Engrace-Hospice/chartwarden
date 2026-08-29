@@ -8,8 +8,14 @@
 // mounted; the pure mapping ships + is testable here.
 //
 // The M6/M7/M8/M9/M11/M12 producers exist in Waves C–E — those bindings are LIVE-eligible. M10's
-// `hope.j2051_trigger_fired` / `hope.sfv_created` exist (M10 Wave E). M22's `m22.document.rendered` lands
-// later in THIS wave (M22) — the back-ref binding attaches when M22's renderer emits. Every consumed event
+// `m10.hope.j2051_trigger_fired` / `m10.hope.sfv_created` exist (M10 Wave E). Both were written here
+// WITHOUT the `m10.` prefix, and stayed that way (F-095): M10 catalogues them under the module-prefixed
+// names every other event in the corpus uses, so these two named nothing. That is the exact failure this
+// list's own header promises to prevent — "an upstream rename breaks the build rather than silently
+// orphaning a handler" — and nothing compared the list to the catalog until rule 6 of
+// `check-outbox-bindings.ts` did, so the J2051-trigger and SFV consumers pointed at names no module emits.
+// M22's `m22.document.rendered` lands later in THIS wave (M22) — the back-ref binding attaches when
+// M22's renderer emits. Every consumed event
 // name is a STRING literal (no cross-module schema import): M14 reads other modules solely through the
 // foundation outbox, so this task adds NO new edge to M14's manifest `dependsOn` (§1.1).
 import { type ActionItemEvent, transitionActionItem } from "@wardenx/idg";
@@ -77,8 +83,8 @@ export const M14_OUTBOX_SUBSCRIPTIONS = [
   // "since last IDG" projection cache + flagged-events block
   { eventName: "m9.assessment.recorded", consumerName: "m14.m9-assessment-recorded" },
   { eventName: "m9.assessment.significant_change", consumerName: "m14.m9-significant-change" },
-  { eventName: "hope.j2051_trigger_fired", consumerName: "m14.m10-j2051-trigger" },
-  { eventName: "hope.sfv_created", consumerName: "m14.m10-sfv-created" },
+  { eventName: "m10.hope.j2051_trigger_fired", consumerName: "m14.m10-j2051-trigger" },
+  { eventName: "m10.hope.sfv_created", consumerName: "m14.m10-sfv-created" },
   { eventName: "m11.order.discontinued", consumerName: "m14.m11-order-discontinued" },
   {
     eventName: "m12.medication_order.discontinued",

@@ -6,7 +6,10 @@
 export const M24_SUBSCRIPTION_MAP: Readonly<Record<string, string>> = {
   "m25.remittance.claim_paid": "mark-claim-paid",
   "m25.remittance.claim_denied": "mark-claim-denied",
-  "m23.medicare_claim.acknowledged": "resolve-medicare-primary",
+  // F-095 — was `m23.medicare_claim.acknowledged`, a name M23 has never catalogued under any wave.
+  // M23 owns one claim-acknowledgment topic and this is it (the 277CA ack that resolves whether Medicare
+  // paid primary, which is the precondition for billing Medicaid secondary).
+  "m23.claim.acknowledged": "resolve-medicare-primary",
   "m5.patient.updated": "trigger-revalidate",
   "m6.admission.changed": "trigger-revalidate",
   "m8.encounter.signed": "trigger-revalidate",

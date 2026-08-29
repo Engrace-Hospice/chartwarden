@@ -9,6 +9,8 @@ import { describe, expect, it } from "vitest";
 import {
   type AdmissionDischargedPayload,
   type HopeJ2051TriggerPayload,
+  M11_DOCUMENT_BACKREF_CONSUMER,
+  M11_IDG_DECISION_CONSUMER,
   M11_OUTBOX_EVENTS,
   M11_OUTBOX_SUBSCRIPTIONS,
   type SignificantChangePayload,
@@ -133,7 +135,7 @@ describe("M11 outbox event contract (§4.4)", () => {
 // ── §4.5 subscription bindings ──────────────────────────────────────────────────────────────────────────
 
 describe("M11 outbox subscriptions (§4.5)", () => {
-  it("binds the three Wave-E events and the live M14 IDG intake", () => {
+  it("binds the three Wave-E events, the live M14 IDG intake, and the live M22 back-ref", () => {
     expect(M11_OUTBOX_SUBSCRIPTIONS).toEqual([
       {
         eventName: "m6.admission.discharged",
@@ -142,7 +144,20 @@ describe("M11 outbox subscriptions (§4.5)", () => {
       { eventName: "m9.assessment.significant_change", consumerName: "m11.assessment-trigger" },
       { eventName: "m10.hope.j2051_trigger_fired", consumerName: "m11.hope-trigger" },
       { eventName: "idg.decision_recorded", consumerName: "m11.idg-decision-intake" },
+      { eventName: "m22.document.rendered", consumerName: "m11.document-backref" },
     ]);
+  });
+
+  it("names every event M11 actually BINDS — the property pinning the list verbatim does not give you", () => {
+    // F-095. This list is documented as the shared source of truth for M11's consumer wiring, and the
+    // assertion above — the only one it had — pins its contents without ever asking whether they are
+    // true of anything. `m22.document.rendered` was bound live in `outbox-consumers/m22-document-rendered.ts`
+    // and absent from the list for the whole of that binding's life, and the verbatim assertion passed
+    // throughout, because a list and a copy of the same list always agree. Reading the consumer names
+    // off the bindings is what makes the two halves able to disagree.
+    const bound = [M11_DOCUMENT_BACKREF_CONSUMER, M11_IDG_DECISION_CONSUMER];
+    const listed = new Set(M11_OUTBOX_SUBSCRIPTIONS.map((s) => s.eventName));
+    for (const consumer of bound) expect(listed).toContain(consumer.eventName);
   });
 });
 

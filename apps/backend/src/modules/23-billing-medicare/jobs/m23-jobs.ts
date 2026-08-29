@@ -276,7 +276,7 @@ export interface ClaimValidationRunnerPort {
 
 /**
  * The §4.8 revalidation target resolver (the `revalidate.consumer` shaping seam). Given a consumed upstream
- * event (`m5.patient.*`, `m6.election.*`, `m8.encounter.signed`, `mdm.canonical_updated`, …), it returns every
+ * event (`m5.patient.*`, `m6.election.*`, `m8.encounter.signed`, `m40.canonical.updated`, …), it returns every
  * M23 claim in VALIDATING or READY that depends on the changed fact. FAIL-CLOSED until bound (the consumer
  * skips no claim silently — it throws so a missing resolver is a loud no-op, never a fabricated empty set).
  */
