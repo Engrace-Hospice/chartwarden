@@ -35,7 +35,12 @@
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) is
 // idempotent via `registerPredicateIdempotent`.
 import { ASSESSMENT_DISCIPLINES, anyDisciplineCanRecordScale } from "@wardenx/assessments";
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  hasOrgWideScope,
+  registerPredicateIdempotent,
+} from "@wardenx/auth";
 import type { ScaleType } from "@wardenx/types";
 import { getSeam } from "../../bootstrap/index";
 import type { AssessmentAbacResolver } from "./routes/service";
@@ -59,12 +64,6 @@ export const M9_ABAC_PREDICATES = [
 const COSIGN_ELIGIBLE_DISCIPLINES = ["rn", "rn_case_manager", "clinical_supervisor"] as const;
 
 /** Roles that read/scope any patient's assessments without caseload (mirrors M7/M8's `caseload_or_scope`). */
-const ORG_WIDE_SCOPE_ROLES = [
-  "medical_director",
-  "compliance_officer",
-  "survey_coordinator",
-] as const;
-
 const hasRole = (context: AbacContext, role: string): boolean => context.roles.includes(role);
 const targetStr = (target: AbacTarget, field: string): string | null => {
   const value = target[field];
@@ -123,7 +122,7 @@ export function buildAssessmentAbacPredicates(
   const isInCaseload = deps.isInCaseload ?? ((q) => getSeam("CaseloadProvider").isInCaseload(q));
 
   const caseloadOrScopeFor = async (context: AbacContext, patientId: string): Promise<boolean> => {
-    if (ORG_WIDE_SCOPE_ROLES.some((r) => hasRole(context, r))) return true;
+    if (hasOrgWideScope(context.roles)) return true;
     if (!context.userId) return false;
     return isInCaseload({
       organizationId: context.organizationId,

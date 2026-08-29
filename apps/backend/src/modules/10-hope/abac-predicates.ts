@@ -1,4 +1,9 @@
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  hasOrgWideScope,
+  registerPredicateIdempotent,
+} from "@wardenx/auth";
 // apps/backend/src/modules/10-hope/abac-predicates.ts — M10-T06 (§4.7).
 //
 // The FOUR named ABAC predicate resolvers M10 OWNS and registers into M3's named-predicate registry (M3
@@ -48,12 +53,6 @@ export const M10_ABAC_PREDICATES = [
 
 /** Roles that read/scope any patient's HOPE data or any ProviderEntity's submissions without caseload/PE
  * membership (mirrors M7/M8/M9's `caseload_or_scope` org-wide escape). */
-const ORG_WIDE_SCOPE_ROLES = [
-  "medical_director",
-  "compliance_officer",
-  "survey_coordinator",
-] as const;
-
 /** The HOPE clinical-lead role token that may correct any signed assessment (§4.7 / §4.6). */
 const CLINICAL_LEAD_ROLES = ["clinical_lead", "clinical_supervisor"] as const;
 
@@ -164,7 +163,7 @@ export function buildHopeAbacPredicates(
   const resolveAdmissionPatient = deps.resolveAdmissionPatient ?? defaultResolveAdmissionPatient;
 
   const caseloadOrScopeFor = async (context: AbacContext, patientId: string): Promise<boolean> => {
-    if (ORG_WIDE_SCOPE_ROLES.some((r) => context.roles.includes(r))) return true;
+    if (hasOrgWideScope(context.roles)) return true;
     if (!context.userId) return false;
     return isInCaseload({
       organizationId: context.organizationId,
@@ -174,8 +173,7 @@ export function buildHopeAbacPredicates(
   };
 
   const peOrScopeFor = (context: AbacContext, providerEntityId: string): boolean =>
-    ORG_WIDE_SCOPE_ROLES.some((r) => context.roles.includes(r)) ||
-    context.providerEntityIds.includes(providerEntityId);
+    hasOrgWideScope(context.roles) || context.providerEntityIds.includes(providerEntityId);
 
   return {
     "hope.authorDisciplineAllowed": async (context) =>
@@ -246,7 +244,7 @@ export function buildHopeAbacPredicates(
       // request is an org-wide read and only the org-wide scope roles may make one. Everyone else
       // must name the patient/PE they claim, which the branches above then verify. Fails closed on
       // a misconfigured route for the same reason (mirrors M8/M9's empty-target `return false`).
-      return ORG_WIDE_SCOPE_ROLES.some((r) => context.roles.includes(r));
+      return hasOrgWideScope(context.roles);
     },
   };
 }

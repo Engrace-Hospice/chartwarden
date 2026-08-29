@@ -10,7 +10,7 @@
 // name-alias storage on admit, soft_review match-review rows, and the real outbox cascade emission.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { type SQL, and, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { type SQL, and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { type MatchCandidate, runMatch } from "./matching/matcher";
 import { normalizeSubject } from "./matching/normalize";
 import { type PrivacyFlag, isSudReadAllowed } from "./privacy/index";
@@ -97,10 +97,29 @@ function decode(cursor: string): [string, string, string] | null {
 
 /** Build the production PatientRouteService — reads + writes are real Drizzle over the patient tables. */
 export function createDbPatientRouteService(db: DbClient): PatientRouteService {
-  const list = async (organizationId: string, query: ListQuery) => {
+  const list = async (
+    organizationId: string,
+    query: ListQuery,
+    scope: readonly string[] | null,
+  ) => {
     const limit = Math.min(MAX_LIMIT, Math.max(1, Math.floor(query.limit ?? DEFAULT_LIMIT)));
     const c = query.cursor ? decode(query.cursor) : null;
+    // §7.5 (F-096) — the caseload narrowing, IN THE SQL. `scope === null` is the org-wide reader; a
+    // named set becomes `patient.id = ANY(:ids)`, which is the filter the spec asks for by name.
+    //
+    // The empty set returns a constant-false predicate rather than NO predicate. That is the whole security property:
+    // `if (scope.length > 0)` reads as a harmless guard against an empty `IN ()` and means an actor with
+    // no caseload reads the entire tenant — the fail-open this narrowing exists to prevent, aimed at
+    // exactly the actor who should see least. Drizzle's `inArray` with an empty array is itself a
+    // no-op in some versions, so the constant is written out rather than relied upon.
+    const narrowing =
+      scope === null
+        ? undefined
+        : scope.length === 0
+          ? (sql`false` as SQL)
+          : (inArray(P.id, [...scope]) as SQL);
     const where = and(
+      narrowing,
       query.status ? eq(P.status, query.status as typeof P.$inferSelect.status) : undefined,
       query.q
         ? (or(

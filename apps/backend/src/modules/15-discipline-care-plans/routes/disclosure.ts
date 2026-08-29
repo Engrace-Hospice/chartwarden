@@ -25,6 +25,7 @@
 // The seam is resolved through `getSeam` and cast to the minimal shape M15 calls (the M25 →
 // TerminologyProvider precedent): `ConsentEvaluator` is `unknown` in the leaf SeamContracts, and casting
 // structurally keeps M15 off a `@wardenx/consent` import edge it does not have.
+import { hasOrgWideScope } from "@wardenx/auth";
 import { getSeam } from "../../../bootstrap/index";
 import type { M15ReadActor } from "./actor";
 
@@ -207,15 +208,12 @@ export const SUMMARY_DISCLOSURE: DisclosureDecision = {
 /**
  * §4.1 `caseload_or_scope` for the M15 read surface. M7 owns the registered predicate and keys it on ITS
  * plan id, so M15 resolves the same underlying fact — the M5/M17 `CaseloadProvider` seam — directly.
- * Org-wide scope roles (compliance/survey/medical-director) read without a caseload, exactly as the shared
- * predicate does; everyone else must be on the patient's care team. Fail-CLOSED when the seam throws.
+ * Org-wide scope roles read without a caseload, exactly as the shared predicate does — through
+ * `hasOrgWideScope`, which IS that shared decision (F-096) rather than a fifth copy of it. This file's
+ * literal happened to carry the correct four names; M8's, M9's and M10's did not, which is the argument
+ * against a literal that happens to be right. Everyone else must be on the patient's care team.
+ * Fail-CLOSED when the seam throws.
  */
-const ORG_WIDE_SCOPE_ROLES = [
-  "medical_director",
-  "compliance_officer",
-  "survey_coordinator",
-  "director_of_nursing",
-] as const;
 
 export interface CaseloadPort {
   isInCaseload(input: {
@@ -242,7 +240,7 @@ export async function actorMayReadPatient(
   patientId: string,
   port: CaseloadPort = seamCaseloadPort,
 ): Promise<boolean> {
-  if (ORG_WIDE_SCOPE_ROLES.some((r) => actor.roles.includes(r))) return true;
+  if (hasOrgWideScope(actor.roles)) return true;
   return port.isInCaseload({
     organizationId: actor.organizationId,
     userId: actor.userId,

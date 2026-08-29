@@ -27,7 +27,12 @@
 // the RN discipline from the actor's roles/attributes (the M7 `disciplineScopeOf` convention) and compares
 // `context.userId` to the encounter's `authoredByUserId`. Registration is idempotent: the shared registry
 // is single-owner / no-clear, so re-boot (tests) is idempotent via `registerPredicateIdempotent`.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  hasOrgWideScope,
+  registerPredicateIdempotent,
+} from "@wardenx/auth";
 import { getSeam } from "../../bootstrap/index";
 import type { EncounterAbacResolver } from "./routes/service";
 
@@ -41,13 +46,6 @@ import type { EncounterAbacResolver } from "./routes/service";
  * position, not prefix, since only M8 routes ever name it. Single-owner across the platform registry.
  */
 export const M8_ABAC_PREDICATES = ["m8.cosigner_role_match", "encounter.scope"] as const;
-
-/** Roles that read/scope any patient's encounters without caseload (mirrors M7's `caseload_or_scope`). */
-const ORG_WIDE_SCOPE_ROLES = [
-  "medical_director",
-  "compliance_officer",
-  "survey_coordinator",
-] as const;
 
 const hasRole = (context: AbacContext, role: string): boolean => context.roles.includes(role);
 const targetId = (target: AbacTarget, field: string): string | null => {
@@ -92,7 +90,7 @@ export function buildEncounterAbacPredicates(
   const isInCaseload = deps.isInCaseload ?? ((q) => getSeam("CaseloadProvider").isInCaseload(q));
 
   const caseloadOrScopeFor = async (context: AbacContext, patientId: string): Promise<boolean> => {
-    if (ORG_WIDE_SCOPE_ROLES.some((r) => hasRole(context, r))) return true;
+    if (hasOrgWideScope(context.roles)) return true;
     if (!context.userId) return false;
     return isInCaseload({
       organizationId: context.organizationId,

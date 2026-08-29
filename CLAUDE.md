@@ -297,19 +297,38 @@ the prose docs in `docs/architecture/`.
   `caseload_or_scope` and six of its route comments claimed a "§7.5 non-leak · non-caseload → 404" that
   `service.getPatient(organizationId, id)` has no caseload input to perform — any holder of
   `patient.read` read any chart in the tenant. The per-chart routes now compose the predicate the
-  catalog names, with `notFoundOnDeny` so a refusal does not itself confirm the chart exists. §7.5's
-  other half — `patient_id = ANY(:caseloadIds)` on the CENSUS list — remains open: a preHandler can
-  refuse a list but cannot filter one, so it needs the read service to take a narrowing set and the
-  org-wide-role determination to move out of the predicate and into the read path.
+  catalog names, with `notFoundOnDeny` so a refusal does not itself confirm the chart exists.
   Fixing M5 surfaced a second live defect in the four modules that DO enforce it (M7/M9/M20/M23):
   `ORG_WIDE_SCOPE_ROLES` listed `medical_director`, `compliance_officer` and `survey_coordinator` and
   **omitted `director_of_nursing`**, whose `SYSTEM_LOCKED_FLOORS` entry locks on `patient.read` AND
-  `assignment.manage` — a permission to put clinicians on caseloads that cannot be exercised against
+  `patient.assign` — a permission to put clinicians on caseloads that cannot be exercised against
   patients the holder may not see. A DON has been refused every care plan, assessment and safety row
   outside their own caseload. The list is now DERIVED from the floors that lock `patient.read` rather
   than maintained by hand. `org_admin` is deliberately NOT included even though ~10 predicates treat it
   as the tenant's top authority: it carries no `patient.read` floor, so the platform has never asserted
   that role reads charts.
+  **§7.5's other half — the CENSUS list — is now narrowed too (F-096, #209), and the derivation is
+  shared rather than copied.** F-092 delivered the per-chart 404 and named the list half as open because
+  "a preHandler can refuse a list but cannot filter one". That was the LARGER of the two disclosures: a
+  chart read leaks one patient to someone who guessed an id, a census leaks the identity of every patient
+  the agency serves to everyone who can log in, and any holder of `patient.read` listed all 5,000.
+  `PatientRouteService.list` now takes the narrowing set as a REQUIRED third argument — `null` for an
+  org-wide reader, otherwise the ids, resolved through M5's own `caseloadPatientIds`, whose doc comment
+  has called it "the `patient_id = ANY(:ids)` list filter" since M5-T07 while having exactly one consumer
+  platform-wide (M12's refill inbox, which is not this list). **An EMPTY set returns NOTHING**: the
+  fail-open shape is `if (ids.length > 0) narrow(ids)`, which reads as a harmless guard against an empty
+  `IN ()` and hands the entire tenant to precisely the actor who should see least. The narrowing is in the
+  WHERE clause, not a post-read `rows.filter` — the M12 `refillInboxWhere` lesson, and the two are
+  indistinguishable until a LIMIT is involved, which is why `m5-census-caseload-scope.live.test.ts` pages
+  through a caseload that sorts LAST: a post-read filter returns a short page and a wrong cursor having
+  already read every patient into memory. Three of its seven fail against the two failure shapes.
+  Fixing it needed the org-wide determination callable from outside the predicate registry, which
+  surfaced that `ORG_WIDE_SCOPE_ROLES` existed **five times** — M7, M8, M9, M10 and M15 — and that F-092
+  had derived exactly one of them. **M8, M9 and M10 still carried the three-name literal**, so a DON went
+  on being refused every encounter, assessment and HOPE record outside their own caseload, and M8's copy
+  claimed in its own comment to "mirror M7's". There is now one `hasOrgWideScope` in `@wardenx/auth`,
+  beside the `SYSTEM_LOCKED_FLOORS` it derives from, and `org-wide-scope.test.ts` pins the DERIVATION
+  rather than the four names — asserting the output would rebuild the thing that failed.
 **The §3.4.1 CoP role floor was enforced in the test double and nowhere else (F-093).** Two files each
 named the other as the enforcer: `role-store.ts` — the Drizzle `RoleStore` the composition root mounts —
 said "the route layer enforces the `system_locked` CoP floor before calling the store", while

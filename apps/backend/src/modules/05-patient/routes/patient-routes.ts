@@ -19,25 +19,30 @@
 // tenant. The guard now makes the comment true — `notFoundOnDeny` so a refusal is a 404 and not a 403,
 // because a 403 on a chart id is itself a disclosure that the chart exists.
 //
-// STILL NOT NARROWED, AND THE SPEC ASKS FOR IT: the `/api/v1/patients` CENSUS list. §7.5 is one
-// sentence covering two halves — "an RN with two patients on her caseload sees only those two in
-// `/patients`, even when the tenant has 5,000; the list query SQL contains a
-// `patient_id = ANY(:caseloadIds)` filter; attempting `GET /patients/:id` for a third patient yields
-// 404" — and this change is the second half. The first needs the read SERVICE to take a narrowing set
-// (M5 built `caseloadPatientIds` for exactly this and it has one consumer platform-wide, M12's refill
-// inbox, which is not this list), and it needs the org-wide-role determination that currently lives
-// INSIDE the predicate to be available in the read path — a preHandler can refuse a list but cannot
-// filter one. Both are service-shape changes rather than a guard, so they are named here rather than
-// half-done.
+// F-096 — THE CENSUS LIST IS NOW NARROWED TOO, which is the half F-092 named and left. §7.5 is one
+// sentence covering two — "an RN with two patients on her caseload sees only those two in `/patients`,
+// even when the tenant has 5,000; the list query SQL contains a `patient_id = ANY(:caseloadIds)`
+// filter; attempting `GET /patients/:id` for a third patient yields 404". Until now any holder of
+// `patient.read` listed every patient in the tenant, which is the larger disclosure of the two: a chart
+// read leaks one patient to someone who guessed an id, a census leaks the identity of every patient the
+// agency serves to everyone who can log in.
+//
+// The list half could not be a guard. A preHandler runs before the handler, sees no rows, and can only
+// allow or deny — it can REFUSE a collection but cannot FILTER one. So `list` now takes the narrowing
+// set (`censusScope` below), and the org-wide-role determination that used to live inside the predicate
+// moved to `hasOrgWideScope` in @wardenx/auth, where both halves read it. M5 built `caseloadPatientIds`
+// for exactly this — its doc comment calls it "the `patient_id = ANY(:ids)` list filter" — and until
+// now it had one consumer platform-wide, M12's refill inbox, which is not this list.
 //
 // Org binding is server-side (`request.context`, never the body). Handlers compose over the injected
 // `PatientRouteService` (in-memory slice; Drizzle in prod under withOrgContext so RLS backstops).
 // §7.1: admit runs the T06 matcher — a hard duplicate returns 409 with the existing id, no row
 // created; a soft match returns 201 + matchReviewIds. §7.4: an address change emits the cascade
 // event. §7.7: an amendment opens with a 60-day SLA; accept/deny decides it (deny needs a reason).
-import { type GuardRequest, requireAbac, requirePermission } from "@wardenx/auth";
+import { type GuardRequest, hasOrgWideScope, requireAbac, requirePermission } from "@wardenx/auth";
 import { UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { getSeam } from "../../../bootstrap/index";
 import {
   AddressBodySchema,
   AdmitBodySchema,
@@ -86,6 +91,47 @@ const SCOPE_READ = chartScope("patient.read");
 const SCOPE_EDIT = chartScope("patient.edit");
 const SCOPE_AMEND_RECORD = chartScope("patient.amend_request_record");
 
+/**
+ * The §7.5 CENSUS narrowing (F-096): which patient ids this actor's `/api/v1/patients` may contain.
+ *
+ *   - `null` — an org-wide scope role: no narrowing, the whole tenant's census.
+ *   - `[id]` — a session pinned to one patient (collaborator / funeral / portal, §3.6 `scope`).
+ *   - the actor's open `patient_assignment` set otherwise, WHICH MAY BE EMPTY — and an empty set is a
+ *     census of nothing, not a census of everything.
+ *
+ * WHY THIS IS NOT A GUARD. §7.5 is one sentence with two halves — "an RN with two patients on her
+ * caseload sees only those two in `/patients`, even when the tenant has 5,000 … attempting
+ * `GET /patients/:id` for a third patient yields 404". F-092 delivered the second half with a
+ * `requireAbac` preHandler and could not deliver the first, because a preHandler can REFUSE a
+ * collection but cannot FILTER one: it runs before the handler, sees no rows, and its only outputs are
+ * allow and deny. Narrowing a list is a read-path concern, so the determination the predicate makes
+ * internally (`hasOrgWideScope`) had to become callable from outside it — which is what F-096 moved
+ * into `@wardenx/auth`, and why both halves now answer from the same derivation rather than from two
+ * lists that agree until one is edited.
+ *
+ * FAIL-CLOSED ON A SEAM THROW. `CaseloadProvider` is a Phase-0 deny-stub that THROWS when its owning
+ * module has not registered, and M15's `seamCaseloadPort` already treats that as "not in caseload".
+ * The census does the same: an empty narrowing, so an unavailable caseload seam shows a clinician no
+ * patients rather than all of them.
+ */
+async function censusScope(request: FastifyRequest): Promise<readonly string[] | null> {
+  const ctx = request.context;
+  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
+  if (hasOrgWideScope(ctx.roles ?? [])) return null;
+
+  const pinned = ctx.attributes?.sessionPatientId;
+  if (typeof pinned === "string" && pinned.length > 0) return [pinned];
+
+  try {
+    return await getSeam("CaseloadProvider").caseloadPatientIds({
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+    });
+  } catch {
+    return [];
+  }
+}
+
 const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not found`, 404);
 
 // §2.5 read-audit: a single-patient chart read. `patientIdParam: "id"` joins the read to the patient
@@ -102,7 +148,7 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
     async (request) => {
       const { organizationId } = actorOf(request);
       const query = parse(PatientListQuerySchema, request.query);
-      return service.list(organizationId, query);
+      return service.list(organizationId, query, await censusScope(request));
     },
   );
 
