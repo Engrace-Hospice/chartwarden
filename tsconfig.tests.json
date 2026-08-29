@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "_comment": "WardenX \u2014 typecheck program for the NODE test tree (F-098): every suite that runs without a browser. It deliberately has NO `lib: DOM` and no `jsx`, so a backend test cannot reference `document` and compile. See scripts/check-test-typecheck-coverage.ts.",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "incremental": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "noEmit": true,
+    "types": [
+      "node"
+    ],
+    "noUncheckedIndexedAccess": false
+  },
+  "include": [
+    "apps/**/*.test.ts",
+    "apps/**/*.test.tsx",
+    "packages/**/*.test.ts"
+  ],
+  "exclude": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "scripts/__fixtures__/**",
+    "**/src/**",
+    "scripts/**",
+    "apps/web/**",
+    "apps/admin/**",
+    "apps/portal/**",
+    "packages/ui/**",
+    "packages/admin-ui-shell/**"
+  ]
+}

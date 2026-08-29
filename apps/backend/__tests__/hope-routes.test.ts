@@ -894,7 +894,7 @@ describe("M10 — #48 the §4.4 capture-window gate", () => {
   const codeOf = (res: { json(): { error?: { code?: string } } }): string | undefined =>
     res.json().error?.code;
   const record = async (
-    app: { inject: (o: unknown) => Promise<{ statusCode: number; json(): never }> },
+    app: { inject: (o: unknown) => Promise<{ statusCode: number; json<T = unknown>(): T }> },
     over: Record<string, unknown>,
   ) =>
     app.inject({
@@ -943,7 +943,7 @@ describe("M10 — #48 the §4.4 capture-window gate", () => {
       lateCompletionReasonCode: "hospitalization",
     });
     expect(res.statusCode).toBe(201);
-    expect(res.json().wasLate).toBe(true);
+    expect(res.json<{ wasLate: boolean }>().wasLate).toBe(true);
     await app.close();
   });
 
@@ -973,7 +973,7 @@ describe("M10 — #48 the §4.4 capture-window gate", () => {
       lateCompletionReasonCode: "admin_override",
     });
     expect(withReason.statusCode).toBe(201);
-    expect(withReason.json().wasLate).toBe(true);
+    expect(withReason.json<{ wasLate: boolean }>().wasLate).toBe(true);
     await app.close();
   });
 
@@ -981,7 +981,7 @@ describe("M10 — #48 the §4.4 capture-window gate", () => {
     const { app } = makeServer();
     const res = await record(app, { lateCompletionReasonCode: "pto" });
     expect(res.statusCode).toBe(201);
-    expect(res.json().wasLate).toBe(false);
+    expect(res.json<{ wasLate: boolean }>().wasLate).toBe(false);
     await app.close();
   });
 });
@@ -990,7 +990,7 @@ describe("M10 — #48 the remaining §4.4 recording guards", () => {
   const codeOf = (res: { json(): { error?: { code?: string } } }): string | undefined =>
     res.json().error?.code;
   const post = (
-    app: { inject: (o: unknown) => Promise<{ statusCode: number; json(): never }> },
+    app: { inject: (o: unknown) => Promise<{ statusCode: number; json<T = unknown>(): T }> },
     payload: Record<string, unknown>,
   ) =>
     app.inject({
@@ -1069,7 +1069,7 @@ describe("M10 — #48 the remaining §4.4 recording guards", () => {
       const { app } = makeServer({ admissionStatus: "discharged" });
       const res = await post(app, dischargeBody({ dischargeReason: "death" }));
       expect(res.statusCode).toBe(201);
-      expect(res.json().rfaKind).toBe("05_discharge");
+      expect(res.json<{ rfaKind: string }>().rfaKind).toBe("05_discharge");
       await app.close();
     });
   });

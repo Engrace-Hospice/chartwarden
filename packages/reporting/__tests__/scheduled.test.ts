@@ -16,6 +16,8 @@ import {
   type M22DocumentRenderedPayload,
   M33_SCHEDULED_REPORT_AGGREGATE_TYPE,
   type ScheduledDeliveryFacts,
+  type ScheduledDeliveryPorts,
+  type ScheduledRunPorts,
   applyScheduledDelivery,
   decideRecipientRevocationCascade,
   decideScheduledDelivery,
@@ -23,6 +25,12 @@ import {
   handleScheduledRun,
 } from "@wardenx/reporting";
 import { describe, expect, it } from "vitest";
+
+// The run-patch shapes exactly as the PORTS declare them. Restating them inline made each double refuse
+// its own port's argument: `status` is OPTIONAL on the `Pick<…>` the ports take and was pinned to a
+// required `string` in the copies.
+type ScheduledRunPatch = Parameters<ScheduledRunPorts["runs"]["settle"]>[2];
+type ScheduledDeliveryPatch = Parameters<ScheduledDeliveryPorts["runs"]["settleDelivered"]>[2];
 
 const ORG = "00000000-0000-0000-0000-0000000000aa";
 const FIXED_NOW = new Date("2026-06-25T06:00:00.000Z");
@@ -160,7 +168,7 @@ function makeRunnerPorts(
       },
       runs: {
         findRun: async () => (opts.run === undefined ? makeRun() : opts.run),
-        settle: async (_id: string, _f: Date, patch: { status: string }) => {
+        settle: async (_id: string, _f: Date, patch: ScheduledRunPatch) => {
           calls.push(`settle:${patch.status}`);
         },
       },
@@ -276,19 +284,19 @@ describe("M33 §2.2 / W-R-04 runner — the §1.1 render handshake", () => {
     const action = decideScheduledDelivery(payload, facts);
     expect(action.kind).toBe("apply_delivery");
 
-    const settled: { status: string; documentId?: string | null }[] = [];
+    const settled: ScheduledDeliveryPatch[] = [];
     const delivered: unknown[] = [];
     await applyScheduledDelivery(action, {
       runs: {
-        settleDelivered: async (
-          _id: string,
-          _f: Date,
-          patch: { status: string; documentId?: string | null },
-        ) => {
+        settleDelivered: async (_id: string, _f: Date, patch: ScheduledDeliveryPatch) => {
           settled.push(patch);
         },
       },
-      outbox: { emitDelivered: async (p: unknown) => delivered.push(p) },
+      outbox: {
+        emitDelivered: async (p: unknown) => {
+          delivered.push(p);
+        },
+      },
       now: () => FIXED_NOW,
     });
     expect(settled).toEqual([{ status: "delivered", documentId: "doc_1", finishedAt: FIXED_NOW }]);

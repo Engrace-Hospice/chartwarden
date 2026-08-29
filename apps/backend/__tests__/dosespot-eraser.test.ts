@@ -65,6 +65,8 @@ describe("M12-T09 — medication_order_record eraser (§7.7, D15, D7/D8)", () =>
           transmissions: 0,
           refillRequests: 0,
           epcsSigningAttempts: 0,
+          orderSignatures: 0,
+          orderVerbalOrders: 0,
           partitionsDropped: 0,
         };
       },

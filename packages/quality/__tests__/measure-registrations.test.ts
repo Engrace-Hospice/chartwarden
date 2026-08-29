@@ -98,7 +98,11 @@ describe("measure-recompute worker over the REAL registry (gap closed)", () => {
       registrations: buildMeasureRegistry(),
       hope: {
         timepointCompletionRollup: async () => ({ onTime: 0, late: 0 }),
-        submissionPostureRollup: async () => ({ submissions: 0, acceptedSubmissions: 0 }),
+        submissionPostureRollup: async () => ({
+          submissions: 0,
+          acceptedSubmissions: 0,
+          queuedSubmissions: 0,
+        }),
         sfvTimelinessRollup: async () => ({ sfvDue: 0, sfvOnTime: 0 }),
         j2051FollowUpRollup: async () => ({
           painTriggers: 0,

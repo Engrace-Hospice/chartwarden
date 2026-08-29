@@ -45,7 +45,7 @@
     "dev:web": "cd apps/web && bun run dev",
     "dev": "bun run dev:backend & bun run dev:web",
     "build": "tsc -b",
-    "typecheck": "tsc -b --pretty",
+    "typecheck": "tsc -b --pretty && bun run typecheck:tests",
     "clean": "tsc -b --clean",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
@@ -165,6 +165,7 @@
     "arch:merge-artifacts": "bun run scripts/check-merge-artifacts.ts",
     "arch:vuln-allowlist": "bun run scripts/check-vuln-allowlist.ts",
     "arch:manifest-mirror": "bun run scripts/check-manifest-mirror.ts",
+    "arch:test-typecheck": "bun run scripts/check-test-typecheck-coverage.ts",
     "arch:request-header-auth": "bun run scripts/check-request-header-auth.ts",
     "arch:context-attributes": "bun run scripts/check-context-attributes.ts",
     "arch:route-reachability": "bun run scripts/check-route-reachability.ts",
@@ -208,7 +209,7 @@
     "arch:openapi-provenance": "bun run scripts/check-openapi-provenance.ts",
     "client:gen": "openapi-typescript docs/api/openapi.json -o packages/ui/src/core/api/schema.ts",
     "client:check": "openapi-typescript docs/api/openapi.json -o /tmp/wardenx-client-schema.ts && diff -q packages/ui/src/core/api/schema.ts /tmp/wardenx-client-schema.ts || (echo 'FAIL packages/ui/src/core/api/schema.ts is out of date. Run: bun run client:gen' && exit 1)",
-        "test:m4:compliance-routes:live": "vitest run apps/backend/__tests__/gap-003-compliance-routes.live.test.ts",
+    "test:m4:compliance-routes:live": "vitest run apps/backend/__tests__/gap-003-compliance-routes.live.test.ts",
     "test:m5:death-cascade:live": "vitest run apps/backend/__tests__/gap-004-death-cascade.live.test.ts",
     "test:m5:census-scope:live": "vitest run apps/backend/__tests__/m5-census-caseload-scope.live.test.ts",
     "test:m7:conformance:live": "vitest run apps/backend/__tests__/care-plan-conformance.live.test.ts",
@@ -240,7 +241,8 @@
     "test:m39:consent-lifecycle:live": "vitest run apps/backend/__tests__/m39-consent-lifecycle.live.test.ts",
     "test:db:client:live": "vitest run packages/db/__tests__/client.live.test.ts",
     "test:e2e": "playwright test --config=e2e/playwright.config.ts",
-    "test:e2e:ui": "playwright test --config=e2e/playwright.config.ts --ui"
+    "test:e2e:ui": "playwright test --config=e2e/playwright.config.ts --ui",
+    "typecheck:tests": "tsc -p tsconfig.tests.json --pretty && tsc -p tsconfig.tests.dom.json --pretty"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

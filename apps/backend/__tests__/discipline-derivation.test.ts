@@ -108,8 +108,13 @@ describe("F-030 — the clinical discipline set derives from role keys, in every
     const build = (authoredByUserId: string) =>
       buildEncounterAbacPredicates({
         resolver: {
-          async loadEncounter() {
-            return { patientId: "p1", authoredByUserId };
+          async loadEncounter(_organizationId: string, encounterId: string) {
+            return {
+              encounterId,
+              patientId: "p1",
+              discipline: "rn" as const,
+              authoredByUserId,
+            };
           },
         },
         async isInCaseload() {

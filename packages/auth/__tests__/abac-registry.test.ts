@@ -13,6 +13,7 @@ import { ForbiddenError } from "@wardenx/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   type AbacContext,
+  type AbacTarget,
   DEVICE_ATTESTATION_ATTRIBUTE,
   type GuardRequest,
   createPredicateRegistry,

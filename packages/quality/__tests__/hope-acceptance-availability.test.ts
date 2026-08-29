@@ -17,7 +17,7 @@ import {
   unavailableReasonOf,
 } from "../src/index";
 
-const THRESHOLD = { comparator: ">=", value: 0.9 } as const;
+const THRESHOLD = { value: 0.9, direction: "gte" } as const;
 
 describe("F-058 — hope_submission_acceptance_rate availability", () => {
   it("scores normally once batches have actually been transmitted", () => {

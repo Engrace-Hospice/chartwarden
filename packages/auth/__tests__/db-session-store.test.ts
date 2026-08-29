@@ -17,6 +17,7 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
           lastStepUpFactor: "totp",
           sessionClass: "staff",
           scope: null,
+          deviceAttestation: null,
         },
         "s1",
       ),
@@ -52,6 +53,7 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
         lastStepUpFactor: null,
         sessionClass: "caregiver_portal",
         scope: { portalAccountId: "acct-1" },
+        deviceAttestation: null,
       },
       "s3",
     );
@@ -67,6 +69,7 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
         lastStepUpFactor: null,
         sessionClass: "caregiver_portal",
         scope: { portalAccountId: "acct-1", patientId: "pt-9" },
+        deviceAttestation: null,
       },
       "s3",
     );
@@ -85,6 +88,7 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
           lastStepUpFactor: null,
           sessionClass: "staff",
           scope,
+          deviceAttestation: null,
         },
         "s4",
       );
@@ -102,6 +106,7 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
         lastStepUpFactor: null,
         sessionClass: null,
         scope: null,
+        deviceAttestation: null,
       },
       "s5",
     );
@@ -125,6 +130,7 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
           lastStepUpFactor: null,
           sessionClass,
           scope: { patientId: "pt-7" },
+          deviceAttestation: null,
         },
         "s6",
       );
@@ -147,6 +153,7 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
           lastStepUpFactor: null,
           sessionClass,
           scope: { patientId: "pt-8" },
+          deviceAttestation: null,
         },
         "s7",
       );
@@ -167,6 +174,7 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
         lastStepUpFactor: null,
         sessionClass: "a_class_from_the_future",
         scope: { patientId: "pt-9" },
+        deviceAttestation: null,
       },
       "s8",
     );
@@ -183,6 +191,7 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
         lastStepUpFactor: null,
         sessionClass: "staff",
         scope: null,
+        deviceAttestation: null,
       },
       "s2",
     );
@@ -193,7 +202,15 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
 
   it("merges M3 actor enrichment (membershipId + roles + PE/location scope) when supplied", () => {
     const rec = toSessionContextRecord(
-      { userId: "u3", activeOrganizationId: "org3", lastStepUpAt: null, lastStepUpFactor: null },
+      {
+        userId: "u3",
+        activeOrganizationId: "org3",
+        lastStepUpAt: null,
+        lastStepUpFactor: null,
+        sessionClass: "staff",
+        scope: null,
+        deviceAttestation: null,
+      },
       "s3",
       {
         membershipId: "m3",
@@ -210,7 +227,15 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
 
   it("keeps empty membership/roles/scope when enrichment is null (no active membership in scope)", () => {
     const rec = toSessionContextRecord(
-      { userId: "u4", activeOrganizationId: "org4", lastStepUpAt: null, lastStepUpFactor: null },
+      {
+        userId: "u4",
+        activeOrganizationId: "org4",
+        lastStepUpAt: null,
+        lastStepUpFactor: null,
+        sessionClass: "staff",
+        scope: null,
+        deviceAttestation: null,
+      },
       "s4",
       null,
     );

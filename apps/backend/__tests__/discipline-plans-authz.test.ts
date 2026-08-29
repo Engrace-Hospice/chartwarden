@@ -15,8 +15,8 @@
 //   • the §4.6.1 cursor envelope is `{data, next_cursor, has_more}` and `?offset=` is refused.
 import {
   M15_CONTRIBUTED_PERMISSIONS,
-  __resetAbacForTest,
   allPermissionMirrorRows,
+  resetAbacRegistry,
 } from "@wardenx/auth";
 import type { AbacContext } from "@wardenx/auth";
 import type { IsoInstant } from "@wardenx/types";
@@ -237,7 +237,7 @@ describe("M15-T06 §4.5 ABAC — registration surface", () => {
       resolver: denyStubDisciplinePlanAbacResolver,
     });
     expect(Object.keys(built).sort()).toEqual([...M15_ABAC_PREDICATES].sort());
-    __resetAbacForTest?.();
+    resetAbacRegistry();
   });
 
   it("volunteer_coordinator_role reads the caller's role set alone (no subject to resolve)", async () => {

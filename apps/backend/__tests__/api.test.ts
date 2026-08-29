@@ -52,7 +52,7 @@ describe("M1-T10 foundation API", () => {
       await ok.close();
 
       const down = makeServer({
-        readinessProbe: async () => ({ db: "ok", valkey: "fail", minio: "ok" }),
+        readinessProbe: async () => ({ db: "ok", valkey: "fail", minio: "ok", outbox: "ok" }),
       });
       const downRes = await down.inject({ method: "GET", url: "/ready" });
       expect(downRes.statusCode).toBe(503);

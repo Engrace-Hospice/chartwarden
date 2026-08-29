@@ -78,6 +78,7 @@ export {
   type RecurringPolicyView,
   type MeetingScheduleView,
   type RecordedIdgEvent,
+  type IdgBackendInspect,
   createInMemoryIdgBackend,
 } from "./routes/service";
 // M14-T06 — the §4.4 outbox contract (the full `m14.*` taxonomy + the canonical `idg.decision_recorded`

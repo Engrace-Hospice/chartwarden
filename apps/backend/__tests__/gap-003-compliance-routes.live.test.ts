@@ -128,6 +128,9 @@ describe.skipIf(!DB_URL)("GAP-003 compliance routes — LIVE Postgres", () => {
     // Real step_up_recent evaluation (not a stub): a fresh totp step-up on SESSION.
     const { store: sessionStore } = createInMemorySessionContextStore([
       {
+        sessionClass: "staff",
+        portalAccountId: null,
+        sessionPatientId: null,
         sessionId: SESSION,
         userId: USER,
         membershipId: null,

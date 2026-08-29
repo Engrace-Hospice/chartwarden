@@ -103,12 +103,18 @@ function registerStepUpSeam(): void {
     createSessionContextResolver(
       createInMemorySessionContextStore([
         {
+          sessionClass: "staff",
+          portalAccountId: null,
+          sessionPatientId: null,
           ...base,
           sessionId: SESSION_FRESH,
           lastStepUpAt: new Date(Date.now() - 30_000),
           lastStepUpFactor: "totp",
         },
         {
+          sessionClass: "staff",
+          portalAccountId: null,
+          sessionPatientId: null,
           ...base,
           sessionId: SESSION_STALE,
           lastStepUpAt: new Date(Date.now() - 86_400_000),

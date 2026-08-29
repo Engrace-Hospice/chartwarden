@@ -108,6 +108,11 @@ function makeServer() {
 
   const { store: sessionStore } = createInMemorySessionContextStore([
     {
+      providerEntityIds: [],
+      locationIds: [],
+      sessionClass: "staff",
+      portalAccountId: null,
+      sessionPatientId: null,
       sessionId: SESSION_FRESH,
       userId: "supervisor",
       membershipId: "supervisor",
@@ -117,6 +122,11 @@ function makeServer() {
       lastStepUpFactor: "webauthn",
     },
     {
+      providerEntityIds: [],
+      locationIds: [],
+      sessionClass: "staff",
+      portalAccountId: null,
+      sessionPatientId: null,
       sessionId: SESSION_STALE,
       userId: "supervisor",
       membershipId: "supervisor",

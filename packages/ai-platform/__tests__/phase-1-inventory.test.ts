@@ -202,7 +202,8 @@ describe("§2.4 capability inventory", () => {
 
 describe("risk-tier-derived governance defaults (§3.2.1)", () => {
   it("requires tenant opt-in at every tier — the column default is true and no tier turns it off", () => {
-    for (const tier of ["high", "medium", "low", null] as const) {
+    // `ai_capability.risk_tier` is NOT NULL, so `null` was never a tier the function can be asked about.
+    for (const tier of ["high", "medium", "low"] as const) {
       expect(aiCapabilityGovernanceDefaults(tier).tenantOptInRequired).toBe(true);
     }
   });

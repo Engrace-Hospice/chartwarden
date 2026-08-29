@@ -416,8 +416,8 @@ const LEDGER_ROW: AiInvocationLedgerView = {
   patientId: "patient-1",
   touchedPatientChart: true,
   consumerCorrelationId: null,
-  routingDecision: "cloud",
-  routingReason: "capability_default",
+  routingDecision: "primary",
+  routingReason: "default",
   inputTokenCount: 1200,
   outputTokenCount: 340,
   durationMs: 900,
@@ -599,7 +599,9 @@ describe("M32-T07 §4.11 — the `m32.*` outbox catalog", () => {
     expect(disclosure?.seamConsumers).toContain("m4");
     expect(disclosure?.declaredConsumers).not.toContain("m4");
     expect(
-      Object.keys((invoked?.payloadSchema as { properties: object }).properties),
+      Object.keys(
+        (invoked?.payloadSchema as unknown as unknown as { properties: object }).properties,
+      ),
     ).not.toContain("patientId");
   });
 
@@ -620,7 +622,9 @@ describe("M32-T07 §4.11 — the `m32.*` outbox catalog", () => {
   it("keeps token counts OFF the local-inference event (decision 4)", () => {
     // Nothing left the agency's own hardware, so there is nothing for M35 to meter.
     const local = M32_OUTBOX_EVENTS.find((e) => e.eventName === "m32.local_inference.recorded");
-    const props = Object.keys((local?.payloadSchema as { properties: object }).properties);
+    const props = Object.keys(
+      (local?.payloadSchema as unknown as { properties: object }).properties,
+    );
     expect(props).not.toContain("inputTokens");
     expect(props).not.toContain("outputTokens");
     expect(local?.declaredConsumers).not.toContain("m35");
@@ -648,7 +652,9 @@ describe("M32-T07 §4.11 — the `m32.*` outbox catalog", () => {
       "promptBody",
     ];
     for (const entry of M32_OUTBOX_EVENTS) {
-      const props = Object.keys((entry.payloadSchema as { properties: object }).properties);
+      const props = Object.keys(
+        (entry.payloadSchema as unknown as { properties: object }).properties,
+      );
       for (const field of forbidden) {
         expect(props).not.toContain(field);
       }

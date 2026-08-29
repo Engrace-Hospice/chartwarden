@@ -453,10 +453,21 @@ const PATCH_STATUS_EVENT: Record<ActionItemPatchStatus, "start" | "complete" | "
   cancelled: "cancel",
 };
 
+/**
+ * Read-only inspection surface over the slice (the §7/§9 route + workflow-acceptance suites assert
+ * against it). The M22 `DocumentBackendInspect` shape.
+ */
+export interface IdgBackendInspect {
+  /** Drain the recorded outbox emissions since the last call (deterministic; test-only). */
+  drainEvents(): RecordedIdgEvent[];
+  /** The §2.6 quorum snapshot for a meeting as its attendance currently stands. */
+  currentQuorum(meetingId: string): QuorumSnapshot;
+}
+
 /** Build the in-memory M14 route backend (also the {@link IdgAbacResolver}). */
 export function createInMemoryIdgBackend(
   seed: IdgRouteSeed = {},
-): IdgRouteService & IdgAbacResolver {
+): IdgRouteService & IdgAbacResolver & IdgBackendInspect {
   const now = seed.now ?? (() => new Date().toISOString());
   const disciplines = seed.disciplinesByMembership ?? {};
   const reviewFloorBreaches = seed.reviewFloorBreaches ?? {};
@@ -1009,10 +1020,14 @@ export function createInMemoryIdgBackend(
   };
 
   // Expose the recorded-event log + the quorum helper for the slice/tests (drainable, deterministic).
-  Object.assign(service, {
-    drainEvents: (): RecordedIdgEvent[] => events.splice(0, events.length),
-    currentQuorum: (meetingId: string) => evaluateQuorum(presentDisciplinesFor(meetingId)),
-  });
-
-  return service;
+  // Declared as `IdgBackendInspect` and folded into the RETURN TYPE (the M22 `DocumentBackendInspect`
+  // precedent). It used to be an untyped `Object.assign` under a `IdgRouteService & IdgAbacResolver`
+  // annotation, which widens back to the annotation: both members existed at runtime and neither was
+  // visible to a caller, so the acceptance suite's ~10 `svc.drainEvents()` / `svc.currentQuorum()` calls
+  // were only ever legal because nothing typechecked that file (F-098).
+  const inspect: IdgBackendInspect = {
+    drainEvents: () => events.splice(0, events.length),
+    currentQuorum: (meetingId) => evaluateQuorum(presentDisciplinesFor(meetingId)),
+  };
+  return Object.assign(service, inspect);
 }

@@ -77,7 +77,7 @@ const consentRecord: ConsentRecordView = {
   organizationId: ORG,
   patientId: PATIENT,
   typeKey: "42_cfr_part_2_release",
-  grantorKind: "patient",
+  grantorKind: "patient_self",
   captureMethod: "typed_signature_in_app",
   scopeDescriptor: {},
   status: "active",

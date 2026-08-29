@@ -181,6 +181,9 @@ function makeServer(
       locationIds: [],
       lastStepUpAt: new Date(),
       lastStepUpFactor: "webauthn" as const,
+      sessionClass: "staff",
+      portalAccountId: null,
+      sessionPatientId: null,
     })),
   );
   registerSeam("SessionContextResolver", createSessionContextResolver(sessions.store));
@@ -412,6 +415,9 @@ describe("M8-T09 — finalize → sign happy path (§2.3)", () => {
       locationIds: [],
       lastStepUpAt: new Date(Date.now() - 10 * 60 * 1000),
       lastStepUpFactor: "webauthn",
+      sessionClass: "staff",
+      portalAccountId: null,
+      sessionPatientId: null,
     });
 
     const sign = await app.inject({

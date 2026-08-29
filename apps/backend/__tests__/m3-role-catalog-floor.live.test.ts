@@ -48,7 +48,7 @@ describe.skipIf(!DB_URL)("F-093 M3 role catalog floor — LIVE Postgres", () => 
   let handle: ReturnType<typeof createDbClient>;
   let store: RoleStore;
   /** The store's update/delete resolve the org from the AMBIENT request context, as the routes do. */
-  const asActor = <T>(fn: () => Promise<T>): Promise<T> =>
+  const asActor = <T>(fn: () => T): T =>
     runWithRequestContext({ organizationId: ORG_A, userId: ACTOR } as never, fn);
 
   async function applyMigrations() {

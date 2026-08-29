@@ -161,15 +161,20 @@ describe.skipIf(!DB_URL)("M22 Drizzle read service — LIVE Postgres (M22L-T01)"
     // here, and the real persisted round-trip lives in the write suite (m22-documents-write), which wires
     // the object-store port this one deliberately does not.
     await expect(
-      service.uploadDocument(ORG_A, MEMBERSHIP, {
-        patientId: PATIENT,
-        admissionId: null,
-        retentionClass: "clinical_record",
-        aggregateType: "other",
-        aggregateId: null,
-        title: "Smoke upload",
-        patientFacing: false,
-      }),
+      service.uploadDocument(
+        ORG_A,
+        { userId: USER, membershipId: MEMBERSHIP },
+        {
+          patientId: PATIENT,
+          admissionId: null,
+          retentionClass: "clinical_record",
+          aggregateType: "other",
+          aggregateId: null,
+          title: "Smoke upload",
+          patientFacing: false,
+          tags: [],
+        },
+      ),
     ).rejects.toMatchObject({ name: "DegradedError" });
 
     // And the refusal is total — nothing was written on the way to throwing.

@@ -298,7 +298,24 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
           organizationId: ORG,
           costReportId,
           monthlyBreakdown: {
-            "2027-01": { rhc: { medicare: { patientDays: 60 }, medicaid: { patientDays: 40 } } },
+            "2027-01": {
+              rhc: {
+                // The monthly cell is four counts, not one; the literal named `patientDays` alone and
+                // the three the statistics worksheet actually sums came through as undefined.
+                medicare: {
+                  patientDays: 60,
+                  uniqueBeneficiaries: 2,
+                  admissions: 1,
+                  discharges: 0,
+                },
+                medicaid: {
+                  patientDays: 40,
+                  uniqueBeneficiaries: 1,
+                  admissions: 1,
+                  discharges: 0,
+                },
+              },
+            },
           },
           visitCountsByDiscipline: {},
           fteCalculations: {},

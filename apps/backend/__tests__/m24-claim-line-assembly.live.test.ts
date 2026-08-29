@@ -15,6 +15,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
+import type { PlaceOfServiceFacilityKind } from "@wardenx/medicaid-adapters";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -231,7 +232,7 @@ describe.skipIf(!DB_URL)(
       const facilityId: string = facility.rows[0].id;
       const facilityKindReader = {
         async kindsFor(ids: readonly string[]) {
-          const m = new Map<string, string>();
+          const m = new Map<string, PlaceOfServiceFacilityKind>();
           if (ids.includes(facilityId)) m.set(facilityId, "alf");
           return m;
         },
@@ -285,7 +286,7 @@ describe.skipIf(!DB_URL)(
       const facilityId: string = facility.rows[0].id;
       const facilityKindReader = {
         async kindsFor(ids: readonly string[]) {
-          const m = new Map<string, string>();
+          const m = new Map<string, PlaceOfServiceFacilityKind>();
           if (ids.includes(facilityId)) m.set(facilityId, "hospital");
           return m;
         },

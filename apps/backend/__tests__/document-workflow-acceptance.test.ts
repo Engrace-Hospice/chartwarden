@@ -34,6 +34,7 @@ import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/regist
 import {
   type AmendmentDeniedPayload,
   type DocumentFeatureFlagReader,
+  type DocumentSideEffect,
   DocumentStateError,
   type MergeFacts,
   SUD_REDACTED_PLACEHOLDER,
@@ -651,13 +652,16 @@ describe("M22-T11 §7.14 W14 — legal-hold-blocks-destruction + the DEK-first e
     });
     expect(t.to).toBe("destroyed_tombstone");
     expect(
-      (t.effects.find((e) => e.kind === "destroy_objects") as { objectKeys: string[] }).objectKeys,
+      t.effects.filter(
+        (e): e is Extract<DocumentSideEffect, { kind: "destroy_objects" }> =>
+          e.kind === "destroy_objects",
+      )[0]?.objectKeys ?? [],
     ).toHaveLength(2);
     expect(t.effects.some((e) => e.kind === "shred_dek")).toBe(true);
     expect(t.effects.some((e) => e.kind === "null_active_version")).toBe(true);
     expect(t.effects.some((e) => e.kind === "access_log")).toBe(true); // §164.528 — appended, never deleted
     const events = t.effects
-      .filter((e): e is { kind: "outbox"; event: string } => e.kind === "outbox")
+      .filter((e): e is Extract<DocumentSideEffect, { kind: "outbox" }> => e.kind === "outbox")
       .map((e) => e.event);
     expect(events).toEqual(
       expect.arrayContaining(["m22.document.tombstoned", "m22.eraser.completed"]),
@@ -675,7 +679,7 @@ describe("M22-T11 §7.14 W14 — legal-hold-blocks-destruction + the DEK-first e
     expect(skip?.skipped).toBe(true);
     expect(
       skip!.effects
-        .filter((e): e is { kind: "outbox"; event: string } => e.kind === "outbox")
+        .filter((e): e is Extract<DocumentSideEffect, { kind: "outbox" }> => e.kind === "outbox")
         .map((e) => e.event),
     ).toContain("m22.eraser.legal_hold_skip");
     expect(

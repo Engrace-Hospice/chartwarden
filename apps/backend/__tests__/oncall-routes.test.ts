@@ -57,6 +57,7 @@ import {
 import {
   InvalidCursorError,
   MissingOutboxPayloadError,
+  type StateHistoryInsert,
   UnknownTriageEffectError,
   decodeCursor,
   encodeCursor,
@@ -642,7 +643,10 @@ describe("M19-T07 §7.10 PHI minimization at the vendor boundary", () => {
   });
 
   it("the runtime guard catches a permitted key STUFFED with an identifier", () => {
-    const body = minimizeForVendor("hybrid_phi_min", SOURCE, "ref-1") as Record<string, unknown>;
+    const body = minimizeForVendor("hybrid_phi_min", SOURCE, "ref-1") as unknown as Record<
+      string,
+      unknown
+    >;
     const tampered = { ...body, firstName: "Mary Whitfield, MRN-40182" };
     expect(() => assertVendorPayloadMinimized("hybrid_phi_min", SOURCE, tampered)).toThrow(
       VendorPhiMinimizationError,
@@ -650,7 +654,10 @@ describe("M19-T07 §7.10 PHI minimization at the vendor boundary", () => {
   });
 
   it("the runtime guard catches a WIDENED projection (an unpermitted key)", () => {
-    const body = minimizeForVendor("hybrid_phi_min", SOURCE, "ref-1") as Record<string, unknown>;
+    const body = minimizeForVendor("hybrid_phi_min", SOURCE, "ref-1") as unknown as Record<
+      string,
+      unknown
+    >;
     expect(() =>
       assertVendorPayloadMinimized("hybrid_phi_min", SOURCE, { ...body, chartNotes: "…" }),
     ).toThrow(VendorPhiMinimizationError);
@@ -955,9 +962,9 @@ describe("M19-T07 §2.4 effects runner", () => {
   });
 
   it("a SYSTEM transition records no membership; a human one records the actor (§3.3's CHECK)", async () => {
-    const rows: Record<string, unknown>[] = [];
+    const rows: StateHistoryInsert[] = [];
     const stateHistory = {
-      async insert(_tx: unknown, row: Record<string, unknown>) {
+      async insert(_tx: unknown, row: StateHistoryInsert) {
         rows.push(row);
       },
     };

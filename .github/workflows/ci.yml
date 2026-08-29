@@ -44,7 +44,13 @@ jobs:
       # file that defines every request/response contract in openapi.json — was in no tsconfig
       # project, so `tsc -b` never compiled it (#34). It is a referenced project now, and naming the
       # step means the coverage is visible in the log rather than inferred.
-      - name: Type-check (explicit)
+      #
+      # F-098 — `bun run typecheck` is now `tsc -b` PLUS the two test programs. Every workspace
+      # tsconfig is `"include": ["src"]` and a suite lives in a sibling `__tests__/`, so 631 files
+      # vitest runs were compiled by nothing at all and a signature change made its own callers
+      # silently WRONG rather than broken. `arch:test-typecheck` (in the gate chain below) is what
+      # keeps the two programs resolving to the same file set the runner does.
+      - name: Type-check (explicit — src + the test tree)
         run: bun run typecheck
 
       # Step names deliberately carry NO gate/test COUNT. "parity + 6 gates" was accurate when

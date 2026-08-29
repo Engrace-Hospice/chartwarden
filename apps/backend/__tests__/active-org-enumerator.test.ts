@@ -1,6 +1,11 @@
 // #107 item 2 — the platform-scoped active-org enumerator: proves it reads only 'active' orgs through a
 // GATED + AUDITED withPlatformContext entry, and is REFUSED when its job id is not allowlisted (fail-closed).
-import { PlatformContextDeniedError, registerPlatformJob } from "@wardenx/tenancy";
+import type { DbClient } from "@wardenx/db";
+import {
+  type PlatformBypassAuditor,
+  PlatformContextDeniedError,
+  registerPlatformJob,
+} from "@wardenx/tenancy";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 
@@ -34,7 +39,9 @@ describe("buildActiveOrgEnumerator", () => {
   it("enumerates active orgs through an audited platform-context entry", async () => {
     const seeded = [{ organizationId: "org-a" }, { organizationId: "org-b" }];
     const { db, captured } = fakePlatformDb(seeded);
-    const auditBypass = vi.fn(async () => {});
+    // Typed as the real auditor: `vi.fn(async () => {})` declares no parameters, so
+    // `auditBypass.mock.calls[0][1]` — the bypass event this case asserts on — indexed an empty tuple.
+    const auditBypass = vi.fn<PlatformBypassAuditor<DbClient>>(async () => {});
 
     const enumerator = buildActiveOrgEnumerator({
       platformDb: db,

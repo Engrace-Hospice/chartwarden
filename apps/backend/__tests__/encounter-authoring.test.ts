@@ -278,6 +278,9 @@ function makeServer() {
       locationIds: [],
       lastStepUpAt: new Date(),
       lastStepUpFactor: "webauthn" as const,
+      sessionClass: "staff",
+      portalAccountId: null,
+      sessionPatientId: null,
     })),
   );
   registerSeam("SessionContextResolver", createSessionContextResolver(sessions.store));

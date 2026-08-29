@@ -179,7 +179,7 @@ describe("DisciplinePlanReader (§4.3)", () => {
     const { store } = createInMemoryDisciplinePlanSeamStore({
       plans: [
         { digest: digest(), idgDigest },
-        { digest: digest({ planId: PLAN_B, status: "closed", kind: "msw_plan" }) },
+        { digest: digest({ planId: PLAN_B, status: "discharged", kind: "msw_plan" }) },
       ],
     });
     const reader = createDisciplinePlanReader(store);

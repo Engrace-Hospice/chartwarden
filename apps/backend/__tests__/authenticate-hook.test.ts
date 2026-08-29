@@ -50,6 +50,11 @@ const resolverReturning = (
 });
 
 const ORG_BOUND_ACTOR: ResolvedActor = {
+  sessionClass: "staff",
+  portalAccountId: null,
+  sessionPatientId: null,
+  deviceAttestation: null,
+  externalActorId: null,
   userId: "u1",
   membershipId: "m1",
   organizationId: "org1",
@@ -90,6 +95,10 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
         actorKind: "user",
         membershipId: "m1",
         stepUpRecent: false,
+        // The §2.2.4 class the hook stamps off the resolved actor. It appears here now only because
+        // the fixture above stopped omitting it: the resolver returned `undefined`, so the hook wrote
+        // nothing and the portal/bereavement predicates that gate on it never saw a value (F-030).
+        sessionClass: "staff",
       },
     });
   });

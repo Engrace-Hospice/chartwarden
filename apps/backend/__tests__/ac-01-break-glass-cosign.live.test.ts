@@ -48,7 +48,7 @@ describe.skipIf(!DB_URL)("AC-01 break-glass two-person co-signature — LIVE Pos
   let store: BreakGlassStore;
 
   /** The store's by-id methods read the org/user off the request context (RLS `app.org_id`). */
-  const asUser = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
+  const asUser = <T>(userId: string, fn: () => T): T =>
     runWithRequestContext({ organizationId: ORG_A, userId } as never, fn);
 
   /** Open a glass that is AWAITING a co-signature — the state the control governs. */

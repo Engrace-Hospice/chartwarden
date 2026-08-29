@@ -71,6 +71,7 @@ import type {
   ShiftView,
   StaffAssignmentView,
   UnitView,
+  VisitorRestrictionDetailView,
 } from "../src/modules/37-ipu/routes/service";
 
 // ── the M11/M15/M19/M21/M26 header-auth shim, extended with `x-test-membership` (`writeActorOf` in
@@ -151,15 +152,12 @@ function createIpuTestBackend(): IpuRouteService {
       checkedOutAt: string | null;
     }
   >();
+  // `VisitorRestrictionDetailView & { organizationId }` (the `equipment` map's idiom below): the
+  // hand-written subset here named five of the view's thirteen fields, so the F-070 list read could not
+  // filter on `unitId`/`patientId` — the two narrowings that route actually applies.
   const visitorRestrictions = new Map<
     string,
-    {
-      organizationId: string;
-      id: string;
-      scope: string;
-      restrictionKind: string;
-      liftedAt: string | null;
-    }
+    VisitorRestrictionDetailView & { organizationId: string }
   >();
   const meals = new Map<
     string,
@@ -442,6 +440,15 @@ function createIpuTestBackend(): IpuRouteService {
         throw new NotFoundError("ipu_staff_assignment", body.assignmentId);
       }
       const updated = { ...row, state: "unassigned" };
+      staffAssignments.set(body.assignmentId, updated);
+      return updated;
+    },
+    async confirmStaff(actor, shiftId, body) {
+      const row = staffAssignments.get(body.assignmentId);
+      if (!row || row.organizationId !== actor.organizationId || row.shiftId !== shiftId) {
+        throw new NotFoundError("ipu_staff_assignment", body.assignmentId);
+      }
+      const updated = { ...row, state: "confirmed" };
       staffAssignments.set(body.assignmentId, updated);
       return updated;
     },

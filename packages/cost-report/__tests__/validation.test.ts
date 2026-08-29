@@ -75,6 +75,9 @@ function passingContext(): ValidationContext {
       cTiesToWorksheetB: true,
       balanceSheetBalances: true,
     },
+    // `billedCents: null` is the DrugCostBillingReader deny-stub posture the header describes: the
+    // reconcile rule SKIPs rather than failing, which is what "no rule fails" means here.
+    drugCost: { billedCents: null, worksheetAPharmacyCents: 0 },
     cap: null,
     badDebt: { entries: [] },
     supportingDocs: { s2AttachmentsPresent: true },

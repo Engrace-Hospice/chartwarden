@@ -203,7 +203,11 @@ function makeServer(extra: ExtraSeed = {}, options: { isInCaseload?: IsInCaseloa
   const registry = createPredicateRegistry();
   const m9Predicates = buildAssessmentAbacPredicates({ resolver: backend.resolver, isInCaseload });
   const m7Predicates = buildCarePlanAbacPredicates({
-    resolver: { loadPlan: async () => null, loadProblem: async () => null },
+    resolver: {
+      loadPlan: async () => null,
+      loadProblem: async () => null,
+      loadVersion: async () => null,
+    },
     isInCaseload,
   });
   registry.register("caseload_or_scope", m7Predicates.caseload_or_scope);

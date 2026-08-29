@@ -33,7 +33,11 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
  * fails HERE rather than in a browser. It deliberately does not write `outbox_event`: the assertion is
  * on the payload's shape, and a real persister would drag the whole boot catalog in with it.
  */
-const M37_EVENT_SCHEMAS = new Map(M37_OUTBOX_EVENTS.map((e) => [e.eventName, e.payloadSchema]));
+// Keyed by plain `string`: the catalog's own `eventName` is the `m<N>.<a>.<b>` template type, and
+// what arrives on a publish is whatever the producer passed — which is the thing being checked.
+const M37_EVENT_SCHEMAS = new Map<string, (typeof M37_OUTBOX_EVENTS)[number]["payloadSchema"]>(
+  M37_OUTBOX_EVENTS.map((e) => [e.eventName, e.payloadSchema]),
+);
 const VALIDATING_OUTBOX = {
   publish: async (_tx: unknown, event: { eventName: string; payload: unknown }) => {
     const schema = M37_EVENT_SCHEMAS.get(event.eventName);
