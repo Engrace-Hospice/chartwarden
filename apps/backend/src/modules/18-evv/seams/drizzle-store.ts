@@ -13,8 +13,11 @@
 // bound `event_at` (partition-pruned); the per-visit bracket/arrival reads are id-keyed and fan out across
 // leaves — a seam consumer has a visit id and no time window, and inventing one would silently miss a
 // last-month bracket (the M21 id-only-lookup trade; `evv_event_org_visit_idx` carries the per-leaf cost).
-// Event reads that feed a bracket take only ACTIVE rows (`superseded_by_event_id IS NULL` — the D2 per-leaf
-// active-pair invariant makes that at most one check-in + one check-out per visit).
+// Event reads that feed a bracket take only ACTIVE rows (`superseded_by_event_id IS NULL`; the D2 per-leaf
+// active-pair invariant makes that at most one check-in + one check-out per visit). The INDEX behind that
+// invariant keys on `superseded_at` instead (0236/F-088) — the two are written in the same transaction and
+// differ only for the few statements inside a correction, where the index must already treat the original
+// as gone so the replacement can insert, and these reads must not yet.
 //
 // COORDINATES (D10, GAP-032). GPS coordinates exist ONLY as `evv_event.coords_cipher`. The
 // coordinate-bearing `EvvLocationProvider` reads follow the M18L route service's posture EXACTLY

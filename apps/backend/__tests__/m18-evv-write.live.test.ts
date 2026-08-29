@@ -451,9 +451,14 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
       stepUpVerified: true,
     });
 
-    // This is the assertion that could not have passed before: the original stays live under the old
-    // route, so `evv_event_<partition>_active_visit_kind_uidx` — UNIQUE (organization_id, visit_id, kind)
-    // WHERE superseded_by_event_id IS NULL — rejects the insert. Same visit, same kind, same month.
+    // F-088 — this whole call is what could not complete before. `correctEvent` stamps `superseded_at`
+    // on the original, inserts the replacement, then links the two by `superseded_by_event_id`; it has
+    // to be in that order, because the link points at a row that does not exist yet. 0047 nonetheless
+    // defined the per-partition backstop `evv_event_<yyyy_mm>_active_visit_kind_uidx` — UNIQUE
+    // (organization_id, visit_id, kind) — over `WHERE superseded_by_event_id IS NULL`, so at the moment
+    // of the insert BOTH rows were active on the same tuple and Postgres refused it with 23505. Every
+    // correction, every tenant, since the route was written. 0236 keys the predicate on `superseded_at`
+    // — the marker the service can set first — which is what the write path was always written for.
     const { rows: orig } = await admin.query(
       "SELECT superseded_by_event_id, superseded_at FROM evv_event WHERE id=$1",
       [original.eventId],
@@ -481,6 +486,54 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
     // The bracket follows the live head, not the row that was corrected away.
     const bracket = await svc.bracketForVisit(ORG_A, visit);
     expect(bracket.checkInEvent?.id).toBe(corrected.eventId);
+  });
+
+  // F-088 — the guard on the fix. 0236 loosened the D2 backstop's predicate, so the thing to prove is
+  // that it still backstops. Driven by a RAW insert as `admin` rather than through the service, on
+  // purpose: 0047's own header says "the app pairing lookup fires first", so the service refuses a
+  // second check-in before the index is ever consulted and a service-level test would pass whether the
+  // index existed or not. Two rows carrying no supersede marker at all is exactly the shape the index
+  // is for, and it is still refused.
+  it("§3.2/D2 the active-pair backstop still refuses a second ACTIVE event on the same visit+kind", async () => {
+    const { member, pe, location, device } = seeded[ORG_A];
+    const visit = await seedVisit(ORG_A);
+    const first = await svc.recordCapture(ORG_A, member, "check_in", {
+      visitId: visit,
+      coords: { lat: 45.523, lng: -122.6789 },
+      accuracyM: 4.5,
+      capturedAt: new Date().toISOString(),
+    });
+    const { rows: seed } = await admin.query(
+      `SELECT event_at, coords_cipher, coords_dek_version, device_attestation_id_at_record,
+              service_type_code, posting_discipline_at_recording
+         FROM evv_event WHERE id=$1`,
+      [first.eventId],
+    );
+    await expect(
+      admin.query(
+        `INSERT INTO evv_event (organization_id, provider_entity_id, location_id, visit_id, patient_id,
+                                kind, service_type_code, posting_membership_id,
+                                posting_discipline_at_recording, evv_device_id, captured_at, event_at,
+                                coords_cipher, coords_dek_version, accuracy_m, gps_quality,
+                                device_attestation_id_at_record)
+         VALUES ($1,$2,$3,$4,$5,'check_in',$6,$7,$8,$9, now(), $10, $11, $12, 4.5, 'high', $13)`,
+        [
+          ORG_A,
+          pe,
+          location,
+          visit,
+          PATIENT,
+          seed[0].service_type_code,
+          member,
+          seed[0].posting_discipline_at_recording,
+          device,
+          seed[0].event_at,
+          seed[0].coords_cipher,
+          seed[0].coords_dek_version,
+          seed[0].device_attestation_id_at_record,
+        ],
+      ),
+    ).rejects.toMatchObject({ code: "23505" });
   });
 
   it("correction-of-record: refuses a stale step-up, an already-corrected target, and a kind swap", async () => {

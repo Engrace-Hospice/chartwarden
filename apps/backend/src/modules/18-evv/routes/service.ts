@@ -334,8 +334,14 @@ export class EvvRouteService implements EvvAbacResolver {
    * `correctionReason` away (F-068 §1), so a "correction" was an ordinary second capture: it linked to
    * nothing, superseded nothing, emitted no `m18.evv.event_corrected`, reopened no resolution, and
    * accepted both a correction of an already-corrected event and a check-out offered as the correction
-   * of a check-in. Against the real per-leaf `UNIQUE (organization_id, visit_id, kind) WHERE
-   * superseded_by_event_id IS NULL` it also could not succeed — two live events for one leg.
+   * of a check-in. Against the real per-leaf `UNIQUE (organization_id, visit_id, kind)` backstop it also
+   * could not succeed — two live events for one leg.
+   *
+   * NEITHER COULD THIS ONE, until 0236 (F-088). That index defined ACTIVE as `superseded_by_event_id IS
+   * NULL` — a column holding the id of the row that replaces this one, so it cannot be set until that
+   * row exists, so both rows were active at the instant of the insert and Postgres refused it (23505).
+   * The write path was always written for the fix — it stamps `superseded_at` first — and 0236 keys the
+   * predicate on that marker instead.
    *
    * The decision is the pure {@link correctEvent} machine, which has been sitting in
    * `domain/event-lifecycle.ts` complete and uncalled; this method applies the effects it declares.
