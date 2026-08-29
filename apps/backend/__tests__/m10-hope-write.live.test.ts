@@ -16,6 +16,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { DEFAULT_ORG_TIME_ZONE, orgLocalDate } from "@wardenx/hope";
+import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
@@ -501,7 +502,13 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       expect(first.submissions.length).toBe(1);
       const second = await svc.assembleSubmission(ORG_A, providerOf[ORG_A]);
       expect(second.submissions).toEqual([]);
-      expect(second.skippedAlreadyBatched).toBe(1);
+      // NOT `1`. `drain()` batched the suite's whole history first, and every one of those rows is still
+      // eligible-with-an-active-item on this pass — which is exactly what `skippedAlreadyBatched`
+      // counts. The invariant that matters is order-independent: after a pass, nothing eligible is left
+      // unbatched. (This assertion read `toBe(1)` and could never hold; it had never been run, because
+      // `assembleSubmission` threw on its SECOND call for the whole life of the feature — F-086.)
+      expect(second.skippedAlreadyBatched).toBe(second.assessmentsConsidered);
+      expect(second.skippedAlreadyBatched).toBeGreaterThanOrEqual(1);
     });
 
     it("uniq_hope_sub_item_assessment_active refuses a second pending item for one assessment", async () => {
@@ -566,14 +573,52 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
         outbox: consumerOutbox as never,
         activeOrgs: orgs,
         validateItem: async () => [],
+        // The CCN resolver is REQUIRED, not optional-with-a-default: unbound it rejects with
+        // `M10_WORKER_PORT_UNBOUND` and the submit worker collects that into an `AggregateError`, so
+        // every test in this block failed on its first tick regardless of what it was asserting. It went
+        // unnoticed because `queuedBatch()` threw one layer earlier for the whole life of the block
+        // (F-086) — the second `assembleSubmission` call raised a duplicate key — so no tick ever ran.
+        // A real CCN shape, because `buildSubmissionEnvelope` puts it on the wire to CMS.
+        providerEntityCcn: { ccnFor: async () => "341234" },
         now: () => new Date("2026-08-27T10:00:00.000Z"),
         ...over,
       } as M10WorkerDeps;
     }
 
+    /**
+     * Retire every batch the suite has already produced, the way an ACCEPTANCE would.
+     *
+     * Both crons sweep the ORG — every `queued` batch on a submit tick, every `in_flight` one on a
+     * reconcile tick. That is what a real tick does and what makes them worth testing at all, and it
+     * means a test that intends to observe ONE batch has to be the only batch in play: otherwise its
+     * scripted adapter is asked about its neighbours' rows, throws, and the cron collects that into an
+     * `AggregateError` the test never expected. Stamping the assessments' `iqies_record_id` is the half
+     * that makes it stick — that column is one of the assembler's eligibility clauses, so without it the
+     * next `drain()` simply re-batches the same rows.
+     */
+    async function retirePriorBatches(): Promise<void> {
+      await admin.query(
+        `UPDATE hope_assessment SET iqies_record_id = 'suite-retired'
+          WHERE organization_id = $1
+            AND id IN (SELECT hope_assessment_id FROM hope_submission_item WHERE organization_id = $1)`,
+        [ORG_A],
+      );
+      await admin.query(
+        `UPDATE hope_submission_item SET item_status = 'accepted', iqies_record_id = 'suite-retired'
+          WHERE organization_id = $1 AND item_status = 'pending'`,
+        [ORG_A],
+      );
+      await admin.query(
+        `UPDATE hope_submission SET status = 'accepted', accepted_at = now(), accepted_count = item_count
+          WHERE organization_id = $1 AND status IN ('queued','in_flight')`,
+        [ORG_A],
+      );
+    }
+
     /** Sign a fresh assessment and assemble it, returning (assessmentId, submissionId). */
     async function queuedBatch(): Promise<{ assessmentId: string; submissionId: string }> {
       await svc.assembleSubmission(ORG_A, providerOf[ORG_A]); // drain the suite's history
+      await retirePriorBatches(); // …and take it out of the crons' way
       const adm = nextAdmission();
       await seedSchedule(ORG_A, adm);
       const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
@@ -684,7 +729,12 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
           },
         }),
       );
-      await releaseSubmission(handle.db, ORG_A, submissionId);
+      // Through `withOrgContext`, the way the cron calls it. On the bare pool the M4 audit trigger has
+      // no `app.user_id` to attribute the write to and the statement dies casting `''` to uuid — the
+      // store functions in this module are all transaction-scoped by contract.
+      await withOrgContext(handle.db, { organizationId: ORG_A, userId: memberOf[ORG_A] }, (tx) =>
+        releaseSubmission(tx as never, ORG_A, submissionId),
+      );
       const row = await submissionRow(submissionId);
       expect(row.status).toBe("in_flight");
       expect(row.iqies_batch_id).toBe("iqies-2");
@@ -745,6 +795,69 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       ).rows[0];
       expect(assess.iqies_record_id).toBe("rec-1");
       expect(await eventsFor(submissionId)).toContain("m10.hope.submission_accepted");
+    });
+
+    // F-086 — the D7 correction chain reaches the CMS envelope.
+    //
+    // `correctsIqiesRecordId` is the field that tells iQIES this record REPLACES an accepted one rather
+    // than being a new submission. It is resolved by a correlated self-join on `corrects_assessment_id`,
+    // and the identical fragment in `assemble-store.ts` answered null for every row because Drizzle
+    // rendered its outer column unqualified — inside `from hope_assessment o` that resolved to
+    // `o.corrects_assessment_id`, so the predicate was `o.id = o.corrects_assessment_id`. The copy that
+    // actually reaches the wire (`pendingItemsForSubmission`) has a join, so Drizzle qualified it and it
+    // was right — by accident. Both go through one helper now, and this is what pins the behaviour.
+    it("carries the accepted original's iQIES record id on a correction's envelope item", async () => {
+      const { assessmentId, submissionId } = await queuedBatch();
+      const accepted = deps({
+        iqies: {
+          submitBatch: async () => ({
+            iqiesBatchId: "iqies-c1",
+            transmittedAt: "2026-08-27T10:00:00.000Z",
+          }),
+          fetchAcceptanceReport: async () => ({
+            iqiesBatchId: "iqies-c1",
+            items: [
+              {
+                hopeAssessmentId: assessmentId,
+                outcome: "accepted" as const,
+                iqiesRecordId: "rec-original",
+                findings: [],
+              },
+            ],
+          }),
+        },
+      });
+      await runIqiesSubmitCron(accepted);
+      await runIqiesReconcileCron(accepted);
+      expect((await submissionRow(submissionId)).status).toBe("accepted");
+
+      // Correct the accepted original and batch the correction. A correction is written already SIGNED
+      // (§7.8 — a correction of record is authored and attested in one act), so it is eligible at once.
+      const corrected = await svc.correctTimepoint(ORG_A, memberOf[ORG_A], assessmentId, {
+        correctionReason: "corrected section J after re-review",
+        targetDate: new Date().toISOString(),
+        authorDiscipline: "RN",
+        data: QUIET_DATA,
+      });
+      const res = await svc.assembleSubmission(ORG_A, providerOf[ORG_A]);
+      expect(res.submissions.length).toBe(1);
+
+      let seen: ReadonlyArray<{ hopeAssessmentId: string; correctsIqiesRecordId: string | null }> =
+        [];
+      await runIqiesSubmitCron(
+        deps({
+          iqies: {
+            submitBatch: async (req) => {
+              seen = req.envelope.items;
+              return { iqiesBatchId: "iqies-c2", transmittedAt: "2026-08-27T10:00:00.000Z" };
+            },
+            fetchAcceptanceReport: async () => ({ iqiesBatchId: "iqies-c2", items: [] }),
+          },
+        }),
+      );
+      const item = seen.find((i) => i.hopeAssessmentId === corrected.id);
+      expect(item).toBeDefined();
+      expect(item?.correctsIqiesRecordId).toBe("rec-original");
     });
 
     it("reconciles rejection: item rejected, finding written, assessment NOT stamped", async () => {

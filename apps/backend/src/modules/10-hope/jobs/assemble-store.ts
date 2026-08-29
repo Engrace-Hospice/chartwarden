@@ -10,16 +10,18 @@
 // emitted `m10.hope.submission_queued` with `itemCount: 0`. Every call produced an empty batch and
 // reported 201 Created.
 //
-// SCOPE. This is stage 1 of the three §4.10 stages, and it is the only one that CAN be wired today:
-// `iqies-submit-worker` and `iqies-reconcile-worker` terminate in `@wardenx/iqies-client`, whose sole
-// adapter is `createUnboundIqiesAdapter` — a deny-stub, because the live transport (CMS HOPE submission
-// XML, per-MAC submitter auth, sandbox/prod selection) does not exist. That is a genuine declared
-// absence, and `../jobs/cron-workers.ts` states it. Stage 1 is different: it needs nothing outside M10.
+// SCOPE. This is stage 1 of the three §4.10 stages. Stages 2 and 3 terminate in `@wardenx/iqies-client`,
+// whose sole adapter is `createUnboundIqiesAdapter` — a deny-stub, because the live transport (CMS HOPE
+// submission XML, per-MAC submitter auth, sandbox/prod selection) does not exist. That is a genuine
+// declared absence, and `./cron-workers.ts` states it. Stage 1 is different: it needs nothing outside
+// M10, and it runs NIGHTLY — F-072 registered `assemble-hope-submission` as a repeatable 02:00 cron.
+// Which is why the F-086 defect below mattered: it is not a button someone might press twice.
 //
 // TENANCY. Every query carries an explicit `organization_id` predicate on top of the caller's
 // `withOrgContext` RLS envelope — the org-rollup store's HARD RULE 1, reused here.
 import { type DbClient, schema } from "@wardenx/db";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { correctsIqiesRecordIdSql, outerColumn } from "./correlated-sql";
 import { type AssemblableAssessment, submissionPeriodFor } from "./submission";
 
 const ASSESS = schema.hopeAssessments;
@@ -48,6 +50,13 @@ export interface AssemblableScan {
  * `hasActiveSubmissionItem` so `planAssembleSubmissions` reports it as a skip, which is what makes a
  * re-run's idempotency observable instead of merely true.
  *
+ * That projection answered `false` for every row the platform ever read (F-086), so the idempotency it
+ * exists to express did not hold: a SECOND assemble pass re-selected everything the first had batched
+ * and the insert hit `uniq_hope_sub_item_assessment_active`, aborting the whole transaction. The index
+ * is documented as "the backstop under two concurrent assemblers" and it was in fact the only thing
+ * standing between a sequential re-run and a double-batch — so `POST /hope/submissions/assemble`
+ * answered 500 on its second press, forever, for every tenant.
+ *
  * `providerEntityId` narrows to non-null only for the ELIGIBLE set; the unsited rows are returned
  * beside it. `submissionPeriod` is derived from `target_date` — see {@link submissionPeriodFor} for why
  * the clock is the wrong anchor.
@@ -69,10 +78,15 @@ export async function assemblableAssessmentsForOrg(
       // Resolved by self-join on `corrects_assessment_id` — null for an ordinary first submission and
       // for a correction whose original was never accepted, which is the `skip` branch of
       // `planCorrectionRfa`.
-      correctsIqiesRecordId: sql<
-        string | null
-      >`(select o.iqies_record_id from hope_assessment o where o.id = ${ASSESS.correctsAssessmentId} limit 1)`,
-      hasActiveItem: sql<boolean>`exists (select 1 from hope_submission_item i where i.hope_assessment_id = ${ASSESS.id} and i.item_status = 'pending')`,
+      correctsIqiesRecordId: correctsIqiesRecordIdSql(ASSESS, ASSESS.correctsAssessmentId),
+      // NOT a filter — projected so `planAssembleSubmissions` reports it as a skip, which is what makes
+      // a re-run's idempotency OBSERVABLE rather than merely true. It answered `false` for every row
+      // ever read until F-086: the outer column rendered unqualified as `"id"`, which inside
+      // `from hope_submission_item i` is `i.id`, so the predicate was `i.hope_assessment_id = i.id`.
+      hasActiveItem: sql<boolean>`exists (select 1 from hope_submission_item i where i.hope_assessment_id = ${outerColumn(
+        ASSESS,
+        ASSESS.id,
+      )} and i.item_status = 'pending')`,
     })
     .from(ASSESS)
     .where(

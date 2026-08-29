@@ -1128,10 +1128,16 @@ export function createDbHopeBackend(
      *
      * The batch stops at `queued`. Stage 2 (`iqies-submit-worker`) terminates in
      * `@wardenx/iqies-client`, whose only adapter is the deny-stub — there is no iQIES transport in this
-     * codebase, which is why no `assemble-hope-submission` CRON is registered: a nightly pass would
-     * accumulate batches nothing can transmit and, through that same unique index, permanently exclude
-     * their assessments from every future batch. An operator pressing this is a deliberate act; a cron
-     * doing it silently is not.
+     * codebase, so nothing a batch contains reaches CMS today.
+     *
+     * THIS PARAGRAPH USED TO CONTINUE "which is why no `assemble-hope-submission` CRON is registered: a
+     * nightly pass would accumulate batches nothing can transmit and, through that same unique index,
+     * permanently exclude their assessments from every future batch. An operator pressing this is a
+     * deliberate act; a cron doing it silently is not." It stopped being true when F-072 wired all three
+     * §4.10 stages: `scheduleM10Jobs` registers `assemble-hope-submission` as a repeatable 02:00 cron.
+     * The consequence the paragraph predicted is exactly what F-086 found happening — the second pass
+     * re-selected everything the first had batched and died on the unique index — except that it was a
+     * cron doing it nightly, in every tenant, rather than an operator doing it deliberately.
      */
     async assembleSubmission(organizationId, providerEntityId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
