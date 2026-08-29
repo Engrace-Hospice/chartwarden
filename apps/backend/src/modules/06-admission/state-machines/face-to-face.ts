@@ -58,7 +58,14 @@ export function transitionFaceToFace(
       return result(from, event.type, "completed", [
         { kind: "set_flag", field: withinWindow ? "within_window_true" : "within_window_false" },
         { kind: "audit" },
-        { kind: "outbox", event: "m6.f2f.scheduled" },
+        // F-100 — this said `m6.f2f.scheduled`: the COMPLETION transition re-announcing that the
+        // encounter had been scheduled. Wrong on both counts. Semantically it tells every consumer the
+        // opposite of what happened, and mechanically `m6.f2f.scheduled` requires `f2fId` /
+        // `electionPeriodId` / `scheduledDate`, none of which `runEffects`' base envelope carries — so
+        // `POST /f2f/:id/complete` raised `payload_schema_violation` and rolled back, ON EVERY CALL.
+        // Attestation is only reachable from `completed`, so the whole CMS-418.22(a)(4) face-to-face
+        // chain was dead one step past scheduling.
+        { kind: "outbox", event: "m6.f2f.completed" },
       ]);
     }
     case "requestWindowOverride": {

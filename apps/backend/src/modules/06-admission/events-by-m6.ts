@@ -233,6 +233,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       electionStatementId: Type.String({ minLength: 1 }),
       electionPeriodId: Type.String({ minLength: 1 }),
       signedAt: Type.String({ minLength: 1 }),
+      /** The chart M22 files the rendered CoP document against (F-100). Every one of these six
+       *  artifacts is patient-scoped by definition — there is no defensible null. */
+      patientId: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: ["m22", "m23"],
     isOutboxOnly: true,
@@ -290,6 +293,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       ctiId: Type.String({ minLength: 1 }),
       electionPeriodId: Type.String({ minLength: 1 }),
       signedAt: Type.String({ minLength: 1 }),
+      /** The chart M22 files the rendered CoP document against (F-100). Every one of these six
+       *  artifacts is patient-scoped by definition — there is no defensible null. */
+      patientId: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: ["m22", "m23"],
     isOutboxOnly: true,
@@ -330,6 +336,25 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    // F-100 — the event the completion transition should always have emitted. It emitted
+    // `m6.f2f.scheduled` instead, which no schema could satisfy from the completion path and which said
+    // the wrong thing to every consumer. Record-only: completion is an internal step of the §2.3.4 chain
+    // and no module acts on it — `m6.f2f.attested` is the CoP-significant moment, and inventing a
+    // consumer here would put a permanently-pending row on every completion.
+    eventName: "m6.f2f.completed",
+    moduleOwner: "m6",
+    description:
+      "A scheduled face-to-face encounter was recorded as completed (route 30), with the CMS-418.22 window verdict.",
+    payloadSchema: Type.Object({
+      f2fId: Type.String({ minLength: 1 }),
+      electionPeriodId: Type.String({ minLength: 1 }),
+      encounterDate: Type.String({ minLength: 1 }),
+      withinWindow: Type.Boolean(),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m6.f2f.attested",
     moduleOwner: "m6",
     description: "A face-to-face encounter was attested (route 31); may back-ref an encounter.",
@@ -338,6 +363,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       electionPeriodId: Type.String({ minLength: 1 }),
       attestedAt: Type.String({ minLength: 1 }),
       encounterId: Type.Optional(Type.String({ minLength: 1 })),
+      /** The chart M22 files the rendered CoP document against (F-100). Every one of these six
+       *  artifacts is patient-scoped by definition — there is no defensible null. */
+      patientId: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: ["m22", "m23"],
     isOutboxOnly: true,
@@ -386,6 +414,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       revocationEventId: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
       revocationDate: Type.String({ minLength: 1 }),
+      /** The chart M22 files the rendered CoP document against (F-100). Every one of these six
+       *  artifacts is patient-scoped by definition — there is no defensible null. */
+      patientId: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: ["m22", "m23", "m26"],
     isOutboxOnly: true,
@@ -414,6 +445,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       reason: Type.String({ minLength: 1 }),
       dischargeDate: Type.String({ minLength: 1 }),
       requiresMedicalDirectorCosign: Type.Boolean(),
+      /** The chart M22 files the rendered CoP document against (F-100). Every one of these six
+       *  artifacts is patient-scoped by definition — there is no defensible null. */
+      patientId: Type.String({ minLength: 1 }),
       source: applierSource,
     }),
     declaredConsumers: ["m14", "m22", "m23", "m26"],
@@ -456,6 +490,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       norAcknowledgmentId: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
       acknowledgedAt: Type.String({ minLength: 1 }),
+      /** The chart M22 files the rendered CoP document against (F-100). Every one of these six
+       *  artifacts is patient-scoped by definition — there is no defensible null. */
+      patientId: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: ["m22", "m23"],
     isOutboxOnly: true,

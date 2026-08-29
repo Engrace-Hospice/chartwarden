@@ -27,6 +27,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { validatingM6Outbox } from "./_m6-outbox";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -196,7 +197,7 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
     };
     svc = createDbAdmissionRouteService(
       handle.db,
-      undefined,
+      validatingM6Outbox(), // F-100
       undefined,
       providerEntityOrgCheck,
       undefined,
@@ -210,7 +211,7 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
     );
     svcNoDpoa = createDbAdmissionRouteService(
       handle.db,
-      undefined,
+      validatingM6Outbox(), // F-100
       undefined,
       providerEntityOrgCheck,
     );

@@ -76,6 +76,8 @@ describe("M6 outbox event contract (§4.4)", () => {
                 reason: "death",
                 dischargeDate: "2026-01-01",
                 requiresMedicalDirectorCosign: false,
+                // F-100 — the chart M22 files the rendered discharge summary against.
+                patientId: "p1",
               }
             : {
                 complianceWindowId: "w1",

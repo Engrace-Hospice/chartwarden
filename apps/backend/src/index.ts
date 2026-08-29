@@ -167,6 +167,7 @@ import {
   activeAdmissionDraftContextForPatient,
   admissionIsActiveForOrg,
   admissionSchedulingContextForOrg,
+  buildM6DocumentBackrefConsumer,
   buildM6ProposalAcceptedConsumer,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
@@ -4436,13 +4437,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 }),
               ),
           }),
-          // The four requesting modules' back-ref consumers — the columns each built for exactly this
+          // The requesting modules' back-ref consumers — the columns each built for exactly this
           // (`order_record.document_id`, `medication_order.document_id`,
           // `medication_reconciliation_worksheet.document_id`, `comfort_kit_dispatch.bol_document_id` /
           // `comfort_kit_return.receipt_document_id`) and never had an event to fill. Each ignores every
           // document it did not request. They must ALL be bound: `m22.document.rendered` declares exactly
-          // these four consumers, and the dispatcher holds a row `pending` while any declared consumer
+          // these consumers, and the dispatcher holds a row `pending` while any declared consumer
           // module has no live binding.
+          // F-100 — M6's is the sixth, and the one with the most columns behind it: the CTI, the election
+          // statement, the face-to-face, the notice of rights, the revocation and the discharge summary,
+          // all six commented "M22 document" since M6's schema landed and all six NULL in every database.
+          buildM6DocumentBackrefConsumer({ db: dbHandle.db }),
           buildM11DocumentBackrefConsumer({ db: dbHandle.db }),
           buildM12DocumentBackrefConsumer({ db: dbHandle.db }),
           buildM13DocumentBackrefConsumer({ db: dbHandle.db }),

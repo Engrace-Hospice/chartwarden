@@ -71,6 +71,15 @@ describe("M22-T06 — §4.11 outbox subscriptions catalog", () => {
       "m25.appeal_packet.render_requested",
       "m27.artifact.render_requested",
       "m37.body_release.document_requested",
+      // F-100 — M6's six CoP compliance documents. M6 emits no `*.document_requested`; the M22 spec's own
+      // consumer table routes these SOURCE events here, one template each. All six templates were already
+      // published and six `document_id` columns were already waiting — only the subscription was missing.
+      "m6.election.signed",
+      "m6.cti.signed",
+      "m6.f2f.attested",
+      "m6.nor.acknowledged",
+      "m6.revocation.created",
+      "m6.discharge.created",
     ]);
   });
 

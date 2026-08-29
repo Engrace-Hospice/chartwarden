@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildProviderEntityLocationLister } from "../src/bootstrap/provider-entity-resolver";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { validatingM6Outbox } from "./_m6-outbox";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -64,7 +65,9 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });
-    svc = createDbAdmissionRouteService(handle.db); // NOOP outbox — this suite asserts state + effects
+    // F-100 — was `createDbAdmissionRouteService(handle.db)`, i.e. NOOP_OUTBOX. A suite that asserts
+    // "state + effects" and validates no payload asserts half an effect.
+    svc = createDbAdmissionRouteService(handle.db, validatingM6Outbox());
   }, 120_000);
 
   afterAll(async () => {
@@ -330,7 +333,7 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
       await seedLocation(PE_MANY, "Inpatient Unit", "active");
       await seedLocation(PE_NONE, "Not Open Yet", "created");
       await seedLocation(PE_ORG_B, "Other Tenant", "active");
-      sited = createDbAdmissionRouteService(handle.db, undefined, undefined, undefined, {
+      sited = createDbAdmissionRouteService(handle.db, validatingM6Outbox(), undefined, undefined, {
         activeLocationsFor: buildProviderEntityLocationLister(handle.db),
       });
     });

@@ -383,6 +383,10 @@ jobs:
           # through the real outbox dispatcher into real `document`/`document_version` rows. Nothing in
           # this chain was executed before: the consumer did not exist and neither emitter fired.
           - { name: "M22 render handshake", scripts: "test:m22:render-handshake:live" }
+          # F-100: M6's six CoP compliance documents through the same chain — the real admission write
+          # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`
+          # rows and the six `document_id` columns M6 built for them and nothing ever wrote.
+          - { name: "M6 CoP documents", scripts: "test:m6:cop-documents:live" }
           # GAP-050: M33 scheduled-report create/update/resume over the real `cron-parser` adapter —
           # all three compute `next_run_at` through a port that was a fail-closed stub, so no tenant
           # could create a schedule at all and the §4.8 scheduled-run cron had nothing to fire.

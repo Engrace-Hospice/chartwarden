@@ -699,6 +699,11 @@ export function createDbAdmissionRouteService(
     ifVersion: number,
     event: AdmissionEvent,
     extraSet: Record<string, unknown> = {},
+    // F-100 — the per-event payload fields, same contract as `runEffects`. This parameter did not exist,
+    // so `holdAdmission` and `resumeAdmission` emitted `m6.admission.on_hold` / `.resumed` with the bare
+    // `{aggregateId, admissionId}` envelope while both schemas require more, and both routes 500'd on
+    // `payload_schema_violation` for every caller.
+    extraPayloadByEvent: Readonly<Record<string, Record<string, unknown>>> = {},
   ): Promise<MutationResult> {
     return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
       const cur = await loadAdm(tx, id);
@@ -716,6 +721,7 @@ export function createDbAdmissionRouteService(
         tx,
         { organizationId, aggregateKind: "admission", aggregateId: id, admissionId: id },
         t.effects,
+        extraPayloadByEvent,
       );
       return { id: r.id, state: r.status, version: Number(r.version) };
     });
@@ -748,6 +754,40 @@ export function createDbAdmissionRouteService(
   async function admissionExists(tx: DbClient, id: string): Promise<boolean> {
     const [row] = await tx.select({ id: ADM.id }).from(ADM).where(eq(ADM.id, id)).limit(1);
     return !!row;
+  }
+
+  /**
+   * The chart target for a §4.11 render request (F-100). M22 writes `document.patient_id` from the
+   * payload and cannot resolve one itself — it `dependsOn [1, 5]` and reads every source module through
+   * the event STRING — so a CoP document whose request omits this files against NO CHART. That is worse
+   * than not rendering it: an unrendered request is a visible `pending` outbox row, an off-chart signed
+   * certification is a filed document nobody can find.
+   *
+   * `admission.patient_id` is NOT NULL, so a missing row is the only failure and it means the admission
+   * was deleted inside this transaction — never a silent null. The caller throws rather than emitting a
+   * chart-less request.
+   */
+  async function patientForAdmission(tx: DbClient, admissionId: string): Promise<string> {
+    const [row] = await tx
+      .select({ patientId: ADM.patientId })
+      .from(ADM)
+      .where(eq(ADM.id, admissionId))
+      .limit(1);
+    if (!row) throw new ResourceNotFoundError(admissionId);
+    return row.patientId;
+  }
+
+  /** {@link patientForAdmission} one hop further out: the CTI and the F2F hang off an election PERIOD,
+   *  which is the aggregate that carries the admission. One join, on the write path only. */
+  async function patientForElectionPeriod(tx: DbClient, electionPeriodId: string): Promise<string> {
+    const [row] = await tx
+      .select({ patientId: ADM.patientId })
+      .from(EP)
+      .innerJoin(ADM, eq(ADM.id, EP.admissionId))
+      .where(eq(EP.id, electionPeriodId))
+      .limit(1);
+    if (!row) throw new ResourceNotFoundError(electionPeriodId);
+    return row.patientId;
   }
 
   /** The latest benefit period for an admission (highest sequence), or `null`. */
@@ -867,6 +907,8 @@ export function createDbAdmissionRouteService(
                 reason: ev.reason ?? ev.dischargeType,
                 dischargeDate: ev.effectiveAt,
                 requiresMedicalDirectorCosign: false,
+                // F-100 — the chart. Already read at the top of this function for the transition guard.
+                patientId: row.patientId,
               },
               "m6.discharge.death": {
                 dischargeEventId: ev.dischargeEventId,
@@ -1525,6 +1567,7 @@ export function createDbAdmissionRouteService(
           holdReason: reason,
           holdAt: now(),
         },
+        { "m6.admission.on_hold": { reason, heldAt: now().toISOString() } },
       );
     },
     async resumeAdmission(organizationId, id, ifVersion): Promise<MutationResult> {
@@ -1536,6 +1579,7 @@ export function createDbAdmissionRouteService(
         {
           releasedAt: now(),
         },
+        { "m6.admission.resumed": { resumedAt: now().toISOString() } },
       );
     },
     async activateAdmission(organizationId, id, ifVersion, input): Promise<MutationResult> {
@@ -1830,7 +1874,13 @@ export function createDbAdmissionRouteService(
           // Same payload-schema-drift bug class as `m6.election.drafted` (fixed above) — this call
           // used to send only `electionStatementId`, throwing `payload_schema_violation` on every
           // single call (`electionPeriodId`/`signedAt` are non-optional).
-          payload: { electionStatementId: id, electionPeriodId: cur.electionPeriodId, signedAt },
+          payload: {
+            electionStatementId: id,
+            electionPeriodId: cur.electionPeriodId,
+            signedAt,
+            // F-100 — the chart. `election_statement.patient_id` is on the row this path already read.
+            patientId: await patientForElectionPeriod(tx, cur.electionPeriodId),
+          },
           organizationId,
           aggregateKind: "election_statement",
           aggregateId: id,
@@ -1888,7 +1938,11 @@ export function createDbAdmissionRouteService(
         );
         await outbox.publish(tx, {
           eventName: "m6.election.period_started",
-          payload: { electionPeriodId: ep.id, admissionId },
+          // F-100 — `sequence` is required and was omitted, so `POST /election-periods` raised
+          // `payload_schema_violation` and rolled back for every caller: no admission could open a
+          // benefit period past the one its activation seeds, which is 42 CFR 418.21(a) recertification.
+          // The value was already computed two statements up for the row's own `sequence_number`.
+          payload: { electionPeriodId: ep.id, admissionId, sequence: nextSequence },
           organizationId,
           aggregateKind: "election_period",
           aggregateId: ep.id,
@@ -2041,7 +2095,12 @@ export function createDbAdmissionRouteService(
           await outbox.publish(tx, {
             eventName: "m6.cti.signed",
             // Same class of bug as above — `electionPeriodId`/`signedAt` are required, previously omitted.
-            payload: { ctiId: id, electionPeriodId: cti.epId, signedAt: now().toISOString() },
+            payload: {
+              ctiId: id,
+              electionPeriodId: cti.epId,
+              signedAt: now().toISOString(),
+              patientId: await patientForElectionPeriod(tx, cti.epId), // F-100 — the chart
+            },
             organizationId,
             aggregateKind: "certification_of_terminal_illness",
             aggregateId: id,
@@ -2083,6 +2142,7 @@ export function createDbAdmissionRouteService(
             ctiId: id,
             electionPeriodId: cti.epId,
             signedAt: attendingSignedAt.toISOString(),
+            patientId: await patientForElectionPeriod(tx, cti.epId), // F-100 — the chart
           },
           organizationId,
           aggregateKind: "certification_of_terminal_illness",
@@ -2203,6 +2263,7 @@ export function createDbAdmissionRouteService(
             version: F2F.version,
             role: F2F.performerRole,
             override: F2F.windowOverride,
+            epId: F2F.electionPeriodId, // F-100 — `m6.f2f.completed` requires it
           })
           .from(F2F)
           .where(eq(F2F.id, id))
@@ -2247,6 +2308,17 @@ export function createDbAdmissionRouteService(
             admissionId: id,
           },
           t.effects,
+          // F-100 — `runEffects`' base envelope is `{aggregateId, admissionId}` and every M6 event
+          // declares more than that, so an effect emitted without its own entry here does not degrade,
+          // it REFUSES: the publisher `Value.Check`s and the whole write rolls back.
+          {
+            "m6.f2f.completed": {
+              f2fId: id,
+              electionPeriodId: cur.epId,
+              encounterDate,
+              withinWindow,
+            },
+          },
         );
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
@@ -2277,12 +2349,13 @@ export function createDbAdmissionRouteService(
             "F2F_INVALID_PERFORMER",
             "attesting user must be the performer",
           );
+        const attestedAt = now();
         const r = firstOrThrow(
           await tx
             .update(F2F)
             .set({
               status: "attested",
-              attestationSignedAt: now(),
+              attestationSignedAt: attestedAt,
               version: sql`${F2F.version} + 1`,
               updatedAt: now(),
             })
@@ -2309,6 +2382,15 @@ export function createDbAdmissionRouteService(
               { kind: "close_window", window: "f2f_recert_30d_prior" },
               { kind: "outbox", event: "m6.f2f.attested" },
             ],
+            {
+              "m6.f2f.attested": {
+                f2fId: id,
+                electionPeriodId: cur.epId,
+                attestedAt: attestedAt.toISOString(),
+                // F-100 — the chart M22 files the rendered `f2f` document against.
+                patientId: await patientForAdmission(tx, ep.admissionId),
+              },
+            },
           );
         }
         return { id: r.id, state: r.status, version: Number(r.version) };
@@ -2360,6 +2442,9 @@ export function createDbAdmissionRouteService(
             admissionId: id,
           },
           t.effects,
+          // F-100 — `m6.f2f.window_overridden` requires `{f2fId, reason}`; without them this route
+          // refused every medical-director override with a 500.
+          { "m6.f2f.window_overridden": { f2fId: id, reason } },
         );
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
@@ -2587,6 +2672,7 @@ export function createDbAdmissionRouteService(
             revocationEventId: rev.id,
             admissionId,
             revocationDate: input.revocationDate,
+            patientId: await patientForAdmission(tx, admissionId), // F-100 — the chart
           },
           organizationId,
           aggregateKind: "revocation_event",
@@ -2817,6 +2903,7 @@ export function createDbAdmissionRouteService(
               reason: input.reason,
               dischargeDate: input.dischargeDate,
               requiresMedicalDirectorCosign,
+              patientId: await patientForAdmission(tx as DbClient, admissionId), // F-100 — the chart
             },
             organizationId,
             aggregateKind: "discharge_event",
@@ -2989,6 +3076,8 @@ export function createDbAdmissionRouteService(
             "m6.nor.acknowledged": {
               norAcknowledgmentId: nor.id,
               acknowledgedAt: acknowledgedAt.toISOString(),
+              // F-100 — the chart. Already in hand: the NOR row was inserted with it two statements up.
+              patientId: adm.patientId,
             },
           },
         );

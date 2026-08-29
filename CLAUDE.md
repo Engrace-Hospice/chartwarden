@@ -882,6 +882,64 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   anticipated list rather than being subscribed, because a consumer bound to a name nothing emits is
   indistinguishable from working.
 
+  **M6's six CoP compliance documents were never rendered, and neither half of the handshake existed
+  (F-100, #103).** The Medicare Conditions of Participation artifacts a survey asks for — the
+  certification of terminal illness, the election statement, the face-to-face encounter, the notice of
+  rights, the revocation, the discharge summary. `PLATFORM_TEMPLATE_TABLE` has published a template for
+  every one since it landed; SIX `document_id` columns on `certification`, `election_statement`,
+  `f2f_encounter`, `nor_acknowledgment`, `revocation_event` and `discharge_event` have carried the comment
+  "M22 document (app-validated)" since M6's schema landed. **Both ends were missing at once, which is why
+  neither looked broken**: M22 subscribed to none of M6's six source events, so no request was ever
+  drained, and M6 subscribed to `m22.document.rendered`, so there was nothing to stamp even if one had
+  been. Six columns, NULL in every database that has ever existed. **No new event was invented**: the
+  deferral registry's own note said M6 needed an `m6.document_requested` and the anticipated-events list
+  named one, but the M22 spec's §4.11 consumer table routes M6's SOURCE events to the renderer one
+  template each — the `m23.abn.required` shape — and M6's catalog has declared `m22` on exactly those six
+  the whole time. The catalog was right and only the subscription was absent. **The `patientId` defect
+  from F-099 recurred at larger scale and with no defensible exception**: none of the six payloads carried
+  a chart target, M22 `dependsOn [1, 5]` and cannot resolve one, and every emit site already had the value
+  in hand — so binding alone would have filed six CoP artifacts on no chart, which is worse than not
+  rendering them (an unrendered request is a visible `pending` row; an off-chart signed certification is a
+  filed document nobody can find).
+  **The render call's spread order was a live defect of exactly that kind and only the live run found it.**
+  `render.content` was spread AFTER the resolved `aggregateId`/`patientId`, so a payload carrying its own
+  `aggregateId` overwrote the identity the normalizer had just decided — and M6's `runEffects` puts the
+  TRANSITION's aggregate in the body, so every NOR rendered under its ADMISSION's id. The document
+  existed, addressed to the wrong row, and the back-ref could never match: the one failure mode a back-ref
+  cannot recover from, because there IS a document and it looks fine. The resolved routing now wins.
+  **Six production routes 500'd, and the reason no test could see it is the F-093 shape exactly.**
+  `createDbAdmissionRouteService(db)` defaults its outbox to `NOOP_OUTBOX`, which accepts anything, and
+  **every M6 live suite took that default — nine constructions across eight files** — so the module drove
+  its entire production write surface against a publisher that validates nothing, while production binds
+  one that `Value.Check`s and REFUSES. `runEffects`' base envelope is `{aggregateId, admissionId}` and
+  every M6 event declares more, so an effect emitted without its own `extraPayloadByEvent` entry does not
+  degrade, it rolls the write back. Found by binding the real publisher in the live suites (now
+  `__tests__/_m6-outbox.ts`): `POST /f2f/:id/complete`, `/f2f/:id/window-override`, `/f2f/:id/attest`,
+  `/admissions/:id/hold`, `/admissions/:id/resume` and **`POST /election-periods`**. Two of those are
+  structural rather than clerical. The completion transition emitted **`m6.f2f.scheduled`** — the wrong
+  event, announcing to every consumer that the encounter had been *scheduled* at the moment it was
+  completed, and a name whose schema the completion path cannot satisfy; attestation is only reachable
+  from `completed`, so the whole CMS-418.22(a)(4) face-to-face chain was dead one step past scheduling
+  (`m6.f2f.completed` is now catalogued, record-only, because no module acts on completion and inventing a
+  consumer would put a permanently-pending row on every one). And `createElectionPeriod` omitted
+  `sequence`, so **no admission could open a benefit period past the one its activation seeds** — 42 CFR
+  418.21(a) recertification, refused for every tenant. The typed `M6OutboxEventName` union did not help
+  with either: it pins NAMES, and a real name emitted from the wrong transition with the wrong payload is
+  still a real name. Proven by `m6-cop-document-renders.live.test.ts` — the real admission write service,
+  the real catalog-validating publisher, the real dispatcher, the real renderer, into real `document` rows
+  and the six stamped columns, under RLS, with org B seeing none of it.
+  **Nine m6 events still declare `m22` and they are two different things, recorded in the registry
+  reason rather than smoothed over.** `m6.discharge.cosigned` and `m6.transfer.created` are named by the
+  M22 spec and are genuinely deferred — the cosign fires on the SAME `discharge_event` id, so it is a new
+  VERSION of an existing document and the decider answers `idempotent_skip` until the W2 append path
+  exists; the transfer wants a `discharge_summary` TRANSFER VARIANT M22 does not publish, and rendering
+  the base template would file a document titled Discharge Summary for a patient who was transferred. The
+  other seven — `referral.accepted`, `admission.draft_created`, `admission.activated`,
+  `admission.discharged`, `election.drafted`, `election.period_started`, `loc.changed` — are named by no
+  part of the M22 spec and by no M22 consumer, so they are **mis-declared rather than deferred**, and each
+  is a high-volume clinical event whose every emission is re-claimed every thirty minutes for the life of
+  the deployment. Reported, not taken here: removing `m22` from them is a producer-side edit.
+
   **Rule 6 (F-094, #205) is the direction rule 4 still did not run.** Six modules publish an
   `M*_SUBSCRIBED_EVENT_NAMES` constant, and each carries the same doc comment — it exists "so an upstream
   rename breaks the build rather than silently orphaning a handler". **Nothing compared any of them to
