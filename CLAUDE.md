@@ -194,8 +194,8 @@ the prose docs in `docs/architecture/`.
   enforced via `package.json` scripts (`bun run arch:fitness`; UI-corpus check also standalone
   as `bun run docs:ui`).
 - `scripts/check-tenancy.ts` — **tenancy & RLS invariants** (`bun run arch:tenancy`, in
-  `arch:fitness`): the three-column rule, the canonical `app.org_id` session variable, and the
-  dangerous policy shapes ADR-0010 D3 bans. Its Rule 2 exemptions — M4 audit attribution, the M34
+  `arch:fitness`): the three-column rule, the canonical `app.org_id` session variable, the
+  dangerous policy shapes ADR-0010 D3 bans, and (F-087) **RLS enabled ⇒ RLS FORCEd**. Its Rule 2 exemptions — M4 audit attribution, the M34
   key-ring SECURITY DEFINER GUCs — are scoped to the **statement** they were written for and never
   reach a policy predicate. They used to be tested against the whole FILE, and the repo's own
   convention puts a module's RLS policies in the same migration as its audit triggers
@@ -211,6 +211,23 @@ the prose docs in `docs/architecture/`.
   `m1-rls-isolation.live.test.ts` is the catalog-side complement and runs in `rls-live`. A policy
   created through dynamic SQL inside a `DO` block is the known limit, and the plain text scan still
   sees the session variables inside it.
+  **Rule 4** (F-087) applies the same net-effect replay to `ENABLE`/`FORCE ROW LEVEL SECURITY`.
+  ENABLE does not apply to a table's OWNER; every policy here is `TO wardenx_app` and
+  `scripts/db/migrate.ts` connects as `DATABASE_ADMIN_URL ?? DATABASE_URL`, so a deployment that
+  migrates with only `DATABASE_URL` set makes `wardenx_app` the owner and every policy on an
+  unFORCEd table stops applying to it — and there is no flag to catch it, since the boot guard
+  checks BYPASSRLS and **ownership is not BYPASSRLS**. Migration 0118 documents all of this and
+  swept 370 tables; 0159 re-swept the 66 M28/M29/M35/M37 added after it; 0203 hand-patched two M24
+  tables; F-087 found `fhir_read_disclosure` (0233, the M28 §164.528 disclosure ledger — the one
+  table whose whole purpose is to answer "which patients did this partner read", so an unFORCEd copy
+  answers a *different* tenant's disclosures to whoever asks). **Four manual re-sweeps, each found
+  by querying a live schema, none of which prevented the next** — the only thing that had ever asked
+  is `rls-isolation.live.test.ts`'s catalog assertion, in `rls-live`, which has no runner assigned.
+  The rule MODELS the two catalog sweeps rather than hardcoding them (a statement that reads
+  `relforcerowsecurity` and issues `FORCE` forces everything enabled before it), so a fifth needs no
+  edit here. Its known limit is Rule 2a's mirrored: RLS enabled by dynamic SQL is invisible, which is
+  a MISS and never a false alarm — partition leaves are the deliberate case (0118's event trigger
+  enables and forces them at CREATE time, asserted against the catalog in the live suite).
 - `scripts/check-migration-numbering.ts` — **migration ordinal uniqueness** (F-026,
   `bun run arch:migration-numbering`, in `arch:fitness`). The four-digit prefix in
   `packages/db/migrations/NNNN_name.sql` IS the migration's position in the apply order, and

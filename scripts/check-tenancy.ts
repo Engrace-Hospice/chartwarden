@@ -1,7 +1,7 @@
 /**
  * WardenX — Tenancy & RLS Invariant Check  (ADR-0010; fitness check #10)
  * ------------------------------------------------------------------
- * Enforces, statically, the three tenancy invariants that prose alone let drift
+ * Enforces, statically, the four tenancy invariants that prose alone let drift
  * across the corpus (audit X3/X4/S5):
  *
  *   1. THREE-COLUMN RULE (ARCH-011) — every PHI-bearing table carries
@@ -20,6 +20,14 @@
  *      and for what that costs.
  *   3. NO DANGEROUS POLICY SHAPES — bans `OR organization_id IS NULL` in a
  *      tenant-writable policy and permissive `FOR ALL` policies that OR together.
+ *   4. RLS ENABLED ⇒ RLS FORCED (F-087) — `ENABLE ROW LEVEL SECURITY` exempts the
+ *      table's OWNER, and migrate.ts connects as `DATABASE_ADMIN_URL ?? DATABASE_URL`,
+ *      so a deployment that migrates with only DATABASE_URL set makes `wardenx_app`
+ *      the owner and every policy on an unFORCEd table stops applying to it. Judged
+ *      on the migrations' NET effect, like Rule 2 — and modelling the two catalog
+ *      sweeps (0118/0159) rather than hardcoding them. The answer to this had been a
+ *      manual re-sweep FOUR times (0118 · 0159 · 0203 · F-087), each found by
+ *      querying a live schema; see checkForceRls().
  *
  * This is a fast, heuristic, import-level static check (same posture as
  * check-table-ownership.ts) — it catches the common dangerous cases and routes
@@ -789,6 +797,126 @@ for (const base of allPaths) {
 // file forever is not the same thing, and a gate that cannot tell the two apart can never go green.
 for (const def of survivingPolicies(sqlFiles).values()) checkPolicyPredicate(def);
 
+// ---- Rule 4: RLS enabled ⇒ RLS FORCEd ------------------------------------
+const RLS_ENABLE_RE = new RegExp(
+  `^ALTER\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:ONLY\\s+)?((?:${IDENT}\\s*\\.\\s*)?${IDENT})\\s+ENABLE\\s+ROW\\s+LEVEL\\s+SECURITY`,
+  "i",
+);
+const RLS_FORCE_RE = new RegExp(
+  `^ALTER\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:ONLY\\s+)?((?:${IDENT}\\s*\\.\\s*)?${IDENT})\\s+FORCE\\s+ROW\\s+LEVEL\\s+SECURITY`,
+  "i",
+);
+const RLS_UNFORCE_RE = new RegExp(
+  `^ALTER\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:ONLY\\s+)?((?:${IDENT}\\s*\\.\\s*)?${IDENT})\\s+NO\\s+FORCE\\s+ROW\\s+LEVEL\\s+SECURITY`,
+  "i",
+);
+const RLS_DISABLE_RE = new RegExp(
+  `^ALTER\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:ONLY\\s+)?((?:${IDENT}\\s*\\.\\s*)?${IDENT})\\s+DISABLE\\s+ROW\\s+LEVEL\\s+SECURITY`,
+  "i",
+);
+
+/**
+ * A CATALOG SWEEP — a statement that reads `pg_class.relforcerowsecurity` and issues
+ * `FORCE ROW LEVEL SECURITY` from what it finds. Migrations 0118 and 0159 are both exactly this:
+ * a `DO $$ … $$` loop over every table with RLS on and FORCE off. The replay cannot execute it, so
+ * it models it — a sweep forces everything enabled AT THAT POINT in the apply order, which is what
+ * the loop's own `WHERE c.relrowsecurity AND NOT c.relforcerowsecurity` predicate says.
+ *
+ * Detected by what the statement DOES, not by its filename, so a fourth sweep needs no edit here.
+ * Requiring BOTH tokens is what keeps it narrow: a DO block that merely mentions FORCE without
+ * consulting the catalog is not a sweep and is not credited as one.
+ */
+function isForceRlsCatalogSweep(text: string): boolean {
+  return /\brelforcerowsecurity\b/i.test(text) && /\bFORCE\s+ROW\s+LEVEL\s+SECURITY\b/i.test(text);
+}
+
+/**
+ * Rule 4 — every table the migrations leave with RLS ENABLED must also be left FORCEd.
+ *
+ * `ENABLE ROW LEVEL SECURITY` does not apply to the table's OWNER. Every policy in this repo is
+ * `TO wardenx_app`, and `scripts/db/migrate.ts` connects as `DATABASE_ADMIN_URL ?? DATABASE_URL` —
+ * so a deployment that runs the migrator with only `DATABASE_URL` set makes `wardenx_app` the owner
+ * and every policy on an unFORCEd table stops applying to the application's own role. Migration
+ * 0118's header sets that out in full; it is not a hypothetical, it is why 0118 exists.
+ *
+ * There is no `rolbypassrls` flag to catch it: the boot guard in `apps/backend/src/index.ts` checks
+ * BYPASSRLS, and ownership is not BYPASSRLS. The catalog-side complement
+ * (`rls-isolation.live.test.ts`, "every RLS table is FORCEd") is the only other thing that asks —
+ * and it runs in `rls-live`, so it speaks only where there is a database.
+ *
+ * THIS RULE EXISTS BECAUSE THE ANSWER HAS BEEN A MANUAL RE-SWEEP FOUR TIMES. 0118 forced 370
+ * tables; 0159 re-swept the 66 that M28/M29/M35/M37 had added since; 0203 hand-patched two M24
+ * tables; F-087 found one more. Each round was found by querying a live schema, and each fixed the
+ * tables that existed that day without preventing the next one — a mitigation applied four times is
+ * a missing gate, not a policy.
+ *
+ * Judged on the migrations' NET effect in apply order, the same posture as Rule 2a and for the same
+ * reason: `arch:fitness` runs where there is no database.
+ *
+ * KNOWN LIMIT, and it is the mirror of Rule 2a's: a table whose RLS is ENABLED by dynamic SQL is
+ * invisible here, so it is never demanded to be FORCEd. That direction is a MISS, never a false
+ * alarm — the rule can fail to notice a table, but it cannot invent one. Partition LEAVES are the
+ * deliberate case: 0118's event trigger enables + forces them at CREATE time and
+ * `rls-isolation.live.test.ts` asserts that against the catalog.
+ */
+function checkForceRls(files: readonly string[]): void {
+  const enabled = new Map<string, string>(); // table → the file that enabled it
+  const forced = new Set<string>();
+  for (const file of [...files].sort()) {
+    const src = readFileSync(join(REPO_ROOT, file), "utf8");
+    for (const span of sqlStatements(src)) {
+      const text = src.slice(span.start, span.end);
+      const head = statementHead(text);
+
+      const dropped = DROP_TABLE_RE.exec(head);
+      if (dropped) {
+        for (const raw of dropped[1]!.split(",")) {
+          const table = normIdent(raw);
+          enabled.delete(table);
+          forced.delete(table);
+        }
+        continue;
+      }
+      const disable = RLS_DISABLE_RE.exec(head);
+      if (disable) {
+        enabled.delete(normIdent(disable[1]!));
+        continue;
+      }
+      const unforce = RLS_UNFORCE_RE.exec(head);
+      if (unforce) {
+        forced.delete(normIdent(unforce[1]!));
+        continue;
+      }
+      const force = RLS_FORCE_RE.exec(head);
+      if (force) {
+        forced.add(normIdent(force[1]!));
+        continue;
+      }
+      const enable = RLS_ENABLE_RE.exec(head);
+      if (enable) {
+        enabled.set(normIdent(enable[1]!), file);
+        continue;
+      }
+      if (isForceRlsCatalogSweep(text)) for (const t of enabled.keys()) forced.add(t);
+    }
+  }
+  for (const [table, file] of [...enabled].sort()) {
+    if (forced.has(table)) continue;
+    violations.push({
+      file,
+      rule: "rls-enabled-not-forced",
+      detail: [
+        `table '${table}' is left with RLS ENABLED but never FORCEd — RLS does not apply to a`,
+        "table's OWNER, and migrate.ts connects as `DATABASE_ADMIN_URL ?? DATABASE_URL`, so on a",
+        "deployment that migrates with only DATABASE_URL set, wardenx_app owns this table and every",
+        "policy on it stops applying to it (ADR-0010 D2; migration 0118).",
+        `\n  Fix: add \`ALTER TABLE "${table}" FORCE ROW LEVEL SECURITY;\` beside the ENABLE.`,
+      ].join(" "),
+    });
+  }
+}
+checkForceRls(sqlFiles);
+
 if (policyKeywordSites !== parsedPolicyStatements) {
   console.error(
     [
@@ -836,7 +964,9 @@ for (const file of listFiles(SCHEMA_DIR)) {
 }
 
 if (violations.length === 0) {
-  console.log("✓ tenancy: three-column rule, canonical app.org_id, no dangerous RLS shapes");
+  console.log(
+    "✓ tenancy: three-column rule, canonical app.org_id, no dangerous RLS shapes, RLS forced",
+  );
   process.exit(0);
 }
 console.error(`✗ tenancy: ${violations.length} violation(s)\n`);
