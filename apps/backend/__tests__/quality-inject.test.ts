@@ -171,6 +171,9 @@ function createM30Backend(): {
     computedAt: NOW,
     computeVersion: "v1",
     snapshotContentHash: "hash-abc123",
+    // F-042: null means "computed", not "suppressed" — the field is what tells a consumer
+    // "not computable here" apart from "suppressed (low N)".
+    unavailableReason: null,
     supersededByValueId: null,
   };
   const measureSummary: MeasureSummaryView = {

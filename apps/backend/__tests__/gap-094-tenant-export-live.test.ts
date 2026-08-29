@@ -72,6 +72,11 @@ function fakeShard(moduleKey: string): TenantExportShard {
       await sink.write({ table: `${moduleKey}_widget`, row: { id: "2", name: "beta" } });
       return { rowCount: 2, tableCount: 1, sha256: "unused" };
     },
+    // Present so the double satisfies the whole seam; this suite drives the ORG fan-out only, and a
+    // silent no-op here would look like a module that contributes nothing to a DSAR.
+    async streamDsarShardForPatient() {
+      throw new Error("fakeShard: the DSAR path is not exercised by this suite");
+    },
   };
 }
 

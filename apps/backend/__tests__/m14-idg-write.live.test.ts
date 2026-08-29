@@ -335,8 +335,8 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     expect(ledger[0]?.agendaItemId).toBe(agendaItem.id);
     expect(ledger[0]?.recordedByMembershipId).toBe(MEMBER);
     // The D4 payload is the §3.3 denylisted narrative — a property of this read, not an accident.
-    expect((ledger[0] as Record<string, unknown>).payload).toBeUndefined();
-    expect((ledger[0] as Record<string, unknown>).quorumSnapshot).toBeUndefined();
+    expect(ledger[0]).not.toHaveProperty("payload");
+    expect(ledger[0]).not.toHaveProperty("quorumSnapshot");
   });
 
   it("the three conduct reads are tenant-scoped: org B sees org A's meeting as 404", async () => {
@@ -360,6 +360,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       svc.recordDecision(ORG_A, MEMBER, scheduled, {
         patientId: PATIENT,
         decisionKind: "order_request",
+        payload: { kind: "order_request", requestedOrders: [] },
       }),
     ).rejects.toMatchObject({ code: "MEETING_NOT_LIVE" });
 
@@ -368,6 +369,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       svc.recordDecision(ORG_A, MEMBER, live, {
         patientId: PATIENT,
         decisionKind: "order_request",
+        payload: { kind: "order_request", requestedOrders: [] },
       }),
     ).rejects.toMatchObject({ code: "INCLUSION_CRITERIA_FAILED" });
   });

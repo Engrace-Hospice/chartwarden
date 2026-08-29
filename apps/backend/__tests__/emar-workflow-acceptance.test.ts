@@ -18,6 +18,7 @@ import {
   type CascadeScheduledDose,
   type ComfortKitDeployedEnvelope,
   type IvSegment,
+  type KitDrawdownState,
   type ReconciliationTriggerEnvelope,
   applyKitDrawdown,
   assertIvSegmentLegal,
@@ -126,9 +127,24 @@ describe("M13-T11 §5 workflow acceptance", () => {
       ],
     };
     const plan = buildComfortKitDeployment(envelope);
-    const morphine = plan.drawdowns[0]!;
-    expect(morphine.remainingQuantity).toBe(20);
-    expect(morphine.replenishmentThreshold).toBe(5); // 25% of 20
+    const planned = plan.drawdowns[0]!;
+    expect(planned.remainingQuantity).toBe(20);
+    expect(planned.replenishmentThreshold).toBe(5); // 25% of 20
+
+    // `buildComfortKitDeployment` returns the DEPLOYMENT plan (`KitDrawdownInit`), and `applyKitDrawdown`
+    // decrements the PERSISTED row (`KitDrawdownState`) — different shapes: the state keys the deployment
+    // as `deploymentId` and carries the `drugName` the replenishment signal names. The suite used to hand
+    // the plan item straight in, so every drawdown below ran with an undefined deployment id and drug.
+    const morphine: KitDrawdownState = {
+      deploymentId: planned.comfortKitDeploymentId,
+      medicationOrderId: planned.medicationOrderId,
+      remainingQuantity: planned.remainingQuantity,
+      expectedQuantity: planned.expectedQuantity,
+      expectedUnit: planned.expectedUnit,
+      replenishmentThreshold: planned.replenishmentThreshold,
+      lotNumber: planned.lotNumber,
+      drugName: "morphine sulfate",
+    };
 
     // Above threshold → no signal; at/below threshold → routine; ≤10% (or ≥3 PRN/24h) → urgent.
     expect(applyKitDrawdown(morphine, { administeredAmount: 1 }).replenishmentSignal).toBeNull();

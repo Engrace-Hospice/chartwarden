@@ -50,6 +50,11 @@ function bootWithSession(
 ): void {
   const { store } = createInMemorySessionContextStore([
     {
+      providerEntityIds: [],
+      locationIds: [],
+      sessionClass: "staff",
+      portalAccountId: null,
+      sessionPatientId: null,
       sessionId: SESSION,
       userId: "user-1",
       membershipId: "mem-1",

@@ -38,6 +38,10 @@ export const GATES = [
   // that disagrees with the manifest makes its verdict meaningless. Better to say the mirror is wrong
   // than to report a boundary pass derived from the wrong architecture.
   "arch:manifest-mirror",
+  // F-098 — beside the manifest mirror for the same reason: it is a check on whether the OTHER checks
+  // mean anything. A green `typecheck` over a tree where 631 test files were compiled by nothing said
+  // only that `src` compiles.
+  "arch:test-typecheck",
   "arch:boundaries",
   "arch:tables",
   "arch:tenancy",

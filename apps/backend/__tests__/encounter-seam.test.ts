@@ -220,6 +220,13 @@ describe("boot wiring (registerEncounterSeams)", () => {
     const carePlan = {
       relevantElementsForEncounter: async () => null,
       isReviewOverdue: async () => null,
+      // The two M30 org rollups the seam also publishes; this case asserts registry round-trip only.
+      fifteenDayCycleCountsForOrg: async () => {
+        throw new Error("not exercised by this suite");
+      },
+      terminologyCodeUsageForOrg: async () => {
+        throw new Error("not exercised by this suite");
+      },
     };
     registerSeam("CarePlanReader", carePlan);
     expect(getCarePlanReader()).toBe(carePlan);

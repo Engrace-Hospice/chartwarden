@@ -174,6 +174,9 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     ACTOR_A = { membershipId: membershipOf[ORG_A], sessionId: SESSION_A };
     const sessions = createInMemorySessionContextStore([
       {
+        sessionClass: "staff",
+        portalAccountId: null,
+        sessionPatientId: null,
         sessionId: SESSION_A,
         userId: USER,
         membershipId: membershipOf[ORG_A],

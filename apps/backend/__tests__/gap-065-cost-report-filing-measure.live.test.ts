@@ -41,7 +41,7 @@ const ORG = "65656565-6565-6565-6565-656565656565";
 const PROVIDER_ENTITY = "00000000-0000-0000-0000-0000000000e1";
 const MEASURE = "cost_report_filing_compliance";
 
-function parseRedisUrl(url: string): ConnectionOptions {
+function parseRedisUrl(url: string): { host: string; port: number } {
   const u = new URL(url);
   return { host: u.hostname, port: Number(u.port || 6379) };
 }

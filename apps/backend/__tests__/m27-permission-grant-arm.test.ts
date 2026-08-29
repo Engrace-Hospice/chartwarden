@@ -46,7 +46,7 @@ const resolver: ReadingM27AbacResolver = {
       : null;
   },
   async loadMembershipProviderScope() {
-    return { providerEntityIds: [PE_OTHER] } as Awaited<
+    return { membershipId: "mem-1", organizationId: ORG, providerEntityIds: [PE_OTHER] } as Awaited<
       ReturnType<ReadingM27AbacResolver["loadMembershipProviderScope"]>
     >;
   },

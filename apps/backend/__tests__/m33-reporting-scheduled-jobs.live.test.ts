@@ -130,7 +130,7 @@ const PLATFORM_WRITER_FUNCTIONS = [
   "report_writer_update_platform_mv_metadata(text, jsonb)",
 ] as const;
 
-function parseRedisUrl(url: string): ConnectionOptions {
+function parseRedisUrl(url: string): { host: string; port: number } {
   const u = new URL(url);
   return { host: u.hostname, port: Number(u.port || 6379) };
 }
@@ -278,8 +278,12 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       const outboxCatalog = buildBootOutboxCatalog([M33_OUTBOX_EVENTS]);
       const txOutboxPublisher = buildTxOutboxPublisher(outboxCatalog);
       const outboxPublisher = {
-        publish: (tx: DbClient, input: Parameters<typeof txOutboxPublisher.publish>[1]) =>
-          txOutboxPublisher.publish(tx, { ...input, callerModule: "m33" }),
+        // The whole point of this wrapper is to ADD `callerModule`, so its own parameter must be the
+        // input WITHOUT it — naming the full publish input made the double demand the field it supplies.
+        publish: (
+          tx: DbClient,
+          input: Omit<Parameters<typeof txOutboxPublisher.publish>[1], "callerModule">,
+        ) => txOutboxPublisher.publish(tx, { ...input, callerModule: "m33" }),
       };
 
       workers = registerM33Workers(

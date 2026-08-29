@@ -511,7 +511,7 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
       },
     });
     expect(res.statusCode).toBe(201);
-    expect(res.json().state).toBe("active");
+    expect(res.json<{ state: string }>().state).toBe("active");
     await app.close();
   });
 
@@ -587,7 +587,7 @@ describe("M6 — #50 the activation route sites the admission", () => {
   const codeOf = (res: { json(): { error?: { code?: string } } }): string | undefined =>
     res.json().error?.code;
   const activate = (
-    app: { inject: (o: unknown) => Promise<{ statusCode: number; json(): never }> },
+    app: { inject: (o: unknown) => Promise<{ statusCode: number; json<T = unknown>(): T }> },
     body: Record<string, unknown>,
   ) =>
     app.inject({
@@ -609,7 +609,7 @@ describe("M6 — #50 the activation route sites the admission", () => {
     const { app, backend } = makeServer();
     const res = await activate(app, { ifVersion: 1, locationId: LOC_IPU });
     expect(res.statusCode).toBe(200);
-    expect(res.json().state).toBe("active");
+    expect(res.json<{ state: string }>().state).toBe("active");
     // The route carried `locationId` through to the service — asserted on the record, not the response,
     // because a route that silently dropped the field would still return 200.
     const detail = await backend.service.getAdmission(ORG, ADMISSION_READY);

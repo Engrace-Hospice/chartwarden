@@ -67,6 +67,7 @@ function indicatorResult(thresholdMet: boolean | null): QualityMeasureValueResul
     rate: thresholdMet === null ? null : thresholdMet ? 1 : 0,
     thresholdMet,
     bandColor: thresholdMet === null ? "insufficient_n" : thresholdMet ? "green" : "red",
+    thresholdValue: 1,
     computationSnapshot: EMPTY_SNAPSHOT,
   };
 }

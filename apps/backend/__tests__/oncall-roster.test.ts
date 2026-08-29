@@ -105,7 +105,10 @@ describe("M19 §2.2.2 — the on-call shift machine", () => {
   it("cancels ONLY from scheduled — an active shift ends as completed, never cancelled", () => {
     // An active shift was real coverage for the hours it ran; §3.3's `m19_on_call_shift_opened_at` CHECK
     // exempts `cancelled` from carrying an `opened_at` precisely because it is the never-opened terminal.
-    expect(availableShiftCommands("scheduled").sort()).toEqual(["activateShift", "cancelShift"]);
+    expect([...availableShiftCommands("scheduled")].sort()).toEqual([
+      "activateShift",
+      "cancelShift",
+    ]);
     expect(availableShiftCommands("active")).toEqual(["completeShift"]);
     try {
       cancelShift({ shift: shift({ status: "active", openedAt: NIGHT_START }), reason: "sick" });

@@ -438,7 +438,7 @@ describe.skipIf(!DB_URL)(
       );
 
       const { runWithRequestContext } = await import("@wardenx/tenancy");
-      const inOrg = <T>(fn: () => Promise<T>) =>
+      const inOrg = <T>(fn: () => T): T =>
         runWithRequestContext({ organizationId: org, userId: adminUser } as never, fn);
 
       const roster = await repo.listForOrg(org);
@@ -458,7 +458,7 @@ describe.skipIf(!DB_URL)(
         )
       ).rows[0].id as string;
       expect((await inOrg(() => repo.get(adminMem)))?.membershipId).toBe(adminMem);
-      const crossOrg = <T>(fn: () => Promise<T>) =>
+      const crossOrg = <T>(fn: () => T): T =>
         runWithRequestContext({ organizationId: otherOrg, userId: adminUser } as never, fn);
       expect(await crossOrg(() => repo.get(adminMem))).toBeNull();
 
@@ -515,9 +515,9 @@ describe.skipIf(!DB_URL)(
         )
       ).rows[0].id as string;
 
-      const inOrg = <T>(fn: () => Promise<T>) =>
+      const inOrg = <T>(fn: () => T): T =>
         runWithRequestContext({ organizationId: org, userId } as never, fn);
-      const inOther = <T>(fn: () => Promise<T>) =>
+      const inOther = <T>(fn: () => T): T =>
         runWithRequestContext({ organizationId: otherOrg, userId } as never, fn);
 
       // assign carries the org explicitly; the grant reads back under the org's ambient context.

@@ -107,10 +107,16 @@ describe("publishOutboxEvent — catalog validation", () => {
     const err = await publishOutboxEvent(
       { ...base, eventName: "m9.unknown.thing", payload: {} },
       persist,
-    ).catch((e) => e as OutboxEventValidationError);
+    ).then(
+      () => null,
+      (e: unknown) => e as OutboxEventValidationError,
+    );
     expect(err).toBeInstanceOf(OutboxEventValidationError);
-    expect(err.message).toContain("m9.unknown.thing");
-    expect(err.message).toContain("unknown_event");
+    // `.then(resolve → null)` rather than `.catch`: `publishOutboxEvent` resolves to void, so the
+    // `.catch` form widened `err` to `void | OutboxEventValidationError` and a RESOLVED publish — the
+    // failure this case exists to catch — would have read as an absent message rather than a failure.
+    expect(err?.message).toContain("m9.unknown.thing");
+    expect(err?.message).toContain("unknown_event");
   });
 
   it("persists a valid event exactly once with the normalized record", async () => {

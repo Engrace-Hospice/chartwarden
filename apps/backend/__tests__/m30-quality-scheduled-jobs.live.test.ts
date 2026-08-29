@@ -66,7 +66,7 @@ const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audi
 const ORG = "33333333-3333-3333-3333-333333333333";
 const PROVIDER_ENTITY = "00000000-0000-0000-0000-0000000000c1";
 
-function parseRedisUrl(url: string): ConnectionOptions {
+function parseRedisUrl(url: string): { host: string; port: number } {
   const u = new URL(url);
   return { host: u.hostname, port: Number(u.port || 6379) };
 }

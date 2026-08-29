@@ -326,7 +326,9 @@ describe("route service — aggregator + resolution lifecycle over the machine",
         },
       ],
     });
-    expect(svc.cancelSubmission("org-1", "ops-1", "sub-q").status).toBe("cancelled");
+    expect(svc.cancelSubmission("org-1", "ops-1", "sub-q", "operator cancelled").status).toBe(
+      "cancelled",
+    );
   });
 
   it("is org-pinned — a cross-tenant submission id is NOT found", () => {

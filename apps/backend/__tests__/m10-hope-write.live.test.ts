@@ -15,8 +15,9 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
-import { DEFAULT_ORG_TIME_ZONE, orgLocalDate } from "@wardenx/hope";
+import { DEFAULT_ORG_TIME_ZONE, HOPE_VALIDATION_RULES, orgLocalDate } from "@wardenx/hope";
 import { withOrgContext } from "@wardenx/tenancy";
+import type { LatestAssessment, ScaleType } from "@wardenx/types";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
@@ -269,11 +270,39 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
         }),
       });
       registerSeam("LatestAssessmentProvider", {
-        latestBatch: async (_patientId: string, scaleTypes: readonly string[]) => {
+        latest: async () => {
+          throw new Error("single-scale `latest` is not exercised by this suite");
+        },
+        // The M9 seam publishes the WHOLE `LatestAssessment`, not the two fields M10 reads off it; the
+        // fake used to return `{ scaleType, score }` and satisfied nothing but its own consumer.
+        latestBatch: async (_patientId: string, scaleTypes: readonly ScaleType[]) => {
           if (scores === "unavailable") throw new Error("M9 seam unavailable");
-          return scaleTypes.flatMap((scaleType) => {
+          return scaleTypes.flatMap<LatestAssessment>((scaleType) => {
             const score = scores[scaleType as "pps" | "esas_r"];
-            return score === null ? [] : [{ scaleType, score }];
+            if (score === null) return [];
+            return [
+              {
+                assessmentId: `assess-${scaleType}`,
+                patientId: PATIENT,
+                admissionId: "adm-1",
+                scaleType,
+                scaleVersion: "1",
+                score,
+                scoreInterpretation: null,
+                capturedAt: "2026-01-05T00:00:00.000Z",
+                capture: {
+                  capturedByMembershipId: "mem-1",
+                  capturedByDiscipline: "rn",
+                  providerEntityId: "pe-1",
+                  locationId: "loc-1",
+                },
+                sourceEncounterId: null,
+                cosignRequired: false,
+                cosignedAt: null,
+                status: "active",
+                redacted: false,
+              } as LatestAssessment,
+            ];
           });
         },
       });
@@ -668,7 +697,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
         deps({
           validateItem: async () => [
             {
-              ruleId: "cms.section_i.missing",
+              ruleId: HOPE_VALIDATION_RULES.REQUIRED_SECTION_MISSING,
               severity: "error" as const,
               section: "I",
               itemCode: null,

@@ -29,6 +29,12 @@ describe("HCI indicator 1 — Continuous Home Care or General Inpatient provided
         async chcOrGipCoverageCounts() {
           return { numerator: 3, denominator: 20 };
         },
+        async levelOfCareDaySpans() {
+          throw new Error("not exercised by this indicator");
+        },
+        async electionPeriodSpans() {
+          throw new Error("not exercised by this indicator");
+        },
       },
     });
     expect(input).toMatchObject({ totalElectionPeriods: 20, periodsWithChcOrGipDay: 3 });
@@ -40,6 +46,12 @@ describe("HCI indicator 1 — Continuous Home Care or General Inpatient provided
       levelOfCarePeriodReader: {
         async chcOrGipCoverageCounts() {
           return { numerator: 0, denominator: 0 };
+        },
+        async levelOfCareDaySpans() {
+          throw new Error("not exercised by this indicator");
+        },
+        async electionPeriodSpans() {
+          throw new Error("not exercised by this indicator");
         },
       },
     });

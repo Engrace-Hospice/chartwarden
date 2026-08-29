@@ -50,7 +50,14 @@ async function activatableAdmission() {
     signingPatientName: "Pat Patient",
     signingRole: "patient",
   });
-  await svc.acknowledgeNor(ORG, acc.admissionId, U);
+  await svc.acknowledgeNor(
+    ORG,
+    acc.admissionId,
+    // The §418.24 NOR acknowledgement input; the call passed the actor where the input goes and
+    // dropped the input entirely.
+    { deliveryMethod: "wet_ink_scanned", acknowledgedByRole: "patient" },
+    U,
+  );
   const cti = await svc.draftCti(
     ORG,
     {

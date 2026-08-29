@@ -94,6 +94,7 @@ describe("M12-T10 §5 workflow acceptance", () => {
     const active = transitionMedicationOrder("ack_received", {
       type: "activate",
       isSystemActor: true,
+      transmissionRequired: false,
     });
     expect(active.to).toBe("active");
     // Each system-actor transition carries exactly one §4.4 outbox effect (the relay publishes it in-tx).

@@ -241,6 +241,50 @@ the prose docs in `docs/architecture/`.
   Duplicates are a hard error naming **every** claimant (the fix is a rename, and which file to
   rename is the reader's judgement); **gaps are reported, never fatal**, because a branch that
   leaves 0215 for a sibling PR and takes 0216 is doing the right thing.
+- `scripts/check-test-typecheck-coverage.ts` — **test-tree typecheck coverage gate** (F-098,
+  `bun run arch:test-typecheck`, in `arch:fitness`; `bun run typecheck` now runs `tsc -b` PLUS
+  `typecheck:tests`). **Every test file vitest runs must be in a typecheck program. None of them were.**
+  All four apps and all 51 packages set `"include": ["src"]`, and the convention here puts a suite in a
+  sibling `__tests__/`, so `tsc -b` compiled the source of every project and **631 files vitest runs were
+  compiled by nothing** — 346 of them in `apps/backend/__tests__` alone. Only `scripts/` (its own tsconfig
+  globs everything under it) and `e2e/` were covered. A test file is the only executable statement of what
+  a production signature is supposed to be, and when it is not compiled, changing a signature does not
+  break its callers — it silently makes them WRONG, and a suite that no longer matches the code it covers
+  still reports green for whatever it does instead. **F-096 (#209) is the worked example**: it made
+  `PatientRouteService.list`'s caseload-narrowing argument REQUIRED, a two-argument caller survived in
+  `auth.live.test.ts`, and a full `typecheck && test` was green on both — invisible on two axes at once,
+  since a live suite also self-skips without a database. The census-narrowing control shipped with its own
+  proof passing an undefined scope. The gate does not check that the configs EXIST, it checks that they
+  RESOLVE to the same file set the runner does: it imports `vitest.config.ts` itself (rather than
+  restating its globs — the copy-of-a-list shape F-094/F-095 were about), expands each project's
+  include/exclude over the tracked tree, and requires every file to appear in the `fileNames` of the
+  `tsc -b` project graph, `tsconfig.tests.json` or `tsconfig.tests.dom.json`. Its glob matcher REFUSES a
+  pattern it cannot represent rather than approximating it — an under-matching matcher reports a covered
+  file as unchecked, or an unchecked one as covered, both with a green build. It also checks the SPLIT:
+  the DOM program is the only one carrying `lib: DOM` + `jsx`, and a jsdom suite compiled without them
+  reports itself, while a NODE suite drifting into the DOM program compiles happily and throws at runtime
+  on a `document` jsdom was never asked for — so the two programs must be **disjoint**. The test programs
+  set `noUncheckedIndexedAccess: false` and nothing else: that one flag accounts for **720 of the 944**
+  errors turning this on surfaced, all of them `possibly undefined` on test-local scaffolding where a
+  dereference throws and fails the test loudly, which is the correct outcome and not the silent-undefined
+  propagation the flag exists to prevent. The **224 that remain are the interface-agreement class**, and
+  fixing them found live defects in the corpus: fabricated enum values a database would reject
+  (`verbal_threat`/`animal_hazard` for `safety_incident_category`, `rn` for `OncallShiftDiscipline`,
+  `scheduled` for `VisitStatus`, `home` for `VisitSetting`, `closed` for `DisciplinePlanStatus`,
+  `patient` for `ConsentGrantorKind`, `cloud`/`capability_default` for the two `ai_routing_*` enums,
+  `cms.section_i.missing` for a HOPE rule id); `discipline-plans-authz`'s `__resetAbacForTest?.()`, a
+  no-op because nothing exports that name, so the registry it clears was never cleared; M14's
+  `createInMemoryIdgBackend` returning `drainEvents`/`currentQuorum` through an untyped `Object.assign`
+  under an annotation that widened them away (now `IdgBackendInspect`, the M22 `DocumentBackendInspect`
+  shape); every `recordDecision` call in the M14 acceptance suite omitting the REQUIRED §2.6 D4 `payload`,
+  so the adjournment burst it asserts carried nothing to M7/M11/M12; the M13 comfort-kit suite handing a
+  `KitDrawdownInit` (the deployment plan) to `applyKitDrawdown` (which decrements the persisted
+  `KitDrawdownState`), running every drawdown with an undefined deployment id and drug name; `SeedIds` in
+  the M9 read suite naming two of the five ids `seedOrg` returns; a `json(): never` inject-helper
+  declaration that made every response-body read in `hope-routes`/`admission-routes` an error; and ~20
+  `SessionContextRecord` fixtures still on the pre-F-030 shape, which is why `identity-seams.test.ts`
+  asserted `sessionClass`/`portalAccountId`/`sessionPatientId` as `undefined` — a shape the real store
+  cannot return — directly under a comment claiming it pinned the FULL actor.
 - `scripts/check-manifest-mirror.ts` — **manifest-mirror agreement gate** (`bun run arch:manifest-mirror`,
   in `arch:fitness`, ordered BEFORE `arch:boundaries`). The manifest exists twice: `module-manifest.ts` is
   what every fitness script imports, and `module-manifest.cjs` is the CommonJS mirror

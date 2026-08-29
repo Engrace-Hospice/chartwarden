@@ -40,6 +40,8 @@ const MEMBERSHIP = "22222222-2222-4222-8222-222222222222";
 const SESSION = "sess_1";
 
 const ACTOR: ResolvedActor = {
+  deviceAttestation: null,
+  externalActorId: null,
   userId: "u1",
   membershipId: MEMBERSHIP,
   organizationId: ORG,
