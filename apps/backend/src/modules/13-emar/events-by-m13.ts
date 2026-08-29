@@ -381,7 +381,10 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       admissionId: id,
       contents: Type.Unknown(),
     }),
-    declaredConsumers: ["m14"],
+    // F-094/#205 — `m21` was absent while `consumers/m13-comfort-kit.ts` has decided on this topic
+    // since M21-T04 and `M21_SUBSCRIBED_EVENT_NAMES` has named it since M21-T01. The relay routed a kit
+    // deployment past the only module that stocks one.
+    declaredConsumers: ["m14", "m21"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -452,7 +455,9 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       deltaQuantity: Type.Number(),
       deltaPercent: Type.Number(),
     }),
-    declaredConsumers: ["m30"],
+    // F-094/#205 — same as `comfort_kit.deployed`: M21 owns the CII discrepancy's supply-side
+    // reconciliation (`consumers/m13-comfort-kit.ts`) and was declared nowhere.
+    declaredConsumers: ["m21", "m30"],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },

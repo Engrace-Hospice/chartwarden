@@ -707,16 +707,40 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   DELETE on nothing in M20 and both statements were written before anything executed one. Migration 0238
   grants it on that one table: a `proposed` row is a plan the system MADE, not evidence of anything that
   happened, and 0111's own M4 trigger fires on DELETE so the retirement stays on the record.
-  **The standing finding this surfaced is one level up again.** Six modules publish an
-  `M*_SUBSCRIBED_EVENT_NAMES` constant whose doc comment says it exists "so an upstream rename breaks the
-  build rather than silently orphaning a handler" — and **nothing compares any of them to the catalog**.
-  Measured across M16/M19/M20/M21/M31/M35: **7 subscribed names are in no catalog at all** (M35's four
-  `m2.*`, `m17.shift_changed`, and `m36.notification.delivery_failed`, which M19, M20 and M26 each name and
-  which cannot exist because **M36 contributes no event catalog to the boot dispatcher** — there is no
-  `M36_OUTBOX_EVENTS`); **26 (module, event) pairs** are subscribed by the module and undeclared in the
-  catalog, so the relay routes them to nobody; and **32** are the reverse. That is the F-025/F-043 unasked
-  direction at a third level — binding → catalog and catalog → binding are both now checked, module
-  subscription list → catalog is not.
+  **Rule 6 (F-094, #205) is the direction rule 4 still did not run.** Six modules publish an
+  `M*_SUBSCRIBED_EVENT_NAMES` constant, and each carries the same doc comment — it exists "so an upstream
+  rename breaks the build rather than silently orphaning a handler". **Nothing compared any of them to
+  anything.** They are string-literal tuples, and the tests that reference them assert the list's SHAPE
+  (three dot-separated segments, no self-consumption, contains one particular corrected name) and never
+  that a name EXISTS; two of the six also claimed to be "verified as live by `validateSeams()` at boot",
+  which validates the SEAM registry and has no knowledge of event names. The six and the catalog disagreed
+  on **65 facts**. Rule 6 asks both directions and the halves are not symmetric: a name the catalog does
+  not declare is an event the relay delivers to NOBODY in that module, and writing a binding does not help
+  — `assertBindableAgainstCatalog` refuses a binding whose module is undeclared, which is the wall #204
+  hit; a declaration the list omits is just the list being wrong, since the catalog is what the relay
+  reads. So **32 were reconciled INTO the lists**, including `idg.decision_recorded` — the one event M16
+  binds live, which M16's own subscription list did not name. **Three were real routing bugs**: M21 has
+  had deciders for `m13.comfort_kit.deployed` and `.controlled_substance_discrepancy` since M21-T04 and
+  the catalog named m14 and m30, so a kit deployment routed past the only module that stocks one; M16's
+  `decideCosignReceipt` is the D18 gate-release decider for `m6.discharge.cosigned`, declared to m22
+  alone. **Three were deleted** — M16's `m17.shift_changed` (M17 emits no shift topic under any name) and
+  M20's two `m19.oncall_shift.*` (its own `consumers/index.ts` says there is nothing to consume: they
+  were the re-sync trigger for a cached on-call resolution and M20 caches none). The remaining **28 are
+  `scripts/outbox-subscription-exceptions.ts`**, grouped by (module, kind) so the reason lives once and
+  the event lists stay exact, with four kinds that each state a checkable fact rather than an intention:
+  `no-producer` (6), `no-handler` (11), `record-only-target` (8), `would-defer-a-bound-event` (3). The
+  last is the one that stops a well-meant fix: `m22.document.rendered` and `m17.visit.published` are
+  delivered TODAY to every consumer they declare, so adding an unbound one would convert a working
+  delivery into a row re-claimed every thirty minutes — **for the other consumers too**. The gate deletes
+  each entry's own excuse when it expires: a pair that comes to agree both ways fails, one no longer
+  named by either side fails, a `no-producer` entry whose event gets catalogued fails, and any other kind
+  naming an uncatalogued event fails. **`no-producer` is the standing finding and prints on every run**:
+  **M2 and M36 contribute NO event catalog to the boot dispatcher** — there is no `M2_OUTBOX_EVENTS` and
+  no `M36_OUTBOX_EVENTS` — so `m36.notification.delivery_failed` (named by M19, M20 and M26, with a
+  written decider in `19-oncall/consumers/m36-delivery-failed.ts` and a matching `delivery_failed` SOS
+  escalation reason in M20) and M35's four `m2.*` organization/session topics have no producer at all.
+  That is half of M35's entire subscription list, and its §4.12 per-seat billing is specified on it.
+
 
 - `scripts/check-architecture-docs.ts` — **architecture-corpus freshness gate**
   (`bun run arch:architecture-docs`, in `arch:fitness` since 2026-08-14). The authority rule makes

@@ -209,8 +209,28 @@ export const M35_EVENT_NAMES = [
 
 export type M35EventName = (typeof M35_EVENT_NAMES)[number];
 
-/** The §4.12 upstream events M35 subscribes to (verified as live by `validateSeams()` at boot). */
+/**
+ * The §4.12 upstream events M35 subscribes to.
+ *
+ * This used to say "(verified as live by `validateSeams()` at boot)". It is not and never was:
+ * `validateSeams()` validates the M1 SEAM registry and has no knowledge of outbox event names. Rule 6 of
+ * `check-outbox-bindings.ts` (F-094/#205) is the first thing to check it, and found that HALF of what this
+ * list named does not exist: **M2 contributes no event catalog to the boot dispatcher** — there is no
+ * `M2_OUTBOX_EVENTS` — so the four `m2.*` topics the §4.12 seat-count and suspension logic are specified
+ * against have no producer. They are registered in `scripts/outbox-subscription-exceptions.ts` rather than
+ * deleted, because M35's whole per-seat billing model is specified on them and the absence is M2's to
+ * close.
+ *
+ * M35 has no `consumers/` directory either, so the rest are intents. The split is what the catalog says.
+ */
 export const M35_SUBSCRIBED_EVENT_NAMES = [
+  // Catalogued AND declaring `m35`.
+  "m32.tenant_opt_in.recorded",
+  "m32.tenant_opt_in.revoked",
+  "m32.capability.invoked",
+  "m34.tenant.provisioned",
+  "m34.tenant.offboarding_initiated",
+  // Subscribed and NOT routed here — the four `m2.*` have no producer at all.
   "m2.organization.activated",
   "m2.organization.suspended",
   "m2.organization.closed",

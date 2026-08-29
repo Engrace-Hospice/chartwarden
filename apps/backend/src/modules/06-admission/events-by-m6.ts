@@ -442,7 +442,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       dischargeEventId: Type.String({ minLength: 1 }),
       medicalDirectorCosignedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m22"],
+    // F-094/#205 — M16's `consumers/m6-eligibility.ts` carries `decideCosignReceipt`, the D18
+    // gate-release decider for exactly this topic, and the catalog named only m22.
+    declaredConsumers: ["m16", "m22"],
     isOutboxOnly: true,
   },
   // ── notice of rights ────────────────────────────────────────────────────────────────────────────
