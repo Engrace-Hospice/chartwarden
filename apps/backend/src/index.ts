@@ -238,6 +238,7 @@ import {
 } from "./modules/10-hope/index";
 import {
   M11_OUTBOX_EVENTS,
+  buildM11DischargeCascadeConsumer,
   buildM11DocumentBackrefConsumer,
   buildM11IdgDecisionConsumer,
   createDrizzleOrderEraseStore,
@@ -251,6 +252,7 @@ import {
 } from "./modules/11-orders/index";
 import {
   M12_OUTBOX_EVENTS,
+  buildM12DischargeCascadeConsumer,
   buildM12DocumentBackrefConsumer,
   buildM12IdgDecisionConsumer,
   createDrizzleDoseSpotSeamStore,
@@ -4450,6 +4452,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           buildM6DocumentBackrefConsumer({ db: dbHandle.db }),
           buildM11DocumentBackrefConsumer({ db: dbHandle.db }),
           buildM12DocumentBackrefConsumer({ db: dbHandle.db }),
+          // F-102 — the M6 discharge cascade, both halves. Each decider has been complete, exported and
+          // unit-tested since M11-T07 / M12-T08 with no caller but its own test, and neither COULD be
+          // bound: `m6.admission.discharged` did not declare m11 or m12, and
+          // `assertBindableAgainstCatalog` refuses a binding whose module the catalog does not name. Every
+          // order and every medication order in flight when a patient was discharged stayed in flight —
+          // including `queued_for_transmission`, an order waiting to reach the e-prescribing vendor.
+          buildM11DischargeCascadeConsumer({ db: dbHandle.db, outbox: m11OutboxPublisher }),
+          buildM12DischargeCascadeConsumer({ db: dbHandle.db, outbox: m12OutboxPublisher }),
           buildM13DocumentBackrefConsumer({ db: dbHandle.db }),
           buildM21DocumentBackrefConsumer({ db: dbHandle.db }),
           // GAP-051 — M33's half. Unlike the four above it does more than stamp a column: a rendered
