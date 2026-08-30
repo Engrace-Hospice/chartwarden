@@ -84,6 +84,8 @@ export interface ActionItemView {
   readonly status: IdgActionItemStatus;
   readonly dueDate: string;
   readonly linkedArtifactKind: IdgActionItemLinkedKind | null;
+  /** F-104 — the D8 auto-close key, previously absent from the view as well as from the write path. */
+  readonly linkedArtifactId: string | null;
 }
 /**
  * A meeting's minutes (GET /idg/meetings/:id/minutes).
@@ -201,6 +203,8 @@ export interface CreateActionItemArgs {
   readonly assignedToMembershipId: string;
   readonly dueDate: string;
   readonly linkedArtifactKind?: IdgActionItemLinkedKind;
+  /** F-104 — the D8 auto-close key. Must arrive WITH `linkedArtifactKind`; see the route contract. */
+  readonly linkedArtifactId?: string;
 }
 
 /** The §4.1 route service contract (the routes layer composes over this). */
@@ -422,6 +426,7 @@ interface ActionItemRow {
   status: IdgActionItemStatus;
   dueDate: string;
   linkedArtifactKind: IdgActionItemLinkedKind | null;
+  linkedArtifactId: string | null;
 }
 interface MinutesRow {
   id: string;
@@ -935,6 +940,7 @@ export function createInMemoryIdgBackend(
         status: "open",
         dueDate: args.dueDate,
         linkedArtifactKind: args.linkedArtifactKind ?? null,
+        linkedArtifactId: args.linkedArtifactId ?? null,
       };
       actionItems.set(id, row);
       emit("m14.action_item.created", {

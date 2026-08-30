@@ -13,7 +13,7 @@
 // through the meeting-specific predicate.
 import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
 import type { IdgActionItemStatus, IdgAttendanceStatus } from "@wardenx/types";
-import { UnauthorizedError } from "@wardenx/types";
+import { UnauthorizedError, ValidationError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
 import { REVIEW_FLOOR_OVERRIDE_ATTRIBUTE } from "../abac-predicates";
@@ -441,12 +441,30 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(CreateActionItemRequest, request.body);
+      // F-104 — the two D8 link fields travel together or not at all. A kind with no id can never be
+      // matched when the artifact closes, and an id with no kind is matched by nothing: either alone
+      // produces an item that LOOKS linked and will stay open forever, which is the failure the
+      // auto-close engine exists to prevent. 422 rather than a silent null.
+      if ((b.linkedArtifactKind === undefined) !== (b.linkedArtifactId === undefined)) {
+        throw new ValidationError(
+          "linkedArtifactKind and linkedArtifactId must be supplied together",
+          [
+            {
+              field: b.linkedArtifactId === undefined ? "linkedArtifactId" : "linkedArtifactKind",
+              code: "LINKED_ARTIFACT_INCOMPLETE",
+              message:
+                "a half-linked action item can never auto-close: the kind is what the D8 consumer matches on and the id is what it confirms",
+            },
+          ],
+        );
+      }
       const res = await service.createActionItem(organizationId, userId, id, {
         decisionId: b.decisionId,
         patientId: b.patientId,
         assignedToMembershipId: b.assignedToMembershipId,
         dueDate: b.dueDate,
         linkedArtifactKind: b.linkedArtifactKind,
+        linkedArtifactId: b.linkedArtifactId,
       });
       return reply.code(201).send(res);
     },

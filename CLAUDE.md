@@ -1032,6 +1032,35 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   lying to itself twice**: three cases were `for (const p of await plansFor(…))` over an empty list, which
   asserts nothing and passed while the consumer was refusing every delivery.
 
+  **M14's D8 action-item auto-close: three absences stacked, and the deepest one would have made the
+  fix look like it worked (F-104, #103).** §4.5 says an action item linked to a downstream artifact closes
+  itself when that artifact reaches its absorbing state — "action item flips to `auto_closed`;
+  `linked_artifact_id` confirmed; `closed_at = now()`". Everything for it shipped with M14-T06 except what
+  makes it run: `transitionActionItem(_, {type:'autoClose'})` complete and unit-tested, `auto_closed` in
+  the status enum, `close_reason` on the table, `m14.action_item.auto_closed` catalogued,
+  `planActionItemAutoClose` mapping each source event to its linked kind — and **no binding**, plus three
+  of the six sources (`m11.order.signed`, `m11.order.completed`, `m12.medication_order.signed`) not
+  declaring m14 at all, so `assertBindableAgainstCatalog` would have refused half of it. **Underneath both:
+  `idg_action_item.linked_artifact_id`, the column the whole engine matches on, was written by NOTHING** —
+  the create route took `linkedArtifactKind` and not the id, the INSERT wrote the kind and not the id, the
+  view returned the kind and not the id, and `m14.action_item.created` announced the kind and not the id.
+  The `election_period.effective_at` shape (read in seven places, written in none) one module over, and
+  the reason binding alone would have been WORSE than not binding: a live handler matching NULL forever,
+  green, with a `close_reason` value and an outbox event to make it look wired. Both link fields now travel
+  together or not at all (422), because a kind with no id can never close and an id with no kind is matched
+  by nothing — either alone is an item that LOOKS linked and stays open. **The M8 case is deliberately not
+  the same rule**: §2 and §4.5 both say `m8.encounter.signed` closes an `encounter`-linked item MATCHING THE
+  ASSIGNEE, not the artifact, because the encounter did not exist when the item was written. Collapsing the
+  two is the obvious simplification and it is wrong in the expensive direction either way round — keyed on
+  the artifact no encounter item would ever close, keyed on the assignee a signed care plan would close that
+  clinician's unrelated order items. Proven by `m14-action-item-autoclose.live.test.ts`, which publishes
+  each real upstream event through the real catalog-validating publisher (four of the six payloads this
+  suite first invented were REFUSED by it, which is the guard working) and drives the real dispatcher into
+  the real consumer under RLS; 6 of its 8 fail with the binding removed. What remains in the m14 group is
+  the other three shapes M14 describes and has not built — the M6 inclusion cache, the M9/M10/M11/M12
+  "since last IDG" Valkey projection cache, and the M22 packet back-ref, which additionally has no producer
+  since `m14.packet.document_requested` is catalogued by nobody.
+
   **Rule 6 (F-094, #205) is the direction rule 4 still did not run.** Six modules publish an
   `M*_SUBSCRIBED_EVENT_NAMES` constant, and each carries the same doc comment — it exists "so an upstream
   rename breaks the build rather than silently orphaning a handler". **Nothing compared any of them to

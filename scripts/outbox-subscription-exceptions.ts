@@ -259,13 +259,8 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     module: "m14",
     kind: "no-handler",
     reason:
-      "M14's `consumers/` is `index.ts` alone: the D8 auto-close MAPPING (`M14_AUTO_CLOSE_LINKED_KIND` + `planActionItemAutoClose`) ships and is unit-tested, and no handler runs it. So these four are the mapping's own source events with no decider to deliver to — the M19/M20 shape one module over, and the reason M14 is the largest `handlers-unbound` group in #103.",
-    events: [
-      "m11.order.signed",
-      "m11.order.completed",
-      "m11.order.discontinued",
-      "m12.medication_order.signed",
-    ],
+      "F-104 bound the D8 auto-close (`consumers/bindings.ts`) and the three order/medication-order sources it covers left this entry with it. `m11.order.discontinued` is NOT one of them: it is a projection-cache subscription, not an auto-close source — the §4.5 mapping does not list it, and a discontinued order is not an absorbing state that discharges a follow-up commitment. It stays here with the rest of the unbuilt Valkey cache.",
+    events: ["m11.order.discontinued"],
   },
   {
     module: "m14",

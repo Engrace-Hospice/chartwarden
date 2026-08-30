@@ -277,6 +277,7 @@ import {
 import {
   M14_OUTBOX_EVENTS,
   M14_PLATFORM_JOB_ID,
+  buildM14ActionItemAutoCloseConsumer,
   buildM14WorkerDeps,
   createDrizzleIdgEraseStore,
   createDrizzleIdgSeamStore,
@@ -4467,6 +4468,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // event, and no INSERT into that table existed anywhere in the repository. Every M15 write
           // route is `/discipline-plans/:planId/…`, so the aide plan of care, the MSW plan and the
           // spiritual plan were unreachable in every deployment.
+          // F-104 — M14's §4.5 D8 action-item auto-close. The pure decider, the transition graph, the
+          // `auto_closed` status, the `close_reason` value and the outbox event all shipped with M14-T06
+          // and NOTHING bound them — and `idg_action_item.linked_artifact_id`, the column the engine
+          // matches on, was written by no code path at all, so binding alone would have matched nothing
+          // forever. An action item saying "sign this care plan" stayed open after the plan was signed.
+          buildM14ActionItemAutoCloseConsumer({ db: dbHandle.db, outbox: m14OutboxPublisher }),
           buildM15PlanBootstrapConsumer({
             db: dbHandle.db,
             outbox: m15OutboxPublisher,

@@ -316,6 +316,7 @@ export function createDbIdgBackend(
     status: r.status,
     dueDate: iso(r.dueDate) ?? "",
     linkedArtifactKind: r.linkedArtifactKind,
+    linkedArtifactId: r.linkedArtifactId,
   });
   /**
    * The decision METADATA projection. `payload` and `quorumSnapshot` are deliberately absent: the
@@ -1173,6 +1174,11 @@ export function createDbIdgBackend(
             dueDate: new Date(args.dueDate),
             status: "open",
             linkedArtifactKind: args.linkedArtifactKind ?? null,
+            // F-104 — the D8 auto-close key. This INSERT wrote the kind and not the id, so
+            // `linked_artifact_id` was NULL on every action item ever created and the auto-close engine
+            // — whose pure decider, transition graph, event and `close_reason` value all shipped — had
+            // nothing to match on. Read in the design, written by nothing.
+            linkedArtifactId: args.linkedArtifactId ?? null,
           })
           .returning();
         await emit(tx, orgId, "m14.action_item.created", "idg_action_item", row!.id, {
@@ -1183,6 +1189,7 @@ export function createDbIdgBackend(
           assignedToMembershipId: row!.assignedToMembershipId,
           dueDate: isoReq(row!.dueDate!),
           linkedArtifactKind: row!.linkedArtifactKind,
+          linkedArtifactId: row!.linkedArtifactId,
         });
         return toActionItemView(row!);
       });

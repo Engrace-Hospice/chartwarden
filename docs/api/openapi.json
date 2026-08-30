@@ -86984,7 +86984,8 @@
                       "assignedToMembershipId",
                       "status",
                       "dueDate",
-                      "linkedArtifactKind"
+                      "linkedArtifactKind",
+                      "linkedArtifactId"
                     ],
                     "properties": {
                       "id": {
@@ -87070,6 +87071,17 @@
                                 "type": "string"
                               }
                             ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "linkedArtifactId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
                           },
                           {
                             "type": "null"
@@ -87172,7 +87184,8 @@
                     "assignedToMembershipId",
                     "status",
                     "dueDate",
-                    "linkedArtifactKind"
+                    "linkedArtifactKind",
+                    "linkedArtifactId"
                   ],
                   "properties": {
                     "id": {
@@ -87258,6 +87271,17 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "linkedArtifactId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -88847,7 +88871,8 @@
                     "assignedToMembershipId",
                     "status",
                     "dueDate",
-                    "linkedArtifactKind"
+                    "linkedArtifactKind",
+                    "linkedArtifactId"
                   ],
                   "properties": {
                     "id": {
@@ -88938,6 +88963,17 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "linkedArtifactId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -89005,6 +89041,10 @@
                         "type": "string"
                       }
                     ]
+                  },
+                  "linkedArtifactId": {
+                    "format": "uuid",
+                    "type": "string"
                   },
                   "bodyText": {
                     "maxLength": 4000,
