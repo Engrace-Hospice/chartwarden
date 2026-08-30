@@ -5,6 +5,15 @@
 // consumers (M5/M7/M8/M11/M13/M14/M16/M22/M23/M26/M27/M28/M30/M33/M36/M37) subscribe when they land;
 // M6 publishes the events now. Per §4.7 ("No webhook/Socket.IO") every M6 event is outbox-only.
 //
+// SPEC DIVERGENCE (F-101): M6 §4.4's own event table names M22 as a consumer of seven events M22's
+// §4.11 consumer table does not name — `referral.accepted`, `admission.draft_created`,
+// `admission.activated`, `admission.discharged`, `election.drafted`, `election.period_started`,
+// `loc.changed`. `declaredConsumers` is a ROUTING input, not a record of interest, so the two specs
+// disagreeing was not documentary: `buildOutboxRoutingPlan` defers an event while ANY declared
+// consumer is unbound, and M22 was never going to bind these. This file follows M22's table, which is
+// the one the consuming module owns. The per-event comments say which sibling event renders the
+// artifact each of the seven was presumably reaching for.
+//
 // Provenance marker (§4.4): `m6.discharge.created`, `m6.discharge.death` and
 // `m6.compliance.window.opened` are reused by the `AdmissionEventApplier` (M6-T11), which publishes
 // them with `source='m29_proposal_accept'` — modelled as an OPTIONAL payload field so route-emitted and
@@ -71,7 +80,11 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m22"],
+    // F-101 — `["m22"]` until now. M6 §4.4's table says "M36 …, M22" and the description says the
+    // acceptance "seeds the … election form prep", but M22 renders the election statement on
+    // `m6.election.signed`, and a form prepared for a draft that may never be signed is not a
+    // document. Record-only: the row IS the durable record of the acceptance.
+    declaredConsumers: [],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
@@ -116,7 +129,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       referralId: Type.Optional(Type.String({ minLength: 1 })),
     }),
-    declaredConsumers: ["m22"],
+    // F-101 — `["m22"]` until now, which M6 §4.4 glosses as "(election form prep)". M22 publishes no
+    // blank-form template and its §4.11 consumer table does not name this event; the election
+    // statement is rendered from `m6.election.signed`, on the signed artifact.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -145,7 +161,11 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       "m11",
       "m14",
       "m16",
-      "m22",
+      // F-101 — `m22` was here. The activation is the platform's broadest clinical fan-out and it
+      // renders nothing: M22's §4.11 consumer table names six M6 events (election.signed, cti.signed,
+      // f2f.attested, nor.acknowledged, revocation.created, discharge.created) plus the two still
+      // deferred below, and this is not among them. Unlike the three that went record-only, this entry
+      // still defers — on the other twelve unbound consumers, which is the true reason.
       "m23",
       "m26",
       "m27",
@@ -194,7 +214,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       "m10",
       "m14",
       "m16",
-      "m22",
+      // F-101 — `m22` was here. The discharge SUMMARY is rendered from `m6.discharge.created`, which
+      // carries the `discharge_event` id M22 back-refs; this event carries the ADMISSION id and no
+      // renderable artifact. Still defers, on the other eight.
       "m23",
       "m26",
       "m27",
@@ -222,7 +244,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       startDate: Type.Optional(Type.String({ minLength: 1 })),
       endDate: Type.Optional(Type.String({ minLength: 1 })),
     }),
-    declaredConsumers: ["m22"],
+    // F-101 — `["m22"]` until now. The statement M22 renders is the SIGNED one (`m6.election.signed`,
+    // just below, which is bound); a draft has no signature block to render and the CMS artifact is
+    // the executed election. Record-only.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -256,7 +281,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       endDate: Type.Optional(Type.String({ minLength: 1 })),
       admissionId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m22", "m23", "m26", "m27"],
+    // F-101 — `m22` was first in this list. A recertification period starting is a billing and cap
+    // fact, not a document: the recert artifact is the CTI, rendered from `m6.cti.signed`. Still
+    // defers, on m23/m26/m27.
+    declaredConsumers: ["m23", "m26", "m27"],
     isOutboxOnly: true,
   },
   {
@@ -402,7 +430,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       effectiveStart: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m22", "m23", "m26", "m27", "m30"],
+    // F-101 — `m22` was first in this list. A level-of-care change is a revenue and quality fact with
+    // no M22 template behind it. Still defers, on m23/m26/m27/m30.
+    declaredConsumers: ["m23", "m26", "m27", "m30"],
     isOutboxOnly: true,
   },
   // ── revocation / transfer ───────────────────────────────────────────────────────────────────────

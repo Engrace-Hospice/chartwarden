@@ -938,7 +938,26 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   `admission.discharged`, `election.drafted`, `election.period_started`, `loc.changed` — are named by no
   part of the M22 spec and by no M22 consumer, so they are **mis-declared rather than deferred**, and each
   is a high-volume clinical event whose every emission is re-claimed every thirty minutes for the life of
-  the deployment. Reported, not taken here: removing `m22` from them is a producer-side edit.
+  the deployment. **Now fixed (F-101).** The two specs disagreed and only one of them owns the answer:
+  `declaredConsumers` is a ROUTING input, not a record of interest, so M22's own §4.11 consumer table
+  decides who consumes M22, and M6 §4.4's table — which names M22 on all seven, glossing
+  `admission.draft_created` as "(election form prep)" — was the wrong side to follow. Each of the seven
+  has a SIBLING event that carries the renderable artifact and IS bound: the election statement renders
+  from `election.signed` not `.drafted`, the discharge summary from `discharge.created` (which carries the
+  `discharge_event` id M22 back-refs) not `admission.discharged`, the recert CTI from `cti.signed` not
+  `election.period_started`. **Three of the seven named `m22` and nothing else**, so each was a
+  permanently-pending row on a path with no consumer at all — a referral acceptance, a draft admission, a
+  drafted election statement — and all three are now **record-only**, which `buildOutboxRoutingPlan` puts
+  in `recordOnly` and the relay finalizes `dispatched` and the retention purge can finally collect. The
+  other four still defer, on their other unbound consumers, and that is the point rather than a
+  shortfall: **the reason they defer is now the true one**, and a deferral list that names a consumer
+  which will never bind cannot be worked off. The precedent is #204, which dropped `m20` from
+  `m19.oncall_shift.activated` for the same reason and recorded it in `packages/types/src/safety.ts`
+  rather than by editing the spec. The tests assert the ROUTING OUTCOME, not the membership of a list —
+  `not.toContain("m22")` passes equally on a catalog where the event was deleted — and two of them are
+  controls that pass in both directions, pinning that the six F-100 renders and the two genuinely
+  deferred entries kept their declaration: a blanket sweep would have un-rendered the CoP documents the
+  previous PR had just wired. Deferred pairs 527 → **520**.
 
   **Rule 6 (F-094, #205) is the direction rule 4 still did not run.** Six modules publish an
   `M*_SUBSCRIBED_EVENT_NAMES` constant, and each carries the same doc comment — it exists "so an upstream
