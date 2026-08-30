@@ -275,7 +275,14 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
        *  artifacts is patient-scoped by definition — there is no defensible null. */
       patientId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m22", "m23"],
+    // F-106 — m23 REMOVED. M23's §4.4 map routes its NOE draft off this topic, but the two NOT NULL
+    // date columns a `noe_record` needs (`election_effective_date`, `window_target_at`) have no source
+    // at signing: the election's effective date lives only on `election_period.effective_at`, written
+    // by the `setActive` transition at admission ACTIVATION, and the statement carries only `signed_at`.
+    // M23 consumes `m6.election.period_started` instead — emitted from the transaction that writes that
+    // very column. `declaredConsumers` is a ROUTING input, so naming a module that does not consume the
+    // topic defers every emission forever (the F-101 reasoning, same file).
+    declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
   {

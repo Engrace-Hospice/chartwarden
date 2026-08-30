@@ -79,12 +79,18 @@ export interface M23TopicSubscription {
 export const M23_OUTBOX_SUBSCRIPTIONS: Readonly<Record<string, M23TopicSubscription>> =
   Object.freeze({
     // ── M6 election → NOE draft (task 47) ───────────────────────────────────────────────────────────────
-    "m6.election.signed": {
+    // F-106 — the trigger is `period_started`, NOT `election.signed`. `noe_record.election_effective_date`
+    // and `window_target_at` are both NOT NULL, and the election's effective date exists in exactly one
+    // place: `election_period.effective_at`, written by the `setActive` transition at admission
+    // ACTIVATION. `election_statement` carries only `signed_at`. At signing time the anchor is NULL, so a
+    // draft created there could not be dated — and the CMS deadline IS the date. `period_started` is
+    // emitted from the same transaction that writes the column.
+    "m6.election.period_started": {
       status: "live",
       effects: [
         {
           kind: "create_noe_draft",
-          note: "An election was signed in M6 — M23 creates a `noe_record` DRAFT and computes the 5-day CMS filing-window target (task 47); the bound noe-assembly port emits `m23.noe.draft_created`.",
+          note: "An election period activated in M6 — M23 creates the `noe_record` DRAFT for a FIRST period (an NOE is filed once per election, not per benefit period) and computes the 5-day CMS filing-window target (task 47, 42 CFR 418.24(b)); the bound noe-assembly port emits `m23.noe.draft_created`.",
         },
       ],
     },

@@ -1116,6 +1116,46 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   under RLS; 7 of its 8 fail with the binding removed, and the eighth is the non-death control that must
   pass either way.
 
+  **No Notice of Election has ever been filed, and the trigger the spec names cannot work (F-106, #103).**
+  The NOE tells Medicare a beneficiary has elected the hospice benefit. CMS requires it within FIVE
+  CALENDAR DAYS of the election effective date; miss the window and the hospice forfeits payment for every
+  day from the election start until the notice is accepted (42 CFR 418.24(b), CR 8877) — one of the most
+  expensive timing rules in hospice billing. **`NoeRepository.create` had no caller anywhere in the
+  repository** — not production code, not one test — and `schema.noeRecord` is touched only by M23's ABAC
+  resolver and its eraser. No route either: `/api/v1/noe-records` is a GET list and the only POSTs are
+  `/:id/submit` and `/:id/cancel`, both of which load an existing row. So the 5-day clock was never started
+  for any election, the `noe_window_watch_idx` watchdog cron has always scanned an empty table, and the NOE
+  worklist screen has always been empty. `consumers/index.ts` explains the absence as "the live inbound
+  dispatcher is a later platform phase" — that dispatcher landed, the `isPlatformOperator` shape.
+  **The trigger M23's §4.4 map names cannot carry the fact.** It routes `create_noe_draft` off
+  `m6.election.signed`, and `noe_record.election_effective_date` and `window_target_at` are both NOT NULL —
+  the second one IS the CMS deadline. The election's effective date exists in exactly one place,
+  `election_period.effective_at`, which the `setActive` transition writes at admission ACTIVATION and
+  nothing else does (F-042's column); `election_statement` carries only `signed_at`. In M6's own flow the
+  statement is signed BEFORE the admission activates, so at that event the anchor is NULL and a federal
+  filing could not be dated. `m6.election.period_started` is emitted from the transaction that writes the
+  column, already declared `m23`, and its own payload schema says a consumer needing the window "can read
+  it from `electionPeriodId` via the M6 seam once the seed path actually stores it" — a precondition F-042
+  met. The sibling event carries the fact, which is the F-101 shape, so **`m23` is dropped from
+  `m6.election.signed`'s `declaredConsumers`** (leaving `["m22"]`, bound) rather than left to defer a topic
+  M23 does not consume. Gated on `sequenceNumber === 1`: an NOE is filed once per ELECTION, not per benefit
+  period, and a recert continues the same election — `noe_record_admission_uq` is the structural backstop,
+  the sequence check is what stops a second insert being attempted at all. The facts arrive through
+  `electionPeriodContextForOrg`, a new org-explicit M6 reader (the `admissionSchedulingContextForOrg`
+  sibling — the §4.7 seam pins the tenant from the ambient request scope and a relay tick is not a
+  request), and the CCN through the same `ProviderCcnPort` shape the claim write service already binds.
+  Proven by `m23-noe-draft.live.test.ts`: the real M6 write service runs the §418.24 chain to an active
+  admission as `wardenx_app`, the real publisher writes the row, the real dispatcher delivers it, and M23's
+  real consumer inserts through the real `NoeRepository` under RLS — all 8 fail with the binding removed.
+  **What remains in the m23 group is now stated per-effect rather than as a phase**: `createNotrDraft` (the
+  NOTR half — `notr_record` has no writer either, and its three trigger topics need the transfer-direction
+  and discharge-reason mapping decided first), `enqueueRevalidation`, `freezeNewClaims` and
+  `recordDocumentBackReference`. **M26's stated blocker was CHECKED and is real, not expired**: its
+  `CapConsumerStore` needs `cap_beneficiary_accrual.mbi_normalized` and `first_election_in_period`, both
+  NOT NULL, and M5 publishes no MBI reader seam — so the Medicare aggregate-cap accrual ledger has no
+  writer and a tenant's cap liability computes as zero. Reported, not fixed: the facts exist in the
+  database and only the seams are missing, which is a producer-side M5 change.
+
   **Rule 6 (F-094, #205) is the direction rule 4 still did not run.** Six modules publish an
   `M*_SUBSCRIBED_EVENT_NAMES` constant, and each carries the same doc comment — it exists "so an upstream
   rename breaks the build rather than silently orphaning a handler". **Nothing compared any of them to
