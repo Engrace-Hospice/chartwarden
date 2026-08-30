@@ -173,18 +173,16 @@ describe("decideDischargeCascade (M6 discharge consumer, §2.6 / W-DC-02)", () =
   it("discontinues every in-flight order (pending/verbal/active) with system actor + reason", () => {
     const action = decideDischargeCascade(dischargePayload(), {
       ordersOnAdmission: [
-        { orderId: "o1", status: "active", kind: "lab", supplyFulfillmentInFlight: false },
+        { orderId: "o1", status: "active", kind: "lab" },
         {
           orderId: "o2",
           status: "verbal_pending",
           kind: "comfort_kit",
-          supplyFulfillmentInFlight: false,
         },
         {
           orderId: "o3",
           status: "pending_signature",
           kind: "dme",
-          supplyFulfillmentInFlight: false,
         },
       ],
     });
@@ -200,41 +198,48 @@ describe("decideDischargeCascade (M6 discharge consumer, §2.6 / W-DC-02)", () =
   it("leaves terminal orders untouched (completed / discontinued / expired_unsigned / draft)", () => {
     const action = decideDischargeCascade(dischargePayload(), {
       ordersOnAdmission: [
-        { orderId: "o1", status: "completed", kind: "lab", supplyFulfillmentInFlight: false },
-        { orderId: "o2", status: "discontinued", kind: "dme", supplyFulfillmentInFlight: false },
+        { orderId: "o1", status: "completed", kind: "lab" },
+        { orderId: "o2", status: "discontinued", kind: "dme" },
         {
           orderId: "o3",
           status: "expired_unsigned",
           kind: "comfort_kit",
-          supplyFulfillmentInFlight: false,
         },
-        { orderId: "o4", status: "draft", kind: "supply", supplyFulfillmentInFlight: false },
-        { orderId: "o5", status: "active", kind: "lab", supplyFulfillmentInFlight: false },
+        { orderId: "o4", status: "draft", kind: "supply" },
+        { orderId: "o5", status: "active", kind: "lab" },
       ],
     });
     expect(action.discontinuations.map((d) => d.orderId)).toEqual(["o5"]);
     expect(action.skippedCount).toBe(4);
   });
 
-  it("flags supply cancellation only for supply-kind orders with in-flight fulfillment (§2.6)", () => {
+  // F-102 — this case used to assert `dme + in-flight → true`, `comfort_kit + not-in-flight → false`.
+  // The second half was the bug: M11 holds no supply-request reference and the seam that answers
+  // "in flight?" takes an id M11 never sees, so the live consumer could only ever have passed `false` and
+  // M21 would never have been told about ANY of them. M21's own decider returns `no_match` (emitting
+  // nothing) for an order with no request, so asking about every supply-kind order is the cheap direction
+  // and not asking is the one that leaves a vendor order standing on a discharged patient.
+  it("flags supply cancellation for every supply kind — M21 decides whether anything is open (§2.6)", () => {
     const action = decideDischargeCascade(dischargePayload(), {
       ordersOnAdmission: [
-        { orderId: "o1", status: "active", kind: "dme", supplyFulfillmentInFlight: true },
-        { orderId: "o2", status: "active", kind: "comfort_kit", supplyFulfillmentInFlight: false },
-        { orderId: "o3", status: "active", kind: "lab", supplyFulfillmentInFlight: true },
+        { orderId: "o1", status: "active", kind: "dme" },
+        { orderId: "o2", status: "active", kind: "comfort_kit" },
+        { orderId: "o3", status: "active", kind: "supply" },
+        { orderId: "o4", status: "active", kind: "lab" },
       ],
     });
     const byId = Object.fromEntries(action.discontinuations.map((d) => [d.orderId, d]));
-    expect(byId.o1?.emitSupplyCancellation).toBe(true); // dme + in-flight
-    expect(byId.o2?.emitSupplyCancellation).toBe(false); // supply kind but not in-flight
-    expect(byId.o3?.emitSupplyCancellation).toBe(false); // in-flight but not a supply kind
+    expect(byId.o1?.emitSupplyCancellation).toBe(true);
+    expect(byId.o2?.emitSupplyCancellation).toBe(true);
+    expect(byId.o3?.emitSupplyCancellation).toBe(true);
+    expect(byId.o4?.emitSupplyCancellation).toBe(false); // not a supply kind
   });
 
   it("is idempotent — a redelivery after the cascade ran sees all orders terminal and discontinues none", () => {
     const action = decideDischargeCascade(dischargePayload(), {
       ordersOnAdmission: [
-        { orderId: "o1", status: "discontinued", kind: "lab", supplyFulfillmentInFlight: false },
-        { orderId: "o2", status: "discontinued", kind: "dme", supplyFulfillmentInFlight: false },
+        { orderId: "o1", status: "discontinued", kind: "lab" },
+        { orderId: "o2", status: "discontinued", kind: "dme" },
       ],
     });
     expect(action.discontinuations).toHaveLength(0);

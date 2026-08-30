@@ -3,12 +3,24 @@
 // PURE decision core for each ships + is tested here, and the live boot wiring (when the M11 backend is
 // mounted) binds the handler to the dispatcher and executes the returned action through M11's service path.
 //
+// F-102 — `m6.admission.discharged` IS NOW BOUND (`./bindings.ts`). The paragraph below said the hookup
+// "lands with the mounted backend"; the backend has been mounted for a long time and the hookup never
+// landed, and it could not have: M6's catalog did not name m11 on that event, so
+// `assertBindableAgainstCatalog` would have refused the binding. `m9.assessment.significant_change`,
+// `m10.hope.j2051_trigger_fired` and `idg.decision_recorded` remain in that state and are registered with
+// their reasons in `scripts/outbox-subscription-exceptions.ts`.
+//
 // The producers for these three subscriptions (M6 discharge, M9 significant-change, M10 J2051) all exist
 // in Wave E — these bindings are LIVE-eligible (not forward-declared deny-stubs like M8↔M17 / M6↔M29).
-// What is deferred is only the dispatcher hookup at boot, which lands with the mounted backend. Every
+// Every
 // consumed event name is a STRING literal (no cross-module schema import): M11 reads other modules solely
 // through the foundation outbox, never via a `dependsOn` edge (§4 boundary rule), so this task adds NO
 // edge to M11's manifest `dependsOn`.
+export {
+  type OrdersConsumerDeps,
+  M11_DISCHARGE_CASCADE_CONSUMER,
+  buildM11DischargeCascadeConsumer,
+} from "./bindings";
 export {
   type AdmissionDischargedPayload,
   type DischargeCascadeAction,

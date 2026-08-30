@@ -212,6 +212,14 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // #48 — M10 materializes the single 7-day Discharge RFA window here (D9 keeps it out of the
       // admission plan because its `discharge_reason` branch is unknown until discharge happens).
       "m10",
+      // F-102 — M11 and M12 each ship a complete, unit-tested discharge-cascade decider
+      // (`consumers/admission-discharged-discontinue.ts` / `consumers/admission-discharged-cascade.ts`)
+      // that nothing could bind, because this list did not name them and
+      // `assertBindableAgainstCatalog` refuses a binding whose module the catalog does not declare. Two
+      // one-sided absences that hid each other: every order and every medication order in flight when a
+      // patient was discharged stayed in flight forever.
+      "m11",
+      "m12",
       "m14",
       "m16",
       // F-101 — `m22` was here. The discharge SUMMARY is rendered from `m6.discharge.created`, which

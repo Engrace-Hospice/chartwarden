@@ -959,6 +959,60 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   deferred entries kept their declaration: a blanket sweep would have un-rendered the CoP documents the
   previous PR had just wired. Deferred pairs 527 → **520**.
 
+**A discharged patient's orders stayed in flight forever, and the fix was blocked from BOTH sides
+  (F-102, #103).** M11 and M12 each ship a complete, exported, unit-tested discharge-cascade decider —
+  `decideDischargeCascade` (§2.6 D13 / W-DC-02) and `decideMedicationDischargeCascade` (§2.2 D13) — and the
+  only caller either has ever had is its own test file. Both modules' `consumers/index.ts` explain the
+  absence as "the live boot wiring, when the backend is mounted"; the backend has been mounted for a long
+  time. **Nobody could have written that wiring**: `m6.admission.discharged` named neither module in its
+  `declaredConsumers`, and `assertBindableAgainstCatalog` refuses a binding whose module the catalog does
+  not declare — so a decider with no binding and a catalog with no declaration each made the other look
+  like someone else's half. It is the F-101 shape inverted: that one was a declaration with no consumer,
+  this is a consumer with no declaration, and only the second is invisible to `arch:outbox-bindings`'
+  rules 1–4. Rule 6 saw it and could only file it: `outbox-subscription-exceptions.ts` held both as
+  `handler-unbound`, which is accurate and is not a fix. Every order still in flight when a patient was
+  discharged stayed in flight — a pending-signature lab, a verbal-pending comfort kit, an active DME
+  rental, and a `queued_for_transmission` medication order, which is one waiting to reach the
+  e-prescribing vendor. **The cascade deliberately does NOT go through `discontinueOrder`**, which both
+  deciders' headers named as its executor: that path writes `actorMembershipId: userId` — the CALLER — so
+  a system cascade would put a clinician's name on an act they did not perform, on a chart a surveyor
+  reads; it never writes `source_outbox_event_id`; and it runs the machine's `discontinue` event, which is
+  legal only from `active`, while `cascadeDiscontinue` is legal from `pending_signature` and
+  `verbal_pending` too — so the orders that most need stopping are exactly the ones it would have refused
+  with ILLEGAL_ORDER_TRANSITION. `order_discontinuation.actor_membership_id` has been nullable since M11's
+  schema landed, commented "NULL for system-actor cascades", and `source_outbox_event_id` has existed for
+  this provenance; **nothing in the repository had ever written either**. **A third defect was one layer
+  down**: `emitSupplyCancellation` was gated on an `supplyFulfillmentInFlight` fact M11 CANNOT PRODUCE —
+  `order_record` holds no supply-request reference, and `SupplyFulfillmentProvider.isTerminal`, the seam
+  whose doc says "M11 asks this before issuing a cancellation", takes a `SupplyRequestId` M11 never sees.
+  The only value a live consumer could honestly pass was `false`, and `false` meant M21 was never told:
+  the cascade would discontinue a DME rental and leave the vendor order standing. The gate is gone rather
+  than the fact invented, because **M21 already answers this and says so** — its payload doc reads "M21
+  keys on `orderId` regardless, because M11's ref can be stale", and `decideSupplyCancellationCascade`
+  returns `no_match`, emitting nothing, for an order with no request. Asking about an order that was never
+  fulfilled is a no-op M21 is built for; not asking about one that was is a live vendor order on a
+  discharged patient. Proven by `m6-discharge-cascade.live.test.ts` — the real M6 write service discharges
+  as `wardenx_app`, the real catalog-validating publisher writes the row, the real dispatcher delivers it,
+  and both real consumers read their own tables under RLS; 5 of its 6 cases fail with the bindings removed,
+  and the sixth is the terminal-orders control that must pass either way. **M13 and M15 are NOT the same
+  finding and are not fixed here**: both are registered `no-handler`, meaning no decider exists — M13's
+  four M6 lifecycle subscriptions are §4.5 eMAR-context inputs nobody has written, and M15's is larger
+  and reported separately below.
+
+  **Reported, not fixed — M15's entire write surface hangs off two tables nothing inserts into.**
+  `bootstrapDisciplinePlan` is the §2.2.1 `[*] → draft` factory whose own doc says it is "called by the
+  `m6.admission.activated` consumer"; **that consumer does not exist**, M15's `consumers/` directory is a
+  seam-reading layer with no outbox binding in it, m15 is not in that event's `declaredConsumers`, and
+  there is **no INSERT into `discipline_care_plan` or `discipline_care_plan_version` anywhere in the
+  repository** — not in the write service, not in a seed, not in a test. Nor is there a route that creates
+  either: every M15 write route is `/discipline-plans/:planId/…`, so the bootstrap consumer is the ONLY
+  creation path by design. The aide plan of care (CoP 418.76), the MSW plan (418.64(c)), the spiritual plan
+  (418.64(d)), their goals, interventions, assessments and the 14-day aide supervisory visits are
+  unreachable in every deployment that has ever run, and the §7.1/§7.2 initial-assessment clocks that
+  count from `initial_assessment_clock_started_at` have never started because nothing sets it. This is the
+  M20 `safety_check_in_schedule` finding one module over, and the same reasoning applies: an empty
+  compliance surface and a compliant one are indistinguishable.
+
   **Rule 6 (F-094, #205) is the direction rule 4 still did not run.** Six modules publish an
   `M*_SUBSCRIBED_EVENT_NAMES` constant, and each carries the same doc comment — it exists "so an upstream
   rename breaks the build rather than silently orphaning a handler". **Nothing compared any of them to

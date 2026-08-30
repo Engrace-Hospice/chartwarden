@@ -212,19 +212,18 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     module: "m11",
     kind: "handler-unbound",
     reason:
-      "`consumers/admission-discharged-discontinue.ts` and `consumers/hope-trigger.ts` are written deciders whose only caller is their own test. Both events are already deferred by other unbound consumers, so declaring `m11` costs nothing at runtime today — and the declaration still belongs on the commit that binds the handler, not before it.",
-    events: ["m6.admission.discharged", "m10.hope.j2051_trigger_fired"],
+      "`consumers/hope-trigger.ts` is a written decider whose only caller is its own test. The event is already deferred by other unbound consumers, so declaring `m11` costs nothing at runtime today — and the declaration still belongs on the commit that binds the handler, not before it. F-102 removed `m6.admission.discharged` from this entry by doing exactly that: `consumers/bindings.ts` now binds `decideDischargeCascade` and M6's catalog declares m11.",
+    events: ["m10.hope.j2051_trigger_fired"],
   },
   {
     module: "m12",
     kind: "handler-unbound",
     reason:
-      "`consumers/sync-triggers.ts` (`decidePatientSyncTrigger` covers all four M5 demographic reasons, plus the M6 MedHx fetch), `admission-discharged-cascade.ts` and `verbal-expired.ts` are written and bound by nothing. Every one of these events is already deferred by another unbound consumer, so the declaration lands with the binding.",
+      "`consumers/sync-triggers.ts` (`decidePatientSyncTrigger` covers all four M5 demographic reasons, plus the M6 MedHx fetch) and `verbal-expired.ts` are written and bound by nothing (F-102 bound `admission-discharged-cascade.ts` and removed `m6.admission.discharged` from this list). Every one of these events is already deferred by another unbound consumer, so the declaration lands with the binding.",
     events: [
       "m5.patient.updated",
       "m5.patient.address_changed",
       "m5.patient.payer_changed",
-      "m6.admission.discharged",
       "m6.admission.activated",
       "m6.cti.signed",
       "m11.order.verbal_expired_unsigned",
