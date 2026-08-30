@@ -41809,6 +41809,7 @@ export interface operations {
                         /** Format: date-time */
                         dueDate: string;
                         linkedArtifactKind: ("care_plan_version" | "order" | "encounter" | "medication_order") | null;
+                        linkedArtifactId: string | null;
                     }[];
                 };
             };
@@ -41881,6 +41882,7 @@ export interface operations {
                         /** Format: date-time */
                         dueDate: string;
                         linkedArtifactKind: ("care_plan_version" | "order" | "encounter" | "medication_order") | null;
+                        linkedArtifactId: string | null;
                     };
                 };
             };
@@ -42283,6 +42285,8 @@ export interface operations {
                     /** Format: date-time */
                     dueDate: string;
                     linkedArtifactKind?: "care_plan_version" | "order" | "encounter" | "medication_order";
+                    /** Format: uuid */
+                    linkedArtifactId?: string;
                     bodyText?: string;
                 };
             };
@@ -42307,6 +42311,7 @@ export interface operations {
                         /** Format: date-time */
                         dueDate: string;
                         linkedArtifactKind: ("care_plan_version" | "order" | "encounter" | "medication_order") | null;
+                        linkedArtifactId: string | null;
                     };
                 };
             };

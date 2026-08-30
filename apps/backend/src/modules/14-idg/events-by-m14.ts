@@ -184,6 +184,9 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       assignedToMembershipId: id,
       dueDate: isoInstant,
       linkedArtifactKind: nullableId,
+      /** F-104 — the D8 auto-close key. Absent here as well as from the INSERT, so a consumer could not
+       *  even have learned the link from the announcement. */
+      linkedArtifactId: nullableId,
     }),
     declaredConsumers: [],
     seamConsumers: ["m33", "m36"],

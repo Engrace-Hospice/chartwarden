@@ -165,6 +165,13 @@ export const CreateActionItemRequest = Type.Object({
   assignedToMembershipId: Type.String({ format: "uuid" }),
   dueDate: Type.String({ format: "date-time" }),
   linkedArtifactKind: Type.Optional(ACTION_ITEM_LINKED_KIND),
+  /** F-104 — the D8 auto-close KEY, and it was absent from this contract, from `CreateActionItemArgs`
+   *  and from the INSERT. `idg_action_item.linked_artifact_id` was read by the auto-close design and
+   *  written by nothing, so an item linked to an IPOC version, an order or a medication order could
+   *  never be matched when that artifact reached its absorbing state. Sent WITH `linkedArtifactKind` or
+   *  not at all — a kind with no id can never auto-close and an id with no kind can never be matched, so
+   *  either alone is a silently dead link (422). */
+  linkedArtifactId: Type.Optional(Type.String({ format: "uuid" })),
   bodyText: Type.Optional(Type.String({ maxLength: 4000 })),
 });
 export const UpdateActionItemRequest = Type.Object({ status: ACTION_ITEM_PATCH_STATUS });
@@ -241,6 +248,9 @@ export const ActionItemViewSchema = Type.Object({
   ]),
   dueDate: Type.String({ format: "date-time" }),
   linkedArtifactKind: Nullable(ACTION_ITEM_LINKED_KIND),
+  /** F-104 — on the wire because a caller cannot otherwise tell a linked item from an unlinkable one:
+   *  the kind alone was returned, and a kind with no id never auto-closes. */
+  linkedArtifactId: Nullable(Type.String({ format: "uuid" })),
 });
 export const ActionItemListResponseSchema = Type.Array(ActionItemViewSchema);
 

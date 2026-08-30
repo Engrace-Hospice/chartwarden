@@ -96,7 +96,14 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       viaEpcs: Type.Optional(Type.Boolean()),
       secondFactorType: Type.Optional(id),
     }),
-    declaredConsumers: ["m22", "m28"],
+    declaredConsumers: [
+      // F-104 — M14's §4.5 D8 auto-close closes an `order`/`medication_order`-linked action item
+      // on this event, and this list did not name m14, so `assertBindableAgainstCatalog` would
+      // have refused the binding for three of the six D8 sources while accepting the other three.
+      "m14",
+      "m22",
+      "m28",
+    ],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
