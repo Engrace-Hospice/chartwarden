@@ -294,6 +294,7 @@ import {
   buildDrizzleDisciplinePlanAbacResolver,
   buildDrizzleM15ReadService,
   buildDrizzleM15WriteService,
+  buildM15PlanBootstrapConsumer,
   createDrizzleDisciplinePlanEraseStore,
   createDrizzleDisciplinePlanSeamStore,
   denyStubDisciplinePlanAbacResolver,
@@ -4460,6 +4461,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // including `queued_for_transmission`, an order waiting to reach the e-prescribing vendor.
           buildM11DischargeCascadeConsumer({ db: dbHandle.db, outbox: m11OutboxPublisher }),
           buildM12DischargeCascadeConsumer({ db: dbHandle.db, outbox: m12OutboxPublisher }),
+          // F-103 — the §1.1 D10 discipline-plan bootstrap, and the ONLY path by which a
+          // `discipline_care_plan` row has ever been created: `bootstrapDisciplinePlan`'s own doc names
+          // "the `m6.admission.activated` consumer" and there was none, m15 was not declared on the
+          // event, and no INSERT into that table existed anywhere in the repository. Every M15 write
+          // route is `/discipline-plans/:planId/…`, so the aide plan of care, the MSW plan and the
+          // spiritual plan were unreachable in every deployment.
+          buildM15PlanBootstrapConsumer({
+            db: dbHandle.db,
+            outbox: m15OutboxPublisher,
+            // Same reason as M10's scheduling consumer above: M6's §4.7 seam pins the tenant from the
+            // ambient REQUEST scope, and a relay tick is not a request.
+            resolveSiting: (organizationId, admissionId) =>
+              admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
+          }),
           buildM13DocumentBackrefConsumer({ db: dbHandle.db }),
           buildM21DocumentBackrefConsumer({ db: dbHandle.db }),
           // GAP-051 — M33's half. Unlike the four above it does more than stamp a column: a rendered

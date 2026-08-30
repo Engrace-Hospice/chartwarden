@@ -160,6 +160,11 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       "m10",
       "m11",
       "m14",
+      // F-103 — M15 bootstraps the three CoP discipline plans here (§1.1 D10), and this list did not name
+      // it, so the consumer could not be bound and NOTHING in the repository has ever inserted a
+      // `discipline_care_plan` row. Every M15 write route is `/discipline-plans/:planId/…`, so that
+      // consumer is the only creation path there is.
+      "m15",
       "m16",
       // F-101 — `m22` was here. The activation is the platform's broadest clinical fan-out and it
       // renders nothing: M22's §4.11 consumer table names six M6 events (election.signed, cti.signed,

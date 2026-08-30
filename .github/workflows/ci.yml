@@ -388,6 +388,7 @@ jobs:
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.
           - { name: "M6 CoP documents", scripts: "test:m6:cop-documents:live" }
           - { name: "M6 discharge cascade", scripts: "test:m6:discharge-cascade:live" }
+          - { name: "M15 plan bootstrap", scripts: "test:m15:plan-bootstrap:live" }
           # GAP-050: M33 scheduled-report create/update/resume over the real `cron-parser` adapter —
           # all three compute `next_run_at` through a port that was a fail-closed stub, so no tenant
           # could create a schedule at all and the §4.8 scheduled-run cron had nothing to fire.

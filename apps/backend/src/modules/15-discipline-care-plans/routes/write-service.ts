@@ -21,12 +21,26 @@ import type {
   VolunteerComplianceGateView,
 } from "./read-service";
 
-/** A §2.4 `m15.*` transactional-outbox emission. PHI-free by construction (§8.1 payload scrubbing). */
+/** A §2.4 `m15.*` transactional-outbox emission. PHI-free by construction (§8.1 payload scrubbing).
+ *
+ * F-103 — `organizationId` was ABSENT from this shape and from all six emit sites. `outbox_event`
+ * has no default for the column, so every `m15.*` emission wrote NULL and the RLS WITH CHECK refused it
+ * with 42501 — rolling back the whole mutation. Signing a plan version, amending a discipline assessment,
+ * completing an aide supervisory visit and all three volunteer-assignment inactivations therefore 500 in
+ * production. Nothing caught it because M15 has no live suite: every existing M15 test drives the write
+ * service with a no-op outbox, which accepts anything. REQUIRED rather than optional on purpose — the
+ * omission is exactly what the type should have made impossible. */
 export interface OutboxEmission {
+  /** The tenant the row belongs to. The publisher writes it; the column is nullable ONLY for genuinely
+   *  platform-wide events, which no `m15.*` event is. */
+  readonly organizationId: string;
   readonly eventName: string;
   readonly payload: Record<string, unknown>;
-  readonly aggregateKind?: string;
-  readonly aggregateId?: string;
+  /** Required, like `organizationId`: the `outbox_event` columns are NOT NULL and all six emit sites
+   *  already supply both. Optional here made the port assignable to the real publisher only by method
+   *  bivariance, which is precisely the check that let the missing `organizationId` through. */
+  readonly aggregateKind: string;
+  readonly aggregateId: string;
 }
 
 /**

@@ -999,19 +999,38 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   four M6 lifecycle subscriptions are §4.5 eMAR-context inputs nobody has written, and M15's is larger
   and reported separately below.
 
-  **Reported, not fixed — M15's entire write surface hangs off two tables nothing inserts into.**
+  **M15's entire write surface hung off a table nothing inserted into (F-103, #103).**
   `bootstrapDisciplinePlan` is the §2.2.1 `[*] → draft` factory whose own doc says it is "called by the
-  `m6.admission.activated` consumer"; **that consumer does not exist**, M15's `consumers/` directory is a
-  seam-reading layer with no outbox binding in it, m15 is not in that event's `declaredConsumers`, and
-  there is **no INSERT into `discipline_care_plan` or `discipline_care_plan_version` anywhere in the
-  repository** — not in the write service, not in a seed, not in a test. Nor is there a route that creates
-  either: every M15 write route is `/discipline-plans/:planId/…`, so the bootstrap consumer is the ONLY
-  creation path by design. The aide plan of care (CoP 418.76), the MSW plan (418.64(c)), the spiritual plan
-  (418.64(d)), their goals, interventions, assessments and the 14-day aide supervisory visits are
-  unreachable in every deployment that has ever run, and the §7.1/§7.2 initial-assessment clocks that
-  count from `initial_assessment_clock_started_at` have never started because nothing sets it. This is the
-  M20 `safety_check_in_schedule` finding one module over, and the same reasoning applies: an empty
-  compliance surface and a compliant one are indistinguishable.
+  `m6.admission.activated` consumer"; **that consumer did not exist**, M15's `consumers/` was a
+  seam-reading layer with no outbox binding in it, m15 was not in that event's `declaredConsumers`, and
+  there was **no INSERT into `discipline_care_plan` anywhere in the repository** — not the write service,
+  not a seed, not a test. Nor is there a route that creates one: every M15 write route is
+  `/discipline-plans/:planId/…`, so the bootstrap consumer is the ONLY creation path by design. The aide
+  plan of care (CoP 418.76), the MSW plan (418.64(c)), the spiritual plan (418.64(d)) and every goal,
+  intervention, discipline assessment and 14-day aide supervisory visit — all of which hang off `plan_id`
+  rather than a version — were unreachable in every deployment that has ever run, and the §7.1/§7.2/§7.3
+  initial-assessment clocks that count from `initial_assessment_clock_started_at` never started because
+  nothing set it. The M20 `safety_check_in_schedule` finding one module over: an empty compliance surface
+  and a compliant one are indistinguishable. **A SECOND defect sat under it and only running the live
+  suite found it.** M15's `OutboxEmission` had no `organizationId` field and none of its six emit sites
+  supplied one; `outbox_event.organization_id` has no default, so every `m15.*` emission wrote NULL and
+  the RLS WITH CHECK refused it with **42501, rolling back the whole mutation** — signing a plan version,
+  amending a discipline assessment, completing an aide supervisory visit and all three
+  volunteer-assignment inactivations 500 in production. Invisible because **M15 had no live suite at
+  all**: every existing M15 test drives the write service with a no-op outbox, which accepts anything —
+  the F-093/F-100 shape a third time. `organizationId`, `aggregateKind` and `aggregateId` are now REQUIRED
+  on the emission rather than optional; optional made the port assignable to the real publisher only by
+  method bivariance, which is exactly the check that let the omission through. **The version half is
+  reported, not fixed**: `discipline_care_plan_version` has no writer and no create route either
+  (`/versions` is a GET; only `finalize` and `sign` are POSTs), so a plan still cannot be authored to v1 —
+  and §7.1 assigns v1 to a person ("the supervising RN … creates Aide POC v1 with the task list"), so a
+  stub version authored by the relay would put a draft on the record nobody wrote. Proven by
+  `m15-plan-bootstrap.live.test.ts`: the real M6 write service activates an admission, the real dispatcher
+  delivers, M15's real consumer sites the plans through M6's org-explicit `admissionSchedulingContextForOrg`
+  (the §4.7 seam cannot be used — it pins the tenant from the ambient REQUEST scope and a relay tick is not
+  a request) and inserts under RLS. All 7 fail without the binding. **The suite also found the harness
+  lying to itself twice**: three cases were `for (const p of await plansFor(…))` over an empty list, which
+  asserts nothing and passed while the consumer was refusing every delivery.
 
   **Rule 6 (F-094, #205) is the direction rule 4 still did not run.** Six modules publish an
   `M*_SUBSCRIBED_EVENT_NAMES` constant, and each carries the same doc comment — it exists "so an upstream
