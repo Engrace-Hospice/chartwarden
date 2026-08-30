@@ -471,6 +471,11 @@ describe("M16-T06 §2.6 — the effect runner", () => {
       {
         tx: "tx-handle",
         emission: {
+          // F-105 — the TENANT. `outbox_event.organization_id` has no default, so an emission without
+          // it wrote NULL, the RLS WITH CHECK refused the insert with 42501, and — the publish running
+          // on the caller's own transaction being the whole point of a transactional outbox — the
+          // transition it announced rolled back with it. Every M16 route that emits was a 500.
+          organizationId: ORG,
           eventName: "m16.bereavement.plan_resumed",
           payload: { planId: PLAN },
           aggregateKind: "bereavement_plan",

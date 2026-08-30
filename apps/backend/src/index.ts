@@ -309,6 +309,7 @@ import {
   buildDrizzleBereavementAbacResolver,
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
+  buildM16BereavementIntakeConsumer,
   buildM16IdgDecisionConsumer,
   createDrizzleBereavementEraseStore,
   createDrizzleBereavementSeamStore,
@@ -4318,6 +4319,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               activeAdmissionDraftContextForPatient(dbHandle.db, organizationId, patientId),
           }),
           buildM16IdgDecisionConsumer({ db: dbHandle.db }),
+          // F-105 — the §4.3.1 bereavement intake. The ONLY path by which a `bereavement_plan` row can
+          // exist: M16 publishes no create route (the collection path is a GET worklist; all fifteen plan
+          // writes are `/plans/:planId/…`), so before this binding the CoP 418.64(d) 13-month program was
+          // unreachable in every deployment. The admission siting comes from M6's ORG-EXPLICIT reader —
+          // the §4.7 seam pins the tenant from the ambient request scope and a relay tick is not a request.
+          buildM16BereavementIntakeConsumer({
+            db: dbHandle.db,
+            outbox: m16OutboxPublisher,
+            resolveAdmission: async (organizationId, admissionId) =>
+              admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
+          }),
           buildM8VisitPublishedConsumer({
             db: dbHandle.db,
             outbox: m8OutboxPublisher,

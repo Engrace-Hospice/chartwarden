@@ -105,6 +105,7 @@
     "test:m6:discharge-cascade:live": "vitest run apps/backend/__tests__/m6-discharge-cascade.live.test.ts",
     "test:m15:plan-bootstrap:live": "vitest run apps/backend/__tests__/m15-plan-bootstrap.live.test.ts",
     "test:m14:autoclose:live": "vitest run apps/backend/__tests__/m14-action-item-autoclose.live.test.ts",
+    "test:m16:bereavement-intake:live": "vitest run apps/backend/__tests__/m16-bereavement-intake.live.test.ts",
     "test:m33:schedule-cron:live": "vitest run apps/backend/__tests__/gap-050-m33-schedule-cron.live.test.ts",
     "test:m33:export-render:live": "vitest run apps/backend/__tests__/gap-051-m33-export-render.live.test.ts",
     "test:m33:read-path:live": "vitest run apps/backend/__tests__/m33-reporting-read-path.live.test.ts",
