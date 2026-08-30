@@ -173,12 +173,79 @@ describe("#103 — the real catalog no longer declares a seam module as an outbo
     expect(plan.deferred.has("m37.restraint.applied")).toBe(true);
   });
 
-  it("m6.admission.activated keeps its 14 real outbox consumers — the split narrowed nothing real", () => {
+  it("m6.admission.activated keeps its real outbox consumers — the split narrowed nothing real", () => {
     const entry = catalog.get("m6.admission.activated");
     expect(entry?.seamConsumers).toEqual(["m33", "m36"]);
-    // The clinical fan-out is untouched: M5/M7/M8/M10/M11/M14/M16/M22/M23/M26/M27/M28/M30/M37.
+    // The clinical fan-out is untouched: M5/M7/M8/M10/M11/M14/M16/M23/M26/M27/M28/M30/M37. It read 14
+    // until F-101 removed `m22` — the seam split is still what this case is about, and dropping a
+    // consumer that renders nothing is not the split narrowing something real.
     expect(entry?.declaredConsumers).toContain("m10");
     expect(entry?.declaredConsumers).toContain("m30");
-    expect(entry?.declaredConsumers.length).toBe(14);
+    expect(entry?.declaredConsumers.length).toBe(13);
+  });
+});
+
+// ── F-101 ───────────────────────────────────────────────────────────────────────────────────────
+// Seven m6 events declared `m22` and M22's §4.11 consumer table names none of them. `declaredConsumers`
+// is a ROUTING input, not a statement of interest, so the effect was not documentary: every emission of
+// all seven was deferred and re-claimed every thirty minutes for the life of the deployment. Three had
+// `m22` as their ONLY declared consumer, so each was a permanently-pending row on a path with no
+// consumer at all — a referral acceptance, a draft admission, a drafted election statement.
+//
+// The cases below assert the ROUTING outcome rather than the membership of a list: asserting
+// `not.toContain("m22")` would pass equally on a catalog where the event had been deleted.
+describe("F-101 — m6 events that declare m22 render nothing", () => {
+  const catalog = buildBootOutboxCatalog([M6_OUTBOX_EVENTS as never]);
+
+  const RECORD_ONLY = [
+    "m6.referral.accepted",
+    "m6.admission.draft_created",
+    "m6.election.drafted",
+  ] as const;
+
+  it.each(RECORD_ONLY)("%s is recordOnly — it dispatches instead of deferring forever", (name) => {
+    const plan = buildOutboxRoutingPlan(catalog, []);
+    expect(plan.recordOnly.has(name)).toBe(true);
+    expect(plan.deferred.has(name)).toBe(false);
+  });
+
+  it("the six M22 DOES render still declare it — this narrowed nothing that was working", () => {
+    // The F-100 handshake is the control. If a blanket sweep had removed `m22` from every m6 event,
+    // these six would have gone recordOnly too and the CoP documents would stop being rendered.
+    for (const name of [
+      "m6.election.signed",
+      "m6.cti.signed",
+      "m6.f2f.attested",
+      "m6.nor.acknowledged",
+      "m6.revocation.created",
+      "m6.discharge.created",
+    ]) {
+      expect(catalog.get(name)?.declaredConsumers).toContain("m22");
+    }
+  });
+
+  it("the two the M22 spec names but cannot render yet keep m22 — they are deferred, not wrong", () => {
+    // `m6.discharge.cosigned` is a new VERSION of an existing document (W2 append path), and
+    // `m6.transfer.created` wants a `discharge_summary` transfer variant M22 does not publish. Both
+    // stay in scripts/outbox-deferred-consumers.ts, where a reason that will expire belongs.
+    expect(catalog.get("m6.discharge.cosigned")?.declaredConsumers).toContain("m22");
+    expect(catalog.get("m6.transfer.created")?.declaredConsumers).toContain("m22");
+  });
+
+  it("the four that still defer do so on their OTHER consumers, not on m22", () => {
+    // Removing `m22` from these did not un-defer them and was never going to: each carries other
+    // unbound consumers, which is the true reason they defer. The change is that the reason is now
+    // the true one — a list that names a consumer which will never bind cannot be worked off.
+    const plan = buildOutboxRoutingPlan(catalog, []);
+    for (const name of [
+      "m6.admission.activated",
+      "m6.admission.discharged",
+      "m6.election.period_started",
+      "m6.loc.changed",
+    ]) {
+      expect(catalog.get(name)?.declaredConsumers).not.toContain("m22");
+      expect(plan.deferred.has(name)).toBe(true);
+      expect(catalog.get(name)?.declaredConsumers.length).toBeGreaterThan(0);
+    }
   });
 });
