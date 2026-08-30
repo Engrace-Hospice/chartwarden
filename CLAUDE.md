@@ -1236,6 +1236,48 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   binding removed, and the producer-side half fails `m27-cost-report-workflow-slice.live.test.ts` when the
   submit emission is put back.
 
+  **Every alert the platform has ever emitted claimed it was delivered, and nothing has ever been
+  delivered by any channel (F-109, #103).** `alert.outcome` was `NOT NULL DEFAULT 'delivered'` and
+  **written by nothing**: `computeOutcome`, the §2.4.3 roll-up, has existed since M36-T04 with no caller,
+  and `notification_delivery.status` has **no `UPDATE` anywhere in the repository**, so the §2.4.4 state
+  machine had exactly one reachable state and every delivery row ever written is still `pending`. The
+  user-visible end of it is that `aggregateDeliveryStatus` — a SECOND roll-up, called but writing nothing
+  — has returned `"pending"` for every line of every user's Notifications tab, always. **The enum could
+  not say otherwise.** §2.4.3's machine OPENS in `pending` ("alert row written; notification_delivery rows
+  enqueued") and `alert_outcome` had three values, none of them that one — so the column could not express
+  "not settled yet" and asserted the most flattering value available instead. Migration 0240 adds it, 0241
+  moves the DEFAULT and corrects the historical rows, guarded on **not one** delivery having reached a
+  §2.4.4 terminal state, which is the definition of "nothing settled" and is what makes the rewrite a
+  correction rather than a blanket relabel. **The settlement path is the inbox READ, and ADR-0036 is why.**
+  §2.4.4 settles an in-app row on "socket acked"; ADR-0036 (Accepted, and it wins over a module spec)
+  records that `socket.io` is installed nowhere, no realtime transport was ever built, and "UI freshness is
+  REST refetch/poll". `GET /api/v1/alerts/inbox` IS that poll — `notifications-inbox.tsx` is its only
+  caller — so the fetch is the moment the alert reaches the client and there is no second event to wait
+  for. It goes straight to `delivered`: `sent` is the accepted-by-dispatcher step of a dispatcher tier that
+  does not exist, and parking rows in a state nothing advances is the defect being fixed. Scoped three ways
+  and narrowed to `pending` so a poll can only settle the caller's own undelivered in-app rows — the
+  parent-join RLS policy, the explicit `alert.organization_id` predicate beside it, and
+  `recipient_user_id` — and the parent re-roll is skipped when the outcome is unchanged, because the M4
+  trigger fires on every UPDATE and a still-pending alert would otherwise log a row per poll per recipient
+  forever. **The single most misleading value the column carried is now `failed`**: `emit()` writes a
+  no-op alert when no `alert_rule` fires, so an event that matched nothing recorded itself as successfully
+  delivered to the zero people it reached — `rollUpAlertOutcome([])` is `computeOutcome`'s own documented
+  answer, "nobody was reached", and the emitter now writes the initial outcome rather than defaulting it.
+  **Out-of-band rows are deliberately untouched, and an alert holding one now stays `pending` forever.**
+  That is not a new defect, it is the missing tier becoming visible: `planFanOut` plans push/sms/email/voice
+  deliveries and **no dispatcher exists for any of them** — `packages/messaging/src` has no `dispatchers/`
+  directory, and the twelve §4.4 queue names in `jobs/queues.ts` are pure data referenced by nothing but
+  their own test, so no `Queue`, no `Worker` and no producer has ever been constructed. Calling a push
+  nobody sent `delivered` would move the lie rather than remove it. **Reported, not fixed**: that whole
+  out-of-band tier, and the standing #205 absence it sits inside — M36 contributes NO event catalog, so
+  `m36.notification.delivery_failed` has no producer and the three written deciders that subscribe to it
+  (M19's `consumers/m36-delivery-failed.ts`, M20's `delivery_failed` SOS escalation reason, M26's) cannot
+  run. M19's file already names itself as the one place to reconcile when M36 publishes the real payload.
+  Proven by `m36-alert-outcome.live.test.ts` — the real Drizzle `AlertEmitter` over a real platform-default
+  `alert_rule`, the real route service, real RLS, org B's poll unable to settle org A's row; 3 of its 7
+  fail with the two production changes reverted, and the migration case fails on a schema without
+  0240/0241.
+
   **Rule 6 (F-094, #205) is the direction rule 4 still did not run.** Six modules publish an
   `M*_SUBSCRIBED_EVENT_NAMES` constant, and each carries the same doc comment — it exists "so an upstream
   rename breaks the build rather than silently orphaning a handler". **Nothing compared any of them to

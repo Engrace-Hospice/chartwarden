@@ -362,7 +362,10 @@ export const alertRecipientResolver = pgEnum("alert_recipient_resolver", [
 ]);
 
 // `alert_outcome` — terminal fan-out outcome of a dispatched alert (§2.4.3).
-export const alertOutcome = pgEnum("alert_outcome", ["delivered", "partial", "failed"]);
+// F-109 (migration 0240): `pending` is the state §2.4.3's machine OPENS in and the enum never had, which
+// is why `alert.outcome` was `NOT NULL DEFAULT 'delivered'` — a column that cannot say "not settled yet"
+// says the most flattering thing it can, and nothing ever corrected it.
+export const alertOutcome = pgEnum("alert_outcome", ["pending", "delivered", "partial", "failed"]);
 
 // `notification_channel` — the per-recipient delivery channels (§3.6). `in_app` is the always-
 // available floor; `voice` is SOS-only (§2.5).
