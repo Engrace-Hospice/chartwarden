@@ -371,13 +371,6 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
   },
   {
     module: "m27",
-    kind: "would-defer-a-bound-event",
-    reason:
-      "M27's cost-report PDF back-ref is mapped and unbound while the render handshake dispatches today; same fact as M14/M23/M25.",
-    events: ["m22.document.rendered"],
-  },
-  {
-    module: "m27",
     kind: "no-such-event",
     reason:
       "M40's landed catalog carries `canonical.updated` and `canonical.deactivated` and no provider-entity offboarding topic. M27's §4.4 intent — close a cost report when its provider entity leaves — is real; the name is not.",

@@ -1231,19 +1231,13 @@ export function buildDrizzleM27WriteService(
             },
           },
         });
-        await emit(tx, {
-          eventName: "m27.artifact.render_requested",
-          organizationId: actor.organizationId,
-          aggregateKind: "ecr_submission",
-          aggregateId: submission.id,
-          payload: {
-            costReportId: updated.id,
-            submissionId: submission.id,
-            artifactKind: "ecr",
-            payloadRef: snapshot.id,
-            retentionClass: "compliance",
-          },
-        });
+        // F-108 — submit does NOT emit `m27.artifact.render_requested`. It used to emit one for `ecr`
+        // carrying `payloadRef: snapshot.id`, and the `ecr-generation` job it enqueues one line above
+        // emits BOTH artifacts carrying the real `buildEcrArtifacts` text. M22's D14 idempotency is keyed
+        // `(sourceEvent, aggregateType, aggregateId)` and this row is written FIRST, so it won and the
+        // job's request — the one holding the actual Electronic Cost Report — was an `idempotent_skip`.
+        // The rendered ECR was a serialization of the request envelope with a snapshot UUID where the
+        // file's contents belong. The job owns this emit because the job is what has the artifacts.
         return buildDetail(tx, actor, updated);
       });
     },

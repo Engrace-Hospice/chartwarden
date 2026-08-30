@@ -469,6 +469,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       });
       expect(approved.state).toBe("approved_for_submit");
 
+      const emissionsBeforeSubmit = outbox.emissions.length;
       const submitted = await writeService().submit(actor, costReportId, {
         attestedByMembershipId: MEMBERSHIP,
         attestedAt: new Date().toISOString(),
@@ -476,6 +477,18 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       });
       expect(submitted.state).toBe("submitted");
       expect(submitted.latestSnapshotId).toBeTruthy();
+
+      // F-108 — submit itself requests NO render. It used to emit one for `ecr` carrying
+      // `payloadRef: snapshot.id`, written BEFORE the `ecr-generation` job's pair and therefore winning
+      // M22's `(sourceEvent, aggregateType, aggregateId)` idempotency check: the rendered Electronic Cost
+      // Report was the request envelope with a snapshot UUID where the file belongs, and the job's real
+      // one — asserted below — was an `idempotent_skip`. The job owns this emit because the job is what
+      // has the artifacts.
+      expect(
+        outbox.emissions
+          .slice(emissionsBeforeSubmit)
+          .filter((e) => e.eventName === "m27.artifact.render_requested"),
+      ).toHaveLength(0);
 
       const snapshotRow = await admin.query(
         "SELECT id, content_hash_sha256 FROM cost_report_snapshot WHERE id=$1",

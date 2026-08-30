@@ -59,7 +59,10 @@ export const M22_OUTBOX_EVENTS: ModuleEventContribution = [
       sourceModule: Id,
       renderedAt: Iso,
     }),
-    declaredConsumers: ["m6", "m11", "m12", "m13", "m21", "m33"],
+    // F-108 — m27 joins on the commit that binds `m27.document-backref`, exactly as the header above
+    // requires. Its three `ecr_submission` back-ref columns are the ECR file, the Print Image and the
+    // supporting-doc bundle; the pure decider for them shipped with M27-T09 and had no caller at all.
+    declaredConsumers: ["m6", "m11", "m12", "m13", "m21", "m27", "m33"],
     isOutboxOnly: true,
   },
 ];
