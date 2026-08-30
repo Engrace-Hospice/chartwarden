@@ -41,10 +41,12 @@ export { createAdmissionOnsetReader } from "./admission-onset-reader";
 export {
   type ActiveAdmissionDraftContext,
   type AdmissionSchedulingContext,
+  type ElectionPeriodContext,
   AdmissionSeamDataGapError,
   activeAdmissionDraftContextForPatient,
   admissionIsActiveForOrg,
   admissionSchedulingContextForOrg,
+  electionPeriodContextForOrg,
   createDrizzleAdmissionReaderStore,
 } from "./drizzle-store";
 export {

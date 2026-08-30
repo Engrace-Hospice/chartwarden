@@ -171,6 +171,7 @@ import {
   buildM6ProposalAcceptedConsumer,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
+  electionPeriodContextForOrg,
   mountAdmissionRoutes,
   registerAdmissionAbacPredicates,
   registerAdmissionErasers,
@@ -415,6 +416,7 @@ import {
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
   buildM23BootAssemblyService,
+  buildM23NoeDraftConsumer,
   buildM23OutboxBackedSubmissionGate,
   buildM23RemittanceConsumer,
   buildM23SubmissionQueuePort,
@@ -4554,6 +4556,42 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // declaring `m23` as a consumer. M23 had none: every posting row sat `pending` and no claim
           // ever left ACK_ACCEPTED when the MAC paid it. This drives the real lifecycle transition,
           // appends `claim_state_history`, and emits M23's own §4.10 adjudication events.
+          // F-106 — the NOE draft. `NoeRepository.create` had no caller anywhere in the repository and
+          // `/api/v1/noe-records` is a GET, so no Notice of Election has ever been created: the CMS 5-day
+          // filing window (42 CFR 418.24(b)) was never started for any election, and the watchdog cron
+          // has always scanned an empty table. Subscribed to `period_started`, not `election.signed` —
+          // the effective date the deadline is computed from is written at ACTIVATION and does not exist
+          // at signing. Both M6 facts come from the org-explicit reader: the §4.7 seam pins the tenant
+          // from the ambient request scope and a relay tick is not a request.
+          buildM23NoeDraftConsumer({
+            db: dbHandle.db,
+            outbox: m23OutboxPublisher,
+            resolveElectionPeriod: async (organizationId, electionPeriodId) =>
+              electionPeriodContextForOrg(dbHandle.db, organizationId, electionPeriodId),
+            resolveCcn: async (organizationId, providerEntityId) => {
+              const [provider] = await dbHandle.db
+                .select({ ccn: schema.providerEntities.ccn })
+                .from(schema.providerEntities)
+                .where(
+                  and(
+                    eq(schema.providerEntities.id, providerEntityId),
+                    eq(schema.providerEntities.organizationId, organizationId),
+                  ),
+                )
+                .limit(1);
+              if (!provider) throw new DegradedError("provider-entity", "provider CCN unavailable");
+              return provider.ccn;
+            },
+            onSkipped: (info) =>
+              app.log.info(
+                {
+                  reason: info.reason,
+                  org: info.organizationId,
+                  electionPeriod: info.electionPeriodId,
+                },
+                "M23 NOE draft skipped",
+              ),
+          }),
           buildM23RemittanceConsumer({
             db: dbHandle.db,
             outbox: m23OutboxPublisher,

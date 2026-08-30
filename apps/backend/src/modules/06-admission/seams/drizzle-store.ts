@@ -135,6 +135,77 @@ export function admissionSchedulingContextForOrg(
   );
 }
 
+/**
+ * The facts a BACKGROUND consumer needs about one ELECTION PERIOD, org-explicit (F-106).
+ *
+ * The `AdmissionSchedulingContext` sibling, and needed for the same reason: the §4.7 seam's id-keyed reads
+ * open `withOrgContextFromRequest` and a relay tick is not a request. It joins through to the admission
+ * because `election_period` carries neither the patient nor the provider entity, and a consumer creating a
+ * federally-filed notice needs both.
+ *
+ * `effectiveAt` is nullable and the caller must treat it as load-bearing, not decorative: it is written by
+ * the `setActive` transition at admission activation and by NOTHING else, so it is NULL for every period
+ * that has not started. That is precisely why M23's NOE draft cannot be created from `m6.election.signed`
+ * — see `23-billing-medicare/outbox-consumers/m6-election-period-started.ts`.
+ */
+export interface ElectionPeriodContext {
+  readonly electionPeriodId: string;
+  readonly admissionId: string;
+  readonly patientId: string;
+  readonly providerEntityId: string | null;
+  readonly locationId: string | null;
+  readonly sequenceNumber: number;
+  readonly status: string;
+  /** Org-local `yyyy-mm-dd`. NULL until the period is activated — see the interface note. */
+  readonly effectiveAt: string | null;
+  readonly scheduledEndAt: string | null;
+}
+
+/** One election period's identity + window, org-explicit and worker-callable. `null` when the id is
+ *  unknown in `organizationId` — indistinguishable from another tenant's, which is the point. */
+export function electionPeriodContextForOrg(
+  db: DbClient,
+  organizationId: string,
+  electionPeriodId: string,
+): Promise<ElectionPeriodContext | null> {
+  return withOrgContext(
+    db,
+    { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const [row] = await tx
+        .select({
+          id: EP.id,
+          admissionId: EP.admissionId,
+          sequenceNumber: EP.sequenceNumber,
+          status: EP.status,
+          effectiveAt: EP.effectiveAt,
+          scheduledEndAt: EP.scheduledEndAt,
+          patientId: ADM.patientId,
+          providerEntityId: ADM.providerEntityId,
+          locationId: ADM.locationId,
+        })
+        .from(EP)
+        .innerJoin(ADM, eq(ADM.id, EP.admissionId))
+        // The explicit organization_id predicate is the second wall behind RLS (the
+        // `admissionSchedulingContextForOrg` precedent), so a misconfigured GUC cannot widen this read.
+        .where(and(eq(EP.organizationId, organizationId), eq(EP.id, electionPeriodId)))
+        .limit(1);
+      if (!row) return null;
+      return {
+        electionPeriodId: row.id,
+        admissionId: row.admissionId,
+        patientId: row.patientId,
+        providerEntityId: row.providerEntityId,
+        locationId: row.locationId,
+        sequenceNumber: Number(row.sequenceNumber),
+        status: String(row.status),
+        effectiveAt: localDateN(row.effectiveAt),
+        scheduledEndAt: localDateN(row.scheduledEndAt),
+      };
+    },
+  );
+}
+
 /** Minimal M6-owned context required when an event consumer creates an admission-scoped draft. */
 export interface ActiveAdmissionDraftContext {
   readonly admissionId: string;

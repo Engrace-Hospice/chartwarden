@@ -127,6 +127,15 @@ export {
   M23_SUBMISSION_REQUEST_EVENTS,
 } from "./outbox-consumers/submit-requests";
 
+// F-106 — M23's live NOE-draft consumer: the first writer `noe_record` has ever had.
+export {
+  type M23NoeDraftConsumerDeps,
+  M23_NOE_DRAFT_CONSUMER,
+  NOE_FILING_WINDOW_DAYS,
+  buildM23NoeDraftConsumer,
+  noeWindowTargetAt,
+} from "./outbox-consumers/m6-election-period-started";
+
 // GAP-037 — M23's live `m25.remittance.claim_*` consumer: the 835 → claim-adjudication feedback loop.
 export {
   buildM23RemittanceConsumer,
