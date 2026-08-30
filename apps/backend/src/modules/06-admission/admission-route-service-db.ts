@@ -2731,7 +2731,14 @@ export function createDbAdmissionRouteService(
         await outbox.publish(tx, {
           eventName: "m6.transfer.created",
           // Field name must be `transferEventId` (schema), not `transferId`.
-          payload: { transferEventId: xfer.id, admissionId, direction: "out" },
+          // F-107 — `effectiveAt` is the transfer's own date, which M23 dates the 42 CFR 418.26
+          // NOTR window from. `admission.discharged_at` is `now()` and cannot substitute.
+          payload: {
+            transferEventId: xfer.id,
+            admissionId,
+            direction: "out",
+            effectiveAt: input.effectiveDate,
+          },
           organizationId,
           aggregateKind: "transfer_event",
           aggregateId: xfer.id,
@@ -2828,7 +2835,12 @@ export function createDbAdmissionRouteService(
         await outbox.publish(tx, {
           eventName: "m6.transfer.created",
           // Field name must be `transferEventId` (schema), not `transferId`.
-          payload: { transferEventId: xfer.id, admissionId, direction: "in" },
+          payload: {
+            transferEventId: xfer.id,
+            admissionId,
+            direction: "in",
+            effectiveAt: input.effectiveDate,
+          },
           organizationId,
           aggregateKind: "transfer_event",
           aggregateId: xfer.id,

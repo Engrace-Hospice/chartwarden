@@ -136,6 +136,17 @@ export {
   noeWindowTargetAt,
 } from "./outbox-consumers/m6-election-period-started";
 
+// F-107 — M23's live NOTR-draft consumer: the first writer `notr_record` has ever had.
+export {
+  type M23NotrDraftConsumerDeps,
+  M23_NOTR_DRAFT_CONSUMER,
+  M23_NOTR_TRIGGER_BY_EVENT,
+  NOTR_FILING_WINDOW_DAYS,
+  buildM23NotrDraftConsumer,
+  notrWindowTargetAt,
+  planNotrDraft,
+} from "./outbox-consumers/m6-notr-triggers";
+
 // GAP-037 — M23's live `m25.remittance.claim_*` consumer: the 835 → claim-adjudication feedback loop.
 export {
   buildM23RemittanceConsumer,

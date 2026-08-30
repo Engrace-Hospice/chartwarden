@@ -1156,6 +1156,38 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   writer and a tenant's cap liability computes as zero. Reported, not fixed: the facts exist in the
   database and only the seams are missing, which is a producer-side M5 change.
 
+  **The NOTR was the same absence with a second table, and two of its three triggers needed a decision
+  (F-107, #103).** The Notice of Termination/Revocation tells Medicare a hospice election has ENDED; 42 CFR
+  418.26 requires it within five calendar days of the discharge or revocation effective date, and the M23
+  spec's own regulatory table says exactly that. `NotrRepository.create` had no caller anywhere,
+  `schema.notrRecord` is touched only by the ABAC resolver and the eraser, and `/api/v1/billing/
+  notr-records` is a GET whose only POST is `:id:submit` — so no notice of an election ending has ever been
+  drafted and the `notr_window_watch_idx` watchdog has always scanned an empty table. **TRANSFER** was the
+  producer-side half: `notr_record.effective_end_date` is NOT NULL and `m6.transfer.created` published
+  `{transferEventId, admissionId, direction, otherHospiceCcn}` and no date at all — not derivable
+  downstream either, because `transferOut` discharges through `dischargeAdmissionTx`, which stamps
+  `admission.discharged_at = now()`, the day the paperwork was filed rather than the day the transfer took
+  effect. `transfer_event.effective_at` is NOT NULL and both emit sites had `input.effectiveDate` in hand,
+  so the payload is widened (the F-099/F-100 shape); direction `in` is a deliberate no-op, since a transfer
+  IN starts a benefit rather than ending one. **DISCHARGE** turned on `requiresMedicalDirectorCosign`, which
+  is the right discriminator rather than a proxy for one: W-DC-02 says filing a for-cause discharge does NOT
+  discharge the admission — the row is `pending_cosign` and the patient stays on service — so a NOTR then
+  would tell CMS the benefit ended while the agency is still being paid to provide it. `discharge()`'s
+  pending branch emits `true`; `dischargeAdmissionTx`, which runs on the immediate path AND again from
+  `cosignDischarge`, always emits `false`. So the for-cause notice fires at COSIGN off the second emission
+  with the same `dischargeEventId`, and nothing needs to subscribe to `m6.discharge.cosigned` (whose payload
+  carries no admission, patient or date anyway). A DEATH discharge drafts one like any other — the spec's
+  trigger list carves out no reason, 418.26 is written about the benefit ending rather than about why, and
+  the two mistakes are not symmetric: an unnecessary NOTR is cancelled at the MAC, a missing one forfeits
+  payment. The `notr_record` CHECK constraints make trigger and event id ONE fact (`trigger_kind =
+  'revocation' AND revocation_event_id IS NOT NULL`, exactly one of three id columns set), so the mapping is
+  enforced by the schema rather than only by the consumer. Proven by `m23-notr-draft.live.test.ts` — the
+  real M6 write service runs each termination as `wardenx_app`, the real publisher writes the row, the real
+  dispatcher delivers it, and M23's real consumer inserts through the real `NotrRepository` under RLS; all
+  8 fail with the binding removed, including the two "drafts nothing" cases, which assert the consumer MADE
+  the decision rather than merely that no row appeared. What remains in the m23 group is now three named
+  ports rather than a phase: `enqueueRevalidation`, `freezeNewClaims` and `recordDocumentBackReference`.
+
   **Rule 6 (F-094, #205) is the direction rule 4 still did not run.** Six modules publish an
   `M*_SUBSCRIBED_EVENT_NAMES` constant, and each carries the same doc comment — it exists "so an upstream
   rename breaks the build rather than silently orphaning a handler". **Nothing compared any of them to

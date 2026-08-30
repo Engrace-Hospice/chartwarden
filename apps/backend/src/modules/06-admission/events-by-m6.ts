@@ -479,6 +479,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       transferEventId: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
       direction: Type.Union([Type.Literal("in"), Type.Literal("out")]),
+      /** F-107 — the transfer's own effective date (`transfer_event.effective_at`, NOT NULL). A
+       *  transfer-OUT ends the hospice benefit, and 42 CFR 418.26 dates the 5-day NOTR window from
+       *  THIS date. It is not derivable downstream: `transferOut` discharges the admission through
+       *  `dischargeAdmissionTx`, which stamps `admission.discharged_at = now()` — the instant the
+       *  paperwork was filed, not the day the transfer took effect. Both emit sites have it in hand. */
+      effectiveAt: Type.String({ minLength: 1 }),
       otherHospiceCcn: Type.Optional(Type.String({ minLength: 1 })),
     }),
     declaredConsumers: ["m13", "m22", "m23", "m26"],

@@ -417,6 +417,7 @@ import {
   buildDrizzleM23WriteService,
   buildM23BootAssemblyService,
   buildM23NoeDraftConsumer,
+  buildM23NotrDraftConsumer,
   buildM23OutboxBackedSubmissionGate,
   buildM23RemittanceConsumer,
   buildM23SubmissionQueuePort,
@@ -4590,6 +4591,39 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                   electionPeriod: info.electionPeriodId,
                 },
                 "M23 NOE draft skipped",
+              ),
+          }),
+          // F-107 — the NOTR draft, the NOE's sibling. `NotrRepository.create` had no caller either, so
+          // no notice of a hospice election ENDING has ever been drafted and the 42 CFR 418.26 5-day
+          // window was never started for any revocation, transfer-out or discharge.
+          buildM23NotrDraftConsumer({
+            db: dbHandle.db,
+            outbox: m23OutboxPublisher,
+            resolveAdmission: async (organizationId, admissionId) =>
+              admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
+            resolveCcn: async (organizationId, providerEntityId) => {
+              const [provider] = await dbHandle.db
+                .select({ ccn: schema.providerEntities.ccn })
+                .from(schema.providerEntities)
+                .where(
+                  and(
+                    eq(schema.providerEntities.id, providerEntityId),
+                    eq(schema.providerEntities.organizationId, organizationId),
+                  ),
+                )
+                .limit(1);
+              if (!provider) throw new DegradedError("provider-entity", "provider CCN unavailable");
+              return provider.ccn;
+            },
+            onSkipped: (info) =>
+              app.log.info(
+                {
+                  reason: info.reason,
+                  event: info.eventType,
+                  org: info.organizationId,
+                  admission: info.admissionId,
+                },
+                "M23 NOTR draft skipped",
               ),
           }),
           buildM23RemittanceConsumer({
