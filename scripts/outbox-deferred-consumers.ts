@@ -366,7 +366,7 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
     module: "m23",
     kind: "handlers-unbound",
     reason:
-      "M23 binds three real consumers: remittance feedback, submission-request enqueue, and — since F-106 — the NOE draft on `m6.election.period_started`, the first writer `noe_record` has ever had. The remaining declarations sit on its `consumers/` subscription-map surface, whose header calls the topics forward-declared and inert pending the live inbound relay; that relay landed, so what is left is the per-effect Drizzle work, not a platform phase. Each needs a port the composition root has nothing to bind: `createNotrDraft` (the NOTR half — `notr_record` has no writer either, and the three trigger topics need the transfer-direction and discharge-reason mapping decided), `enqueueRevalidation`, `freezeNewClaims` and `recordDocumentBackReference`.",
+      "M23 binds three real consumers: remittance feedback, submission-request enqueue, and — since F-106/F-107 — the NOE draft on `m6.election.period_started` and the NOTR draft on `m6.revocation.created` / `m6.transfer.created` / `m6.discharge.created`, the first writers `noe_record` and `notr_record` have ever had. The remaining declarations sit on its `consumers/` subscription-map surface, whose header calls the topics forward-declared and inert pending the live inbound relay; that relay landed, so what is left is the per-effect Drizzle work, not a platform phase. Each of the rest needs a port the composition root has nothing to bind: `enqueueRevalidation` (the §11.A re-validation job queue), `freezeNewClaims` (the `m5.patient.deceased` claim freeze) and `recordDocumentBackReference` (the M22 render receipt, which additionally waits on M22 publishing a claim-artifact template).",
     events: [
       "m11.order.level_of_care_change_signed",
       "m11.order.recertification_signed",
@@ -383,13 +383,10 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       "m6.admission.activated",
       "m6.admission.discharged",
       "m6.cti.signed",
-      "m6.discharge.created",
       "m6.election.period_ended",
       "m6.f2f.attested",
       "m6.loc.changed",
       "m6.nor.acknowledged",
-      "m6.revocation.created",
-      "m6.transfer.created",
       "m8.encounter.cosigned",
     ],
   },

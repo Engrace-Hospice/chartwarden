@@ -392,6 +392,7 @@ jobs:
           - { name: "M14 action-item auto-close", scripts: "test:m14:autoclose:live" }
           - { name: "M16 bereavement intake", scripts: "test:m16:bereavement-intake:live" }
           - { name: "M23 NOE draft", scripts: "test:m23:noe-draft:live" }
+          - { name: "M23 NOTR draft", scripts: "test:m23:notr-draft:live" }
           # GAP-050: M33 scheduled-report create/update/resume over the real `cron-parser` adapter —
           # all three compute `next_run_at` through a port that was a fail-closed stub, so no tenant
           # could create a schedule at all and the §4.8 scheduled-run cron had nothing to fire.
