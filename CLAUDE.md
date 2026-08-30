@@ -1061,6 +1061,61 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   "since last IDG" Valkey projection cache, and the M22 packet back-ref, which additionally has no producer
   since `m14.packet.document_requested` is catalogued by nobody.
 
+  **No bereavement plan has ever existed, and three more defects sat between the event and the row
+  (F-105, #103).** CoP 418.64(d) obliges a hospice to serve the decedent's family for THIRTEEN MONTHS, and
+  `bereavement_plan` is the root carrying that single clock — the contact roster, the D4 outreach schedule,
+  the anniversary reminders, the risk scores and the closure record all hang off `plan_id`.
+  `decideEligibilityIntake` is M16's complete §4.3.1 intake decider and its own header says "the live
+  outbox binding + the transactional insert land with the §4.9 workers in M16-T06"; there was no binding,
+  and **no INSERT INTO `bereavement_plan` anywhere in the repository** — not the write service, not a seed,
+  not a test. Nor a route: `POST /api/v1/bereavement/plans` does not exist (the collection path is a GET
+  worklist) and all fifteen plan writes are `/plans/:planId/…`, so the consumer is the only creation path
+  BY DESIGN and it was absent. The M15 `discipline_care_plan` and M20 `safety_check_in_schedule` finding a
+  third time, and M30's `bereavement_coverage_rate` has been computing off the empty table. M6's side was
+  never missing — `m6.bereavement.eligible` is catalogued, emitted from the death-discharge transition, and
+  declares exactly one consumer, so every death has left a `pending` row re-claimed every thirty minutes.
+  **Three defects underneath, none of which any test could see** (every M16 suite drives the write service
+  through `NOOP_OUTBOX`, the F-093/F-100/F-103 shape). (1) M16's `OutboxEmission` had **no
+  `organizationId`** and none of its five emit sites supplied one, so every `m16.*` row wrote NULL, RLS
+  refused it with 42501 and — the publish running on the CALLER's transaction being the whole point of a
+  transactional outbox — the mutation rolled back with it: seeding a roster, assigning a volunteer,
+  completing an outreach and initiating contact were all 500s. It was already on the effect context, used
+  by the `alert` arm one case below. Required now, not optional: optional is what let the port stay
+  assignable to the real publisher by method bivariance. (2) `resolveDeathFact` called M6's §4.7
+  `AdmissionStatusReader`, whose id-keyed reads open `withOrgContextFromRequest` — a relay tick is not a
+  request, so every delivery would have dead-lettered. (3) **The census window's upper bound excluded the
+  row it was looking for.** `DeathDischargeReader`'s period is half-open (`death_at < to`, right for the
+  reporting-period scans it was written for), M16 asked for `to = eligibleAt`, and on M6's emit path those
+  are THE SAME VALUE — `discharge_event.death_at` and the event's `eligibleAt` are both set from one
+  `dischargeDate` field in one statement. So `resolveDeathFact` returned null for every death ever
+  recorded, and the intake reported it as "M6's census has no row for this admission", which is the
+  opposite of true. Fixed in M16 rather than the seam: making the period inclusive would change a published
+  contract under M5, M21 and M30 to fix M16's off-by-one-instant, and M5's own death consumer already pads
+  the same bound. **A fourth was PARAM-004 pointing the wrong way.** It replaced a UTC slice of
+  `death_at` with an org-timezone conversion because "a death at 11:45pm Pacific is 06:45 UTC the FOLLOWING
+  day" — correct about instants, and `discharge_event.death_at` is not one: its only writer is
+  `new Date(input.dischargeDate)` where `dischargeDate` is `Type.String({ format: "date" })`, and M6's own
+  state machine types the field `deathAt: LocalDate`. M6 models no time of death. Every value in that
+  column is midnight UTC of a typed date, so converting it through a US timezone lands on the previous
+  evening — dating every death ONE DAY EARLY in every organization west of UTC, which is every US hospice,
+  on the column D4's 13-month clock counts from. PARAM-004 fixed a failure this data cannot exhibit and
+  introduced one it always will; its own fixture is an instant with a time component M6 cannot produce.
+  `localDateOf` is kept and still tested, because it is right the day M6 records a real instant.
+  **A fifth is reported, not fixed**: `checkDeathDateMatchesAdmission`'s second parameter is named
+  `admissionDeathDate` and wants `discharge_event.effective_at`; it was being passed
+  `admission.discharged_at`, which the discharge transition writes `now()` — so the §2.5 check compared the
+  death date to the FILING instant for equality and rejected precisely the late filing W-DC-01 permits and
+  the 180-day lookback exists for. It now passes `null` (the decider's own documented branch) and starts
+  performing the day `DeathDischargeRow` carries `effectiveAt` — though it is vacuous even then, since
+  M6 sets both fields from one input. `decideCosignReceipt`, M16's other written decider, stays registered
+  as deferred with the true reason: `discharge_event` models no external source, so every death reads
+  `internal_clinician_recorded`, no plan can carry the `external_source_metadata` a D18 receipt would
+  release, and the payloads do not meet either. Proven by `m16-bereavement-intake.live.test.ts` — the real
+  M6 write service discharges by death as `wardenx_app`, the real catalog-validating publisher writes the
+  row, the real dispatcher delivers it, and M16's real consumer reads M6's real census seam and inserts
+  under RLS; 7 of its 8 fail with the binding removed, and the eighth is the non-death control that must
+  pass either way.
+
   **Rule 6 (F-094, #205) is the direction rule 4 still did not run.** Six modules publish an
   `M*_SUBSCRIBED_EVENT_NAMES` constant, and each carries the same doc comment — it exists "so an upstream
   rename breaks the build rather than silently orphaning a handler". **Nothing compared any of them to

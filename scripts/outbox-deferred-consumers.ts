@@ -512,7 +512,7 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
     module: "m16",
     kind: "handlers-unbound",
     reason:
-      "M16 binds one live consumer (IDG risk intake) and carries further handler files (`consumers/death-discharge.ts`, `consumers/m6-eligibility.ts`) that no binding reaches.",
+      "M16 now binds two live consumers: the IDG risk intake and, since F-105, the §4.3.1 bereavement intake on `m6.bereavement.eligible` — the only path by which a `bereavement_plan` row can exist. `m6.discharge.cosigned` is the one remaining WRITTEN decider (`decideCosignReceipt`, the D18 gate release) and it is blocked producer-side twice over: M6's `discharge_event` models no external source, so its `DeathDischargeReader` returns `internal_clinician_recorded` for EVERY decedent and no plan can carry the `external_source_metadata` a receipt would release; and the payloads do not meet — M6 publishes `dischargeEventId` + `medicalDirectorCosignedAt`, the decider reads `sourceProposalId` + `cosignedAt` + `medicalDirectorMembershipId`. The rest have no handler written at all.",
     events: [
       "m15.plan.discharged",
       "m37.ipu_admission.death_recorded",
@@ -523,7 +523,6 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       "m5.patient.deceased",
       "m6.admission.activated",
       "m6.admission.discharged",
-      "m6.bereavement.eligible",
       "m6.discharge.cosigned",
       "m6.discharge.death",
       "m7.care_plan.discharged",

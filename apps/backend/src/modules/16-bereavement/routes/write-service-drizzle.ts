@@ -404,6 +404,7 @@ export function buildDrizzleM16WriteService(
       .returning();
     for (const row of inserted) {
       await outbox.publish(tx, {
+        organizationId: plan.organizationId,
         eventName: "m16.bereavement.outreach_scheduled",
         payload: {
           planId: plan.id,
@@ -740,6 +741,7 @@ export function buildDrizzleM16WriteService(
           })
           .where(eq(PLAN.id, plan.id));
         await outbox.publish(tx, {
+          organizationId: plan.organizationId,
           eventName: "m16.bereavement.volunteer_assigned",
           payload: { planId: plan.id, volunteerUserId: input.volunteerUserId, assignedAt: at },
           aggregateKind: "bereavement_plan",
@@ -1665,6 +1667,7 @@ export function buildDrizzleM16WriteService(
           .returning();
         if (!log) throw new Error("m16: the direct contact-log insert returned no row");
         await outbox.publish(tx, {
+          organizationId: plan.organizationId,
           eventName: "m16.bereavement.outreach_completed",
           payload: {
             planId: plan.id,
@@ -1836,6 +1839,7 @@ export function buildDrizzleM16WriteService(
           .returning();
         if (!row) throw new Error("m16: the initiate-contact insert returned no row");
         await outbox.publish(tx, {
+          organizationId: plan.organizationId,
           eventName: "m16.bereavement.outreach_scheduled",
           payload: {
             planId: plan.id,

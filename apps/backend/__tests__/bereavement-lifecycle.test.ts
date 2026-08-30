@@ -889,6 +889,7 @@ const DEATH_FACT: ResolvedDeathFact = {
   deathDate: DEATH_DATE,
   source: "internal_clinician_recorded",
   cosignStatus: undefined,
+  locationId: null,
   admissionDischargeDate: DEATH_DATE,
 };
 
@@ -1020,7 +1021,14 @@ describe("the M6 death-fact resolver (seam-consuming)", () => {
       currentElectionPeriodId: null,
       currentLevelOfCare: null,
     },
-  ): { periods: Array<{ from: string; to: string }> } {
+  ): {
+    periods: Array<{ from: string; to: string }>;
+    resolveAdmission: () => Promise<{
+      providerEntityId: string | null;
+      locationId: string | null;
+      dischargedAt: string | null;
+    }>;
+  } {
     const periods: Array<{ from: string; to: string }> = [];
     registerSeam("DeathDischargeReader", {
       listDeathDischargesInPeriod: async (_org: string, period: { from: string; to: string }) => {
@@ -1028,14 +1036,20 @@ describe("the M6 death-fact resolver (seam-consuming)", () => {
         return decedents;
       },
     } as never);
-    registerSeam("AdmissionStatusReader", {
-      getAdmissionSummary: async () => summary,
-    } as never);
-    return { periods };
+    // F-105 — the admission anchor is INJECTED now, not read off `AdmissionStatusReader`: that seam's
+    // id-keyed reads open `withOrgContextFromRequest`, so a live consumer calling `resolveDeathFact` would
+    // have thrown `no ambient request context` on every death. The double mirrors M6's org-explicit
+    // `admissionSchedulingContextForOrg`, which is what production binds.
+    const resolveAdmission = async () => ({
+      providerEntityId: (summary.providerEntityId as string | null) ?? null,
+      locationId: (summary.locationId as string | null) ?? null,
+      dischargedAt: (summary.dischargedAt as string | null) ?? null,
+    });
+    return { periods, resolveAdmission };
   }
 
   it("windows the census scan back from eligibleAt and matches on admissionId", async () => {
-    const { periods } = registerFakes([
+    const { periods, resolveAdmission } = registerFakes([
       {
         patientId: "other",
         admissionId: "other-adm",
@@ -1051,18 +1065,29 @@ describe("the M6 death-fact resolver (seam-consuming)", () => {
       },
     ]);
 
-    const fact = await resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT, "UTC");
+    const fact = await resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT, "UTC", resolveAdmission);
     expect(fact?.deathDate).toBe(DEATH_DATE);
     expect(fact?.source).toBe("hl7_external");
     expect(fact?.providerEntityId).toBe(PROVIDER_ENTITY);
-    expect(fact?.admissionDischargeDate).toBe(DEATH_DATE);
-    // The scan ends at eligibleAt and reaches back the documented lookback (W-DC-01 late filing).
-    expect(periods[0]?.to).toBe(ELIGIBLE_AT);
+    // F-105 — DELIBERATELY null. This used to be `AdmissionSummary.dischargedAt`, which is
+    // `admission.discharged_at` — written `now()` by the discharge transition, i.e. when the paperwork
+    // was FILED, not when the patient died. `checkDeathDateMatchesAdmission` compares it to the death
+    // date for EQUALITY, so it rejected precisely the late filing W-DC-01 permits and the 180-day
+    // lookback exists to accommodate. The value its own parameter name asks for
+    // (`discharge_event.effective_at`) is published by no seam.
+    expect(fact?.admissionDischargeDate).toBeNull();
+    // The scan ends ONE MILLISECOND past eligibleAt and reaches back the documented lookback (W-DC-01
+    // late filing). F-105 — the seam's period is HALF-OPEN (`death_at < to`), and on M6's emit path the
+    // death instant IS `eligibleAt`: both are `discharge_event`'s own `dischargeDate` field, set in one
+    // statement. An exclusive bound therefore excluded exactly the row being looked for, and every death
+    // on the platform failed `DEATH_FACT_UNRESOLVED`.
+    expect(Date.parse(periods[0]?.to ?? "")).toBe(Date.parse(ELIGIBLE_AT) + 1);
+    expect(Date.parse(periods[0]?.to ?? "")).toBeGreaterThan(Date.parse(DEATH_AT));
     expect(Date.parse(periods[0]?.from ?? "")).toBeLessThan(Date.parse(DEATH_AT));
   });
 
   it("returns null when the census has no row for this admission (the caller fails closed)", async () => {
-    registerFakes([
+    const { resolveAdmission } = registerFakes([
       {
         patientId: "other",
         admissionId: "other-adm",
@@ -1070,7 +1095,7 @@ describe("the M6 death-fact resolver (seam-consuming)", () => {
         source: "internal_clinician_recorded",
       },
     ]);
-    expect(await resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT, "UTC")).toBeNull();
+    expect(await resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT, "UTC", resolveAdmission)).toBeNull();
     expectCode(
       () => decideEligibilityIntake(PAYLOAD, facts({ deathFact: null })),
       "DEATH_FACT_UNRESOLVED",
@@ -1084,17 +1109,32 @@ describe("the M6 death-fact resolver (seam-consuming)", () => {
       },
     } as never);
     await expectRejectCode(
-      resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT, "UTC"),
+      resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT, "UTC", async () => null),
       "DEATH_FACT_UNRESOLVED",
     );
   });
 
-  it("PARAM-004: death_date is the org's LOCAL calendar date, not a UTC-instant slice", async () => {
-    // DEATH_AT = "2026-03-01T04:20:00.000Z" — 04:20 UTC on March 1 is still Feb 28 in every US
-    // timezone (8:20pm Feb 28 in Los Angeles, 11:20pm Feb 28 in New York). The old utcDateOf() bug
-    // would misdate this death one day LATE for any US-operating org — a real, regulatory-significant
-    // error since D4 anchors the 13-month bereavement clock on this exact date.
-    registerFakes([
+  it("localDateOf still converts a REAL instant through the org timezone (PARAM-004)", () => {
+    // Kept, and kept tested, because it is the right answer the day M6 records a time of death:
+    // 04:20 UTC on March 1 is still Feb 28 in every US timezone (8:20pm in Los Angeles, 11:20pm in
+    // New York). `deathCalendarDate` below is what M16 actually calls, and the difference between
+    // these two tests is the whole of F-105's third defect.
+    expect(localDateOf(DEATH_AT as never, "UTC")).toBe("2026-03-01");
+    expect(localDateOf(DEATH_AT as never, "America/Los_Angeles")).toBe("2026-02-28");
+  });
+
+  it("F-105: death_date reads M6's value back as the DATE M6 wrote, not a timezone conversion", async () => {
+    // `discharge_event.death_at` is a timestamptz whose only writer is `new Date(input.dischargeDate)`,
+    // and `dischargeDate` is `Type.String({ format: "date" })` — M6's own state machine types the field
+    // `deathAt: LocalDate` and models no time of death. So every value in the column is MIDNIGHT UTC of
+    // the date a clinician typed, and converting that through a US org's timezone lands on the previous
+    // evening — dating every death ONE DAY EARLY in every organization west of UTC, which is every US
+    // hospice. D4 anchors the 13-month CoP 418.64(d) clock on this exact date.
+    //
+    // PARAM-004 replaced a UTC slice with the timezone conversion on reasoning that is correct about
+    // instants and does not apply to this column; its own fixture (`DEATH_AT`, with a time component) is
+    // a value M6's writer cannot produce. The org timezone must NOT move the answer.
+    const { resolveAdmission } = registerFakes([
       {
         patientId: PATIENT,
         admissionId: ADMISSION,
@@ -1102,9 +1142,15 @@ describe("the M6 death-fact resolver (seam-consuming)", () => {
         source: "internal_clinician_recorded",
       },
     ]);
-    const inUtc = await resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT, "UTC");
-    const inLosAngeles = await resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT, "America/Los_Angeles");
+    const inUtc = await resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT, "UTC", resolveAdmission);
+    const inLosAngeles = await resolveDeathFact(
+      ORG,
+      ADMISSION,
+      ELIGIBLE_AT,
+      "America/Los_Angeles",
+      resolveAdmission,
+    );
     expect(inUtc?.deathDate).toBe("2026-03-01");
-    expect(inLosAngeles?.deathDate).toBe("2026-02-28");
+    expect(inLosAngeles?.deathDate).toBe("2026-03-01");
   });
 });

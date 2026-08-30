@@ -21,12 +21,26 @@ import type {
   BereavementRiskScoreView,
 } from "./read-service";
 
-/** A §4.4 `m16.*` transactional-outbox emission. PHI-free by construction (§8.1 payload scrubbing). */
+/** A §4.4 `m16.*` transactional-outbox emission. PHI-free by construction (§8.1 payload scrubbing).
+ *
+ * F-105 — every field here is REQUIRED, and `organizationId` did not exist at all. `outbox_event.
+ * organization_id` has no default, so an emission that omits it wrote NULL, the RLS WITH CHECK refused
+ * the insert with 42501, and — because the publish runs on the CALLER'S transaction, which is the whole
+ * point of a transactional outbox — the mutation it was announcing rolled back with it. Every M16 route
+ * that emits was a 500 in production.
+ *
+ * Optional is what let it through: with these three optional, this port stayed assignable to the real
+ * `OutboxPublishPort` (whose `organizationId` is required) only by TypeScript's method bivariance, so
+ * the composition root bound a publisher that demanded a field no caller supplied and nothing complained.
+ * Requiring them is the check — the M15 `OutboxEmission` fix (F-103) verbatim, one module over. */
 export interface OutboxEmission {
+  /** The tenant the row belongs to. Not derivable inside the publisher: it runs on the caller's tx, and
+   *  `app.org_id` is a session GUC the persister does not read. */
+  readonly organizationId: string;
   readonly eventName: string;
   readonly payload: Record<string, unknown>;
-  readonly aggregateKind?: string;
-  readonly aggregateId?: string;
+  readonly aggregateKind: string;
+  readonly aggregateId: string;
 }
 
 /**
