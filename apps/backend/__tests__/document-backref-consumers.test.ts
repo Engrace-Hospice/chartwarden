@@ -61,13 +61,15 @@ describe("m22.document.rendered — the event that did not exist", () => {
   it("declares exactly the consumers that are bound, not the ones that are interested", () => {
     const entry = M22_OUTBOX_EVENTS.find((e) => e.eventName === M22_DOCUMENT_RENDERED_EVENT);
     expect(entry).toBeDefined();
-    // M14/M23/M25/M27/M39 all NAME this event in their subscription maps. Listing them here without a
+    // M14/M23/M25/M39 all NAME this event in their subscription maps. Listing them here without a
     // live binding would hold every render's back-ref row `pending` forever — the dispatcher's staged-
     // deployment rule — so each is added on the commit that binds its handler. (M33 arrived on GAP-051's.)
     // It cuts both ways: the dispatcher THROWS at construction on a module that binds an event it is not
     // declared for, so this list and the bound set move together or boot fails.
     // F-100 — m6 joined on the commit that bound its stamper. Six `document_id` columns, one consumer.
-    expect(entry?.declaredConsumers).toEqual(["m6", "m11", "m12", "m13", "m21", "m33"]);
+    // F-108 — m27 on the commit that bound `m27.document-backref`: the ECR file, the Print Image and the
+    // supporting-doc bundle, three columns off one event discriminated by `aggregateType`.
+    expect(entry?.declaredConsumers).toEqual(["m6", "m11", "m12", "m13", "m21", "m27", "m33"]);
   });
 
   it("announces the render with the routing the requesting module keys on", async () => {

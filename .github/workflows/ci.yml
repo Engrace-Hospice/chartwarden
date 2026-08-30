@@ -266,7 +266,8 @@ jobs:
               name: "M27 Cost Report",
               scripts:
                 "test:m27:elevated-approval:live test:m27:allocation-input:live
-                test:m27:validation-context:live test:m27:workflow-slice:live",
+                test:m27:validation-context:live test:m27:workflow-slice:live
+                test:m27:ecr-backref:live",
             }
           # GAP-060: M40's §7.6 merge approve/reject + provisional promotion against the REAL
           # DB-backed service — the audit's finding was that no test ever exercised it.

@@ -514,6 +514,7 @@ import {
   buildDrizzleM27ReadService,
   buildDrizzleM27WriteService,
   buildM27AllocationInputs,
+  buildM27DocumentBackrefConsumer,
   buildM27RecomputeEnqueue,
   buildM27ValidationContext,
   buildM27WorkerDeps,
@@ -4499,6 +4500,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           }),
           buildM13DocumentBackrefConsumer({ db: dbHandle.db }),
           buildM21DocumentBackrefConsumer({ db: dbHandle.db }),
+          // F-108 — M27's. Unlike the five clinical ones it stamps THREE columns off one event, resolved
+          // from `aggregateType`: M27 fans the ECR file, the Print Image and the supporting-doc bundle out
+          // under ONE request event name, so the aggregate type is the only discriminator on the wire —
+          // and the pure handler's declared payload named an `artifactKind` M22 does not publish, so a
+          // binding written to its stated shape would have no-op'd on every delivery.
+          buildM27DocumentBackrefConsumer({ db: dbHandle.db, outbox: m27OutboxPublisher }),
           // GAP-051 — M33's half. Unlike the four above it does more than stamp a column: a rendered
           // scheduled report settles its occurrence `delivered` and emits the §4.9 fan-out, which is why
           // it composes the package's own decider/applier rather than a one-line UPDATE. The ad-hoc

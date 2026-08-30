@@ -1188,6 +1188,54 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   the decision rather than merely that no row appeared. What remains in the m23 group is now three named
   ports rather than a phase: `enqueueRevalidation`, `freezeNewClaims` and `recordDocumentBackReference`.
 
+  **The cost report CMS receives pointed at nothing, and the request half was asking for the wrong file
+  (F-108, #103).** `ecr_submission.ecr_file_document_id`, `.pi_file_document_id` and
+  `.supporting_documents_document_ids` are where M27 holds the Electronic Cost Report, the Print Image and
+  the supporting bundle — "M22 ref" in the schema, D11's "M27 holds back-references; no MinIO code".
+  `EcrSubmissionRepository.update` has accepted exactly those three since M27-T05 and **nothing has ever
+  called it with one**; `handleDocumentRendered`, the pure decider for them, shipped with M27-T09 with **no
+  caller anywhere and no test anywhere** — not even its own, unlike every prior instance of this shape.
+  `consumers/index.ts` files the absence as "the live inbound transactional-outbox dispatcher accessor
+  lands (RULE 3(d))", the phase F-106 already found had landed. F-099 bound the REQUEST half, so since then
+  every submitted report has rendered a real document into MinIO and the submission that produced it has
+  gone on serving `ecrFileDocumentId: null`. **The pure handler's declared payload named two fields the wire
+  does not carry.** `DocumentRenderedEvent` wanted `submissionId` and `artifactKind`; M27 fans three
+  artifacts out under ONE request event name, so M22 routes each to its own template and its own
+  `aggregate_type` and echoes back `aggregateType` + `aggregateId`. A binding written to the declared shape
+  would have read `undefined` for both and no-op'd on every delivery — the F-030 attribute failure at
+  payload granularity, silent and indistinguishable from "no M27 document was rendered". The discriminator
+  is now `aggregateType`, which is the shared vocabulary rather than M22's private routing map: the three
+  values are `DocumentAggregateType` members in the leaf `packages/types`, so reading them is reading a
+  published contract and not copying a list. **The producer-side defect only surfaced from tracing the same
+  handshake, and it was the more expensive half.** `submitCostReport` emitted its OWN
+  `m27.artifact.render_requested` for `ecr` carrying `payloadRef: snapshot.id`, one line after enqueueing
+  the `ecr-generation` job that emits BOTH artifacts carrying the real `buildEcrArtifacts` text. M22's D14
+  idempotency is keyed `(sourceEvent, aggregateType, aggregateId)` and the submit row is written FIRST, so
+  it won — the rendered Electronic Cost Report was a serialization of the request envelope with a snapshot
+  UUID where the file's contents belong, and the job's request, the one holding the actual filing, was an
+  `idempotent_skip`. The emit is gone from submit: the job owns it because the job is what has the
+  artifacts. **The group reason was wrong about every member, the F-099 shape at full scale.** It read that
+  M27's `consumers/subscription-map.ts` + `handlers.ts` are the M25/M26 mirror and the topics are
+  forward-declared pending the relay; that map names THREE topics and **not one of the 23 events in the
+  group is among them** — they were never forward-declared, they were never declared at all. What is
+  actually true is that M27's input model is a seam PULL: `statistics-refresh` re-aggregates the S-3
+  patient-day census from M6's `LevelOfCarePeriodReader`/`AdmissionCensusReader` and the visits-by-discipline
+  from M8's `EncounterStatisticsProvider`, `refresh-inputs` materializes the trial balance, and the M23/M26
+  revenue and cap facts arrive through M27's own forward-seam readers. So all 23 name as a PUSH consumer a
+  module that resolves the same fact by PULL — nine of them (`m21.supply_request.invoice_*`,
+  `m26.cap.accrual_recorded`/`.settlement_*`/`.year_*`, `m8.mileage.captured`) naming m27 and nobody else,
+  so every emission is a row re-claimed every thirty minutes with no consumer anywhere. **Reported, not
+  fixed**: the correction is the F-101 sweep and it needs the same per-event verification F-101 gave m6's
+  seven, not a blanket edit. Two smaller absences recorded with it — the supporting-doc REQUEST has no
+  producer at all (`runEcrGeneration` emits `ecr` and `pi`, and nothing else emits the event), so the
+  handler's append branch is reachable only from the test; and M40 publishes no provider-entity offboard
+  topic under any spelling, so M27's third subscription stays `no-such-event` rather than deferred. Proven
+  by `m27-ecr-backref.live.test.ts` — the real `runEcrGeneration`, the real catalog-validating publisher,
+  the real dispatcher, M22's real render consumer and renderer, into real `document` rows and the stamped
+  columns, under RLS, with org A's artifact refused against org B's submission; 3 of its 7 fail with the
+  binding removed, and the producer-side half fails `m27-cost-report-workflow-slice.live.test.ts` when the
+  submit emission is put back.
+
   **Rule 6 (F-094, #205) is the direction rule 4 still did not run.** Six modules publish an
   `M*_SUBSCRIBED_EVENT_NAMES` constant, and each carries the same doc comment — it exists "so an upstream
   rename breaks the build rather than silently orphaning a handler". **Nothing compared any of them to
