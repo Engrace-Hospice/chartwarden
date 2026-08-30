@@ -378,7 +378,10 @@ jobs:
               name: "M31 Portal & Telehealth",
               scripts: "test:m31:portal-eraser:live test:m31:care-team-sync:live",
             }
-          - { name: "M36 Messaging alerts", scripts: "test:m36:alert-emitter:live" }
+          - {
+              name: "M36 Messaging alerts",
+              scripts: "test:m36:alert-emitter:live test:m36:alert-outcome:live",
+            }
           - { name: "M39 Consent", scripts: "test:m39:consent-lifecycle:live" }
           # GAP-023/024/038: M22's §4.11 render handshake end-to-end — a real signed order/med order
           # through the real outbox dispatcher into real `document`/`document_version` rows. Nothing in

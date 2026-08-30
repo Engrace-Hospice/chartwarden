@@ -1,0 +1,16 @@
+-- M36 `alert_outcome` — the `pending` state the §2.4.3 machine opens in and the enum never had
+-- (F-109 / #103).
+--
+-- WHAT WAS WRONG. §2.4.3 reads `[*] --> pending: alert row written; notification_delivery rows enqueued`,
+-- then `pending --> delivered | partial | failed`. The enum has three values and none of them is
+-- `pending`, so `alert.outcome` shipped `NOT NULL DEFAULT 'delivered'`: the column could not express
+-- "not settled yet", so it asserted the most flattering outcome available and no code path ever
+-- corrected it. `computeOutcome` — the §2.4.3 roll-up — has existed since M36-T04 with NO CALLER, and
+-- `notification_delivery.status` has no UPDATE anywhere in the repository, so every delivery row ever
+-- written is still `pending` and every alert row ever written claims it was delivered.
+--
+-- Additive only — no value removed, no existing row changed here. 0241 moves the DEFAULT and backfills.
+--
+-- Own migration: PostgreSQL forbids USING an enum value added earlier in the same transaction, and 0241
+-- needs this one in a DEFAULT and an UPDATE. The 0219/0220 precedent (`session_class`).
+ALTER TYPE "public"."alert_outcome" ADD VALUE IF NOT EXISTS 'pending' BEFORE 'delivered';

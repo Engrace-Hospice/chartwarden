@@ -45,6 +45,7 @@ import {
   type AlertSeverity,
   type NotificationChannel,
   createAlertEmitter,
+  rollUpAlertOutcome,
 } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
 import { DegradedError } from "@wardenx/types";
@@ -209,6 +210,13 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
 
     async persist(record: PersistedAlert): Promise<{ alertId: string }> {
       return withOrgContext(db, { organizationId: record.orgId, userId: "" }, async (tx: Tx) => {
+        // F-109 — the §2.4.3 outcome is WRITTEN, not defaulted. The column used to be
+        // `NOT NULL DEFAULT 'delivered'` and no code path ever set it, so every alert in every database
+        // asserted successful delivery while every one of its `notification_delivery` children sat
+        // `pending` forever. The roll-up settles a plan that is already terminal — most importantly the
+        // EMPTY one: `emit()` writes a no-op alert when no `alert_rule` fires, and "delivered to the zero
+        // people it reached" was the single most misleading value this column carried.
+        const outcome = rollUpAlertOutcome(record.deliveries);
         const [row] = await tx
           .insert(AL)
           .values({
@@ -217,6 +225,7 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
             severity: record.severity,
             payload: record.payload,
             correlationId: record.correlationId,
+            outcome,
           })
           .returning({ id: AL.id });
         if (!row) throw new Error("alert insert returned no row");

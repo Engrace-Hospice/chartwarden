@@ -254,6 +254,9 @@ export {
   // fan-out planner + outcome roll-up (§2.4.3, §2.4.4)
   planFanOut,
   computeOutcome,
+  // F-109 — the live-delivery-set roll-up `computeOutcome` never had a caller for.
+  rollUpAlertOutcome,
+  isTerminalDeliveryStatus,
 } from "./resolution";
 
 export type {
@@ -268,6 +271,7 @@ export type {
   PlannedDelivery,
   FanOutInput,
   DeliverySettlement,
+  DeliveryRollupRow,
 } from "./resolution";
 
 export type {
@@ -287,6 +291,7 @@ export type {
   AlertSeverity,
   AlertRecipientResolver,
   AlertOutcome,
+  SettledAlertOutcome,
   NotificationChannel,
   NotificationStatus,
   DeliveryEndpointChannel,
