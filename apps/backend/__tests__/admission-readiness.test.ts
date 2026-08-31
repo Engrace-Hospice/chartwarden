@@ -10,8 +10,6 @@ function facts(overrides: Partial<AdmissionReadinessFacts> = {}): AdmissionReadi
     patientIdentity: { patientId: "pat_1" },
     admissionDetails: {
       admissionDatePresent: true,
-      primaryDiagnosisPresent: true,
-      hospiceMedicalDirectorPresent: true,
       providerEntityPresent: true,
       locationPresent: true,
     },
@@ -64,14 +62,12 @@ describe("admission readiness evaluator", () => {
     expect(req(result, "patient_identity")).toMatchObject({ status: "blocked", blocking: true });
   });
 
-  it("requires admission details without making every nullable field mandatory", () => {
+  it("requires a provider entity in admission details", () => {
     const result = evaluateAdmissionReadiness(
       facts({
         admissionDetails: {
           admissionDatePresent: true,
-          primaryDiagnosisPresent: false,
-          hospiceMedicalDirectorPresent: false,
-          providerEntityPresent: true,
+          providerEntityPresent: false,
           locationPresent: true,
         },
       }),
@@ -80,7 +76,40 @@ describe("admission readiness evaluator", () => {
       status: "action_required",
       blocking: true,
     });
-    expect(req(result, "admission_details")?.message).toContain("terminal diagnosis");
+    expect(req(result, "admission_details")?.message).toContain("provider entity");
+  });
+
+  it("requires a service location in admission details", () => {
+    const result = evaluateAdmissionReadiness(
+      facts({
+        admissionDetails: {
+          admissionDatePresent: true,
+          providerEntityPresent: true,
+          locationPresent: false,
+        },
+      }),
+    );
+    expect(req(result, "admission_details")).toMatchObject({
+      status: "action_required",
+      blocking: true,
+    });
+    expect(req(result, "admission_details")?.message).toContain("location");
+  });
+
+  it("completes admission details when date, provider entity, and location are present", () => {
+    const result = evaluateAdmissionReadiness(
+      facts({
+        admissionDetails: {
+          admissionDatePresent: true,
+          providerEntityPresent: true,
+          locationPresent: true,
+        },
+      }),
+    );
+    expect(req(result, "admission_details")).toMatchObject({
+      status: "complete",
+      blocking: true,
+    });
   });
 
   it("blocks activation on privacy restriction", () => {

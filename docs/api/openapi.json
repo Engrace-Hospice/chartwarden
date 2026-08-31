@@ -14835,6 +14835,15 @@
             }
           },
           {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
             "name": "cursor",
             "in": "query",
             "required": false,
@@ -17159,6 +17168,26 @@
                         }
                       ]
                     },
+                    "providerEntityId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "locationId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "activationGate": {
                       "type": "object",
                       "required": [
@@ -17270,6 +17299,14 @@
                   },
                   "admissionAt": {
                     "format": "date-time",
+                    "type": "string"
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "locationId": {
+                    "format": "uuid",
                     "type": "string"
                   },
                   "ifVersion": {
@@ -98168,6 +98205,121 @@
         }
       }
     },
+    "/api/v1/locations": {
+      "get": {
+        "operationId": "getApiV1Locations",
+        "tags": [
+          "bootstrap"
+        ],
+        "summary": "Search service locations for selector controls (provider-scoped, non-PHI)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "description": "Case-insensitive search over name and address fields",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "providerEntityId",
+                          "name",
+                          "addressLine1",
+                          "addressLine2",
+                          "city",
+                          "state",
+                          "postalCode",
+                          "status"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "addressLine1": {
+                            "type": "string"
+                          },
+                          "addressLine2": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "city": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "postalCode": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/map-view": {
       "get": {
         "operationId": "getApiV1Mapview",
@@ -143124,6 +143276,10 @@
                     "type": "string"
                   },
                   "receivingUserId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "patientId": {
                     "format": "uuid",
                     "type": "string"
                   },

@@ -42,6 +42,13 @@ export const M6_ROLE_PREDICATE_NAMES = {
 } as const;
 
 const MD_OR_NP = ["medical_director", "hospice_physician", "np"] as const;
+const UNSITED_ADMISSION_ROLES = [
+  "intake_coordinator",
+  "intake_supervisor",
+  "admissions_team",
+  "org_admin",
+  "tenant_admin",
+] as const;
 
 /** Deps for M6's ABAC predicate resolvers (the slice injects an in-memory resolver + caseload stub). */
 export interface AdmissionAbacDeps {
@@ -103,6 +110,11 @@ export function buildAdmissionAbacPredicates(
     facts: { patientId: string; providerEntityId: string | null },
   ): Promise<boolean> => {
     if (hasRole(context, "medical_director")) return true; // org-wide
+    if (
+      facts.providerEntityId === null &&
+      UNSITED_ADMISSION_ROLES.some((role) => hasRole(context, role))
+    )
+      return true;
     if (facts.providerEntityId && context.providerEntityIds.includes(facts.providerEntityId))
       return true;
     if (!context.userId) return false;

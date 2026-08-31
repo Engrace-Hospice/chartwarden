@@ -3791,6 +3791,31 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
       nextCursor: Type.Union([Type.String(), Type.Null()]),
     }),
   },
+  "GET /api/v1/locations": {
+    summary: "Search service locations for selector controls (provider-scoped, non-PHI)",
+    query: Type.Object({
+      providerEntityId: Type.Optional(Type.String({ format: "uuid" })),
+      q: Type.Optional(
+        Type.String({ description: "Case-insensitive search over name and address fields" }),
+      ),
+      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+    }),
+    response: Type.Object({
+      items: Type.Array(
+        Type.Object({
+          id: Type.String(),
+          providerEntityId: Type.String(),
+          name: Type.String(),
+          addressLine1: Type.String(),
+          addressLine2: Type.Union([Type.String(), Type.Null()]),
+          city: Type.String(),
+          state: Type.String(),
+          postalCode: Type.String(),
+          status: Type.String(),
+        }),
+      ),
+    }),
+  },
   // M5 Patient
   "GET /api/v1/patients": {
     summary: "Patient census / list (cursor-paginated, §4.2)",

@@ -24,13 +24,14 @@ const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
 const PATIENT = "44444444-4444-4444-4444-444444444444";
+const OTHER_PATIENT = "66666666-6666-4666-8666-666666666666";
 const PHYSICIAN = "55555555-5555-5555-5555-555555555555";
 
 describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let service: ReturnType<typeof createDbAdmissionRouteService>;
-  const seeded: Record<string, { admission: string }> = {};
+  const seeded: Record<string, { admission: string; otherAdmission?: string }> = {};
 
   async function resetSchema() {
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -102,6 +103,31 @@ describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", 
     seeded[org] = { admission };
   }
 
+  async function seedOtherAdmissionForOrgA() {
+    const pe = (
+      await admin.query(
+        `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+         VALUES ($1,'CCN-M6R-OTHER','M6R Other','NPI-M6R-OTHER','enc','12-31') RETURNING id`,
+        [ORG_A],
+      )
+    ).rows[0].id;
+    const loc = (
+      await admin.query(
+        `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
+         VALUES ($1,'Loc-M6R-Other','2 St','Town','OR','97000','America/Los_Angeles') RETURNING id`,
+        [pe],
+      )
+    ).rows[0].id;
+    seeded[ORG_A].otherAdmission = (
+      await admin.query(
+        `INSERT INTO admission (organization_id, provider_entity_id, location_id, patient_id,
+           admitted_by_physician_id, status, admission_at)
+         VALUES ($1,$2,$3,$4,$5,'active', now() - interval '1 day') RETURNING id`,
+        [ORG_A, pe, loc, OTHER_PATIENT, PHYSICIAN],
+      )
+    ).rows[0].id;
+  }
+
   beforeAll(async () => {
     admin = new Client({ connectionString: DB_URL });
     await admin.connect();
@@ -113,6 +139,7 @@ describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", 
     );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m6r@x.test')`, [USER]);
     await seedOrg(ORG_A, 1);
+    await seedOtherAdmissionForOrgA();
     await seedOrg(ORG_B, 2);
     // Prod connects as the NOBYPASSRLS `wardenx_app` role (a login role SET ROLEs to it); `withOrgContext`
     // deliberately does NOT SET ROLE. To exercise RLS faithfully here, connect the client AS wardenx_app —
@@ -131,9 +158,17 @@ describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", 
 
   it("listAdmissions returns the org's admission (RLS-scoped), newest-first paging shape", async () => {
     const page = await service.listAdmissions(ORG_A, {});
-    expect(page.items.length).toBe(1);
+    expect(page.items.length).toBe(2);
     expect(page.items[0].id).toBe(seeded[ORG_A].admission);
     expect(page.items[0].state).toBe("active");
+    expect(page.nextCursor).toBeNull();
+  });
+
+  it("listAdmissions filters by patientId inside the org scope", async () => {
+    const page = await service.listAdmissions(ORG_A, { state: "active", patientId: PATIENT });
+    const ids = page.items.map((i) => i.id);
+    expect(ids).toContain(seeded[ORG_A].admission);
+    expect(ids).not.toContain(seeded[ORG_A].otherAdmission);
     expect(page.nextCursor).toBeNull();
   });
 

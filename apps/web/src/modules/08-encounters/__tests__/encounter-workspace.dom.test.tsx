@@ -145,6 +145,19 @@ describe("Encounter workspace web workflow", () => {
     fireEvent.click(screen.getByRole("button", { name: /new prn encounter/i }));
     fireEvent.focus(screen.getByLabelText(/active admission/i));
     await waitFor(() => expect(screen.getByText(/Admission admissio/i)).toBeTruthy());
+    await waitFor(() =>
+      expect(get).toHaveBeenCalledWith(
+        "/api/v1/admissions",
+        expect.objectContaining({
+          params: {
+            query: expect.objectContaining({
+              state: "active",
+              patientId: "patient-1",
+            }),
+          },
+        }),
+      ),
+    );
     fireEvent.click(screen.getByText(/Admission admissio/i));
     fireEvent.change(screen.getByLabelText(/service date/i), { target: { value: "2026-08-31" } });
     fireEvent.click(screen.getByRole("button", { name: /create encounter/i }));
@@ -160,6 +173,29 @@ describe("Encounter workspace web workflow", () => {
           }),
         }),
       ),
+    );
+  });
+
+  it("offers patient-scoped admission creation paths when no active admission matches", async () => {
+    const get = vi.fn(async (path: string) => {
+      if (path === "/api/v1/encounters") return { data: { encounters: [] } };
+      if (path === "/api/v1/patients/{id}")
+        return { data: { firstName: "Ava", lastName: "Stone", dob: "1950-01-01", mrn: "MRN1", status: "active" } };
+      if (path === "/api/v1/admissions") return { data: { items: [], nextCursor: null } };
+      return { data: null };
+    });
+    const post = vi.fn(async () => ({ data: { id: "enc-prn" }, response: new Response() }));
+    renderPatientEncounters({ GET: get, POST: post });
+
+    await screen.findByText("Encounters / Visits");
+    fireEvent.click(screen.getByRole("button", { name: /new prn encounter/i }));
+    fireEvent.focus(screen.getByLabelText(/active admission/i));
+
+    expect(
+      (await screen.findByRole("link", { name: /direct admission/i })).getAttribute("href"),
+    ).toBe("/admissions/new?patientId=patient-1");
+    expect(screen.getByRole("link", { name: /start referral/i }).getAttribute("href")).toBe(
+      "/referrals/new?patientId=patient-1",
     );
   });
 });

@@ -36,6 +36,7 @@ export interface EntityLookupFieldProps {
   valueLabel?: string;
   pageSize?: number;
   minQueryLength?: number;
+  noMatchesContent?: ReactNode;
 }
 
 export function EntityLookupField({
@@ -52,6 +53,7 @@ export function EntityLookupField({
   valueLabel,
   pageSize = 25,
   minQueryLength = 0,
+  noMatchesContent,
 }: EntityLookupFieldProps): JSX.Element {
   const generatedId = useId();
   const inputId = generatedId;
@@ -189,7 +191,11 @@ export function EntityLookupField({
                 {loadError}
               </span>
             ) : options.length === 0 ? (
-              <span style={stateStyle}>No matches</span>
+              noMatchesContent ? (
+                <span style={stateStyle}>{noMatchesContent}</span>
+              ) : (
+                <span style={stateStyle}>No matches</span>
+              )
             ) : (
               options.map((option) => (
                 <button

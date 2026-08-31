@@ -34,7 +34,11 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { MdmEntityLookupField, ProviderEntityLookupField } from "../../shared/entity-lookups";
+import {
+  LocationLookupField,
+  MdmEntityLookupField,
+  ProviderEntityLookupField,
+} from "../../shared/entity-lookups";
 import { ADMISSION_TONE, WINDOW_TONE, stateLabel } from "./admission-status";
 import { authFailureRedirect } from "./write-workflow";
 
@@ -55,6 +59,8 @@ interface AdmissionDetailView extends SummaryRow {
   referralId?: string | null;
   admissionAt?: string | null;
   activatedAt?: string | null;
+  providerEntityId?: string | null;
+  locationId?: string | null;
   activationGate: { ready: boolean; missing: string[] };
   readiness?: AdmissionReadiness;
 }
@@ -83,11 +89,20 @@ interface AdmissionReadiness {
   requirements: ReadinessRequirement[];
 }
 interface HopeSummary {
-  admissionAssessment: { status: string; attention?: { state: string; severity: string } };
+  admissionAssessment: {
+    status: string;
+    attention?: { state: string; severity: string };
+  };
   huv1: { status: string; attention?: { state: string; severity: string } };
   huv2: { status: string; attention?: { state: string; severity: string } };
-  dischargeAssessment: { status: string; attention?: { state: string; severity: string } };
-  sfvs: Array<{ status: string; attention?: { state: string; severity: string } }>;
+  dischargeAssessment: {
+    status: string;
+    attention?: { state: string; severity: string };
+  };
+  sfvs: Array<{
+    status: string;
+    attention?: { state: string; severity: string };
+  }>;
   summary: {
     actionableCount: number;
     overdueCount?: number;
@@ -135,7 +150,10 @@ const GATE_ROWS: { code: string; label: string }[] = [
   { code: "election_signed", label: "Election statement signed (period 1)" },
   { code: "nor_acknowledged", label: "Notice of Rights acknowledged" },
   { code: "cti_signed", label: "CTI signed by hospice medical director" },
-  { code: "attending_signed", label: "CTI signed by attending physician (period 1)" },
+  {
+    code: "attending_signed",
+    label: "CTI signed by attending physician (period 1)",
+  },
 ];
 
 export function AdmissionDetail(): JSX.Element {
@@ -147,7 +165,8 @@ export function AdmissionDetail(): JSX.Element {
   const [periods, setPeriods] = useState<SummaryRow[]>([]);
   const [windows, setWindows] = useState<SummaryRow[]>([]);
   const [hope, setHope] = useState<HopeSummary | null>(null);
-  const [electionCert, setElectionCert] = useState<ElectionCertificationView | null>(null);
+  const [electionCert, setElectionCert] =
+    useState<ElectionCertificationView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -166,22 +185,27 @@ export function AdmissionDetail(): JSX.Element {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const [formVersionId, setFormVersionId] = useState("");
-  const [deliveryMethod, setDeliveryMethod] = useState<NorMethod>("electronic_witnessed");
-  const [acknowledgedByName, setAcknowledgedByName] = useState("");
-  const [acknowledgedByRole, setAcknowledgedByRole] = useState<"patient" | "legal_representative">(
-    "patient",
+  const [deliveryMethod, setDeliveryMethod] = useState<NorMethod>(
+    "electronic_witnessed",
   );
+  const [acknowledgedByName, setAcknowledgedByName] = useState("");
+  const [acknowledgedByRole, setAcknowledgedByRole] = useState<
+    "patient" | "legal_representative"
+  >("patient");
   const [admissionDate, setAdmissionDate] = useState("");
+  const [providerEntityId, setProviderEntityId] = useState("");
+  const [locationId, setLocationId] = useState("");
   const [electionEffectiveDate, setElectionEffectiveDate] = useState("");
   const [primaryDiagnosisIcd10, setPrimaryDiagnosisIcd10] = useState("");
   const [electedProviderEntityId, setElectedProviderEntityId] = useState("");
-  const [electedAttendingPhysicianId, setElectedAttendingPhysicianId] = useState("");
+  const [electedAttendingPhysicianId, setElectedAttendingPhysicianId] =
+    useState("");
   const [waiverAcknowledged, setWaiverAcknowledged] = useState(false);
   const [stateAddendum, setStateAddendum] = useState("");
   const [electionSignerName, setElectionSignerName] = useState("");
-  const [electionSignerRole, setElectionSignerRole] = useState<"patient" | "legal_representative">(
-    "patient",
-  );
+  const [electionSignerRole, setElectionSignerRole] = useState<
+    "patient" | "legal_representative"
+  >("patient");
   const [ctiHospiceMdId, setCtiHospiceMdId] = useState("");
   const [ctiAttendingMdId, setCtiAttendingMdId] = useState("");
   const [ctiDiagnosisIcd10, setCtiDiagnosisIcd10] = useState("");
@@ -207,10 +231,18 @@ export function AdmissionDetail(): JSX.Element {
     const detail = data as AdmissionDetailView;
     setAdmission(detail);
     setAdmissionDate(toDateInput(detail.admissionAt));
+    setProviderEntityId(detail.providerEntityId ?? "");
+    setLocationId(detail.locationId ?? "");
     const [p, w, r, h, ec] = await Promise.all([
-      client.GET("/api/v1/admissions/{id}/election-periods", { params: { path: { id } } }),
-      client.GET("/api/v1/admissions/{id}/compliance-windows", { params: { path: { id } } }),
-      client.GET("/api/v1/admissions/{id}/readiness", { params: { path: { id } } }),
+      client.GET("/api/v1/admissions/{id}/election-periods", {
+        params: { path: { id } },
+      }),
+      client.GET("/api/v1/admissions/{id}/compliance-windows", {
+        params: { path: { id } },
+      }),
+      client.GET("/api/v1/admissions/{id}/readiness", {
+        params: { path: { id } },
+      }),
       client.GET("/api/v1/admissions/{admissionId}/hope", {
         params: { path: { admissionId: id } },
       }),
@@ -224,7 +256,9 @@ export function AdmissionDetail(): JSX.Element {
     setWindows(w.data?.items ?? []);
     setReadiness(r.data ?? (data as AdmissionDetailView).readiness ?? null);
     setHope(h.data ? (h.data as HopeSummary) : null);
-    setElectionCert(ec.data ? (ec.data as unknown as ElectionCertificationView) : null);
+    setElectionCert(
+      ec.data ? (ec.data as unknown as ElectionCertificationView) : null,
+    );
     setLoading(false);
   }, [client, id]);
 
@@ -240,18 +274,30 @@ export function AdmissionDetail(): JSX.Element {
   }, []);
 
   const branchError = useCallback(
-    (status: number | undefined, code: string | undefined, fallback: string) => {
-      const redirect = authFailureRedirect(status, code, window.location.pathname);
+    (
+      status: number | undefined,
+      code: string | undefined,
+      fallback: string,
+    ) => {
+      const redirect = authFailureRedirect(
+        status,
+        code,
+        window.location.pathname,
+      );
       if (redirect) {
         navigate(redirect);
         return true;
       }
       setBusy(false);
       if (status === 412) {
-        setActionError("Admission requirements changed. Review the blockers and try again.");
+        setActionError(
+          "Admission requirements changed. Review the blockers and try again.",
+        );
         void load();
-      } else if (status === 403) setActionError("You do not have permission for this action.");
-      else if (status === 422) setActionError("Validation failed — check the values you entered.");
+      } else if (status === 403)
+        setActionError("You do not have permission for this action.");
+      else if (status === 422)
+        setActionError("Validation failed — check the values you entered.");
       else setActionError(fallback);
       return false;
     },
@@ -262,10 +308,13 @@ export function AdmissionDetail(): JSX.Element {
     if (!id || !admission) return;
     setBusy(true);
     setActionError(null);
-    const { error: err, response } = await client.POST("/api/v1/admissions/{id}/activate", {
-      params: { path: { id } },
-      body: { ifVersion: admission.version },
-    });
+    const { error: err, response } = await client.POST(
+      "/api/v1/admissions/{id}/activate",
+      {
+        params: { path: { id } },
+        body: { ifVersion: admission.version },
+      },
+    );
     if (err) {
       branchError(response?.status, err?.error?.code, "Activation failed.");
       return;
@@ -277,24 +326,36 @@ export function AdmissionDetail(): JSX.Element {
 
   const acknowledgeNor = useCallback(async () => {
     if (!id) return;
-    if (formVersionId.trim().length === 0 || acknowledgedByName.trim().length === 0) {
-      setActionError("Provide the NOR form version id and the acknowledging person's name.");
+    if (
+      formVersionId.trim().length === 0 ||
+      acknowledgedByName.trim().length === 0
+    ) {
+      setActionError(
+        "Provide the NOR form version id and the acknowledging person's name.",
+      );
       return;
     }
     setBusy(true);
     setActionError(null);
-    const { error: err, response } = await client.POST("/api/v1/admissions/{id}/nor", {
-      params: { path: { id } },
-      body: {
-        formVersionId: formVersionId.trim(),
-        deliveryMethod,
-        acknowledgedAt: new Date().toISOString(),
-        acknowledgedByName: acknowledgedByName.trim(),
-        acknowledgedByRole,
+    const { error: err, response } = await client.POST(
+      "/api/v1/admissions/{id}/nor",
+      {
+        params: { path: { id } },
+        body: {
+          formVersionId: formVersionId.trim(),
+          deliveryMethod,
+          acknowledgedAt: new Date().toISOString(),
+          acknowledgedByName: acknowledgedByName.trim(),
+          acknowledgedByRole,
+        },
       },
-    });
+    );
     if (err) {
-      branchError(response?.status, err?.error?.code, "Could not record the acknowledgment.");
+      branchError(
+        response?.status,
+        err?.error?.code,
+        "Could not record the acknowledgment.",
+      );
       return;
     }
     setBusy(false);
@@ -314,27 +375,48 @@ export function AdmissionDetail(): JSX.Element {
 
   const completeAdmissionDetails = useCallback(async () => {
     if (!id || !admission) return;
-    if (!admissionDate) {
-      setActionError("Choose the admission/SOC date before saving.");
+    if (!admissionDate || !providerEntityId || !locationId) {
+      setActionError(
+        "Choose the admission/SOC date, hospice provider, and service location before saving.",
+      );
       return;
     }
     setBusy(true);
     setActionError(null);
-    const { error: err, response } = await client.PATCH("/api/v1/admissions/{id}", {
-      params: { path: { id } },
-      body: {
-        ifVersion: admission.version,
-        admissionAt: dateInputToIso(admissionDate),
-      } as never,
-    });
+    const { error: err, response } = await client.PATCH(
+      "/api/v1/admissions/{id}",
+      {
+        params: { path: { id } },
+        body: {
+          ifVersion: admission.version,
+          admissionAt: dateInputToIso(admissionDate),
+          providerEntityId,
+          locationId,
+        } as never,
+      },
+    );
     if (err) {
-      branchError(response?.status, err?.error?.code, "Could not save admission details.");
+      branchError(
+        response?.status,
+        err?.error?.code,
+        "Could not save admission details.",
+      );
       return;
     }
     setBusy(false);
     closeCeremony();
     void load();
-  }, [id, admission, admissionDate, client, branchError, closeCeremony, load]);
+  }, [
+    id,
+    admission,
+    admissionDate,
+    providerEntityId,
+    locationId,
+    client,
+    branchError,
+    closeCeremony,
+    load,
+  ]);
 
   const createElectionStatement = useCallback(async () => {
     if (!id || !currentPeriod(electionCert, periods)) return;
@@ -345,11 +427,15 @@ export function AdmissionDetail(): JSX.Element {
       primaryDiagnosisIcd10.trim().length === 0 ||
       electedProviderEntityId.trim().length === 0
     ) {
-      setActionError("Provide the effective date, diagnosis, provider, and waiver acknowledgment.");
+      setActionError(
+        "Provide the effective date, diagnosis, provider, and waiver acknowledgment.",
+      );
       return;
     }
     if (!waiverAcknowledged) {
-      setActionError("Confirm the election/waiver acknowledgment before creating the statement.");
+      setActionError(
+        "Confirm the election/waiver acknowledgment before creating the statement.",
+      );
       return;
     }
     setBusy(true);
@@ -370,7 +456,11 @@ export function AdmissionDetail(): JSX.Element {
       },
     );
     if (err) {
-      branchError(response?.status, err?.error?.code, "Could not create the Election Statement.");
+      branchError(
+        response?.status,
+        err?.error?.code,
+        "Could not create the Election Statement.",
+      );
       return;
     }
     setBusy(false);
@@ -394,25 +484,66 @@ export function AdmissionDetail(): JSX.Element {
 
   const signElectionStatement = useCallback(async () => {
     const election = currentPeriod(electionCert, periods)?.electionStatement;
+
     if (!election) return;
+
     if (electionSignerName.trim().length === 0) {
       setActionError("Provide the signer name.");
       return;
     }
+
     setBusy(true);
     setActionError(null);
-    const { error: err, response } = await client.POST("/api/v1/election-statements/{id}/sign", {
-      params: { path: { id: election.id } },
-      body: {
-        signingPatientName: electionSignerName.trim(),
-        signingRole: electionSignerRole,
-        ifVersion: election.version,
+
+    // election-certification currently does not expose the Election
+    // Statement version. Fetch the statement itself to obtain the
+    // current optimistic-lock version before signing.
+    const {
+      data: currentElection,
+      error: readError,
+      response: readResponse,
+    } = await client.GET("/api/v1/election-statements/{id}", {
+      params: {
+        path: {
+          id: election.id,
+        },
       },
     });
-    if (err) {
-      branchError(response?.status, err?.error?.code, "Could not sign the Election Statement.");
+
+    if (readError || !currentElection) {
+      branchError(
+        readResponse?.status,
+        readError?.error?.code,
+        "Could not load the current Election Statement.",
+      );
       return;
     }
+
+    const { error: err, response } = await client.POST(
+      "/api/v1/election-statements/{id}/sign",
+      {
+        params: {
+          path: {
+            id: election.id,
+          },
+        },
+        body: {
+          signingPatientName: electionSignerName.trim(),
+          signingRole: electionSignerRole,
+          ifVersion: currentElection.version,
+        },
+      },
+    );
+
+    if (err) {
+      branchError(
+        response?.status,
+        err?.error?.code,
+        "Could not sign the Election Statement.",
+      );
+      return;
+    }
+
     setBusy(false);
     closeCeremony();
     void load();
@@ -435,25 +566,34 @@ export function AdmissionDetail(): JSX.Element {
       ctiDiagnosisIcd10.trim().length === 0 ||
       ctiNarrative.trim().length === 0
     ) {
-      setActionError("Provide the hospice medical director, diagnosis, and CTI narrative.");
+      setActionError(
+        "Provide the hospice medical director, diagnosis, and CTI narrative.",
+      );
       return;
     }
     setBusy(true);
     setActionError(null);
-    const { error: err, response } = await client.POST("/api/v1/election-periods/{id}/cti", {
-      params: { path: { id: period.id } },
-      body: {
-        hospiceMedicalDirectorId: ctiHospiceMdId,
-        attendingPhysicianId: ctiAttendingMdId || undefined,
-        terminalDiagnosisIcd10: ctiDiagnosisIcd10.trim().toUpperCase(),
-        prognosisStatement: ctiPrognosis.trim(),
-        narrative: ctiNarrative.trim(),
-        clinicalFindings: {},
-        isRecert: false,
-      } as never,
-    });
+    const { error: err, response } = await client.POST(
+      "/api/v1/election-periods/{id}/cti",
+      {
+        params: { path: { id: period.id } },
+        body: {
+          hospiceMedicalDirectorId: ctiHospiceMdId,
+          attendingPhysicianId: ctiAttendingMdId || undefined,
+          terminalDiagnosisIcd10: ctiDiagnosisIcd10.trim().toUpperCase(),
+          prognosisStatement: ctiPrognosis.trim(),
+          narrative: ctiNarrative.trim(),
+          clinicalFindings: {},
+          isRecert: false,
+        } as never,
+      },
+    );
     if (err) {
-      branchError(response?.status, err?.error?.code, "Could not create the CTI.");
+      branchError(
+        response?.status,
+        err?.error?.code,
+        "Could not create the CTI.",
+      );
       return;
     }
     setBusy(false);
@@ -476,69 +616,132 @@ export function AdmissionDetail(): JSX.Element {
   const signCti = useCallback(
     async (kind: "hospice-md" | "attending") => {
       const cti = currentPeriod(electionCert, periods)?.cti;
+
       if (!cti) return;
-      if (ctiSignerName.trim().length === 0 || ctiSignerNpi.trim().length === 0) {
+
+      if (
+        ctiSignerName.trim().length === 0 ||
+        ctiSignerNpi.trim().length === 0
+      ) {
         setActionError("Provide the signing physician name and NPI.");
         return;
       }
+
       setBusy(true);
       setActionError(null);
+
+      const {
+        data: currentCti,
+        error: readError,
+        response: readResponse,
+      } = await client.GET("/api/v1/cti/{id}", {
+        params: {
+          path: {
+            id: cti.id,
+          },
+        },
+      });
+
+      if (readError || !currentCti) {
+        branchError(
+          readResponse?.status,
+          readError?.error?.code,
+          "Could not load the current CTI.",
+        );
+        return;
+      }
+
       const path =
         kind === "hospice-md"
           ? "/api/v1/cti/{id}/sign-hospice-md"
           : "/api/v1/cti/{id}/sign-attending";
+
       const { error: err, response } = await client.POST(path, {
-        params: { path: { id: cti.id } },
+        params: {
+          path: {
+            id: cti.id,
+          },
+        },
         body: {
           signingPhysicianName: ctiSignerName.trim(),
           signingPhysicianNpi: ctiSignerNpi.trim(),
-          ifVersion: cti.version,
+          ifVersion: currentCti.version,
         },
       });
+
       if (err) {
-        branchError(response?.status, err?.error?.code, "Could not sign the CTI.");
+        branchError(
+          response?.status,
+          err?.error?.code,
+          "Could not sign the CTI.",
+        );
         return;
       }
+
       setBusy(false);
       closeCeremony();
       void load();
     },
-    [electionCert, periods, ctiSignerName, ctiSignerNpi, client, branchError, closeCeremony, load],
+    [
+      electionCert,
+      periods,
+      ctiSignerName,
+      ctiSignerNpi,
+      client,
+      branchError,
+      closeCeremony,
+      load,
+    ],
   );
 
   if (loading) return <LoadingSpinner />;
   if (error || !admission)
-    return <EmptyState title="Unavailable" description={error ?? "Not found."} />;
+    return (
+      <EmptyState title="Unavailable" description={error ?? "Not found."} />
+    );
 
   const pendingWorkspace =
-    admission.state === "pending" || admission.state === "notice_of_rights_acknowledged";
+    admission.state === "pending" ||
+    admission.state === "notice_of_rights_acknowledged";
   const canAcknowledgeNor =
     pendingWorkspace &&
-    !readiness?.requirements.some((r) => r.code === "notice_of_rights" && r.status === "complete");
+    !readiness?.requirements.some(
+      (r) => r.code === "notice_of_rights" && r.status === "complete",
+    );
   const canActivate =
-    pendingWorkspace && (readiness?.canActivate ?? admission.activationGate.ready);
+    pendingWorkspace &&
+    (readiness?.canActivate ?? admission.activationGate.ready);
   const period = currentPeriod(electionCert, periods);
   const electionStatement = period?.electionStatement ?? null;
   const cti = period?.cti ?? null;
   const nextRequirement = readiness?.requirements.find(
-    (r) => r.blocking && r.status !== "complete" && r.status !== "not_applicable",
+    (r) =>
+      r.blocking && r.status !== "complete" && r.status !== "not_applicable",
   );
+  console.log(readiness?.requirements, nextRequirement);
   const triggerAction = (action: string | undefined): void => {
     if (!action) return;
     if (action === "ACKNOWLEDGE_NOR") setCeremony("nor");
-    else if (action === "COMPLETE_ADMISSION_DETAILS") setCeremony("admission-details");
+    else if (action === "COMPLETE_ADMISSION_DETAILS")
+      setCeremony("admission-details");
     else if (action === "COMPLETE_ELECTION")
       setCeremony(electionStatement ? "sign-election" : "election");
-    else if (action === "REVIEW_CTI")
-      setCeremony(
-        !cti
-          ? "cti"
-          : !cti.hospiceMdSigned
-            ? "sign-cti-hospice-md"
-            : !cti.attendingMdSigned && cti.state === "awaiting_attending"
-              ? "sign-cti-attending"
-              : "cti",
-      );
+    else if (action === "REVIEW_CTI") {
+      if (!cti) {
+        setCeremony("cti");
+        return;
+      }
+
+      if (!cti.hospiceMdSigned) {
+        setCeremony("sign-cti-hospice-md");
+        return;
+      }
+
+      if (!cti.attendingMdSigned) {
+        setCeremony("sign-cti-attending");
+        return;
+      }
+    }
   };
 
   if (pendingWorkspace) {
@@ -550,7 +753,12 @@ export function AdmissionDetail(): JSX.Element {
             breadcrumb="Admissions / Intake"
             actions={
               <div
-                style={{ display: "flex", alignItems: "center", gap: "0.625rem", flexWrap: "wrap" }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.625rem",
+                  flexWrap: "wrap",
+                }}
               >
                 <StatusPill
                   label={stateLabel(admission.state)}
@@ -567,12 +775,21 @@ export function AdmissionDetail(): JSX.Element {
               </div>
             }
           >
-            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-              Patient <span className="wx-data-md">{admission.patientId ?? "unresolved"}</span>
+            <div
+              style={{
+                color: "var(--color-on-surface-variant)",
+                fontSize: "0.875rem",
+              }}
+            >
+              Patient{" "}
+              <span className="wx-data-md">
+                {admission.patientId ?? "unresolved"}
+              </span>
               {admission.referralId ? (
                 <>
                   {" "}
-                  · Referral <span className="wx-data-md">{admission.referralId}</span>
+                  · Referral{" "}
+                  <span className="wx-data-md">{admission.referralId}</span>
                 </>
               ) : null}
             </div>
@@ -611,7 +828,9 @@ export function AdmissionDetail(): JSX.Element {
                   {readiness.requirements
                     .filter((r) => r.blocking && r.status !== "complete")
                     .map((r) => (
-                      <li key={r.code}>{r.message ?? `${r.label} is incomplete.`}</li>
+                      <li key={r.code}>
+                        {r.message ?? `${r.label} is incomplete.`}
+                      </li>
                     ))}
                 </ul>
               </div>
@@ -626,7 +845,8 @@ export function AdmissionDetail(): JSX.Element {
                 <div>
                   <strong>Next step: {nextRequirement.label}</strong>
                   <p style={requirementMessageStyle}>
-                    {nextRequirement.message ?? "Complete this item to move the admission forward."}
+                    {nextRequirement.message ??
+                      "Complete this item to move the admission forward."}
                   </p>
                 </div>
                 {nextRequirement.action ? (
@@ -635,7 +855,10 @@ export function AdmissionDetail(): JSX.Element {
                     onClick={() => triggerAction(nextRequirement.action)}
                     style={primaryBtn}
                   >
-                    {actionLabel(nextRequirement.action, { electionStatement, cti })}
+                    {actionLabel(nextRequirement.action, {
+                      electionStatement,
+                      cti,
+                    })}
                   </button>
                 ) : null}
               </div>
@@ -653,7 +876,11 @@ export function AdmissionDetail(): JSX.Element {
               "Documents",
               "Activity",
             ].map((tab) => (
-              <a key={tab} href={`#${tab.toLowerCase().replaceAll(" ", "-")}`} style={tabStyle}>
+              <a
+                key={tab}
+                href={`#${tab.toLowerCase().replaceAll(" ", "-")}`}
+                style={tabStyle}
+              >
                 {tab}
               </a>
             ))}
@@ -671,15 +898,29 @@ export function AdmissionDetail(): JSX.Element {
             <div id="admission-details" style={sectionStackStyle}>
               <div style={fieldGridStyle}>
                 <Field label="Admission ID" value={admission.id} mono />
-                <Field label="Patient" value={admission.patientId ?? "Unresolved"} mono />
-                <Field label="Referral" value={admission.referralId ?? "Direct admission"} mono />
-                <Field label="Planned/SOC" value={fmtDate(admission.admissionAt)} />
+                <Field
+                  label="Patient"
+                  value={admission.patientId ?? "Unresolved"}
+                  mono
+                />
+                <Field
+                  label="Referral"
+                  value={admission.referralId ?? "Direct admission"}
+                  mono
+                />
+                <Field
+                  label="Planned/SOC"
+                  value={fmtDate(admission.admissionAt)}
+                />
               </div>
               <RequirementLine
-                requirement={readiness?.requirements.find((r) => r.code === "admission_details")}
+                requirement={readiness?.requirements.find(
+                  (r) => r.code === "admission_details",
+                )}
               />
-              {readiness?.requirements.find((r) => r.code === "admission_details")?.status !==
-              "complete" ? (
+              {readiness?.requirements.find(
+                (r) => r.code === "admission_details",
+              )?.status !== "complete" ? (
                 <div>
                   <button
                     type="button"
@@ -702,10 +943,16 @@ export function AdmissionDetail(): JSX.Element {
           <Section title="Notice of Rights">
             <div id="notice-of-rights" style={sectionInnerStyle}>
               <RequirementLine
-                requirement={readiness?.requirements.find((r) => r.code === "notice_of_rights")}
+                requirement={readiness?.requirements.find(
+                  (r) => r.code === "notice_of_rights",
+                )}
               />
               {canAcknowledgeNor ? (
-                <button type="button" onClick={() => setCeremony("nor")} style={ghostBtn}>
+                <button
+                  type="button"
+                  onClick={() => setCeremony("nor")}
+                  style={ghostBtn}
+                >
                   Record acknowledgment
                 </button>
               ) : null}
@@ -714,23 +961,38 @@ export function AdmissionDetail(): JSX.Element {
           <Section title="Election">
             <div id="election" style={sectionStackStyle}>
               <RequirementLine
-                requirement={readiness?.requirements.find((r) => r.code === "election_statement")}
+                requirement={readiness?.requirements.find(
+                  (r) => r.code === "election_statement",
+                )}
               />
               <div style={fieldGridStyle}>
                 <Field
                   label="Period"
-                  value={period ? `Period ${period.sequenceNumber}` : "Not created"}
+                  value={
+                    period ? `Period ${period.sequenceNumber}` : "Not created"
+                  }
                 />
                 <Field
                   label="Statement"
-                  value={electionStatement ? stateLabel(electionStatement.state) : "Not created"}
+                  value={
+                    electionStatement
+                      ? stateLabel(electionStatement.state)
+                      : "Not created"
+                  }
                 />
-                <Field label="Signed" value={fmtDate(electionStatement?.signedAt)} />
+                <Field
+                  label="Signed"
+                  value={fmtDate(electionStatement?.signedAt)}
+                />
               </div>
               <div>
                 <button
                   type="button"
-                  onClick={() => setCeremony(electionStatement ? "sign-election" : "election")}
+                  onClick={() =>
+                    setCeremony(
+                      electionStatement ? "sign-election" : "election",
+                    )
+                  }
                   style={ghostBtn}
                   disabled={!period || electionStatement?.state === "signed"}
                 >
@@ -746,13 +1008,24 @@ export function AdmissionDetail(): JSX.Element {
           <Section title="CTI">
             <div id="cti" style={sectionStackStyle}>
               <RequirementLine
-                requirement={readiness?.requirements.find((r) => r.code === "cti")}
+                requirement={readiness?.requirements.find(
+                  (r) => r.code === "cti",
+                )}
               />
               <div style={fieldGridStyle}>
-                <Field label="CTI" value={cti ? stateLabel(cti.state) : "Not created"} />
+                <Field
+                  label="CTI"
+                  value={cti ? stateLabel(cti.state) : "Not created"}
+                />
                 <Field
                   label="Hospice MD"
-                  value={cti?.hospiceMdSigned ? "Signed" : cti ? "Awaiting signature" : "Not set"}
+                  value={
+                    cti?.hospiceMdSigned
+                      ? "Signed"
+                      : cti
+                        ? "Awaiting signature"
+                        : "Not set"
+                  }
                 />
                 <Field
                   label="Attending"
@@ -782,23 +1055,30 @@ export function AdmissionDetail(): JSX.Element {
                   style={ghostBtn}
                   disabled={!period || cti?.state === "signed"}
                 >
-                  {cti?.state === "signed"
-                    ? "CTI signed"
-                    : !cti
-                      ? "Create CTI"
+                  {!cti
+                    ? "Create CTI"
+                    : cti.state === "signed"
+                      ? "CTI signed"
                       : !cti.hospiceMdSigned
                         ? "Sign CTI as Hospice MD"
-                        : "Sign CTI as Attending"}
+                        : !cti.attendingMdSigned
+                          ? "Sign CTI as Attending"
+                          : "Review CTI"}
                 </button>
               </div>
             </div>
           </Section>
           <Section title="Face-to-Face">
-            <RequirementLine requirement={readiness?.requirements.find((r) => r.code === "f2f")} />
+            <RequirementLine
+              requirement={readiness?.requirements.find(
+                (r) => r.code === "f2f",
+              )}
+            />
           </Section>
           <Section title="Documents">
             <p id="documents" style={emptyTextStyle}>
-              Admission-linked documents will appear here when available through the document APIs.
+              Admission-linked documents will appear here when available through
+              the document APIs.
             </p>
           </Section>
           <Section title="Activity">
@@ -821,27 +1101,42 @@ export function AdmissionDetail(): JSX.Element {
           title="Admission"
           breadcrumb="Admissions / Detail"
           actions={
-            <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+            <div
+              style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}
+            >
               <StatusPill
                 label={stateLabel(admission.state)}
                 tone={ADMISSION_TONE[admission.state] ?? "neutral"}
               />
               {canAcknowledgeNor ? (
-                <button type="button" onClick={() => setCeremony("nor")} style={ghostBtn}>
+                <button
+                  type="button"
+                  onClick={() => setCeremony("nor")}
+                  style={ghostBtn}
+                >
                   Acknowledge NOR
                 </button>
               ) : null}
               {canActivate ? (
-                <button type="button" onClick={() => setCeremony("activate")} style={primaryBtn}>
+                <button
+                  type="button"
+                  onClick={() => setCeremony("activate")}
+                  style={primaryBtn}
+                >
                   Activate
                 </button>
               ) : null}
             </div>
           }
         >
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Admission <span className="wx-data-md">{admission.id}</span> · version{" "}
-            <span className="tabular-nums">{admission.version}</span>
+          <div
+            style={{
+              color: "var(--color-on-surface-variant)",
+              fontSize: "0.875rem",
+            }}
+          >
+            Admission <span className="wx-data-md">{admission.id}</span> ·
+            version <span className="tabular-nums">{admission.version}</span>
           </div>
         </PageHeader>
       }
@@ -886,7 +1181,11 @@ export function AdmissionDetail(): JSX.Element {
           />
         </Section>
         <Section title="Compliance windows">
-          <RowList rows={windows} empty="No open compliance windows." toneFor={WINDOW_TONE} />
+          <RowList
+            rows={windows}
+            empty="No open compliance windows."
+            toneFor={WINDOW_TONE}
+          />
         </Section>
       </div>
 
@@ -903,8 +1202,8 @@ export function AdmissionDetail(): JSX.Element {
           attestation={
             <div style={formStackStyle}>
               <span style={hintTextStyle}>
-                Set the planned admission/SOC date first. The CTI step records the terminal
-                diagnosis and certifying physician.
+                Set the planned admission/SOC date first. The CTI step records
+                the terminal diagnosis and certifying physician.
               </span>
               <label htmlFor="admission-date" style={fieldLabel}>
                 Admission/SOC date
@@ -915,6 +1214,31 @@ export function AdmissionDetail(): JSX.Element {
                 value={admissionDate}
                 onChange={(ev) => setAdmissionDate(ev.target.value)}
                 style={inputStyle}
+              />
+              <ProviderEntityLookupField
+                label="Hospice provider"
+                value={providerEntityId}
+                onChange={(value) => {
+                  setProviderEntityId((current) => {
+                    if (current !== value) setLocationId("");
+                    return value;
+                  });
+                }}
+                valueLabel={providerEntityId ? "Selected provider" : undefined}
+                required
+              />
+              <LocationLookupField
+                label="Service location"
+                providerEntityId={providerEntityId}
+                value={locationId}
+                onChange={(value) => setLocationId(value)}
+                valueLabel={locationId ? "Selected location" : undefined}
+                hint={
+                  providerEntityId
+                    ? undefined
+                    : "Choose a hospice provider before selecting a service location."
+                }
+                required
               />
               {actionError ? (
                 <p role="alert" aria-live="assertive" style={alertStyle}>
@@ -935,8 +1259,9 @@ export function AdmissionDetail(): JSX.Element {
           attestation={
             <div style={formStackStyle}>
               <span style={hintTextStyle}>
-                Create the election document for the first benefit period. After it is created, the
-                patient or representative can sign it from this same page.
+                Create the election document for the first benefit period. After
+                it is created, the patient or representative can sign it from
+                this same page.
               </span>
               <label htmlFor="election-effective-date" style={fieldLabel}>
                 Effective date
@@ -962,7 +1287,9 @@ export function AdmissionDetail(): JSX.Element {
                 label="Elected hospice provider"
                 value={electedProviderEntityId}
                 onChange={(value) => setElectedProviderEntityId(value)}
-                valueLabel={electedProviderEntityId ? "Selected provider" : undefined}
+                valueLabel={
+                  electedProviderEntityId ? "Selected provider" : undefined
+                }
                 required
               />
               <MdmEntityLookupField
@@ -970,7 +1297,9 @@ export function AdmissionDetail(): JSX.Element {
                 label="Elected attending physician"
                 value={electedAttendingPhysicianId}
                 onChange={(value) => setElectedAttendingPhysicianId(value)}
-                valueLabel={electedAttendingPhysicianId ? "Selected physician" : undefined}
+                valueLabel={
+                  electedAttendingPhysicianId ? "Selected physician" : undefined
+                }
                 clearable
               />
               <label style={checkboxLabelStyle}>
@@ -979,7 +1308,8 @@ export function AdmissionDetail(): JSX.Element {
                   checked={waiverAcknowledged}
                   onChange={(ev) => setWaiverAcknowledged(ev.target.checked)}
                 />
-                Patient/representative acknowledged hospice election and applicable waiver.
+                Patient/representative acknowledged hospice election and
+                applicable waiver.
               </label>
               <label htmlFor="state-addendum" style={fieldLabel}>
                 State addendum
@@ -1010,8 +1340,8 @@ export function AdmissionDetail(): JSX.Element {
           attestation={
             <div style={formStackStyle}>
               <span style={hintTextStyle}>
-                Capture the patient or representative signature. This is required before the
-                admission can activate.
+                Capture the patient or representative signature. This is
+                required before the admission can activate.
               </span>
               <label htmlFor="election-signer-name" style={fieldLabel}>
                 Signer name
@@ -1029,11 +1359,15 @@ export function AdmissionDetail(): JSX.Element {
                 id="election-signer-role"
                 value={electionSignerRole}
                 onChange={(ev) =>
-                  setElectionSignerRole(ev.target.value as "patient" | "legal_representative")
+                  setElectionSignerRole(
+                    ev.target.value as "patient" | "legal_representative",
+                  )
                 }
               >
                 <option value="patient">Patient</option>
-                <option value="legal_representative">Legal representative</option>
+                <option value="legal_representative">
+                  Legal representative
+                </option>
               </select>
               {actionError ? (
                 <p role="alert" aria-live="assertive" style={alertStyle}>
@@ -1055,8 +1389,9 @@ export function AdmissionDetail(): JSX.Element {
           attestation={
             <div style={formStackStyle}>
               <span style={hintTextStyle}>
-                Create the CTI draft with the certifying physician, terminal diagnosis, and
-                narrative. Signature is a separate governed action.
+                Create the CTI draft with the certifying physician, terminal
+                diagnosis, and narrative. Signature is a separate governed
+                action.
               </span>
               <MdmEntityLookupField
                 kind="physician"
@@ -1117,7 +1452,10 @@ export function AdmissionDetail(): JSX.Element {
         />
 
         <CeremonyModal
-          open={ceremony === "sign-cti-hospice-md" || ceremony === "sign-cti-attending"}
+          open={
+            ceremony === "sign-cti-hospice-md" ||
+            ceremony === "sign-cti-attending"
+          }
           title={
             ceremony === "sign-cti-attending"
               ? "Attending CTI signature"
@@ -1126,8 +1464,9 @@ export function AdmissionDetail(): JSX.Element {
           attestation={
             <div style={formStackStyle}>
               <span style={hintTextStyle}>
-                Capture the physician signature for the CTI. The backend determines whether an
-                attending signature is also required for this period.
+                Capture the physician signature for the CTI. The backend
+                determines whether an attending signature is also required for
+                this period.
               </span>
               <label htmlFor="cti-signer-name" style={fieldLabel}>
                 Signing physician name
@@ -1158,7 +1497,9 @@ export function AdmissionDetail(): JSX.Element {
           signer={{ name: "Recording user", role: "This session" }}
           commitLabel={busy ? "Signing..." : "Sign CTI"}
           onCommit={() =>
-            void signCti(ceremony === "sign-cti-attending" ? "attending" : "hospice-md")
+            void signCti(
+              ceremony === "sign-cti-attending" ? "attending" : "hospice-md",
+            )
           }
           onCancel={closeCeremony}
         />
@@ -1169,8 +1510,9 @@ export function AdmissionDetail(): JSX.Element {
           attestation={
             <div style={formStackStyle}>
               <span style={hintTextStyle}>
-                Records that the patient (or their legal representative) received and acknowledged
-                the Notice of Rights. Required before the admission can activate.
+                Records that the patient (or their legal representative)
+                received and acknowledged the Notice of Rights. Required before
+                the admission can activate.
               </span>
               <label htmlFor="nor-form-version" style={fieldLabel}>
                 NOR form version id
@@ -1187,7 +1529,9 @@ export function AdmissionDetail(): JSX.Element {
               <select
                 id="nor-method"
                 value={deliveryMethod}
-                onChange={(ev) => setDeliveryMethod(ev.target.value as NorMethod)}
+                onChange={(ev) =>
+                  setDeliveryMethod(ev.target.value as NorMethod)
+                }
               >
                 {NOR_METHODS.map((m) => (
                   <option key={m.value} value={m.value}>
@@ -1211,11 +1555,15 @@ export function AdmissionDetail(): JSX.Element {
                 id="nor-role"
                 value={acknowledgedByRole}
                 onChange={(ev) =>
-                  setAcknowledgedByRole(ev.target.value as "patient" | "legal_representative")
+                  setAcknowledgedByRole(
+                    ev.target.value as "patient" | "legal_representative",
+                  )
                 }
               >
                 <option value="patient">Patient</option>
-                <option value="legal_representative">Legal representative</option>
+                <option value="legal_representative">
+                  Legal representative
+                </option>
               </select>
               {actionError ? (
                 <p role="alert" aria-live="assertive" style={alertStyle}>
@@ -1234,10 +1582,22 @@ export function AdmissionDetail(): JSX.Element {
           open={ceremony === "activate"}
           title="Activate admission"
           attestation={
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              <span style={{ fontSize: "0.8125rem", color: "var(--color-on-surface-variant)" }}>
-                All four R-AC-01 preconditions are satisfied. Activating opens active-period billing
-                and compliance tracking for this admission.
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.5rem",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "0.8125rem",
+                  color: "var(--color-on-surface-variant)",
+                }}
+              >
+                All four R-AC-01 preconditions are satisfied. Activating opens
+                active-period billing and compliance tracking for this
+                admission.
               </span>
               {actionError ? (
                 <p role="alert" aria-live="assertive" style={alertStyle}>
@@ -1272,7 +1632,8 @@ function HopeEntry({
         <div>
           <h3 style={miniTitleStyle}>HOPE workflow</h3>
           <p style={emptyTextStyle}>
-            HOPE summary is unavailable or not visible for admission {admissionId}.
+            HOPE summary is unavailable or not visible for admission{" "}
+            {admissionId}.
           </p>
         </div>
         <button type="button" onClick={onOpen} style={ghostBtn}>
@@ -1281,7 +1642,9 @@ function HopeEntry({
       </div>
     );
   }
-  const openSfvs = summary.sfvs.filter((s) => s.status === "open" || s.status === "overdue").length;
+  const openSfvs = summary.sfvs.filter(
+    (s) => s.status === "open" || s.status === "overdue",
+  ).length;
   const workflowIssueCount = summary.summary.workflowIssueCount ?? 0;
   const overdueCount = summary.summary.overdueCount ?? 0;
   const dueSoonCount = summary.summary.dueSoonCount ?? 0;
@@ -1307,8 +1670,9 @@ function HopeEntry({
           label="SFV"
           status={openSfvs > 0 ? `${openSfvs} open` : "none open"}
           attention={
-            summary.sfvs.find((s) => s.attention?.state && s.attention.state !== "none")?.attention
-              ?.state
+            summary.sfvs.find(
+              (s) => s.attention?.state && s.attention.state !== "none",
+            )?.attention?.state
           }
         />
         <HopeMini
@@ -1333,7 +1697,8 @@ function HopeEntry({
             dueSoonCount,
           )}
           tone={
-            (summary.summary.highestSeverity ?? "none") === "critical" || workflowIssueCount > 0
+            (summary.summary.highestSeverity ?? "none") === "critical" ||
+            workflowIssueCount > 0
               ? "error"
               : summary.summary.actionableCount > 0 || dueSoonCount > 0
                 ? "warning"
@@ -1343,7 +1708,9 @@ function HopeEntry({
         {overdueCount > 0 ? (
           <span style={summaryMetaStyle}>{overdueCount} overdue or missed</span>
         ) : null}
-        <span style={summaryMetaStyle}>Next deadline {fmtDate(summary.summary.nextDeadline)}</span>
+        <span style={summaryMetaStyle}>
+          Next deadline {fmtDate(summary.summary.nextDeadline)}
+        </span>
         <button type="button" onClick={onOpen} style={primaryBtn}>
           Open HOPE
         </button>
@@ -1363,7 +1730,10 @@ function HopeMini({
 }): JSX.Element {
   const display = attention && attention !== "none" ? attention : status;
   const tone: StatusTone =
-    display.includes("open") || display === "late" || display === "due" || display === "due_soon"
+    display.includes("open") ||
+    display === "late" ||
+    display === "due" ||
+    display === "due_soon"
       ? "warning"
       : display === "completed"
         ? "success"
@@ -1413,7 +1783,9 @@ function currentPeriod(
   electionCert: ElectionCertificationView | null,
   fallbackPeriods: SummaryRow[],
 ): ElectionPeriodView | (SummaryRow & Partial<ElectionPeriodView>) | null {
-  const electionPeriods = Array.isArray(electionCert?.periods) ? electionCert.periods : [];
+  const electionPeriods = Array.isArray(electionCert?.periods)
+    ? electionCert.periods
+    : [];
   return (
     electionPeriods.find((p) => p.sequenceNumber === 1) ??
     electionPeriods[0] ??
@@ -1430,16 +1802,32 @@ function actionLabel(
   },
 ): string {
   if (action === "ACKNOWLEDGE_NOR") return "Record acknowledgment";
-  if (action === "COMPLETE_ADMISSION_DETAILS") return "Complete admission details";
-  if (action === "COMPLETE_ELECTION")
-    return context.electionStatement ? "Sign Election Statement" : "Create Election Statement";
+
+  if (action === "COMPLETE_ADMISSION_DETAILS") {
+    return "Complete admission details";
+  }
+
+  if (action === "COMPLETE_ELECTION") {
+    return context.electionStatement
+      ? "Sign Election Statement"
+      : "Create Election Statement";
+  }
+
   if (action === "REVIEW_CTI") {
-    if (!context.cti) return "Create CTI";
-    if (!context.cti.hospiceMdSigned) return "Sign CTI as Hospice MD";
-    if (context.cti.state === "awaiting_attending" && !context.cti.attendingMdSigned)
+    if (!context.cti) {
+      return "Create CTI";
+    }
+
+    if (!context.cti.hospiceMdSigned) {
+      return "Sign CTI as Hospice MD";
+    }
+
+    if (!context.cti.attendingMdSigned) {
       return "Sign CTI as Attending";
+    }
     return "Review CTI";
   }
+
   return stateLabel(action);
 }
 
@@ -1489,7 +1877,11 @@ const inputStyle: CSSProperties = {
   borderRadius: "var(--radius-md)",
   border: "1px solid var(--color-outline-variant)",
 };
-const alertStyle: CSSProperties = { margin: 0, fontSize: "0.8rem", color: "var(--color-error)" };
+const alertStyle: CSSProperties = {
+  margin: 0,
+  fontSize: "0.8rem",
+  color: "var(--color-error)",
+};
 
 const hintTextStyle: CSSProperties = {
   fontSize: "0.8125rem",
@@ -1738,7 +2130,9 @@ const requirementLineStyle: CSSProperties = {
 // (alert glyph, error tint, surfaced first), each met one `complete` (check, struck through).
 function ActivationChecklist({
   gate,
-}: { gate: AdmissionDetailView["activationGate"] }): JSX.Element {
+}: {
+  gate: AdmissionDetailView["activationGate"];
+}): JSX.Element {
   const items: GateItem[] = GATE_ROWS.map((row) => ({
     id: row.code,
     label: row.label,
@@ -1759,7 +2153,11 @@ function ActivationChecklist({
   );
 }
 
-function ReadinessChecklist({ readiness }: { readiness: AdmissionReadiness }): JSX.Element {
+function ReadinessChecklist({
+  readiness,
+}: {
+  readiness: AdmissionReadiness;
+}): JSX.Element {
   const items: GateItem[] = readiness.requirements.map((r) => ({
     id: r.code,
     label: r.label,
@@ -1774,10 +2172,16 @@ function ReadinessChecklist({ readiness }: { readiness: AdmissionReadiness }): J
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       <StatusPill
         tone={
-          readiness.canActivate ? "success" : readiness.status === "blocked" ? "error" : "warning"
+          readiness.canActivate
+            ? "success"
+            : readiness.status === "blocked"
+              ? "error"
+              : "warning"
         }
         label={
-          readiness.canActivate ? "Ready to activate" : `${readiness.blockingRemaining} blockers`
+          readiness.canActivate
+            ? "Ready to activate"
+            : `${readiness.blockingRemaining} blockers`
         }
       />
       <GateStepper items={items} ariaLabel="Admission readiness requirements" />
@@ -1796,20 +2200,29 @@ function RequirementCards({
   cti: CtiView | null;
   onAction: (action: string) => void;
 }): JSX.Element {
-  if (requirements.length === 0) return <p style={emptyTextStyle}>Readiness is loading.</p>;
+  if (requirements.length === 0)
+    return <p style={emptyTextStyle}>Readiness is loading.</p>;
   return (
     <div style={requirementGridStyle}>
       {requirements.map((r) => (
         <div key={r.code} style={requirementCardStyle}>
           <div style={requirementHeaderStyle}>
             <strong>{r.label}</strong>
-            <StatusPill label={stateLabel(r.status)} tone={requirementTone(r.status)} />
+            <StatusPill
+              label={stateLabel(r.status)}
+              tone={requirementTone(r.status)}
+            />
           </div>
           <p style={requirementMessageStyle}>
-            {r.message ?? (r.status === "complete" ? "Complete" : "No action required.")}
+            {r.message ??
+              (r.status === "complete" ? "Complete" : "No action required.")}
           </p>
           {r.action ? (
-            <button type="button" style={ghostBtn} onClick={() => onAction(r.action!)}>
+            <button
+              type="button"
+              style={ghostBtn}
+              onClick={() => onAction(r.action!)}
+            >
               {actionLabel(r.action, { electionStatement, cti })}
             </button>
           ) : null}
@@ -1824,7 +2237,8 @@ function RequirementLine({
 }: {
   requirement: ReadinessRequirement | undefined;
 }): JSX.Element {
-  if (!requirement) return <p style={emptyTextStyle}>No readiness data available.</p>;
+  if (!requirement)
+    return <p style={emptyTextStyle}>No readiness data available.</p>;
   return (
     <div style={requirementLineStyle}>
       <StatusPill
@@ -1838,21 +2252,28 @@ function RequirementLine({
 
 function requirementTone(status: ReadinessRequirement["status"]): StatusTone {
   if (status === "complete" || status === "not_applicable") return "success";
-  if (status === "pending" || status === "awaiting_signature") return "progress";
+  if (status === "pending" || status === "awaiting_signature")
+    return "progress";
   if (status === "blocked" || status === "overdue") return "error";
   return "warning";
 }
 
 function fmtDate(value: string | null | undefined): string {
   if (!value) return "Not set";
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value));
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
+    new Date(value),
+  );
 }
 
 function Field({
   label,
   value,
   mono,
-}: { label: string; value: string; mono?: boolean }): JSX.Element {
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}): JSX.Element {
   return (
     <div style={fieldStyle}>
       <span style={fieldLabelStyle}>{label}</span>
@@ -1863,7 +2284,13 @@ function Field({
   );
 }
 
-function Section({ title, children }: { title: string; children: JSX.Element }): JSX.Element {
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: JSX.Element;
+}): JSX.Element {
   return (
     <section style={sectionCardStyle}>
       <h3 style={sectionTitleStyle}>{title}</h3>
@@ -1891,7 +2318,10 @@ function RowList({
               {r.id}
             </td>
             <td style={tdStyle}>
-              <StatusPill label={stateLabel(r.state)} tone={toneFor?.[r.state] ?? "neutral"} />
+              <StatusPill
+                label={stateLabel(r.state)}
+                tone={toneFor?.[r.state] ?? "neutral"}
+              />
             </td>
           </tr>
         ))}

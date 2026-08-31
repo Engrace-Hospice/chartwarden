@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ApiClientProvider } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -16,6 +16,8 @@ const session: Session = {
 };
 
 const admissionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const providerEntityId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const locationId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
 function ok(data: unknown) {
   return { data, error: undefined, response: new Response(null, { status: 200 }) };
@@ -107,6 +109,8 @@ function clientFor(readinessResponse = readiness()): ApiClient {
           referralId: "referral-1",
           admissionAt: "2026-08-28T10:00:00.000Z",
           activatedAt: null,
+          providerEntityId,
+          locationId,
           activationGate: { ready: false, missing: ["election_signed", "nor_acknowledged"] },
         });
       }
@@ -251,5 +255,52 @@ describe("Admission intake workspace", () => {
       screen.getAllByRole("button", { name: "Create Election Statement" }).length,
     ).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: "Create CTI" }).length).toBeGreaterThan(0);
+  });
+
+  it("saves admission details with the persisted provider and location ids", async () => {
+    const client = clientFor(
+      readiness({
+        requirements: [
+          {
+            code: "admission_details",
+            label: "Admission details",
+            status: "action_required",
+            blocking: true,
+            message: "Missing admission details.",
+            action: "COMPLETE_ADMISSION_DETAILS",
+          },
+        ],
+      }),
+    );
+    renderWithShell(client);
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Intake" })).toBeTruthy(),
+    );
+
+    const detailsButton = screen.getAllByRole("button", {
+      name: "Complete admission details",
+    })[0];
+    expect(detailsButton).toBeTruthy();
+    fireEvent.click(detailsButton!);
+    expect(screen.getByText("Hospice provider")).toBeTruthy();
+    expect(screen.getByText("Service location")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save admission details" }));
+
+    await waitFor(() =>
+      expect(client.PATCH).toHaveBeenCalledWith(
+        "/api/v1/admissions/{id}",
+        expect.objectContaining({
+          params: { path: { id: admissionId } },
+          body: {
+            ifVersion: 4,
+            admissionAt: "2026-08-28T12:00:00.000Z",
+            providerEntityId,
+            locationId,
+          },
+        }),
+      ),
+    );
   });
 });

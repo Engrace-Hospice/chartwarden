@@ -39,9 +39,16 @@ const ORG = "org_a";
 const ORG_B = "org_b";
 const ADMISSION = "adm_seed";
 const ADMISSION_B = "adm_seed_b";
+const ADMISSION_OTHER_PATIENT = "adm_seed_other_patient";
 const F2F = "f2f_seed";
 const DISCHARGE = "dis_seed";
 const WINDOW = "cw_seed";
+const PATIENT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const PATIENT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const PROVIDER_ENTITY = "11111111-1111-4111-8111-111111111111";
+const OTHER_PROVIDER_ENTITY = "22222222-2222-4222-8222-222222222222";
+const LOCATION = "33333333-3333-4333-8333-333333333333";
+const OTHER_LOCATION = "44444444-4444-4444-8444-444444444444";
 
 // Grants: an intake coordinator (referral/admission writes), a clinician (reads + cti/f2f), a
 // medical director (discharge/cosign), and a compliance officer (override).
@@ -52,6 +59,7 @@ const PERMISSION_SEED = [
       "referral.create",
       "referral.read",
       "admission.create",
+      "admission.update",
       "admission.read",
       "discharge.death",
     ],
@@ -76,7 +84,13 @@ const PERMISSION_SEED = [
 ];
 
 function makeServer(
-  options: { isInCaseload?: (q: { organizationId: string; userId: string; patientId: string }) => Promise<boolean> } = {},
+  options: {
+    isInCaseload?: (q: {
+      organizationId: string;
+      userId: string;
+      patientId: string;
+    }) => Promise<boolean>;
+  } = {},
 ) {
   const backend = createInMemoryAdmissionBackend({
     records: [
@@ -85,14 +99,21 @@ function makeServer(
         organizationId: ORG,
         kind: "admission",
         state: "active",
-        patientId: "pat_1",
+        patientId: PATIENT_A,
+      },
+      {
+        id: ADMISSION_OTHER_PATIENT,
+        organizationId: ORG,
+        kind: "admission",
+        state: "active",
+        patientId: PATIENT_B,
       },
       {
         id: ADMISSION_B,
         organizationId: ORG_B,
         kind: "admission",
         state: "active",
-        patientId: "pat_b",
+        patientId: PATIENT_B,
       },
       {
         id: F2F,
@@ -108,7 +129,7 @@ function makeServer(
         kind: "discharge",
         state: "awaiting_cosign",
         admissionId: ADMISSION,
-        patientId: "pat_1",
+        patientId: PATIENT_A,
       },
       {
         id: WINDOW,
@@ -116,7 +137,19 @@ function makeServer(
         kind: "compliance_window",
         state: "open",
         admissionId: ADMISSION,
-        patientId: "pat_1",
+        patientId: PATIENT_A,
+      },
+      {
+        id: LOCATION,
+        organizationId: ORG,
+        kind: "location",
+        providerEntityId: PROVIDER_ENTITY,
+      },
+      {
+        id: OTHER_LOCATION,
+        organizationId: ORG,
+        kind: "location",
+        providerEntityId: OTHER_PROVIDER_ENTITY,
       },
     ],
   });
@@ -192,6 +225,34 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
     await app.close();
   });
 
+  it("POST /referrals can pre-link a known patient for patient-scoped admission creation", async () => {
+    const { app } = makeServer();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/referrals",
+      headers: INTAKE,
+      payload: {
+        source: "phone",
+        receivedAt: "2026-06-20T10:00:00Z",
+        patientId: PATIENT_A,
+        patientNameAtReceipt: "Ava Stone",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+
+    const detail = await app.inject({
+      method: "GET",
+      url: `/api/v1/referrals/${created.json().id}`,
+      headers: INTAKE,
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      patientId: PATIENT_A,
+      patientResolutionStatus: "matched",
+    });
+    await app.close();
+  });
+
   it("denies referral.create without the key (403)", async () => {
     const { app } = makeServer();
     const res = await app.inject({
@@ -228,11 +289,35 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
     await app.close();
   });
 
+  it("GET /admissions filters active admissions by patientId without changing the org list default", async () => {
+    const { app } = makeServer();
+    const unscoped = await app.inject({
+      method: "GET",
+      url: "/api/v1/admissions?state=active",
+      headers: RN,
+    });
+    expect(unscoped.statusCode).toBe(200);
+    expect(unscoped.json().items.map((i: { id: string }) => i.id)).toEqual(
+      expect.arrayContaining([ADMISSION, ADMISSION_OTHER_PATIENT]),
+    );
+
+    const scoped = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions?state=active&patientId=${PATIENT_A}`,
+      headers: RN,
+    });
+    expect(scoped.statusCode).toBe(200);
+    const ids = scoped.json().items.map((i: { id: string }) => i.id);
+    expect(ids).toContain(ADMISSION);
+    expect(ids).not.toContain(ADMISSION_OTHER_PATIENT);
+    await app.close();
+  });
+
   it("GET /patients/:patientId/election-certification assembles the aggregate for a reader (200)", async () => {
     const { app } = makeServer();
     const res = await app.inject({
       method: "GET",
-      url: "/api/v1/patients/pat_1/election-certification",
+      url: `/api/v1/patients/${PATIENT_A}/election-certification`,
       headers: RN,
     });
     expect(res.statusCode).toBe(200);
@@ -248,7 +333,7 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
     const { app } = makeServer();
     const res = await app.inject({
       method: "GET",
-      url: "/api/v1/patients/pat_1/election-certification",
+      url: `/api/v1/patients/${PATIENT_A}/election-certification`,
       headers: INTAKE,
     });
     expect(res.statusCode).toBe(403);
@@ -277,6 +362,62 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
       headers: RN,
     });
     expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("allows intake staff to open a freshly converted unsited admission even before caseload/provider siting", async () => {
+    const { app } = makeServer({ isInCaseload: async () => false });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions/${ADMISSION}`,
+      headers: INTAKE,
+    });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("PATCH /admissions/:id persists providerEntityId and locationId", async () => {
+    const { app } = makeServer();
+    const updated = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admissions/${ADMISSION}`,
+      headers: INTAKE,
+      payload: {
+        ifVersion: 1,
+        admissionAt: "2026-06-20T00:00:00.000Z",
+        providerEntityId: PROVIDER_ENTITY,
+        locationId: LOCATION,
+      },
+    });
+    expect(updated.statusCode).toBe(200);
+
+    const detail = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions/${ADMISSION}`,
+      headers: INTAKE,
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      providerEntityId: PROVIDER_ENTITY,
+      locationId: LOCATION,
+    });
+    await app.close();
+  });
+
+  it("PATCH /admissions/:id rejects a location from another provider entity", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admissions/${ADMISSION}`,
+      headers: INTAKE,
+      payload: {
+        ifVersion: 1,
+        providerEntityId: PROVIDER_ENTITY,
+        locationId: OTHER_LOCATION,
+      },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("LOCATION_PROVIDER_MISMATCH");
     await app.close();
   });
 

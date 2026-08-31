@@ -78,6 +78,7 @@ import {
 } from "./bootstrap/provider-entity-resolver";
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { registerProviderEntityLookupRoutes } from "./bootstrap/routes/provider-entities";
+import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 
 /** The @wardenx/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
@@ -2520,6 +2521,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           mountAuditRoutes(app, dbHandle.db, { outbox: m4OutboxPublisher }); // M4 — audit-log search + GAP-003 compliance surface
           mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table
           registerProviderEntityLookupRoutes(app, dbHandle.db); // M1 — provider-entity selector lookup for UX surfaces
+          registerLocationLookupRoutes(app, dbHandle.db); // M1 — service-location selector lookup scoped by provider entity
           mountAdmissionRoutes(app, dbHandle.db, m6OutboxPublisher, m6IpuBedAssignmentReader); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
           // Clinical core (M7–M14, M17, M18, M22) — reads mounted over the real Drizzle route services under
           // RLS, replacing the retired in-memory scaffold. Writes fail-closed 501 until each module's write

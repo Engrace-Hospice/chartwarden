@@ -60,8 +60,8 @@ export interface AdmissionReadinessFacts {
   };
   readonly admissionDetails: {
     readonly admissionDatePresent: boolean;
-    readonly primaryDiagnosisPresent: boolean;
-    readonly hospiceMedicalDirectorPresent: boolean;
+    // readonly primaryDiagnosisPresent: boolean;
+    // readonly hospiceMedicalDirectorPresent: boolean;
     readonly providerEntityPresent: boolean;
     readonly locationPresent: boolean;
   };
@@ -135,9 +135,9 @@ export function evaluateAdmissionReadiness(
 
   const missingDetails: string[] = [];
   if (!facts.admissionDetails.admissionDatePresent) missingDetails.push("admission date");
-  if (!facts.admissionDetails.primaryDiagnosisPresent) missingDetails.push("terminal diagnosis");
-  if (!facts.admissionDetails.hospiceMedicalDirectorPresent)
-    missingDetails.push("hospice medical director");
+  // if (!facts.admissionDetails.primaryDiagnosisPresent) missingDetails.push("terminal diagnosis");
+  // if (!facts.admissionDetails.hospiceMedicalDirectorPresent)
+  //   missingDetails.push("hospice medical director");
   if (!facts.admissionDetails.providerEntityPresent) missingDetails.push("provider entity");
   if (!facts.admissionDetails.locationPresent) missingDetails.push("location");
   requirements.push(
@@ -355,8 +355,8 @@ export function computeActivationGate(facts: ActivationFacts): ActivationGate {
     patientIdentity: { patientId: "legacy" },
     admissionDetails: {
       admissionDatePresent: true,
-      primaryDiagnosisPresent: true,
-      hospiceMedicalDirectorPresent: true,
+      // primaryDiagnosisPresent: true,
+      // hospiceMedicalDirectorPresent: true,
       providerEntityPresent: true,
       locationPresent: true,
     },

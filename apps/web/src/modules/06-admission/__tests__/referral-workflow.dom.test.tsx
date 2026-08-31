@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
 import type { Session } from "../../../shell/session";
+import { AdmissionCreate } from "../admission-create";
 import { ReferralDetail } from "../referral-detail";
 import { ReferralInbox } from "../referral-inbox";
 import { ReferralNew } from "../referral-new";
@@ -89,6 +90,7 @@ function renderWithShell(ui: JSX.Element, client: ApiClient, initialPath = "/"):
             <Route path="/" element={ui} />
             <Route path="/referrals/:id" element={ui} />
             <Route path="/referrals/new" element={ui} />
+            <Route path="/admissions/new" element={ui} />
             <Route path="/admissions/:id" element={<div>Admission opened</div>} />
           </Routes>
         </SessionProvider>
@@ -127,6 +129,50 @@ describe("Referral Phase 2 workflow screens", () => {
     fireEvent.click(screen.getByRole("button", { name: /create referral/i }));
 
     await waitFor(() => expect(client.POST).toHaveBeenCalledWith("/api/v1/referrals", expect.anything()));
+  });
+
+  it("prefills and pre-links a referral opened from a patient-scoped admission lookup", async () => {
+    const patientId = "22222222-2222-4222-8222-222222222222";
+    const client = clientFor({
+      GET: vi.fn(async (path: string) => {
+        if (path === "/api/v1/patients/{id}")
+          return ok({
+            firstName: "Ava",
+            lastName: "Stone",
+            dob: "1950-01-01",
+            status: "active",
+          });
+        return ok({ items: [], nextCursor: null });
+      }) as unknown as ApiClient["GET"],
+    });
+    renderWithShell(<ReferralNew />, client, `/referrals/new?patientId=${patientId}`);
+
+    await waitFor(() =>
+      expect((screen.getByLabelText("Patient full name") as HTMLInputElement).value).toBe(
+        "Ava Stone",
+      ),
+    );
+    expect((screen.getByLabelText("Date of birth") as HTMLInputElement).value).toBe("1950-01-01");
+
+    fireEvent.click(screen.getByRole("button", { name: /create referral/i }));
+    await waitFor(() =>
+      expect(client.POST).toHaveBeenCalledWith(
+        "/api/v1/referrals",
+        expect.objectContaining({
+          body: expect.objectContaining({ patientId, patientNameAtReceipt: "Ava Stone" }),
+        }),
+      ),
+    );
+  });
+
+  it("prefills direct admission when opened from a patient-scoped admission lookup", async () => {
+    const patientId = "22222222-2222-4222-8222-222222222222";
+    const client = clientFor();
+    renderWithShell(<AdmissionCreate />, client, `/admissions/new?patientId=${patientId}`);
+
+    expect((screen.getByPlaceholderText("Search patient name or MRN...") as HTMLInputElement).value).toBe(
+      patientId,
+    );
   });
 
   it("shows backend qualification blockers, notes, and activity on detail", async () => {

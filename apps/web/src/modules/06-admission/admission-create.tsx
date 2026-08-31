@@ -17,7 +17,7 @@ import type { WorkflowStep } from "@wardenx/ui";
 // storage would be inappropriate for referral/admission data, and no durable draft endpoint exists.
 import { useCallback, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { MdmEntityLookupField, PatientLookupField } from "../../shared/entity-lookups";
 import { authFailureRedirect } from "./write-workflow";
 
@@ -33,8 +33,9 @@ const STEP_IDS: readonly StepId[] = ["intake", "clinical", "review"];
 export function AdmissionCreate(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [step, setStep] = useState<StepId>("intake");
-  const [patientId, setPatientId] = useState("");
+  const [patientId, setPatientId] = useState(searchParams.get("patientId") ?? "");
   const [intakeMethod, setIntakeMethod] = useState<IntakeMethod>("in_person");
   const [attendingPhysicianId, setAttendingPhysicianId] = useState("");
   const [hospiceMedicalDirectorId, setHospiceMedicalDirectorId] = useState("");

@@ -1,7 +1,7 @@
 import { Button, DetailPageLayout, PageHeader, useApiClient } from "@wardenx/ui";
 import type { CSSProperties, JSX } from "react";
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { createReferral } from "./referrals-api";
 
 const SOURCES = [
@@ -17,6 +17,8 @@ const SOURCES = [
 export function ReferralNew(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const patientId = searchParams.get("patientId") ?? "";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -30,6 +32,29 @@ export function ReferralNew(): JSX.Element {
     referringDxText: "",
     receivedAt: new Date().toISOString().slice(0, 16),
   });
+
+  useEffect(() => {
+    if (!patientId) return;
+    let cancelled = false;
+    async function loadPatient(): Promise<void> {
+      const { data } = await client.GET("/api/v1/patients/{id}", {
+        params: { path: { id: patientId } },
+      });
+      if (!data || cancelled) return;
+      const patient = data as { firstName?: string; lastName?: string; dob?: string };
+      setForm((prev) => ({
+        ...prev,
+        patientNameAtReceipt:
+          prev.patientNameAtReceipt ||
+          [patient.firstName, patient.lastName].filter(Boolean).join(" "),
+        patientDobAtReceipt: prev.patientDobAtReceipt || patient.dob || "",
+      }));
+    }
+    void loadPatient();
+    return () => {
+      cancelled = true;
+    };
+  }, [client, patientId]);
 
   function setField(field: keyof typeof form, value: string): void {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -46,6 +71,7 @@ export function ReferralNew(): JSX.Element {
       const created = await createReferral(client, {
         source: form.source,
         receivedAt: new Date(form.receivedAt).toISOString(),
+        ...(patientId ? { patientId } : {}),
         patientNameAtReceipt: form.patientNameAtReceipt.trim(),
         ...(form.patientDobAtReceipt ? { patientDobAtReceipt: form.patientDobAtReceipt } : {}),
         ...(form.referrerOrganization.trim()

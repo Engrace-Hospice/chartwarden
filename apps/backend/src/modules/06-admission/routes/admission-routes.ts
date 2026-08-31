@@ -13,7 +13,10 @@
 import { requireAbac, requirePermission } from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { type AdmissionScopeResourceKind, M6_ROLE_PREDICATE_NAMES } from "../abac-predicates";
+import {
+  type AdmissionScopeResourceKind,
+  M6_ROLE_PREDICATE_NAMES,
+} from "../abac-predicates";
 import { deriveDischargePermissionKey } from "../discharge";
 import {
   AdmissionActivateSchema,
@@ -72,19 +75,26 @@ import {
 import { type AdmissionRouteService, ResourceNotFoundError } from "./service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+type PreHandler = (
+  request: FastifyRequest,
+  reply: FastifyReply,
+) => Promise<void>;
 
 export interface AdmissionRouteDeps {
   service: AdmissionRouteService;
 }
 
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
+function actorOf(request: FastifyRequest): {
+  organizationId: string;
+  userId: string;
+} {
   const ctx = request.context;
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
   return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
-const idOf = (request: FastifyRequest): string => parse(IdParamsSchema, request.params).id;
+const idOf = (request: FastifyRequest): string =>
+  parse(IdParamsSchema, request.params).id;
 
 // Static permission guards (§4.5). The discharge route derives its key dynamically (§6.3).
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -127,7 +137,10 @@ const COMPLIANCE_CLOSE = P("compliance.close");
 const COMPLIANCE_OVERRIDE = P("compliance.override");
 
 // §4.6 role-gated ABAC guards (pure over context.roles).
-const ABAC_F2F_ATTEST = requireAbac("f2f.attest", M6_ROLE_PREDICATE_NAMES.f2fAttest) as PreHandler;
+const ABAC_F2F_ATTEST = requireAbac(
+  "f2f.attest",
+  M6_ROLE_PREDICATE_NAMES.f2fAttest,
+) as PreHandler;
 const ABAC_F2F_OVERRIDE = requireAbac(
   "f2f.window_override",
   M6_ROLE_PREDICATE_NAMES.f2fWindowOverride,
@@ -175,7 +188,9 @@ const admissionScope = (
       ? {}
       : {
           getTarget: (request) => ({
-            ...(typeof request.params === "object" && request.params ? request.params : {}),
+            ...(typeof request.params === "object" && request.params
+              ? request.params
+              : {}),
             resourceKind,
           }),
         }),
@@ -183,9 +198,18 @@ const admissionScope = (
 
 // The three signer-identity predicates (target = the CTI/F2F id itself, the native `loadCti`/`loadF2f`
 // shape — no `resourceKind` involved).
-const ABAC_CTI_HOSPICE_MD = requireAbac("cti.sign_hospice_md", "cti.is_hospice_md") as PreHandler;
-const ABAC_CTI_ATTENDING = requireAbac("cti.sign_attending", "cti.is_attending") as PreHandler;
-const ABAC_F2F_CLINICIAN = requireAbac("f2f.complete", "f2f.is_hospice_clinician") as PreHandler;
+const ABAC_CTI_HOSPICE_MD = requireAbac(
+  "cti.sign_hospice_md",
+  "cti.is_hospice_md",
+) as PreHandler;
+const ABAC_CTI_ATTENDING = requireAbac(
+  "cti.sign_attending",
+  "cti.is_attending",
+) as PreHandler;
+const ABAC_F2F_CLINICIAN = requireAbac(
+  "f2f.complete",
+  "f2f.is_hospice_clinician",
+) as PreHandler;
 
 /**
  * §6.3 — derive route 39's permission from the body `reason` server-side (the `discharge/` submodule is
@@ -204,16 +228,23 @@ const notFound = (id: string): never => {
   throw new ResourceNotFoundError(id);
 };
 
-export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRouteDeps): void {
+export function registerAdmissionRoutes(
+  app: FastifyInstance,
+  deps: AdmissionRouteDeps,
+): void {
   const { service } = deps;
 
   // ── Referral (routes 1–7) ──────────────────────────────────────────────────────────────────
-  app.post("/api/v1/referrals", { preHandler: [REFERRAL_CREATE] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(ReferralCreateSchema, request.body);
-    const res = await service.createReferral(organizationId, body, userId);
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/referrals",
+    { preHandler: [REFERRAL_CREATE] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(ReferralCreateSchema, request.body);
+      const res = await service.createReferral(organizationId, body, userId);
+      return reply.code(201).send(res);
+    },
+  );
 
   app.get(
     "/api/v1/referrals",
@@ -232,7 +263,9 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     "/api/v1/referrals/:id",
     {
       preHandler: [REFERRAL_READ, referralScope("referral.read")],
-      config: { auditRead: { resourceKind: "referral", resourceIdParam: "id" } },
+      config: {
+        auditRead: { resourceKind: "referral", resourceIdParam: "id" },
+      },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
@@ -247,7 +280,12 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(ReferralUpdateSchema, request.body);
-      return service.updateReferral(organizationId, idOf(request), body, body.ifVersion);
+      return service.updateReferral(
+        organizationId,
+        idOf(request),
+        body,
+        body.ifVersion,
+      );
     },
   );
 
@@ -257,7 +295,12 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(ReferralReviewSchema, request.body);
-      return service.startReferralReview(organizationId, idOf(request), body.ifVersion, userId);
+      return service.startReferralReview(
+        organizationId,
+        idOf(request),
+        body.ifVersion,
+        userId,
+      );
     },
   );
 
@@ -298,7 +341,12 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(ReferralPatientCreateSchema, request.body);
-      return service.createReferralPatient(organizationId, idOf(request), body.ifVersion, userId);
+      return service.createReferralPatient(
+        organizationId,
+        idOf(request),
+        body.ifVersion,
+        userId,
+      );
     },
   );
 
@@ -308,7 +356,12 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(ReferralQualifySchema, request.body);
-      return service.qualifyReferral(organizationId, idOf(request), body.ifVersion, userId);
+      return service.qualifyReferral(
+        organizationId,
+        idOf(request),
+        body.ifVersion,
+        userId,
+      );
     },
   );
 
@@ -318,7 +371,12 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(ReferralTriageSchema, request.body);
-      return service.triageReferral(organizationId, idOf(request), body.outcome, body.ifVersion);
+      return service.triageReferral(
+        organizationId,
+        idOf(request),
+        body.outcome,
+        body.ifVersion,
+      );
     },
   );
 
@@ -368,7 +426,12 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(ReferralDeclineSchema, request.body);
-      return service.declineReferral(organizationId, idOf(request), body.reason, body.ifVersion);
+      return service.declineReferral(
+        organizationId,
+        idOf(request),
+        body.reason,
+        body.ifVersion,
+      );
     },
   );
 
@@ -378,7 +441,12 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(ReferralNoteCreateSchema, request.body);
-      const res = await service.addReferralNote(organizationId, idOf(request), body, userId);
+      const res = await service.addReferralNote(
+        organizationId,
+        idOf(request),
+        body,
+        userId,
+      );
       return reply.code(201).send(res);
     },
   );
@@ -387,11 +455,15 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     "/api/v1/referrals/:id/notes",
     {
       preHandler: [REFERRAL_READ, referralScope("referral.read")],
-      config: { auditRead: { resourceKind: "referral_note", resourceIdParam: "id" } },
+      config: {
+        auditRead: { resourceKind: "referral_note", resourceIdParam: "id" },
+      },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
-      return { items: await service.listReferralNotes(organizationId, idOf(request)) };
+      return {
+        items: await service.listReferralNotes(organizationId, idOf(request)),
+      };
     },
   );
 
@@ -399,11 +471,18 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     "/api/v1/referrals/:id/activity",
     {
       preHandler: [REFERRAL_READ, referralScope("referral.read")],
-      config: { auditRead: { resourceKind: "referral_activity", resourceIdParam: "id" } },
+      config: {
+        auditRead: { resourceKind: "referral_activity", resourceIdParam: "id" },
+      },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
-      return { items: await service.listReferralActivity(organizationId, idOf(request)) };
+      return {
+        items: await service.listReferralActivity(
+          organizationId,
+          idOf(request),
+        ),
+      };
     },
   );
 
@@ -488,12 +567,16 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   );
 
   // ── Admission (routes 8–14) ────────────────────────────────────────────────────────────────
-  app.post("/api/v1/admissions", { preHandler: [ADMISSION_CREATE] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(AdmissionCreateSchema, request.body);
-    const res = await service.createAdmission(organizationId, body, userId);
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/admissions",
+    { preHandler: [ADMISSION_CREATE] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(AdmissionCreateSchema, request.body);
+      const res = await service.createAdmission(organizationId, body, userId);
+      return reply.code(201).send(res);
+    },
+  );
 
   app.get(
     "/api/v1/admissions",
@@ -512,7 +595,9 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     "/api/v1/admissions/:id",
     {
       preHandler: [ADMISSION_READ, admissionScope("admission.read")],
-      config: { auditRead: { resourceKind: "admission", resourceIdParam: "id" } },
+      config: {
+        auditRead: { resourceKind: "admission", resourceIdParam: "id" },
+      },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
@@ -526,11 +611,19 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     {
       preHandler: [ADMISSION_READ, admissionScope("admission.read")],
       schema: { response: { 200: AdmissionReadinessResponseSchema } },
-      config: { auditRead: { resourceKind: "admission_readiness", resourceIdParam: "id" } },
+      config: {
+        auditRead: {
+          resourceKind: "admission_readiness",
+          resourceIdParam: "id",
+        },
+      },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
-      const row = await service.getAdmissionReadiness(organizationId, idOf(request));
+      const row = await service.getAdmissionReadiness(
+        organizationId,
+        idOf(request),
+      );
       return row ?? notFound(idOf(request));
     },
   );
@@ -543,7 +636,10 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     {
       preHandler: [ELECTION_READ],
       config: {
-        auditRead: { resourceKind: "election_certification", patientIdParam: "patientId" },
+        auditRead: {
+          resourceKind: "election_certification",
+          patientIdParam: "patientId",
+        },
       },
     },
     async (request) => {
@@ -565,6 +661,8 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
         {
           admissionAt: body.admissionAt,
           attendingPhysicianId: body.attendingPhysicianId,
+          providerEntityId: body.providerEntityId,
+          locationId: body.locationId,
         },
         body.ifVersion,
       );
@@ -577,7 +675,12 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(AdmissionHoldSchema, request.body);
-      return service.holdAdmission(organizationId, idOf(request), body.reason, body.ifVersion);
+      return service.holdAdmission(
+        organizationId,
+        idOf(request),
+        body.reason,
+        body.ifVersion,
+      );
     },
   );
 
@@ -587,7 +690,11 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(AdmissionResumeSchema, request.body);
-      return service.resumeAdmission(organizationId, idOf(request), body.ifVersion);
+      return service.resumeAdmission(
+        organizationId,
+        idOf(request),
+        body.ifVersion,
+      );
     },
   );
 
@@ -597,7 +704,11 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(AdmissionActivateSchema, request.body);
-      return service.activateAdmission(organizationId, idOf(request), body.ifVersion);
+      return service.activateAdmission(
+        organizationId,
+        idOf(request),
+        body.ifVersion,
+      );
     },
   );
 
@@ -620,33 +731,64 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
   app.get(
     "/api/v1/election-statements/:id",
     {
-      preHandler: [ELECTION_READ, admissionScope("election.read", "electionStatement")],
-      config: { auditRead: { resourceKind: "election_statement", resourceIdParam: "id" } },
+      preHandler: [
+        ELECTION_READ,
+        admissionScope("election.read", "electionStatement"),
+      ],
+      config: {
+        auditRead: {
+          resourceKind: "election_statement",
+          resourceIdParam: "id",
+        },
+      },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
-      const row = await service.getElectionStatement(organizationId, idOf(request));
+      const row = await service.getElectionStatement(
+        organizationId,
+        idOf(request),
+      );
       return row ?? notFound(idOf(request));
     },
   );
 
   app.post(
     "/api/v1/election-statements/:id/sign",
-    { preHandler: [ELECTION_SIGN, admissionScope("election.sign", "electionStatement")] },
+    {
+      preHandler: [
+        ELECTION_SIGN,
+        admissionScope("election.sign", "electionStatement"),
+      ],
+    },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(ElectionSignSchema, request.body);
-      return service.signElection(organizationId, idOf(request), body.ifVersion, userId);
+      return service.signElection(
+        organizationId,
+        idOf(request),
+        body.ifVersion,
+        userId,
+      );
     },
   );
 
   app.post(
     "/api/v1/election-statements/:id/void",
-    { preHandler: [ELECTION_VOID, admissionScope("election.void", "electionStatement")] },
+    {
+      preHandler: [
+        ELECTION_VOID,
+        admissionScope("election.void", "electionStatement"),
+      ],
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(ElectionVoidSchema, request.body);
-      return service.voidElection(organizationId, idOf(request), body.reason, body.ifVersion);
+      return service.voidElection(
+        organizationId,
+        idOf(request),
+        body.reason,
+        body.ifVersion,
+      );
     },
   );
 
@@ -654,11 +796,16 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     "/api/v1/admissions/:id/election-periods",
     {
       preHandler: [ELECTION_READ, admissionScope("election.read")],
-      config: { auditRead: { resourceKind: "election_period", resourceIdParam: "id" } },
+      config: {
+        auditRead: { resourceKind: "election_period", resourceIdParam: "id" },
+      },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
-      const rows = await service.listElectionPeriods(organizationId, idOf(request));
+      const rows = await service.listElectionPeriods(
+        organizationId,
+        idOf(request),
+      );
       return rows === null ? notFound(idOf(request)) : { items: rows };
     },
   );
@@ -669,18 +816,30 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       parse(ElectionPeriodCreateSchema, request.body);
-      const res = await service.createElectionPeriod(organizationId, idOf(request));
+      const res = await service.createElectionPeriod(
+        organizationId,
+        idOf(request),
+      );
       return reply.code(201).send(res);
     },
   );
 
   app.patch(
     "/api/v1/election-periods/:id",
-    { preHandler: [ELECTION_DRAFT, admissionScope("election.draft", "electionPeriod")] },
+    {
+      preHandler: [
+        ELECTION_DRAFT,
+        admissionScope("election.draft", "electionPeriod"),
+      ],
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(ElectionPeriodPatchSchema, request.body);
-      return service.patchElectionPeriod(organizationId, idOf(request), body.ifVersion);
+      return service.patchElectionPeriod(
+        organizationId,
+        idOf(request),
+        body.ifVersion,
+      );
     },
   );
 
@@ -728,7 +887,12 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(CtiSignSchema, request.body);
-      return service.signCtiHospiceMd(organizationId, idOf(request), body.ifVersion, userId);
+      return service.signCtiHospiceMd(
+        organizationId,
+        idOf(request),
+        body.ifVersion,
+        userId,
+      );
     },
   );
 
@@ -738,7 +902,12 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(CtiSignSchema, request.body);
-      return service.signCtiAttending(organizationId, idOf(request), body.ifVersion, userId);
+      return service.signCtiAttending(
+        organizationId,
+        idOf(request),
+        body.ifVersion,
+        userId,
+      );
     },
   );
 
@@ -748,7 +917,12 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(CtiVoidSchema, request.body);
-      return service.voidCti(organizationId, idOf(request), body.reason, body.ifVersion);
+      return service.voidCti(
+        organizationId,
+        idOf(request),
+        body.reason,
+        body.ifVersion,
+      );
     },
   );
 
@@ -784,7 +958,9 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     "/api/v1/face-to-face/:id",
     {
       preHandler: [F2F_READ, admissionScope("f2f.read", "f2f")],
-      config: { auditRead: { resourceKind: "face_to_face", resourceIdParam: "id" } },
+      config: {
+        auditRead: { resourceKind: "face_to_face", resourceIdParam: "id" },
+      },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
@@ -809,7 +985,12 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(F2fAttestSchema, request.body);
-      return service.attestF2f(organizationId, idOf(request), body.ifVersion, userId);
+      return service.attestF2f(
+        organizationId,
+        idOf(request),
+        body.ifVersion,
+        userId,
+      );
     },
   );
 
@@ -852,7 +1033,9 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     "/api/v1/admissions/:id/level-of-care",
     {
       preHandler: [LOC_READ, admissionScope("loc.read")],
-      config: { auditRead: { resourceKind: "level_of_care", resourceIdParam: "id" } },
+      config: {
+        auditRead: { resourceKind: "level_of_care", resourceIdParam: "id" },
+      },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
@@ -867,7 +1050,12 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(LocPatchSchema, request.body);
-      return service.patchLoc(organizationId, idOf(request), body.reason, body.ifVersion);
+      return service.patchLoc(
+        organizationId,
+        idOf(request),
+        body.reason,
+        body.ifVersion,
+      );
     },
   );
 
@@ -880,7 +1068,11 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(LocConfirmBedSchema, request.body);
-      return service.confirmLocBedAssignment(organizationId, idOf(request), body.ifVersion);
+      return service.confirmLocBedAssignment(
+        organizationId,
+        idOf(request),
+        body.ifVersion,
+      );
     },
   );
 
@@ -1002,7 +1194,10 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
       const res = await service.acknowledgeNor(
         organizationId,
         idOf(request),
-        { deliveryMethod: body.deliveryMethod, acknowledgedByRole: body.acknowledgedByRole },
+        {
+          deliveryMethod: body.deliveryMethod,
+          acknowledgedByRole: body.acknowledgedByRole,
+        },
         userId,
       );
       return reply.code(201).send(res);
@@ -1027,11 +1222,16 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     "/api/v1/admissions/:id/compliance-windows",
     {
       preHandler: [COMPLIANCE_READ, admissionScope("compliance.read")],
-      config: { auditRead: { resourceKind: "compliance_window", resourceIdParam: "id" } },
+      config: {
+        auditRead: { resourceKind: "compliance_window", resourceIdParam: "id" },
+      },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
-      const rows = await service.listComplianceWindowsForAdmission(organizationId, idOf(request));
+      const rows = await service.listComplianceWindowsForAdmission(
+        organizationId,
+        idOf(request),
+      );
       return rows === null ? notFound(idOf(request)) : { items: rows };
     },
   );
@@ -1051,11 +1251,20 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
 
   app.post(
     "/api/v1/compliance-windows/:id/close",
-    { preHandler: [COMPLIANCE_CLOSE, admissionScope("compliance.close", "complianceWindow")] },
+    {
+      preHandler: [
+        COMPLIANCE_CLOSE,
+        admissionScope("compliance.close", "complianceWindow"),
+      ],
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(ComplianceCloseSchema, request.body);
-      return service.closeComplianceWindow(organizationId, idOf(request), body.ifVersion);
+      return service.closeComplianceWindow(
+        organizationId,
+        idOf(request),
+        body.ifVersion,
+      );
     },
   );
 

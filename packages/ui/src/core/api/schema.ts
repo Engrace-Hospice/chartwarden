@@ -10154,6 +10154,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search service locations for selector controls (provider-scoped, non-PHI) */
+        get: operations["getApiV1Locations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/map-view": {
         parameters: {
             query?: never;
@@ -23695,6 +23712,7 @@ export interface operations {
         parameters: {
             query?: {
                 state?: string;
+                patientId?: string;
                 cursor?: string;
                 limit?: number;
             };
@@ -24054,6 +24072,8 @@ export interface operations {
                         referralId?: string | null;
                         admissionAt?: string | null;
                         activatedAt?: string | null;
+                        providerEntityId?: string | null;
+                        locationId?: string | null;
                         activationGate: {
                             ready: boolean;
                             missing: ("election_signed" | "nor_acknowledged" | "cti_signed" | "attending_signed")[];
@@ -24082,6 +24102,10 @@ export interface operations {
                     attendingPhysicianId?: string;
                     /** Format: date-time */
                     admissionAt?: string;
+                    /** Format: uuid */
+                    providerEntityId?: string;
+                    /** Format: uuid */
+                    locationId?: string;
                     ifVersion: number;
                 };
             };
@@ -45775,6 +45799,44 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Locations: {
+        parameters: {
+            query?: {
+                providerEntityId?: string;
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            providerEntityId: string;
+                            name: string;
+                            addressLine1: string;
+                            addressLine2: string | null;
+                            city: string;
+                            state: string;
+                            postalCode: string;
+                            status: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1Mapview: {
         parameters: {
             query: {
@@ -58203,6 +58265,8 @@ export interface operations {
                     receivedAt: string;
                     /** Format: uuid */
                     receivingUserId?: string;
+                    /** Format: uuid */
+                    patientId?: string;
                     patientNameAtReceipt: string;
                     /** Format: date */
                     patientDobAtReceipt?: string;

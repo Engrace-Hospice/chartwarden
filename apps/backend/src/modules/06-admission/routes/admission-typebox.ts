@@ -61,6 +61,7 @@ export const ReferralCreateSchema = Type.Object({
   source: Type.Union(REFERRAL_SOURCES.map((s) => Type.Literal(s))),
   receivedAt: Type.String({ format: "date-time" }),
   receivingUserId: Type.Optional(Uuid()),
+  patientId: Type.Optional(Uuid()),
   patientNameAtReceipt: Type.String({ minLength: 1, maxLength: 200 }),
   patientDobAtReceipt: Type.Optional(Type.String({ format: "date" })),
   referringDxText: Type.Optional(Type.String({ maxLength: 2000 })),
@@ -188,6 +189,7 @@ export const AdmissionCreateSchema = Type.Object({
 
 export const AdmissionListQuerySchema = Type.Object({
   state: Type.Optional(Type.String({ maxLength: 32 })),
+  patientId: Type.Optional(Uuid()),
   cursor: Type.Optional(Type.String({ maxLength: 64 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
 });
@@ -196,6 +198,10 @@ export const AdmissionUpdateSchema = Type.Object({
   intakeMethod: Type.Optional(Type.Union(INTAKE_METHODS.map((m) => Type.Literal(m)))),
   attendingPhysicianId: Type.Optional(Uuid()),
   admissionAt: Type.Optional(Type.String({ format: "date-time" })),
+
+  providerEntityId: Type.Optional(Uuid()),
+  locationId: Type.Optional(Uuid()),
+
   ifVersion: Version(),
 });
 
@@ -423,6 +429,8 @@ export const AdmissionDetailResponseSchema = Type.Object({
   referralId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   admissionAt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   activatedAt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  providerEntityId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  locationId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   activationGate: Type.Object({
     ready: Type.Boolean(),
     missing: Type.Array(ActivationGapSchema),

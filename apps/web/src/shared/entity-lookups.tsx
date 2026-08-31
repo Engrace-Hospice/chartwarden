@@ -8,6 +8,7 @@ import type {
 } from "@wardenx/ui";
 import type { JSX, ReactNode } from "react";
 import { useCallback } from "react";
+import { Link } from "react-router-dom";
 import { useSession } from "../shell/session";
 
 type LookupProps = Omit<EntityLookupFieldProps, "loadOptions">;
@@ -117,21 +118,23 @@ async function loadAdmissions(
   const query: Record<string, string | number> = { limit: input.limit };
   if (input.cursor) query.cursor = input.cursor;
   if (state) query.state = state;
+  if (patientId) query.patientId = patientId;
   const { data, error } = await client.GET("/api/v1/admissions", {
     params: { query },
   } as never);
   if (error) throw error;
-  const rawItems = ((data as {
-    items?: Array<{ id: string; state: string; patientId?: string | null }>;
-    nextCursor?: string | null;
-  })?.items ?? []) as Array<{ id: string; state: string; patientId?: string | null }>;
+  const rawItems = ((
+    data as {
+      items?: Array<{ id: string; state: string }>;
+      nextCursor?: string | null;
+    }
+  )?.items ?? []) as Array<{ id: string; state: string }>;
   const needle = input.query.trim().toLowerCase();
-  const scoped = patientId ? rawItems.filter((a) => !a.patientId || a.patientId === patientId) : rawItems;
   const items = needle
-    ? scoped.filter(
+    ? rawItems.filter(
         (a) => a.id.toLowerCase().includes(needle) || a.state.toLowerCase().includes(needle),
       )
-    : scoped;
+    : rawItems;
   return {
     options: items.map((a) => ({
       id: a.id,
@@ -162,6 +165,60 @@ async function loadProviderEntities(
       description: p.npi ? `${p.status} · NPI ${p.npi}` : p.status,
     })),
     nextCursor: data.nextCursor ?? null,
+  };
+}
+
+async function loadLocations(
+  client: ApiClient,
+  providerEntityId: string | undefined,
+  input: EntityLookupLoadInput,
+): Promise<EntityLookupLoadResult> {
+  if (!providerEntityId) return { options: [], nextCursor: null };
+  const query: { providerEntityId: string; q?: string; limit: number } = {
+    providerEntityId,
+    limit: input.limit,
+  };
+  if (input.query) query.q = input.query;
+  const getLocations = client.GET as unknown as (
+    path: "/api/v1/locations",
+    init: { params: { query: typeof query } },
+  ) => Promise<{
+    data?: {
+      items?: Array<{
+        id: string;
+        providerEntityId: string;
+        name: string;
+        addressLine1: string;
+        addressLine2?: string | null;
+        city: string;
+        state: string;
+        postalCode: string;
+        status: string;
+      }>;
+    };
+    error?: unknown;
+  }>;
+  const { data, error } = await getLocations("/api/v1/locations", {
+    params: { query },
+  });
+  if (error) throw error;
+  const rows = data?.items ?? [];
+  return {
+    options: rows.map((location) => {
+      const description = [
+        location.addressLine1,
+        `${location.city}, ${location.state} ${location.postalCode}`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      return {
+        id: location.id,
+        label: optionLabel(location.name, location.status),
+        searchLabel: location.name,
+        description,
+      };
+    }),
+    nextCursor: null,
   };
 }
 
@@ -221,6 +278,29 @@ export function ProviderEntityLookupField(props: LookupProps): JSX.Element {
   );
 }
 
+export function LocationLookupField(
+  props: LookupProps & { providerEntityId?: string },
+): JSX.Element {
+  const client = useApiClient();
+  const { providerEntityId, ...rest } = props;
+  const loadOptions = useCallback(
+    (input: EntityLookupLoadInput) =>
+      loadLocations(client, providerEntityId, input),
+    [client, providerEntityId],
+  );
+  return (
+    <EntityLookupField
+      {...rest}
+      disabled={props.disabled || !providerEntityId}
+      loadOptions={loadOptions}
+      placeholder={
+        props.placeholder ??
+        (providerEntityId ? "Search service location..." : "Choose a provider first")
+      }
+    />
+  );
+}
+
 export function MembershipLookupField(props: LookupProps): JSX.Element {
   const client = useApiClient();
   const session = useSession();
@@ -258,7 +338,7 @@ export function AdmissionLookupField(
   props: LookupProps & { patientId?: string; state?: string },
 ): JSX.Element {
   const client = useApiClient();
-  const { patientId, state, ...rest } = props;
+  const { patientId, state, noMatchesContent, ...rest } = props;
   const loadOptions = useCallback(
     (input: EntityLookupLoadInput) => loadAdmissions(client, input, state, patientId),
     [client, patientId, state],
@@ -267,8 +347,28 @@ export function AdmissionLookupField(
     <EntityLookupField
       {...rest}
       loadOptions={loadOptions}
+      noMatchesContent={
+        noMatchesContent ?? (patientId ? <AdmissionNoMatchesActions patientId={patientId} /> : undefined)
+      }
       placeholder={props.placeholder ?? "Search admissions..."}
     />
+  );
+}
+
+function AdmissionNoMatchesActions({ patientId }: { patientId: string }): JSX.Element {
+  const encodedPatientId = encodeURIComponent(patientId);
+  return (
+    <span style={lookupEmptyActionsStyle}>
+      <span>No active admissions found.</span>
+      <span style={lookupEmptyLinkRowStyle}>
+        <Link to={`/admissions/new?patientId=${encodedPatientId}`} style={lookupEmptyLinkStyle}>
+          Direct admission
+        </Link>
+        <Link to={`/referrals/new?patientId=${encodedPatientId}`} style={lookupEmptyLinkStyle}>
+          Start referral
+        </Link>
+      </span>
+    </span>
   );
 }
 
@@ -287,3 +387,29 @@ export function PatientPayerLookupField(props: LookupProps & { patientId: string
     />
   );
 }
+
+const lookupEmptyActionsStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.45rem",
+  width: "100%",
+} as const;
+
+const lookupEmptyLinkRowStyle = {
+  display: "flex",
+  gap: "0.5rem",
+  flexWrap: "wrap",
+} as const;
+
+const lookupEmptyLinkStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: "2rem",
+  padding: "0.35rem 0.7rem",
+  borderRadius: "9999px",
+  background: "var(--color-surface-container)",
+  color: "var(--color-primary)",
+  fontSize: "0.75rem",
+  fontWeight: 650,
+  textDecoration: "none",
+} as const;
