@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 41 module screen-sets registered · 291 screens wired across web/portal/admin.
+**Coverage:** 113 documented screen specs · 41 module screen-sets registered · 295 screens wired across web/portal/admin.
 - **admin**: 34 screen(s)
 - **portal**: 13 screen(s)
-- **web**: 244 screen(s)
+- **web**: 248 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -56,6 +56,7 @@
 | web | 06-admission | `admission.patient-election-cert` | `/patients/:patientId/election-certification` | `election.read` | ✅ |
 | web | 07-care-plan | `care-plan.view` | `/patients/:patientId/care-plan` | `care_plan.read` | ✅ |
 | web | 07-care-plan | `care-plan.versions` | `/care-plans/:planId/versions` | `care_plan.read` | ✅ |
+| web | 07-care-plan | `care-plan.version-detail` | `/care-plans/:planId/versions/:versionId` | `care_plan.read` | ✅ |
 | web | 07-care-plan | `care-plan.summary` | `/care-plans/:planId/summary` | `care_plan.read_summary` | ✅ |
 | web | 08-encounters | `encounter.patient-list` | `/patients/:patientId/encounters` | `encounter.read` | ✅ |
 | web | 08-encounters | `encounter.read` | `/patients/:patientId/encounters/:encounterId` | `encounter.read` | ✅ |
@@ -68,6 +69,9 @@
 | web | 09-assessments | `assessment.scale-licenses` | `/admin/scales/licenses` | `assessment.license_read` | ✅ |
 | web | 09-assessments | `assessment.scale-policies` | `/admin/scales/policies` | `assessment.policy_read` | ✅ |
 | web | 10-hope | `hope.dashboard` | `/hope` | `hope.schedule.read` | ✅ |
+| web | 10-hope | `hope.admission-overview` | `/admissions/:admissionId/hope` | `hope.timepoint.read` | ✅ |
+| web | 10-hope | `hope.timepoint-capture` | `/admissions/:admissionId/hope/timepoints/:kind` | `hope.timepoint.write` | ✅ |
+| web | 10-hope | `hope.sfv-capture` | `/admissions/:admissionId/hope/sfv/:sfvId` | `hope.timepoint.write` | ✅ |
 | web | 10-hope | `hope.patient-timeline` | `/patients/:patientId/hope` | `hope.timepoint.read` | ✅ |
 | web | 10-hope | `hope.sfv-worklist` | `/hope/sfv` | `hope.sfv.read` | ✅ |
 | web | 10-hope | `hope.assessment-detail` | `/hope/assessments/:id` | `hope.timepoint.read` | ✅ |

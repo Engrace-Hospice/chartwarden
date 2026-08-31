@@ -11,7 +11,9 @@ import {
   ghostBorder,
   t,
   useApiClient,
+  Modal,
 } from "@wardenx/ui";
+import { SCALE_TYPES } from "@wardenx/types";
 // apps/web/src/modules/08-encounters — Encounter Read (M8 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ENCOUNTER_VISIT_DOCUMENTATION.md — "Use Patient Workspace + Documentation Workspace."
 // Matched to the P1 Pencil frame (wardenx-P1-clinical.pen `AohyV`): a Patient Workspace (banner) over the
@@ -45,6 +47,8 @@ const REASON_MIN = 40; // SupervisorReleaseSchema's real floor (encounters-typeb
 interface Encounter {
   id: string;
   patientId: string;
+  admissionId: string;
+  visitId: string | null;
   encounterType: string;
   discipline: string;
   serviceDate: string;
@@ -54,6 +58,11 @@ interface Encounter {
   isF2f: boolean;
   signedAt: string | null;
   cosignedAt: string | null;
+  selections: Record<string, unknown> | null;
+  finalDocumentation: string | null;
+  vitals: Record<string, unknown> | null;
+  mileage: Record<string, unknown> | null;
+  carePlanLinks: CarePlanLink[];
 }
 interface PatientSummary {
   mrn: string;
@@ -62,11 +71,83 @@ interface PatientSummary {
   dob: string;
   status: string;
 }
+interface CarePlanProblem {
+  problemId: string;
+  description: string;
+  status: string;
+}
+interface CarePlanGoal {
+  goalId: string;
+  problemId: string;
+  text: string;
+  status: string;
+}
+interface CarePlanIntervention {
+  interventionId: string;
+  problemId: string;
+  scopeText: string;
+  frequencyText: string;
+  discipline: string;
+  status: string;
+}
+interface CarePlanRelevant {
+  problems: CarePlanProblem[];
+  goals: CarePlanGoal[];
+  interventions: CarePlanIntervention[];
+  redacted: boolean;
+}
+interface CarePlanLink {
+  linkId?: string;
+  problemId: string | null;
+  goalId: string | null;
+  interventionId: string | null;
+}
+interface AssessmentRow {
+  id: string;
+  assessmentId?: string;
+  scaleType?: string;
+  kind?: string;
+  status: string;
+  sourceEncounterId?: string | null;
+  capturedAt?: string;
+  assessmentIdLabel?: string;
+}
 
-// The HearthNote sections the documentation frame lays out (SUBJECTIVE/OBJECTIVE/ASSESSMENT/PLAN). The
-// read DTO doesn't return their content yet, so each is rendered as a labelled, empty section — the
-// document scaffold is faithful; the prose fills in when the read exposes the assembled body.
-const NOTE_SECTIONS = ["Subjective", "Objective", "Assessment", "Plan"] as const;
+function errorMessage(error: unknown, fallback: string): string {
+  const body = error as {
+    message?: string;
+    title?: string;
+    detail?: string;
+    code?: string;
+    error?: { message?: string; title?: string; detail?: string; code?: string };
+  } | null;
+  if (body?.detail) return body.detail;
+  if (body?.message) return body.message;
+  if (body?.title) return body.title;
+  if (body?.error?.detail) return body.error.detail;
+  if (body?.error?.message) return body.error.message;
+  if (body?.error?.title) return body.error.title;
+  return fallback;
+}
+
+function docFromSelections(selections: Record<string, unknown> | null | undefined): string {
+  const narrative = selections?.narrative;
+  if (typeof narrative === "object" && narrative !== null) {
+    const value = (narrative as { clinicalSummary?: unknown }).clinicalSummary;
+    return typeof value === "string" ? value : "";
+  }
+  return "";
+}
+
+function hasCarePlanLink(links: readonly CarePlanLink[], kind: "problem" | "goal" | "intervention", id: string): boolean {
+  return links.some((link) =>
+    kind === "problem"
+      ? link.problemId === id
+      : kind === "goal"
+        ? link.goalId === id
+        : link.interventionId === id,
+  );
+}
 
 export function EncounterRead(): JSX.Element {
   const client = useApiClient();
@@ -75,13 +156,45 @@ export function EncounterRead(): JSX.Element {
   const [encounter, setEncounter] = useState<Encounter | null>(null);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [cosignStatus, setCosignStatus] = useState<string | null>(null);
+  const [carePlan, setCarePlan] = useState<CarePlanRelevant | null>(null);
+  const [assessments, setAssessments] = useState<AssessmentRow[]>([]);
+  const [hopeAssessments, setHopeAssessments] = useState<AssessmentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [ceremony, setCeremony] = useState<CeremonyMode>(null);
+  const [utilityModal, setUtilityModal] = useState<"void" | "addendum" | "assessment" | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [reason, setReason] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState("");
+  const [vitals, setVitals] = useState({
+    bpSystolic: "",
+    bpDiastolic: "",
+    heartRate: "",
+    respiratoryRate: "",
+    temperature: "",
+    temperatureUnit: "f",
+    spo2: "",
+    painScore: "",
+    painScale: "nrs_0_10",
+  });
+  const [mileage, setMileage] = useState({
+    odometerStart: "",
+    odometerEnd: "",
+    milesDriven: "",
+    source: "manual_override",
+    manualOverrideReason: "",
+  });
+  const [assessment, setAssessment] = useState({
+    scaleType: "pps",
+    data: "{}",
+  });
+  const post = client.POST as unknown as (
+    path: string,
+    init?: unknown,
+  ) => Promise<{ data?: unknown; error?: unknown; response: Response }>;
 
   const load = useCallback(async () => {
     if (!encounterId) return;
@@ -98,6 +211,8 @@ export function EncounterRead(): JSX.Element {
     setEncounter({
       id: data.id,
       patientId: data.patientId,
+      admissionId: data.admissionId,
+      visitId: data.visitId ?? null,
       encounterType: data.encounterType,
       discipline: data.discipline,
       serviceDate: data.serviceDate,
@@ -107,16 +222,68 @@ export function EncounterRead(): JSX.Element {
       isF2f: data.isF2f,
       signedAt: data.signedAt ?? null,
       cosignedAt: data.cosignedAt ?? null,
+      selections: (data as { selections?: Record<string, unknown> | null }).selections ?? null,
+      finalDocumentation: (data as { finalDocumentation?: string | null }).finalDocumentation ?? null,
+      vitals: (data as { vitals?: Record<string, unknown> | null }).vitals ?? null,
+      mileage: (data as { mileage?: Record<string, unknown> | null }).mileage ?? null,
+      carePlanLinks: ((data as { carePlanLinks?: CarePlanLink[] }).carePlanLinks ?? []) as CarePlanLink[],
     });
     const pid = patientId ?? data.patientId;
-    const [cos, pat] = await Promise.all([
+    setNoteText(docFromSelections((data as { selections?: Record<string, unknown> | null }).selections));
+    const loadedVitals = (data as { vitals?: Record<string, unknown> | null }).vitals;
+    if (loadedVitals) {
+      setVitals({
+        bpSystolic: String(loadedVitals.bpSystolic ?? ""),
+        bpDiastolic: String(loadedVitals.bpDiastolic ?? ""),
+        heartRate: String(loadedVitals.heartRate ?? ""),
+        respiratoryRate: String(loadedVitals.respiratoryRate ?? ""),
+        temperature: String(loadedVitals.temperature ?? ""),
+        temperatureUnit: String(loadedVitals.temperatureUnit ?? "f"),
+        spo2: String(loadedVitals.spo2 ?? ""),
+        painScore: String(loadedVitals.painScore ?? ""),
+        painScale: String(loadedVitals.painScale ?? "nrs_0_10"),
+      });
+    }
+    const loadedMileage = (data as { mileage?: Record<string, unknown> | null }).mileage;
+    if (loadedMileage) {
+      setMileage({
+        odometerStart: String(loadedMileage.odometerStart ?? ""),
+        odometerEnd: String(loadedMileage.odometerEnd ?? ""),
+        milesDriven: String(loadedMileage.milesDriven ?? ""),
+        source: String(loadedMileage.source ?? "manual_override"),
+        manualOverrideReason: String(loadedMileage.manualOverrideReason ?? ""),
+      });
+    }
+    const [cos, pat, cp, ass, hope] = await Promise.all([
       client.GET("/api/v1/encounters/{encounterId}/cosignature", {
         params: { path: { encounterId } },
       }),
       client.GET("/api/v1/patients/{id}", { params: { path: { id: pid } } }),
+      client.GET("/api/v1/internal/care-plan/relevant-elements" as never, {
+        params: {
+          query: {
+            patientId: data.patientId,
+            encounterType: data.encounterType,
+            discipline: data.discipline,
+          },
+        },
+      } as never),
+      client.GET("/api/v1/patients/{patientId}/assessments", {
+        params: { path: { patientId: data.patientId } },
+      } as never),
+      client.GET("/api/v1/patients/{patientId}/hope/assessments", {
+        params: { path: { patientId: data.patientId } },
+      } as never),
     ]);
     setCosignStatus(cos.data?.status ?? null);
     if (pat.data) setPatient(pat.data as PatientSummary);
+    setCarePlan((cp.data ?? null) as CarePlanRelevant | null);
+    setAssessments(
+      (((ass.data as { assessments?: AssessmentRow[] } | undefined)?.assessments ?? []) as AssessmentRow[]).filter(
+        (row) => row.sourceEncounterId === encounterId,
+      ),
+    );
+    setHopeAssessments(((hope.data as { assessments?: AssessmentRow[] } | undefined)?.assessments ?? []) as AssessmentRow[]);
     setLoading(false);
   }, [client, encounterId, patientId]);
 
@@ -187,6 +354,166 @@ export function EncounterRead(): JSX.Element {
     },
     [encounterId, reason, client, navigate, closeCeremony, load],
   );
+
+  async function runMutation(
+    action: () => Promise<{ error?: unknown; data?: unknown; response?: Response }>,
+    success: string,
+  ): Promise<void> {
+    setBusy(true);
+    setActionError(null);
+    setNotice(null);
+    const res = await action();
+    setBusy(false);
+    if (res.error) {
+      setActionError(errorMessage(res.error, "The encounter action could not be completed."));
+      return;
+    }
+    setUtilityModal(null);
+    setReason("");
+    setNotice(success);
+    await load();
+  }
+
+  async function saveDocumentation(): Promise<void> {
+    if (!encounterId) return;
+    await runMutation(
+      () =>
+        post("/api/v1/encounters/{encounterId}/selections", {
+          params: { path: { encounterId } },
+          body: { selections: { narrative: { clinicalSummary: noteText.trim() } } },
+        }),
+      "Documentation saved.",
+    );
+  }
+
+  async function saveVitals(): Promise<void> {
+    if (!encounterId) return;
+    const n = (value: string): number | undefined => (value.trim() ? Number(value) : undefined);
+    await runMutation(
+      () =>
+        post("/api/v1/encounters/{encounterId}/vitals", {
+          params: { path: { encounterId } },
+          body: {
+            bpSystolic: n(vitals.bpSystolic),
+            bpDiastolic: n(vitals.bpDiastolic),
+            heartRate: n(vitals.heartRate),
+            respiratoryRate: n(vitals.respiratoryRate),
+            temperature: vitals.temperature || undefined,
+            temperatureUnit: vitals.temperature ? vitals.temperatureUnit : undefined,
+            spo2: n(vitals.spo2),
+            painScore: n(vitals.painScore),
+            painScale: vitals.painScore ? vitals.painScale : undefined,
+          },
+        }),
+      "Vitals saved.",
+    );
+  }
+
+  async function saveMileage(): Promise<void> {
+    if (!encounterId) return;
+    const n = (value: string): number | undefined => (value.trim() ? Number(value) : undefined);
+    await runMutation(
+      () =>
+        post("/api/v1/encounters/{encounterId}/mileage", {
+          params: { path: { encounterId } },
+          body: {
+            odometerStart: n(mileage.odometerStart),
+            odometerEnd: n(mileage.odometerEnd),
+            milesDriven: mileage.milesDriven || undefined,
+            source: mileage.source,
+            manualOverrideReason: mileage.manualOverrideReason || undefined,
+          },
+        }),
+      "Mileage saved.",
+    );
+  }
+
+  async function addCarePlanLink(kind: "problem" | "goal" | "intervention", id: string): Promise<void> {
+    if (!encounterId) return;
+    await runMutation(
+      () =>
+        post("/api/v1/encounters/{encounterId}/care-plan-links", {
+          params: { path: { encounterId } },
+          body:
+            kind === "problem"
+              ? { problemId: id }
+              : kind === "goal"
+                ? { goalId: id }
+                : { interventionId: id },
+        }),
+      "Care Plan link saved.",
+    );
+  }
+
+  async function finalizeEncounter(): Promise<void> {
+    if (!encounterId) return;
+    await runMutation(
+      () =>
+        post("/api/v1/encounters/{encounterId}/finalize", {
+          params: { path: { encounterId } },
+          body: {},
+        }),
+      "Encounter finalized.",
+    );
+  }
+
+  async function voidDraft(): Promise<void> {
+    if (!encounterId) return;
+    await runMutation(
+      () =>
+        post("/api/v1/encounters/{encounterId}/void", {
+          params: { path: { encounterId } },
+          body: { reason: reason.trim() },
+        }),
+      "Draft voided.",
+    );
+  }
+
+  async function createAddendum(): Promise<void> {
+    if (!encounterId) return;
+    await runMutation(
+      () =>
+        post("/api/v1/encounters/{encounterId}/addenda", {
+          params: { path: { encounterId } },
+          body: { reason: reason.trim() },
+        }),
+      "Addendum opened.",
+    );
+  }
+
+  async function launchAssessment(): Promise<void> {
+    if (!encounterId || !encounter) return;
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(assessment.data) as Record<string, unknown>;
+    } catch {
+      setActionError("Assessment payload must be valid JSON.");
+      return;
+    }
+    setBusy(true);
+    setActionError(null);
+    const res = await post("/api/v1/patients/{patientId}/assessments", {
+      params: { path: { patientId: encounter.patientId } },
+      body: {
+        admissionId: encounter.admissionId,
+        scaleType: assessment.scaleType,
+        capturedAt: new Date().toISOString(),
+        sourceEncounterId: encounter.id,
+        data,
+      },
+    });
+    setBusy(false);
+    if (res.error) {
+      setActionError(errorMessage(res.error, "Assessment could not be created."));
+      return;
+    }
+    const id = (res.data as { id?: string; assessmentId?: string } | undefined)?.id ?? (res.data as { assessmentId?: string } | undefined)?.assessmentId;
+    if (id) navigate(`/patients/${encounter.patientId}/assessments/${id}`);
+    else {
+      setUtilityModal(null);
+      await load();
+    }
+  }
 
   const bailBanner = patient ? (
     <PatientBanner
@@ -277,47 +604,119 @@ export function EncounterRead(): JSX.Element {
               {e.isF2f ? " · F2F" : ""} · v{e.version}
             </p>
 
-            {/* Vitals strip — labelled cells; values render once the read exposes the vitals row. */}
-            <section
-              style={{
-                ...cardSurface,
-                padding: "1rem 1.25rem",
-                marginTop: "1rem",
-                display: "flex",
-                gap: "1.5rem",
-                flexWrap: "wrap",
-              }}
-            >
-              {["HR", "RR", "Temp", "BP", "SpO₂", "Pain"].map((v) => (
-                <div key={v} style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}>
-                  <span style={vitalLabel}>{v}</span>
-                  <span className="tabular-nums" style={{ fontSize: "1.1rem", color: t.muted }}>
-                    —
-                  </span>
-                </div>
-              ))}
+            {notice ? <div style={noticeStyle}>{notice}</div> : null}
+            {actionError ? (
+              <p role="alert" aria-live="assertive" style={alertStyle}>
+                {actionError}
+              </p>
+            ) : null}
+
+            <section style={{ ...cardSurface, padding: "1.25rem", marginTop: "1rem" }}>
+              <div style={sectionHeader}>
+                <h2 style={railTitle}>Documentation</h2>
+                {e.status === "draft" ? (
+                  <button type="button" onClick={() => void saveDocumentation()} disabled={busy} style={primaryBtn}>
+                    Save draft
+                  </button>
+                ) : null}
+              </div>
+              {e.status === "draft" ? (
+                <textarea
+                  aria-label="Clinical documentation"
+                  value={noteText}
+                  onChange={(ev) => setNoteText(ev.target.value)}
+                  rows={8}
+                  style={textareaStyle}
+                />
+              ) : (
+                <p style={noteBody}>
+                  {e.finalDocumentation || noteText || "No assembled documentation is available."}
+                </p>
+              )}
             </section>
 
-            {/* SOAP document scaffold */}
-            <section style={{ ...cardSurface, padding: "1.5rem", marginTop: "1rem" }}>
-              {NOTE_SECTIONS.map((s, i) => (
-                <div
-                  key={s}
-                  style={{
-                    paddingTop: i === 0 ? 0 : "1.25rem",
-                    marginTop: i === 0 ? 0 : "1.25rem",
-                    borderTop: i === 0 ? "none" : ghostBorder,
-                  }}
-                >
-                  <span style={sectionLabel}>{s}</span>
-                  <p style={{ ...meta, marginTop: "0.35rem" }}>—</p>
-                </div>
-              ))}
-              <p style={{ ...meta, marginTop: "1.25rem" }}>
-                The assembled HearthNote body and the captured vitals render here once the encounter
-                read exposes them; this view currently renders the server-assembled, SUD-redacted
-                header.
-              </p>
+            <section style={{ ...cardSurface, padding: "1.25rem", marginTop: "1rem" }}>
+              <div style={sectionHeader}>
+                <h2 style={railTitle}>Vitals</h2>
+                {e.status === "draft" ? (
+                  <button type="button" onClick={() => void saveVitals()} disabled={busy} style={ghostBtn}>
+                    Save vitals
+                  </button>
+                ) : null}
+              </div>
+              <div style={grid}>
+                <Input label="BP systolic" value={vitals.bpSystolic} onChange={(value) => setVitals((v) => ({ ...v, bpSystolic: value }))} />
+                <Input label="BP diastolic" value={vitals.bpDiastolic} onChange={(value) => setVitals((v) => ({ ...v, bpDiastolic: value }))} />
+                <Input label="Heart rate" value={vitals.heartRate} onChange={(value) => setVitals((v) => ({ ...v, heartRate: value }))} />
+                <Input label="Respiratory rate" value={vitals.respiratoryRate} onChange={(value) => setVitals((v) => ({ ...v, respiratoryRate: value }))} />
+                <Input label="Temperature" value={vitals.temperature} onChange={(value) => setVitals((v) => ({ ...v, temperature: value }))} />
+                <Input label="SpO2" value={vitals.spo2} onChange={(value) => setVitals((v) => ({ ...v, spo2: value }))} />
+                <Input label="Pain" value={vitals.painScore} onChange={(value) => setVitals((v) => ({ ...v, painScore: value }))} />
+              </div>
+            </section>
+
+            <section style={{ ...cardSurface, padding: "1.25rem", marginTop: "1rem" }}>
+              <div style={sectionHeader}>
+                <h2 style={railTitle}>Care Plan</h2>
+                {carePlan?.redacted ? <span style={meta}>Restricted content omitted</span> : null}
+              </div>
+              <CarePlanPicker
+                encounter={e}
+                carePlan={carePlan}
+                onSelect={(kind, id) => void addCarePlanLink(kind, id)}
+                busy={busy || e.status !== "draft"}
+              />
+            </section>
+
+            <section style={{ ...cardSurface, padding: "1.25rem", marginTop: "1rem" }}>
+              <div style={sectionHeader}>
+                <h2 style={railTitle}>Assessments</h2>
+                {e.status === "draft" ? (
+                  <button type="button" onClick={() => setUtilityModal("assessment")} style={ghostBtn}>
+                    Launch assessment
+                  </button>
+                ) : null}
+              </div>
+              <LinkedRows rows={assessments} empty="No M9 assessments are linked to this Encounter." />
+              <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                <button type="button" onClick={() => navigate(`/patients/${e.patientId}/assessments`)} style={ghostBtn}>
+                  M9 timeline
+                </button>
+                <button type="button" onClick={() => navigate(`/patients/${e.patientId}/hope`)} style={ghostBtn}>
+                  HOPE timeline
+                </button>
+              </div>
+              <LinkedRows rows={hopeAssessments.slice(0, 3)} empty="No HOPE records are visible for this patient." />
+            </section>
+
+            <section style={{ ...cardSurface, padding: "1.25rem", marginTop: "1rem" }}>
+              <div style={sectionHeader}>
+                <h2 style={railTitle}>Mileage</h2>
+                {e.status === "draft" ? (
+                  <button type="button" onClick={() => void saveMileage()} disabled={busy} style={ghostBtn}>
+                    Save mileage
+                  </button>
+                ) : null}
+              </div>
+              <div style={grid}>
+                <Input label="Odometer start" value={mileage.odometerStart} onChange={(value) => setMileage((m) => ({ ...m, odometerStart: value }))} />
+                <Input label="Odometer end" value={mileage.odometerEnd} onChange={(value) => setMileage((m) => ({ ...m, odometerEnd: value }))} />
+                <Input label="Miles driven" value={mileage.milesDriven} onChange={(value) => setMileage((m) => ({ ...m, milesDriven: value }))} />
+                <label style={fieldStyle}>
+                  <span style={fieldLabelStyle}>Source</span>
+                  <select value={mileage.source} onChange={(ev) => setMileage((m) => ({ ...m, source: ev.target.value }))} style={inputStyle}>
+                    <option value="odometer">Odometer</option>
+                    <option value="route_calc">Route calculation</option>
+                    <option value="manual_override">Manual override</option>
+                  </select>
+                </label>
+              </div>
+              {mileage.source === "manual_override" ? (
+                <label style={{ ...fieldStyle, marginTop: "0.75rem" }}>
+                  <span style={fieldLabelStyle}>Override reason</span>
+                  <textarea value={mileage.manualOverrideReason} onChange={(ev) => setMileage((m) => ({ ...m, manualOverrideReason: ev.target.value }))} rows={2} style={textareaStyle} />
+                </label>
+              ) : null}
             </section>
           </div>
 
@@ -363,13 +762,30 @@ export function EncounterRead(): JSX.Element {
               </dl>
             </div>
 
-            {/* EVV / visit — honest placeholder; the visit + EVV match aren't on the encounter read DTO. */}
             <div style={{ ...cardSurface, padding: "1.125rem" }}>
               <h2 style={railTitle}>EVV / visit</h2>
-              <p style={meta}>
-                The linked visit window and EVV match surface here once the encounter read joins the
-                M17/M18 visit + verification (not exposed on this DTO yet).
-              </p>
+              <dl style={lifeGrid}>
+                <dt style={dt}>Source</dt>
+                <dd style={dd}>{e.visitId ? "Scheduled Visit" : "PRN / unscheduled"}</dd>
+                {e.visitId ? (
+                  <>
+                    <dt style={dt}>Visit</dt>
+                    <dd style={dd}>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/scheduling/visits/${e.visitId}`)}
+                        style={linkBtn}
+                      >
+                        Open Visit
+                      </button>
+                    </dd>
+                  </>
+                ) : null}
+                <dt style={dt}>Service date</dt>
+                <dd style={dd} className="tabular-nums">
+                  {e.serviceDate}
+                </dd>
+              </dl>
             </div>
           </aside>
         </div>
@@ -406,6 +822,21 @@ export function EncounterRead(): JSX.Element {
           {canSign ? (
             <button type="button" onClick={() => setCeremony("sign")} style={primaryBtn}>
               Sign
+            </button>
+          ) : null}
+          {e.status === "draft" ? (
+            <>
+              <button type="button" onClick={() => setUtilityModal("void")} style={ghostBtn}>
+                Void draft
+              </button>
+              <button type="button" onClick={() => void finalizeEncounter()} style={primaryBtn}>
+                Finalize
+              </button>
+            </>
+          ) : null}
+          {(e.status === "signed" || e.status === "cosigned") ? (
+            <button type="button" onClick={() => setUtilityModal("addendum")} style={ghostBtn}>
+              Add addendum
             </button>
           ) : null}
           <button type="button" onClick={() => navigate("/work/cosignatures")} style={ghostBtn}>
@@ -538,7 +969,197 @@ export function EncounterRead(): JSX.Element {
         onCommit={() => void runWrite("supervisor-release")}
         onCancel={closeCeremony}
       />
+
+      <Modal
+        open={utilityModal === "void" || utilityModal === "addendum" || utilityModal === "assessment"}
+        onClose={busy ? undefined : () => setUtilityModal(null)}
+        ariaLabel="Encounter action"
+        width="34rem"
+      >
+        <div style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <h2 style={railTitle}>
+            {utilityModal === "void"
+              ? "Void draft"
+              : utilityModal === "addendum"
+                ? "Add addendum"
+                : "Launch assessment"}
+          </h2>
+          {actionError ? (
+            <p role="alert" aria-live="assertive" style={alertStyle}>
+              {actionError}
+            </p>
+          ) : null}
+          {utilityModal === "assessment" ? (
+            <>
+              <label style={fieldStyle}>
+                <span style={fieldLabelStyle}>Assessment type</span>
+                <select
+                  value={assessment.scaleType}
+                  onChange={(ev) => setAssessment((a) => ({ ...a, scaleType: ev.target.value }))}
+                  style={inputStyle}
+                >
+                  {SCALE_TYPES.map((scale) => (
+                    <option key={scale} value={scale}>
+                      {stateLabel(scale)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={fieldStyle}>
+                <span style={fieldLabelStyle}>Assessment data JSON</span>
+                <textarea
+                  value={assessment.data}
+                  onChange={(ev) => setAssessment((a) => ({ ...a, data: ev.target.value }))}
+                  rows={5}
+                  style={textareaStyle}
+                />
+              </label>
+            </>
+          ) : (
+            <label style={fieldStyle}>
+              <span style={fieldLabelStyle}>Reason</span>
+              <textarea
+                value={reason}
+                onChange={(ev) => setReason(ev.target.value)}
+                rows={4}
+                style={textareaStyle}
+              />
+            </label>
+          )}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+            <button type="button" onClick={() => setUtilityModal(null)} disabled={busy} style={ghostBtn}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                if (utilityModal === "void") void voidDraft();
+                else if (utilityModal === "addendum") void createAddendum();
+                else void launchAssessment();
+              }}
+              style={utilityModal === "void" ? dangerBtn : primaryBtn}
+            >
+              {busy ? "Working..." : "Confirm"}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </PatientWorkspaceLayout>
+  );
+}
+
+function Input({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}): JSX.Element {
+  return (
+    <label style={fieldStyle}>
+      <span style={fieldLabelStyle}>{label}</span>
+      <input value={value} onChange={(ev) => onChange(ev.target.value)} style={inputStyle} />
+    </label>
+  );
+}
+
+function CarePlanPicker({
+  encounter,
+  carePlan,
+  busy,
+  onSelect,
+}: {
+  encounter: Encounter;
+  carePlan: CarePlanRelevant | null;
+  busy: boolean;
+  onSelect: (kind: "problem" | "goal" | "intervention", id: string) => void;
+}): JSX.Element {
+  if (!carePlan) return <p style={meta}>Care Plan context is unavailable.</p>;
+  return (
+    <div style={{ display: "grid", gap: "1rem" }}>
+      <PickerGroup
+        title="Problems addressed"
+        rows={carePlan.problems.map((p) => ({
+          id: p.problemId,
+          label: p.description,
+          checked: hasCarePlanLink(encounter.carePlanLinks, "problem", p.problemId),
+        }))}
+        disabled={busy}
+        onSelect={(id) => onSelect("problem", id)}
+      />
+      <PickerGroup
+        title="Goals worked toward"
+        rows={carePlan.goals.map((g) => ({
+          id: g.goalId,
+          label: g.text,
+          checked: hasCarePlanLink(encounter.carePlanLinks, "goal", g.goalId),
+        }))}
+        disabled={busy}
+        onSelect={(id) => onSelect("goal", id)}
+      />
+      <PickerGroup
+        title="Interventions performed"
+        rows={carePlan.interventions.map((i) => ({
+          id: i.interventionId,
+          label: `${i.scopeText}${i.frequencyText ? ` · ${i.frequencyText}` : ""}`,
+          checked: hasCarePlanLink(encounter.carePlanLinks, "intervention", i.interventionId),
+        }))}
+        disabled={busy}
+        onSelect={(id) => onSelect("intervention", id)}
+      />
+    </div>
+  );
+}
+
+function PickerGroup({
+  title,
+  rows,
+  disabled,
+  onSelect,
+}: {
+  title: string;
+  rows: Array<{ id: string; label: string; checked: boolean }>;
+  disabled: boolean;
+  onSelect: (id: string) => void;
+}): JSX.Element {
+  return (
+    <div>
+      <span style={sectionLabel}>{title}</span>
+      {rows.length === 0 ? (
+        <p style={meta}>No active items.</p>
+      ) : (
+        <div style={{ display: "grid", gap: "0.35rem", marginTop: "0.45rem" }}>
+          {rows.map((row) => (
+            <label key={row.id} style={checkboxLine}>
+              <input
+                type="checkbox"
+                checked={row.checked}
+                disabled={disabled || row.checked}
+                onChange={() => onSelect(row.id)}
+              />
+              <span>{row.label}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LinkedRows({ rows, empty }: { rows: AssessmentRow[]; empty: string }): JSX.Element {
+  if (rows.length === 0) return <p style={meta}>{empty}</p>;
+  return (
+    <div style={{ display: "grid", gap: "0.4rem", marginTop: "0.5rem" }}>
+      {rows.map((row) => (
+        <div key={row.id ?? row.assessmentId} style={linkedRow}>
+          <span>{stateLabel(row.scaleType ?? row.kind ?? "assessment")}</span>
+          <StatusPill label={stateLabel(row.status)} tone="neutral" />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -597,6 +1218,68 @@ const railTitle: CSSProperties = {
   fontSize: "1rem",
   color: t.onSurface,
 };
+const sectionHeader: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+  marginBottom: "0.75rem",
+};
+const grid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(8rem, 1fr))",
+  gap: "0.75rem",
+};
+const fieldStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.35rem",
+};
+const fieldLabelStyle: CSSProperties = {
+  fontSize: "0.75rem",
+  color: t.onSurfaceVariant,
+  fontWeight: 650,
+};
+const inputStyle: CSSProperties = {
+  minHeight: "2.25rem",
+  borderRadius: t.radiusMd,
+  border: `1px solid ${t.outlineVariant}`,
+  background: t.surfaceLowest,
+  color: t.onSurface,
+  padding: "0.4rem 0.55rem",
+  fontSize: "0.85rem",
+};
+const noteBody: CSSProperties = {
+  margin: 0,
+  whiteSpace: "pre-wrap",
+  lineHeight: 1.55,
+  color: t.onSurface,
+  fontSize: "0.9rem",
+};
+const noticeStyle: CSSProperties = {
+  marginTop: "1rem",
+  padding: "0.65rem 0.85rem",
+  borderRadius: t.radiusMd,
+  background: t.primaryTint,
+  color: t.onSurface,
+  fontSize: "0.82rem",
+};
+const checkboxLine: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: "0.5rem",
+  fontSize: "0.85rem",
+  color: t.onSurface,
+};
+const linkedRow: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+  padding: "0.45rem 0",
+  borderTop: ghostBorder,
+  fontSize: "0.85rem",
+};
 const vitalLabel: CSSProperties = {
   fontSize: "0.68rem",
   fontWeight: 600,
@@ -652,6 +1335,20 @@ const primaryBtn: CSSProperties = {
   fontSize: "0.8125rem",
   fontWeight: 600,
   border: "none",
+  cursor: "pointer",
+};
+const dangerBtn: CSSProperties = {
+  ...primaryBtn,
+  background: t.error,
+  color: t.onEmphasis,
+};
+const linkBtn: CSSProperties = {
+  border: "none",
+  padding: 0,
+  background: "transparent",
+  color: t.primary,
+  font: "inherit",
+  fontWeight: 650,
   cursor: "pointer",
 };
 const lifeGrid: CSSProperties = {

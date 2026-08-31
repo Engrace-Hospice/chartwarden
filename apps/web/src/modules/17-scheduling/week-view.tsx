@@ -7,6 +7,7 @@ import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient }
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { NewVisitModal, SchedulingNav } from "./scheduling-workflow";
 import { type VisitRow, VisitRows } from "./visit-table";
 
 export function SchedulingWeek(): JSX.Element {
@@ -18,6 +19,7 @@ export function SchedulingWeek(): JSX.Element {
   const [visits, setVisits] = useState<VisitRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -46,7 +48,8 @@ export function SchedulingWeek(): JSX.Element {
     [visits],
   );
   return (
-    <WorkQueueLayout
+    <>
+      <WorkQueueLayout
       header={
         <PageHeader title="Week View" breadcrumb="Scheduling">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
@@ -57,10 +60,7 @@ export function SchedulingWeek(): JSX.Element {
       }
       filters={
         <div style={filterShellStyle}>
-          <div style={infoBannerStyle}>
-            Week view is grouped by the server response window and sorted by scheduled start. PTO
-            overlays and recurring-policy actions remain on their dedicated scheduling surfaces.
-          </div>
+          <SchedulingNav onNewVisit={() => setCreating(true)} />
         </div>
       }
       table={
@@ -83,7 +83,16 @@ export function SchedulingWeek(): JSX.Element {
         )
       }
       fullPageScroll
-    />
+      />
+      <NewVisitModal
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={(visit) => {
+          setCreating(false);
+          navigate(`/scheduling/visits/${visit.id}`);
+        }}
+      />
+    </>
   );
 }
 
@@ -107,13 +116,4 @@ const emptyShellStyle: CSSProperties = {
 const loadingShellStyle: CSSProperties = {
   padding: "2.5rem 1.5rem",
   textAlign: "center",
-};
-
-const infoBannerStyle: CSSProperties = {
-  padding: "0.625rem 1rem",
-  borderRadius: "var(--radius-md)",
-  border: "1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)",
-  background: "var(--color-primary-tint)",
-  color: "var(--color-on-surface)",
-  fontSize: "0.85rem",
 };

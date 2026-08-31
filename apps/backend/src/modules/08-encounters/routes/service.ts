@@ -70,6 +70,17 @@ export interface CreateEncounterArgs {
   readonly bereavementPlanId?: string;
 }
 
+export interface EncounterListFilters {
+  readonly patientId?: string;
+  readonly admissionId?: string;
+  readonly status?: EncounterStatus;
+  readonly authorId?: string;
+  readonly lateEntryTier?: string;
+  readonly from?: string;
+  readonly to?: string;
+  readonly limit?: number;
+}
+
 export interface CreatedEncounter {
   readonly id: string;
   readonly status: "draft";
@@ -109,6 +120,29 @@ export interface EncounterView {
   readonly isF2f: boolean;
   readonly signedAt: string | null;
   readonly cosignedAt: string | null;
+  readonly selections?: Record<string, unknown> | null;
+  readonly finalDocumentation?: string | null;
+  readonly vitals?: Record<string, unknown> | null;
+  readonly mileage?: Record<string, unknown> | null;
+  readonly carePlanLinks?: readonly CarePlanLinkResult[];
+}
+
+export interface UpdateSelectionsInput {
+  readonly selections: Record<string, unknown>;
+  readonly freeText?: Record<string, string>;
+}
+
+export interface CarePlanLinkInput {
+  readonly problemId?: string;
+  readonly goalId?: string;
+  readonly interventionId?: string;
+}
+
+export interface CarePlanLinkResult {
+  readonly linkId: string;
+  readonly problemId: string | null;
+  readonly goalId: string | null;
+  readonly interventionId: string | null;
 }
 
 /** The route service the §4.1 handlers compose over. Every method is org-scoped (RLS in prod). */
@@ -123,6 +157,7 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
     ifVersion: number,
+    input: UpdateSelectionsInput,
   ): Promise<{ version: number; layer1Preview: string }>;
   captureVitals(
     organizationId: string,
@@ -145,11 +180,16 @@ export interface EncounterRouteService {
     encounterId: string,
     input: MileageInput,
   ): Promise<MileageResult>;
-  addCarePlanLink(organizationId: string, encounterId: string): Promise<{ linkId: string }>;
+  addCarePlanLink(
+    organizationId: string,
+    encounterId: string,
+    input: CarePlanLinkInput,
+  ): Promise<CarePlanLinkResult>;
   removeCarePlanLink(organizationId: string, encounterId: string, linkId: string): Promise<void>;
   documentEvvMissing(
     organizationId: string,
     encounterId: string,
+    reason: string,
   ): Promise<{ evvBracketState: string }>;
   finalize(
     organizationId: string,
@@ -178,10 +218,12 @@ export interface EncounterRouteService {
   lateEntryOverride(
     organizationId: string,
     encounterId: string,
+    args: { actorMembershipId: string; reason: string },
   ): Promise<{ status: EncounterStatus }>;
   administrativeOverride(
     organizationId: string,
     encounterId: string,
+    args: { actorMembershipId: string; reason: string },
   ): Promise<{ status: EncounterStatus }>;
   voidEncounter(
     organizationId: string,
@@ -211,6 +253,7 @@ export interface EncounterRouteService {
   createAddendum(
     organizationId: string,
     encounterId: string,
+    args: { reason: string },
   ): Promise<{ id: string; status: "draft" }>;
   updateAddendumSelections(
     organizationId: string,
@@ -229,7 +272,10 @@ export interface EncounterRouteService {
     actor: SigningActor,
     args: { at: LocalDate },
   ): Promise<{ status: "signed"; signedAt: string }>;
-  listEncounters(organizationId: string): Promise<{ encounters: EncounterView[] }>;
+  listEncounters(
+    organizationId: string,
+    filters?: EncounterListFilters,
+  ): Promise<{ encounters: EncounterView[] }>;
   cosignatureQueue(organizationId: string): Promise<{ encounters: EncounterView[] }>;
   myDrafts(organizationId: string, actorUserId: string): Promise<{ encounters: EncounterView[] }>;
   billable(
@@ -266,6 +312,8 @@ interface EncounterRecord {
   addenda: Map<string, { id: string; status: AddendumState; version: number }>;
   vitals: Map<string, VitalsInput>;
   mileage: { id: string; milesDriven: string; source: string } | null;
+  selections: UpdateSelectionsInput | null;
+  carePlanLinks: Map<string, CarePlanLinkResult>;
 }
 
 /** Deterministic, I/O-free seed for the in-memory route service (slice + smoke tests). */
@@ -297,6 +345,11 @@ const toView = (r: EncounterRecord): EncounterView => ({
   isF2f: r.isF2f,
   signedAt: r.signedAt,
   cosignedAt: r.cosignedAt,
+  selections: r.selections?.selections ?? null,
+  finalDocumentation: null,
+  vitals: null,
+  mileage: null,
+  carePlanLinks: [...r.carePlanLinks.values()],
 });
 
 /**
@@ -341,6 +394,8 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       addenda: new Map(),
       vitals: new Map(),
       mileage: null,
+      selections: null,
+      carePlanLinks: new Map(),
       ...e,
     });
   }
@@ -399,6 +454,8 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         addenda: new Map(),
         vitals: new Map(),
         mileage: null,
+        selections: null,
+        carePlanLinks: new Map(),
       });
       return {
         id,
@@ -413,12 +470,16 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       return toView(load(organizationId, encounterId));
     },
 
-    async updateSelections(organizationId, encounterId, ifVersion) {
+    async updateSelections(organizationId, encounterId, ifVersion, input) {
       const r = load(organizationId, encounterId);
       checkMutableForEdit({ status: r.status });
       checkVersion({ expected: ifVersion, actual: r.version });
+      if (input.freeText && Object.keys(input.freeText).length > 0) {
+        throw new Error("freeText selections are not supported until encrypted capture is available");
+      }
+      r.selections = input;
       r.version += 1;
-      return { version: r.version, layer1Preview: "" };
+      return { version: r.version, layer1Preview: JSON.stringify(input.selections) };
     },
 
     async captureVitals(organizationId, encounterId, input) {
@@ -467,16 +528,36 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       recordOutbox(r.id, plan.effects);
       return { mileageId, milesDriven: plan.milesDriven, source: plan.source };
     },
-    async addCarePlanLink(organizationId, encounterId) {
+    async addCarePlanLink(organizationId, encounterId, input) {
       const r = load(organizationId, encounterId);
       checkMutableForEdit({ status: r.status });
-      return { linkId: subId() };
+      if (!input.problemId && !input.goalId && !input.interventionId) {
+        throw new Error("at least one care-plan element id is required");
+      }
+      for (const link of r.carePlanLinks.values()) {
+        if (
+          link.problemId === (input.problemId ?? null) &&
+          link.goalId === (input.goalId ?? null) &&
+          link.interventionId === (input.interventionId ?? null)
+        ) {
+          return link;
+        }
+      }
+      const link = {
+        linkId: subId(),
+        problemId: input.problemId ?? null,
+        goalId: input.goalId ?? null,
+        interventionId: input.interventionId ?? null,
+      };
+      r.carePlanLinks.set(link.linkId, link);
+      return link;
     },
-    async removeCarePlanLink(organizationId, encounterId) {
+    async removeCarePlanLink(organizationId, encounterId, linkId) {
       const r = load(organizationId, encounterId);
       checkMutableForEdit({ status: r.status });
+      r.carePlanLinks.delete(linkId);
     },
-    async documentEvvMissing(organizationId, encounterId) {
+    async documentEvvMissing(organizationId, encounterId, _reason) {
       const r = load(organizationId, encounterId);
       checkMutableForEdit({ status: r.status });
       return { evvBracketState: "evv_missing_documented" };
@@ -546,12 +627,12 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       return { status: "signed", signedAt: r.signedAt, cosignatureRequestId: null };
     },
 
-    async lateEntryOverride(organizationId, encounterId) {
+    async lateEntryOverride(organizationId, encounterId, _args) {
       const r = load(organizationId, encounterId);
       r.lateEntryTier = "significant_late_entry";
       return { status: r.status };
     },
-    async administrativeOverride(organizationId, encounterId) {
+    async administrativeOverride(organizationId, encounterId, _args) {
       const r = load(organizationId, encounterId);
       r.lateEntryTier = "administrative_override";
       return { status: r.status };
@@ -608,9 +689,12 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       return { status: t.to };
     },
 
-    async createAddendum(organizationId, encounterId) {
+    async createAddendum(organizationId, encounterId, args) {
       const r = load(organizationId, encounterId);
       checkParentNotVoided({ parentStatus: r.status });
+      if (r.status !== "signed" && r.status !== "cosigned") {
+        throw new Error("addenda can only be authored on signed or cosigned encounters");
+      }
       const id = subId();
       r.addenda.set(id, { id, status: "draft", version: 0 });
       return { id, status: "draft" };
@@ -649,10 +733,16 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       return { status: "signed", signedAt: now() };
     },
 
-    async listEncounters(organizationId) {
+    async listEncounters(organizationId, filters = {}) {
       return {
         encounters: [...byId.values()]
           .filter((r) => r.organizationId === organizationId)
+          .filter((r) => (filters.patientId ? r.patientId === filters.patientId : true))
+          .filter((r) => (filters.admissionId ? r.admissionId === filters.admissionId : true))
+          .filter((r) => (filters.status ? r.status === filters.status : true))
+          .filter((r) => (filters.authorId ? r.authoredByUserId === filters.authorId : true))
+          .filter((r) => (filters.from ? r.serviceDate >= filters.from : true))
+          .filter((r) => (filters.to ? r.serviceDate <= filters.to : true))
           .map(toView),
       };
     },

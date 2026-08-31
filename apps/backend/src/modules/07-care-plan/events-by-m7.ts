@@ -59,6 +59,35 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m7.care_plan.idg_proposal_created",
+    moduleOwner: "m7",
+    description:
+      "An M14 care-plan decision was persisted as proposed M7 changes; active content is unchanged.",
+    payloadSchema: Type.Object({
+      planId: Type.String({ minLength: 1 }),
+      versionId: Type.String({ minLength: 1 }),
+      decisionId: Type.String({ minLength: 1 }),
+      meetingId: Type.String({ minLength: 1 }),
+      changeCount: Type.Integer({ minimum: 1 }),
+    }),
+    declaredConsumers: ["m14", "m33"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m7.care_plan.idg_proposal_applied",
+    moduleOwner: "m7",
+    description:
+      "A signed idg_review version applied its proposed mutations atomically to working care-plan content.",
+    payloadSchema: Type.Object({
+      planId: Type.String({ minLength: 1 }),
+      versionId: Type.String({ minLength: 1 }),
+      appliedProposalCount: Type.Integer({ minimum: 1 }),
+      appliedChangeCount: Type.Integer({ minimum: 1 }),
+    }),
+    declaredConsumers: ["m14", "m30", "m33"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m7.care_plan.review_due",
     moduleOwner: "m7",
     description:

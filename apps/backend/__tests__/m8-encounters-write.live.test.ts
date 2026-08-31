@@ -27,6 +27,10 @@ import {
   M8_OUTBOX_EVENTS,
   createDbEncounterRouteService,
 } from "../src/modules/08-encounters/index";
+import {
+  createAdmissionStatusReader,
+  createDrizzleAdmissionReaderStore,
+} from "../src/modules/06-admission/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -53,11 +57,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   /** The real caller signing (§3.3/D13) — `resolveSignatureProvenance` resolves SESSION_A's step-up
    *  through the SessionContextResolver seam registered in beforeAll (fresh, webauthn). */
   let ACTOR_A: { membershipId: string; sessionId: string };
-  /** PARAM-004/CoP-418.104(c) follow-up — signing now writes an `encounter_signature` row, which has
-   *  NOT NULL provider_entity_id/location_id. `createDraft` never sets an encounter's siting (a
-   *  pre-existing gap this write-lifecycle slice doesn't backfill from the admission/visit yet — see
-   *  the file header's "siting backfills... when present" note), so the test seeds real FK-valid
-   *  siting and `draft()` stamps it onto every created encounter directly. */
+  /** Provider/location siting for the active M6 admission used by PRN encounter creation. */
   let SITING_A: { providerEntityId: string; locationId: string };
 
   async function resetSchema() {
@@ -128,6 +128,11 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       [pe.rows[0].id],
     );
     SITING_A = { providerEntityId: pe.rows[0].id as string, locationId: loc.rows[0].id as string };
+    await admin.query(
+      `INSERT INTO admission (id, organization_id, provider_entity_id, location_id, patient_id, status, admission_at, activated_at)
+       VALUES ($1,$2,$3,$4,$5,'active',$6,$6)`,
+      [ADMISSION, ORG_A, SITING_A.providerEntityId, SITING_A.locationId, PATIENT, SERVICE_DATE],
+    );
     ACTOR_A = { membershipId: membershipOf[ORG_A], sessionId: SESSION_A };
     const sessions = createInMemorySessionContextStore([
       {
@@ -147,6 +152,10 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });
+    registerSeam(
+      "AdmissionStatusReader",
+      createAdmissionStatusReader(createDrizzleAdmissionReaderStore(handle.db)),
+    );
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M8_OUTBOX_EVENTS]));
     const outbox: EncounterWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m8" }),
@@ -173,11 +182,6 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       serviceDate: SERVICE_DATE as never,
       ...extra,
     });
-    await admin.query("UPDATE encounter SET provider_entity_id=$1, location_id=$2 WHERE id=$3", [
-      SITING_A.providerEntityId,
-      SITING_A.locationId,
-      d.id,
-    ]);
     return d.id;
   }
 
@@ -314,7 +318,9 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const id = await draft("routine_visit", "rn");
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
     await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
-    const a = await svc.createAddendum(ORG_A, id);
+    const a = await svc.createAddendum(ORG_A, id, {
+      reason: "Correcting the signed encounter documentation.",
+    });
     expect(a.status).toBe("draft");
     await svc.updateAddendumSelections(ORG_A, id, a.id);
     const fin = await svc.finalizeAddendum(ORG_A, id, a.id);
@@ -326,8 +332,11 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
   it("§7.7 optimistic concurrency — a stale updateSelections is 412, a fresh one bumps the version", async () => {
     const id = await draft("routine_visit", "rn");
-    await expect(svc.updateSelections(ORG_A, id, 99)).rejects.toMatchObject({ statusCode: 412 });
-    const bumped = await svc.updateSelections(ORG_A, id, 0);
+    const selections = { selections: { narrative: { patientCondition: "stable" } } };
+    await expect(svc.updateSelections(ORG_A, id, 99, selections)).rejects.toMatchObject({
+      statusCode: 412,
+    });
+    const bumped = await svc.updateSelections(ORG_A, id, 0, selections);
     expect(bumped.version).toBe(1);
   });
 

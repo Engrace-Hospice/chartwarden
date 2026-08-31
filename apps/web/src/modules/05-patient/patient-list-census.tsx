@@ -45,8 +45,10 @@ interface CensusMetrics {
 const ADMIT_BTN = {
   display: "inline-flex",
   alignItems: "center",
+  gap: "0.4rem",
+  minHeight: "2.25rem",
   padding: "0.45rem 1rem",
-  borderRadius: "9999px",
+  borderRadius: "var(--radius-md)",
   background: "var(--color-primary)",
   color: "var(--color-on-primary)",
   fontSize: "0.85rem",
@@ -147,11 +149,18 @@ export function PatientListCensus(): JSX.Element {
           breadcrumb="Clinical — patient list"
           actions={
             <Link to="/referrals" style={ADMIT_BTN}>
+              <Glyph name="sparkle" size={14} />
               Admit patient
             </Link>
           }
         >
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+          <div
+            style={{
+              color: "var(--color-on-surface-variant)",
+              fontSize: "0.875rem",
+              maxWidth: "48rem",
+            }}
+          >
             Search the organization census, review patient status, and open the chart quick summary
             from a selected row.
           </div>
@@ -316,6 +325,9 @@ function CensusTable({
 }
 
 const filterPanelStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
   padding: "0 1.5rem 0.75rem",
 };
 
@@ -324,6 +336,7 @@ const filterRowStyle: CSSProperties = {
   flexWrap: "wrap",
   alignItems: "end",
   gap: "0.75rem",
+  justifyContent: "space-between",
 };
 
 const filterLabelStyle: CSSProperties = {
@@ -338,10 +351,10 @@ const mutedStyle: CSSProperties = {
 
 const searchInputStyle: CSSProperties = {
   width: "100%",
-  minHeight: "2.35rem",
+  minHeight: "2.25rem",
   padding: "0.45rem 0.75rem 0.45rem 2rem",
-  borderRadius: "0.5rem",
-  border: "1px solid var(--color-surface-container)",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 60%, transparent)",
   background: "var(--color-surface)",
   color: "var(--color-on-surface)",
   fontSize: "0.875rem",
@@ -357,10 +370,10 @@ const searchIconStyle: CSSProperties = {
 };
 
 const selectStyle: CSSProperties = {
-  minHeight: "2.35rem",
+  minHeight: "2.25rem",
   padding: "0.45rem 0.65rem",
-  borderRadius: "0.5rem",
-  border: "1px solid var(--color-surface-container)",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 60%, transparent)",
   background: "var(--color-surface)",
   color: "var(--color-on-surface)",
   fontSize: "0.875rem",

@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { __resetSeamsForTest, validateSeams } from "../src/bootstrap/index";
 import {
   type EncounterSignedConsumed,
+  M17_OUTBOX_EVENTS,
   M17_OUTBOX_SUBSCRIPTIONS,
   getBillableEncounterReader,
   getMileagePayrollReader,
@@ -68,6 +69,17 @@ describe("planVisitCompletionFromEncounter (§4.4 M8 bidirectional)", () => {
       eventName: "m8.encounter.signed",
       consumerName: "m17.m8-encounter-signed",
     });
+  });
+
+  it("declares M8 as a live cleanup consumer for cancelled, no-show, and rescheduled visits", () => {
+    for (const eventName of [
+      "m17.visit.cancelled",
+      "m17.visit.no_show_detected",
+      "m17.visit.rescheduled",
+    ]) {
+      const event = M17_OUTBOX_EVENTS.find((candidate) => candidate.eventName === eventName);
+      expect(event?.declaredConsumers).toContain("m8");
+    }
   });
 });
 

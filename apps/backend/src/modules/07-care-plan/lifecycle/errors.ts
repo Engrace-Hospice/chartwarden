@@ -13,6 +13,12 @@ import { WardenXError } from "@wardenx/types";
 export const M7_ERROR_STATUS = {
   // Care-plan root + version lifecycle (§2.2.1 / §2.2.2)
   ONE_ACTIVE_PLAN_PER_ADMISSION: 409,
+  OPEN_VERSION_EXISTS: 409,
+  CARE_PLAN_CLOSED: 409,
+  CARE_PLAN_NOT_READY: 422,
+  IDG_PROPOSAL_REQUIRED: 422,
+  IDG_PROPOSAL_INVALID: 422,
+  IDG_PROPOSAL_CONFLICT: 409,
   INITIAL_VERSION_REQUIRES_PROBLEM: 422,
   TERMINAL_PROBLEM_REQUIRED: 422,
   // Required-signer quorum (§2.3 / D5)
@@ -45,8 +51,12 @@ export type M7ErrorCode = keyof typeof M7_ERROR_STATUS;
  * guard failure surfaces as one of these — never a raw PG exception or a generic `ConflictError`.
  */
 export class CarePlanStateError extends WardenXError {
-  constructor(code: M7ErrorCode, message: string) {
-    super(code, message, M7_ERROR_STATUS[code]);
+  constructor(
+    code: M7ErrorCode,
+    message: string,
+    details?: ConstructorParameters<typeof WardenXError>[3],
+  ) {
+    super(code, message, M7_ERROR_STATUS[code], details);
     this.name = "CarePlanStateError";
   }
 }

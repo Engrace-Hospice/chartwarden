@@ -1,11 +1,4 @@
-import {
-  DetailPageLayout,
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  StatusPill,
-  useApiClient,
-} from "@wardenx/ui";
+import { DetailPageLayout, EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/17-scheduling — Visit Detail (M17 §5.1 `/app/scheduling/visit/:visitId`, Track B / ADR-0030).
 // Spec: docs/design/screens — "Use Detail Page". A single visit's detail: status, scheduled window, purpose/setting,
 // assignment, and the reschedule chain back-ref. The reschedule/cancel/reassign + state-history write surfaces
@@ -13,33 +6,38 @@ import {
 // authz; an out-of-scope visit 404s). Reads GET /api/v1/visits/:visitId via the typed client. Leaves only
 // (@wardenx/ui).
 import { useCallback, useEffect, useState } from "react";
-import type { JSX, ReactNode } from "react";
-import { useParams } from "react-router-dom";
+import type { JSX } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import {
+  FieldValue,
+  NewVisitModal,
+  SchedulingNav,
+  VisitActionPanel,
+  findLinkedEncounter,
+  formatInstant,
+  shortId,
+  type EncounterLink,
+  type VisitView,
+} from "./scheduling-workflow";
 import { VISIT_TONE, stateLabel } from "./scheduling-status";
 
-interface VisitDetailView {
-  id: string;
-  patientId: string;
-  admissionId: string;
-  assignedMembershipId: string;
-  visitPurpose: string;
-  visitSetting: string;
-  scheduledStartedAt: string;
-  scheduledEndedAt: string;
-  serviceDate: string;
+interface PatientSummary {
+  mrn: string;
+  lastName: string;
+  firstName: string;
+  dob: string;
   status: string;
-  patientAddressId: string | null;
-  externalFacilityId: string | null;
-  rescheduledIntoVisitId: string | null;
 }
-
-const ts = (v: string): string => v.slice(0, 16).replace("T", " ");
 
 export function VisitDetail(): JSX.Element {
   const client = useApiClient();
+  const navigate = useNavigate();
   const { visitId } = useParams<{ visitId: string }>();
-  const [visit, setVisit] = useState<VisitDetailView | null>(null);
+  const [visit, setVisit] = useState<VisitView | null>(null);
+  const [patient, setPatient] = useState<PatientSummary | null>(null);
+  const [encounter, setEncounter] = useState<EncounterLink | null>(null);
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -54,7 +52,16 @@ export function VisitDetail(): JSX.Element {
       setLoading(false);
       return;
     }
-    setVisit((data ?? null) as VisitDetailView | null);
+    const loaded = (data ?? null) as VisitView | null;
+    setVisit(loaded);
+    if (loaded) {
+      const [patientRes, linked] = await Promise.all([
+        client.GET("/api/v1/patients/{id}", { params: { path: { id: loaded.patientId } } }),
+        findLinkedEncounter(client, loaded),
+      ]);
+      setPatient((patientRes.data ?? null) as PatientSummary | null);
+      setEncounter(linked);
+    }
     setLoading(false);
   }, [client, visitId]);
 
@@ -62,70 +69,133 @@ export function VisitDetail(): JSX.Element {
     void load();
   }, [load]);
 
+  const header = (
+    <PageHeader title="Visit Detail" breadcrumb="Scheduling">
+      <SchedulingNav onNewVisit={() => setCreating(true)} />
+    </PageHeader>
+  );
+
   return (
-    <DetailPageLayout header={<PageHeader title="Visit Detail" />}>
+    <>
+      <DetailPageLayout header={header}>
       {error ? (
         <EmptyState title="Unavailable" description={error} />
       ) : loading || !visit ? (
         <LoadingSpinner />
       ) : (
-        <dl style={dl}>
-          <Row
-            label="Status"
-            value={
-              <StatusPill
-                label={stateLabel(visit.status)}
-                tone={VISIT_TONE[visit.status] ?? "neutral"}
-              />
-            }
+        <div style={workspace}>
+          <section style={section}>
+            <div style={sectionHeader}>
+              <div>
+                <h2 style={sectionTitle}>
+                  {patient ? `${patient.firstName} ${patient.lastName}` : "Scheduled visit"}
+                </h2>
+                <p style={meta}>
+                  {patient ? `MRN ${patient.mrn} · ` : ""}Admission {shortId(visit.admissionId)}
+                </p>
+              </div>
+              <StatusPill label={stateLabel(visit.status)} tone={VISIT_TONE[visit.status] ?? "neutral"} />
+            </div>
+            <div style={factsGrid}>
+              <FieldValue label="Purpose">{stateLabel(visit.visitPurpose)}</FieldValue>
+              <FieldValue label="Setting">{stateLabel(visit.visitSetting)}</FieldValue>
+              <FieldValue label="Service date">
+                <span className="tabular-nums">{visit.serviceDate}</span>
+              </FieldValue>
+              <FieldValue label="Scheduled start">
+                <span className="tabular-nums">{formatInstant(visit.scheduledStartedAt)}</span>
+              </FieldValue>
+              <FieldValue label="Scheduled end">
+                <span className="tabular-nums">{formatInstant(visit.scheduledEndedAt)}</span>
+              </FieldValue>
+              <FieldValue label="Assigned clinician">
+                <span className="wx-data-md">{shortId(visit.assignedMembershipId)}</span>
+              </FieldValue>
+              <FieldValue label="Location">
+                {visit.externalFacilityId
+                  ? `Facility ${shortId(visit.externalFacilityId)}`
+                  : visit.patientAddressId
+                    ? `Address ${shortId(visit.patientAddressId)}`
+                    : "Not specified"}
+              </FieldValue>
+              <FieldValue label="Linked Encounter">
+                {encounter ? (
+                  <button type="button" style={linkButton} onClick={() => navigate(`/patients/${encounter.patientId}/encounters/${encounter.id}`)}>
+                    {stateLabel(encounter.status)}
+                  </button>
+                ) : (
+                  "Processing"
+                )}
+              </FieldValue>
+              {visit.rescheduledIntoVisitId ? (
+                <FieldValue label="Rescheduled into">
+                  <button type="button" style={linkButton} onClick={() => navigate(`/scheduling/visits/${visit.rescheduledIntoVisitId}`)}>
+                    Visit {shortId(visit.rescheduledIntoVisitId)}
+                  </button>
+                </FieldValue>
+              ) : null}
+            </div>
+          </section>
+          <VisitActionPanel
+            visit={visit}
+            encounter={encounter}
+            onChanged={(next) => {
+              if (next) setVisit(next);
+              void load();
+            }}
           />
-          <Row
-            label="Service date"
-            value={<span className="tabular-nums">{visit.serviceDate}</span>}
-          />
-          <Row
-            label="Scheduled start"
-            value={<span className="tabular-nums">{ts(visit.scheduledStartedAt)}</span>}
-          />
-          <Row
-            label="Scheduled end"
-            value={<span className="tabular-nums">{ts(visit.scheduledEndedAt)}</span>}
-          />
-          <Row label="Purpose" value={stateLabel(visit.visitPurpose)} />
-          <Row label="Setting" value={stateLabel(visit.visitSetting)} />
-          <Row
-            label="Clinician"
-            value={<span className="wx-data-md">{visit.assignedMembershipId}</span>}
-          />
-          <Row label="Patient" value={<span className="wx-data-md">{visit.patientId}</span>} />
-          {visit.rescheduledIntoVisitId ? (
-            <Row
-              label="Rescheduled into"
-              value={<span className="wx-data-md">{visit.rescheduledIntoVisitId}</span>}
-            />
-          ) : null}
-        </dl>
+        </div>
       )}
-    </DetailPageLayout>
+      </DetailPageLayout>
+      <NewVisitModal
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={(created) => {
+          setCreating(false);
+          navigate(`/scheduling/visits/${created.id}`);
+        }}
+      />
+    </>
   );
 }
 
-function Row({ label, value }: { label: string; value: ReactNode }): JSX.Element {
-  return (
-    <div
-      style={{
-        display: "flex",
-        gap: "1rem",
-        padding: "0.4rem 0",
-        borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
-      }}
-    >
-      <dt style={{ width: "10rem", color: "var(--color-on-surface-variant)", fontSize: "0.8rem" }}>
-        {label}
-      </dt>
-      <dd style={{ margin: 0, fontSize: "0.85rem", color: "var(--color-on-surface)" }}>{value}</dd>
-    </div>
-  );
-}
-
-const dl = { margin: 0, maxWidth: "40rem" } as const;
+const workspace = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(18rem, 24rem)",
+  gap: "1rem",
+  alignItems: "start",
+} as const;
+const section = {
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-container)",
+  padding: "1rem",
+} as const;
+const sectionHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "1rem",
+  alignItems: "flex-start",
+  marginBottom: "1rem",
+} as const;
+const sectionTitle = {
+  margin: 0,
+  fontFamily: "var(--font-display)",
+  fontSize: "1.25rem",
+  fontWeight: 500,
+  color: "var(--color-on-surface)",
+} as const;
+const factsGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))",
+  gap: "0.9rem",
+} as const;
+const meta = { margin: "0.25rem 0 0", fontSize: "0.8rem", color: "var(--color-on-surface-variant)" } as const;
+const linkButton = {
+  border: "none",
+  padding: 0,
+  color: "var(--color-primary)",
+  background: "transparent",
+  cursor: "pointer",
+  font: "inherit",
+  fontWeight: 650,
+} as const;

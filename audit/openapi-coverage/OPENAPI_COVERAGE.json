@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1267,
-    "enriched": 1260,
+    "routes": 1272,
+    "enriched": 1265,
     "deficit": 7,
-    "mutating": 723,
+    "mutating": 724,
     "mutatingNoBody": 89,
-    "gets": 511,
+    "gets": 515,
     "getsNoResponse": 8
   },
   "modules": [
@@ -61,12 +61,12 @@
     },
     {
       "module": "07-care-plan",
-      "routes": 19,
-      "enriched": 19,
+      "routes": 22,
+      "enriched": 22,
       "deficit": 0,
       "mutating": 13,
       "mutatingNoBody": 0,
-      "gets": 6,
+      "gets": 9,
       "getsNoResponse": 0
     },
     {
@@ -91,12 +91,12 @@
     },
     {
       "module": "10-hope",
-      "routes": 20,
-      "enriched": 20,
+      "routes": 21,
+      "enriched": 21,
       "deficit": 0,
       "mutating": 10,
       "mutatingNoBody": 0,
-      "gets": 10,
+      "gets": 11,
       "getsNoResponse": 0
     },
     {
@@ -161,10 +161,10 @@
     },
     {
       "module": "17-scheduling",
-      "routes": 32,
-      "enriched": 32,
+      "routes": 33,
+      "enriched": 33,
       "deficit": 0,
-      "mutating": 18,
+      "mutating": 19,
       "mutatingNoBody": 1,
       "gets": 13,
       "getsNoResponse": 0

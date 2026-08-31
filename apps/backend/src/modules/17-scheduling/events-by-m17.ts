@@ -155,7 +155,7 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       reason: Type.String(),
       reasonCode: id,
     }),
-    declaredConsumers: ["m18", "m31", "m33", "m36"],
+    declaredConsumers: ["m8", "m18", "m31", "m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -170,7 +170,7 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       newStartedAt: isoInstant,
       reason: Type.String(),
     }),
-    declaredConsumers: ["m18", "m31", "m36"],
+    declaredConsumers: ["m8", "m18", "m31", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -184,7 +184,7 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       scheduledStartedAt: isoInstant,
       reason: Type.String(),
     }),
-    declaredConsumers: ["m19", "m36"],
+    declaredConsumers: ["m8", "m19", "m36"],
     isOutboxOnly: true,
   },
   {

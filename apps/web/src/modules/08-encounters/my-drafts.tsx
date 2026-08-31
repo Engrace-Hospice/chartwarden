@@ -26,6 +26,7 @@ import { lateEntryTone, stateLabel } from "./encounter-status";
 interface EncounterRow {
   id: string;
   patientId: string;
+  visitId?: string | null;
   encounterType: string;
   discipline: string;
   serviceDate: string;
@@ -266,6 +267,7 @@ export function MyDrafts(): JSX.Element {
                   <col style={{ width: "16%" }} />
                   <col style={{ width: "18%" }} />
                   <col style={{ width: "14%" }} />
+                  <col style={{ width: "14%" }} />
                 </colgroup>
                 <thead>
                   <tr>
@@ -274,6 +276,7 @@ export function MyDrafts(): JSX.Element {
                     <th>Service date</th>
                     <th>Late-entry</th>
                     <th>Patient</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -298,6 +301,9 @@ export function MyDrafts(): JSX.Element {
                             {stateLabel(e.encounterType)}
                           </span>
                           <span style={monoMutedStyle}>{e.id.slice(0, 8)}</span>
+                          <span style={metaInlineStyle}>
+                            {e.visitId ? `Visit ${e.visitId.slice(0, 8)}` : "PRN / unscheduled"}
+                          </span>
                         </div>
                       </td>
                       <td>{stateLabel(e.discipline)}</td>
@@ -309,6 +315,18 @@ export function MyDrafts(): JSX.Element {
                         />
                       </td>
                       <td style={monoMutedStyle}>{e.patientId.slice(0, 8)}</td>
+                      <td>
+                        <Button
+                          size="sm"
+                          tone="secondary"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            navigate(`/patients/${e.patientId}/encounters/${e.id}`);
+                          }}
+                        >
+                          Continue Documentation
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -422,4 +440,9 @@ const monoMutedStyle: CSSProperties = {
   fontFamily: "var(--font-mono)",
   fontSize: "0.8125rem",
   fontVariantNumeric: "tabular-nums",
+};
+
+const metaInlineStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
 };

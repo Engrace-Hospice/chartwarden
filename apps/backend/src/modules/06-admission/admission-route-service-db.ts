@@ -13,9 +13,26 @@
 // the WHOLE M6 write lifecycle is now real Drizzle — no route left at 501.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError, type PatientAdmissionClearanceReader, type PatientIntakeResolver } from "@wardenx/types";
+import {
+  type PatientAdmissionClearance,
+  type PatientAdmissionClearanceReader,
+  type PatientIntakeResolver,
+  WardenXError,
+} from "@wardenx/types";
 import type { LevelOfCare } from "@wardenx/types";
-import { type AnyColumn, type SQL, and, desc, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import {
+  type AnyColumn,
+  type SQL,
+  and,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { decideRecertSign } from "./certification/recert";
 import { computeWrittenCertDeadline } from "./certification/window-math";
@@ -37,10 +54,10 @@ import type {
   CtiDraftInput,
   DischargeInput,
   DischargeResult,
-  RevocationInput,
   ReferralActivityView,
-  ReferralReadView,
   ReferralNoteView,
+  ReferralReadView,
+  RevocationInput,
   TransferOutInput,
 } from "./routes/service";
 import {
@@ -49,8 +66,8 @@ import {
   InvalidReferralStateError,
   ReferralAdmissionPathError,
   ReferralAlreadyConvertedError,
-  ReferralNotTriagedError,
   ReferralNotReadyError,
+  ReferralNotTriagedError,
   ResourceNotFoundError,
   VersionMismatchError,
 } from "./routes/service";
@@ -533,7 +550,11 @@ export function createDbAdmissionRouteService(
         .select({ id: ES.id })
         .from(ES)
         .where(
-          and(eq(ES.electionPeriodId, period.id), eq(ES.status, "signed"), sql`${ES.signedAt} is not null`),
+          and(
+            eq(ES.electionPeriodId, period.id),
+            eq(ES.status, "signed"),
+            sql`${ES.signedAt} is not null`,
+          ),
         )
         .limit(1);
       electionSigned = !!es;
@@ -607,7 +628,11 @@ export function createDbAdmissionRouteService(
 
     const [es] = period
       ? await tx
-          .select({ status: ES.status, signedAt: ES.signedAt, electionPeriodId: ES.electionPeriodId })
+          .select({
+            status: ES.status,
+            signedAt: ES.signedAt,
+            electionPeriodId: ES.electionPeriodId,
+          })
           .from(ES)
           .where(eq(ES.electionPeriodId, period.id))
           .limit(1)
@@ -650,7 +675,7 @@ export function createDbAdmissionRouteService(
           .limit(1)
       : [null];
 
-    let clearance;
+    let clearance: PatientAdmissionClearance;
     try {
       clearance = await patientClearanceReader().evaluatePatientAdmissionClearance({
         organizationId,
@@ -916,7 +941,8 @@ export function createDbAdmissionRouteService(
           filters.push(eq(REF.patientResolutionStatus, query.patientResolutionStatus as never));
         if (query.priority) filters.push(eq(REF.priority, query.priority as never));
         if (query.assigned === "unassigned") filters.push(isNull(REF.assignedToUserId));
-        if (query.assigned === "mine" && actorUserId) filters.push(eq(REF.assignedToUserId, actorUserId));
+        if (query.assigned === "mine" && actorUserId)
+          filters.push(eq(REF.assignedToUserId, actorUserId));
         if (query.q?.trim()) {
           const q = `%${query.q.trim()}%`;
           filters.push(
@@ -937,25 +963,23 @@ export function createDbAdmissionRouteService(
           .orderBy(desc(REF.receivedAt), desc(REF.id))
           .limit(limit + 1)
           .offset(offset);
-        const items = rows
-          .slice(0, limit)
-          .map((r) =>
-            toReferralReadView(
-              r,
-              qualificationBlockers({
-                status: r.status,
-                version: Number(r.version),
-                patientId: r.patientId,
-                patientResolutionStatus: r.patientResolutionStatus,
-                patientNameAtReceipt: r.patientNameAtReceipt,
-                patientDobAtReceipt: r.patientDobAtReceipt,
-                referringDxText: r.referringDxText,
-                referrerName: r.referrerName,
-                referrerOrganization: r.referrerOrganization,
-                externalReferralId: r.externalReferralId,
-              }),
-            ),
-          );
+        const items = rows.slice(0, limit).map((r) =>
+          toReferralReadView(
+            r,
+            qualificationBlockers({
+              status: r.status,
+              version: Number(r.version),
+              patientId: r.patientId,
+              patientResolutionStatus: r.patientResolutionStatus,
+              patientNameAtReceipt: r.patientNameAtReceipt,
+              patientDobAtReceipt: r.patientDobAtReceipt,
+              referringDxText: r.referringDxText,
+              referrerName: r.referrerName,
+              referrerOrganization: r.referrerOrganization,
+              externalReferralId: r.externalReferralId,
+            }),
+          ),
+        );
         return { items, nextCursor: rows.length > limit ? String(offset + limit) : null };
       });
     },
@@ -1302,7 +1326,15 @@ export function createDbAdmissionRouteService(
           })
           .returning({ id: REF.id, status: REF.status, version: REF.version });
         const r = firstOrThrow(rows, "referral insert returned no row");
-        await recordReferralActivity(tx, organizationId, r.id, actorUserId, "referral_received", null, r.status);
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          r.id,
+          actorUserId,
+          "referral_received",
+          null,
+          r.status,
+        );
         await outbox.publish(tx, {
           eventName: "m6.referral.received",
           payload: { referralId: r.id, source: input.source, receivedAt: input.receivedAt },
@@ -1365,7 +1397,10 @@ export function createDbAdmissionRouteService(
         );
         await outbox.publish(tx, {
           eventName: outcome === "eligible" ? "m6.referral.review_started" : "m6.referral.declined",
-          payload: outcome === "eligible" ? { referralId: id, outcome } : { referralId: id, reason: "ineligible" },
+          payload:
+            outcome === "eligible"
+              ? { referralId: id, outcome }
+              : { referralId: id, reason: "ineligible" },
           organizationId,
           aggregateKind: "referral",
           aggregateId: id,
@@ -1403,7 +1438,15 @@ export function createDbAdmissionRouteService(
             .returning({ id: REF.id, status: REF.status, version: REF.version }),
           "row not found",
         );
-        await recordReferralActivity(tx, organizationId, id, actorUserId, cur.status === "pending_information" ? "returned_to_review" : "review_started", cur.status, r.status);
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          cur.status === "pending_information" ? "returned_to_review" : "review_started",
+          cur.status,
+          r.status,
+        );
         await outbox.publish(tx, {
           eventName: "m6.referral.review_started",
           payload: { referralId: id },
@@ -1440,11 +1483,25 @@ export function createDbAdmissionRouteService(
           "row not found",
         );
         if (result.outcome !== "no_match") {
-          await recordReferralActivity(tx, organizationId, id, actorUserId, "patient_match_suggested", cur.status, r.status, {
-            candidateCount: result.candidates.length,
-          });
+          await recordReferralActivity(
+            tx,
+            organizationId,
+            id,
+            actorUserId,
+            "patient_match_suggested",
+            cur.status,
+            r.status,
+            {
+              candidateCount: result.candidates.length,
+            },
+          );
         }
-        return { id: r.id, state: r.status, version: Number(r.version), candidates: result.candidates };
+        return {
+          id: r.id,
+          state: r.status,
+          version: Number(r.version),
+          candidates: result.candidates,
+        };
       });
     },
     async confirmReferralPatient(organizationId, id, patientId, ifVersion, actorUserId) {
@@ -1452,7 +1509,8 @@ export function createDbAdmissionRouteService(
         const cur = await loadRef(tx, id);
         assertVersion(id, cur.version, ifVersion);
         const patient = await patientResolver().confirmPatient({ organizationId, patientId });
-        if (!patient) throw new WardenXError("PATIENT_NOT_FOUND", "patient was not found in M5", 404);
+        if (!patient)
+          throw new WardenXError("PATIENT_NOT_FOUND", "patient was not found in M5", 404);
         const r = firstOrThrow(
           await tx
             .update(REF)
@@ -1466,9 +1524,18 @@ export function createDbAdmissionRouteService(
             .returning({ id: REF.id, status: REF.status, version: REF.version }),
           "row not found",
         );
-        await recordReferralActivity(tx, organizationId, id, actorUserId, "patient_match_confirmed", cur.status, r.status, {
-          patientId: patient.id,
-        });
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          "patient_match_confirmed",
+          cur.status,
+          r.status,
+          {
+            patientId: patient.id,
+          },
+        );
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
@@ -1494,9 +1561,18 @@ export function createDbAdmissionRouteService(
             .returning({ id: REF.id, status: REF.status, version: REF.version }),
           "row not found",
         );
-        await recordReferralActivity(tx, organizationId, id, actorUserId, "patient_created", cur.status, r.status, {
-          patientId: patient.id,
-        });
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          "patient_created",
+          cur.status,
+          r.status,
+          {
+            patientId: patient.id,
+          },
+        );
         return { id: r.id, state: r.status, version: Number(r.version), patientId: patient.id };
       });
     },
@@ -1504,7 +1580,8 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const cur = await loadRef(tx, id);
         assertVersion(id, cur.version, ifVersion);
-        if (cur.status !== "under_review") throw new InvalidReferralStateError(id, cur.status, "qualify");
+        if (cur.status !== "under_review")
+          throw new InvalidReferralStateError(id, cur.status, "qualify");
         const blockers = qualificationBlockers(cur);
         if (blockers.length > 0) throw new ReferralNotReadyError(blockers);
         const r = firstOrThrow(
@@ -1521,7 +1598,15 @@ export function createDbAdmissionRouteService(
             .returning({ id: REF.id, status: REF.status, version: REF.version }),
           "row not found",
         );
-        await recordReferralActivity(tx, organizationId, id, actorUserId, "qualified", cur.status, r.status);
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          "qualified",
+          cur.status,
+          r.status,
+        );
         await outbox.publish(tx, {
           eventName: "m6.referral.qualified",
           payload: { referralId: id, patientId: cur.patientId },
@@ -1548,7 +1633,8 @@ export function createDbAdmissionRouteService(
             .from(ADM)
             .where(and(eq(ADM.organizationId, organizationId), eq(ADM.referralId, id)))
             .limit(1);
-          if (existing) return { id, state: "converted", version: cur.version, admissionId: existing.id };
+          if (existing)
+            return { id, state: "converted", version: cur.version, admissionId: existing.id };
           throw new ReferralAlreadyConvertedError(id);
         }
         if (cur.status !== "qualified") throw new ReferralNotTriagedError(id);
@@ -1557,7 +1643,8 @@ export function createDbAdmissionRouteService(
         }
         const patientId = cur.patientId;
         const confirmed = await patientResolver().confirmPatient({ organizationId, patientId });
-        if (!confirmed) throw new WardenXError("PATIENT_NOT_FOUND", "resolved M5 patient no longer exists", 409);
+        if (!confirmed)
+          throw new WardenXError("PATIENT_NOT_FOUND", "resolved M5 patient no longer exists", 409);
         // §2.3.1 no double-election: block if the patient already has an open admission.
         const [open] = await tx
           .select({ id: ADM.id })
@@ -1615,9 +1702,18 @@ export function createDbAdmissionRouteService(
             .returning({ id: REF.id, status: REF.status, version: REF.version }),
           "row not found",
         );
-        await recordReferralActivity(tx, organizationId, id, actorUserId, "converted", cur.status, r.status, {
-          admissionId: adm.id,
-        });
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          "converted",
+          cur.status,
+          r.status,
+          {
+            admissionId: adm.id,
+          },
+        );
         await outbox.publish(tx, {
           eventName: "m6.referral.converted",
           payload: { referralId: id, patientId, admissionId: adm.id },
@@ -1756,9 +1852,18 @@ export function createDbAdmissionRouteService(
             .returning({ id: REF.id, status: REF.status, version: REF.version }),
           "row not found",
         );
-        await recordReferralActivity(tx, organizationId, id, actorUserId, "priority_updated", null, null, {
-          priority,
-        });
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          "priority_updated",
+          null,
+          null,
+          {
+            priority,
+          },
+        );
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
@@ -1803,9 +1908,18 @@ export function createDbAdmissionRouteService(
             .returning({ id: REF.id, status: REF.status, version: REF.version }),
           "row not found",
         );
-        await recordReferralActivity(tx, organizationId, id, actorUserId, "pending_information_requested", cur.status, r.status, {
-          reason,
-        });
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          "pending_information_requested",
+          cur.status,
+          r.status,
+          {
+            reason,
+          },
+        );
         await tx.insert(RN).values({
           organizationId,
           referralId: id,
@@ -1819,7 +1933,8 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const cur = await loadRef(tx, id);
         assertVersion(id, cur.version, ifVersion);
-        if (cur.status === "converted") throw new InvalidReferralStateError(id, cur.status, "mark duplicate");
+        if (cur.status === "converted")
+          throw new InvalidReferralStateError(id, cur.status, "mark duplicate");
         const r = firstOrThrow(
           await tx
             .update(REF)
@@ -1834,9 +1949,18 @@ export function createDbAdmissionRouteService(
             .returning({ id: REF.id, status: REF.status, version: REF.version }),
           "row not found",
         );
-        await recordReferralActivity(tx, organizationId, id, actorUserId, "duplicate", cur.status, r.status, {
-          reason: reason ?? null,
-        });
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          "duplicate",
+          cur.status,
+          r.status,
+          {
+            reason: reason ?? null,
+          },
+        );
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
@@ -1844,7 +1968,8 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const cur = await loadRef(tx, id);
         assertVersion(id, cur.version, ifVersion);
-        if (cur.status === "converted") throw new InvalidReferralStateError(id, cur.status, "withdraw");
+        if (cur.status === "converted")
+          throw new InvalidReferralStateError(id, cur.status, "withdraw");
         const r = firstOrThrow(
           await tx
             .update(REF)
@@ -1859,9 +1984,18 @@ export function createDbAdmissionRouteService(
             .returning({ id: REF.id, status: REF.status, version: REF.version }),
           "row not found",
         );
-        await recordReferralActivity(tx, organizationId, id, actorUserId, "withdrawn", cur.status, r.status, {
-          reason: reason ?? null,
-        });
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          "withdrawn",
+          cur.status,
+          r.status,
+          {
+            reason: reason ?? null,
+          },
+        );
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
@@ -1967,11 +2101,18 @@ export function createDbAdmissionRouteService(
         return { id: adm.id, state: adm.status, version: Number(adm.version) };
       });
     },
-    async updateAdmission(organizationId, id, ifVersion): Promise<MutationResult> {
+    async updateAdmission(organizationId, id, input, ifVersion): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const updates: Record<string, unknown> = {
+          version: sql`${ADM.version} + 1`,
+          updatedAt: now(),
+        };
+        if (input.admissionAt !== undefined) updates.admissionAt = new Date(input.admissionAt);
+        if (input.attendingPhysicianId !== undefined)
+          updates.attendingPhysicianId = input.attendingPhysicianId;
         const [r] = await tx
           .update(ADM)
-          .set({ version: sql`${ADM.version} + 1`, updatedAt: now() })
+          .set(updates)
           .where(and(eq(ADM.id, id), eq(ADM.version, ifVersion)))
           .returning({ id: ADM.id, status: ADM.status, version: ADM.version });
         if (!r) return failStale(tx, ADM, id, ifVersion);
@@ -2090,7 +2231,11 @@ export function createDbAdmissionRouteService(
           .limit(1);
         if (!adm) throw new ResourceNotFoundError(admissionId);
         const [period] = await tx
-          .select({ sequence: EP.sequenceNumber, effectiveAt: EP.effectiveAt, scheduledEndAt: EP.scheduledEndAt })
+          .select({
+            sequence: EP.sequenceNumber,
+            effectiveAt: EP.effectiveAt,
+            scheduledEndAt: EP.scheduledEndAt,
+          })
           .from(EP)
           .where(eq(EP.id, electionPeriodId))
           .limit(1);
@@ -2253,6 +2398,8 @@ export function createDbAdmissionRouteService(
               electionPeriodId: input.electionPeriodId,
               hospiceMdId: input.hospiceMedicalDirectorId,
               attendingMdId: input.attendingPhysicianId ?? null,
+              terminalDiagnosisIcd10: input.terminalDiagnosisIcd10,
+              narrative: input.narrative,
             })
             .returning({ id: CTI.id, status: CTI.status, version: CTI.version }),
           "cti insert returned no row",
@@ -2374,7 +2521,11 @@ export function createDbAdmissionRouteService(
           eventName: "m6.cti.signed",
           // Same payload-schema-drift bug — `electionPeriodId`/`signedAt` are required (confirmed live:
           // this exact call 500'd with `payload_schema_violation` on every attempt before this fix).
-          payload: { ctiId: id, electionPeriodId: cti.epId, signedAt: attendingSignedAt.toISOString() },
+          payload: {
+            ctiId: id,
+            electionPeriodId: cti.epId,
+            signedAt: attendingSignedAt.toISOString(),
+          },
           organizationId,
           aggregateKind: "certification_of_terminal_illness",
           aggregateId: id,
@@ -3305,7 +3456,11 @@ export function createDbAdmissionRouteService(
           eventName: "m6.compliance.window.closed",
           // `closedAt`/`closedVia` are required and were previously omitted. This route is the
           // direct-close path (no override reason involved), hence `closedVia: "manual"`.
-          payload: { complianceWindowId: id, closedAt: closedAt.toISOString(), closedVia: "manual" },
+          payload: {
+            complianceWindowId: id,
+            closedAt: closedAt.toISOString(),
+            closedVia: "manual",
+          },
           organizationId,
           aggregateKind: "compliance_window",
           aggregateId: id,

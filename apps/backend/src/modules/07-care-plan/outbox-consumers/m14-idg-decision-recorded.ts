@@ -1,11 +1,13 @@
-// M7's live `idg.decision_recorded` care-plan consumer. It reads only the canonical leaf contract from
-// @wardenx/types, validates the consumed arm defensively, and commits mutations plus a durable
-// decision-id marker in one org-scoped transaction. Other decision kinds are legitimate no-ops for M7.
+import { randomUUID } from "node:crypto";
+// M7's live `idg.decision_recorded` care-plan consumer. It reads only the canonical event contract,
+// validates the consumed arm defensively, and commits a governed proposal plus a durable decision-id
+// marker in one org-scoped transaction. Clinical rows are not mutated until the idg_review version
+// reaches quorum and publishes.
 import { type AuditContext, audit } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { IdgDecisionPayload } from "@wardenx/types";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { IdgApplyAction, IdgApplyFacts } from "../consumers/apply-idg-decision";
 import { decideIdgDecision } from "../consumers/apply-idg-decision";
 import { resolveRequiredSignerSet } from "../lifecycle/required-signer-set";
@@ -16,6 +18,7 @@ const PROBLEM = schema.problems;
 const GOAL = schema.goals;
 const INTERVENTION = schema.interventions;
 const APPLICATION = schema.carePlanIdgDecisionApplications;
+const PROPOSED_CHANGE = schema.carePlanIdgProposedChanges;
 
 export interface M7IdgConsumerOutboxPort {
   publish(
@@ -164,81 +167,164 @@ async function requireProblem(tx: DbClient, planId: string, problemId: string): 
     throw new Error(`m7.apply-idg-decision: problem '${problemId}' is not on plan '${planId}'`);
 }
 
-async function applyMutation(
+const iso = (d: Date | string | null): string | null =>
+  d == null ? null : d instanceof Date ? d.toISOString() : d;
+
+async function captureBaselineSnapshot(tx: DbClient, planId: string) {
+  const [probRows, goalRows, intvRows] = await Promise.all([
+    tx.select().from(PROBLEM).where(eq(PROBLEM.carePlanId, planId)).orderBy(asc(PROBLEM.id)),
+    tx.select().from(GOAL).where(eq(GOAL.carePlanId, planId)).orderBy(asc(GOAL.id)),
+    tx
+      .select()
+      .from(INTERVENTION)
+      .where(eq(INTERVENTION.carePlanId, planId))
+      .orderBy(asc(INTERVENTION.id)),
+  ]);
+  return {
+    schemaVersion: "2026-08-m7-v1",
+    problems: probRows.map((p) => ({
+      id: p.id,
+      icd10Code: p.icd10Code ?? null,
+      snomedCode: p.snomedCode ?? null,
+      description: p.description,
+      kind: p.kind,
+      source: p.source,
+      sudRelated: p.sudRelated,
+      status: p.status,
+      onsetAt: iso(p.onsetAt),
+      resolvedAt: iso(p.resolvedAt),
+      resolutionNote: p.resolutionNote ?? null,
+      version: Number(p.version),
+    })),
+    goals: goalRows.map((g) => ({
+      id: g.id,
+      problemId: g.problemId,
+      originalText: g.originalText,
+      revisedText: g.revisedText ?? null,
+      source: g.source,
+      actingConsentId: g.actingConsentId ?? null,
+      measurableOutcome: g.measurableOutcome ?? null,
+      targetAt: iso(g.targetAt),
+      status: g.status,
+      statusNote: g.statusNote ?? null,
+      version: Number(g.version),
+    })),
+    interventions: intvRows.map((i) => ({
+      id: i.id,
+      problemId: i.problemId,
+      goalRefs: (i.goalRefs as string[]) ?? [],
+      scopeText: i.scopeText,
+      frequencyText: i.frequencyText,
+      frequencyValue: i.frequencyValue,
+      discipline: i.discipline,
+      responsibleRole: i.responsibleRole ?? null,
+      linkedOrderId: i.linkedOrderId ?? null,
+      status: i.status,
+      discontinueReason: i.discontinueReason ?? null,
+      version: Number(i.version),
+    })),
+  };
+}
+
+async function buildProposedChange(
   tx: DbClient,
   input: {
     readonly organizationId: string;
     readonly plan: typeof CP.$inferSelect;
-    readonly actorMembershipId: string;
     readonly mutation: unknown;
+    readonly applicationId: string;
+    readonly decisionId: string;
+    readonly meetingId: string;
+    readonly versionId: string;
+    readonly ordinal: number;
   },
-): Promise<void> {
+): Promise<typeof PROPOSED_CHANGE.$inferInsert> {
   const mutation = recordOf(input.mutation, "care-plan mutation");
   const op = stringOf(mutation, "op");
   const common = {
     organizationId: input.organizationId,
     providerEntityId: input.plan.providerEntityId,
     locationId: input.plan.locationId,
+    applicationId: input.applicationId,
     carePlanId: input.plan.id,
+    carePlanVersionId: input.versionId,
+    idgDecisionId: input.decisionId,
+    idgMeetingId: input.meetingId,
+    ordinal: input.ordinal,
+    operation: op,
   };
 
   switch (op) {
-    case "problem_add":
-      await tx.insert(PROBLEM).values({
-        ...common,
+    case "problem_add": {
+      const proposed = {
+        id: randomUUID(),
         icd10Code: nullableStringOf(mutation, "icd10Code"),
         snomedCode: nullableStringOf(mutation, "snomedCode"),
         description: stringOf(mutation, "description"),
         kind: problemKindOf(mutation.problemKind),
         source: "clinical",
+        sudRelated: false,
         status: "active",
-        addedByMembershipId: input.actorMembershipId,
-      });
-      return;
+      };
+      return {
+        ...common,
+        entityType: "problem",
+        targetEntityId: proposed.id,
+        before: null,
+        proposed,
+      };
+    }
     case "problem_update": {
       const id = stringOf(mutation, "problemId");
       const updates = recordOf(mutation.updates, "problem updates");
       requireNonEmptyPatch(updates, ["status", "description"], "problem updates");
-      const patch: Partial<typeof PROBLEM.$inferInsert> = { updatedAt: new Date() };
-      if (updates.status !== undefined) patch.status = problemStatusOf(updates.status);
-      if (updates.description !== undefined) patch.description = stringOf(updates, "description");
-      const rows = await tx
-        .update(PROBLEM)
-        .set({ ...patch, version: sql`${PROBLEM.version} + 1` })
+      const [before] = await tx
+        .select()
+        .from(PROBLEM)
         .where(and(eq(PROBLEM.carePlanId, input.plan.id), eq(PROBLEM.id, id)))
-        .returning({ id: PROBLEM.id });
-      if (rows.length !== 1) throw new Error(`m7.apply-idg-decision: problem '${id}' not found`);
-      return;
+        .limit(1);
+      if (!before) throw new Error(`m7.apply-idg-decision: problem '${id}' not found`);
+      const proposed: Record<string, unknown> = {};
+      if (updates.status !== undefined) proposed.status = problemStatusOf(updates.status);
+      if (updates.description !== undefined)
+        proposed.description = stringOf(updates, "description");
+      return { ...common, entityType: "problem", targetEntityId: id, before, proposed };
     }
     case "goal_add": {
       const problemId = stringOf(mutation, "problemId");
       await requireProblem(tx, input.plan.id, problemId);
-      await tx.insert(GOAL).values({
-        ...common,
+      const proposed = {
+        id: randomUUID(),
         problemId,
         originalText: stringOf(mutation, "originalText"),
         revisedText: nullableStringOf(mutation, "revisedText"),
         source: goalSourceOf(mutation.source),
         measurableOutcome: stringOf(mutation, "measurableOutcome"),
-        addedByMembershipId: input.actorMembershipId,
-      });
-      return;
+      };
+      return {
+        ...common,
+        entityType: "goal",
+        targetEntityId: proposed.id,
+        before: null,
+        proposed,
+      };
     }
     case "goal_update": {
       const id = stringOf(mutation, "goalId");
       const updates = recordOf(mutation.updates, "goal updates");
       requireNonEmptyPatch(updates, ["revisedText", "status", "statusNote"], "goal updates");
-      const patch: Partial<typeof GOAL.$inferInsert> = { updatedAt: new Date() };
-      if (updates.revisedText !== undefined) patch.revisedText = stringOf(updates, "revisedText");
-      if (updates.status !== undefined) patch.status = goalStatusOf(updates.status);
-      if (updates.statusNote !== undefined) patch.statusNote = stringOf(updates, "statusNote");
-      const rows = await tx
-        .update(GOAL)
-        .set({ ...patch, version: sql`${GOAL.version} + 1` })
+      const [before] = await tx
+        .select()
+        .from(GOAL)
         .where(and(eq(GOAL.carePlanId, input.plan.id), eq(GOAL.id, id)))
-        .returning({ id: GOAL.id });
-      if (rows.length !== 1) throw new Error(`m7.apply-idg-decision: goal '${id}' not found`);
-      return;
+        .limit(1);
+      if (!before) throw new Error(`m7.apply-idg-decision: goal '${id}' not found`);
+      const proposed: Record<string, unknown> = {};
+      if (updates.revisedText !== undefined)
+        proposed.revisedText = stringOf(updates, "revisedText");
+      if (updates.status !== undefined) proposed.status = goalStatusOf(updates.status);
+      if (updates.statusNote !== undefined) proposed.statusNote = stringOf(updates, "statusNote");
+      return { ...common, entityType: "goal", targetEntityId: id, before, proposed };
     }
     case "intervention_add": {
       const problemId = stringOf(mutation, "problemId");
@@ -257,34 +343,43 @@ async function applyMutation(
           throw new Error("m7.apply-idg-decision: one or more intervention goalRefs are off-plan");
         }
       }
-      await tx.insert(INTERVENTION).values({
-        ...common,
+      const proposed = {
+        id: randomUUID(),
         problemId,
         goalRefs,
         discipline: disciplineOf(mutation.discipline),
         scopeText: stringOf(mutation, "scopeText"),
         frequencyText: stringOf(mutation, "frequencyText"),
         frequencyValue: stringOf(mutation, "frequencyValue"),
-        addedByMembershipId: input.actorMembershipId,
-      });
-      return;
+      };
+      return {
+        ...common,
+        entityType: "intervention",
+        targetEntityId: proposed.id,
+        before: null,
+        proposed,
+      };
     }
     case "intervention_discontinue": {
       const id = stringOf(mutation, "interventionId");
-      const rows = await tx
-        .update(INTERVENTION)
-        .set({
-          status: "discontinued",
-          discontinueReason: stringOf(mutation, "reason"),
-          updatedAt: new Date(),
-          version: sql`${INTERVENTION.version} + 1`,
-        })
+      const [before] = await tx
+        .select()
+        .from(INTERVENTION)
         .where(and(eq(INTERVENTION.carePlanId, input.plan.id), eq(INTERVENTION.id, id)))
-        .returning({ id: INTERVENTION.id });
-      if (rows.length !== 1) {
+        .limit(1);
+      if (!before) {
         throw new Error(`m7.apply-idg-decision: intervention '${id}' not found`);
       }
-      return;
+      return {
+        ...common,
+        entityType: "intervention",
+        targetEntityId: id,
+        before,
+        proposed: {
+          status: "discontinued",
+          discontinueReason: stringOf(mutation, "reason"),
+        },
+      };
     }
     default:
       throw new Error(`m7.apply-idg-decision: unsupported care-plan mutation '${op}'`);
@@ -365,6 +460,18 @@ export function buildM7IdgDecisionConsumer(deps: {
             )
             .limit(1);
           if (!version) {
+            const [open] = await t
+              .select()
+              .from(CPV)
+              .where(and(eq(CPV.carePlanId, plan.id), inArray(CPV.status, ["draft", "in_review"])))
+              .limit(1);
+            if (open) {
+              throw new Error(
+                "m7.apply-idg-decision: an incompatible care-plan version is already open",
+              );
+            }
+          }
+          if (!version) {
             const [{ maxSeq } = { maxSeq: 0 }] = await t
               .select({ maxSeq: sql<number>`coalesce(max(${CPV.sequence}), 0)::int` })
               .from(CPV)
@@ -399,23 +506,56 @@ export function buildM7IdgDecisionConsumer(deps: {
             });
           }
 
-          for (const mutation of mutations) {
-            await applyMutation(t, {
+          const baselineSnapshot = await captureBaselineSnapshot(t, plan.id);
+          const applicationId = randomUUID();
+          const inserted = await t
+            .insert(APPLICATION)
+            .values({
+              id: applicationId,
               organizationId: event.organizationId,
-              plan,
-              actorMembershipId,
-              mutation,
-            });
-          }
+              providerEntityId: plan.providerEntityId,
+              locationId: plan.locationId,
+              idgDecisionId: decisionId,
+              idgMeetingId: meetingId,
+              sourceOutboxEventId: event.id,
+              carePlanId: plan.id,
+              carePlanVersionId: version.id,
+              status: "proposed",
+              baselineSnapshot,
+            })
+            .onConflictDoNothing({
+              target: [APPLICATION.organizationId, APPLICATION.idgDecisionId],
+            })
+            .returning({ id: APPLICATION.id });
+          if (inserted.length === 0) return;
 
-          await t.insert(APPLICATION).values({
+          const proposedChanges = await Promise.all(
+            mutations.map((mutation, index) =>
+              buildProposedChange(t, {
+                organizationId: event.organizationId,
+                plan,
+                mutation,
+                applicationId,
+                decisionId,
+                meetingId,
+                versionId: version.id,
+                ordinal: index,
+              }),
+            ),
+          );
+          if (proposedChanges.length > 0) await t.insert(PROPOSED_CHANGE).values(proposedChanges);
+          await deps.outbox.publish(t, {
+            eventName: "m7.care_plan.idg_proposal_created",
             organizationId: event.organizationId,
-            providerEntityId: plan.providerEntityId,
-            locationId: plan.locationId,
-            idgDecisionId: decisionId,
-            sourceOutboxEventId: event.id,
-            carePlanId: plan.id,
-            carePlanVersionId: version.id,
+            aggregateKind: "care_plan_version",
+            aggregateId: version.id,
+            payload: {
+              planId: plan.id,
+              versionId: version.id,
+              decisionId,
+              meetingId,
+              changeCount: proposedChanges.length,
+            },
           });
           const auditContext: AuditContext = {
             organizationId: event.organizationId,
@@ -424,11 +564,11 @@ export function buildM7IdgDecisionConsumer(deps: {
             correlationId: `idg-decision:${decisionId}`,
           };
           await audit(t, auditContext, {
-            eventType: "m7.care_plan.idg_decision_applied",
+            eventType: "m7.care_plan.idg_proposal_created",
             resourceKind: "care_plan_version",
             resourceId: version.id,
             outcome: "success",
-            context: { decisionId, meetingId, mutationCount: mutations.length },
+            context: { decisionId, meetingId, mutationCount: proposedChanges.length },
           });
         },
       );

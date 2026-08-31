@@ -111,22 +111,27 @@ async function loadMembers(
 async function loadAdmissions(
   client: ApiClient,
   input: EntityLookupLoadInput,
+  state?: string,
+  patientId?: string,
 ): Promise<EntityLookupLoadResult> {
   const query: Record<string, string | number> = { limit: input.limit };
   if (input.cursor) query.cursor = input.cursor;
+  if (state) query.state = state;
   const { data, error } = await client.GET("/api/v1/admissions", {
     params: { query },
   } as never);
   if (error) throw error;
-  const rawItems = ((
-    data as { items?: Array<{ id: string; state: string }>; nextCursor?: string | null }
-  )?.items ?? []) as Array<{ id: string; state: string }>;
+  const rawItems = ((data as {
+    items?: Array<{ id: string; state: string; patientId?: string | null }>;
+    nextCursor?: string | null;
+  })?.items ?? []) as Array<{ id: string; state: string; patientId?: string | null }>;
   const needle = input.query.trim().toLowerCase();
+  const scoped = patientId ? rawItems.filter((a) => !a.patientId || a.patientId === patientId) : rawItems;
   const items = needle
-    ? rawItems.filter(
+    ? scoped.filter(
         (a) => a.id.toLowerCase().includes(needle) || a.state.toLowerCase().includes(needle),
       )
-    : rawItems;
+    : scoped;
   return {
     options: items.map((a) => ({
       id: a.id,
@@ -249,12 +254,14 @@ export function MdmEntityLookupField(props: LookupProps & { kind: MdmKind }): JS
   );
 }
 
-export function AdmissionLookupField(props: LookupProps & { patientId?: string }): JSX.Element {
+export function AdmissionLookupField(
+  props: LookupProps & { patientId?: string; state?: string },
+): JSX.Element {
   const client = useApiClient();
-  const { patientId: _patientId, ...rest } = props;
+  const { patientId, state, ...rest } = props;
   const loadOptions = useCallback(
-    (input: EntityLookupLoadInput) => loadAdmissions(client, input),
-    [client],
+    (input: EntityLookupLoadInput) => loadAdmissions(client, input, state, patientId),
+    [client, patientId, state],
   );
   return (
     <EntityLookupField

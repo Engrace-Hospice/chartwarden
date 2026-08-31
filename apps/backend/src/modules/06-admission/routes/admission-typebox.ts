@@ -8,8 +8,8 @@ import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
 import type {
-  AdmissionReadinessResult as ServiceAdmissionReadinessResult,
   AdmissionDetail as ServiceAdmissionDetail,
+  AdmissionReadinessResult as ServiceAdmissionReadinessResult,
   MutationResult as ServiceMutationResult,
   Page as ServicePage,
   PatientElectionCertificationView as ServicePatientElectionCert,
@@ -195,6 +195,7 @@ export const AdmissionListQuerySchema = Type.Object({
 export const AdmissionUpdateSchema = Type.Object({
   intakeMethod: Type.Optional(Type.Union(INTAKE_METHODS.map((m) => Type.Literal(m)))),
   attendingPhysicianId: Type.Optional(Uuid()),
+  admissionAt: Type.Optional(Type.String({ format: "date-time" })),
   ifVersion: Version(),
 });
 
@@ -235,6 +236,7 @@ export const ElectionPeriodPatchSchema = Type.Object({
 export const CtiDraftSchema = Type.Object({
   hospiceMedicalDirectorId: Uuid(),
   attendingPhysicianId: Type.Optional(Uuid()),
+  terminalDiagnosisIcd10: Icd10(),
   prognosisStatement: Type.String({ minLength: 1, maxLength: 200 }),
   narrative: Type.String({ minLength: 1, maxLength: 4000 }),
   clinicalFindings: Type.Object({}, { additionalProperties: true }),

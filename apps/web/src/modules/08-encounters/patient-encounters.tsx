@@ -1,15 +1,18 @@
 import {
+  Button,
+  DataTable,
   EmptyState,
   LoadingSpinner,
+  Modal,
   PatientBanner,
   PatientWorkspaceLayout,
+  RightDetailPanel,
   StatusPill,
   ageYears,
-  cardSurface,
-  ghostBorder,
   t,
   useApiClient,
 } from "@wardenx/ui";
+import type { DataTableColumn } from "@wardenx/ui";
 // apps/web/src/modules/08-encounters — patient encounters / visits (M8 §5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_ENCOUNTERS.md — "Use Patient Workspace."
 // The per-patient list reached from the patient chart "Encounters / Visits" tab: a Patient Workspace
@@ -21,6 +24,8 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { AdmissionLookupField } from "../../shared/entity-lookups";
+import { useSession } from "../../shell/session";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
 
@@ -46,6 +51,7 @@ interface PatientSummary {
 export function PatientEncounters(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
+  const session = useSession();
   const { patientId } = useParams<{ patientId: string }>();
   const [items, setItems] = useState<EncounterRow[]>([]);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
@@ -53,6 +59,7 @@ export function PatientEncounters(): JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [prnOpen, setPrnOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!patientId) return;
@@ -128,20 +135,32 @@ export function PatientEncounters(): JSX.Element {
             >
               Encounters / Visits
             </h1>
-            <select
-              aria-label="Encounter status"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              style={selectStyle}
-            >
-              <option value="">Any status</option>
-              <option value="draft">Draft</option>
-              <option value="finalized">Finalized</option>
-              <option value="signed">Signed</option>
-              <option value="cosign_pending">Cosign Pending</option>
-              <option value="cosigned">Cosigned</option>
-              <option value="voided">Voided</option>
-            </select>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+              <select
+                aria-label="Encounter status"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                style={selectStyle}
+              >
+                <option value="">Any status</option>
+                <option value="draft">Draft</option>
+                <option value="finalized">Finalized</option>
+                <option value="signed">Signed</option>
+                <option value="cosign_pending">Cosign Pending</option>
+                <option value="cosigned">Cosigned</option>
+                <option value="voided">Voided</option>
+              </select>
+              {status ? (
+                <Button size="sm" tone="tertiary" onClick={() => setStatus("")}>
+                  Clear
+                </Button>
+              ) : null}
+              {session?.permissions?.includes("encounter.author") ? (
+                <Button size="sm" onClick={() => setPrnOpen(true)}>
+                  New PRN Encounter
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           {error ? (
@@ -154,64 +173,26 @@ export function PatientEncounters(): JSX.Element {
               description="No encounters match the current filter."
             />
           ) : (
-            <section style={{ ...cardSurface, padding: "0 1.25rem" }}>
-              <div
-                style={{ ...encounterRow, color: t.muted, borderTop: "none", cursor: "default" }}
-              >
-                <span style={{ flex: 1 }}>Encounter · type</span>
-                <span style={col}>Discipline</span>
-                <span style={col}>Status</span>
-                <span style={colNarrow}>F2F</span>
-              </div>
-              {rows.map((e) => (
-                <button
-                  key={e.id}
-                  type="button"
-                  onClick={() => setSelectedId(e.id)}
-                  aria-pressed={e.id === selectedId}
-                  style={{
-                    ...encounterRow,
-                    borderTop: ghostBorder,
-                    background: e.id === selectedId ? t.primaryTint : "transparent",
-                  }}
-                >
-                  <span
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      textAlign: "left",
-                      color: t.onSurface,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {stateLabel(e.encounterType)}
-                    <span style={dateMeta}> · {e.serviceDate.slice(0, 10)}</span>
-                  </span>
-                  <span style={col}>{stateLabel(e.discipline)}</span>
-                  <span style={col}>
-                    <StatusPill
-                      label={stateLabel(e.status)}
-                      tone={ENCOUNTER_TONE[e.status] ?? "neutral"}
-                    />
-                  </span>
-                  <span style={colNarrow}>
-                    {e.isF2f ? (
-                      <span style={f2fBadge}>F2F</span>
-                    ) : (
-                      <span style={{ color: t.muted }}>—</span>
-                    )}
-                  </span>
-                </button>
-              ))}
-            </section>
+            <div style={{ width: "100%", overflowX: "auto" }}>
+              <DataTable
+                ariaLabel="Patient encounters"
+                caption="Encounters recorded for the selected patient"
+                rows={rows}
+                columns={ENCOUNTER_COLUMNS}
+                getRowId={(encounter) => encounter.id}
+                selectedRowId={selectedId}
+                onRowSelect={(encounter) => setSelectedId(encounter.id)}
+              />
+            </div>
           )}
         </div>
 
         {/* Right rail — selected encounter detail */}
-        <aside style={rightRail}>
+        <RightDetailPanel
+          title={selected ? stateLabel(selected.encounterType) : "Encounter detail"}
+        >
           {selected ? (
-            <div style={{ ...cardSurface, padding: "1.125rem" }}>
-              <h2 style={railTitle}>{stateLabel(selected.encounterType)}</h2>
+            <>
               <dl style={detailGrid}>
                 <dt style={dt}>Status</dt>
                 <dd style={dd}>
@@ -237,25 +218,105 @@ export function PatientEncounters(): JSX.Element {
                   </>
                 ) : null}
               </dl>
-              <button
+              <Button
                 type="button"
                 onClick={() => navigate(`/patients/${patientId}/encounters/${selected.id}`)}
-                style={{ ...primaryBtn, marginTop: "1rem", width: "100%" }}
+                style={{ marginTop: "1rem", width: "100%" }}
               >
                 Open encounter
-              </button>
-            </div>
+              </Button>
+            </>
           ) : (
-            <div style={{ ...cardSurface, padding: "1.125rem" }}>
-              <h2 style={railTitle}>Encounter detail</h2>
-              <p style={meta}>
-                Select an encounter to see its discipline, service date, and lifecycle status here.
-              </p>
-            </div>
+            <p style={meta}>
+              Select an encounter to see its discipline, service date, and lifecycle status here.
+            </p>
           )}
-        </aside>
+        </RightDetailPanel>
       </div>
+      <PrnEncounterModal
+        open={prnOpen}
+        patientId={patientId ?? ""}
+        onClose={() => setPrnOpen(false)}
+        onCreated={(id) => {
+          setPrnOpen(false);
+          navigate(`/patients/${patientId}/encounters/${id}`);
+        }}
+      />
     </PatientWorkspaceLayout>
+  );
+}
+
+function PrnEncounterModal({
+  open,
+  patientId,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  patientId: string;
+  onClose: () => void;
+  onCreated: (id: string) => void;
+}): JSX.Element | null {
+  const client = useApiClient();
+  const [admissionId, setAdmissionId] = useState("");
+  const [encounterType, setEncounterType] = useState("routine_visit");
+  const [discipline, setDiscipline] = useState("rn");
+  const [serviceDate, setServiceDate] = useState(new Date().toISOString().slice(0, 10));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!open) return null;
+  async function submit(): Promise<void> {
+    setBusy(true);
+    setError(null);
+    const { data, error: err } = await client.POST("/api/v1/encounters", {
+      body: { patientId, admissionId, encounterType, discipline, serviceDate },
+    } as never);
+    setBusy(false);
+    if (err || !data) {
+      setError("The PRN Encounter could not be created.");
+      return;
+    }
+    onCreated((data as { id: string }).id);
+  }
+  return (
+    <Modal open={open} onClose={busy ? undefined : onClose} ariaLabel="New PRN Encounter" width="34rem">
+      <div style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <h2 style={{ margin: 0, fontFamily: t.fontDisplay, fontWeight: 500 }}>New PRN Encounter</h2>
+        {error ? <p role="alert" style={{ margin: 0, color: t.error }}>{error}</p> : null}
+        <AdmissionLookupField
+          label="Active admission"
+          patientId={patientId}
+          state="active"
+          value={admissionId}
+          onChange={(value) => setAdmissionId(value)}
+          required
+        />
+        <label style={modalField}>
+          <span style={modalLabel}>Encounter type</span>
+          <select value={encounterType} onChange={(e) => setEncounterType(e.target.value)} style={selectStyle}>
+            {["routine_visit", "lpn_visit", "chha_visit", "msw_assessment", "msw_followup", "chaplain_visit", "volunteer_visit", "telephonic"].map((value) => (
+              <option key={value} value={value}>{stateLabel(value)}</option>
+            ))}
+          </select>
+        </label>
+        <label style={modalField}>
+          <span style={modalLabel}>Discipline</span>
+          <select value={discipline} onChange={(e) => setDiscipline(e.target.value)} style={selectStyle}>
+            {["rn", "lpn", "chha", "msw", "chaplain", "volunteer", "md", "np"].map((value) => (
+              <option key={value} value={value}>{stateLabel(value)}</option>
+            ))}
+          </select>
+        </label>
+        <label style={modalField}>
+          <span style={modalLabel}>Service date</span>
+          <input type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} style={selectStyle} />
+        </label>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+          <Button tone="tertiary" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button loading={busy} onClick={() => void submit()}>Create Encounter</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -276,39 +337,6 @@ function MonoChip({ children }: { children: ReactNode }): JSX.Element {
   );
 }
 
-const rightRail: CSSProperties = {
-  width: "19rem",
-  flexShrink: 0,
-  overflow: "auto",
-  padding: "1.5rem",
-  background: t.surfaceLow,
-};
-const railTitle: CSSProperties = {
-  margin: "0 0 0.625rem",
-  fontFamily: t.fontDisplay,
-  fontWeight: 500,
-  fontSize: "1rem",
-  color: t.onSurface,
-};
-const encounterRow: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.75rem",
-  width: "100%",
-  padding: "0.75rem 0",
-  border: "none",
-  background: "transparent",
-  cursor: "pointer",
-  fontSize: "0.85rem",
-};
-const col: CSSProperties = { width: "8rem", flexShrink: 0, display: "flex", alignItems: "center" };
-const colNarrow: CSSProperties = {
-  width: "3.5rem",
-  flexShrink: 0,
-  display: "flex",
-  alignItems: "center",
-};
-const dateMeta: CSSProperties = { color: t.muted, fontWeight: 400, fontSize: "0.78rem" };
 const f2fBadge: CSSProperties = {
   background: t.primaryTint,
   color: t.primary,
@@ -318,9 +346,10 @@ const f2fBadge: CSSProperties = {
   fontWeight: 600,
 };
 const selectStyle: CSSProperties = {
+  minHeight: "2.25rem",
   padding: "0.4rem 0.6rem",
   borderRadius: t.radiusMd,
-  border: "none",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 60%, transparent)",
   background: t.surfaceLow,
   color: t.onSurface,
   fontSize: "0.85rem",
@@ -335,18 +364,54 @@ const detailGrid: CSSProperties = {
 };
 const dt: CSSProperties = { fontWeight: 600, color: t.onSurfaceVariant };
 const dd: CSSProperties = { margin: 0, color: t.onSurface };
-const primaryBtn: CSSProperties = {
-  padding: "0.5rem 1rem",
-  borderRadius: "9999px",
-  background: t.primary,
-  color: t.onPrimary,
-  fontSize: "0.8125rem",
-  fontWeight: 600,
-  border: "none",
-  cursor: "pointer",
-};
 const meta: CSSProperties = {
   fontSize: "0.78rem",
   color: t.onSurfaceVariant,
   margin: "0.25rem 0 0",
 };
+const modalField: CSSProperties = { display: "flex", flexDirection: "column", gap: "0.35rem" };
+const modalLabel: CSSProperties = { fontSize: "0.8125rem", fontWeight: 650, color: t.onSurface };
+
+const ENCOUNTER_COLUMNS: readonly DataTableColumn<EncounterRow>[] = [
+  {
+    id: "encounter",
+    header: "Encounter",
+    cell: (encounter) => (
+      <span style={{ display: "grid", gap: "0.2rem" }}>
+        <span style={{ color: t.onSurface, fontWeight: 600 }}>
+          {stateLabel(encounter.encounterType)}
+        </span>
+        <span className="tabular-nums" style={{ color: t.onSurfaceVariant, fontSize: "0.8125rem" }}>
+          {encounter.serviceDate.slice(0, 10)}
+        </span>
+      </span>
+    ),
+  },
+  {
+    id: "discipline",
+    header: "Discipline",
+    priority: "secondary",
+    cell: (encounter) => stateLabel(encounter.discipline),
+  },
+  {
+    id: "status",
+    header: "Status",
+    cell: (encounter) => (
+      <StatusPill
+        label={stateLabel(encounter.status)}
+        tone={ENCOUNTER_TONE[encounter.status] ?? "neutral"}
+      />
+    ),
+  },
+  {
+    id: "f2f",
+    header: "F2F",
+    priority: "tertiary",
+    cell: (encounter) =>
+      encounter.isF2f ? (
+        <span style={f2fBadge}>F2F</span>
+      ) : (
+        <span style={{ color: t.muted }}>—</span>
+      ),
+  },
+];

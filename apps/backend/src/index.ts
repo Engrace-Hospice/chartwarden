@@ -156,6 +156,8 @@ import {
 import {
   M7_OUTBOX_EVENTS,
   M7_PLATFORM_JOB_ID,
+  buildM7AdmissionActivatedConsumer,
+  buildM7AdmissionDischargedConsumer,
   buildM7IdgDecisionConsumer,
   buildM7WorkerDeps,
   createDbCarePlanAbacResolver,
@@ -172,6 +174,7 @@ import {
 } from "./modules/07-care-plan/index";
 import {
   M8_OUTBOX_EVENTS,
+  buildM8VisitClosedConsumer,
   buildM8VisitPublishedConsumer,
   createDrizzleEncounterEraseStore,
   createDrizzleEncounterReaderStore,
@@ -291,6 +294,7 @@ import {
 } from "./modules/16-bereavement/index";
 import {
   M17_OUTBOX_EVENTS,
+  buildM17EncounterSignedConsumer,
   createDrizzleCredentialStore,
   createDrizzleSchedulingSeamStore,
   mountSchedulingRoutes,
@@ -3995,6 +3999,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         db: dbHandle.db,
         orgs: outboxRelayOrgs,
         consumers: [
+          buildM7AdmissionActivatedConsumer({ db: dbHandle.db, outbox: m7OutboxPublisher }),
+          buildM7AdmissionDischargedConsumer({ db: dbHandle.db, outbox: m7OutboxPublisher }),
           buildM7IdgDecisionConsumer({ db: dbHandle.db, outbox: m7OutboxPublisher }),
           buildM11IdgDecisionConsumer({
             db: dbHandle.db,
@@ -4015,6 +4021,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             isAdmissionActive: (organizationId, admissionId) =>
               admissionIsActiveForOrg(dbHandle.db, organizationId, admissionId),
           }),
+          buildM8VisitClosedConsumer({ db: dbHandle.db, outbox: m8OutboxPublisher }),
+          buildM17EncounterSignedConsumer({ db: dbHandle.db, outbox: m17OutboxPublisher }),
           buildM10AdmissionWorkflowConsumer({
             db: dbHandle.db,
             outbox: m10OutboxPublisher,

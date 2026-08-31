@@ -8,10 +8,8 @@ import {
 } from "@wardenx/hope";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { AdmissionStatusReader, LocalDate } from "@wardenx/types";
-import { eq } from "drizzle-orm";
 
 const SCHED = schema.hopeTimepointSchedules;
-const LOC = schema.locations;
 
 export interface M10AdmissionWorkflowOutboxPort {
   publish(
@@ -54,16 +52,6 @@ function localDateOf(value: string, key: string): LocalDate {
   return date as LocalDate;
 }
 
-async function locationTimeZone(tx: DbClient, locationId: string | null | undefined): Promise<string> {
-  if (!locationId) return DEFAULT_ORG_TIME_ZONE;
-  const [row] = await tx
-    .select({ timezone: LOC.timezone })
-    .from(LOC)
-    .where(eq(LOC.id, locationId))
-    .limit(1);
-  return row?.timezone ?? DEFAULT_ORG_TIME_ZONE;
-}
-
 export function buildM10AdmissionWorkflowConsumer(deps: {
   readonly db: DbClient;
   readonly outbox: M10AdmissionWorkflowOutboxPort;
@@ -102,7 +90,7 @@ export function buildM10AdmissionWorkflowConsumer(deps: {
         { organizationId: event.organizationId, userId: "" },
         async (tx) => {
           const t = tx as DbClient;
-          const timeZone = await locationTimeZone(t, locationId);
+          const timeZone = summary.locationTimeZone ?? DEFAULT_ORG_TIME_ZONE;
           const descriptors =
             event.eventType === "m6.admission.activated"
               ? planAdmissionTimepoints({

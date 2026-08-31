@@ -60,6 +60,7 @@ export { M17_OUTBOX_EVENTS } from "./events-by-m17";
 export { M17_ALERT_PAYLOADS } from "./alerts-by-m17";
 export {
   type EncounterSignedConsumed,
+  buildM17EncounterSignedConsumer,
   type VisitCompletionPlan,
   M17_OUTBOX_SUBSCRIPTIONS,
   planVisitCompletionFromEncounter,

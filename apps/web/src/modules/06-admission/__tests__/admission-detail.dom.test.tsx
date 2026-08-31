@@ -21,7 +21,80 @@ function ok(data: unknown) {
   return { data, error: undefined, response: new Response(null, { status: 200 }) };
 }
 
-function clientFor(): ApiClient {
+interface ReadinessFixture {
+  admissionId: string;
+  status: string;
+  canActivate: boolean;
+  completed: number;
+  blockingRemaining: number;
+  requirements: Array<{
+    code: string;
+    label: string;
+    status: string;
+    blocking: boolean;
+    message?: string;
+    action?: string;
+  }>;
+}
+
+function readiness(overrides?: Partial<ReadinessFixture>): ReadinessFixture {
+  return { ...baseReadiness(), ...overrides };
+}
+
+function baseReadiness(): ReadinessFixture {
+  return {
+    admissionId,
+    status: "action_required",
+    canActivate: false,
+    completed: 4,
+    blockingRemaining: 2,
+    requirements: [
+      {
+        code: "patient_identity",
+        label: "Patient identity",
+        status: "complete",
+        blocking: true,
+      },
+      {
+        code: "admission_details",
+        label: "Admission details",
+        status: "complete",
+        blocking: true,
+      },
+      {
+        code: "patient_privacy",
+        label: "Patient privacy",
+        status: "complete",
+        blocking: true,
+      },
+      {
+        code: "notice_of_rights",
+        label: "Notice of Rights",
+        status: "action_required",
+        blocking: true,
+        message: "Notice of Rights acknowledgment is required.",
+        action: "ACKNOWLEDGE_NOR",
+      },
+      {
+        code: "election_statement",
+        label: "Election Statement",
+        status: "action_required",
+        blocking: true,
+        message: "Election Statement must be signed.",
+        action: "COMPLETE_ELECTION",
+      },
+      {
+        code: "cti",
+        label: "Certification of Terminal Illness",
+        status: "complete",
+        blocking: true,
+      },
+      { code: "f2f", label: "Face-to-Face", status: "not_applicable", blocking: false },
+    ],
+  };
+}
+
+function clientFor(readinessResponse = readiness()): ApiClient {
   return {
     GET: vi.fn(async (path: string) => {
       if (path === "/api/v1/admissions/{id}") {
@@ -38,56 +111,7 @@ function clientFor(): ApiClient {
         });
       }
       if (path === "/api/v1/admissions/{id}/readiness") {
-        return ok({
-          admissionId,
-          status: "action_required",
-          canActivate: false,
-          completed: 4,
-          blockingRemaining: 2,
-          requirements: [
-            {
-              code: "patient_identity",
-              label: "Patient identity",
-              status: "complete",
-              blocking: true,
-            },
-            {
-              code: "admission_details",
-              label: "Admission details",
-              status: "complete",
-              blocking: true,
-            },
-            {
-              code: "patient_privacy",
-              label: "Patient privacy",
-              status: "complete",
-              blocking: true,
-            },
-            {
-              code: "notice_of_rights",
-              label: "Notice of Rights",
-              status: "action_required",
-              blocking: true,
-              message: "Notice of Rights acknowledgment is required.",
-              action: "ACKNOWLEDGE_NOR",
-            },
-            {
-              code: "election_statement",
-              label: "Election Statement",
-              status: "action_required",
-              blocking: true,
-              message: "Election Statement must be signed.",
-              action: "COMPLETE_ELECTION",
-            },
-            {
-              code: "cti",
-              label: "Certification of Terminal Illness",
-              status: "complete",
-              blocking: true,
-            },
-            { code: "f2f", label: "Face-to-Face", status: "not_applicable", blocking: false },
-          ],
-        });
+        return ok(readinessResponse);
       }
       if (path === "/api/v1/admissions/{admissionId}/hope") {
         return ok({
@@ -114,6 +138,24 @@ function clientFor(): ApiClient {
       }
       if (path === "/api/v1/admissions/{id}/election-periods")
         return ok({ items: [{ id: "period-1", state: "active", version: 1 }], nextCursor: null });
+      if (path === "/api/v1/patients/{patientId}/election-certification")
+        return ok({
+          admission: null,
+          periods: [
+            {
+              id: "period-1",
+              state: "pending",
+              version: 1,
+              sequenceNumber: 1,
+              periodKind: "ninety_day",
+              effectiveAt: null,
+              scheduledEndAt: null,
+              actualEndAt: null,
+              electionStatement: null,
+              cti: null,
+            },
+          ],
+        });
       if (path === "/api/v1/admissions/{id}/compliance-windows")
         return ok({ items: [], nextCursor: null });
       return ok({ items: [], nextCursor: null });
@@ -161,5 +203,53 @@ describe("Admission intake workspace", () => {
       "/api/v1/admissions/{id}/readiness",
       expect.objectContaining({ params: { path: { id: admissionId } } }),
     );
+  });
+
+  it("surfaces guided actions for admission details, election, and CTI blockers", async () => {
+    const client = clientFor(
+      readiness({
+        completed: 3,
+        blockingRemaining: 3,
+        requirements: [
+          {
+            code: "admission_details",
+            label: "Admission details",
+            status: "action_required",
+            blocking: true,
+            message: "Missing admission date, terminal diagnosis, hospice medical director.",
+            action: "COMPLETE_ADMISSION_DETAILS",
+          },
+          {
+            code: "election_statement",
+            label: "Election Statement",
+            status: "action_required",
+            blocking: true,
+            message: "Election Statement is required.",
+            action: "COMPLETE_ELECTION",
+          },
+          {
+            code: "cti",
+            label: "Certification of Terminal Illness",
+            status: "action_required",
+            blocking: true,
+            message: "Certification of Terminal Illness is required.",
+            action: "REVIEW_CTI",
+          },
+        ],
+      }),
+    );
+    renderWithShell(client);
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Intake" })).toBeTruthy(),
+    );
+
+    expect(
+      screen.getAllByRole("button", { name: "Complete admission details" }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole("button", { name: "Create Election Statement" }).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Create CTI" }).length).toBeGreaterThan(0);
   });
 });

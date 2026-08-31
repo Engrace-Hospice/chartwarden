@@ -32,6 +32,9 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  request.context.attributes.membershipId =
+    typeof user === "string" && user.length > 0 ? `${user}_membership` : undefined;
+  request.context.attributes.stepUpRecent = request.headers["x-test-step-up"] === "true";
 }
 
 const ORG = "org_a";
@@ -96,6 +99,7 @@ function makeServer(
     isInCaseload: options.isInCaseload ?? (async () => true),
   });
   for (const [name, fn] of Object.entries(predicates)) registry.register(name, fn);
+  registry.register("step_up_recent", async (context) => context.attributes.stepUpRecent === true);
   registerAbacRegistry(registry);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
@@ -103,7 +107,12 @@ function makeServer(
   return { app, backend };
 }
 
-const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn_case_manager" };
+const RN = {
+  "x-test-user": "rn_1",
+  "x-test-org": ORG,
+  "x-test-roles": "rn_case_manager,hospice_physician",
+  "x-test-step-up": "true",
+};
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
 
 beforeEach(() => {
@@ -354,6 +363,14 @@ describe("M7-T05 — version sign-off quorum (§2.3 / D5)", () => {
     expect(finalize.statusCode).toBe(200);
     expect(finalize.json().status).toBe("in_review");
 
+    const readiness = await app.inject({
+      method: "GET",
+      url: `/api/v1/care-plans/${planId}/readiness`,
+      headers: RN,
+    });
+    expect(readiness.statusCode).toBe(200);
+    expect(readiness.json().canSign).toBe(true);
+
     // first signer (physician|NP slot).
     const sig1 = await app.inject({
       method: "POST",
@@ -378,5 +395,44 @@ describe("M7-T05 — version sign-off quorum (§2.3 / D5)", () => {
       status: string;
     };
     expect(plan.status).toBe("active");
+  });
+
+  it("rejects finalize before an active terminal problem exists", async () => {
+    const { app } = makeServer();
+    const boot = await app.inject({
+      method: "POST",
+      url: `/api/v1/patients/${PATIENT_NEW}/care-plan`,
+      headers: RN,
+      payload: { admissionId: ADMISSION },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/care-plans/${boot.json().id}/versions/${boot.json().initialVersionId}/finalize`,
+      headers: RN,
+      payload: { ifVersion: 1 },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("CARE_PLAN_NOT_READY");
+    expect(res.json().error.details).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "TERMINAL_PROBLEM_REQUIRED" })]),
+    );
+  });
+
+  it("rejects a second open revision while the initial draft is open", async () => {
+    const { app } = makeServer();
+    const boot = await app.inject({
+      method: "POST",
+      url: `/api/v1/patients/${PATIENT_NEW}/care-plan`,
+      headers: RN,
+      payload: { admissionId: ADMISSION },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/care-plans/${boot.json().id}/versions`,
+      headers: RN,
+      payload: { kind: "interim_revision" },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe("OPEN_VERSION_EXISTS");
   });
 });

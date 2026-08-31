@@ -233,6 +233,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     }),
     declaredConsumers: [
       "m14",
+      "m7",
       "m16",
       "m22",
       "m23",

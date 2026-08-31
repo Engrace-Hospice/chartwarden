@@ -227,6 +227,8 @@ export interface AdmissionSummary {
    * reader always projects it.
    */
   readonly locationId?: string | null;
+  /** Location-local time zone resolved by M6 for downstream scheduling consumers. */
+  readonly locationTimeZone?: string | null;
   readonly status: AdmissionStatusValue;
   readonly admissionAt: LocalDate;
   readonly activatedAt: LocalDate | null;

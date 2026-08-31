@@ -3,11 +3,11 @@
 //
 // The `apply-idg-decision` worker is M7's subscriber to Module 14's `idg.decision_recorded` outbox
 // event. When an IDG meeting records a clinically-actionable decision (add/update/discontinue a
-// problem/goal/intervention), M14 publishes a typed {@link IdgDecisionPayload}; this worker opens a
-// draft `idg_review` version (v2) if none is open, applies the mutations marking `idg_meeting_id`, and
-// hands the draft to the IDG coordinator as "auto-applied — review and finalize" (the coordinator
-// routes it for signing — the worker NEVER signs/finalizes). Per §4.8 the consumer is NOT a published
-// seam: it composes M7's own element + version services so the lifecycle machines stay authoritative.
+// problem/goal/intervention), M14 publishes a typed {@link IdgDecisionPayload}; the live worker opens a
+// draft `idg_review` version if none is open and persists the mutations as a governed proposal. The
+// active care-plan rows are updated only after the IDG review reaches quorum and publishes. Per §4.8 the
+// consumer is NOT a published seam: it composes M7's own element + version services so the lifecycle
+// machines stay authoritative.
 //
 // The worker runs under a restricted `system` actor holding only `care_plan.idg_revise` (T4 STRIDE): it
 // validates the payload against the `IdgDecisionPayload` TypeBox schema (runtime parse at the boot
@@ -35,10 +35,10 @@ import type {
 // ── The facts the worker reads before deciding (resolved by the live consumer from M7 services) ───────
 
 /** Everything the worker must read before it can decide, surfaced as data so {@link decideIdgDecision}
- * stays pure. The Wave-F consumer resolves these from the `care_plan.idg_decision_applied` audit log
+ * stays pure. The Wave-F consumer resolves these from the durable IDG proposal/application table
  * (idempotency), the care_plan root row (status), the open draft version, and the snapshot's problems. */
 export interface IdgApplyFacts {
-  /** A prior `care_plan.idg_decision_applied` audit row already records this `idgDecisionId` (§11 D4). */
+  /** A prior durable IDG proposal/application row already records this `idgDecisionId` (§11 D4). */
   readonly alreadyApplied: boolean;
   /** The plan root accepts revisions only while `active` (a discharged plan is closed; D2). */
   readonly planActive: boolean;

@@ -418,7 +418,7 @@ const MESSAGE_BTN = {
 // §6.2 Lantern Card: surface-lowest + radius-xl + shadow-soft (No-Line), Fraunces card title.
 function Card({ title, children }: { title: ReactNode; children: ReactNode }): JSX.Element {
   return (
-    <section style={{ ...cardSurface, padding: "1.25rem 1.5rem" }}>
+    <section className="wx-patient-card" style={{ ...cardSurface, padding: "1.25rem 1.5rem" }}>
       <h2
         style={{
           margin: "0 0 0.75rem",
@@ -525,107 +525,112 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
     <>
       <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Demographics &amp; Identifiers</h2>
 
-      <h3 style={h3}>Name</h3>
-      <dl style={grid}>
-        <dt style={dt}>Legal name</dt>
-        <dd style={dd}>
-          {[d.legalLastName, [d.legalFirstName, d.legalMiddleName].filter(Boolean).join(" ")]
-            .filter(Boolean)
-            .join(", ")}
-          {d.legalNameSuffix ? ` ${d.legalNameSuffix}` : ""}
-        </dd>
-        <dt style={dt}>Aliases</dt>
-        <dd style={dd}>
-          {d.aliases.length === 0
-            ? "—"
-            : d.aliases
-                .map(
-                  (a) =>
-                    `${a.fullName ?? [a.firstName, a.lastName].filter(Boolean).join(" ")} (${a.kind})`,
-                )
-                .join("; ")}
-        </dd>
-      </dl>
+      <div style={cardGrid}>
+        <Card title="Name">
+          <dl style={grid}>
+            <dt style={dt}>Legal name</dt>
+            <dd style={dd}>
+              {[d.legalLastName, [d.legalFirstName, d.legalMiddleName].filter(Boolean).join(" ")]
+                .filter(Boolean)
+                .join(", ")}
+              {d.legalNameSuffix ? ` ${d.legalNameSuffix}` : ""}
+            </dd>
+            <dt style={dt}>Aliases</dt>
+            <dd style={dd}>
+              {d.aliases.length === 0
+                ? "—"
+                : d.aliases
+                    .map(
+                      (a) =>
+                        `${a.fullName ?? [a.firstName, a.lastName].filter(Boolean).join(" ")} (${a.kind})`,
+                    )
+                    .join("; ")}
+            </dd>
+          </dl>
+        </Card>
 
-      <h3 style={h3}>Demographics</h3>
-      <dl style={grid}>
-        <dt style={dt}>Date of birth</dt>
-        <dd style={dd}>{d.dob}</dd>
-        <dt style={dt}>Sex assigned at birth</dt>
-        <dd style={dd}>{orDash(d.sexAssignedAtBirth)}</dd>
-        <dt style={dt}>Gender identity</dt>
-        <dd style={dd}>{orDash(d.genderIdentityCode)}</dd>
-        <dt style={dt}>Sexual orientation</dt>
-        <dd style={dd}>{orDash(d.sexualOrientationCode)}</dd>
-        <dt style={dt}>Pronouns</dt>
-        <dd style={dd}>{orDash(d.pronounsCode)}</dd>
-        <dt style={dt}>Marital status</dt>
-        <dd style={dd}>{orDash(d.maritalStatusCode)}</dd>
-        <dt style={dt}>Race</dt>
-        <dd style={dd}>{codes(d.raceCodes)}</dd>
-        <dt style={dt}>Ethnicity</dt>
-        <dd style={dd}>{codes(d.ethnicityCodes)}</dd>
-        <dt style={dt}>Preferred language</dt>
-        <dd style={dd}>{orDash(d.preferredLanguageCode)}</dd>
-      </dl>
-      <p style={{ color: "var(--color-muted)", fontSize: "0.78rem", margin: "0.3rem 0 0" }}>
-        SOGI / race / ethnicity values are USCDI codes; M38 resolves them to display labels.
-      </p>
+        <Card title="Demographics">
+          <dl style={grid}>
+            <dt style={dt}>Date of birth</dt>
+            <dd style={dd}>{d.dob}</dd>
+            <dt style={dt}>Sex assigned at birth</dt>
+            <dd style={dd}>{orDash(d.sexAssignedAtBirth)}</dd>
+            <dt style={dt}>Gender identity</dt>
+            <dd style={dd}>{orDash(d.genderIdentityCode)}</dd>
+            <dt style={dt}>Sexual orientation</dt>
+            <dd style={dd}>{orDash(d.sexualOrientationCode)}</dd>
+            <dt style={dt}>Pronouns</dt>
+            <dd style={dd}>{orDash(d.pronounsCode)}</dd>
+            <dt style={dt}>Marital status</dt>
+            <dd style={dd}>{orDash(d.maritalStatusCode)}</dd>
+            <dt style={dt}>Race</dt>
+            <dd style={dd}>{codes(d.raceCodes)}</dd>
+            <dt style={dt}>Ethnicity</dt>
+            <dd style={dd}>{codes(d.ethnicityCodes)}</dd>
+            <dt style={dt}>Preferred language</dt>
+            <dd style={dd}>{orDash(d.preferredLanguageCode)}</dd>
+          </dl>
+          <p style={{ color: "var(--color-muted)", fontSize: "0.78rem", margin: "0.75rem 0 0" }}>
+            SOGI / race / ethnicity values are USCDI codes; M38 resolves them to display labels.
+          </p>
+        </Card>
+      </div>
 
-      <h3 style={h3}>Identifiers</h3>
-      <table
-        style={{ borderCollapse: "collapse", fontSize: "0.85rem", width: "100%", maxWidth: 560 }}
-      >
-        <thead>
-          <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
-            <th style={th}>Type</th>
-            <th style={th}>Value</th>
-            <th style={th}>Issuer</th>
-          </tr>
-        </thead>
-        <tbody>
-          {identifiers.map((i) => (
-            <tr
-              key={i.id}
-              style={{
-                borderTop:
-                  "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
-              }}
-            >
-              <td style={td}>
-                {i.kind.toUpperCase()}
-                {i.kind === "mrn" ? (
-                  <span
-                    style={{ color: "var(--color-muted)" }}
-                    title="MRN is immutable after creation"
-                  >
-                    {" "}
-                    · immutable
-                  </span>
-                ) : null}
-              </td>
-              <td style={td}>
-                {i.sensitive ? (
-                  // §3.3/§8 masked identifier — read-only mask (no onReveal until the M5 SSN
-                  // decryption follow-up wires the phi.read_ssn step-up).
-                  <MaskedIdentifier
-                    value="" // full value lives server-side (envelope-encrypted); never sent until reveal
-                    masked={`xxx-xx-${i.last4 ?? "####"}`}
-                    label={`${i.kind.toUpperCase()} (masked)`}
-                  />
-                ) : (
-                  orDash(i.value)
-                )}
-              </td>
-              <td style={td}>{orDash(i.issuer)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p style={{ color: "var(--color-muted)", fontSize: "0.78rem", margin: "0.4rem 0 0" }}>
-        SSN / state-ID are envelope-encrypted and shown masked; full reveal requires the
-        <code style={{ margin: "0 0.25rem" }}>phi.read_ssn</code> permission.
-      </p>
+      <Card title="Identifiers">
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ borderCollapse: "collapse", fontSize: "0.85rem", width: "100%" }}>
+            <thead>
+              <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
+                <th style={th}>Type</th>
+                <th style={th}>Value</th>
+                <th style={th}>Issuer</th>
+              </tr>
+            </thead>
+            <tbody>
+              {identifiers.map((i) => (
+                <tr
+                  key={i.id}
+                  style={{
+                    borderTop:
+                      "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
+                  }}
+                >
+                  <td style={td}>
+                    {i.kind.toUpperCase()}
+                    {i.kind === "mrn" ? (
+                      <span
+                        style={{ color: "var(--color-muted)" }}
+                        title="MRN is immutable after creation"
+                      >
+                        {" "}
+                        · immutable
+                      </span>
+                    ) : null}
+                  </td>
+                  <td style={td}>
+                    {i.sensitive ? (
+                      // §3.3/§8 masked identifier — read-only mask (no onReveal until the M5 SSN
+                      // decryption follow-up wires the phi.read_ssn step-up).
+                      <MaskedIdentifier
+                        value="" // full value lives server-side (envelope-encrypted); never sent until reveal
+                        masked={`xxx-xx-${i.last4 ?? "####"}`}
+                        label={`${i.kind.toUpperCase()} (masked)`}
+                      />
+                    ) : (
+                      orDash(i.value)
+                    )}
+                  </td>
+                  <td style={td}>{orDash(i.issuer)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p style={{ color: "var(--color-muted)", fontSize: "0.78rem", margin: "0.75rem 0 0" }}>
+          SSN / state-ID are envelope-encrypted and shown masked; full reveal requires the
+          <code style={{ margin: "0 0.25rem" }}>phi.read_ssn</code> permission.
+        </p>
+      </Card>
     </>
   );
 }
@@ -754,225 +759,219 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
     <>
       <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Addresses</h2>
 
-      <h3 style={h3}>Current</h3>
-      {current.length === 0 ? (
-        <p
-          style={{
-            color: "var(--color-on-surface-variant)",
-            fontSize: "0.88rem",
-            margin: "0.25rem 0 0",
-          }}
-        >
-          No current address on file.
-        </p>
-      ) : (
-        <ul
-          style={{
-            listStyle: "none",
-            margin: "0.25rem 0 0",
-            padding: 0,
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.5rem",
-          }}
-        >
-          {current.map((a) => (
-            <li
-              key={a.id}
+      <div style={cardGrid}>
+        <Card title="Current">
+          {current.length === 0 ? (
+            <p
               style={{
-                border:
-                  "1px solid color-mix(in srgb, var(--color-outline-variant) 50%, transparent)",
-                borderRadius: "0.5rem",
-                padding: "0.6rem 0.75rem",
+                color: "var(--color-on-surface-variant)",
                 fontSize: "0.88rem",
+                margin: "0.25rem 0 0",
               }}
             >
-              <div
+              No current address on file.
+            </p>
+          ) : (
+            <ul
+              style={{
+                listStyle: "none",
+                margin: "0.25rem 0 0",
+                padding: 0,
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.5rem",
+              }}
+            >
+              {current.map((a) => (
+                <li key={a.id} style={addressCard}>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "0.4rem",
+                      alignItems: "center",
+                      marginBottom: "0.2rem",
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, textTransform: "capitalize" }}>{a.kind}</span>
+                    {a.isPrimary ? <span style={badge("primary")}>primary</span> : null}
+                    {a.geocodeLat && a.geocodeLng ? (
+                      <span style={badge("success")} title={`${a.geocodeLat}, ${a.geocodeLng}`}>
+                        geocoded
+                      </span>
+                    ) : (
+                      <span
+                        style={badge("neutral")}
+                        title="The M5 geocode job fills coordinates asynchronously"
+                      >
+                        geocoding…
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <AddressLine a={a} />
+                  </div>
+                  <div
+                    style={{
+                      color: "var(--color-muted)",
+                      fontSize: "0.78rem",
+                      marginTop: "0.2rem",
+                    }}
+                  >
+                    since {a.effectiveFrom}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card title="Add address">
+          <form onSubmit={submit} style={addressForm}>
+            <input
+              required
+              placeholder="Street address"
+              value={form.line1}
+              onChange={(e) => setForm({ ...form, line1: e.target.value })}
+              style={input}
+            />
+            <input
+              placeholder="Apt / suite (optional)"
+              value={form.line2}
+              onChange={(e) => setForm({ ...form, line2: e.target.value })}
+              style={input}
+            />
+            <div style={{ display: "flex", gap: "0.4rem" }}>
+              <input
+                required
+                placeholder="City"
+                value={form.city}
+                onChange={(e) => setForm({ ...form, city: e.target.value })}
+                style={{ ...input, flex: 2 }}
+              />
+              <input
+                placeholder="ST"
+                maxLength={2}
+                value={form.state}
+                onChange={(e) => setForm({ ...form, state: e.target.value })}
+                style={{ ...input, flex: 1, width: 60 }}
+              />
+              <input
+                required
+                placeholder="ZIP"
+                value={form.postalCode}
+                onChange={(e) => setForm({ ...form, postalCode: e.target.value })}
+                style={{ ...input, flex: 1 }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: "0.6rem", alignItems: "center" }}>
+              <select
+                value={form.kind}
+                onChange={(e) => setForm({ ...form, kind: e.target.value })}
+                style={input}
+              >
+                {ADDRESS_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
+                ))}
+              </select>
+              <label
                 style={{
                   display: "flex",
-                  gap: "0.4rem",
+                  gap: "0.3rem",
                   alignItems: "center",
-                  marginBottom: "0.2rem",
+                  color: "var(--color-on-surface)",
                 }}
               >
-                <span style={{ fontWeight: 600, textTransform: "capitalize" }}>{a.kind}</span>
-                {a.isPrimary ? <span style={badge("primary")}>primary</span> : null}
-                {a.geocodeLat && a.geocodeLng ? (
-                  <span style={badge("success")} title={`${a.geocodeLat}, ${a.geocodeLng}`}>
-                    geocoded
-                  </span>
-                ) : (
-                  <span
-                    style={badge("neutral")}
-                    title="The M5 geocode job fills coordinates asynchronously"
-                  >
-                    geocoding…
-                  </span>
-                )}
-              </div>
-              <div>
-                <AddressLine a={a} />
-              </div>
-              <div
-                style={{ color: "var(--color-muted)", fontSize: "0.78rem", marginTop: "0.2rem" }}
+                <input
+                  type="checkbox"
+                  checked={form.isPrimary}
+                  onChange={(e) => setForm({ ...form, isPrimary: e.target.checked })}
+                />
+                Set as primary
+              </label>
+            </div>
+            {form.isPrimary && current.some((a) => a.isPrimary) ? (
+              <p style={{ color: "var(--color-warning)", fontSize: "0.78rem", margin: 0 }}>
+                The current primary address will be closed and moved to history.
+              </p>
+            ) : null}
+            {saveError ? (
+              <p
+                role="alert"
+                style={{ color: "var(--color-error)", fontSize: "0.8rem", margin: 0 }}
               >
-                since {a.effectiveFrom}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <h3 style={h3}>Add address</h3>
-      <form
-        onSubmit={submit}
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.4rem",
-          maxWidth: 420,
-          fontSize: "0.85rem",
-        }}
-      >
-        <input
-          required
-          placeholder="Street address"
-          value={form.line1}
-          onChange={(e) => setForm({ ...form, line1: e.target.value })}
-          style={input}
-        />
-        <input
-          placeholder="Apt / suite (optional)"
-          value={form.line2}
-          onChange={(e) => setForm({ ...form, line2: e.target.value })}
-          style={input}
-        />
-        <div style={{ display: "flex", gap: "0.4rem" }}>
-          <input
-            required
-            placeholder="City"
-            value={form.city}
-            onChange={(e) => setForm({ ...form, city: e.target.value })}
-            style={{ ...input, flex: 2 }}
-          />
-          <input
-            placeholder="ST"
-            maxLength={2}
-            value={form.state}
-            onChange={(e) => setForm({ ...form, state: e.target.value })}
-            style={{ ...input, flex: 1, width: 60 }}
-          />
-          <input
-            required
-            placeholder="ZIP"
-            value={form.postalCode}
-            onChange={(e) => setForm({ ...form, postalCode: e.target.value })}
-            style={{ ...input, flex: 1 }}
-          />
-        </div>
-        <div style={{ display: "flex", gap: "0.6rem", alignItems: "center" }}>
-          <select
-            value={form.kind}
-            onChange={(e) => setForm({ ...form, kind: e.target.value })}
-            style={input}
-          >
-            {ADDRESS_KINDS.map((k) => (
-              <option key={k} value={k}>
-                {k}
-              </option>
-            ))}
-          </select>
-          <label
-            style={{
-              display: "flex",
-              gap: "0.3rem",
-              alignItems: "center",
-              color: "var(--color-on-surface)",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={form.isPrimary}
-              onChange={(e) => setForm({ ...form, isPrimary: e.target.checked })}
-            />
-            Set as primary
-          </label>
-        </div>
-        {form.isPrimary && current.some((a) => a.isPrimary) ? (
-          <p style={{ color: "var(--color-warning)", fontSize: "0.78rem", margin: 0 }}>
-            The current primary address will be closed and moved to history.
-          </p>
-        ) : null}
-        {saveError ? (
-          <p role="alert" style={{ color: "var(--color-error)", fontSize: "0.8rem", margin: 0 }}>
-            {saveError}
-          </p>
-        ) : null}
-        <button
-          type="submit"
-          disabled={saving}
-          style={{
-            alignSelf: "flex-start",
-            padding: "0.4rem 0.9rem",
-            borderRadius: "9999px",
-            border: "none",
-            background: "var(--color-primary)",
-            color: "var(--color-on-primary)",
-            opacity: saving ? 0.6 : 1,
-            cursor: saving ? "default" : "pointer",
-            fontSize: "0.85rem",
-            fontWeight: 600,
-          }}
-        >
-          {saving ? "Saving…" : "Add address"}
-        </button>
-      </form>
+                {saveError}
+              </p>
+            ) : null}
+            <button
+              type="submit"
+              disabled={saving}
+              style={{
+                alignSelf: "flex-start",
+                padding: "0.4rem 0.9rem",
+                borderRadius: "9999px",
+                border: "none",
+                background: "var(--color-primary)",
+                color: "var(--color-on-primary)",
+                opacity: saving ? 0.6 : 1,
+                cursor: saving ? "default" : "pointer",
+                fontSize: "0.85rem",
+                fontWeight: 600,
+              }}
+            >
+              {saving ? "Saving…" : "Add address"}
+            </button>
+          </form>
+        </Card>
+      </div>
 
       {history.length > 0 ? (
-        <>
-          <h3 style={h3}>History</h3>
-          <table
-            style={{
-              borderCollapse: "collapse",
-              fontSize: "0.82rem",
-              width: "100%",
-              maxWidth: 640,
-            }}
-          >
-            <thead>
-              <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
-                <th style={th}>Type</th>
-                <th style={th}>Address</th>
-                <th style={th}>From</th>
-                <th style={th}>To</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((a) => (
-                <tr
-                  key={a.id}
-                  style={{
-                    borderTop:
-                      "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
-                    color: "var(--color-on-surface-variant)",
-                  }}
-                >
-                  <td style={td}>
-                    {a.kind}
-                    {a.isPrimary ? (
-                      <span style={{ color: "var(--color-muted)" }}> · was primary</span>
-                    ) : null}
-                  </td>
-                  <td style={td}>
-                    <AddressLine a={a} />
-                  </td>
-                  <td style={td}>{a.effectiveFrom}</td>
-                  <td style={td}>{a.effectiveTo ?? "—"}</td>
+        <Card title="History">
+          <div style={{ overflowX: "auto" }}>
+            <table
+              style={{
+                borderCollapse: "collapse",
+                fontSize: "0.82rem",
+                width: "100%",
+                maxWidth: 640,
+              }}
+            >
+              <thead>
+                <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
+                  <th style={th}>Type</th>
+                  <th style={th}>Address</th>
+                  <th style={th}>From</th>
+                  <th style={th}>To</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
+              </thead>
+              <tbody>
+                {history.map((a) => (
+                  <tr
+                    key={a.id}
+                    style={{
+                      borderTop:
+                        "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
+                      color: "var(--color-on-surface-variant)",
+                    }}
+                  >
+                    <td style={td}>
+                      {a.kind}
+                      {a.isPrimary ? (
+                        <span style={{ color: "var(--color-muted)" }}> · was primary</span>
+                      ) : null}
+                    </td>
+                    <td style={td}>
+                      <AddressLine a={a} />
+                    </td>
+                    <td style={td}>{a.effectiveFrom}</td>
+                    <td style={td}>{a.effectiveTo ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       ) : null}
       <p style={{ color: "var(--color-muted)", fontSize: "0.78rem", margin: "0.6rem 0 0" }}>
         Addresses are append-only (D5): a change keeps the prior row as history rather than
@@ -1675,9 +1674,29 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
   );
 }
 
+const cardGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 22rem), 1fr))",
+  gap: "1rem",
+  alignItems: "start",
+  marginBottom: "1rem",
+} as const;
+const addressCard = {
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 50%, transparent)",
+  borderRadius: "var(--radius-md)",
+  padding: "0.7rem 0.8rem",
+  background: "var(--color-surface)",
+  fontSize: "0.88rem",
+} as const;
+const addressForm = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.55rem",
+  fontSize: "0.85rem",
+} as const;
 const input = {
   padding: "0.35rem 0.5rem",
-  borderRadius: "0.375rem",
+  borderRadius: "var(--radius-md)",
   border: "1px solid color-mix(in srgb, var(--color-outline-variant) 60%, transparent)",
   fontSize: "0.85rem",
 } as const;

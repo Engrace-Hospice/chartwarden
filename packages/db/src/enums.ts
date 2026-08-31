@@ -981,6 +981,21 @@ export const carePlanVersionKind = pgEnum("care_plan_version_kind", [
   "discharge",
 ]);
 
+/** `care_plan_idg_proposal_status` — M14 decision proposal state in M7's governed review flow. */
+export const carePlanIdgProposalStatus = pgEnum("care_plan_idg_proposal_status", [
+  "proposed",
+  "in_review",
+  "applied",
+  "conflict",
+]);
+
+/** `care_plan_idg_proposed_change_status` — per-mutation application state. */
+export const carePlanIdgProposedChangeStatus = pgEnum("care_plan_idg_proposed_change_status", [
+  "proposed",
+  "applied",
+  "conflict",
+]);
+
 /** `problem_kind` — terminal/related/unrelated (drives M23 claim ICD-10 sequencing; §3.2). */
 export const problemKind = pgEnum("problem_kind", ["terminal", "related", "unrelated"]);
 

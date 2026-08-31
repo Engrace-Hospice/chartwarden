@@ -125,6 +125,8 @@ describe("M17-T09 §7 workflow acceptance", () => {
     const enRoute = svc.startVisit(ORG, "rn", visit.id, undefined, false);
     expect(enRoute.status).toBe("en_route");
     expect(eventNames(svc.drainEvents())).toContain("m17.visit.started");
+    const inVisit = svc.arriveVisit(ORG, "rn", visit.id, undefined, false);
+    expect(inVisit.status).toBe("in_visit");
 
     // On `m8.encounter.signed` the §4.4 bidirectional consumer completes the linked in_visit visit (system actor).
     const plan = planVisitCompletionFromEncounter(
@@ -136,6 +138,16 @@ describe("M17-T09 §7 workflow acceptance", () => {
       visitId: visit.id,
       event: { type: "complete", isSystemActor: true },
     });
+  });
+
+  it("§7.3 — generic edit refuses schedule-time changes so reschedule lineage is preserved", () => {
+    const svc = service();
+    const visit = svc.createVisit(ORG, "sched_1", ROUTINE_VISIT);
+    expect(() =>
+      svc.editVisit(ORG, "sched_1", visit.id, {
+        scheduledStartedAt: "2026-06-22T16:00:00.000Z",
+      }),
+    ).toThrowError(/reschedule workflow/);
   });
 
   it("§7.3 — a reschedule mints a linked successor visit and bumps the optimistic-concurrency version", () => {

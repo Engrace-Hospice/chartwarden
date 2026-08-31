@@ -65,6 +65,8 @@ interface VersionRecord {
   requiredSignerSet: RequiredSignerSet;
   signatures: { signerRole: CarePlanSignerRole; signedAt: string }[];
   signedAt: string | null;
+  stateSnapshot?: unknown;
+  patientUnderstandingText?: string | null;
   version: number;
 }
 interface ProblemRecord {
@@ -148,7 +150,18 @@ export interface CarePlanAbacResolver {
 
 /** The route-facing service the §4.1 handlers compose over (in-memory slice here; Drizzle in prod). */
 export interface CarePlanRouteService {
-  bootstrapCarePlan(org: string, patientId: string, admissionId: string): Promise<unknown>;
+  bootstrapCarePlan(
+    org: string,
+    patientId: string,
+    admissionId: string,
+    admissionActivatedAt?: string,
+  ): Promise<unknown>;
+  closeCarePlanForAdmission(
+    org: string,
+    admissionId: string,
+    reason: string,
+    dischargedAt: string,
+  ): Promise<unknown>;
   /** Per-caller read (§7.6): pass `viewer` to omit SUD problems the caller may not see (fail-closed). */
   getCarePlanForPatient(
     org: string,
@@ -158,6 +171,9 @@ export interface CarePlanRouteService {
   getSummary(org: string, planId: string, viewer?: CarePlanViewer): Promise<unknown>;
   listVersions(org: string, planId: string): Promise<unknown>;
   getVersion(org: string, planId: string, versionId: string): Promise<unknown | null>;
+  getReadiness(org: string, planId: string): Promise<unknown>;
+  getProposedChanges(org: string, planId: string, versionId: string): Promise<unknown>;
+  getReviewStatus(org: string, planId: string, now?: string): Promise<unknown>;
   createVersion(
     org: string,
     planId: string,
@@ -178,6 +194,8 @@ export interface CarePlanRouteService {
     ifVersion: number,
     signerRole: CarePlanSignerRole,
     at: string,
+    actor?: CarePlanSignActor,
+    patientUnderstandingText?: string | null,
   ): Promise<unknown>;
   returnVersionToDraft(
     org: string,
@@ -234,6 +252,11 @@ export interface CarePlanRouteService {
     ifVersion: number,
     reason: string,
   ): Promise<ElementResult>;
+}
+
+export interface CarePlanSignActor {
+  readonly userId: string;
+  readonly membershipId: string;
 }
 
 export interface CreateProblemInput {
@@ -376,13 +399,62 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
     requiredSignerSet: v.requiredSignerSet,
     signatures: v.signatures,
     signedAt: v.signedAt,
+    stateSnapshot: v.stateSnapshot ?? null,
+    patientUnderstandingText: v.patientUnderstandingText ?? null,
     version: v.version,
   });
+
+  const terminalProblemBlocker = {
+    code: "TERMINAL_PROBLEM_REQUIRED",
+    message: "at least one active terminal problem is required",
+  } as const;
+
+  const openVersionBlocker = {
+    code: "OPEN_VERSION_REQUIRED",
+    message: "no draft or in-review version is open",
+  } as const;
+
+  function activeTerminalProblemCount(planId: string): number {
+    return [...problems.values()].filter(
+      (p) => p.planId === planId && p.kind === "terminal" && p.status === "active",
+    ).length;
+  }
+
+  function missingSignerSlots(
+    set: RequiredSignerSet,
+    signedRoles: ReadonlyArray<CarePlanSignerRole>,
+  ): RequiredSignerSet {
+    const remaining = [...signedRoles];
+    const missing: { role: string; count: number }[] = [];
+    for (const slot of set) {
+      let need = slot.count;
+      for (let i = remaining.length - 1; i >= 0 && need > 0; i--) {
+        if (slot.role.split("|").includes(remaining[i]!)) {
+          remaining.splice(i, 1);
+          need--;
+        }
+      }
+      if (need > 0) missing.push({ role: slot.role, count: need });
+    }
+    return missing;
+  }
+
+  function requireReadyToFinalize(v: VersionRecord): void {
+    if (v.kind === "initial" && activeTerminalProblemCount(v.planId) < 1) {
+      throw new CarePlanStateError("CARE_PLAN_NOT_READY", "care plan is not ready to finalize", [
+        terminalProblemBlocker,
+      ]);
+    }
+  }
 
   const service: CarePlanRouteService = {
     async bootstrapCarePlan(org, patientId, admissionId) {
       for (const p of plans.values()) {
-        if (p.organizationId === org && p.patientId === patientId && p.status !== "discharged") {
+        if (
+          p.organizationId === org &&
+          p.admissionId === admissionId &&
+          p.status !== "discharged"
+        ) {
           throw new CarePlanAlreadyExistsError();
         }
       }
@@ -409,9 +481,23 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
         requiredSignerSet: resolveRequiredSignerSet("initial"),
         signatures: [],
         signedAt: null,
+        stateSnapshot: null,
+        patientUnderstandingText: null,
         version: 1,
       });
       return { id, patientId, status: "draft", initialVersionId: vId, version: 1 };
+    },
+
+    async closeCarePlanForAdmission(org, admissionId, reason, dischargedAt) {
+      const row = [...plans.values()].find(
+        (p) => p.organizationId === org && p.admissionId === admissionId,
+      );
+      if (!row || row.status === "discharged") {
+        return { closed: false, admissionId, reason, dischargedAt };
+      }
+      row.status = "discharged";
+      row.version += 1;
+      return { closed: true, id: row.id, admissionId, reason, dischargedAt, version: row.version };
     },
 
     async getCarePlanForPatient(org, patientId, viewer) {
@@ -491,8 +577,86 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
       return versionDto(version(org, planId, versionId));
     },
 
+    async getReadiness(org, planId) {
+      plan(org, planId);
+      const open = [...versions.values()]
+        .filter((v) => v.planId === planId && (v.status === "draft" || v.status === "in_review"))
+        .sort((a, b) => a.sequence - b.sequence)[0];
+      if (!open) {
+        return {
+          planId,
+          openVersionId: null,
+          canFinalize: false,
+          canSign: false,
+          blockers: [openVersionBlocker],
+          signatures: { required: [], collected: [], missing: [] },
+        };
+      }
+      const blockers =
+        open.kind === "initial" && activeTerminalProblemCount(planId) < 1
+          ? [terminalProblemBlocker]
+          : [];
+      const missing = missingSignerSlots(
+        open.requiredSignerSet,
+        open.signatures.map((s) => s.signerRole),
+      );
+      return {
+        planId,
+        openVersionId: open.id,
+        openVersionStatus: open.status,
+        canFinalize: open.status === "draft" && blockers.length === 0,
+        canSign: open.status === "in_review" && blockers.length === 0 && missing.length > 0,
+        blockers,
+        signatures: {
+          required: open.requiredSignerSet,
+          collected: open.signatures,
+          missing,
+        },
+      };
+    },
+
+    async getProposedChanges(org, planId, versionId) {
+      const v = version(org, planId, versionId);
+      return {
+        versionId: v.id,
+        kind: v.kind,
+        meetingId: v.idgMeetingId,
+        status: v.status,
+        changes: [],
+      };
+    },
+
+    async getReviewStatus(org, planId, nowIso) {
+      const p = plan(org, planId);
+      const open = [...versions.values()]
+        .filter((v) => v.planId === planId && v.kind === "idg_review")
+        .find((v) => v.status === "draft" || v.status === "in_review");
+      return {
+        planId: p.id,
+        nextReviewDueAt: null,
+        status: open ? "review_in_progress" : "not_due",
+        overdueByDays: 0,
+        openReviewVersionId: open?.id ?? null,
+        canStartReview: !open && p.status !== "discharged",
+        asOf: nowIso ?? now(),
+      };
+    },
+
     async createVersion(org, planId, kind, idgMeetingId) {
       const p = plan(org, planId);
+      if (p.status === "discharged") {
+        throw new CarePlanStateError("CARE_PLAN_CLOSED", "discharged care plans cannot be mutated");
+      }
+      if (
+        [...versions.values()].some(
+          (v) => v.planId === planId && (v.status === "draft" || v.status === "in_review"),
+        )
+      ) {
+        throw new CarePlanStateError(
+          "OPEN_VERSION_EXISTS",
+          "a care plan may have only one draft or in-review version",
+        );
+      }
       const maxSeq = [...versions.values()]
         .filter((v) => v.planId === p.id)
         .reduce((m, v) => Math.max(m, v.sequence), 0);
@@ -508,6 +672,8 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
         requiredSignerSet: resolveRequiredSignerSet(kind),
         signatures: [],
         signedAt: null,
+        stateSnapshot: null,
+        patientUnderstandingText: null,
         version: 1,
       };
       versions.set(id, row);
@@ -515,6 +681,10 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
     },
 
     async finalizeVersion(org, planId, versionId, ifVersion, set) {
+      const p = plan(org, planId);
+      if (p.status === "discharged") {
+        throw new CarePlanStateError("CARE_PLAN_CLOSED", "discharged care plans cannot be mutated");
+      }
       const v = version(org, planId, versionId);
       checkOptimisticConcurrency(ifVersion, v.version);
       if (v.status !== "draft") {
@@ -523,6 +693,7 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
           `version cannot finalize from '${v.status}'`,
         );
       }
+      requireReadyToFinalize(v);
       if (set) {
         // A tenant may TIGHTEN the floor (add slots) but never loosen below it (§11 D5).
         const floor = resolveRequiredSignerSet(v.kind);
@@ -535,11 +706,71 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
         v.requiredSignerSet = set;
       }
       v.status = "in_review";
+      v.stateSnapshot = {
+        schemaVersion: "2026-08-m7-v1",
+        problems: [...problems.values()]
+          .filter((p) => p.planId === planId)
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .map((p) => ({
+            id: p.id,
+            icd10Code: p.icd10Code,
+            snomedCode: p.snomedCode,
+            description: p.description,
+            kind: p.kind,
+            source: p.source,
+            sudRelated: p.sudRelated,
+            status: p.status,
+            resolutionNote: p.resolutionNote,
+            version: p.version,
+          })),
+        goals: [...goals.values()]
+          .filter((g) => g.planId === planId)
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .map((g) => ({
+            id: g.id,
+            problemId: g.problemId,
+            originalText: g.originalText,
+            revisedText: g.revisedText,
+            source: g.source,
+            actingConsentId: g.actingConsentId,
+            measurableOutcome: g.measurableOutcome,
+            status: g.status,
+            version: g.version,
+          })),
+        interventions: [...interventions.values()]
+          .filter((i) => i.planId === planId)
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .map((i) => ({
+            id: i.id,
+            problemId: i.problemId,
+            goalRefs: i.goalRefs,
+            scopeText: i.scopeText,
+            frequencyText: i.frequencyText,
+            frequencyValue: i.frequencyValue,
+            discipline: i.discipline,
+            responsibleRole: i.responsibleRole,
+            status: i.status,
+            version: i.version,
+          })),
+      };
       v.version += 1;
       return versionDto(v);
     },
 
-    async signVersion(org, planId, versionId, ifVersion, signerRole, at) {
+    async signVersion(
+      org,
+      planId,
+      versionId,
+      ifVersion,
+      signerRole,
+      at,
+      _actor,
+      patientUnderstandingText,
+    ) {
+      const p = plan(org, planId);
+      if (p.status === "discharged") {
+        throw new CarePlanStateError("CARE_PLAN_CLOSED", "discharged care plans cannot be mutated");
+      }
       const v = version(org, planId, versionId);
       checkOptimisticConcurrency(ifVersion, v.version);
       if (v.status !== "in_review") {
@@ -548,13 +779,26 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
           `version cannot be signed from '${v.status}'`,
         );
       }
+      if (v.kind === "initial" && activeTerminalProblemCount(planId) < 1) {
+        throw new CarePlanStateError("CARE_PLAN_NOT_READY", "care plan is not ready to sign", [
+          terminalProblemBlocker,
+        ]);
+      }
+      if (patientUnderstandingText !== undefined) {
+        v.patientUnderstandingText = patientUnderstandingText;
+      }
       const alreadySigned = v.signatures.map((s) => s.signerRole);
       const decision = decideRecordSignature(v.requiredSignerSet, alreadySigned, signerRole);
       v.signatures = [...v.signatures, { signerRole, signedAt: at }];
       if (decision.quorumMet) {
+        if (p.activeVersionId && p.activeVersionId !== v.id) {
+          const previous = versions.get(p.activeVersionId);
+          if (previous?.status === "signed") {
+            previous.status = "superseded";
+          }
+        }
         v.status = "signed";
         v.signedAt = at;
-        const p = plan(org, planId);
         p.status = "active";
         p.activeVersionId = v.id;
         p.version += 1;
@@ -575,6 +819,7 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
       v.status = "draft";
       v.signatures = []; // returning for edits clears prior signatures (D8)
       v.signedAt = null;
+      v.stateSnapshot = null;
       v.version += 1;
       return versionDto(v);
     },

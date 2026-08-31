@@ -24,10 +24,10 @@ import {
   resolveForCauseDischarge,
 } from "../discharge";
 import {
-  type AdmissionReadinessFacts,
-  type AdmissionReadinessResult,
   type ActivationGap,
   type ActivationGate,
+  type AdmissionReadinessFacts,
+  type AdmissionReadinessResult,
   computeActivationGate,
   evaluateAdmissionReadiness,
 } from "../intake";
@@ -230,6 +230,10 @@ export interface AdmissionCreateInput {
   readonly attendingPhysicianId?: string;
   readonly hospiceMedicalDirectorId: string;
 }
+export interface AdmissionUpdateInput {
+  readonly admissionAt?: string;
+  readonly attendingPhysicianId?: string;
+}
 /** §4.2.1 accept body — links/creates the M5 patient and supplies the primary dx (W-RF-04). */
 export interface AcceptReferralInput {
   readonly patientId?: string;
@@ -296,6 +300,10 @@ export interface CtiDraftInput {
   readonly electionPeriodId: string;
   readonly hospiceMedicalDirectorId: string;
   readonly attendingPhysicianId?: string;
+  readonly terminalDiagnosisIcd10: string;
+  readonly prognosisStatement: string;
+  readonly narrative: string;
+  readonly clinicalFindings: Record<string, unknown>;
   readonly isRecert: boolean;
 }
 /**
@@ -552,7 +560,10 @@ export interface AdmissionRouteService {
     actorUserId: string,
   ): Promise<ReferralNoteView>;
   listReferralNotes(organizationId: string, id: string): Promise<readonly ReferralNoteView[]>;
-  listReferralActivity(organizationId: string, id: string): Promise<readonly ReferralActivityView[]>;
+  listReferralActivity(
+    organizationId: string,
+    id: string,
+  ): Promise<readonly ReferralActivityView[]>;
   updateReferralPriority(
     organizationId: string,
     id: string,
@@ -599,13 +610,21 @@ export interface AdmissionRouteService {
     query: { state?: string; cursor?: string; limit?: number },
   ): Promise<Page<SummaryRow>>;
   getAdmission(organizationId: string, id: string): Promise<AdmissionDetail | null>;
-  getAdmissionReadiness(organizationId: string, id: string): Promise<AdmissionReadinessResult | null>;
+  getAdmissionReadiness(
+    organizationId: string,
+    id: string,
+  ): Promise<AdmissionReadinessResult | null>;
   /** Patient-scoped Election & Certification aggregate (patient-chart tab); empty admission when none. */
   getPatientElectionCertification(
     organizationId: string,
     patientId: string,
   ): Promise<PatientElectionCertificationView>;
-  updateAdmission(organizationId: string, id: string, ifVersion: number): Promise<MutationResult>;
+  updateAdmission(
+    organizationId: string,
+    id: string,
+    input: AdmissionUpdateInput,
+    ifVersion: number,
+  ): Promise<MutationResult>;
   holdAdmission(
     organizationId: string,
     id: string,
@@ -790,8 +809,10 @@ interface Rec {
   providerEntityId?: string | null;
   locationId?: string | null;
   admissionId?: string;
+  admissionAt?: string | null;
   hospiceMedicalDirectorId?: string;
   attendingPhysicianId?: string | null;
+  terminalDiagnosisIcd10?: string;
   scheduledClinicianId?: string;
   // intake/wizard linkage (§7.1/§7.2) — referral idempotency + the period-1 activation bundle
   externalReferralId?: string;
@@ -960,7 +981,10 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
   });
   const referralView = (rec: Rec): ReferralReadView => {
     const blockers: Array<{ code: string; message: string }> = [];
-    if (!rec.patientId || !["matched", "created"].includes(rec.patientResolutionStatus ?? "unresolved")) {
+    if (
+      !rec.patientId ||
+      !["matched", "created"].includes(rec.patientResolutionStatus ?? "unresolved")
+    ) {
       blockers.push({
         code: "PATIENT_UNRESOLVED",
         message: "A patient must be confirmed or created before qualification.",
@@ -1058,13 +1082,15 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       admissionId: adm.id,
       patientIdentity: {
         patientId: adm.patientId ?? null,
-        referralPatientId: adm.externalReferralId ? adm.patientId ?? null : undefined,
+        referralPatientId: adm.externalReferralId ? (adm.patientId ?? null) : undefined,
         referralPatientResolutionStatus: adm.externalReferralId ? "created" : undefined,
       },
       admissionDetails: {
         admissionDatePresent: true,
         primaryDiagnosisPresent: !!(adm.primaryDiagnosisIcd10 ?? period?.primaryDiagnosisIcd10),
-        hospiceMedicalDirectorPresent: !!(adm.hospiceMedicalDirectorId ?? cti?.hospiceMedicalDirectorId),
+        hospiceMedicalDirectorPresent: !!(
+          adm.hospiceMedicalDirectorId ?? cti?.hospiceMedicalDirectorId
+        ),
         providerEntityPresent: true,
         locationPresent: true,
       },
@@ -1137,7 +1163,9 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       if (status) rows = rows.filter((r) => r.state === status);
       if (query.source) rows = rows.filter((r) => r.source === query.source);
       if (query.patientResolutionStatus)
-        rows = rows.filter((r) => (r.patientResolutionStatus ?? "unresolved") === query.patientResolutionStatus);
+        rows = rows.filter(
+          (r) => (r.patientResolutionStatus ?? "unresolved") === query.patientResolutionStatus,
+        );
       if (query.priority) rows = rows.filter((r) => (r.priority ?? "routine") === query.priority);
       if (query.assigned === "unassigned") rows = rows.filter((r) => !r.assignedToUserId);
       if (query.assigned === "mine" && actorUserId)
@@ -1145,7 +1173,13 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       if (query.q?.trim()) {
         const q = query.q.trim().toLowerCase();
         rows = rows.filter((r) =>
-          [r.patientNameAtReceipt, r.referrerName, r.referrerOrganization, r.externalReferralId, r.referringDxText]
+          [
+            r.patientNameAtReceipt,
+            r.referrerName,
+            r.referrerOrganization,
+            r.externalReferralId,
+            r.referringDxText,
+          ]
             .filter(Boolean)
             .some((v) => String(v).toLowerCase().includes(q)),
         );
@@ -1168,7 +1202,12 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       if (rec.version !== ifVersion) throw new VersionMismatchError(id, rec.version, ifVersion);
       if (rec.state !== "received") throw new InvalidReferralStateError(id, rec.state, "triage");
       const next = outcome === "eligible" ? "under_review" : "declined";
-      return transition(rec, next, ifVersion, outcome === "eligible" ? "m6.referral.review_started" : "m6.referral.declined");
+      return transition(
+        rec,
+        next,
+        ifVersion,
+        outcome === "eligible" ? "m6.referral.review_started" : "m6.referral.declined",
+      );
     },
     async acceptReferral(organizationId, id, input, ifVersion, actorUserId) {
       return this.convertReferral(organizationId, id, input, ifVersion, actorUserId);
@@ -1212,8 +1251,12 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     async qualifyReferral(organizationId, id, ifVersion, actorUserId) {
       void actorUserId;
       const rec = get(organizationId, id, "referral") ?? notFound(id);
-      if (rec.state !== "under_review") throw new InvalidReferralStateError(id, rec.state, "qualify");
-      if (!rec.patientId || !["matched", "created"].includes(rec.patientResolutionStatus ?? "unresolved")) {
+      if (rec.state !== "under_review")
+        throw new InvalidReferralStateError(id, rec.state, "qualify");
+      if (
+        !rec.patientId ||
+        !["matched", "created"].includes(rec.patientResolutionStatus ?? "unresolved")
+      ) {
         throw new ReferralNotReadyError([
           {
             code: "PATIENT_UNRESOLVED",
@@ -1227,12 +1270,17 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       void actorUserId;
       const rec = get(organizationId, id, "referral") ?? notFound(id);
       if (rec.state === "converted") {
-        const existing = listOfKind(organizationId, "admission").find((r) => r.externalReferralId === rec.id);
+        const existing = listOfKind(organizationId, "admission").find(
+          (r) => r.externalReferralId === rec.id,
+        );
         if (existing) return { ...summary(rec), admissionId: existing.id };
         throw new ReferralAlreadyConvertedError(id);
       }
       if (rec.state !== "qualified") throw new ReferralNotTriagedError(id);
-      if (!rec.patientId || !["matched", "created"].includes(rec.patientResolutionStatus ?? "unresolved")) {
+      if (
+        !rec.patientId ||
+        !["matched", "created"].includes(rec.patientResolutionStatus ?? "unresolved")
+      ) {
         throw new ReferralNotReadyError([
           {
             code: "PATIENT_UNRESOLVED",
@@ -1481,8 +1529,12 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         complianceWindows,
       };
     },
-    async updateAdmission(organizationId, id, ifVersion) {
+    async updateAdmission(organizationId, id, input, ifVersion) {
       const rec = get(organizationId, id, "admission") ?? notFound(id);
+      Object.assign(rec, {
+        admissionAt: input.admissionAt ?? rec.admissionAt,
+        attendingPhysicianId: input.attendingPhysicianId ?? rec.attendingPhysicianId,
+      });
       return transition(rec, rec.state, ifVersion);
     },
     async holdAdmission(organizationId, id, reason, ifVersion) {
@@ -1499,7 +1551,8 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       // R-AC-01 (§7.2 W-AD-05): the gate is server-truth; a stale UI checklist cannot bypass it.
       const readiness = readinessFor(rec);
       const gate = gateFor(rec);
-      if (!readiness.canActivate) throw new ActivationPreconditionError(gate.missing, readiness.requirements);
+      if (!readiness.canActivate)
+        throw new ActivationPreconditionError(gate.missing, readiness.requirements);
       return transition(rec, "active", ifVersion, "m6.admission.activated");
     },
 
@@ -1556,6 +1609,8 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         electionPeriodId: input.electionPeriodId,
         hospiceMedicalDirectorId: input.hospiceMedicalDirectorId,
         attendingPhysicianId: input.attendingPhysicianId ?? null,
+        terminalDiagnosisIcd10: input.terminalDiagnosisIcd10,
+        narrative: input.narrative,
         // §7.3 — carry the period sequence + start date so the recert sign can advance the period
         // (W-CTI-03) and mark-late can compute the D4 written-cert deadline off the period start.
         sequence: period?.sequence,
@@ -1919,7 +1974,9 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
   ): AdmissionFacts | null => {
     if (!admissionId) return null;
     const adm = get(organizationId, admissionId, "admission");
-    return adm?.patientId ? { patientId: adm.patientId, providerEntityId: adm.providerEntityId ?? null } : null;
+    return adm?.patientId
+      ? { patientId: adm.patientId, providerEntityId: adm.providerEntityId ?? null }
+      : null;
   };
 
   const resolver: AdmissionAbacResolver = {

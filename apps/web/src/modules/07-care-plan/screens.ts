@@ -38,6 +38,13 @@ export const carePlanScreens: ScreenRegistryModule<ComponentType> = {
       screen: CarePlanVersionHistory,
     },
     {
+      id: "care-plan.version-detail",
+      path: "/care-plans/:planId/versions/:versionId",
+      title: "Care Plan Version",
+      requiredPermission: "care_plan.read",
+      screen: CarePlanVersionHistory,
+    },
+    {
       // Patient-friendly summary — reached from the Care Plan View aside; param path (no nav).
       id: "care-plan.summary",
       path: "/care-plans/:planId/summary",

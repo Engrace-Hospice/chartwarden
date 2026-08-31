@@ -4646,6 +4646,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/care-plans/{planId}/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Backend-authoritative readiness for the current open care-plan version */
+        get: operations["getApiV1CareplansByPlanIdReadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/care-plans/{planId}/review-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Backend-derived 15-day care-plan review status */
+        get: operations["getApiV1CareplansByPlanIdReviewstatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/care-plans/{planId}/summary": {
         parameters: {
             query?: never;
@@ -4709,6 +4743,23 @@ export interface paths {
         put?: never;
         /** Finalize a version to in-review (locks the Required Signer Set) */
         post: operations["postApiV1CareplansByPlanIdVersionsByVersionIdFinalize"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/care-plans/{planId}/versions/{versionId}/proposed-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Proposed IDG care-plan changes for a governed review version */
+        get: operations["getApiV1CareplansByPlanIdVersionsByVersionIdProposedchanges"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -18363,6 +18414,23 @@ export interface paths {
         patch: operations["patchApiV1VisitsByVisitId"];
         trace?: never;
     };
+    "/api/v1/visits/{visitId}/arrive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record arrival/check-in (EVV-missing path; step-up-fresh) */
+        post: operations["postApiV1VisitsByVisitIdArrive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/visits/{visitId}/cancel": {
         parameters: {
             query?: never;
@@ -23729,6 +23797,13 @@ export interface operations {
                             lateDeadline: string | null;
                             completedAt: string | null;
                             assessmentId: string | null;
+                            attention: {
+                                state: "none" | "upcoming" | "due_soon" | "due" | "overdue" | "window_expired" | "missed" | "workflow_issue";
+                                severity: "none" | "info" | "warn" | "critical";
+                                action: "COMPLETE_ADMISSION_RFA" | "COMPLETE_HUV1" | "COMPLETE_HUV2" | "COMPLETE_DISCHARGE_RFA" | "OPEN_SFV" | "REPAIR_WORKFLOW" | "NONE";
+                                message: string | null;
+                                deadline: string | null;
+                            };
                         };
                         huv1: {
                             kind: "01_admission" | "02_huv1" | "03_huv2" | "05_discharge";
@@ -23739,6 +23814,13 @@ export interface operations {
                             lateDeadline: string | null;
                             completedAt: string | null;
                             assessmentId: string | null;
+                            attention: {
+                                state: "none" | "upcoming" | "due_soon" | "due" | "overdue" | "window_expired" | "missed" | "workflow_issue";
+                                severity: "none" | "info" | "warn" | "critical";
+                                action: "COMPLETE_ADMISSION_RFA" | "COMPLETE_HUV1" | "COMPLETE_HUV2" | "COMPLETE_DISCHARGE_RFA" | "OPEN_SFV" | "REPAIR_WORKFLOW" | "NONE";
+                                message: string | null;
+                                deadline: string | null;
+                            };
                         };
                         huv2: {
                             kind: "01_admission" | "02_huv1" | "03_huv2" | "05_discharge";
@@ -23749,6 +23831,13 @@ export interface operations {
                             lateDeadline: string | null;
                             completedAt: string | null;
                             assessmentId: string | null;
+                            attention: {
+                                state: "none" | "upcoming" | "due_soon" | "due" | "overdue" | "window_expired" | "missed" | "workflow_issue";
+                                severity: "none" | "info" | "warn" | "critical";
+                                action: "COMPLETE_ADMISSION_RFA" | "COMPLETE_HUV1" | "COMPLETE_HUV2" | "COMPLETE_DISCHARGE_RFA" | "OPEN_SFV" | "REPAIR_WORKFLOW" | "NONE";
+                                message: string | null;
+                                deadline: string | null;
+                            };
                         };
                         sfvs: {
                             id: string;
@@ -23759,6 +23848,13 @@ export interface operations {
                             triggeredAt: string;
                             completedAt: string | null;
                             completingAssessmentId: string | null;
+                            attention: {
+                                state: "none" | "upcoming" | "due_soon" | "due" | "overdue" | "window_expired" | "missed" | "workflow_issue";
+                                severity: "none" | "info" | "warn" | "critical";
+                                action: "COMPLETE_ADMISSION_RFA" | "COMPLETE_HUV1" | "COMPLETE_HUV2" | "COMPLETE_DISCHARGE_RFA" | "OPEN_SFV" | "REPAIR_WORKFLOW" | "NONE";
+                                message: string | null;
+                                deadline: string | null;
+                            };
                         }[];
                         dischargeAssessment: {
                             kind: "01_admission" | "02_huv1" | "03_huv2" | "05_discharge";
@@ -23769,12 +23865,22 @@ export interface operations {
                             lateDeadline: string | null;
                             completedAt: string | null;
                             assessmentId: string | null;
+                            attention: {
+                                state: "none" | "upcoming" | "due_soon" | "due" | "overdue" | "window_expired" | "missed" | "workflow_issue";
+                                severity: "none" | "info" | "warn" | "critical";
+                                action: "COMPLETE_ADMISSION_RFA" | "COMPLETE_HUV1" | "COMPLETE_HUV2" | "COMPLETE_DISCHARGE_RFA" | "OPEN_SFV" | "REPAIR_WORKFLOW" | "NONE";
+                                message: string | null;
+                                deadline: string | null;
+                            };
                         };
                         summary: {
                             actionableCount: number;
                             overdueCount: number;
                             completedCount: number;
                             nextDeadline: string | null;
+                            highestSeverity: "none" | "info" | "warn" | "critical";
+                            dueSoonCount: number;
+                            workflowIssueCount: number;
                         };
                     };
                 };
@@ -23974,6 +24080,8 @@ export interface operations {
                     intakeMethod?: "in_person" | "phone" | "referral_auto" | "transfer_in";
                     /** Format: uuid */
                     attendingPhysicianId?: string;
+                    /** Format: date-time */
+                    admissionAt?: string;
                     ifVersion: number;
                 };
             };
@@ -31375,6 +31483,86 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1CareplansByPlanIdReadiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        planId: string;
+                        openVersionId: string | null;
+                        openVersionStatus?: "draft" | "in_review" | "signed" | "superseded";
+                        canFinalize: boolean;
+                        canSign: boolean;
+                        blockers: {
+                            code: string;
+                            message: string;
+                        }[];
+                        signatures: {
+                            required: {
+                                role: string;
+                                count: number;
+                            }[];
+                            collected: {
+                                signerRole: string;
+                                signedAt: string | null;
+                            }[];
+                            missing: {
+                                role: string;
+                                count: number;
+                            }[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1CareplansByPlanIdReviewstatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        planId: string;
+                        nextReviewDueAt: string | null;
+                        status: "not_due" | "due" | "overdue" | "review_in_progress";
+                        overdueByDays: number;
+                        openReviewVersionId: string | null;
+                        openReviewVersionStatus: string | null;
+                        canStartReview: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1CareplansByPlanIdSummary: {
         parameters: {
             query?: never;
@@ -31449,7 +31637,11 @@ export interface operations {
                                 signerRole: "rn_case_manager" | "hospice_physician" | "nurse_practitioner" | "msw" | "chaplain" | "medical_director";
                                 signedAt: string;
                             }[];
+                            draftedAt: string | null;
                             signedAt: string | null;
+                            supersededAt: string | null;
+                            stateSnapshot?: unknown;
+                            patientUnderstandingText?: string | null;
                             version: number;
                         }[];
                         nextCursor: string | null;
@@ -31523,7 +31715,11 @@ export interface operations {
                             signerRole: "rn_case_manager" | "hospice_physician" | "nurse_practitioner" | "msw" | "chaplain" | "medical_director";
                             signedAt: string;
                         }[];
+                        draftedAt: string | null;
                         signedAt: string | null;
+                        supersededAt: string | null;
+                        stateSnapshot?: unknown;
+                        patientUnderstandingText?: string | null;
                         version: number;
                     };
                 };
@@ -31560,6 +31756,58 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1CareplansByPlanIdVersionsByVersionIdProposedchanges: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        versionId: string;
+                        kind: "initial" | "idg_review" | "interim_revision" | "discharge";
+                        meetingId: string | null;
+                        status: "draft" | "in_review" | "signed" | "superseded";
+                        proposals: {
+                            id: string;
+                            decisionId: string;
+                            meetingId: string;
+                            sourceOutboxEventId: string;
+                            status: string;
+                            proposedAt: string | null;
+                            inReviewAt: string | null;
+                            appliedAt: string | null;
+                            conflictReason: string | null;
+                        }[];
+                        changes: {
+                            id: string;
+                            proposalId: string;
+                            decisionId: string;
+                            entityType: string;
+                            operation: string;
+                            targetId: string | null;
+                            before: unknown;
+                            proposed: unknown;
+                            status: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -37345,6 +37593,7 @@ export interface operations {
                     hospiceMedicalDirectorId: string;
                     /** Format: uuid */
                     attendingPhysicianId?: string;
+                    terminalDiagnosisIcd10: string;
                     prognosisStatement: string;
                     narrative: string;
                     clinicalFindings: {
@@ -37457,6 +37706,7 @@ export interface operations {
         parameters: {
             query?: {
                 patientId?: string;
+                admissionId?: string;
                 authorId?: string;
                 status?: string;
                 lateEntryTier?: string;
@@ -37494,6 +37744,22 @@ export interface operations {
                             isF2f: boolean;
                             signedAt: string | null;
                             cosignedAt: string | null;
+                            selections?: {
+                                [key: string]: unknown;
+                            } | null;
+                            finalDocumentation?: string | null;
+                            vitals?: {
+                                [key: string]: unknown;
+                            } | null;
+                            mileage?: {
+                                [key: string]: unknown;
+                            } | null;
+                            carePlanLinks?: {
+                                linkId: string;
+                                problemId: string | null;
+                                goalId: string | null;
+                                interventionId: string | null;
+                            }[];
                         }[];
                     };
                 };
@@ -37583,6 +37849,22 @@ export interface operations {
                         isF2f: boolean;
                         signedAt: string | null;
                         cosignedAt: string | null;
+                        selections?: {
+                            [key: string]: unknown;
+                        } | null;
+                        finalDocumentation?: string | null;
+                        vitals?: {
+                            [key: string]: unknown;
+                        } | null;
+                        mileage?: {
+                            [key: string]: unknown;
+                        } | null;
+                        carePlanLinks?: {
+                            linkId: string;
+                            problemId: string | null;
+                            goalId: string | null;
+                            interventionId: string | null;
+                        }[];
                     };
                 };
             };
@@ -37797,6 +38079,9 @@ export interface operations {
                 content: {
                     "application/json": {
                         linkId: string;
+                        problemId: string | null;
+                        goalId: string | null;
+                        interventionId: string | null;
                     };
                 };
             };
@@ -38442,6 +38727,22 @@ export interface operations {
                             isF2f: boolean;
                             signedAt: string | null;
                             cosignedAt: string | null;
+                            selections?: {
+                                [key: string]: unknown;
+                            } | null;
+                            finalDocumentation?: string | null;
+                            vitals?: {
+                                [key: string]: unknown;
+                            } | null;
+                            mileage?: {
+                                [key: string]: unknown;
+                            } | null;
+                            carePlanLinks?: {
+                                linkId: string;
+                                problemId: string | null;
+                                goalId: string | null;
+                                interventionId: string | null;
+                            }[];
                         }[];
                     };
                 };
@@ -38482,6 +38783,22 @@ export interface operations {
                             isF2f: boolean;
                             signedAt: string | null;
                             cosignedAt: string | null;
+                            selections?: {
+                                [key: string]: unknown;
+                            } | null;
+                            finalDocumentation?: string | null;
+                            vitals?: {
+                                [key: string]: unknown;
+                            } | null;
+                            mileage?: {
+                                [key: string]: unknown;
+                            } | null;
+                            carePlanLinks?: {
+                                linkId: string;
+                                problemId: string | null;
+                                goalId: string | null;
+                                interventionId: string | null;
+                            }[];
                         }[];
                     };
                 };
@@ -43461,6 +43778,22 @@ export interface operations {
                             isF2f: boolean;
                             signedAt: string | null;
                             cosignedAt: string | null;
+                            selections?: {
+                                [key: string]: unknown;
+                            } | null;
+                            finalDocumentation?: string | null;
+                            vitals?: {
+                                [key: string]: unknown;
+                            } | null;
+                            mileage?: {
+                                [key: string]: unknown;
+                            } | null;
+                            carePlanLinks?: {
+                                linkId: string;
+                                problemId: string | null;
+                                goalId: string | null;
+                                interventionId: string | null;
+                            }[];
                         }[];
                     };
                 };
@@ -51357,6 +51690,7 @@ export interface operations {
                     "application/json": {
                         id: string;
                         patientId: string;
+                        admissionId: string;
                         status: "draft" | "active" | "discharged";
                         activeVersionId: string | null;
                         version: number;
@@ -51375,7 +51709,11 @@ export interface operations {
                                 signerRole: "rn_case_manager" | "hospice_physician" | "nurse_practitioner" | "msw" | "chaplain" | "medical_director";
                                 signedAt: string;
                             }[];
+                            draftedAt: string | null;
                             signedAt: string | null;
+                            supersededAt: string | null;
+                            stateSnapshot?: unknown;
+                            patientUnderstandingText?: string | null;
                             version: number;
                         }[];
                         problems: {
@@ -51389,6 +51727,8 @@ export interface operations {
                             source: "clinical" | "patient_reported" | "family_reported" | "history" | "intake_extraction";
                             sudRelated: boolean;
                             status: "active" | "resolved" | "inactive";
+                            onsetAt: string | null;
+                            resolvedAt: string | null;
                             resolutionNote: string | null;
                             version: number;
                         }[];
@@ -51402,7 +51742,9 @@ export interface operations {
                             source: "clinical" | "patient_stated" | "family_stated" | "agent_stated";
                             actingConsentId: string | null;
                             measurableOutcome: string | null;
+                            targetAt: string | null;
                             status: "not_started" | "in_progress" | "met" | "not_met" | "revised" | "discontinued";
+                            statusNote: string | null;
                             version: number;
                         }[];
                         interventions: {
@@ -51416,7 +51758,9 @@ export interface operations {
                             frequencyValue: string;
                             discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "md_np" | "pt" | "ot" | "st" | "volunteer" | "music_therapy" | "dietitian" | "bereavement";
                             responsibleRole: string | null;
+                            linkedOrderId: string | null;
                             status: "active" | "discontinued" | "completed";
+                            discontinueReason: string | null;
                             version: number;
                         }[];
                         redacted: boolean;
@@ -70039,6 +70383,59 @@ export interface operations {
                     visitPurpose?: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
                     visitSetting?: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
                     schedulerInternalNotes?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        /** Format: uuid */
+                        assignedMembershipId: string;
+                        visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
+                        visitSetting: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                        /** Format: date-time */
+                        scheduledStartedAt: string;
+                        /** Format: date-time */
+                        scheduledEndedAt: string;
+                        /** Format: date */
+                        serviceDate: string;
+                        status: "proposed" | "published" | "en_route" | "in_visit" | "completed" | "no_show" | "cancelled" | "rescheduled";
+                        patientAddressId: string | null;
+                        externalFacilityId: string | null;
+                        rescheduledIntoVisitId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1VisitsByVisitIdArrive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                visitId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    evvMissingReason?: string;
                 };
             };
         };

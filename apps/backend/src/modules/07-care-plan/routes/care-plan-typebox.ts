@@ -201,7 +201,11 @@ export const CarePlanVersionResponseSchema = Type.Object({
   idgMeetingId: Nullable(Type.String()),
   requiredSignerSet: Type.Array(RequiredSignerSlotSchema),
   signatures: Type.Array(Type.Object({ signerRole: lit(SIGNER_ROLE), signedAt: Type.String() })),
+  draftedAt: Nullable(Type.String()),
   signedAt: Nullable(Type.String()),
+  supersededAt: Nullable(Type.String()),
+  stateSnapshot: Type.Optional(Type.Unknown()),
+  patientUnderstandingText: Type.Optional(Nullable(Type.String())),
   version: Type.Integer(),
 });
 
@@ -222,6 +226,8 @@ const ProblemRecordResponseSchema = Type.Object({
   source: lit(PROBLEM_SOURCE),
   sudRelated: Type.Boolean(),
   status: lit(PROBLEM_STATUS),
+  onsetAt: Nullable(Type.String()),
+  resolvedAt: Nullable(Type.String()),
   resolutionNote: Nullable(Type.String()),
   version: Type.Integer(),
 });
@@ -236,7 +242,9 @@ const GoalRecordResponseSchema = Type.Object({
   source: lit(GOAL_SOURCE),
   actingConsentId: Nullable(Type.String()),
   measurableOutcome: Nullable(Type.String()),
+  targetAt: Nullable(Type.String()),
   status: lit(GOAL_STATUS),
+  statusNote: Nullable(Type.String()),
   version: Type.Integer(),
 });
 
@@ -251,7 +259,9 @@ const InterventionRecordResponseSchema = Type.Object({
   frequencyValue: Type.String(),
   discipline: lit(INTERVENTION_DISCIPLINE),
   responsibleRole: Nullable(Type.String()),
+  linkedOrderId: Nullable(Type.String()),
   status: lit(INTERVENTION_STATUS),
+  discontinueReason: Nullable(Type.String()),
   version: Type.Integer(),
 });
 
@@ -259,6 +269,7 @@ const InterventionRecordResponseSchema = Type.Object({
 export const CarePlanDetailResponseSchema = Type.Object({
   id: Type.String(),
   patientId: Type.String(),
+  admissionId: Type.String(),
   status: lit(PLAN_STATUS),
   activeVersionId: Nullable(Type.String()),
   version: Type.Integer(),
@@ -291,6 +302,70 @@ export const CarePlanSummaryResponseSchema = Type.Object({
     }),
   ),
   redacted: Type.Boolean(),
+});
+
+export const CarePlanReadinessResponseSchema = Type.Object({
+  planId: Type.String(),
+  openVersionId: Nullable(Type.String()),
+  openVersionStatus: Type.Optional(lit(VERSION_STATUS)),
+  canFinalize: Type.Boolean(),
+  canSign: Type.Boolean(),
+  blockers: Type.Array(Type.Object({ code: Type.String(), message: Type.String() })),
+  signatures: Type.Object({
+    required: Type.Array(RequiredSignerSlotSchema),
+    collected: Type.Array(
+      Type.Object({ signerRole: Type.String(), signedAt: Nullable(Type.String()) }),
+    ),
+    missing: Type.Array(RequiredSignerSlotSchema),
+  }),
+});
+
+export const CarePlanProposedChangesResponseSchema = Type.Object({
+  versionId: Type.String(),
+  kind: lit(VERSION_KIND),
+  meetingId: Nullable(Type.String()),
+  status: lit(VERSION_STATUS),
+  proposals: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      decisionId: Type.String(),
+      meetingId: Type.String(),
+      sourceOutboxEventId: Type.String(),
+      status: Type.String(),
+      proposedAt: Nullable(Type.String()),
+      inReviewAt: Nullable(Type.String()),
+      appliedAt: Nullable(Type.String()),
+      conflictReason: Nullable(Type.String()),
+    }),
+  ),
+  changes: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      proposalId: Type.String(),
+      decisionId: Type.String(),
+      entityType: Type.String(),
+      operation: Type.String(),
+      targetId: Nullable(Type.String()),
+      before: Type.Unknown(),
+      proposed: Type.Unknown(),
+      status: Type.String(),
+    }),
+  ),
+});
+
+export const CarePlanReviewStatusResponseSchema = Type.Object({
+  planId: Type.String(),
+  nextReviewDueAt: Nullable(Type.String()),
+  status: Type.Union([
+    Type.Literal("not_due"),
+    Type.Literal("due"),
+    Type.Literal("overdue"),
+    Type.Literal("review_in_progress"),
+  ]),
+  overdueByDays: Type.Integer({ minimum: 0 }),
+  openReviewVersionId: Nullable(Type.String()),
+  openReviewVersionStatus: Nullable(Type.String()),
+  canStartReview: Type.Boolean(),
 });
 
 /** §7.8 `CarePlanReader.isReviewOverdue` — the 5-/15-day CoP 418.56 gate result. */

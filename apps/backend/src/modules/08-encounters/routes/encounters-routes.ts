@@ -36,6 +36,7 @@ import {
   SignEncounterSchema,
   SignedSinceQuerySchema,
   SupervisorReleaseSchema,
+  UpdateSelectionsSchema,
   VitalParamsSchema,
   VoidEncounterSchema,
   parse,
@@ -167,8 +168,17 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
     async (request) => {
       const { organizationId } = actorOf(request);
-      parse(EncounterListQuerySchema, request.query);
-      return service.listEncounters(organizationId);
+      const q = parse(EncounterListQuerySchema, request.query);
+      return service.listEncounters(organizationId, {
+        patientId: q.patientId,
+        admissionId: q.admissionId,
+        authorId: q.authorId,
+        status: q.status as never,
+        lateEntryTier: q.lateEntryTier,
+        from: q.from,
+        to: q.to,
+        limit: q.limit,
+      });
     },
   );
 
@@ -217,11 +227,13 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     { preHandler: [AUTHOR, SCOPE_FOR("encounter.author"), IF_MATCH] },
     async (request) => {
       const { organizationId } = actorOf(request);
+      const body = parse(UpdateSelectionsSchema, request.body);
       parse(EncounterParamsSchema, request.params);
       return service.updateSelections(
         organizationId,
         encounterIdOf(request),
         ifMatchVersionOf(request),
+        body,
       );
     },
   );
@@ -279,8 +291,8 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     { preHandler: [AUTHOR, SCOPE_FOR("encounter.author")] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
-      parse(CarePlanLinkSchema, request.body);
-      const res = await service.addCarePlanLink(organizationId, encounterIdOf(request));
+      const body = parse(CarePlanLinkSchema, request.body);
+      const res = await service.addCarePlanLink(organizationId, encounterIdOf(request), body);
       return reply.code(201).send(res);
     },
   );
@@ -303,8 +315,12 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     { preHandler: [AUTHOR] },
     async (request) => {
       const { organizationId } = actorOf(request);
-      parse(EvvReconcileSchema, request.body);
-      return service.documentEvvMissing(organizationId, encounterIdOf(request));
+      const body = parse(EvvReconcileSchema, request.body);
+      return service.documentEvvMissing(
+        organizationId,
+        encounterIdOf(request),
+        body.evvMissingReason,
+      );
     },
   );
 
@@ -359,9 +375,12 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     "/api/v1/encounters/:encounterId/late-entry-override",
     { preHandler: [LATE_OVERRIDE] },
     async (request) => {
-      const { organizationId } = actorOf(request);
-      parse(LateEntryOverrideSchema, request.body);
-      return service.lateEntryOverride(organizationId, encounterIdOf(request));
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(LateEntryOverrideSchema, request.body);
+      return service.lateEntryOverride(organizationId, encounterIdOf(request), {
+        actorMembershipId: userId,
+        reason: body.reason,
+      });
     },
   );
 
@@ -370,9 +389,12 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     "/api/v1/encounters/:encounterId/administrative-override",
     { preHandler: [ADMIN_OVERRIDE] },
     async (request) => {
-      const { organizationId } = actorOf(request);
-      parse(AdministrativeOverrideSchema, request.body);
-      return service.administrativeOverride(organizationId, encounterIdOf(request));
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(AdministrativeOverrideSchema, request.body);
+      return service.administrativeOverride(organizationId, encounterIdOf(request), {
+        actorMembershipId: userId,
+        reason: body.reason,
+      });
     },
   );
 
@@ -451,8 +473,10 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     { preHandler: [ADDENDUM_AUTHOR, SCOPE_FOR("encounter.addendum_author")] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
-      parse(CreateAddendumSchema, request.body);
-      const res = await service.createAddendum(organizationId, encounterIdOf(request));
+      const body = parse(CreateAddendumSchema, request.body);
+      const res = await service.createAddendum(organizationId, encounterIdOf(request), {
+        reason: body.reason,
+      });
       return reply.code(201).send(res);
     },
   );

@@ -9,6 +9,7 @@ import { VISIT_TONE, stateLabel } from "./scheduling-status";
 export interface VisitRow {
   id: string;
   patientId: string;
+  admissionId?: string | null;
   assignedMembershipId: string;
   visitPurpose: string;
   scheduledStartedAt: string;

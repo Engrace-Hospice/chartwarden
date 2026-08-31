@@ -117,6 +117,7 @@ export function ChartModuleRail({
   return (
     <LeftNavRail ariaLabel="Patient modules">
       <ul
+        className="wx-chart-module-list"
         style={{
           listStyle: "none",
           margin: 0,
@@ -136,7 +137,11 @@ export function ChartModuleRail({
           if (it.key === current) {
             return (
               <li key={it.key}>
-                <span style={{ ...navItem, ...navItemActive }} aria-current="page">
+                <span
+                  className="wx-chart-module-item is-active"
+                  style={{ ...navItem, ...navItemActive }}
+                  aria-current="page"
+                >
                   {inner}
                 </span>
               </li>
@@ -145,7 +150,7 @@ export function ChartModuleRail({
           const to = it.route ? it.route(patientId) : `/patients/${patientId}`;
           return (
             <li key={it.key}>
-              <Link to={to} style={navItem}>
+              <Link className="wx-chart-module-item" to={to} style={navItem}>
                 {inner}
               </Link>
             </li>

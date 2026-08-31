@@ -54,10 +54,10 @@ import {
   ReferralDeclineSchema,
   ReferralListQuerySchema,
   ReferralNoteCreateSchema,
-  ReferralPendingInformationSchema,
   ReferralPatientConfirmSchema,
   ReferralPatientCreateSchema,
   ReferralPatientMatchSchema,
+  ReferralPendingInformationSchema,
   ReferralPrioritySchema,
   ReferralQualifySchema,
   ReferralReviewSchema,
@@ -267,7 +267,12 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(ReferralPatientMatchSchema, request.body);
-      return service.runReferralPatientMatching(organizationId, idOf(request), body.ifVersion, userId);
+      return service.runReferralPatientMatching(
+        organizationId,
+        idOf(request),
+        body.ifVersion,
+        userId,
+      );
     },
   );
 
@@ -554,7 +559,15 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const body = parse(AdmissionUpdateSchema, request.body);
-      return service.updateAdmission(organizationId, idOf(request), body.ifVersion);
+      return service.updateAdmission(
+        organizationId,
+        idOf(request),
+        {
+          admissionAt: body.admissionAt,
+          attendingPhysicianId: body.attendingPhysicianId,
+        },
+        body.ifVersion,
+      );
     },
   );
 
@@ -684,6 +697,10 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
           electionPeriodId: idOf(request),
           hospiceMedicalDirectorId: body.hospiceMedicalDirectorId,
           attendingPhysicianId: body.attendingPhysicianId,
+          terminalDiagnosisIcd10: body.terminalDiagnosisIcd10,
+          prognosisStatement: body.prognosisStatement,
+          narrative: body.narrative,
+          clinicalFindings: body.clinicalFindings,
           isRecert: body.isRecert,
         },
         userId,

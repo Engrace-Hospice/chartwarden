@@ -189,6 +189,10 @@ export {
   decideIdgDecision,
 } from "./consumers/apply-idg-decision";
 export {
+  buildM7AdmissionActivatedConsumer,
+  buildM7AdmissionDischargedConsumer,
+} from "./outbox-consumers/m6-admission-lifecycle";
+export {
   type M7IdgConsumerOutboxPort,
   buildM7IdgDecisionConsumer,
   M7_IDG_DECISION_CONSUMER,

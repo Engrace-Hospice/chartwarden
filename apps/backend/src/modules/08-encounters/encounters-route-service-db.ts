@@ -22,8 +22,16 @@
 import { isStepUpRecent } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { type LocalDate, NotFoundError, STEP_UP_POLICY, type StepUpFactor } from "@wardenx/types";
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import {
+  type AdmissionSummary,
+  ForbiddenError,
+  type LocalDate,
+  NotFoundError,
+  STEP_UP_POLICY,
+  type StepUpFactor,
+  ValidationError,
+} from "@wardenx/types";
+import { and, desc, eq, gte, inArray, isNull, lte, type SQL } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { planF2fDualWrite, planMileageCapture, planVitalsCapture } from "./authoring/index";
 import { transitionCosignature } from "./cosignature/index";
@@ -51,6 +59,10 @@ const ADDENDUM = schema.encounterAddenda;
 const VITALS = schema.vitals;
 const MILEAGE = schema.mileage;
 const SIG = schema.encounterSignatures;
+const LINK = schema.encounterCarePlanLinks;
+const SEL = schema.hearthnoteSelections;
+const OUT = schema.hearthnoteAssembledOutputs;
+const MEM = schema.memberships;
 
 // ── §3.3/D13 signature provenance (CoP 418.104(c), 21 CFR Part 11 principles) ─────────────────────────
 //
@@ -137,14 +149,6 @@ const VOCAB_VERSION_SENTINEL = "00000000-0000-4000-8000-0000000000d8";
 
 /** §2.5 D4 override / §2.7 D9 EVV-missing reasons the thin route interface does not capture (sentinels
  * meeting the DB CHECK minimums; a real reason threads through when the route body carries it). */
-const SIGNIFICANT_LATE_REASON =
-  "significant late entry engaged via override (reason pending route capture)";
-const ADMINISTRATIVE_LATE_REASON =
-  "administrative late-entry override applied by director authority; the documented justification is pending capture by a future revision of the encounter override route (>=100 chars requirement placeholder text)";
-const EVV_MISSING_REASON = "EVV bracket missing; documented gap (reason pending route capture)";
-/** The placeholder addendum reason (the createAddendum route carries no reason yet; >= 20 chars). */
-const ADDENDUM_REASON = "Clinician addendum (reason pending route capture)";
-
 /** The transactional-outbox port (§2.8): the bound publisher validates every emit against the boot
  * catalog and writes the `outbox_event` row on the CALLER'S tx. The default no-op lets the slice/tests
  * commit without a dispatcher (the row state is the load-bearing effect). Mirrors M7's port. */
@@ -231,6 +235,60 @@ const toView = (r: EncounterRow): EncounterView => ({
   cosignedAt: iso(r.cosignedAt),
 });
 
+function templateKeyFor(r: {
+  readonly discipline: string;
+  readonly encounterType: string;
+}): string {
+  return `${r.discipline}_${r.encounterType}_v1`;
+}
+
+function layer1PreviewFromSelections(input: Record<string, unknown>): string {
+  return JSON.stringify(input);
+}
+
+function requireNoFreeText(freeText: Record<string, string> | undefined): void {
+  if (freeText && Object.keys(freeText).length > 0) {
+    throw new ValidationError(
+      "freeText encounter selections are not supported until encrypted capture is available",
+      [],
+    );
+  }
+}
+
+function admissionServiceStart(summary: AdmissionSummary): LocalDate {
+  return (summary.activatedAt ?? summary.admissionAt) as LocalDate;
+}
+
+function validateAdmissionForService(
+  organizationId: string,
+  patientId: string,
+  serviceDate: LocalDate,
+  summary: AdmissionSummary,
+): void {
+  if (summary.organizationId !== organizationId || summary.patientId !== patientId) {
+    throw new NotFoundError("admission");
+  }
+  const startedAt = admissionServiceStart(summary);
+  if (serviceDate < startedAt) {
+    throw new ValidationError("encounter service date cannot precede admission activation", []);
+  }
+  if (summary.status === "active") return;
+  if (
+    (summary.status === "discharged" ||
+      summary.status === "bereavement" ||
+      summary.status === "closed") &&
+    summary.dischargedAt !== null &&
+    serviceDate <= summary.dischargedAt
+  ) {
+    return;
+  }
+  throw new ForbiddenError(`encounter authoring is not allowed while admission is '${summary.status}'`);
+}
+
+async function admissionSummaryFor(admissionId: string): Promise<AdmissionSummary> {
+  return getSeam("AdmissionStatusReader").getAdmissionSummary(admissionId);
+}
+
 /**
  * The production, RLS-backed EncounterRouteService. Reads are real; writes fail-closed 501.
  * Org is bound from the request context by the caller and passed as `organizationId` — never the body.
@@ -297,6 +355,132 @@ export function createDbEncounterRouteService(
     return row;
   }
 
+  async function resolveSiting(
+    t: DbClient,
+    summary: AdmissionSummary,
+    authoredByMembershipId: string,
+  ): Promise<{ providerEntityId: string; locationId: string }> {
+    if (summary.providerEntityId && summary.locationId) {
+      return { providerEntityId: summary.providerEntityId, locationId: summary.locationId };
+    }
+    const [m] = await t
+      .select({ providerEntityId: MEM.defaultProviderEntityId, locationIds: MEM.defaultLocationIds })
+      .from(MEM)
+      .where(eq(MEM.id, authoredByMembershipId))
+      .limit(1);
+    const locs = Array.isArray(m?.locationIds) ? (m.locationIds as string[]) : [];
+    if (!m?.providerEntityId || locs.length === 0) {
+      throw new ValidationError(
+        "encounter requires valid provider/location siting from the admission or authoring membership",
+        [],
+      );
+    }
+    return { providerEntityId: m.providerEntityId, locationId: locs[0] as string };
+  }
+
+  async function latestFinalPayload(t: DbClient, encounterId: string): Promise<string> {
+    const [row] = await t
+      .select({ finalCipher: OUT.finalCipher })
+      .from(OUT)
+      .where(and(eq(OUT.encounterId, encounterId), eq(OUT.kind, "primary_finalize")))
+      .orderBy(desc(OUT.createdAt))
+      .limit(1);
+    return row?.finalCipher ?? "";
+  }
+
+  async function carePlanLinksFor(
+    t: DbClient,
+    encounterId: string,
+  ): Promise<Array<{ problemId?: string; goalId?: string; interventionId?: string }>> {
+    const rows = await t
+      .select({
+        problemId: LINK.problemId,
+        goalId: LINK.goalId,
+        interventionId: LINK.interventionId,
+      })
+      .from(LINK)
+      .where(eq(LINK.encounterId, encounterId));
+    return rows.map((r) => ({
+      ...(r.problemId ? { problemId: r.problemId } : {}),
+      ...(r.goalId ? { goalId: r.goalId } : {}),
+      ...(r.interventionId ? { interventionId: r.interventionId } : {}),
+    }));
+  }
+
+  async function workspaceFieldsFor(t: DbClient, encounterId: string) {
+    const [selection] = await t
+      .select({ selections: SEL.selections })
+      .from(SEL)
+      .where(eq(SEL.encounterId, encounterId))
+      .limit(1);
+    const [vital] = await t
+      .select({
+        vitalsId: VITALS.id,
+        bpSystolic: VITALS.bpSystolic,
+        bpDiastolic: VITALS.bpDiastolic,
+        heartRate: VITALS.heartRate,
+        respiratoryRate: VITALS.respiratoryRate,
+        temperature: VITALS.temperature,
+        temperatureUnit: VITALS.temperatureUnit,
+        spo2: VITALS.spo2,
+        painScore: VITALS.painScore,
+        painScale: VITALS.painScale,
+        weight: VITALS.weight,
+        weightUnit: VITALS.weightUnit,
+        height: VITALS.height,
+        heightUnit: VITALS.heightUnit,
+        bmi: VITALS.bmi,
+        bloodGlucose: VITALS.bloodGlucose,
+        bloodGlucoseUnit: VITALS.bloodGlucoseUnit,
+        clinicallyNotIndicatedFields: VITALS.clinicallyNotIndicatedFields,
+        clinicallyNotIndicatedReason: VITALS.clinicallyNotIndicatedReason,
+        capturedAt: VITALS.capturedAt,
+      })
+      .from(VITALS)
+      .where(eq(VITALS.encounterId, encounterId))
+      .orderBy(desc(VITALS.capturedAt))
+      .limit(1);
+    const [mileage] = await t
+      .select({
+        mileageId: MILEAGE.id,
+        odometerStart: MILEAGE.odometerStart,
+        odometerEnd: MILEAGE.odometerEnd,
+        milesDriven: MILEAGE.milesDriven,
+        source: MILEAGE.milesDrivenSource,
+        manualOverrideReason: MILEAGE.manualOverrideReason,
+        routeProposedMiles: MILEAGE.routeProposedMiles,
+        capturedAt: MILEAGE.createdAt,
+      })
+      .from(MILEAGE)
+      .where(eq(MILEAGE.encounterId, encounterId))
+      .limit(1);
+    return {
+      selections: (selection?.selections as Record<string, unknown> | undefined) ?? null,
+      finalDocumentation: await latestFinalPayload(t, encounterId),
+      vitals: vital ? { ...vital, capturedAt: iso(vital.capturedAt) } : null,
+      mileage: mileage ? { ...mileage, capturedAt: iso(mileage.capturedAt) } : null,
+      carePlanLinks: await carePlanLinkRowsFor(t, encounterId),
+    };
+  }
+
+  async function carePlanLinkRowsFor(t: DbClient, encounterId: string) {
+    const rows = await t
+      .select({
+        linkId: LINK.id,
+        problemId: LINK.problemId,
+        goalId: LINK.goalId,
+        interventionId: LINK.interventionId,
+      })
+      .from(LINK)
+      .where(eq(LINK.encounterId, encounterId));
+    return rows.map((r) => ({
+      linkId: r.linkId,
+      problemId: r.problemId ?? null,
+      goalId: r.goalId ?? null,
+      interventionId: r.interventionId ?? null,
+    }));
+  }
+
   /** Is this encounter an F2F dual-write (§7.4 D1)? — the F2F type OR a linked M6 face-to-face row. */
   const isF2f = (r: typeof ENC.$inferSelect): boolean =>
     r.encounterType === "face_to_face" || r.faceToFaceEncounterId !== null;
@@ -361,23 +545,37 @@ export function createDbEncounterRouteService(
   return {
     // ── Encounter reads ────────────────────────────────────────────────────────────────────────────
     async getEncounter(organizationId, encounterId) {
-      const r = await loadRow(organizationId, encounterId);
-      if (!r) throw new NotFoundError("encounter"); // non-leaking 404 (mirrors the in-memory `load`)
-      return toView(r);
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const [r] = await t.select(encounterCols).from(ENC).where(eq(ENC.id, encounterId)).limit(1);
+        if (!r) throw new NotFoundError("encounter"); // non-leaking 404 (mirrors the in-memory `load`)
+        return { ...toView(r), ...(await workspaceFieldsFor(t, encounterId)) };
+      });
     },
     async renderPayload(organizationId, encounterId) {
-      const r = await loadRow(organizationId, encounterId);
-      if (!r) throw new NotFoundError("encounter");
-      // The assembled HearthNote render arrives with the M8L-T02+ write/assembly lifecycle; empty for now.
-      return { encounterId: r.id, final: "" };
-    },
-    async listEncounters(organizationId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadEnc(t, encounterId);
+        return { encounterId: r.id, final: await latestFinalPayload(t, encounterId) };
+      });
+    },
+    async listEncounters(organizationId, filters = {}) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const conditions: SQL[] = [];
+        if (filters.patientId) conditions.push(eq(ENC.patientId, filters.patientId));
+        if (filters.admissionId) conditions.push(eq(ENC.admissionId, filters.admissionId));
+        if (filters.status) conditions.push(eq(ENC.status, filters.status));
+        if (filters.authorId) conditions.push(eq(ENC.authoredByMembershipId, filters.authorId));
+        if (filters.lateEntryTier) conditions.push(eq(ENC.lateEntryTier, filters.lateEntryTier as never));
+        if (filters.from) conditions.push(gte(ENC.serviceDate, filters.from));
+        if (filters.to) conditions.push(lte(ENC.serviceDate, filters.to));
         const rows = (await tx
           .select(encounterCols)
           .from(ENC)
+          .where(conditions.length > 0 ? and(...conditions) : undefined)
           .orderBy(desc(ENC.serviceDate), desc(ENC.id))) as EncounterRow[];
-        return { encounters: rows.map(toView) };
+        const limit = filters.limit ?? rows.length;
+        return { encounters: rows.slice(0, limit).map(toView) };
       });
     },
     async cosignatureQueue(organizationId) {
@@ -459,11 +657,15 @@ export function createDbEncounterRouteService(
           serviceDate: args.serviceDate,
           today: new Date().toISOString().slice(0, 10) as LocalDate,
         });
+        const admission = await admissionSummaryFor(args.admissionId);
+        validateAdmissionForService(organizationId, args.patientId, args.serviceDate, admission);
+        const siting = await resolveSiting(t, admission, actorUserId);
         const row = firstOrThrow(
           await t
             .insert(ENC)
             .values({
               organizationId,
+              ...siting,
               patientId: args.patientId,
               admissionId: args.admissionId,
               visitId: args.visitId ?? null,
@@ -499,12 +701,49 @@ export function createDbEncounterRouteService(
     },
 
     // ── HearthNote selection edit (§2.3 — bumps the optimistic-lock version) ───────────────────────────
-    async updateSelections(organizationId, encounterId, ifVersion) {
+    async updateSelections(organizationId, encounterId, ifVersion, input) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
         checkMutableForEdit({ status: r.status });
         checkVersion({ expected: ifVersion, actual: Number(r.version) });
+        requireNoFreeText(input.freeText);
+        if (!r.providerEntityId || !r.locationId) {
+          throw new EncounterStateError(
+            "ILLEGAL_TRANSITION",
+            "encounter must be sited before documentation selections can be written",
+          );
+        }
+        const templateKey = templateKeyFor(r);
+        const [existing] = await t
+          .select({ id: SEL.id, version: SEL.version })
+          .from(SEL)
+          .where(eq(SEL.encounterId, encounterId))
+          .limit(1);
+        if (existing) {
+          await t
+            .update(SEL)
+            .set({
+              templateKey,
+              templateVersion: "v1",
+              selections: input.selections,
+              freeTextCipher: null,
+              version: Number(existing.version) + 1,
+              updatedAt: new Date(),
+            })
+            .where(eq(SEL.id, existing.id));
+        } else {
+          await t.insert(SEL).values({
+            organizationId,
+            providerEntityId: r.providerEntityId,
+            locationId: r.locationId,
+            encounterId,
+            templateKey,
+            templateVersion: "v1",
+            selections: input.selections,
+            freeTextCipher: null,
+          });
+        }
         const updated = firstOrThrow(
           await t
             .update(ENC)
@@ -513,7 +752,10 @@ export function createDbEncounterRouteService(
             .returning({ version: ENC.version }),
           "updateSelections matched no row (stale write)",
         );
-        return { version: Number(updated.version), layer1Preview: "" };
+        return {
+          version: Number(updated.version),
+          layer1Preview: layer1PreviewFromSelections(input.selections),
+        };
       });
     },
 
@@ -630,15 +872,99 @@ export function createDbEncounterRouteService(
     },
 
     // ── Care-plan links / EVV-missing (§2.3 draft-time edits) ──────────────────────────────────────────
-    async addCarePlanLink(organizationId, encounterId) {
+    async addCarePlanLink(organizationId, encounterId, input) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
         checkMutableForEdit({ status: r.status });
-        // The encounter_care_plan_link `problem_id`/`goal_id`/`interventionId` (the M7 refs) are not
-        // carried by this route; the slice returns a link id without persisting a bare row (the row's
-        // `at_least_one` CHECK requires a ref). Persistence lands when the route body threads the M7 ids.
-        return { linkId: r.id };
+        if (!r.providerEntityId || !r.locationId) {
+          throw new EncounterStateError(
+            "ILLEGAL_TRANSITION",
+            "encounter must be sited before care-plan links can be written",
+          );
+        }
+        if (!input.problemId && !input.goalId && !input.interventionId) {
+          throw new ValidationError("at least one care-plan element id is required", []);
+        }
+        const elements = await getSeam("CarePlanReader").relevantElementsForEncounter(
+          r.patientId,
+          r.encounterType,
+          r.discipline as never,
+        );
+        if (!elements || elements.patientId !== r.patientId) {
+          throw new ValidationError("no active care plan elements are available for this encounter", []);
+        }
+        const problem = input.problemId
+          ? elements.problems.find((p) => p.problemId === input.problemId)
+          : null;
+        const goal = input.goalId ? elements.goals.find((g) => g.goalId === input.goalId) : null;
+        const intervention = input.interventionId
+          ? elements.interventions.find((i) => i.interventionId === input.interventionId)
+          : null;
+        if (input.problemId && !problem) throw new ValidationError("problem is not valid for this encounter", []);
+        if (input.goalId && !goal) throw new ValidationError("goal is not valid for this encounter", []);
+        if (input.interventionId && !intervention) {
+          throw new ValidationError("intervention is not valid for this encounter", []);
+        }
+        if (goal && input.problemId && goal.problemId !== input.problemId) {
+          throw new ValidationError("goal does not belong to the linked problem", []);
+        }
+        if (intervention && input.problemId && intervention.problemId !== input.problemId) {
+          throw new ValidationError("intervention does not belong to the linked problem", []);
+        }
+
+        const duplicateWhere = and(
+          eq(LINK.encounterId, encounterId),
+          input.problemId ? eq(LINK.problemId, input.problemId) : isNull(LINK.problemId),
+          input.goalId ? eq(LINK.goalId, input.goalId) : isNull(LINK.goalId),
+          input.interventionId
+            ? eq(LINK.interventionId, input.interventionId)
+            : isNull(LINK.interventionId),
+        );
+        const [existing] = await t
+          .select({
+            id: LINK.id,
+            problemId: LINK.problemId,
+            goalId: LINK.goalId,
+            interventionId: LINK.interventionId,
+          })
+          .from(LINK)
+          .where(duplicateWhere)
+          .limit(1);
+        if (existing) {
+          return {
+            linkId: existing.id,
+            problemId: existing.problemId,
+            goalId: existing.goalId,
+            interventionId: existing.interventionId,
+          };
+        }
+        const inserted = firstOrThrow(
+          await t
+            .insert(LINK)
+            .values({
+              organizationId,
+              providerEntityId: r.providerEntityId,
+              locationId: r.locationId,
+              encounterId,
+              problemId: input.problemId ?? null,
+              goalId: input.goalId ?? null,
+              interventionId: input.interventionId ?? null,
+            })
+            .returning({
+              id: LINK.id,
+              problemId: LINK.problemId,
+              goalId: LINK.goalId,
+              interventionId: LINK.interventionId,
+            }),
+          "care-plan link insert returned no row",
+        );
+        return {
+          linkId: inserted.id,
+          problemId: inserted.problemId,
+          goalId: inserted.goalId,
+          interventionId: inserted.interventionId,
+        };
       });
     },
     async removeCarePlanLink(organizationId, encounterId) {
@@ -650,7 +976,7 @@ export function createDbEncounterRouteService(
         // by addCarePlanLink; removal becomes a soft-invalidate when links persist (route ids threaded).
       });
     },
-    async documentEvvMissing(organizationId, encounterId) {
+    async documentEvvMissing(organizationId, encounterId, reason) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
@@ -659,7 +985,7 @@ export function createDbEncounterRouteService(
           .update(ENC)
           .set({
             evvBracketState: "evv_missing_documented",
-            evvMissingReason: EVV_MISSING_REASON,
+            evvMissingReason: reason,
             updatedAt: new Date(),
           })
           .where(eq(ENC.id, encounterId));
@@ -677,12 +1003,27 @@ export function createDbEncounterRouteService(
           gatePreviewPassed: true,
           at,
         });
+        if (!r.providerEntityId || !r.locationId) {
+          throw new EncounterStateError(
+            "ILLEGAL_TRANSITION",
+            "encounter must be sited before it can be finalized",
+          );
+        }
+        const [selection] = await t
+          .select({ selections: SEL.selections, templateKey: SEL.templateKey })
+          .from(SEL)
+          .where(eq(SEL.encounterId, encounterId))
+          .limit(1);
+        const finalText = layer1PreviewFromSelections(
+          (selection?.selections as Record<string, unknown> | undefined) ?? {},
+        );
+        const vocabVersionId = r.vocabVersionId ?? VOCAB_VERSION_SENTINEL;
         const updated = firstOrThrow(
           await t
             .update(ENC)
             .set({
               status: trans.to,
-              vocabVersionId: r.vocabVersionId ?? VOCAB_VERSION_SENTINEL, // D11 pin (immutable thereafter)
+              vocabVersionId, // D11 pin (immutable thereafter)
               version: Number(r.version) + 1,
               updatedAt: new Date(),
             })
@@ -690,9 +1031,23 @@ export function createDbEncounterRouteService(
             .returning({ version: ENC.version }),
           "finalize matched no row",
         );
+        await t.insert(OUT).values({
+          organizationId,
+          providerEntityId: r.providerEntityId,
+          locationId: r.locationId,
+          encounterId,
+          kind: "primary_finalize",
+          layer1Cipher: finalText,
+          layer2Cipher: null,
+          finalCipher: finalText,
+          layer2Eligibility: "tenant_flag_off",
+          layer2InvolvedAtFinalize: false,
+          assemblyTemplateKey: selection?.templateKey ?? templateKeyFor(r),
+          vocabVersionId,
+        });
         await emit(t, organizationId, "m8.encounter.finalized", "encounter", encounterId, {
           encounterId,
-          vocabVersionId: r.vocabVersionId ?? VOCAB_VERSION_SENTINEL,
+          vocabVersionId,
           layer2Involved: false,
           lateEntryTier: r.lateEntryTier,
         });
@@ -718,6 +1073,13 @@ export function createDbEncounterRouteService(
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
         const now = new Date();
+        const admission = await admissionSummaryFor(r.admissionId);
+        validateAdmissionForService(
+          organizationId,
+          r.patientId,
+          r.serviceDate as LocalDate,
+          admission,
+        );
         // The REAL caller signs, not the encounter's author (that was the pre-fix bug — see the
         // module-header compromise list above, item (2)).
         const signedByMembershipId = actor.membershipId;
@@ -732,6 +1094,8 @@ export function createDbEncounterRouteService(
           );
         }
         const siting = { providerEntityId: r.providerEntityId, locationId: r.locationId };
+        const careplanLinks = await carePlanLinksFor(t, encounterId);
+        const finalPayload = await latestFinalPayload(t, encounterId);
 
         // §7.4 D1 — an F2F encounter signs as one atomic dual-write (M8 note + the M6 attestation row).
         // The plan throws on a failed gate / stale step-up / missing M6 id → neither side is written.
@@ -780,8 +1144,8 @@ export function createDbEncounterRouteService(
             layer2Involved: false,
             evvBracketState,
             requiresCosign: false,
-            careplanLinks: [],
-            documentRenderPayload: { final: "", addenda: [] },
+            careplanLinks,
+            documentRenderPayload: { final: finalPayload, addenda: [] },
           });
           return { status: "signed", signedAt: now.toISOString(), cosignatureRequestId: null };
         }
@@ -828,8 +1192,8 @@ export function createDbEncounterRouteService(
           layer2Involved: false,
           evvBracketState,
           requiresCosign,
-          careplanLinks: [],
-          documentRenderPayload: { final: "", addenda: [] },
+          careplanLinks,
+          documentRenderPayload: { final: finalPayload, addenda: [] },
         });
         if (requiresCosign) {
           // §2.4 D3 — open the cosignature request already `routed` to the assigned RN. The route threads
@@ -870,26 +1234,30 @@ export function createDbEncounterRouteService(
     },
 
     // ── Late-entry tier overrides (§2.5 D4) ────────────────────────────────────────────────────────────
-    async lateEntryOverride(organizationId, encounterId) {
+    async lateEntryOverride(organizationId, encounterId, args) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
-        // The route threads no override actor/reason; sentinels satisfy the significant-late DB CHECK
-        // (override_by + reason >= 40 + a late_entry_reason >= 40) until the route body captures them.
         await t
           .update(ENC)
           .set({
             lateEntryTier: "significant_late_entry",
-            lateEntryReason: SIGNIFICANT_LATE_REASON,
-            significantLateOverrideBy: r.authoredByMembershipId,
-            significantLateOverrideReason: SIGNIFICANT_LATE_REASON,
+            lateEntryReason: args.reason,
+            significantLateOverrideBy: args.actorMembershipId,
+            significantLateOverrideReason: args.reason,
             updatedAt: new Date(),
           })
           .where(eq(ENC.id, encounterId));
+        await emit(t, organizationId, "m8.encounter.late_entry_override", "encounter", encounterId, {
+          encounterId,
+          overrideBy: args.actorMembershipId,
+          overrideReason: args.reason,
+          daysLate: 0,
+        });
         return { status: r.status };
       });
     },
-    async administrativeOverride(organizationId, encounterId) {
+    async administrativeOverride(organizationId, encounterId, args) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
@@ -897,12 +1265,18 @@ export function createDbEncounterRouteService(
           .update(ENC)
           .set({
             lateEntryTier: "administrative_override",
-            lateEntryReason: SIGNIFICANT_LATE_REASON,
-            administrativeOverrideBy: r.authoredByMembershipId,
-            administrativeOverrideReason: ADMINISTRATIVE_LATE_REASON,
+            lateEntryReason: args.reason,
+            administrativeOverrideBy: args.actorMembershipId,
+            administrativeOverrideReason: args.reason,
             updatedAt: new Date(),
           })
           .where(eq(ENC.id, encounterId));
+        await emit(t, organizationId, "m8.encounter.administrative_override", "encounter", encounterId, {
+          encounterId,
+          overrideBy: args.actorMembershipId,
+          overrideReason: args.reason,
+          daysLate: 0,
+        });
         return { status: r.status };
       });
     },
@@ -1031,11 +1405,17 @@ export function createDbEncounterRouteService(
     },
 
     // ── Addendum aggregate (§2.3 — draft → finalize → sign) ────────────────────────────────────────────
-    async createAddendum(organizationId, encounterId) {
+    async createAddendum(organizationId, encounterId, args) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
         checkParentNotVoided({ parentStatus: r.status });
+        if (r.status !== "signed" && r.status !== "cosigned") {
+          throw new EncounterStateError(
+            "ILLEGAL_TRANSITION",
+            "addenda can only be authored on signed or cosigned encounters",
+          );
+        }
         const a = firstOrThrow(
           await t
             .insert(ADDENDUM)
@@ -1043,7 +1423,9 @@ export function createDbEncounterRouteService(
               organizationId,
               encounterId,
               authoredByMembershipId: r.authoredByMembershipId,
-              reason: ADDENDUM_REASON, // the route carries no reason yet (see file header)
+              providerEntityId: r.providerEntityId,
+              locationId: r.locationId,
+              reason: args.reason,
               status: "draft",
             })
             .returning({ id: ADDENDUM.id }),

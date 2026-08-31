@@ -355,6 +355,7 @@ exports.MODULES = [
       "goal",
       "intervention",
       "care_plan_idg_decision_application",
+      "care_plan_idg_proposed_change",
     ],
   }, // M07-F02
   {

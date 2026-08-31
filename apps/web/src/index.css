@@ -617,6 +617,9 @@
   .wx-data-row-interactive:hover {
     background: var(--color-surface-low);
   }
+  .wx-data-row[aria-selected="true"] td {
+    background: var(--color-primary-tint);
+  }
   tbody tr:hover {
     background: color-mix(in srgb, var(--color-surface-low) 70%, transparent);
   }
@@ -738,6 +741,69 @@
     > :not(.wx-page-header):not(.wx-kpi-strip):not(.wx-filter-bar):not(.wx-work-split) {
     padding-left: var(--space-5);
     padding-right: var(--space-5);
+  }
+
+  /* Patient workspaces: shared polish for every /patients/* route that uses PatientWorkspaceLayout. */
+  .wx-patient-workspace {
+    background: var(--color-background);
+  }
+  .wx-patient-workspace > div:last-child {
+    min-width: 0;
+  }
+  .wx-patient-workspace .wx-left-rail {
+    width: 16.5rem;
+    background: var(--color-surface-lowest);
+  }
+  .wx-chart-module-list {
+    gap: 0.25rem !important;
+  }
+  .wx-chart-module-item {
+    min-height: 2.35rem;
+    transition: background-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+  }
+  .wx-chart-module-item:hover {
+    background: var(--color-surface-low);
+    color: var(--color-on-surface);
+    text-decoration: none;
+  }
+  .wx-chart-module-item:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+  .wx-chart-module-item.is-active {
+    box-shadow: inset 3px 0 0 var(--color-primary);
+  }
+  .wx-patient-banner {
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--color-outline-variant) 35%, transparent);
+  }
+  .wx-patient-card {
+    margin-bottom: var(--space-4);
+  }
+  .wx-patient-card table {
+    min-width: 36rem;
+  }
+
+  @media (max-width: 900px) {
+    .wx-patient-workspace .wx-left-rail {
+      width: 100% !important;
+      border-right: 0 !important;
+      border-bottom: 1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent);
+    }
+    .wx-patient-workspace > div:last-child > div {
+      flex-direction: column;
+    }
+    .wx-patient-workspace .wx-right-panel {
+      width: 100% !important;
+      border-left: 0 !important;
+      border-top: 1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent);
+    }
+    .wx-patient-banner {
+      align-items: flex-start !important;
+    }
+    .wx-banner-actions {
+      width: 100%;
+      margin-left: 0 !important;
+    }
   }
 
   /* ---- Light polish on regions/patterns (these already have inline structure) ---- */

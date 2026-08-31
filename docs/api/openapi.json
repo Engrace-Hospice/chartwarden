@@ -15109,7 +15109,8 @@
                         "windowEnd",
                         "lateDeadline",
                         "completedAt",
-                        "assessmentId"
+                        "assessmentId",
+                        "attention"
                       ],
                       "properties": {
                         "kind": {
@@ -15227,6 +15228,126 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "attention": {
+                          "type": "object",
+                          "required": [
+                            "state",
+                            "severity",
+                            "action",
+                            "message",
+                            "deadline"
+                          ],
+                          "properties": {
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "none",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "upcoming",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "due_soon",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "due",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "overdue",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "window_expired",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "missed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "workflow_issue",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "severity": {
+                              "anyOf": [
+                                {
+                                  "const": "none",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "info",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "warn",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "critical",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "action": {
+                              "anyOf": [
+                                {
+                                  "const": "COMPLETE_ADMISSION_RFA",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "COMPLETE_HUV1",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "COMPLETE_HUV2",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "COMPLETE_DISCHARGE_RFA",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "OPEN_SFV",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "REPAIR_WORKFLOW",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "NONE",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "message": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "deadline": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
                         }
                       }
                     },
@@ -15240,7 +15361,8 @@
                         "windowEnd",
                         "lateDeadline",
                         "completedAt",
-                        "assessmentId"
+                        "assessmentId",
+                        "attention"
                       ],
                       "properties": {
                         "kind": {
@@ -15358,6 +15480,126 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "attention": {
+                          "type": "object",
+                          "required": [
+                            "state",
+                            "severity",
+                            "action",
+                            "message",
+                            "deadline"
+                          ],
+                          "properties": {
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "none",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "upcoming",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "due_soon",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "due",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "overdue",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "window_expired",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "missed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "workflow_issue",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "severity": {
+                              "anyOf": [
+                                {
+                                  "const": "none",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "info",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "warn",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "critical",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "action": {
+                              "anyOf": [
+                                {
+                                  "const": "COMPLETE_ADMISSION_RFA",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "COMPLETE_HUV1",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "COMPLETE_HUV2",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "COMPLETE_DISCHARGE_RFA",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "OPEN_SFV",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "REPAIR_WORKFLOW",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "NONE",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "message": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "deadline": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
                         }
                       }
                     },
@@ -15371,7 +15613,8 @@
                         "windowEnd",
                         "lateDeadline",
                         "completedAt",
-                        "assessmentId"
+                        "assessmentId",
+                        "attention"
                       ],
                       "properties": {
                         "kind": {
@@ -15489,6 +15732,126 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "attention": {
+                          "type": "object",
+                          "required": [
+                            "state",
+                            "severity",
+                            "action",
+                            "message",
+                            "deadline"
+                          ],
+                          "properties": {
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "none",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "upcoming",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "due_soon",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "due",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "overdue",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "window_expired",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "missed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "workflow_issue",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "severity": {
+                              "anyOf": [
+                                {
+                                  "const": "none",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "info",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "warn",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "critical",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "action": {
+                              "anyOf": [
+                                {
+                                  "const": "COMPLETE_ADMISSION_RFA",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "COMPLETE_HUV1",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "COMPLETE_HUV2",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "COMPLETE_DISCHARGE_RFA",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "OPEN_SFV",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "REPAIR_WORKFLOW",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "NONE",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "message": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "deadline": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
                         }
                       }
                     },
@@ -15504,7 +15867,8 @@
                           "dueAt",
                           "triggeredAt",
                           "completedAt",
-                          "completingAssessmentId"
+                          "completingAssessmentId",
+                          "attention"
                         ],
                         "properties": {
                           "id": {
@@ -15589,6 +15953,126 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "attention": {
+                            "type": "object",
+                            "required": [
+                              "state",
+                              "severity",
+                              "action",
+                              "message",
+                              "deadline"
+                            ],
+                            "properties": {
+                              "state": {
+                                "anyOf": [
+                                  {
+                                    "const": "none",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "upcoming",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "due_soon",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "due",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "overdue",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "window_expired",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "missed",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "workflow_issue",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "severity": {
+                                "anyOf": [
+                                  {
+                                    "const": "none",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "info",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "warn",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "critical",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "action": {
+                                "anyOf": [
+                                  {
+                                    "const": "COMPLETE_ADMISSION_RFA",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "COMPLETE_HUV1",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "COMPLETE_HUV2",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "COMPLETE_DISCHARGE_RFA",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "OPEN_SFV",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "REPAIR_WORKFLOW",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "NONE",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "message": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "deadline": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
                           }
                         }
                       }
@@ -15603,7 +16087,8 @@
                         "windowEnd",
                         "lateDeadline",
                         "completedAt",
-                        "assessmentId"
+                        "assessmentId",
+                        "attention"
                       ],
                       "properties": {
                         "kind": {
@@ -15721,6 +16206,126 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "attention": {
+                          "type": "object",
+                          "required": [
+                            "state",
+                            "severity",
+                            "action",
+                            "message",
+                            "deadline"
+                          ],
+                          "properties": {
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "none",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "upcoming",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "due_soon",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "due",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "overdue",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "window_expired",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "missed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "workflow_issue",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "severity": {
+                              "anyOf": [
+                                {
+                                  "const": "none",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "info",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "warn",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "critical",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "action": {
+                              "anyOf": [
+                                {
+                                  "const": "COMPLETE_ADMISSION_RFA",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "COMPLETE_HUV1",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "COMPLETE_HUV2",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "COMPLETE_DISCHARGE_RFA",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "OPEN_SFV",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "REPAIR_WORKFLOW",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "NONE",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "message": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "deadline": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
                         }
                       }
                     },
@@ -15730,7 +16335,10 @@
                         "actionableCount",
                         "overdueCount",
                         "completedCount",
-                        "nextDeadline"
+                        "nextDeadline",
+                        "highestSeverity",
+                        "dueSoonCount",
+                        "workflowIssueCount"
                       ],
                       "properties": {
                         "actionableCount": {
@@ -15751,6 +16359,32 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "highestSeverity": {
+                          "anyOf": [
+                            {
+                              "const": "none",
+                              "type": "string"
+                            },
+                            {
+                              "const": "info",
+                              "type": "string"
+                            },
+                            {
+                              "const": "warn",
+                              "type": "string"
+                            },
+                            {
+                              "const": "critical",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "dueSoonCount": {
+                          "type": "integer"
+                        },
+                        "workflowIssueCount": {
+                          "type": "integer"
                         }
                       }
                     }
@@ -16632,6 +17266,10 @@
                   },
                   "attendingPhysicianId": {
                     "format": "uuid",
+                    "type": "string"
+                  },
+                  "admissionAt": {
+                    "format": "date-time",
                     "type": "string"
                   },
                   "ifVersion": {
@@ -46656,6 +47294,289 @@
         }
       }
     },
+    "/api/v1/care-plans/{planId}/readiness": {
+      "get": {
+        "operationId": "getApiV1CareplansByPlanIdReadiness",
+        "tags": [
+          "07-care-plan"
+        ],
+        "summary": "Backend-authoritative readiness for the current open care-plan version",
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "planId",
+                    "openVersionId",
+                    "canFinalize",
+                    "canSign",
+                    "blockers",
+                    "signatures"
+                  ],
+                  "properties": {
+                    "planId": {
+                      "type": "string"
+                    },
+                    "openVersionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openVersionStatus": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "signed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "superseded",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "canFinalize": {
+                      "type": "boolean"
+                    },
+                    "canSign": {
+                      "type": "boolean"
+                    },
+                    "blockers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "message"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "signatures": {
+                      "type": "object",
+                      "required": [
+                        "required",
+                        "collected",
+                        "missing"
+                      ],
+                      "properties": {
+                        "required": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "role",
+                              "count"
+                            ],
+                            "properties": {
+                              "role": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        },
+                        "collected": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "signerRole",
+                              "signedAt"
+                            ],
+                            "properties": {
+                              "signerRole": {
+                                "type": "string"
+                              },
+                              "signedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        "missing": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "role",
+                              "count"
+                            ],
+                            "properties": {
+                              "role": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/care-plans/{planId}/review-status": {
+      "get": {
+        "operationId": "getApiV1CareplansByPlanIdReviewstatus",
+        "tags": [
+          "07-care-plan"
+        ],
+        "summary": "Backend-derived 15-day care-plan review status",
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "planId",
+                    "nextReviewDueAt",
+                    "status",
+                    "overdueByDays",
+                    "openReviewVersionId",
+                    "openReviewVersionStatus",
+                    "canStartReview"
+                  ],
+                  "properties": {
+                    "planId": {
+                      "type": "string"
+                    },
+                    "nextReviewDueAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "not_due",
+                          "type": "string"
+                        },
+                        {
+                          "const": "due",
+                          "type": "string"
+                        },
+                        {
+                          "const": "overdue",
+                          "type": "string"
+                        },
+                        {
+                          "const": "review_in_progress",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "overdueByDays": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "openReviewVersionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openReviewVersionStatus": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canStartReview": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/care-plans/{planId}/summary": {
       "get": {
         "operationId": "getApiV1CareplansByPlanIdSummary",
@@ -46892,7 +47813,9 @@
                           "idgMeetingId",
                           "requiredSignerSet",
                           "signatures",
+                          "draftedAt",
                           "signedAt",
+                          "supersededAt",
                           "version"
                         ],
                         "properties": {
@@ -47016,7 +47939,38 @@
                               }
                             }
                           },
+                          "draftedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "signedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "supersededAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "stateSnapshot": {},
+                          "patientUnderstandingText": {
                             "anyOf": [
                               {
                                 "type": "string"
@@ -47164,7 +48118,9 @@
                     "idgMeetingId",
                     "requiredSignerSet",
                     "signatures",
+                    "draftedAt",
                     "signedAt",
+                    "supersededAt",
                     "version"
                   ],
                   "properties": {
@@ -47288,7 +48244,38 @@
                         }
                       }
                     },
+                    "draftedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "signedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "stateSnapshot": {},
+                    "patientUnderstandingText": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -47412,6 +48399,237 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/care-plans/{planId}/versions/{versionId}/proposed-changes": {
+      "get": {
+        "operationId": "getApiV1CareplansByPlanIdVersionsByVersionIdProposedchanges",
+        "tags": [
+          "07-care-plan"
+        ],
+        "summary": "Proposed IDG care-plan changes for a governed review version",
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "versionId",
+                    "kind",
+                    "meetingId",
+                    "status",
+                    "proposals",
+                    "changes"
+                  ],
+                  "properties": {
+                    "versionId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "anyOf": [
+                        {
+                          "const": "initial",
+                          "type": "string"
+                        },
+                        {
+                          "const": "idg_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "interim_revision",
+                          "type": "string"
+                        },
+                        {
+                          "const": "discharge",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "meetingId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "signed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "superseded",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "proposals": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "decisionId",
+                          "meetingId",
+                          "sourceOutboxEventId",
+                          "status",
+                          "proposedAt",
+                          "inReviewAt",
+                          "appliedAt",
+                          "conflictReason"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "decisionId": {
+                            "type": "string"
+                          },
+                          "meetingId": {
+                            "type": "string"
+                          },
+                          "sourceOutboxEventId": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "proposedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "inReviewAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "appliedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "conflictReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "changes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "proposalId",
+                          "decisionId",
+                          "entityType",
+                          "operation",
+                          "targetId",
+                          "before",
+                          "proposed",
+                          "status"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "proposalId": {
+                            "type": "string"
+                          },
+                          "decisionId": {
+                            "type": "string"
+                          },
+                          "entityType": {
+                            "type": "string"
+                          },
+                          "operation": {
+                            "type": "string"
+                          },
+                          "targetId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "before": {},
+                          "proposed": {},
+                          "status": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -70350,6 +71568,7 @@
                 "type": "object",
                 "required": [
                   "hospiceMedicalDirectorId",
+                  "terminalDiagnosisIcd10",
                   "prognosisStatement",
                   "narrative",
                   "clinicalFindings",
@@ -70362,6 +71581,10 @@
                   },
                   "attendingPhysicianId": {
                     "format": "uuid",
+                    "type": "string"
+                  },
+                  "terminalDiagnosisIcd10": {
+                    "pattern": "^[A-Z][0-9A-Z.]{1,7}$",
                     "type": "string"
                   },
                   "prognosisStatement": {
@@ -70575,6 +71798,15 @@
         "parameters": [
           {
             "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "name": "admissionId",
             "in": "query",
             "required": false,
             "schema": {
@@ -70860,6 +72092,102 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "selections": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^(.*)$": {}
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "finalDocumentation": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "vitals": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^(.*)$": {}
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "mileage": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^(.*)$": {}
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "carePlanLinks": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "linkId",
+                                "problemId",
+                                "goalId",
+                                "interventionId"
+                              ],
+                              "properties": {
+                                "linkId": {
+                                  "type": "string"
+                                },
+                                "problemId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "goalId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "interventionId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
                           }
                         }
                       }
@@ -71290,6 +72618,102 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "selections": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {}
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "finalDocumentation": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "vitals": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {}
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "mileage": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {}
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "carePlanLinks": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "linkId",
+                          "problemId",
+                          "goalId",
+                          "interventionId"
+                        ],
+                        "properties": {
+                          "linkId": {
+                            "type": "string"
+                          },
+                          "problemId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "goalId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "interventionId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -71728,11 +73152,44 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "linkId"
+                    "linkId",
+                    "problemId",
+                    "goalId",
+                    "interventionId"
                   ],
                   "properties": {
                     "linkId": {
                       "type": "string"
+                    },
+                    "problemId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "goalId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "interventionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -73957,6 +75414,102 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "selections": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^(.*)$": {}
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "finalDocumentation": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "vitals": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^(.*)$": {}
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "mileage": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^(.*)$": {}
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "carePlanLinks": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "linkId",
+                                "problemId",
+                                "goalId",
+                                "interventionId"
+                              ],
+                              "properties": {
+                                "linkId": {
+                                  "type": "string"
+                                },
+                                "problemId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "goalId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "interventionId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
                           }
                         }
                       }
@@ -74196,6 +75749,102 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "selections": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^(.*)$": {}
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "finalDocumentation": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "vitals": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^(.*)$": {}
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "mileage": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^(.*)$": {}
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "carePlanLinks": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "linkId",
+                                "problemId",
+                                "goalId",
+                                "interventionId"
+                              ],
+                              "properties": {
+                                "linkId": {
+                                  "type": "string"
+                                },
+                                "problemId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "goalId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "interventionId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
                           }
                         }
                       }
@@ -90830,6 +92479,102 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "selections": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^(.*)$": {}
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "finalDocumentation": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "vitals": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^(.*)$": {}
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "mileage": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^(.*)$": {}
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "carePlanLinks": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "linkId",
+                                "problemId",
+                                "goalId",
+                                "interventionId"
+                              ],
+                              "properties": {
+                                "linkId": {
+                                  "type": "string"
+                                },
+                                "problemId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "goalId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "interventionId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
                           }
                         }
                       }
@@ -120371,6 +122116,7 @@
                       "required": [
                         "id",
                         "patientId",
+                        "admissionId",
                         "status",
                         "activeVersionId",
                         "version",
@@ -120385,6 +122131,9 @@
                           "type": "string"
                         },
                         "patientId": {
+                          "type": "string"
+                        },
+                        "admissionId": {
                           "type": "string"
                         },
                         "status": {
@@ -120429,7 +122178,9 @@
                               "idgMeetingId",
                               "requiredSignerSet",
                               "signatures",
+                              "draftedAt",
                               "signedAt",
+                              "supersededAt",
                               "version"
                             ],
                             "properties": {
@@ -120553,7 +122304,38 @@
                                   }
                                 }
                               },
+                              "draftedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
                               "signedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "supersededAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "stateSnapshot": {},
+                              "patientUnderstandingText": {
                                 "anyOf": [
                                   {
                                     "type": "string"
@@ -120584,6 +122366,8 @@
                               "source",
                               "sudRelated",
                               "status",
+                              "onsetAt",
+                              "resolvedAt",
                               "resolutionNote",
                               "version"
                             ],
@@ -120679,6 +122463,26 @@
                                   }
                                 ]
                               },
+                              "onsetAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "resolvedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
                               "resolutionNote": {
                                 "anyOf": [
                                   {
@@ -120709,7 +122513,9 @@
                               "source",
                               "actingConsentId",
                               "measurableOutcome",
+                              "targetAt",
                               "status",
+                              "statusNote",
                               "version"
                             ],
                             "properties": {
@@ -120778,6 +122584,16 @@
                                   }
                                 ]
                               },
+                              "targetAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
                               "status": {
                                 "anyOf": [
                                   {
@@ -120806,6 +122622,16 @@
                                   }
                                 ]
                               },
+                              "statusNote": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
                               "version": {
                                 "type": "integer"
                               }
@@ -120827,7 +122653,9 @@
                               "frequencyValue",
                               "discipline",
                               "responsibleRole",
+                              "linkedOrderId",
                               "status",
+                              "discontinueReason",
                               "version"
                             ],
                             "properties": {
@@ -120924,6 +122752,16 @@
                                   }
                                 ]
                               },
+                              "linkedOrderId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
                               "status": {
                                 "anyOf": [
                                   {
@@ -120937,6 +122775,16 @@
                                   {
                                     "const": "completed",
                                     "type": "string"
+                                  }
+                                ]
+                              },
+                              "discontinueReason": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
                                   }
                                 ]
                               },
@@ -202762,6 +204610,259 @@
                     ]
                   },
                   "schedulerInternalNotes": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/visits/{visitId}/arrive": {
+      "post": {
+        "operationId": "postApiV1VisitsByVisitIdArrive",
+        "tags": [
+          "17-scheduling"
+        ],
+        "summary": "Record arrival/check-in (EVV-missing path; step-up-fresh)",
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "patientId",
+                    "admissionId",
+                    "assignedMembershipId",
+                    "visitPurpose",
+                    "visitSetting",
+                    "scheduledStartedAt",
+                    "scheduledEndedAt",
+                    "serviceDate",
+                    "status",
+                    "patientAddressId",
+                    "externalFacilityId",
+                    "rescheduledIntoVisitId"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "assignedMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "visitPurpose": {
+                      "anyOf": [
+                        {
+                          "const": "routine_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "prn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "aide_poc",
+                          "type": "string"
+                        },
+                        {
+                          "const": "msw_assessment",
+                          "type": "string"
+                        },
+                        {
+                          "const": "msw_followup",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chaplain_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "chaplain_assessment",
+                          "type": "string"
+                        },
+                        {
+                          "const": "volunteer_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "f2f",
+                          "type": "string"
+                        },
+                        {
+                          "const": "recert",
+                          "type": "string"
+                        },
+                        {
+                          "const": "loc_change",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pronouncement",
+                          "type": "string"
+                        },
+                        {
+                          "const": "admission_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "discharge_visit",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "visitSetting": {
+                      "anyOf": [
+                        {
+                          "const": "patient_home",
+                          "type": "string"
+                        },
+                        {
+                          "const": "facility",
+                          "type": "string"
+                        },
+                        {
+                          "const": "inpatient_unit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "telephonic",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "scheduledStartedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "scheduledEndedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "serviceDate": {
+                      "format": "date",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "proposed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "published",
+                          "type": "string"
+                        },
+                        {
+                          "const": "en_route",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "completed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "no_show",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rescheduled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "patientAddressId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalFacilityId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rescheduledIntoVisitId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "evvMissingReason": {
+                    "minLength": 40,
                     "maxLength": 1000,
                     "type": "string"
                   }

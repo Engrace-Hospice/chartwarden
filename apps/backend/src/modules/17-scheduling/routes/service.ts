@@ -276,6 +276,9 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
   }
 
   editVisit(orgId: string, _userId: string, visitId: string, input: EditVisitInput): VisitView {
+    if (input.scheduledStartedAt !== undefined || input.scheduledEndedAt !== undefined) {
+      throw new ForbiddenError("schedule time changes must use the reschedule workflow");
+    }
     const record = this.requireVisit(orgId, visitId);
     const reassigned =
       input.assignedMembershipId !== undefined || input.scheduledStartedAt !== undefined;
@@ -299,6 +302,27 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     const record = this.requireVisit(orgId, visitId);
     const transition = transitionVisit(record.status, {
       type: "start",
+      source:
+        evvMissingReason === undefined
+          ? { via: "evv" }
+          : { via: "self_attest", evvMissingReason, stepUpSatisfied },
+    });
+    record.status = transition.to;
+    record.version += 1;
+    this.record(transition.effects, record.id);
+    return toVisitView(record);
+  }
+
+  arriveVisit(
+    orgId: string,
+    _userId: string,
+    visitId: string,
+    evvMissingReason: string | undefined,
+    stepUpSatisfied: boolean,
+  ): VisitView {
+    const record = this.requireVisit(orgId, visitId);
+    const transition = transitionVisit(record.status, {
+      type: "arrive",
       source:
         evvMissingReason === undefined
           ? { via: "evv" }

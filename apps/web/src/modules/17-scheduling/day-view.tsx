@@ -9,6 +9,7 @@ import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient }
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { NewVisitModal, SchedulingNav } from "./scheduling-workflow";
 import { type VisitRow, VisitRows } from "./visit-table";
 
 export function SchedulingDay(): JSX.Element {
@@ -20,6 +21,7 @@ export function SchedulingDay(): JSX.Element {
   const [visits, setVisits] = useState<VisitRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -48,8 +50,9 @@ export function SchedulingDay(): JSX.Element {
     [visits],
   );
   return (
-    <WorkQueueLayout
-      header={
+    <>
+      <WorkQueueLayout
+        header={
         <PageHeader title="Day View" breadcrumb="Scheduling">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Scheduled visits for {date}
@@ -57,15 +60,12 @@ export function SchedulingDay(): JSX.Element {
           </div>
         </PageHeader>
       }
-      filters={
+        filters={
         <div style={filterShellStyle}>
-          <div style={infoBannerStyle}>
-            Reads are server-scoped by date and optional membership query parameters. Drag/drop
-            reschedule and publish actions remain outside this read-only view.
-          </div>
+          <SchedulingNav onNewVisit={() => setCreating(true)} />
         </div>
       }
-      table={
+        table={
         error ? (
           <div style={emptyShellStyle}>
             <EmptyState title="Unavailable" description={error} />
@@ -84,8 +84,17 @@ export function SchedulingDay(): JSX.Element {
           </div>
         )
       }
-      fullPageScroll
-    />
+        fullPageScroll
+      />
+      <NewVisitModal
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={(visit) => {
+          setCreating(false);
+          navigate(`/scheduling/visits/${visit.id}`);
+        }}
+      />
+    </>
   );
 }
 
@@ -109,13 +118,4 @@ const emptyShellStyle: CSSProperties = {
 const loadingShellStyle: CSSProperties = {
   padding: "2.5rem 1.5rem",
   textAlign: "center",
-};
-
-const infoBannerStyle: CSSProperties = {
-  padding: "0.625rem 1rem",
-  borderRadius: "var(--radius-md)",
-  border: "1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)",
-  background: "var(--color-primary-tint)",
-  color: "var(--color-on-surface)",
-  fontSize: "0.85rem",
 };

@@ -5,6 +5,7 @@
 // draft. draftedByMembershipId references M1 `membership` (the identity spine). `patientUnderstandingText`
 // is patient-quoted free-text → denylisted in the M4 write-audit trigger (§3.5). RLS + trigger land in
 // migration 0029 (M7-T02).
+import { sql } from "drizzle-orm";
 import {
   index,
   integer,
@@ -52,6 +53,9 @@ export const carePlanVersions = pgTable(
   },
   (t) => ({
     planSeqUq: uniqueIndex("care_plan_version_plan_seq_uq").on(t.carePlanId, t.sequence),
+    oneOpenPerPlanUq: uniqueIndex("care_plan_version_one_open_per_plan_uq")
+      .on(t.carePlanId)
+      .where(sql`status IN ('draft', 'in_review')`),
     planStatusIdx: index("care_plan_version_plan_status_idx").on(t.carePlanId, t.status),
     signedAtIdx: index("care_plan_version_signed_at_idx").on(t.signedAt),
   }),

@@ -16,7 +16,7 @@
 // discipline being authored). `dpoa_active`/`sud_disclosure_allowed` stay as the existing
 // `dpoaConsentActive`/`sudDisclosureAllowed` closures below (per-element data-shaping, not a route
 // gate; wiring their real seam-backed implementations at boot is GAP-013, a separate finding).
-import { requireAbac, requirePermission } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
 import type { InterventionDiscipline } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -117,6 +117,7 @@ const SCOPE_BY_QUERY_PATIENT = (action: string): PreHandler =>
 const SIGNER_MATCH = requireAbac("care_plan.sign", "signer_role_match", {
   notFoundOnDeny: true,
 }) as PreHandler;
+const SIGN_STEP_UP = requireStepUp("care_plan.sign") as PreHandler;
 
 // `discipline_scope`'s target is the body's `discipline` (the thing being authored) — the one M7
 // predicate that reads the body rather than a resolver-loaded resource, per abac-predicates.ts's own
@@ -129,6 +130,13 @@ const DISCIPLINE_SCOPE = requireAbac("care_plan.author", "discipline_scope", {
 
 const planIdOf = (request: FastifyRequest): string =>
   parse(PlanParamsSchema, request.params).planId;
+
+function signingActorOf(request: FastifyRequest): { userId: string; membershipId: string } {
+  const ctx = request.context;
+  const membershipId = membershipIdOf(ctx);
+  if (!ctx?.userId || !membershipId) throw new UnauthorizedError();
+  return { userId: ctx.userId, membershipId };
+}
 
 export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRouteDeps): void {
   const { service } = deps;
@@ -234,9 +242,10 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
 
   app.post(
     "/api/v1/care-plans/:planId/versions/:versionId/signatures",
-    { preHandler: [SIGN, SCOPE("care_plan.sign"), SIGNER_MATCH] },
+    { preHandler: [SIGN, SCOPE("care_plan.sign"), SIGNER_MATCH, SIGN_STEP_UP] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
+      const actor = signingActorOf(request);
       const { planId, versionId } = parse(PlanVersionParamsSchema, request.params);
       const body = parse(SignVersionSchema, request.body);
       const res = await service.signVersion(
@@ -246,6 +255,8 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
         body.ifVersion,
         body.signerRole,
         new Date().toISOString(),
+        actor,
+        body.patientUnderstandingText,
       );
       return reply.code(201).send(res);
     },
@@ -417,6 +428,43 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
   );
 
   // ── Summary + overdue + internal element picker (reads over the §7.8 CarePlanReader seam) ───────
+  app.get(
+    "/api/v1/care-plans/:planId/readiness",
+    {
+      preHandler: [READ, SCOPE("care_plan.read")],
+      config: { auditRead: { resourceKind: "care_plan", resourceIdParam: "planId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.getReadiness(organizationId, planIdOf(request));
+    },
+  );
+
+  app.get(
+    "/api/v1/care-plans/:planId/versions/:versionId/proposed-changes",
+    {
+      preHandler: [READ, SCOPE("care_plan.read")],
+      config: { auditRead: { resourceKind: "care_plan_version", resourceIdParam: "versionId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { planId, versionId } = parse(PlanVersionParamsSchema, request.params);
+      return service.getProposedChanges(organizationId, planId, versionId);
+    },
+  );
+
+  app.get(
+    "/api/v1/care-plans/:planId/review-status",
+    {
+      preHandler: [READ, SCOPE("care_plan.read")],
+      config: { auditRead: { resourceKind: "care_plan", resourceIdParam: "planId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.getReviewStatus(organizationId, planIdOf(request));
+    },
+  );
+
   app.get(
     "/api/v1/care-plans/:planId/summary",
     {

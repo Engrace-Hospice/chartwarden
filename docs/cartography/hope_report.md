@@ -1,3 +1,210 @@
+# WardenX HOPE Phase 3 Alerts, Escalations & Workflow Hardening Report
+
+Date: 2026-08-29
+
+## A. Existing Phase 2 Surface Reused
+
+Phase 3 extends the Phase 2 admission-scoped workflow instead of adding a competing dashboard:
+
+- `/admissions/:admissionId/hope`
+- `/admissions/:admissionId/hope/timepoints/:kind`
+- `/admissions/:admissionId/hope/sfv/:sfvId`
+- `admission-hope-overview.tsx`
+- `hope-capture-workspace.tsx`
+- Admission Detail compact HOPE panel
+
+The top-level legacy M10 surfaces remain present: `/hope`, `/patients/:patientId/hope`, `/hope/sfv`,
+`/hope/assessments/:id`, `/hope/submissions`, `/hope/submissions/:id`, and `/hope/compliance`.
+
+## B. Files Changed In Phase 3
+
+- `packages/hope/src/attention.ts`
+- `packages/hope/src/index.ts`
+- `packages/hope/__tests__/attention.test.ts`
+- `apps/backend/src/modules/10-hope/routes/service.ts`
+- `apps/backend/src/modules/10-hope/routes/hope-typebox.ts`
+- `apps/backend/src/modules/10-hope/jobs/index.ts`
+- `apps/backend/src/modules/10-hope/jobs/cron-store.ts`
+- `apps/backend/src/modules/10-hope/jobs/cron-workers.ts`
+- `apps/backend/src/modules/10-hope/index.ts`
+- `apps/backend/src/modules/10-hope/outbox-consumers/m6-admission-workflow.ts`
+- `apps/backend/src/modules/36-messaging/alert-emitter-drizzle.ts`
+- `apps/backend/src/index.ts`
+- `apps/backend/__tests__/hope-jobs.test.ts`
+- `apps/backend/__tests__/hope-routes.test.ts`
+- `apps/backend/__tests__/hope-consumer-contracts.test.ts`
+- `apps/backend/__tests__/gap-096-alert-emitter-live.test.ts`
+- `apps/backend/__tests__/messaging-routes.test.ts`
+- `apps/web/src/modules/10-hope/hope-status.ts`
+- `apps/web/src/modules/10-hope/admission-hope-overview.tsx`
+- `apps/web/src/modules/10-hope/__tests__/admission-hope-overview.dom.test.tsx`
+- `apps/web/src/modules/06-admission/admission-detail.tsx`
+- `apps/web/src/modules/06-admission/__tests__/admission-detail.dom.test.tsx`
+- `packages/messaging/src/seed/alert-rules.ts`
+- `packages/messaging/__tests__/alert-rules-seed.test.ts`
+- `packages/messaging/__tests__/fan-out.test.ts`
+- `packages/messaging/__tests__/workflow-acceptance.test.ts`
+- `packages/db/src/schema/messaging/alerts.ts`
+- `packages/db/src/schema/messaging/alert-rules.ts`
+- `packages/db/migrations/0216_m36_alert_correlation_dedup.sql`
+- `packages/types/src/admission.ts`
+- `e2e/specs/hope-attention.spec.ts`
+- `docs/cartography/hope_report.md`
+
+`docs/api/openapi.json` was not read or modified during Phase 3.
+
+## C. Attention Read Model
+
+The existing `GET /api/v1/admissions/:admissionId/hope` response is extended in place. Fixed timepoints
+keep their workflow status:
+
+```ts
+workflow_not_initialized | not_applicable | upcoming | open | late | completed | expired | skipped
+```
+
+Each fixed timepoint and SFV now also carries:
+
+```ts
+attention: {
+  state:
+    | "none"
+    | "upcoming"
+    | "due_soon"
+    | "due"
+    | "overdue"
+    | "window_expired"
+    | "missed"
+    | "workflow_issue",
+  severity: "none" | "info" | "warn" | "critical",
+  action:
+    | "COMPLETE_ADMISSION_RFA"
+    | "COMPLETE_HUV1"
+    | "COMPLETE_HUV2"
+    | "COMPLETE_DISCHARGE_RFA"
+    | "OPEN_SFV"
+    | "REPAIR_WORKFLOW"
+    | "NONE",
+  message: string | null,
+  deadline: string | null
+}
+```
+
+`summary` now includes the Phase 2 counters plus `highestSeverity`, `dueSoonCount`, and
+`workflowIssueCount`. `workflow_not_initialized` maps to `workflow_issue`, not overdue. `late` maps to
+overdue attention while still preserving `workflowStatus = late`. `expired` maps to `window_expired`, not
+SFV `missed`.
+
+## D. Alert And Escalation Flow
+
+The existing M10 watchdogs are extended rather than adding a new cron:
+
+```text
+hope-window-watchdog
+  -> m10.hope.timepoint_expired
+  -> AlertEmitter.emit(... attentionState: "window_expired")
+
+sfv-watchdog
+  -> m10.hope.sfv_overdue / m10.hope.sfv_missed
+  -> AlertEmitter.emit(... attentionState: "overdue" | "missed")
+```
+
+M10 talks only to the public `AlertEmitter` seam injected at boot. M10 does not import M36 internals.
+M36 platform rules now include `m10.hope.sfv_created`, `m10.hope.sfv_overdue`,
+`m10.hope.sfv_missed`, and `m10.hope.timepoint_expired`.
+
+## E. Durable Idempotency
+
+M36 alert persistence now treats `(organization_id, correlation_id)` as the durable deduplication key.
+The new migration adds:
+
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS "alert_org_correlation_unique"
+  ON "alert" ("organization_id", "correlation_id");
+```
+
+`createDrizzleAlertEmitter(...).persist()` returns the existing alert for repeated correlation ids and does
+not create duplicate `notification_delivery` rows.
+
+## F. UI Changes
+
+Admission Detail’s compact HOPE panel now displays attention summaries such as workflow issues, overdue or
+missed work, due-soon work, and action-required counts. The HOPE overview shows attention badges and messages
+on fixed cards and SFV rows while still displaying the backend workflow status/date fields.
+
+React formats dates and routes contextual CTAs only. It does not calculate HUV windows, SFV triggers,
+late/expired state, or M9 assessment timing.
+
+## G. M9 Integration Audit
+
+M9 was audited before adding M9 alerts. The current M9 code exposes assessment record/correction,
+significant-change, license, and reassessment-cadence logic, but no authoritative public 48-hour Clinical
+Admission Assessment due/due-soon/overdue read model was found. Phase 3 therefore does not add M9 clinical
+admission assessment alerts; doing so in M10 or React would recreate forbidden timing logic outside M9.
+
+The UI copy remains explicit:
+
+- `Clinical Admission Assessment` for M9
+- `HOPE Admission Assessment` for M10
+
+## H. Historical Admissions
+
+Historical admissions with missing M10 schedules remain `workflow_not_initialized`. The UI presents this as a
+workflow data issue, not clinician-overdue work, and `summary.workflowIssueCount` is separate from
+`summary.overdueCount`. No React-side repair/backfill was added.
+
+## I. Tests
+
+Added/updated coverage:
+
+- `packages/hope/__tests__/attention.test.ts`: fixed-timepoint and SFV attention mappings.
+- `apps/backend/__tests__/hope-routes.test.ts`: summary endpoint includes attention and separates workflow
+  issues from overdue/missed counts.
+- `apps/backend/__tests__/hope-jobs.test.ts`: watchdog transition events plan M36 alert emissions with stable
+  correlation ids.
+- `packages/messaging/__tests__/alert-rules-seed.test.ts`: HOPE M10 event names are seeded in M36 rules.
+- `apps/backend/__tests__/gap-096-alert-emitter-live.test.ts`: live conditional proof that M36 dedupes by
+  correlation id.
+- `apps/web/src/modules/10-hope/__tests__/admission-hope-overview.dom.test.tsx`: overview renders attention,
+  workflow issues, SFVs, and contextual CTAs.
+- `apps/web/src/modules/06-admission/__tests__/admission-detail.dom.test.tsx`: compact Admission HOPE panel
+  surfaces attention without merging M9 and M10.
+- `e2e/specs/hope-attention.spec.ts`: Playwright scenario for seeded HOPE attention and contextual SFV flow.
+
+## J. Verification
+
+Passed:
+
+- `bun run typecheck`
+- `bun run build`
+- `bunx vitest run packages/hope/__tests__/attention.test.ts apps/backend/__tests__/hope-jobs.test.ts packages/messaging/__tests__/alert-rules-seed.test.ts packages/messaging/__tests__/fan-out.test.ts packages/messaging/__tests__/workflow-acceptance.test.ts apps/backend/__tests__/messaging-routes.test.ts apps/backend/__tests__/hope-routes.test.ts apps/web/src/modules/10-hope/__tests__/admission-hope-overview.dom.test.tsx apps/web/src/modules/06-admission/__tests__/admission-detail.dom.test.tsx`
+- `bunx vitest run apps/backend/__tests__/hope-consumer-contracts.test.ts apps/backend/__tests__/hope-jobs.test.ts apps/backend/__tests__/hope-routes.test.ts`
+- targeted `bunx biome check` over the changed Phase 3 files
+- `bun run arch:abac-predicates`
+- `bun run arch:tables`
+- `bun run arch:ddl`
+- `bun run arch:live-suites`
+
+Failed with pre-existing unrelated frontend boundary violations:
+
+- `bun run arch:boundaries` reports the known M6/M15/M23/M24 imports of
+  `apps/web/src/shared/entity-lookups.tsx`. No M10 boundary violation remains.
+
+Not executed:
+
+- Live DB/RLS suites: `WARDENX_TEST_DATABASE_URL` is not set in this environment.
+- Playwright E2E: `localhost:5173` is not reachable; the new spec is present but the local stack is not
+  running.
+- OpenAPI gates: not run because the user explicitly instructed not to read or touch
+  `docs/api/openapi.json`.
+
+## K. Deferred Phase 3 Work
+
+- Authoritative M9 Clinical Admission Assessment alerting, pending an M9-owned 48-hour compliance read model.
+- Tenant-specific HOPE due-soon policy configuration beyond the central default evaluator.
+- Historical-admission reconciliation/backfill job for `workflow_not_initialized` records.
+- Full notification-center UX expansion beyond existing M36 rule/fan-out integration.
+- Production execution of live DB/RLS and Playwright suites once the required environment is available.
+
 # WardenX HOPE Phase 2 UI, Navigation & Operational Workflow Report
 
 Date: 2026-08-28
@@ -199,4 +406,3 @@ Deferred intentionally to Phase 3:
 - alert preferences and cadence
 - persistent escalation routing
 - global HOPE navigation notification badges
-

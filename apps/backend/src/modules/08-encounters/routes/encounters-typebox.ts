@@ -205,6 +205,7 @@ export const CreateAddendumSchema = Type.Object({
 // ── Queries ───────────────────────────────────────────────────────────────────────────────────────
 export const EncounterListQuerySchema = Type.Object({
   patientId: Type.Optional(Type.String({ maxLength: 64 })),
+  admissionId: Type.Optional(Type.String({ maxLength: 64 })),
   authorId: Type.Optional(Type.String({ maxLength: 64 })),
   status: Type.Optional(Type.String({ maxLength: 32 })),
   lateEntryTier: Type.Optional(Type.String({ maxLength: 32 })),
@@ -273,6 +274,20 @@ export const EncounterViewResponseSchema = Type.Object({
   isF2f: Type.Boolean(),
   signedAt: Type.Union([Type.String(), Type.Null()]),
   cosignedAt: Type.Union([Type.String(), Type.Null()]),
+  selections: Type.Optional(Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()])),
+  finalDocumentation: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  vitals: Type.Optional(Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()])),
+  mileage: Type.Optional(Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()])),
+  carePlanLinks: Type.Optional(
+    Type.Array(
+      Type.Object({
+        linkId: Type.String(),
+        problemId: Type.Union([Type.String(), Type.Null()]),
+        goalId: Type.Union([Type.String(), Type.Null()]),
+        interventionId: Type.Union([Type.String(), Type.Null()]),
+      }),
+    ),
+  ),
 });
 
 /** The `{ encounters }` envelope the list / queue / my-drafts / signed-since reads return. */
@@ -302,7 +317,12 @@ export const SelectionsUpdateResponseSchema = Type.Object({
 });
 
 /** Route 8 — care-plan link created. */
-export const CarePlanLinkResponseSchema = Type.Object({ linkId: Type.String() });
+export const CarePlanLinkResponseSchema = Type.Object({
+  linkId: Type.String(),
+  problemId: Type.Union([Type.String(), Type.Null()]),
+  goalId: Type.Union([Type.String(), Type.Null()]),
+  interventionId: Type.Union([Type.String(), Type.Null()]),
+});
 
 /** Route 10 — EVV-missing documented (D9 bracket state). */
 export const EvvReconcileResponseSchema = Type.Object({ evvBracketState: Type.String() });

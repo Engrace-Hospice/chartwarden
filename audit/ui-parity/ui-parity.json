@@ -276,6 +276,14 @@
       "app": "web",
       "module": "07-care-plan",
       "moduleId": 7,
+      "id": "care-plan.version-detail",
+      "path": "/care-plans/:planId/versions/:versionId",
+      "permission": "care_plan.read"
+    },
+    {
+      "app": "web",
+      "module": "07-care-plan",
+      "moduleId": 7,
       "id": "care-plan.summary",
       "path": "/care-plans/:planId/summary",
       "permission": "care_plan.read_summary"
@@ -367,6 +375,30 @@
       "id": "hope.dashboard",
       "path": "/hope",
       "permission": "hope.schedule.read"
+    },
+    {
+      "app": "web",
+      "module": "10-hope",
+      "moduleId": 10,
+      "id": "hope.admission-overview",
+      "path": "/admissions/:admissionId/hope",
+      "permission": "hope.timepoint.read"
+    },
+    {
+      "app": "web",
+      "module": "10-hope",
+      "moduleId": 10,
+      "id": "hope.timepoint-capture",
+      "path": "/admissions/:admissionId/hope/timepoints/:kind",
+      "permission": "hope.timepoint.write"
+    },
+    {
+      "app": "web",
+      "module": "10-hope",
+      "moduleId": 10,
+      "id": "hope.sfv-capture",
+      "path": "/admissions/:admissionId/hope/sfv/:sfvId",
+      "permission": "hope.timepoint.write"
     },
     {
       "app": "web",

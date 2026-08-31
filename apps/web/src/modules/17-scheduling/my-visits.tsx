@@ -1,6 +1,7 @@
 import {
   Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -17,6 +18,14 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  NewVisitModal,
+  SchedulingNav,
+  apiErrorMessage,
+  findLinkedEncounter,
+  hasPermission,
+} from "./scheduling-workflow";
+import { useSession } from "../../shell/session";
 import { VISIT_TONE, stateLabel } from "./scheduling-status";
 import type { VisitRow } from "./visit-table";
 
@@ -32,6 +41,10 @@ export function MyVisits(): JSX.Element {
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [busyVisitId, setBusyVisitId] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const sessionPermissions = useSession()?.permissions;
 
   const window = useMemo(() => {
     const from = new Date();
@@ -105,8 +118,37 @@ export function MyVisits(): JSX.Element {
     setPage(1);
   };
 
+  async function visitAction(visit: VisitRow, action: "start" | "arrive" | "encounter"): Promise<void> {
+    setBusyVisitId(visit.id);
+    setActionNotice(null);
+    if (action === "encounter") {
+      const linked = await findLinkedEncounter(client, visit);
+      setBusyVisitId(null);
+      if (linked) navigate(`/patients/${linked.patientId}/encounters/${linked.id}`);
+      else setActionNotice("Encounter draft is still being created. Refresh the visit in a moment.");
+      return;
+    }
+    const { error: err } =
+      action === "start"
+        ? await client.POST("/api/v1/visits/{visitId}/start", {
+            params: { path: { visitId: visit.id } },
+            body: {},
+          })
+        : await client.POST("/api/v1/visits/{visitId}/arrive", {
+            params: { path: { visitId: visit.id } },
+            body: {},
+          });
+    setBusyVisitId(null);
+    if (err) {
+      setError(apiErrorMessage(err, action === "start" ? "Could not start visit." : "Could not check in."));
+      return;
+    }
+    await load();
+  }
+
   return (
-    <WorkQueueLayout
+    <>
+      <WorkQueueLayout
       header={
         <PageHeader title="My Visits" breadcrumb="Field / Scheduling">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
@@ -116,12 +158,18 @@ export function MyVisits(): JSX.Element {
       }
       filters={
         <div style={filterShellStyle}>
+          <SchedulingNav onNewVisit={() => setCreating(true)} />
           {error ? (
             <div role="alert" style={errorBannerStyle}>
               <span>{error}</span>
               <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
                 x
               </button>
+            </div>
+          ) : null}
+          {actionNotice ? (
+            <div role="status" style={noticeBannerStyle}>
+              {actionNotice}
             </div>
           ) : null}
           <div style={toolbarStyle}>
@@ -223,6 +271,7 @@ export function MyVisits(): JSX.Element {
                   <th style={{ ...thStyle, width: "14%" }}>Start</th>
                   <th style={{ ...thStyle, width: "14%" }}>End</th>
                   <th style={{ ...thStyle, width: "12%", textAlign: "right" }}>Status</th>
+                  <th style={{ ...thStyle, width: "18%", textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -268,6 +317,51 @@ export function MyVisits(): JSX.Element {
                         tone={VISIT_TONE[v.status] ?? "neutral"}
                       />
                     </td>
+                    <td style={{ ...tdStyle, textAlign: "right" }}>
+                      <div style={rowActionsStyle}>
+                        {v.status === "published" && hasPermission(sessionPermissions, "visit.start") ? (
+                          <Button
+                            size="sm"
+                            tone="secondary"
+                            aria-label={`Start visit ${shortId(v.id)}`}
+                            loading={busyVisitId === v.id}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void visitAction(v, "start");
+                            }}
+                          >
+                            <Glyph name="clock" size={13} /> Start
+                          </Button>
+                        ) : null}
+                        {v.status === "en_route" && hasPermission(sessionPermissions, "visit.start") ? (
+                          <Button
+                            size="sm"
+                            aria-label={`Check in visit ${shortId(v.id)}`}
+                            loading={busyVisitId === v.id}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void visitAction(v, "arrive");
+                            }}
+                          >
+                            <Glyph name="check" size={13} /> Check in
+                          </Button>
+                        ) : null}
+                        {["published", "en_route", "in_visit", "completed"].includes(v.status) ? (
+                          <Button
+                            size="sm"
+                            tone="tertiary"
+                            aria-label={`Open encounter for visit ${shortId(v.id)}`}
+                            loading={busyVisitId === v.id}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void visitAction(v, "encounter");
+                            }}
+                          >
+                            <Glyph name="file-text" size={13} /> Encounter
+                          </Button>
+                        ) : null}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -288,7 +382,16 @@ export function MyVisits(): JSX.Element {
         )
       }
       fullPageScroll
-    />
+      />
+      <NewVisitModal
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={(visit) => {
+          setCreating(false);
+          navigate(`/scheduling/visits/${visit.id}`);
+        }}
+      />
+    </>
   );
 }
 
@@ -398,6 +501,21 @@ const dismissButtonStyle = {
   color: "inherit",
   cursor: "pointer",
   fontWeight: 600,
+};
+
+const noticeBannerStyle = {
+  padding: "0.65rem 0.85rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-primary-tint)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+};
+
+const rowActionsStyle = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "0.35rem",
+  flexWrap: "wrap" as const,
 };
 
 const tableWrapStyle = {

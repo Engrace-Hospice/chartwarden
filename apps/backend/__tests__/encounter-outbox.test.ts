@@ -14,6 +14,7 @@ import {
   M8_VISIT_SCHEDULED_CONSUMER_DEFERRED,
   type VisitScheduledPayload,
   type VisitSeedingFacts,
+  buildM8VisitClosedConsumer,
   decideVisitScheduled,
   decideVisitSeeding,
 } from "../src/modules/08-encounters/index";
@@ -200,6 +201,20 @@ describe("decideVisitSeeding (M17 visit-scheduling consumer, §4.7 / line 65)", 
     expect(decideVisitScheduled(visitPayload(), facts)).toEqual(
       decideVisitSeeding(visitPayload(), facts),
     );
+  });
+
+  it("binds cancelled/no-show/rescheduled visit events to the unused-draft cleanup consumer", () => {
+    const consumer = buildM8VisitClosedConsumer({
+      db: {} as never,
+      outbox: { publish: async () => undefined },
+    });
+    expect(consumer.consumerName).toBe("m8.close-unused-visit-encounter");
+    expect(consumer.consumerModule).toBe("m8");
+    expect(consumer.eventTypes).toEqual([
+      "m17.visit.cancelled",
+      "m17.visit.no_show_detected",
+      "m17.visit.rescheduled",
+    ]);
   });
 });
 

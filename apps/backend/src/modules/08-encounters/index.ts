@@ -92,6 +92,10 @@ export {
   M8_VISIT_SCHEDULED_CONSUMER_DEFERRED,
   decideVisitScheduled,
 } from "./outbox-consumers/m17-visit-scheduled";
+export {
+  type M8VisitClosedOutboxPort,
+  buildM8VisitClosedConsumer,
+} from "./outbox-consumers/m17-visit-closed";
 // M8-T12 — the `encounter_record` destruction-cert eraser (§3.6 / D9): crypto-erase the HearthNote
 // ciphertext (tenant DEK), delete the encounter satellites, tombstone the `encounter` root (D8). The
 // composition root calls registerEncounterErasers() over the Phase-0 deny-stub.

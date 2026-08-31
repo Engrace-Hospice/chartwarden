@@ -220,7 +220,7 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     },
   );
 
-  // 4 — edit times / discipline / assignment (reruns the gate in-service on assignment/time change).
+  // 4 — edit non-lineage fields / assignment. Schedule time changes use the dedicated reschedule command.
   app.patch("/api/v1/visits/:visitId", { preHandler: [EDIT] }, async (request) => {
     const { organizationId, userId } = actorOf(request);
     const { visitId } = parse(VisitIdParamsSchema, request.params);
@@ -242,7 +242,21 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     );
   });
 
-  // 6 — cancel a visit (reason ≥ 20 chars).
+  // 6 — EVV/arrival check-in. This is the explicit en_route → in_visit step before encounter signature.
+  app.post("/api/v1/visits/:visitId/arrive", { preHandler: [START] }, async (request) => {
+    const { organizationId, userId } = actorOf(request);
+    const { visitId } = parse(VisitIdParamsSchema, request.params);
+    const b = parse(StartVisitRequest, request.body);
+    return service.arriveVisit(
+      organizationId,
+      userId,
+      visitId,
+      b.evvMissingReason,
+      stepUpFreshOf(request),
+    );
+  });
+
+  // 7 — cancel a visit (reason ≥ 20 chars).
   app.post("/api/v1/visits/:visitId/cancel", { preHandler: [CANCEL] }, async (request) => {
     const { organizationId, userId } = actorOf(request);
     const { visitId } = parse(VisitIdParamsSchema, request.params);

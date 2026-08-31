@@ -67,5 +67,5 @@ export const WINDOW_TONE: Record<string, StatusTone> = {
 
 /** Title-case an underscore enum value, e.g. `on_hold` → `On Hold`. */
 export function stateLabel(s: string): string {
-  return REFERRAL_LABEL[s] ?? s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return REFERRAL_LABEL[s] ?? s?.replace(/_/g, " ")?.replace(/\b\w/g, (c) => c.toUpperCase());
 }

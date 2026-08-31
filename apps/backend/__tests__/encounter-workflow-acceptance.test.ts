@@ -84,14 +84,21 @@ describe("M8-T12 §7 workflow acceptance", () => {
 
   it("§7.5 — significant late entry (3–14d) override stamps the significant_late_entry tier", async () => {
     const { svc, id } = await draft("rn");
-    const r = await svc.lateEntryOverride(ORG, id);
+    const r = await svc.lateEntryOverride(ORG, id, {
+      actorMembershipId: ACTOR.membershipId,
+      reason: "Supervisor reviewed the late entry context and approved completion in policy.",
+    });
     expect(r.status).toBeDefined();
     expect((await svc.getEncounter(ORG, id)).lateEntryTier).toBe("significant_late_entry");
   });
 
   it("§7.6 — administrative (>14d) override stamps the administrative_override tier", async () => {
     const { svc, id } = await draft("rn");
-    await svc.administrativeOverride(ORG, id);
+    await svc.administrativeOverride(ORG, id, {
+      actorMembershipId: ACTOR.membershipId,
+      reason:
+        "Director reviewed the administrative late entry context and approved signature after confirming the service date was valid.",
+    });
     expect((await svc.getEncounter(ORG, id)).lateEntryTier).toBe("administrative_override");
   });
 
@@ -99,7 +106,7 @@ describe("M8-T12 §7 workflow acceptance", () => {
     const { svc, id } = await draft("rn");
     await svc.finalize(ORG, id, PAST);
     await svc.sign(ORG, id, ACTOR, { at: PAST });
-    const add = await svc.createAddendum(ORG, id);
+    const add = await svc.createAddendum(ORG, id, { reason: "Correcting signed documentation." });
     expect(add.status).toBe("draft");
     await svc.updateAddendumSelections(ORG, id, add.id);
     await svc.finalizeAddendum(ORG, id, add.id);
@@ -109,11 +116,19 @@ describe("M8-T12 §7 workflow acceptance", () => {
     expect((await svc.getEncounter(ORG, id)).status).toBe("signed");
   });
 
+  it("§7.9 — addenda cannot be created on draft encounters", async () => {
+    const { svc, id } = await draft("rn");
+    await expect(
+      svc.createAddendum(ORG, id, { reason: "Trying to bypass normal draft editing." }),
+    ).rejects.toThrow(/signed or cosigned/);
+  });
+
   it("§7.14 — concurrency: an edit against a stale version is rejected (optimistic concurrency)", async () => {
     const { svc, id } = await draft("rn");
-    await svc.updateSelections(ORG, id, 0); // version 0 → 1
-    await expect(svc.updateSelections(ORG, id, 0)).rejects.toThrow(); // stale If-Match
-    await expect(svc.updateSelections(ORG, id, 1)).resolves.toBeDefined(); // current version succeeds
+    const selections = { selections: { narrative: { patientCondition: "stable" } } };
+    await svc.updateSelections(ORG, id, 0, selections); // version 0 → 1
+    await expect(svc.updateSelections(ORG, id, 0, selections)).rejects.toThrow(); // stale If-Match
+    await expect(svc.updateSelections(ORG, id, 1, selections)).resolves.toBeDefined(); // current version succeeds
   });
 
   it("cross-tenant isolation: an encounter is invisible to another org (non-leaking 404)", async () => {

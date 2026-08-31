@@ -35,6 +35,29 @@ async function planWithProblem() {
   return { backend, planId: boot.id, versionId: boot.initialVersionId, problemId: problem.id };
 }
 
+async function activePlanWithProblem() {
+  const ctx = await planWithProblem();
+  const svc = ctx.backend.service;
+  await svc.finalizeVersion(ORG, ctx.planId, ctx.versionId, 1, null);
+  await svc.signVersion(
+    ORG,
+    ctx.planId,
+    ctx.versionId,
+    2,
+    "hospice_physician",
+    "2026-06-21T12:00:00Z",
+  );
+  await svc.signVersion(
+    ORG,
+    ctx.planId,
+    ctx.versionId,
+    3,
+    "rn_case_manager",
+    "2026-06-21T12:00:00Z",
+  );
+  return ctx;
+}
+
 describe("M7-T09 §7 workflow acceptance", () => {
   it("§7.1 — initial care plan: finalize + RN/physician quorum activates the plan", async () => {
     const { backend, planId, versionId } = await planWithProblem();
@@ -73,7 +96,7 @@ describe("M7-T09 §7 workflow acceptance", () => {
   });
 
   it("§7.2 — 15-day IDG review: an idg_review version needs the full RN+MSW+chaplain+MD quorum", async () => {
-    const { backend, planId } = await planWithProblem();
+    const { backend, planId } = await activePlanWithProblem();
     const svc = backend.service;
     const v2 = (await svc.createVersion(ORG, planId, "idg_review", "idg_meeting_1")) as {
       id: string;

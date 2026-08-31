@@ -736,6 +736,12 @@ export function createDbSchedulingBackend(
       visitId: string,
       input: EditVisitInput,
     ): Promise<VisitView> {
+      if (input.scheduledStartedAt !== undefined || input.scheduledEndedAt !== undefined) {
+        throw new ValidationError(
+          "scheduled start/end changes must use POST /api/v1/visits/:visitId/reschedule",
+          [],
+        );
+      }
       // The gate's seam facts are keyed on the visit's own patient/purpose/times, so the row has to be
       // read before they can be resolved — and they must be resolved with NO transaction open. Hence a
       // short read tx here, then the seams, then the write tx below, which re-loads the visit
@@ -841,6 +847,45 @@ export function createDbSchedulingBackend(
           startedAt: new Date().toISOString(),
           evvBracketState: bracket,
         });
+        const [row] = await tx.select(VISIT_COLS).from(V).where(eq(V.id, visitId)).limit(1);
+        return toVisitView(row as VisitRow, await organizationTimezone(tx, orgId));
+      });
+    },
+
+    async arriveVisit(
+      orgId: string,
+      userId: string,
+      visitId: string,
+      evvMissingReason: string | undefined,
+      stepUpSatisfied: boolean,
+    ): Promise<VisitView> {
+      return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
+        const tx = txRaw as DbClient;
+        const v = await loadVisit(tx, visitId);
+        const sited = {
+          id: visitId,
+          providerEntityId: v.providerEntityId as string,
+          locationId: v.locationId as string,
+        };
+        const transition = transitionVisit(v.status as VisitStatus, {
+          type: "arrive",
+          source:
+            evvMissingReason === undefined
+              ? { via: "evv" }
+              : { via: "self_attest", evvMissingReason, stepUpSatisfied },
+        });
+        const bracket = evvMissingReason === undefined ? "evv_present" : "evv_missing_documented";
+        await tx
+          .update(V)
+          .set({
+            status: transition.to,
+            evvBracketState: bracket,
+            evvMissingReason: evvMissingReason ?? null,
+            version: (v.version as number) + 1,
+            updatedAt: new Date(),
+          })
+          .where(eq(V.id, visitId));
+        await appendHistory(tx, orgId, sited, transition.effects, userId);
         const [row] = await tx.select(VISIT_COLS).from(V).where(eq(V.id, visitId)).limit(1);
         return toVisitView(row as VisitRow, await organizationTimezone(tx, orgId));
       });
