@@ -58,7 +58,7 @@ services:
     volumes:
       - wardenx-compose-minio:/data
 
-  # One-shot: applies the full migration chain + bootstraps the wardenx_app LOGIN role (plain
+  # One-shot: applies the full migration chain + bootstraps the runtime LOGIN roles (plain
   # `db:migrate`, not `db:migrate:deploy` — this is a fresh local/CI environment, not a per-deploy
   # re-run against an already-migrated prod DB; see TASK-040E). `restart: "no"` + api/worker
   # depending on `service_completed_successfully` means the stack genuinely waits for schema to
@@ -67,10 +67,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["bun", "run", "scripts/db/migrate.ts"]
+    command:
+      [
+        "sh",
+        "-c",
+        "bun run scripts/db/migrate.ts && bun run scripts/db/provision-runtime-roles.ts",
+      ]
     environment:
       DATABASE_ADMIN_URL: postgres://postgres:postgres@postgres:5432/wardenx
+      PROVISION_DATABASE_URL: postgres://postgres:postgres@postgres:5432/wardenx
       WARDENX_APP_PASSWORD: wardenx-app-dev-password
+      WARDENX_PLATFORM_PASSWORD: wardenx-platform-dev-password
     depends_on:
       postgres:
         condition: service_healthy
@@ -87,6 +94,7 @@ services:
       PORT: "3000"
       LOG_LEVEL: info
       DATABASE_URL: postgres://wardenx_app:wardenx-app-dev-password@postgres:5432/wardenx
+      DATABASE_PLATFORM_URL: postgres://wardenx_platform_login:wardenx-platform-dev-password@postgres:5432/wardenx
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: wardenx
@@ -121,6 +129,7 @@ services:
       WORKER_PORT: "3001"
       LOG_LEVEL: info
       DATABASE_URL: postgres://wardenx_app:wardenx-app-dev-password@postgres:5432/wardenx
+      DATABASE_PLATFORM_URL: postgres://wardenx_platform_login:wardenx-platform-dev-password@postgres:5432/wardenx
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: wardenx

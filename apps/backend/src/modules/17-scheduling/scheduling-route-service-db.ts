@@ -43,21 +43,33 @@
 //   (6) `upsertAvailability` MERGES per (membership, day_of_week) — wardenx_app has no DELETE grant on any M17
 //       table, so a weekday dropped from the new set is not pruned (the append-only posture); `time_zone` has
 //       no column, so the write echoes the request tz while reads report UTC (the T01 read TODO).
-import { type DbClient, organizationSettingsReader, organizationTimezone, schema } from "@wardenx/db";
 import {
+  type DbClient,
+  organizationSettingsReader,
+  organizationTimezone,
+  schema,
+} from "@wardenx/db";
+import {
+  MATERIALIZE_HORIZON_DAYS,
+  PROPOSE_HORIZON_DAYS,
   type SchedulingDiscipline,
   type SchedulingSideEffect,
+  SchedulingStateError,
   VISIT_PURPOSE_DISCIPLINES,
+  materializeRecurrence,
+  parseRrule,
+  planFrequencyProposals,
   planVisitProposed,
   transitionTimeOff,
   transitionVisit,
 } from "@wardenx/scheduling";
 import { localDateInTimeZone } from "@wardenx/shared/dates";
-import { withOrgContext } from "@wardenx/tenancy";
+import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
 import {
   ConflictError,
   type EncounterType,
   ForbiddenError,
+  type InterventionDiscipline,
   NotFoundError,
   type TimeOffKind,
   type TimeOffState,
@@ -66,7 +78,7 @@ import {
   type VisitSetting,
   type VisitStatus,
 } from "@wardenx/types";
-import { type SQL, and, eq, gt, gte, isNull, lte, or } from "drizzle-orm";
+import { type SQL, and, eq, gt, gte, isNull, lt, lte, or } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import type { SchedulingAbacResolver } from "./abac-predicates";
 import type {
@@ -96,6 +108,7 @@ const MEM = schema.memberships;
 const MEM_ROLE = schema.membershipRoles;
 const ROLE = schema.roles;
 const ORG = schema.organizations;
+const ADM = schema.admissions;
 
 /** Every discipline any visit purpose accepts (GAP-030) — the full `SchedulingDiscipline` vocab,
  *  derived from the policy map rather than duplicated as a literal list. */
@@ -196,6 +209,45 @@ export interface SchedulingWriteOutboxPort {
 }
 const NOOP_OUTBOX: SchedulingWriteOutboxPort = { async publish() {} };
 
+export interface SchedulingAutomationService {
+  materializeRecurringVisitsForOrg(
+    orgId: string,
+    userId: string,
+    options?: { now?: Date; horizonDays?: number },
+  ): Promise<{ policiesScanned: number; visitsCreated: number; occurrencesSkipped: number }>;
+  generateCarePlanVisitProposals(
+    orgId: string,
+    userId: string,
+    input: {
+      planId: string;
+      versionId: string;
+      patientId: string;
+      admissionId: string;
+      now?: Date;
+    },
+  ): Promise<{ proposalsCreated: number; proposalsSkipped: number }>;
+  handleAdmissionHold(
+    orgId: string,
+    userId: string,
+    input: { admissionId: string; heldAt: string; reason: string },
+  ): Promise<{ cancelledVisits: number }>;
+  handleAdmissionResume(
+    orgId: string,
+    userId: string,
+    input: { admissionId: string; resumedAt: string },
+  ): Promise<{ recreatedVisits: 0 }>;
+  handleAdmissionDischarge(
+    orgId: string,
+    userId: string,
+    input: { admissionId: string; dischargeDate: string; reason: string },
+  ): Promise<{ cancelledVisits: number }>;
+  scanVisitAttentionForOrg(
+    orgId: string,
+    userId: string,
+    options?: { now?: Date },
+  ): Promise<{ staleVisits: number; possibleMissedVisits: number }>;
+}
+
 /** The first eligible discipline for a visit purpose — the captured `assigned_discipline_at_assignment`
  * (compromise #2: the real M2 discipline resolver is not threaded into the DB backend). */
 const disciplineFor = (purpose: VisitPurpose): SchedulingDiscipline =>
@@ -230,7 +282,7 @@ const encounterTypeFor = (purpose: VisitPurpose): EncounterType => {
 export function createDbSchedulingBackend(
   db: DbClient,
   outbox: SchedulingWriteOutboxPort = NOOP_OUTBOX,
-): SchedulingRouteService {
+): SchedulingRouteService & SchedulingAutomationService {
   // GAP-093 — the same Drizzle store `registerCredentialSeam` binds to the boot-registered
   // `CredentialReader` seam, constructed here directly (no self-referential `getSeam` round-trip)
   // for M17's OWN grant/revoke/list routes — this module owns `membership_credential`.
@@ -347,7 +399,11 @@ export function createDbSchedulingBackend(
   }
 
   async function allowsUnassignedPoolTx(tx: DbClient, orgId: string): Promise<boolean> {
-    const [org] = await tx.select({ settings: ORG.settings }).from(ORG).where(eq(ORG.id, orgId)).limit(1);
+    const [org] = await tx
+      .select({ settings: ORG.settings })
+      .from(ORG)
+      .where(eq(ORG.id, orgId))
+      .limit(1);
     return (
       organizationSettingsReader.get<boolean>(
         (org?.settings as Record<string, unknown> | undefined) ?? null,
@@ -655,6 +711,127 @@ export function createDbSchedulingBackend(
       },
       timezone,
     );
+  }
+
+  async function publishedChildExists(
+    orgId: string,
+    parentRecurringVisitId: string,
+    serviceDate: string,
+  ): Promise<boolean> {
+    return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+      const [existing] = await tx
+        .select({ id: V.id })
+        .from(V)
+        .where(
+          and(
+            eq(V.organizationId, orgId),
+            eq(V.parentRecurringVisitId, parentRecurringVisitId),
+            eq(V.serviceDate, serviceDate),
+          ),
+        )
+        .limit(1);
+      return existing !== undefined;
+    });
+  }
+
+  async function cancelFuturePublishedVisitsForAdmission(
+    orgId: string,
+    userId: string,
+    admissionId: string,
+    cutoff: Date,
+    reason: string,
+  ): Promise<number> {
+    return withOrgContext(db, { organizationId: orgId, userId }, async (txRaw) => {
+      const tx = txRaw as DbClient;
+      const rows = await tx
+        .select(VISIT_WRITE_COLS)
+        .from(V)
+        .where(
+          and(
+            eq(V.organizationId, orgId),
+            eq(V.admissionId, admissionId),
+            eq(V.status, "published"),
+            gte(V.scheduledStartedAt, cutoff),
+          ),
+        );
+      let cancelled = 0;
+      for (const v of rows) {
+        const transition = transitionVisit(v.status as VisitStatus, {
+          type: "cancel",
+          reason,
+          cancelledByPresent: true,
+        });
+        await tx
+          .update(V)
+          .set({
+            status: transition.to,
+            cancelledByMembershipId: userId || null,
+            cancelledAt: new Date(),
+            cancellationReason: reason,
+            cancellationReasonCode: "admission_lifecycle",
+            version: (v.version as number) + 1,
+            updatedAt: new Date(),
+          })
+          .where(eq(V.id, v.id));
+        await appendHistory(
+          tx,
+          orgId,
+          {
+            id: v.id,
+            providerEntityId: v.providerEntityId as string,
+            locationId: v.locationId as string,
+          },
+          transition.effects,
+          userId,
+        );
+        await emit(tx, orgId, "m17.visit.unassigned", "visit", v.id, {
+          visitId: v.id,
+          formerAssignedMembershipId: v.assignedMembershipId as string,
+          patientId: v.patientId as string,
+        });
+        await emit(tx, orgId, "m17.visit.cancelled", "visit", v.id, {
+          visitId: v.id,
+          cancelledBy: userId,
+          reason,
+          reasonCode: "admission_lifecycle",
+        });
+        cancelled += 1;
+      }
+      return cancelled;
+    });
+  }
+
+  const proposalDisciplines: readonly InterventionDiscipline[] = [
+    "rn",
+    "lpn",
+    "chha",
+    "msw",
+    "chaplain",
+    "md_np",
+    "pt",
+    "ot",
+    "st",
+    "volunteer",
+    "music_therapy",
+    "dietitian",
+    "bereavement",
+  ];
+
+  function purposeForInterventionDiscipline(discipline: InterventionDiscipline): VisitPurpose {
+    switch (discipline) {
+      case "chha":
+        return "aide_poc";
+      case "msw":
+        return "msw_followup";
+      case "chaplain":
+        return "chaplain_visit";
+      case "volunteer":
+        return "volunteer_visit";
+      case "md_np":
+        return "recert";
+      default:
+        return "routine_visit";
+    }
   }
 
   const backend = {
@@ -1322,19 +1499,75 @@ export function createDbSchedulingBackend(
         const [r] = await tx.select().from(RV).where(eq(RV.id, id)).limit(1);
         if (!r) throw new NotFoundError("recurring_visit");
         if (r.status !== "active") throw new ConflictError("recurring policy is not active");
+        const now = new Date();
+        const children = await tx
+          .select(VISIT_WRITE_COLS)
+          .from(V)
+          .where(
+            and(
+              eq(V.organizationId, orgId),
+              eq(V.parentRecurringVisitId, id),
+              eq(V.status, "published"),
+              gt(V.scheduledStartedAt, now),
+            ),
+          );
+        let cancelledChildCount = 0;
+        const reason = "Recurring policy discontinued by scheduler.";
+        for (const child of children) {
+          const transition = transitionVisit(child.status as VisitStatus, {
+            type: "cancel",
+            reason,
+            cancelledByPresent: true,
+          });
+          await tx
+            .update(V)
+            .set({
+              status: transition.to,
+              cancelledByMembershipId: userId || null,
+              cancelledAt: now,
+              cancellationReason: reason,
+              cancellationReasonCode: "recurrence_discontinued",
+              version: (child.version as number) + 1,
+              updatedAt: now,
+            })
+            .where(eq(V.id, child.id));
+          await appendHistory(
+            tx,
+            orgId,
+            {
+              id: child.id,
+              providerEntityId: child.providerEntityId as string,
+              locationId: child.locationId as string,
+            },
+            transition.effects,
+            userId,
+          );
+          await emit(tx, orgId, "m17.visit.unassigned", "visit", child.id, {
+            visitId: child.id,
+            formerAssignedMembershipId: child.assignedMembershipId as string,
+            patientId: child.patientId as string,
+          });
+          await emit(tx, orgId, "m17.visit.cancelled", "visit", child.id, {
+            visitId: child.id,
+            cancelledBy: userId,
+            reason,
+            reasonCode: "recurrence_discontinued",
+          });
+          cancelledChildCount += 1;
+        }
         await tx
           .update(RV)
           .set({
             status: "discontinued",
-            discontinuedAt: new Date(),
+            discontinuedAt: now,
             discontinuedBy: userId || null,
             version: (r.version as number) + 1,
-            updatedAt: new Date(),
+            updatedAt: now,
           })
           .where(eq(RV.id, id));
         await emit(tx, orgId, "m17.recurring_visit.discontinued", "recurring_visit", id, {
           recurringVisitId: id,
-          cancelledChildCount: 0,
+          cancelledChildCount,
           discontinuedBy: userId,
         });
         return {
@@ -1345,6 +1578,273 @@ export function createDbSchedulingBackend(
           rrule: r.rrule,
           status: "discontinued",
         };
+      });
+    },
+
+    async materializeRecurringVisitsForOrg(
+      orgId: string,
+      userId: string,
+      options: { now?: Date; horizonDays?: number } = {},
+    ) {
+      const now = options.now ?? new Date();
+      const policies = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) =>
+        tx
+          .select()
+          .from(RV)
+          .where(and(eq(RV.organizationId, orgId), eq(RV.status, "active"))),
+      );
+      let visitsCreated = 0;
+      let occurrencesSkipped = 0;
+      for (const policy of policies) {
+        const windowStart = localDateInTimeZone(now, policy.timeZone);
+        const occurrences = materializeRecurrence(
+          {
+            rule: parseRrule(policy.rrule),
+            startDate: policy.startDate,
+            endDate: policy.endDate,
+            timeOfDayStart: policy.timeOfDayStart,
+            timeOfDayEnd: policy.timeOfDayEnd,
+            timeZone: policy.timeZone,
+          },
+          windowStart,
+          options.horizonDays ?? MATERIALIZE_HORIZON_DAYS,
+        );
+        for (const occurrence of occurrences) {
+          if (await publishedChildExists(orgId, policy.id, occurrence.serviceDate)) {
+            occurrencesSkipped += 1;
+            continue;
+          }
+          const seamFacts = await resolvePreScheduleSeamFacts(
+            orgId,
+            policy.assignedMembershipId,
+            policy.visitPurpose as VisitPurpose,
+            policy.patientId,
+            occurrence.scheduledStartedAt,
+          );
+          await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+            await insertAndPublish(
+              tx as DbClient,
+              orgId,
+              userId,
+              {
+                patientId: policy.patientId,
+                admissionId: policy.admissionId,
+                patientAddressId: policy.patientAddressId,
+                externalFacilityId: policy.externalFacilityId,
+                assignedMembershipId: policy.assignedMembershipId,
+                visitPurpose: policy.visitPurpose as VisitPurpose,
+                visitSetting: policy.visitSetting as VisitSetting,
+                scheduledStartedAt: occurrence.scheduledStartedAt,
+                scheduledEndedAt: occurrence.scheduledEndedAt,
+              },
+              { parentRecurringVisitId: policy.id, parentProposalId: null },
+              seamFacts,
+            );
+          });
+          visitsCreated += 1;
+        }
+      }
+      return { policiesScanned: policies.length, visitsCreated, occurrencesSkipped };
+    },
+
+    async generateCarePlanVisitProposals(
+      orgId: string,
+      userId: string,
+      input: {
+        planId: string;
+        versionId: string;
+        patientId: string;
+        admissionId: string;
+        now?: Date;
+      },
+    ) {
+      const now = input.now ?? new Date();
+      const [admission] = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) =>
+        tx
+          .select({
+            providerEntityId: ADM.providerEntityId,
+            locationId: ADM.locationId,
+            admissionAt: ADM.admissionAt,
+            activatedAt: ADM.activatedAt,
+          })
+          .from(ADM)
+          .where(and(eq(ADM.organizationId, orgId), eq(ADM.id, input.admissionId)))
+          .limit(1),
+      );
+      if (!admission?.providerEntityId || !admission.locationId) {
+        throw new ValidationError("admission is not sited for care-plan visit proposals", []);
+      }
+      const admissionSiting = {
+        providerEntityId: admission.providerEntityId,
+        locationId: admission.locationId,
+      };
+      let created = 0;
+      let skipped = 0;
+      await runWithRequestContext({ organizationId: orgId, userId }, async () => {
+        const reader = getSeam("CarePlanReader");
+        for (const discipline of proposalDisciplines) {
+          const elements = await reader.relevantElementsForEncounter(
+            input.patientId,
+            "routine_visit",
+            discipline,
+          );
+          if (!elements || elements.planId !== input.planId) continue;
+          for (const intervention of elements.interventions) {
+            let planned: ReturnType<typeof planFrequencyProposals>;
+            try {
+              planned = planFrequencyProposals({
+                organizationId: orgId,
+                providerEntityId: admissionSiting.providerEntityId,
+                locationId: admissionSiting.locationId,
+                patientId: input.patientId,
+                admissionId: input.admissionId,
+                interventionId: intervention.interventionId,
+                frequency: intervention.frequencyText,
+                proposedVisitPurpose: purposeForInterventionDiscipline(discipline),
+                proposedDiscipline: discipline,
+                proposedDurationMinutes: 60,
+                anchorDate: localDateInTimeZone(
+                  admission.activatedAt ?? admission.admissionAt ?? now,
+                  "UTC",
+                ),
+                windowStart: localDateInTimeZone(now, "UTC"),
+                horizonDays: PROPOSE_HORIZON_DAYS,
+              });
+            } catch (err) {
+              if (err instanceof SchedulingStateError && err.code === "FREQUENCY_UNPARSEABLE") {
+                skipped += 1;
+                continue;
+              }
+              throw err;
+            }
+            for (const p of planned) {
+              const inserted = await withOrgContext(
+                db,
+                { organizationId: orgId, userId },
+                async (tx) =>
+                  tx
+                    .insert(VP)
+                    .values({
+                      organizationId: orgId,
+                      providerEntityId: p.providerEntityId,
+                      locationId: p.locationId,
+                      patientId: p.patientId,
+                      admissionId: p.admissionId,
+                      source: p.source,
+                      sourcePayload: {
+                        ...p.sourcePayload,
+                        planId: input.planId,
+                        versionId: input.versionId,
+                      },
+                      sourceIdempotencyKey: `${input.planId}:${input.versionId}:${p.sourceIdempotencyKey}`,
+                      proposedForDate: p.proposedForDate,
+                      proposedVisitPurpose: p.proposedVisitPurpose,
+                      proposedDiscipline: p.proposedDiscipline,
+                      proposedDurationMinutes: p.proposedDurationMinutes,
+                      suggestedMembershipId: p.suggestedMembershipId,
+                      status: "pending",
+                    })
+                    .onConflictDoNothing({
+                      target: [VP.organizationId, VP.source, VP.sourceIdempotencyKey],
+                    })
+                    .returning({ id: VP.id, proposedForDate: VP.proposedForDate }),
+              );
+              const proposal = inserted[0];
+              if (!proposal) {
+                skipped += 1;
+                continue;
+              }
+              await withOrgContext(db, { organizationId: orgId, userId }, async (tx) =>
+                emit(tx, orgId, "m17.visit.proposed", "visit_proposal", proposal.id, {
+                  proposalId: proposal.id,
+                  patientId: input.patientId,
+                  admissionId: input.admissionId,
+                  source: "frequency_driven_m7",
+                  proposedForDate: proposal.proposedForDate,
+                  proposedVisitPurpose: p.proposedVisitPurpose,
+                  proposedDiscipline: p.proposedDiscipline,
+                }),
+              );
+              created += 1;
+            }
+          }
+        }
+      });
+      return { proposalsCreated: created, proposalsSkipped: skipped };
+    },
+
+    async handleAdmissionHold(
+      orgId: string,
+      userId: string,
+      input: { admissionId: string; heldAt: string; reason: string },
+    ) {
+      const reason = `Admission placed on hold: ${input.reason}`;
+      const cancelledVisits = await cancelFuturePublishedVisitsForAdmission(
+        orgId,
+        userId,
+        input.admissionId,
+        new Date(input.heldAt),
+        reason,
+      );
+      return { cancelledVisits };
+    },
+
+    async handleAdmissionResume() {
+      return { recreatedVisits: 0 as const };
+    },
+
+    async handleAdmissionDischarge(
+      orgId: string,
+      userId: string,
+      input: { admissionId: string; dischargeDate: string; reason: string },
+    ) {
+      const reason = `Admission discharged: ${input.reason}`;
+      const cancelledVisits = await cancelFuturePublishedVisitsForAdmission(
+        orgId,
+        userId,
+        input.admissionId,
+        new Date(`${input.dischargeDate}T00:00:00.000Z`),
+        reason,
+      );
+      return { cancelledVisits };
+    },
+
+    async scanVisitAttentionForOrg(orgId: string, userId: string, options: { now?: Date } = {}) {
+      const now = options.now ?? new Date();
+      return withOrgContext(db, { organizationId: orgId, userId }, async (txRaw) => {
+        const tx = txRaw as DbClient;
+        const staleCutoff = new Date(now.getTime() - 48 * 3_600_000);
+        const possibleMissedCutoff = new Date(now.getTime() - 2 * 3_600_000);
+        const stale = await tx
+          .select({ id: V.id, actualStartedAt: V.actualStartedAt })
+          .from(V)
+          .where(
+            and(
+              eq(V.organizationId, orgId),
+              eq(V.status, "in_visit"),
+              lt(V.actualStartedAt, staleCutoff),
+            ),
+          );
+        for (const v of stale) {
+          await emit(tx, orgId, "m17.stale_visit_detected", "visit", v.id, {
+            visitId: v.id,
+            stuckInState: "in_visit",
+            hoursStuck: Math.floor(
+              (now.getTime() - (v.actualStartedAt?.getTime() ?? now.getTime())) / 3_600_000,
+            ),
+          });
+        }
+        const possibleMissed = await tx
+          .select({ id: V.id })
+          .from(V)
+          .where(
+            and(
+              eq(V.organizationId, orgId),
+              eq(V.status, "published"),
+              lt(V.scheduledEndedAt, possibleMissedCutoff),
+            ),
+          );
+        return { staleVisits: stale.length, possibleMissedVisits: possibleMissed.length };
       });
     },
 
@@ -1708,7 +2208,10 @@ export function createDbSchedulingBackend(
     // ── GAP-093 — membership_credential grant/revoke/list (the management surface a real D8 gate
     // needs, or `clinician_credentials_active` would deny every caller forever for lack of any way to
     // ever satisfy it — the same regression GAP-030 fixed, one layer down) ─────────────────────────────
-    async listCredentials(orgId: string, membershipId: string): Promise<readonly CredentialRecord[]> {
+    async listCredentials(
+      orgId: string,
+      membershipId: string,
+    ): Promise<readonly CredentialRecord[]> {
       return credentialStore.listForMembership(orgId, membershipId);
     },
     async grantCredential(
@@ -1734,7 +2237,7 @@ export function createDbSchedulingBackend(
     },
   };
 
-  return backend as unknown as SchedulingRouteService;
+  return backend as unknown as SchedulingRouteService & SchedulingAutomationService;
 }
 
 /** Project a stored time_off row + its new state into the wire view. */

@@ -261,7 +261,7 @@ function makeDsarPorts() {
       return { resolvedPatientId: RESOLVED_PATIENT };
     },
     async openBundleSink({ jobId }) {
-      const objectKey = `tenants/org_engrace/exports/dsar/${jobId}.ndjson.gz`;
+      const objectKey = `exports/dsar/${jobId}.ndjson.gz`;
       const sink: FhirResourceSink = {
         async write(resource: unknown) {
           sinkResources.push(resource);

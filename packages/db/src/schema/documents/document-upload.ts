@@ -1,14 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  boolean,
-  check,
-  index,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { boolean, check, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { documentAggregateType, documentRetentionClass } from "../../enums";
 import { organizations } from "../organizations";
 
@@ -33,6 +24,7 @@ export const documentUploads = pgTable(
     mimeType: text("mime_type").notNull(),
     expectedByteSize: text("expected_byte_size").notNull(),
     expectedSha256Hex: text("expected_sha256_hex").notNull(),
+    sourceMetadata: jsonb("source_metadata"),
     status: text("status").notNull().default("pending"),
     completedDocumentId: uuid("completed_document_id"),
     completedVersionId: uuid("completed_version_id"),

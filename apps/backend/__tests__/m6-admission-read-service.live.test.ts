@@ -14,6 +14,11 @@ import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  AdmissionNotFoundError,
+  createAdmissionStatusReader,
+  createDrizzleAdmissionReaderStore,
+} from "../src/modules/06-admission/index";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -70,8 +75,8 @@ describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", 
     const admission = (
       await admin.query(
         `INSERT INTO admission (organization_id, provider_entity_id, location_id, patient_id,
-           admitted_by_physician_id, status)
-         VALUES ($1,$2,$3,$4,$5,'active') RETURNING id`,
+           admitted_by_physician_id, status, admission_at, activated_at)
+         VALUES ($1,$2,$3,$4,$5,'active', now() - interval '1 day', now() - interval '1 day') RETURNING id`,
         [org, pe, loc, PATIENT, PHYSICIAN],
       )
     ).rows[0].id;
@@ -186,6 +191,18 @@ describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", 
     expect(page.items.every((i) => i.id !== seeded[ORG_A].admission)).toBe(true);
     const cross = await service.getAdmission(ORG_B, seeded[ORG_A].admission);
     expect(cross).toBeNull();
+  });
+
+  it("AdmissionStatusReader reads with an explicit org scope without ambient request context", async () => {
+    const reader = createAdmissionStatusReader(createDrizzleAdmissionReaderStore(handle.db));
+
+    const summary = await reader.getAdmissionSummary(ORG_A, seeded[ORG_A].admission);
+    expect(summary.admissionId).toBe(seeded[ORG_A].admission);
+    expect(summary.organizationId).toBe(ORG_A);
+
+    await expect(reader.getAdmissionSummary(ORG_B, seeded[ORG_A].admission)).rejects.toBeInstanceOf(
+      AdmissionNotFoundError,
+    );
   });
 
   it("listElectionPeriods returns the ladder for a real admission, null for an unknown one", async () => {

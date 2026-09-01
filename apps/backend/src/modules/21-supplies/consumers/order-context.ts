@@ -131,7 +131,10 @@ export async function resolveSupplyOrderContext(
 
   let admission: SupplyAdmissionContext | null = null;
   try {
-    const summary = await getAdmissionStatusReader().getAdmissionSummary(order.admissionId);
+    const summary = await getAdmissionStatusReader().getAdmissionSummary(
+      organizationId,
+      order.admissionId,
+    );
     admission = await toAdmissionContext(organizationId, summary);
   } catch {
     // Fail-CLOSED on the tenancy anchor: `provider_entity_id` is NOT NULL on every M21 PHI table and rolls

@@ -30,6 +30,17 @@ export interface UploadDocumentArgs {
   readonly patientFacing: boolean;
 }
 
+export interface DocumentProvenanceMetadata {
+  readonly documentType?: string;
+  readonly sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
+  readonly receivedAt?: string;
+  readonly originalFilename?: string;
+  readonly externalMessageId?: string;
+  readonly sender?: string;
+  readonly faxReference?: string;
+  readonly notes?: string;
+}
+
 export interface DocumentView {
   readonly id: string;
   readonly organizationId: string;
@@ -37,9 +48,11 @@ export interface DocumentView {
   readonly admissionId: string | null;
   readonly retentionClass: DocumentRetentionClass;
   readonly aggregateType: string;
+  readonly aggregateId: string | null;
   readonly title: string;
   readonly patientFacing: boolean;
   readonly attachToDisclosures: boolean;
+  readonly metadata: DocumentProvenanceMetadata | null;
   readonly status: DocumentStatus;
   readonly version: number;
   readonly versionsCount: number;
@@ -122,7 +135,7 @@ export interface DocumentRouteService {
   getVersion(organizationId: OrgId, documentId: string, versionId: string): Promise<VersionView>;
   listDocuments(
     organizationId: OrgId,
-    filter: { patientId?: string; aggregateType?: string; retentionClass?: string },
+    filter: { patientId?: string; aggregateType?: string; aggregateId?: string; retentionClass?: string },
     cursor: string | undefined,
     limit: number | undefined,
   ): Promise<CursorPage<DocumentView>>;
@@ -131,6 +144,12 @@ export interface DocumentRouteService {
     actor: DocumentWriteActor,
     documentId: string,
     patch: { title?: string; patientFacing?: boolean; attachToDisclosures?: boolean },
+  ): Promise<DocumentView>;
+  linkDocument(
+    organizationId: OrgId,
+    actor: DocumentWriteActor,
+    documentId: string,
+    patch: { patientId?: string | null; admissionId?: string | null },
   ): Promise<DocumentView>;
   addTag(
     organizationId: OrgId,
@@ -153,7 +172,7 @@ export interface DocumentRouteService {
   uploadBatch(
     organizationId: OrgId,
     actor: DocumentWriteActor,
-    args: { patientId: string | null; sourceChannel: string },
+    args: { patientId: string | null; sourceChannel: string; sourceMetadata?: string },
   ): Promise<IntakeBatchView>;
   getBatch(organizationId: OrgId, batchId: string): Promise<IntakeBatchView>;
   listClassification(
@@ -277,9 +296,11 @@ interface DocumentRecord {
   admissionId: string | null;
   retentionClass: DocumentRetentionClass;
   aggregateType: string;
+  aggregateId: string | null;
   title: string;
   patientFacing: boolean;
   attachToDisclosures: boolean;
+  metadata: DocumentProvenanceMetadata | null;
   status: DocumentStatus;
   version: number;
   createdAt: string;
@@ -326,9 +347,11 @@ const toDocView = (r: DocumentRecord): DocumentView => ({
   admissionId: r.admissionId,
   retentionClass: r.retentionClass,
   aggregateType: r.aggregateType,
+  aggregateId: r.aggregateId,
   title: r.title,
   patientFacing: r.patientFacing,
   attachToDisclosures: r.attachToDisclosures,
+  metadata: r.metadata,
   status: r.status,
   version: r.version,
   versionsCount: r.versions.length,
@@ -362,9 +385,11 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       admissionId: null,
       retentionClass: "clinical_record",
       aggregateType: "other",
+      aggregateId: null,
       title: "seed",
       patientFacing: false,
       attachToDisclosures: false,
+      metadata: null,
       status: "active",
       version: 0,
       createdAt: now(),
@@ -437,9 +462,11 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
         admissionId: args.admissionId,
         retentionClass: args.retentionClass,
         aggregateType: args.aggregateType,
+        aggregateId: args.aggregateId,
         title: args.title,
         patientFacing: args.patientFacing,
         attachToDisclosures: false,
+        metadata: null,
         status: "active",
         version: 0,
         createdAt: now(),
@@ -520,6 +547,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
           .filter((r) => r.organizationId === organizationId)
           .filter((r) => (filter.patientId ? r.patientId === filter.patientId : true))
           .filter((r) => (filter.aggregateType ? r.aggregateType === filter.aggregateType : true))
+          .filter((r) => (filter.aggregateId ? r.aggregateId === filter.aggregateId : true))
           .filter((r) =>
             filter.retentionClass ? r.retentionClass === filter.retentionClass : true,
           )
@@ -539,6 +567,23 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       if (patch.patientFacing !== undefined) r.patientFacing = patch.patientFacing;
       if (patch.attachToDisclosures !== undefined)
         r.attachToDisclosures = patch.attachToDisclosures;
+      r.version += 1;
+      r.updatedAt = now();
+      return toDocView(r);
+    },
+    async linkDocument(organizationId, _actor, documentId, patch) {
+      const r = loadDoc(organizationId, documentId);
+      if (r.legalHoldActive)
+        throw new WardenXError(
+          "LEGAL_HOLD_ACTIVE",
+          "the document is under an active legal hold",
+          409,
+        );
+      if (patch.patientId === undefined && patch.admissionId === undefined) {
+        throw new WardenXError("VALIDATION_FAILED", "at least one link field is required", 422);
+      }
+      if (patch.patientId !== undefined) r.patientId = patch.patientId;
+      if (patch.admissionId !== undefined) r.admissionId = patch.admissionId;
       r.version += 1;
       r.updatedAt = now();
       return toDocView(r);
@@ -576,6 +621,7 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       return { documentBundleId: subId() };
     },
     async uploadBatch(organizationId, _actor, args) {
+      void args.sourceMetadata;
       const id = uuidFromCounter("b", ++created);
       const rec: BatchRecord = {
         id,

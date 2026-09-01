@@ -64,17 +64,22 @@ describe("M34 provision gateway", () => {
   });
 
   it("requires an exact tenant-prefix destruction receipt", async () => {
+    const requests: unknown[] = [];
     const gateway = createM34ProvisionGateway(config, {
-      request: async (input) => ({
-        status: 200,
-        body:
-          input.path === "/storage/tenant-scope/destroy"
-            ? { prefix: "tenants/another-org/", objectsDeleted: 4 }
-            : { accepted: true },
-      }),
+      request: async (input) => {
+        requests.push(input.body);
+        return {
+          status: 200,
+          body:
+            input.path === "/storage/tenant-scope/destroy"
+              ? { prefix: "tenant-another-org/", objectsDeleted: 4 }
+              : { accepted: true },
+        };
+      },
     });
     await expect(
       gateway.destructionStorage.destroyTenantScope({ organizationId: "org-1" }),
     ).rejects.toThrow("invalid storage destruction receipt");
+    expect(requests[0]).toMatchObject({ expectedPrefix: "tenant-org-1/" });
   });
 });

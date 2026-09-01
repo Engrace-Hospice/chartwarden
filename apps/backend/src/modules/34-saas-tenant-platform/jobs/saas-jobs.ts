@@ -738,7 +738,7 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
       return { resolvedPatientId: identity.id };
     },
     async openBundleSink({ orgId, jobId }) {
-      const objectKey = `tenants/${orgId}/exports/dsar/${jobId}.ndjson.gz`;
+      const objectKey = `exports/dsar/${jobId}.ndjson.gz`;
       const resources: unknown[] = [];
       dsarBundlesByObjectKey.set(objectKey, resources);
       return {

@@ -199,7 +199,7 @@ describe.skipIf(!DB_URL)("GAP-094 — M34 tenant export, LIVE Postgres", () => {
     expect(result.outcome).toBe("fulfilled");
     expect(result.modules.map((m) => m.moduleKey)).toEqual(["m05", "m06"]);
     expect(result.totalRowCount).toBe(4);
-    expect(result.bundleMinioObjectKey).toBe(`tenants/${ORG}/exports/tenant/${jobId}.tar.gz`);
+    expect(result.bundleMinioObjectKey).toBe(`exports/tenant/${jobId}.tar.gz`);
 
     // The archive really landed in the object store — and is a REAL, system-tar-extractable ustar.tar.gz,
     // not a renamed JSON blob (the whole point of GAP-094's own tar builder, tenant-export-tar.ts).
@@ -269,13 +269,13 @@ describe.skipIf(!DB_URL)("GAP-094 — M34 tenant export, LIVE Postgres", () => {
     const fulfilledJobId = (
       await admin.query(
         `INSERT INTO tenant_export_job (organization_id, requested_purpose, requesting_membership_id, status, bundle_minio_object_key, bundle_sha256)
-         VALUES ($1,'migration','${ACTOR_MEMBERSHIP}','fulfilled','tenants/${ORG}/exports/tenant/manual-fixture.tar.gz','deadbeef') RETURNING id`,
+         VALUES ($1,'migration','${ACTOR_MEMBERSHIP}','fulfilled','exports/tenant/manual-fixture.tar.gz','deadbeef') RETURNING id`,
         [ORG],
       )
     ).rows[0].id as string;
     await objects.putObject({
       bucket: deriveTenantBucket(ORG),
-      objectKey: `tenants/${ORG}/exports/tenant/manual-fixture.tar.gz`,
+      objectKey: "exports/tenant/manual-fixture.tar.gz",
       bytes: new TextEncoder().encode("fixture"),
     });
 

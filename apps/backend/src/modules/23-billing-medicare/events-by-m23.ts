@@ -55,7 +55,7 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A claim entered VALIDATING; a validation_run was enqueued against the current claim state.",
     payloadSchema: Type.Object({ claimId: id, validationRunId: id, trigger: str }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: ["m23", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -115,7 +115,7 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The submission worker reported a MAC-portal upload failure; the retry worker picks it up.",
     payloadSchema: Type.Object({ claimId: id, submissionId: id, attemptIndex: int, reason: str }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: ["m23", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -273,7 +273,7 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       electionEffectiveDate: isoInstant,
       windowTargetAt: isoInstant,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: ["m23", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -340,7 +340,7 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       terminationEffectiveDate: isoInstant,
       windowTargetAt: isoInstant,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: ["m23", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -416,7 +416,7 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       checkedAt: isoInstant,
       staleAt: isoInstant,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: ["m23", "m33"],
     isOutboxOnly: true,
   },
   {

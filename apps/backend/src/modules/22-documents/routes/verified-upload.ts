@@ -6,10 +6,20 @@ import { DegradedError, ForbiddenError, NotFoundError, WardenXError } from "@war
 import { and, eq, sql } from "drizzle-orm";
 import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "../seams/store";
+import type { DocumentProvenanceMetadata } from "./service";
 
 const UPLOAD_TTL_MS = 15 * 60 * 1000;
 export const MAX_DOCUMENT_UPLOAD_BYTES = 25 * 1024 * 1024;
-const MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/tiff"]);
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/tiff", DOCX_MIME]);
+
+export interface ReferralAccessReader {
+  canAccessReferral(input: {
+    readonly organizationId: string;
+    readonly userId: string;
+    readonly referralId: string;
+  }): Promise<boolean>;
+}
 
 export interface InitiateVerifiedUploadInput {
   readonly mode: "new_document" | "new_version";
@@ -24,6 +34,7 @@ export interface InitiateVerifiedUploadInput {
   readonly mimeType: string;
   readonly byteSize: number;
   readonly sha256Hex: string;
+  readonly sourceMetadata?: DocumentProvenanceMetadata;
 }
 
 export interface VerifiedUploadService {
@@ -93,6 +104,7 @@ function assertStore(objects: ObjectStorePort | null): ObjectStorePort {
 export function createVerifiedUploadService(deps: {
   readonly db: DbClient;
   readonly objects: ObjectStorePort | null;
+  readonly referralReader?: ReferralAccessReader;
   readonly now?: () => Date;
   readonly randomId?: () => string;
 }): VerifiedUploadService {
@@ -105,10 +117,39 @@ export function createVerifiedUploadService(deps: {
   const inOrg = <T>(organizationId: string, userId: string, fn: (tx: DbClient) => Promise<T>) =>
     withOrgContext(deps.db, { organizationId, userId }, (tx) => fn(tx as DbClient));
 
+  async function validateReferralAccess(organizationId: string, userId: string, input: InitiateVerifiedUploadInput) {
+    if (input.aggregateType !== "referral") return;
+    if (!input.aggregateId) {
+      throw new WardenXError("VALIDATION_FAILED", "aggregateId is required for referral documents", 422);
+    }
+    const reader = deps.referralReader;
+    if (!reader) {
+      throw new DegradedError("referral-reader", "referral document uploads require the M6 ReferralReader seam");
+    }
+    if (!(await reader.canAccessReferral({ organizationId, userId, referralId: input.aggregateId }))) {
+      throw new NotFoundError("referral");
+    }
+  }
+
+  function documentSourceKind(metadata: DocumentProvenanceMetadata | undefined) {
+    switch (metadata?.sourceChannel) {
+      case "fax":
+        return "fax_ingest" as const;
+      case "portal":
+        return "portal_upload" as const;
+      case "api":
+      case "email":
+        return "api_ingest" as const;
+      default:
+        return "user_upload" as const;
+    }
+  }
+
   return {
     async initiate({ organizationId, userId, membershipId, input }) {
       const objects = assertStore(deps.objects);
       validateInput(input);
+      await validateReferralAccess(organizationId, userId, input);
       const uploadId = randomId();
       const opaqueVersionId = randomId();
       const objectKey = `uploads/${uploadId}/${input.aggregateType}-${opaqueVersionId.slice(0, 12)}`;
@@ -150,6 +191,7 @@ export function createVerifiedUploadService(deps: {
           mimeType: input.mimeType,
           expectedByteSize: String(input.byteSize),
           expectedSha256Hex: input.sha256Hex,
+          sourceMetadata: input.sourceMetadata ?? null,
           expiresAt,
         });
       });
@@ -296,11 +338,12 @@ export function createVerifiedUploadService(deps: {
               patientId: current.patientId,
               admissionId: current.admissionId,
               retentionClass: current.retentionClass,
-              sourceKind: "user_upload",
+              sourceKind: documentSourceKind(current.sourceMetadata as DocumentProvenanceMetadata | undefined),
               aggregateType: current.aggregateType,
               aggregateId: current.aggregateId,
               title: current.title,
               patientFacing: current.patientFacing,
+              metadata: current.sourceMetadata ?? null,
               createdByMembershipId: membershipId,
             })
             .returning({ id: D.id });

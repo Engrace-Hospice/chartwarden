@@ -39,7 +39,9 @@ function recordOf(value: unknown): Record<string, unknown> {
 function stringOf(payload: Record<string, unknown>, key: string): string {
   const value = payload[key];
   if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`m10.m6-admission-workflow: '${key}' must be a non-empty string`);
+    throw new Error(
+      `m10.m6-admission-workflow: '${key}' must be a non-empty string`,
+    );
   }
   return value;
 }
@@ -47,7 +49,9 @@ function stringOf(payload: Record<string, unknown>, key: string): string {
 function localDateOf(value: string, key: string): LocalDate {
   const date = value.slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    throw new Error(`m10.m6-admission-workflow: '${key}' must carry a yyyy-mm-dd date`);
+    throw new Error(
+      `m10.m6-admission-workflow: '${key}' must carry a yyyy-mm-dd date`,
+    );
   }
   return date as LocalDate;
 }
@@ -59,7 +63,10 @@ export function buildM10AdmissionWorkflowConsumer(deps: {
 }): {
   readonly consumerName: "m10.m6-admission-workflow";
   readonly consumerModule: "m10";
-  readonly eventTypes: readonly ["m6.admission.activated", "m6.admission.discharged"];
+  readonly eventTypes: readonly [
+    "m6.admission.activated",
+    "m6.admission.discharged",
+  ];
   handle(event: {
     readonly id: string;
     readonly organizationId: string;
@@ -74,9 +81,14 @@ export function buildM10AdmissionWorkflowConsumer(deps: {
     async handle(event) {
       const payload = recordOf(event.payload);
       const admissionId = stringOf(payload, "admissionId");
-      const summary = await deps.admissions.getAdmissionSummary(admissionId);
+      const summary = await deps.admissions.getAdmissionSummary(
+        event.organizationId,
+        admissionId,
+      );
       if (summary.organizationId !== event.organizationId) {
-        throw new Error("m10.m6-admission-workflow: admission summary tenant mismatch");
+        throw new Error(
+          "m10.m6-admission-workflow: admission summary tenant mismatch",
+        );
       }
       const locationId = summary.locationId ?? null;
       if (!summary.providerEntityId || !locationId) {
@@ -104,7 +116,10 @@ export function buildM10AdmissionWorkflowConsumer(deps: {
                   planDischargeTimepoint({
                     // Validate the M6 discharge discriminator is present; Section-Q branching remains a
                     // recording-boundary rule on the HOPE assessment itself.
-                    dischargeDate: localDateOf(stringOf(payload, "dischargeDate"), "dischargeDate"),
+                    dischargeDate: localDateOf(
+                      stringOf(payload, "dischargeDate"),
+                      "dischargeDate",
+                    ),
                     timeZone,
                   }),
                 ];

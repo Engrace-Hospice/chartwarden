@@ -131,7 +131,7 @@ describe.skipIf(!DB_URL)("GAP-098 — M34 oversized-hold discovery, LIVE Postgre
           org,
           jobId,
           JSON.stringify({
-            bundleMinioObjectKey: `tenants/${org}/exports/tenant/${jobId}.tar.gz`,
+            bundleMinioObjectKey: `exports/tenant/${jobId}.tar.gz`,
             bundleSha256: "deadbeef",
             bundleSizeBytes: opts.sizeBytes ?? 60 * 1024 * 1024 * 1024,
             recordCount: 20_000,
@@ -342,7 +342,7 @@ describe.skipIf(!DB_URL)("GAP-098 — M34 oversized-hold discovery, LIVE Postgre
         await p.markGenerating(jobId);
         await p.holdForOversizedApproval({
           jobId,
-          bundleMinioObjectKey: `tenants/${ORG_A}/exports/tenant/${jobId}.tar.gz`,
+          bundleMinioObjectKey: `exports/tenant/${jobId}.tar.gz`,
           bundleSha256: "deadbeef",
           bundleSizeBytes: 60 * 1024 * 1024 * 1024,
           recordCount: 20_000,
@@ -377,7 +377,7 @@ describe.skipIf(!DB_URL)("GAP-098 — M34 oversized-hold discovery, LIVE Postgre
           await p.markGenerating(jobId);
           await p.holdForOversizedApproval({
             jobId,
-            bundleMinioObjectKey: `tenants/${ORG_A}/exports/tenant/${jobId}.tar.gz`,
+            bundleMinioObjectKey: `exports/tenant/${jobId}.tar.gz`,
             bundleSha256: "deadbeef",
             bundleSizeBytes: 60 * 1024 * 1024 * 1024,
             recordCount: 20_000,

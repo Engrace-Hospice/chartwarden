@@ -25,6 +25,10 @@ import {
   buildM10AdmissionWorkflowConsumer,
   createDbHopeBackend,
 } from "../src/modules/10-hope/index";
+import {
+  createAdmissionStatusReader,
+  createDrizzleAdmissionReaderStore,
+} from "../src/modules/06-admission/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -117,6 +121,15 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     ).rows[0].id as string;
   }
 
+  async function seedAdmission(org: string, admissionId: string): Promise<void> {
+    await admin.query(
+      `INSERT INTO admission (id, organization_id, provider_entity_id, location_id, patient_id,
+         admitted_by_physician_id, status, admission_at, activated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,'active','2026-06-01'::date,'2026-06-01'::date)`,
+      [admissionId, org, providerOf[org], locationOf[org], PATIENT, USER],
+    );
+  }
+
   beforeAll(async () => {
     admin = new Client({ connectionString: DB_URL });
     await admin.connect();
@@ -179,6 +192,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
 
   it("M6 activation/discharge consumer materializes HOPE schedules idempotently", async () => {
     const adm = nextAdmission();
+    await seedAdmission(ORG_A, adm);
     const published: string[] = [];
     const consumer = buildM10AdmissionWorkflowConsumer({
       db: handle.db,
@@ -187,23 +201,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
           published.push(`${input.eventName}:${input.payload.rfaKind as string}`);
         },
       },
-      admissions: {
-        async getAdmissionSummary(admissionId: string) {
-          return {
-            admissionId,
-            patientId: PATIENT,
-            organizationId: ORG_A,
-            providerEntityId: providerOf[ORG_A],
-            locationId: locationOf[ORG_A],
-            status: "active",
-            admissionAt: "2026-06-01",
-            activatedAt: "2026-06-01",
-            dischargedAt: null,
-            currentElectionPeriodId: null,
-            currentLevelOfCare: "routine_home_care",
-          };
-        },
-      },
+      admissions: createAdmissionStatusReader(createDrizzleAdmissionReaderStore(handle.db)),
     });
 
     const activated = {

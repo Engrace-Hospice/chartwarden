@@ -160,7 +160,7 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
         ORG,
         jobId,
         JSON.stringify({
-          bundleMinioObjectKey: `tenants/${ORG}/exports/tenant/${jobId}.tar.gz`,
+          bundleMinioObjectKey: `exports/tenant/${jobId}.tar.gz`,
           bundleSha256: "deadbeef",
           bundleSizeBytes: 60 * 1024 * 1024 * 1024,
           recordCount: 20_000,
@@ -209,7 +209,7 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
     );
     expect(jobRows[0].status).toBe("fulfilled");
     expect(jobRows[0].bundle_minio_object_key).toBe(
-      `tenants/${ORG}/exports/tenant/${jobId}.tar.gz`,
+      `exports/tenant/${jobId}.tar.gz`,
     );
     expect(jobRows[0].bundle_sha256).toBe("deadbeef");
     expect(Number(jobRows[0].bundle_size_bytes)).toBe(60 * 1024 * 1024 * 1024);

@@ -86,6 +86,8 @@ export type DocumentAggregateType =
   // M33 report artifacts (mig 0197) — the ad-hoc export, and one scheduled-report OCCURRENCE's render.
   | "report_export"
   | "report_schedule_run"
+  // M6 referral inbox artifacts — uploaded before patient/admission matching, then linked in place.
+  | "referral"
   | "idg_patient_packet"
   | "idg_minutes"
   | "aide_poc"

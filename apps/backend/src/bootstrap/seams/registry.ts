@@ -134,6 +134,7 @@ import {
   qapiProjectProviderDenyStub,
   qualityMeasureProviderDenyStub,
   reconciliationProviderDenyStub,
+  referralReaderDenyStub,
   refillInboxProviderDenyStub,
   renderedDocumentProviderDenyStub,
   revenueMetricsProviderDenyStub,
@@ -649,6 +650,12 @@ export const REQUIRED_SEAMS = [
     ownerModule: 6,
     phi: true,
     denyStub: admissionCensusReaderDenyStub,
+  },
+  {
+    key: "ReferralReader",
+    ownerModule: 6,
+    phi: true,
+    denyStub: referralReaderDenyStub,
   },
   // M6 (Admission) death-discharge census reader (§4.11). A read-only DTO surface over M6's `discharge_event`
   // death rows (joined to `admission` for the patient id), consumed by M30's HVLDL measure-recompute worker as

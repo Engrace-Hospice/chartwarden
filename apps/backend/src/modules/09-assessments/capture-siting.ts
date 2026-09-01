@@ -4,7 +4,7 @@
 // SOURCE OF TRUTH. The siting is the capture's ADMISSION anchor — the `admissionId` every
 // record/correct already carries — whose PE/location live on the M6-owned `admission` row. M9 may not
 // import M6's schema (architecture §11), so the resolution goes through the published M6 seam:
-// `getSeam("AdmissionStatusReader").getAdmissionSummary(admissionId)` (the M6 Drizzle store answers
+// `getSeam("AdmissionStatusReader").getAdmissionSummary(organizationId, admissionId)` (the M6 Drizzle store answers
 // real rows under the consumer's ambient request context / RLS).
 //
 // WHAT THE SEAM CAN AND CANNOT ANSWER (verified against @wardenx/types §4.7):
@@ -177,7 +177,10 @@ export function createSeamAssessmentSitingResolver(): AssessmentSitingResolver {
   ): Promise<AdmissionSummary | null> {
     let summary: AdmissionSummary;
     try {
-      summary = await getSeam("AdmissionStatusReader").getAdmissionSummary(admissionId);
+      summary = await getSeam("AdmissionStatusReader").getAdmissionSummary(
+        organizationId,
+        admissionId,
+      );
     } catch {
       return null; // seam absent/denying/gapped or admission unknown
     }

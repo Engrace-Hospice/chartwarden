@@ -270,7 +270,7 @@ describe.skipIf(!DB_URL)("GAP-048 — M34 DSAR export, LIVE Postgres", () => {
     const jobId = (
       await admin.query(
         `INSERT INTO dsar_export_job (organization_id, patient_id, request_source, requestor_identity_verification_evidence, requesting_membership_id, status, sla_due_at, bundle_minio_object_key, bundle_sha256)
-         VALUES ($1,$2,'patient','ID verified via phone callback','${ACTOR_MEMBERSHIP}','fulfilled',NOW()+interval '30 days','tenants/${ORG}/exports/dsar/manual-fixture.ndjson.gz','deadbeef') RETURNING id`,
+         VALUES ($1,$2,'patient','ID verified via phone callback','${ACTOR_MEMBERSHIP}','fulfilled',NOW()+interval '30 days','exports/dsar/manual-fixture.ndjson.gz','deadbeef') RETURNING id`,
         [ORG, patientId],
       )
     ).rows[0].id as string;
@@ -278,7 +278,7 @@ describe.skipIf(!DB_URL)("GAP-048 — M34 DSAR export, LIVE Postgres", () => {
     // (SigV4 presign is a pure signing operation, not a HEAD check), but seed it anyway for realism.
     await objects.putObject({
       bucket: `tenant-${ORG}`,
-      objectKey: `tenants/${ORG}/exports/dsar/manual-fixture.ndjson.gz`,
+      objectKey: "exports/dsar/manual-fixture.ndjson.gz",
       bytes: new TextEncoder().encode("fixture"),
     });
 

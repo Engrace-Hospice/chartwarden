@@ -103,6 +103,7 @@ import type {
   ProtocolSuggestionProvider,
   ReconciliationProvider,
   RefillInboxProvider,
+  ReferralReader,
   RenderedDocumentProvider,
   RevenueMetricsProvider,
   SafetyCheckInProvider,
@@ -585,6 +586,13 @@ export const admissionStatusReaderDenyStub: AdmissionStatusReader = {
 export const admissionCensusReaderDenyStub: AdmissionCensusReader = {
   listActiveAdmissions() {
     throw new NotImplementedError("AdmissionCensusReader");
+  },
+};
+
+/** M6 — referral visibility checks. Denies until M6 registers the real reader. */
+export const referralReaderDenyStub: ReferralReader = {
+  canAccessReferral() {
+    throw new NotImplementedError("ReferralReader");
   },
 };
 

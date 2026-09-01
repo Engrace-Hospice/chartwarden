@@ -107,7 +107,7 @@ export async function resolveDeathFact(
   const match = decedents.find((d) => d.admissionId === admissionId);
   if (match === undefined) return null;
 
-  const summary = await getAdmissionStatusReader().getAdmissionSummary(admissionId);
+  const summary = await getAdmissionStatusReader().getAdmissionSummary(organizationId, admissionId);
 
   return {
     admissionId,

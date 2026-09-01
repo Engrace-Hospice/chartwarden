@@ -285,8 +285,11 @@ function validateAdmissionForService(
   throw new ForbiddenError(`encounter authoring is not allowed while admission is '${summary.status}'`);
 }
 
-async function admissionSummaryFor(admissionId: string): Promise<AdmissionSummary> {
-  return getSeam("AdmissionStatusReader").getAdmissionSummary(admissionId);
+async function admissionSummaryFor(
+  organizationId: string,
+  admissionId: string,
+): Promise<AdmissionSummary> {
+  return getSeam("AdmissionStatusReader").getAdmissionSummary(organizationId, admissionId);
 }
 
 /**
@@ -657,7 +660,7 @@ export function createDbEncounterRouteService(
           serviceDate: args.serviceDate,
           today: new Date().toISOString().slice(0, 10) as LocalDate,
         });
-        const admission = await admissionSummaryFor(args.admissionId);
+        const admission = await admissionSummaryFor(organizationId, args.admissionId);
         validateAdmissionForService(organizationId, args.patientId, args.serviceDate, admission);
         const siting = await resolveSiting(t, admission, actorUserId);
         const row = firstOrThrow(
@@ -1073,7 +1076,7 @@ export function createDbEncounterRouteService(
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
         const now = new Date();
-        const admission = await admissionSummaryFor(r.admissionId);
+        const admission = await admissionSummaryFor(organizationId, r.admissionId);
         validateAdmissionForService(
           organizationId,
           r.patientId,

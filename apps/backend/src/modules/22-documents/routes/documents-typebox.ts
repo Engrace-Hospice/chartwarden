@@ -49,6 +49,14 @@ const ACCESS_PURPOSE = [
   "survey_export",
 ] as const;
 const SOURCE_CHANNEL = ["fax", "email_ingest", "portal_upload", "admin_upload", "api"] as const;
+const DOCUMENT_SOURCE_CHANNEL = [
+  "email",
+  "fax",
+  "scanned_physical",
+  "manual_upload",
+  "portal",
+  "api",
+] as const;
 const DECISION_KIND = ["approve", "approve_with_edit", "reject"] as const;
 const DOCUMENT_AGGREGATE_TYPE = [
   "election_statement",
@@ -68,6 +76,11 @@ const DOCUMENT_AGGREGATE_TYPE = [
   "medication_reconciliation_worksheet",
   "patient_medication_list",
   "comfort_kit_receipt",
+  "supply_bill_of_lading",
+  "comfort_kit_return_receipt",
+  "report_export",
+  "report_schedule_run",
+  "referral",
   "idg_patient_packet",
   "idg_minutes",
   "aide_poc",
@@ -87,7 +100,19 @@ const VERIFIED_UPLOAD_MIME_TYPE = [
   "image/jpeg",
   "image/png",
   "image/tiff",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ] as const;
+
+export const DocumentSourceMetadataSchema = Type.Object({
+  documentType: Type.Optional(lit(DOCUMENT_AGGREGATE_TYPE)),
+  sourceChannel: Type.Optional(lit(DOCUMENT_SOURCE_CHANNEL)),
+  receivedAt: Type.Optional(Type.String({ format: "date-time" })),
+  originalFilename: Type.Optional(Type.String({ minLength: 1, maxLength: 500 })),
+  externalMessageId: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
+  sender: Type.Optional(Type.String({ minLength: 1, maxLength: 512 })),
+  faxReference: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
+  notes: Type.Optional(Type.String({ minLength: 1, maxLength: 2000 })),
+});
 
 // ── Path params (slice ids are uuid-shaped; cross-module ids validated per §4.2) ──────────────────────
 export const DocumentParamsSchema = Type.Object({
@@ -169,6 +194,7 @@ export const InitiateVerifiedUploadRequest = Type.Object({
   mimeType: lit(VERIFIED_UPLOAD_MIME_TYPE),
   byteSize: Type.Integer({ minimum: 1, maximum: 25 * 1024 * 1024 }),
   sha256Hex: Type.String({ pattern: "^[0-9a-f]{64}$" }),
+  sourceMetadata: Type.Optional(DocumentSourceMetadataSchema),
 });
 
 export const CompleteVerifiedUploadRequest = Type.Object({});
@@ -183,11 +209,19 @@ export const CompleteVerifiedUploadResponse = Type.Object({
   versionId: Type.String({ format: "uuid" }),
   versionNumber: Type.Integer({ minimum: 1 }),
 });
+export const AbortVerifiedUploadResponse = Type.Object({
+  aborted: Type.Boolean(),
+});
 
 export const PatchDocumentRequest = Type.Object({
   title: Type.Optional(Type.String({ minLength: 1, maxLength: 500 })),
   patientFacing: Type.Optional(Type.Boolean()),
   attachToDisclosures: Type.Optional(Type.Boolean()),
+});
+
+export const LinkDocumentRequest = Type.Object({
+  patientId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
+  admissionId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
 });
 
 export const AddTagRequest = Type.Object({
@@ -303,6 +337,7 @@ const PageQuery = {
 export const DocumentListQuerySchema = Type.Object({
   patientId: Type.Optional(Type.String({ maxLength: 64 })),
   aggregateType: Type.Optional(Type.String({ maxLength: 64 })),
+  aggregateId: Type.Optional(Type.String({ maxLength: 64 })),
   retentionClass: Type.Optional(Type.String({ maxLength: 64 })),
   ...PageQuery,
 });
@@ -361,9 +396,11 @@ export const DocumentViewSchema = Type.Object({
   admissionId: Type.Union([Type.String(), Type.Null()]),
   retentionClass: lit(RETENTION_CLASS),
   aggregateType: Type.String(),
+  aggregateId: Type.Union([Type.String(), Type.Null()]),
   title: Type.String(),
   patientFacing: Type.Boolean(),
   attachToDisclosures: Type.Boolean(),
+  metadata: Type.Union([DocumentSourceMetadataSchema, Type.Null()]),
   status: lit(DOCUMENT_STATUS),
   version: Type.Integer(),
   versionsCount: Type.Integer(),

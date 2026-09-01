@@ -36,10 +36,10 @@ import type { NdjsonSink, TenantExportShard, TenantExportShardResult } from "../
 // ── bundle layout constants (D19 §3.7) ──────────────────────────────────────────────────────────────
 
 /** The MinIO object-key prefix template for a tenant export bundle (§3.7):
- *  `tenants/<orgId>/exports/tenant/<job-id>.tar.gz`. The composition root's M1 MinIO client resolves
- *  this against the per-tenant bucket; M34 only NAMES the key. */
-export function tenantExportObjectKey(orgId: string, jobId: string): string {
-  return `tenants/${orgId}/exports/tenant/${jobId}.tar.gz`;
+ *  `exports/tenant/<job-id>.tar.gz`. The composition root resolves this against the per-tenant bucket
+ *  `tenant-<orgId>`; M34 keeps the org in the bucket name, not duplicated in the object key. */
+export function tenantExportObjectKey(_orgId: string, jobId: string): string {
+  return `exports/tenant/${jobId}.tar.gz`;
 }
 
 /** The in-bundle path for one module's NDJSON file (§3.7 `modules/<moduleKey>/<table>.ndjson`). The

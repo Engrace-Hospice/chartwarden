@@ -27,6 +27,8 @@ const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const MEMBER = "33333333-3333-3333-3333-333333333333"; // document created_by etc. carry no FK — literal ok
 const PATIENT = "44444444-4444-4444-4444-444444444444";
+const ADMISSION = "55555555-5555-4555-8555-555555555555";
+const REFERRAL = "66666666-6666-4666-8666-666666666666";
 const MEMBERSHIP = "77777777-7777-4777-8777-777777777777";
 /** GAP-039 — every write carries BOTH ids: the audit actor (`user.id`, FK-checked by audit_event)
  *  and the membership the `*_by_membership_id` columns record. */
@@ -150,7 +152,15 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
         objectMetadata.delete(`${bucket}/${objectKey}`);
       },
     };
-    verifiedUpload = createVerifiedUploadService({ db: handle.db, objects });
+    verifiedUpload = createVerifiedUploadService({
+      db: handle.db,
+      objects,
+      referralReader: {
+        async canAccessReferral(input) {
+          return input.organizationId === ORG_A && input.referralId === REFERRAL;
+        },
+      },
+    });
   }, 180_000);
 
   afterAll(async () => {
@@ -249,6 +259,187 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
       completed.documentId,
     ]);
     expect(rows[0].active_version_id).toBe(v2.versionId);
+  });
+
+  it("verified upload accepts referral DOCX provenance and later links the same document to patient/admission", async () => {
+    await admin.query(
+      `INSERT INTO referral (id, organization_id, patient_name_at_receipt, source_channel)
+       VALUES ($1,$2,'Unknown Patient','fax')
+       ON CONFLICT (id) DO NOTHING`,
+      [REFERRAL, ORG_A],
+    );
+    const sha256Hex = "b".repeat(64);
+    const initiated = await verifiedUpload.initiate({
+      organizationId: ORG_A,
+      userId: MEMBER,
+      membershipId: MEMBER,
+      input: {
+        mode: "new_document",
+        targetDocumentId: null,
+        patientId: null,
+        admissionId: null,
+        retentionClass: "intake_artifact",
+        aggregateType: "referral",
+        aggregateId: REFERRAL,
+        title: "Referral packet DOCX",
+        patientFacing: false,
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        byteSize: 2048,
+        sha256Hex,
+        sourceMetadata: {
+          sourceChannel: "fax",
+          receivedAt: "2026-06-21T12:00:00.000Z",
+          originalFilename: "referral-packet.docx",
+          faxReference: "fax-123",
+        },
+      },
+    });
+    if (!lastStagedObject) throw new Error("presign did not capture staged object");
+    objectMetadata.set(`${lastStagedObject.bucket}/${lastStagedObject.objectKey}`, {
+      byteSize: 2048,
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      sha256Hex,
+    });
+    const completed = await verifiedUpload.complete({
+      organizationId: ORG_A,
+      userId: MEMBER,
+      membershipId: MEMBER,
+      uploadId: initiated.uploadId,
+    });
+    const created = await svc.getDocument(ORG_A, completed.documentId);
+    expect(created).toMatchObject({
+      patientId: null,
+      admissionId: null,
+      aggregateType: "referral",
+      aggregateId: REFERRAL,
+      metadata: { sourceChannel: "fax", originalFilename: "referral-packet.docx" },
+      versionsCount: 1,
+    });
+
+    const activeBefore = (
+      await admin.query("SELECT active_version_id FROM document WHERE id=$1", [completed.documentId])
+    ).rows[0].active_version_id;
+    const linked = await svc.linkDocument(ORG_A, ACTOR, completed.documentId, {
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+    });
+    expect(linked).toMatchObject({
+      id: completed.documentId,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      aggregateType: "referral",
+      aggregateId: REFERRAL,
+      versionsCount: 1,
+    });
+    const activeAfter = (
+      await admin.query("SELECT active_version_id FROM document WHERE id=$1", [completed.documentId])
+    ).rows[0].active_version_id;
+    expect(activeAfter).toBe(activeBefore);
+    expect(
+      (await admin.query("SELECT count(*)::int AS n FROM document_version WHERE document_id=$1", [
+        completed.documentId,
+      ])).rows[0].n,
+    ).toBe(1);
+  });
+
+  it("verified upload keeps PDF/images accepted and rejects unsupported MIME", async () => {
+    const accepted = ["application/pdf", "image/jpeg", "image/png", "image/tiff"] as const;
+    for (const [i, mimeType] of accepted.entries()) {
+      const aggregateType = i === 0 ? "code_status_directive" : i === 1 ? "consent_record" : "other";
+      const sha256Hex = `${i + 1}`.repeat(64);
+      const initiated = await verifiedUpload.initiate({
+        organizationId: ORG_A,
+        userId: MEMBER,
+        membershipId: MEMBER,
+        input: {
+          mode: "new_document",
+          targetDocumentId: null,
+          patientId: PATIENT,
+          admissionId: null,
+          retentionClass: "clinical_record",
+          aggregateType,
+          aggregateId: null,
+          title: `Accepted ${mimeType}`,
+          patientFacing: false,
+          mimeType,
+          byteSize: 512 + i,
+          sha256Hex,
+        },
+      });
+      if (!lastStagedObject) throw new Error("presign did not capture staged object");
+      objectMetadata.set(`${lastStagedObject.bucket}/${lastStagedObject.objectKey}`, {
+        byteSize: 512 + i,
+        mimeType,
+        sha256Hex,
+      });
+      const completed = await verifiedUpload.complete({
+        organizationId: ORG_A,
+        userId: MEMBER,
+        membershipId: MEMBER,
+        uploadId: initiated.uploadId,
+      });
+      const doc = await svc.getDocument(ORG_A, completed.documentId);
+      expect(doc).toMatchObject({ patientId: PATIENT, admissionId: null, aggregateType });
+    }
+    await expect(
+      verifiedUpload.initiate({
+        organizationId: ORG_A,
+        userId: MEMBER,
+        membershipId: MEMBER,
+        input: {
+          mode: "new_document",
+          targetDocumentId: null,
+          patientId: PATIENT,
+          admissionId: null,
+          retentionClass: "clinical_record",
+          aggregateType: "other",
+          aggregateId: null,
+          title: "Legacy doc",
+          patientFacing: false,
+          mimeType: "application/msword",
+          byteSize: 1024,
+          sha256Hex: "c".repeat(64),
+        },
+      }),
+    ).rejects.toMatchObject({ statusCode: 415 });
+  });
+
+  it("referral upload rejects inaccessible referrals without creating an upload row", async () => {
+    const rejecting = createVerifiedUploadService({
+      db: handle.db,
+      objects: verifiedUpload ? ({} as ObjectStorePort) : null,
+      referralReader: {
+        async canAccessReferral() {
+          return false;
+        },
+      },
+    });
+    await expect(
+      rejecting.initiate({
+        organizationId: ORG_A,
+        userId: MEMBER,
+        membershipId: MEMBER,
+        input: {
+          mode: "new_document",
+          targetDocumentId: null,
+          patientId: null,
+          admissionId: null,
+          retentionClass: "intake_artifact",
+          aggregateType: "referral",
+          aggregateId: REFERRAL,
+          title: "Blocked referral upload",
+          patientFacing: false,
+          mimeType: "application/pdf",
+          byteSize: 1024,
+          sha256Hex: "d".repeat(64),
+        },
+      }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    expect(
+      (await admin.query("SELECT count(*)::int AS n FROM document_upload WHERE title=$1", [
+        "Blocked referral upload",
+      ])).rows[0].n,
+    ).toBe(0);
   });
 
   it("patchDocument updates fields; addTag/removeTag round-trip", async () => {

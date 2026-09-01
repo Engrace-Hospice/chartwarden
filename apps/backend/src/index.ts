@@ -20,6 +20,7 @@ import {
 } from "@wardenx/auth";
 import type { RbacEngineHandle, SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
+import type { AlertEmitter } from "@wardenx/messaging";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import { registerPlatformJob, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
 import { DegradedError, WardenXError } from "@wardenx/types";
@@ -77,12 +78,14 @@ import {
   buildPrimaryProviderEntityResolver,
 } from "./bootstrap/provider-entity-resolver";
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
-import { registerProviderEntityLookupRoutes } from "./bootstrap/routes/provider-entities";
 import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
+import { registerProviderEntityLookupRoutes } from "./bootstrap/routes/provider-entities";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 
 /** The @wardenx/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
+const M8_PLATFORM_JOB_ID = "m8-encounter-automation";
+const M17_PLATFORM_JOB_ID = "m17-scheduling-automation";
 // AC-04 — the sentinel the `/ready` object-store check HEADs. Neither the bucket nor the key is
 // expected to exist: a 404 is the healthy answer, and the point is that the request COMPLETED
 // (endpoint reachable, SigV4 accepted, credentials valid). Names are PHI-free and tenant-free by
@@ -177,6 +180,7 @@ import {
   M8_OUTBOX_EVENTS,
   buildM8VisitClosedConsumer,
   buildM8VisitPublishedConsumer,
+  buildM8WorkerDeps,
   createDrizzleEncounterEraseStore,
   createDrizzleEncounterReaderStore,
   mountEncounterRoutes,
@@ -184,6 +188,8 @@ import {
   registerEncounterErasers,
   registerEncounterRoutes,
   registerEncounterSeams,
+  registerM8CronWorkers,
+  scheduleM8Jobs,
 } from "./modules/08-encounters/index";
 import {
   M9_OUTBOX_EVENTS,
@@ -295,13 +301,18 @@ import {
 } from "./modules/16-bereavement/index";
 import {
   M17_OUTBOX_EVENTS,
+  buildM17AdmissionLifecycleConsumer,
+  buildM17CarePlanProposalConsumer,
   buildM17EncounterSignedConsumer,
+  buildM17WorkerDeps,
   createDrizzleCredentialStore,
   createDrizzleSchedulingSeamStore,
   mountSchedulingRoutes,
+  registerM17CronWorkers,
   registerSchedulingAbacPredicates,
   registerSchedulingRoutes,
   registerSchedulingSeams,
+  scheduleM17Jobs,
 } from "./modules/17-scheduling/index";
 import {
   M18_OUTBOX_EVENTS,
@@ -362,6 +373,7 @@ import {
   createDrizzleDocumentSeamStore,
   createRefusingObjectStore,
   createS3ObjectStore,
+  createS3TenantStorageProvisioner,
   createSignedUrlService,
   deriveTenantBucket,
   getDocumentRenderer,
@@ -644,6 +656,7 @@ import {
   registerM35AbacPredicates,
 } from "./modules/35-subscription/index";
 import {
+  buildM36ClinicalAlertConsumer,
   createDbMessagingProvider,
   createDrizzleAlertEmitter,
   createDrizzleMessagingEraseStore,
@@ -1926,6 +1939,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     );
   }
   if (platformDbHandle) registerPlatformJob("m35-subscription-admin");
+  if (platformDbHandle) registerPlatformJob(M8_PLATFORM_JOB_ID);
+  if (platformDbHandle) registerPlatformJob(M17_PLATFORM_JOB_ID);
   // M36 D9 — the sole-tenant membership read the offboarding eraser runs (audited platform entry).
   if (platformDbHandle) registerPlatformJob(M36_SOLE_TENANT_JOB_ID);
   // audit C1 — RLS is the tenancy control, and a role with BYPASSRLS makes every policy decorative.
@@ -1980,8 +1995,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const m34ProvisionGateway = m34ProvisionConfig
     ? createM34ProvisionGateway(m34ProvisionConfig)
     : null;
+  const m34TenantStorageConfig = s3ObjectStoreConfigFromEnv(process.env);
+  const m34TenantStorage = m34TenantStorageConfig
+    ? createS3TenantStorageProvisioner(m34TenantStorageConfig)
+    : null;
   const m34ProvisionQueue =
-    queueConnection && platformDbHandle && m34ProvisionGateway
+    queueConnection && platformDbHandle && m34ProvisionGateway && m34TenantStorage
       ? buildM34ProvisionQueue(queueConnection)
       : null;
   if (m34ProvisionQueue) {
@@ -3290,7 +3309,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           },
         }
       : undefined;
-    if (m34ProvisionGateway && platformDbHandle) {
+    if (m34ProvisionGateway && m34TenantStorage && platformDbHandle) {
       const workerDeps = buildM34WorkerDeps({
         connection: queueConnection,
         db: dbHandle.db,
@@ -3300,6 +3319,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         provision: {
           auditBypass: m34PlatformBypassAuditor,
           ...m34ProvisionGateway,
+          storage: m34TenantStorage,
           outbox: m34OutboxPublisher,
         },
         keyLifecycle: {
@@ -3376,7 +3396,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       );
     } else {
       app.log.warn(
-        "M34 tenant provisioning disabled: platform DB and provision gateway configuration are required",
+        "M34 tenant provisioning disabled: platform DB, provision gateway, and MINIO_* configuration are required",
       );
     }
 
@@ -3792,6 +3812,67 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     }
     app.log.info({ queues: m7Workers.length }, "M7 §4.6 BullMQ care-plan.gates cron constructed");
 
+    // ── M17 Phase-3 scheduling automation: recurring materialization + visit attention ───────────────
+    const m17ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M17_PLATFORM_JOB_ID,
+      reason: "M17 scheduling automation cron fan-out (recurrence materialization + attention)",
+    });
+    const m17WorkerDeps = buildM17WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m17OutboxPublisher,
+      activeOrgs: m17ActiveOrgs,
+      alerts: getSeam("AlertEmitter") as AlertEmitter,
+    });
+    const m17Workers = registerM17CronWorkers(m17WorkerDeps);
+    attachDlqAlertsToAll(m17Workers, "m17");
+    app.addHook("onClose", async () => {
+      await Promise.all(m17Workers.map((w) => w.close()));
+    });
+    try {
+      const m17ScheduleQueues = await scheduleM17Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m17ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M17 cron-schedule registration failed");
+    }
+    app.log.info(
+      { queues: m17Workers.length },
+      "M17 Phase-3 scheduling automation crons constructed",
+    );
+
+    // ── M8 Phase-3 encounter attention + cosignature SLA automation ─────────────────────────────────
+    const m8ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M8_PLATFORM_JOB_ID,
+      reason: "M8 encounter automation cron fan-out (attention + cosignature SLA)",
+    });
+    const m8WorkerDeps = buildM8WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m8OutboxPublisher,
+      activeOrgs: m8ActiveOrgs,
+      alerts: getSeam("AlertEmitter") as AlertEmitter,
+    });
+    const m8Workers = registerM8CronWorkers(m8WorkerDeps);
+    attachDlqAlertsToAll(m8Workers, "m8");
+    app.addHook("onClose", async () => {
+      await Promise.all(m8Workers.map((w) => w.close()));
+    });
+    try {
+      const m8ScheduleQueues = await scheduleM8Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m8ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M8 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m8Workers.length }, "M8 Phase-3 encounter automation crons constructed");
+
     // ── M9 §4.8 `license`/`changes`/`cadence` crons (TASK-040D — the M25 worker-runner shape) ────────────
     // `summary`/`eraser` (M9_QUEUES) stay out of scope — event-driven / M4-destruction-cert consumers.
     const m9ActiveOrgs = buildActiveOrgEnumerator({
@@ -4025,6 +4106,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           }),
           buildM8VisitClosedConsumer({ db: dbHandle.db, outbox: m8OutboxPublisher }),
           buildM17EncounterSignedConsumer({ db: dbHandle.db, outbox: m17OutboxPublisher }),
+          buildM17AdmissionLifecycleConsumer({ db: dbHandle.db, outbox: m17OutboxPublisher }),
+          buildM17CarePlanProposalConsumer({ db: dbHandle.db, outbox: m17OutboxPublisher }),
+          buildM36ClinicalAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
           buildM10AdmissionWorkflowConsumer({
             db: dbHandle.db,
             outbox: m10OutboxPublisher,

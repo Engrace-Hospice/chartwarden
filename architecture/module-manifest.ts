@@ -732,7 +732,7 @@ export const MODULES: ModuleDef[] = [
       "apps/web/src/modules/22-documents",
     ], // +web: Track B in-task screens (ADR-0030); empty slice scaffolded at M22-T01, real screens land in a later M22 task
 
-    dependsOn: [1, 5],
+    dependsOn: [1, 5, 6],
     ownedTables: [
       "classified_page",
       "document",

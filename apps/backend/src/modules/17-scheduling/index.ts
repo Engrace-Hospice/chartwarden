@@ -54,8 +54,16 @@ export function mountSchedulingRoutes(
 
 export {
   type SchedulingWriteOutboxPort,
+  type SchedulingAutomationService,
   createDbSchedulingBackend,
 } from "./scheduling-route-service-db";
+export {
+  buildM17WorkerDeps,
+  registerM17CronWorkers,
+  runRecurringMaterializationCron,
+  runVisitAttentionCron,
+  scheduleM17Jobs,
+} from "./jobs/cron-workers";
 export { M17_OUTBOX_EVENTS } from "./events-by-m17";
 export { M17_ALERT_PAYLOADS } from "./alerts-by-m17";
 export {
@@ -65,6 +73,8 @@ export {
   M17_OUTBOX_SUBSCRIPTIONS,
   planVisitCompletionFromEncounter,
 } from "./consumers/index";
+export { buildM17AdmissionLifecycleConsumer } from "./consumers/admission-lifecycle";
+export { buildM17CarePlanProposalConsumer } from "./consumers/care-plan-proposals";
 // M17-T07 — the four §4.7 pre-schedule ABAC predicate resolvers M17 owns + registers into M3.
 export {
   type SchedulingAbacDeps,

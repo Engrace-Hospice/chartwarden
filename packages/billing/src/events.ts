@@ -33,7 +33,7 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       serviceFrom: isoDate,
       serviceTo: isoDate,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: ["m23", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -41,7 +41,7 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m23",
     description: "DRAFT → VALIDATING: a validation run was enqueued against the claim.",
     payloadSchema: Type.Object({ claimId: id, validationRunId: id, trigger: id }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: ["m23", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -103,7 +103,7 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       attemptIndex: Type.Integer(),
       reason: id,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: ["m23", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -255,7 +255,7 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       electionEffectiveDate: isoDate,
       windowTargetAt: isoInstant,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: ["m23", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -319,7 +319,7 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       terminationEffectiveDate: isoDate,
       windowTargetAt: isoInstant,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: ["m23", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -393,7 +393,7 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       checkedAt: isoInstant,
       staleAt: isoInstant,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: ["m23", "m33"],
     isOutboxOnly: true,
   },
   {

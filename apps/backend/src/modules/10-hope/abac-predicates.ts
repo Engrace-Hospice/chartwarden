@@ -128,7 +128,10 @@ const defaultResolveAdmissionPatient = async (
   admissionId: string,
 ): Promise<{ patientId: string } | null> => {
   try {
-    const summary = await getSeam("AdmissionStatusReader").getAdmissionSummary(admissionId);
+    const summary = await getSeam("AdmissionStatusReader").getAdmissionSummary(
+      organizationId,
+      admissionId,
+    );
     if (summary.organizationId !== organizationId) return null; // cross-tenant — fail closed
     return { patientId: summary.patientId };
   } catch {

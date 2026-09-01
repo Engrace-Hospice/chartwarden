@@ -25,8 +25,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
     description: "A care plan was created when `m6.admission.activated` was processed (§7.1).",
     payloadSchema: Type.Object({
       planId: Type.String({ minLength: 1 }),
-      patientId: Type.String({ minLength: 1 }),
-      admissionId: Type.String({ minLength: 1 }),
+      patientId: Type.Optional(Type.String({ minLength: 1 })),
+      admissionId: Type.Optional(Type.String({ minLength: 1 })),
     }),
     declaredConsumers: ["m33"],
     isOutboxOnly: true,
@@ -52,10 +52,12 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       planId: Type.String({ minLength: 1 }),
       versionId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+      admissionId: Type.String({ minLength: 1 }),
       kind: versionKind,
       snapshotRef: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m8", "m14", "m22", "m28", "m30", "m33"],
+    declaredConsumers: ["m8", "m14", "m17", "m22", "m28", "m30", "m33"],
     isOutboxOnly: true,
   },
   {

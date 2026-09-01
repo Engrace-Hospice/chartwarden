@@ -81,6 +81,7 @@ export {
   createDrizzleAlertEmitter,
   createDrizzleAlertEmitterPorts,
 } from "./alert-emitter-drizzle";
+export { buildM36ClinicalAlertConsumer } from "./outbox-consumers/clinical-alerts";
 // GAP-096 — boot-populate alert_rule's platform-default rows (BYPASSRLS-only; see file header).
 export { wireAlertRuleSeed } from "./alert-rule-seed-persister";
 // FB-T14 — M36-owned TRANSACTIONAL email transport (password reset / magic-link delivery). The

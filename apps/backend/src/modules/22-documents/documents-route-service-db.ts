@@ -108,9 +108,11 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         admissionId: DOC.admissionId,
         retentionClass: DOC.retentionClass,
         aggregateType: DOC.aggregateType,
+        aggregateId: DOC.aggregateId,
         title: DOC.title,
         patientFacing: DOC.patientFacing,
         attachToDisclosures: DOC.attachToDisclosures,
+        metadata: DOC.metadata,
         status: DOC.status,
         createdAt: DOC.createdAt,
         updatedAt: DOC.updatedAt,
@@ -127,9 +129,11 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
       admissionId: d.admissionId,
       retentionClass: d.retentionClass,
       aggregateType: d.aggregateType,
+      aggregateId: d.aggregateId,
       title: d.title,
       patientFacing: d.patientFacing,
       attachToDisclosures: d.attachToDisclosures,
+      metadata: (d.metadata ?? null) as DocumentView["metadata"],
       status: d.status,
       // `document` carries no version counter — the version number IS the count of the append-only ledger.
       version: vers.length,
@@ -183,6 +187,7 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         const conds = [
           filter.patientId ? eq(DOC.patientId, filter.patientId) : undefined,
           filter.aggregateType ? eq(DOC.aggregateType, filter.aggregateType as never) : undefined,
+          filter.aggregateId ? eq(DOC.aggregateId, filter.aggregateId) : undefined,
           filter.retentionClass
             ? eq(DOC.retentionClass, filter.retentionClass as never)
             : undefined,
@@ -195,9 +200,11 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
             admissionId: DOC.admissionId,
             retentionClass: DOC.retentionClass,
             aggregateType: DOC.aggregateType,
+            aggregateId: DOC.aggregateId,
             title: DOC.title,
             patientFacing: DOC.patientFacing,
             attachToDisclosures: DOC.attachToDisclosures,
+            metadata: DOC.metadata,
             status: DOC.status,
             createdAt: DOC.createdAt,
             updatedAt: DOC.updatedAt,
@@ -213,9 +220,11 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
           admissionId: d.admissionId,
           retentionClass: d.retentionClass,
           aggregateType: d.aggregateType,
+          aggregateId: d.aggregateId,
           title: d.title,
           patientFacing: d.patientFacing,
           attachToDisclosures: d.attachToDisclosures,
+          metadata: (d.metadata ?? null) as DocumentView["metadata"],
           status: d.status,
           version: 0,
           versionsCount: 0,
@@ -483,6 +492,20 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         return loadDocRow(tx, organizationId, documentId);
       });
     },
+    async linkDocument(organizationId, actor, documentId, patch) {
+      return withOrgAs(db, organizationId, actor, async (tx) => {
+        await loadDocRow(tx, organizationId, documentId); // 404
+        await assertNoHold(tx, documentId);
+        if (patch.patientId === undefined && patch.admissionId === undefined) {
+          throw new WardenXError("VALIDATION_FAILED", "at least one link field is required", 422);
+        }
+        const set: Record<string, unknown> = { updatedAt: new Date() };
+        if (patch.patientId !== undefined) set.patientId = patch.patientId;
+        if (patch.admissionId !== undefined) set.admissionId = patch.admissionId;
+        await tx.update(DOC).set(set).where(eq(DOC.id, documentId));
+        return loadDocRow(tx, organizationId, documentId);
+      });
+    },
     async addTag(organizationId, actor, documentId, tag) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
         await loadDocRow(tx, organizationId, documentId); // 404
@@ -531,6 +554,7 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
             // (no SQL FK — app-validated). A sentinel keeps the NOT NULL invariant honest.
             initialDocumentId: randomUUID(),
             sourceChannel: args.sourceChannel,
+            sourceMetadata: args.sourceMetadata,
             uploadedByMembershipId: actor.membershipId,
             correlationId: randomUUID(),
           })

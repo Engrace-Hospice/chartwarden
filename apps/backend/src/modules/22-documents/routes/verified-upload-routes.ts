@@ -48,6 +48,7 @@ export function registerVerifiedUploadRoutes(
         mimeType: body.mimeType,
         byteSize: body.byteSize,
         sha256Hex: body.sha256Hex,
+        sourceMetadata: body.sourceMetadata,
       },
     });
     return reply.code(201).send(result);
@@ -64,6 +65,6 @@ export function registerVerifiedUploadRoutes(
     const actor = actorOf(request);
     const { id } = parse(VerifiedUploadParamsSchema, request.params);
     await service.abort({ ...actor, uploadId: id });
-    return reply.code(204).send();
+    return reply.code(200).send({ aborted: true });
   });
 }

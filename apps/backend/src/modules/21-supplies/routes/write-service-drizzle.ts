@@ -469,7 +469,10 @@ export function buildDrizzleM21WriteService(
    */
   async function providerEntityFor(organizationId: string, admissionId: string): Promise<string> {
     try {
-      const summary = await getAdmissionStatusReader().getAdmissionSummary(admissionId as never);
+      const summary = await getAdmissionStatusReader().getAdmissionSummary(
+        organizationId,
+        admissionId as never,
+      );
       const providerEntityId = (summary as { providerEntityId?: string } | null)?.providerEntityId;
       if (typeof providerEntityId === "string" && providerEntityId.length > 0) {
         return providerEntityId;

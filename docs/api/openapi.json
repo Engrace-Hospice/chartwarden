@@ -70183,6 +70183,26 @@
                         "type": "string"
                       },
                       {
+                        "const": "supply_bill_of_lading",
+                        "type": "string"
+                      },
+                      {
+                        "const": "comfort_kit_return_receipt",
+                        "type": "string"
+                      },
+                      {
+                        "const": "report_export",
+                        "type": "string"
+                      },
+                      {
+                        "const": "report_schedule_run",
+                        "type": "string"
+                      },
+                      {
+                        "const": "referral",
+                        "type": "string"
+                      },
+                      {
                         "const": "idg_patient_packet",
                         "type": "string"
                       },
@@ -70265,6 +70285,10 @@
                       {
                         "const": "image/tiff",
                         "type": "string"
+                      },
+                      {
+                        "const": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        "type": "string"
                       }
                     ]
                   },
@@ -70276,6 +70300,212 @@
                   "sha256Hex": {
                     "pattern": "^[0-9a-f]{64}$",
                     "type": "string"
+                  },
+                  "sourceMetadata": {
+                    "type": "object",
+                    "properties": {
+                      "documentType": {
+                        "anyOf": [
+                          {
+                            "const": "election_statement",
+                            "type": "string"
+                          },
+                          {
+                            "const": "cti",
+                            "type": "string"
+                          },
+                          {
+                            "const": "f2f",
+                            "type": "string"
+                          },
+                          {
+                            "const": "nor",
+                            "type": "string"
+                          },
+                          {
+                            "const": "revocation",
+                            "type": "string"
+                          },
+                          {
+                            "const": "discharge_summary",
+                            "type": "string"
+                          },
+                          {
+                            "const": "nomnc",
+                            "type": "string"
+                          },
+                          {
+                            "const": "abn",
+                            "type": "string"
+                          },
+                          {
+                            "const": "hipaa_privacy_notice",
+                            "type": "string"
+                          },
+                          {
+                            "const": "code_status_directive",
+                            "type": "string"
+                          },
+                          {
+                            "const": "encounter",
+                            "type": "string"
+                          },
+                          {
+                            "const": "order_record",
+                            "type": "string"
+                          },
+                          {
+                            "const": "medication_order",
+                            "type": "string"
+                          },
+                          {
+                            "const": "medication_administration_record",
+                            "type": "string"
+                          },
+                          {
+                            "const": "medication_reconciliation_worksheet",
+                            "type": "string"
+                          },
+                          {
+                            "const": "patient_medication_list",
+                            "type": "string"
+                          },
+                          {
+                            "const": "comfort_kit_receipt",
+                            "type": "string"
+                          },
+                          {
+                            "const": "supply_bill_of_lading",
+                            "type": "string"
+                          },
+                          {
+                            "const": "comfort_kit_return_receipt",
+                            "type": "string"
+                          },
+                          {
+                            "const": "report_export",
+                            "type": "string"
+                          },
+                          {
+                            "const": "report_schedule_run",
+                            "type": "string"
+                          },
+                          {
+                            "const": "referral",
+                            "type": "string"
+                          },
+                          {
+                            "const": "idg_patient_packet",
+                            "type": "string"
+                          },
+                          {
+                            "const": "idg_minutes",
+                            "type": "string"
+                          },
+                          {
+                            "const": "aide_poc",
+                            "type": "string"
+                          },
+                          {
+                            "const": "msw_plan",
+                            "type": "string"
+                          },
+                          {
+                            "const": "spiritual_plan",
+                            "type": "string"
+                          },
+                          {
+                            "const": "volunteer_plan",
+                            "type": "string"
+                          },
+                          {
+                            "const": "bereavement_letter",
+                            "type": "string"
+                          },
+                          {
+                            "const": "visit_confirmation",
+                            "type": "string"
+                          },
+                          {
+                            "const": "evv_verification",
+                            "type": "string"
+                          },
+                          {
+                            "const": "patient_amendment_statement_of_disagreement",
+                            "type": "string"
+                          },
+                          {
+                            "const": "consent_record",
+                            "type": "string"
+                          },
+                          {
+                            "const": "intake_source",
+                            "type": "string"
+                          },
+                          {
+                            "const": "other",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "sourceChannel": {
+                        "anyOf": [
+                          {
+                            "const": "email",
+                            "type": "string"
+                          },
+                          {
+                            "const": "fax",
+                            "type": "string"
+                          },
+                          {
+                            "const": "scanned_physical",
+                            "type": "string"
+                          },
+                          {
+                            "const": "manual_upload",
+                            "type": "string"
+                          },
+                          {
+                            "const": "portal",
+                            "type": "string"
+                          },
+                          {
+                            "const": "api",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "receivedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "originalFilename": {
+                        "minLength": 1,
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      "externalMessageId": {
+                        "minLength": 1,
+                        "maxLength": 256,
+                        "type": "string"
+                      },
+                      "sender": {
+                        "minLength": 1,
+                        "maxLength": 512,
+                        "type": "string"
+                      },
+                      "faxReference": {
+                        "minLength": 1,
+                        "maxLength": 256,
+                        "type": "string"
+                      },
+                      "notes": {
+                        "minLength": 1,
+                        "maxLength": 2000,
+                        "type": "string"
+                      }
+                    }
                   }
                 }
               }
@@ -70303,7 +70533,22 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "aborted"
+                  ],
+                  "properties": {
+                    "aborted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -70408,6 +70653,15 @@
             }
           },
           {
+            "name": "aggregateId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
             "name": "retentionClass",
             "in": "query",
             "required": false,
@@ -70460,9 +70714,11 @@
                           "admissionId",
                           "retentionClass",
                           "aggregateType",
+                          "aggregateId",
                           "title",
                           "patientFacing",
                           "attachToDisclosures",
+                          "metadata",
                           "status",
                           "version",
                           "versionsCount",
@@ -70527,6 +70783,16 @@
                           "aggregateType": {
                             "type": "string"
                           },
+                          "aggregateId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "title": {
                             "type": "string"
                           },
@@ -70535,6 +70801,219 @@
                           },
                           "attachToDisclosures": {
                             "type": "boolean"
+                          },
+                          "metadata": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "documentType": {
+                                    "anyOf": [
+                                      {
+                                        "const": "election_statement",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "cti",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "f2f",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "nor",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "revocation",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "discharge_summary",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "nomnc",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "abn",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "hipaa_privacy_notice",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "code_status_directive",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "encounter",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "order_record",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "medication_order",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "medication_administration_record",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "medication_reconciliation_worksheet",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "patient_medication_list",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "comfort_kit_receipt",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "supply_bill_of_lading",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "comfort_kit_return_receipt",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "report_export",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "report_schedule_run",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "referral",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "idg_patient_packet",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "idg_minutes",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "aide_poc",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "msw_plan",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "spiritual_plan",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "volunteer_plan",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "bereavement_letter",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "visit_confirmation",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "evv_verification",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "patient_amendment_statement_of_disagreement",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "consent_record",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "intake_source",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "other",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "sourceChannel": {
+                                    "anyOf": [
+                                      {
+                                        "const": "email",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "fax",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "scanned_physical",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "manual_upload",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "portal",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "api",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "receivedAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "originalFilename": {
+                                    "minLength": 1,
+                                    "maxLength": 500,
+                                    "type": "string"
+                                  },
+                                  "externalMessageId": {
+                                    "minLength": 1,
+                                    "maxLength": 256,
+                                    "type": "string"
+                                  },
+                                  "sender": {
+                                    "minLength": 1,
+                                    "maxLength": 512,
+                                    "type": "string"
+                                  },
+                                  "faxReference": {
+                                    "minLength": 1,
+                                    "maxLength": 256,
+                                    "type": "string"
+                                  },
+                                  "notes": {
+                                    "minLength": 1,
+                                    "maxLength": 2000,
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "status": {
                             "anyOf": [
@@ -70754,9 +71233,11 @@
                     "admissionId",
                     "retentionClass",
                     "aggregateType",
+                    "aggregateId",
                     "title",
                     "patientFacing",
                     "attachToDisclosures",
+                    "metadata",
                     "status",
                     "version",
                     "versionsCount",
@@ -70821,6 +71302,16 @@
                     "aggregateType": {
                       "type": "string"
                     },
+                    "aggregateId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "title": {
                       "type": "string"
                     },
@@ -70829,6 +71320,219 @@
                     },
                     "attachToDisclosures": {
                       "type": "boolean"
+                    },
+                    "metadata": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "documentType": {
+                              "anyOf": [
+                                {
+                                  "const": "election_statement",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cti",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "f2f",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "nor",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "revocation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "discharge_summary",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "nomnc",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "abn",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "hipaa_privacy_notice",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "code_status_directive",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "encounter",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "order_record",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "medication_order",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "medication_administration_record",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "medication_reconciliation_worksheet",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "patient_medication_list",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "comfort_kit_receipt",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "supply_bill_of_lading",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "comfort_kit_return_receipt",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "report_export",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "report_schedule_run",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "referral",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "idg_patient_packet",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "idg_minutes",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "aide_poc",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "msw_plan",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "spiritual_plan",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "volunteer_plan",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "bereavement_letter",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "visit_confirmation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "evv_verification",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "patient_amendment_statement_of_disagreement",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "consent_record",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "intake_source",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "other",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "sourceChannel": {
+                              "anyOf": [
+                                {
+                                  "const": "email",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "fax",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "scanned_physical",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "manual_upload",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "portal",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "api",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "receivedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "originalFilename": {
+                              "minLength": 1,
+                              "maxLength": 500,
+                              "type": "string"
+                            },
+                            "externalMessageId": {
+                              "minLength": 1,
+                              "maxLength": 256,
+                              "type": "string"
+                            },
+                            "sender": {
+                              "minLength": 1,
+                              "maxLength": 512,
+                              "type": "string"
+                            },
+                            "faxReference": {
+                              "minLength": 1,
+                              "maxLength": 256,
+                              "type": "string"
+                            },
+                            "notes": {
+                              "minLength": 1,
+                              "maxLength": 2000,
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "status": {
                       "anyOf": [
@@ -71007,6 +71711,420 @@
                   "recipientClass": {
                     "maxLength": 128,
                     "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{id}/links": {
+      "post": {
+        "operationId": "postApiV1DocumentsByIdLinks",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Attach an existing document to a patient and/or admission without creating a new version",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "patientId",
+                    "admissionId",
+                    "retentionClass",
+                    "aggregateType",
+                    "aggregateId",
+                    "title",
+                    "patientFacing",
+                    "attachToDisclosures",
+                    "metadata",
+                    "status",
+                    "version",
+                    "versionsCount",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "admissionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "retentionClass": {
+                      "anyOf": [
+                        {
+                          "const": "compliance",
+                          "type": "string"
+                        },
+                        {
+                          "const": "clinical_record",
+                          "type": "string"
+                        },
+                        {
+                          "const": "bereavement",
+                          "type": "string"
+                        },
+                        {
+                          "const": "operational",
+                          "type": "string"
+                        },
+                        {
+                          "const": "intake_artifact",
+                          "type": "string"
+                        },
+                        {
+                          "const": "compliance_42cfr_part2",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "aggregateType": {
+                      "type": "string"
+                    },
+                    "aggregateId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "patientFacing": {
+                      "type": "boolean"
+                    },
+                    "attachToDisclosures": {
+                      "type": "boolean"
+                    },
+                    "metadata": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "documentType": {
+                              "anyOf": [
+                                {
+                                  "const": "election_statement",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cti",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "f2f",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "nor",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "revocation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "discharge_summary",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "nomnc",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "abn",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "hipaa_privacy_notice",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "code_status_directive",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "encounter",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "order_record",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "medication_order",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "medication_administration_record",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "medication_reconciliation_worksheet",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "patient_medication_list",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "comfort_kit_receipt",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "supply_bill_of_lading",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "comfort_kit_return_receipt",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "report_export",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "report_schedule_run",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "referral",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "idg_patient_packet",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "idg_minutes",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "aide_poc",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "msw_plan",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "spiritual_plan",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "volunteer_plan",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "bereavement_letter",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "visit_confirmation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "evv_verification",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "patient_amendment_statement_of_disagreement",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "consent_record",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "intake_source",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "other",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "sourceChannel": {
+                              "anyOf": [
+                                {
+                                  "const": "email",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "fax",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "scanned_physical",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "manual_upload",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "portal",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "api",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "receivedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "originalFilename": {
+                              "minLength": 1,
+                              "maxLength": 500,
+                              "type": "string"
+                            },
+                            "externalMessageId": {
+                              "minLength": 1,
+                              "maxLength": 256,
+                              "type": "string"
+                            },
+                            "sender": {
+                              "minLength": 1,
+                              "maxLength": 512,
+                              "type": "string"
+                            },
+                            "faxReference": {
+                              "minLength": 1,
+                              "maxLength": 256,
+                              "type": "string"
+                            },
+                            "notes": {
+                              "minLength": 1,
+                              "maxLength": 2000,
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "superseded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "legal_hold",
+                          "type": "string"
+                        },
+                        {
+                          "const": "destroyed_tombstone",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "versionsCount": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "patientId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "admissionId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }

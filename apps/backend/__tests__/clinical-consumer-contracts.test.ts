@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { OutboxConsumerBinding } from "../src/bootstrap/outbox-dispatcher";
 import { buildOutboxRoutingPlan } from "../src/bootstrap/outbox-dispatcher";
+import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/index";
+import { M7_OUTBOX_EVENTS } from "../src/modules/07-care-plan/index";
 import { M7_IDG_DECISION_CONSUMER } from "../src/modules/07-care-plan/index";
-import { M8_VISIT_PUBLISHED_CONSUMER } from "../src/modules/08-encounters/index";
+import { M8_OUTBOX_EVENTS, M8_VISIT_PUBLISHED_CONSUMER } from "../src/modules/08-encounters/index";
 import { M11_IDG_DECISION_CONSUMER } from "../src/modules/11-orders/index";
 import { M12_IDG_DECISION_CONSUMER } from "../src/modules/12-dosespot/index";
 import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
@@ -51,5 +53,64 @@ describe("clinical outbox consumer contract reconciliation", () => {
     ]);
     expect(plan.live.get(entry.eventName)).toHaveLength(2);
     expect(plan.deferred.has(entry.eventName)).toBe(false);
+  });
+
+  it("declares M17 as the care-plan proposal consumer", () => {
+    const entry = M7_OUTBOX_EVENTS.find(
+      (candidate) => candidate.eventName === "m7.care_plan.version_signed",
+    );
+    if (!entry) throw new Error("missing m7.care_plan.version_signed catalog entry");
+    expect(entry.declaredConsumers).toContain("m17");
+    const plan = buildOutboxRoutingPlan(new Map([[entry.eventName, entry]]), [
+      {
+        consumerModule: "m17",
+        consumerName: "m17.m7-care-plan-proposals",
+        eventTypes: ["m7.care_plan.version_signed"],
+        async handle() {},
+      },
+    ]);
+    expect(plan.live.get(entry.eventName)).toHaveLength(1);
+  });
+
+  it("declares M17 on admission hold/resume/discharge events", () => {
+    for (const eventName of [
+      "m6.admission.on_hold",
+      "m6.admission.resumed",
+      "m6.admission.discharged",
+    ]) {
+      const entry = M6_OUTBOX_EVENTS.find((candidate) => candidate.eventName === eventName);
+      if (!entry) throw new Error(`missing ${eventName} catalog entry`);
+      expect(entry.declaredConsumers).toContain("m17");
+      const plan = buildOutboxRoutingPlan(new Map([[entry.eventName, entry]]), [
+        {
+          consumerModule: "m17",
+          consumerName: "m17.m6-admission-lifecycle",
+          eventTypes: [eventName],
+          async handle() {},
+        },
+      ]);
+      expect(plan.live.get(entry.eventName)).toHaveLength(1);
+    }
+  });
+
+  it("binds M36 for visit and encounter operational alerts without changing ownership", () => {
+    for (const entry of [
+      M17_OUTBOX_EVENTS.find((candidate) => candidate.eventName === "m17.stale_visit_detected"),
+      M8_OUTBOX_EVENTS.find(
+        (candidate) => candidate.eventName === "m8.encounter.cosignature_hard_cap_reached",
+      ),
+    ]) {
+      if (!entry) throw new Error("missing alert-producing catalog entry");
+      expect(entry.declaredConsumers).toContain("m36");
+      const plan = buildOutboxRoutingPlan(new Map([[entry.eventName, entry]]), [
+        {
+          consumerModule: "m36",
+          consumerName: "m36.clinical-visit-encounter-alerts",
+          eventTypes: [entry.eventName],
+          async handle() {},
+        },
+      ]);
+      expect(plan.live.get(entry.eventName)).toHaveLength(1);
+    }
   });
 });

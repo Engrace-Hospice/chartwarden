@@ -8,7 +8,7 @@
 // optimistic concurrency (§2.5 → 412). The §4.7 predicates M22 owns gate the PHI-content + review +
 // publish + mutate routes via `requireAbac`.
 import { type GuardRequest, requireAbac, requirePermission } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { DegradedError, NotFoundError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { ifMatchVersionOf, requireIfMatch } from "./concurrency";
 import {
@@ -29,6 +29,7 @@ import {
   JobParamsSchema,
   JobQuerySchema,
   JobsListQuerySchema,
+  LinkDocumentRequest,
   OpenReviewRequest,
   OverlayParamsSchema,
   PatchDocumentRequest,
@@ -59,6 +60,13 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 export interface DocumentRouteDeps {
   service: DocumentRouteService;
   signedUrl: SignedUrlService;
+  referralReader?: {
+    canAccessReferral(input: {
+      organizationId: string;
+      userId: string;
+      referralId: string;
+    }): Promise<boolean>;
+  };
 }
 
 /**
@@ -141,6 +149,21 @@ const IF_MATCH = requireIfMatch() as PreHandler;
 export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRouteDeps): void {
   const { service, signedUrl } = deps;
 
+  async function assertReferralReadAllowed(
+    organizationId: string,
+    userId: string,
+    aggregateType: string | undefined,
+    aggregateId: string | undefined,
+  ): Promise<void> {
+    if (aggregateType !== "referral") return;
+    if (!aggregateId) throw new NotFoundError("referral");
+    if (!deps.referralReader) {
+      throw new DegradedError("referral-reader", "referral document reads require the M6 ReferralReader seam");
+    }
+    const ok = await deps.referralReader.canAccessReferral({ organizationId, userId, referralId: aggregateId });
+    if (!ok) throw new NotFoundError("referral");
+  }
+
   // 1 — upload new document (creates document + version v1).
   app.post("/api/v1/documents", { preHandler: [UPLOAD] }, async (request, reply) => {
     const { organizationId, actor } = actorOf(request);
@@ -162,13 +185,15 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     "/api/v1/documents",
     { preHandler: [READ], config: { auditRead: { resourceKind: "document", list: true } } },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, actor } = actorOf(request);
       const q = parse(DocumentListQuerySchema, request.query);
+      await assertReferralReadAllowed(organizationId, actor.userId, q.aggregateType, q.aggregateId);
       return service.listDocuments(
         organizationId,
         {
           patientId: q.patientId,
           aggregateType: q.aggregateType,
+          aggregateId: q.aggregateId,
           retentionClass: q.retentionClass,
         },
         q.cursor,
@@ -258,6 +283,19 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     });
   });
 
+  app.post(
+    "/api/v1/documents/:id/links",
+    { preHandler: [EDIT, ABAC_LEGAL_HOLD] },
+    async (request) => {
+      const { organizationId, actor } = actorOf(request);
+      const body = parse(LinkDocumentRequest, request.body);
+      return service.linkDocument(organizationId, actor, docIdOf(request), {
+        patientId: body.patientId,
+        admissionId: body.admissionId,
+      });
+    },
+  );
+
   // 9 — add tag.
   app.post(
     "/api/v1/documents/:id/tags",
@@ -310,6 +348,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     const res = await service.uploadBatch(organizationId, actor, {
       patientId: body.patientId ?? null,
       sourceChannel: body.sourceChannel,
+      sourceMetadata: body.sourceMetadata,
     });
     return reply.code(201).send(res);
   });

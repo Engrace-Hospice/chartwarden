@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { PatientLookupField } from "../../shared/entity-lookups";
 import { useSession } from "../../shell/session";
+import { ReferralDocumentsPanel } from "../22-documents/document-workflows";
 import {
   PATIENT_RESOLUTION_LABEL,
   PATIENT_RESOLUTION_TONE,
@@ -351,6 +352,12 @@ export function ReferralDetail(): JSX.Element {
               <label style={label}>Phone<input value={edit.referrerPhone} onChange={(ev) => setEdit({ ...edit, referrerPhone: ev.target.value })} /></label>
             </div>
           </section>
+
+          <ReferralDocumentsPanel
+            referralId={r.id}
+            patientId={r.patientId}
+            admissionId={r.convertedAdmissionId}
+          />
 
           <section style={section}>
             <h2 style={heading}>Clinical Information</h2>

@@ -1668,6 +1668,7 @@ import {
 import {
   AbandonReviewRequest as M22AbandonReviewRequest,
   AddTagRequest as M22AddTagRequest,
+  AbortVerifiedUploadResponse as M22AbortVerifiedUploadResponse,
   BulkApproveRequest as M22BulkApproveRequest,
   ClassificationListResponseSchema as M22ClassificationListResponseSchema,
   ClassificationQuerySchema as M22ClassificationQuerySchema,
@@ -1686,6 +1687,7 @@ import {
   JobDetailResponseSchema as M22JobDetailResponseSchema,
   JobQuerySchema as M22JobQuerySchema,
   JobsListQuerySchema as M22JobsListQuerySchema,
+  LinkDocumentRequest as M22LinkDocumentRequest,
   OpenReviewRequest as M22OpenReviewRequest,
   PatchDocumentRequest as M22PatchDocumentRequest,
   PublishOverlayRequest as M22PublishOverlayRequest,
@@ -7056,6 +7058,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "DELETE /api/v1/document-uploads/:id": {
     summary: "Abort a pending document upload and destroy its staged object versions",
+    response: M22AbortVerifiedUploadResponse,
   },
   "POST /api/v1/documents": {
     summary: "Upload a new document (creates version v1)",
@@ -7091,6 +7094,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "PATCH /api/v1/documents/:id": {
     summary: "Edit document metadata (legal-hold aware)",
     body: M22PatchDocumentRequest,
+  },
+  "POST /api/v1/documents/:id/links": {
+    summary: "Attach an existing document to a patient and/or admission without creating a new version",
+    body: M22LinkDocumentRequest,
+    response: M22DocumentViewSchema,
   },
   "POST /api/v1/documents/:id/tags": { summary: "Add a tag to a document", body: M22AddTagRequest },
   "DELETE /api/v1/documents/:id/tags/:tagId": { summary: "Remove a tag from a document" },

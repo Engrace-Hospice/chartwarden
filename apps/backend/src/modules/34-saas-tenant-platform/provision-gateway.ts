@@ -141,7 +141,7 @@ export function createM34ProvisionGateway(
     },
     destructionStorage: {
       async destroyTenantScope(input) {
-        const expectedPrefix = `tenants/${input.organizationId}/`;
+        const expectedPrefix = `tenant-${input.organizationId}/`;
         const body = await call(http, config, "/storage/tenant-scope/destroy", {
           organizationId: input.organizationId,
           expectedPrefix,

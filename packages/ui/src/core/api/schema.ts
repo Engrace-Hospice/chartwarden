@@ -6717,6 +6717,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach an existing document to a patient and/or admission without creating a new version */
+        post: operations["postApiV1DocumentsByIdLinks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{id}/tags": {
         parameters: {
             query?: never;
@@ -37096,14 +37113,25 @@ export interface operations {
                     /** Format: uuid */
                     admissionId?: string;
                     retentionClass: "compliance" | "clinical_record" | "bereavement" | "operational" | "intake_artifact" | "compliance_42cfr_part2";
-                    aggregateType: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "intake_source" | "other";
+                    aggregateType: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "intake_source" | "other";
                     /** Format: uuid */
                     aggregateId?: string;
                     title: string;
                     patientFacing?: boolean;
-                    mimeType: "application/pdf" | "image/jpeg" | "image/png" | "image/tiff";
+                    mimeType: "application/pdf" | "image/jpeg" | "image/png" | "image/tiff" | "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
                     byteSize: number;
                     sha256Hex: string;
+                    sourceMetadata?: {
+                        documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "intake_source" | "other";
+                        sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
+                        /** Format: date-time */
+                        receivedAt?: string;
+                        originalFilename?: string;
+                        externalMessageId?: string;
+                        sender?: string;
+                        faxReference?: string;
+                        notes?: string;
+                    };
                 };
             };
         };
@@ -37147,7 +37175,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        aborted: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -37192,6 +37224,7 @@ export interface operations {
             query?: {
                 patientId?: string;
                 aggregateType?: string;
+                aggregateId?: string;
                 retentionClass?: string;
                 cursor?: string;
                 limit?: number;
@@ -37216,9 +37249,21 @@ export interface operations {
                             admissionId: string | null;
                             retentionClass: "compliance" | "clinical_record" | "bereavement" | "operational" | "intake_artifact" | "compliance_42cfr_part2";
                             aggregateType: string;
+                            aggregateId: string | null;
                             title: string;
                             patientFacing: boolean;
                             attachToDisclosures: boolean;
+                            metadata: {
+                                documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "intake_source" | "other";
+                                sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
+                                /** Format: date-time */
+                                receivedAt?: string;
+                                originalFilename?: string;
+                                externalMessageId?: string;
+                                sender?: string;
+                                faxReference?: string;
+                                notes?: string;
+                            } | null;
                             status: "active" | "superseded" | "legal_hold" | "destroyed_tombstone";
                             version: number;
                             versionsCount: number;
@@ -37300,9 +37345,21 @@ export interface operations {
                         admissionId: string | null;
                         retentionClass: "compliance" | "clinical_record" | "bereavement" | "operational" | "intake_artifact" | "compliance_42cfr_part2";
                         aggregateType: string;
+                        aggregateId: string | null;
                         title: string;
                         patientFacing: boolean;
                         attachToDisclosures: boolean;
+                        metadata: {
+                            documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "intake_source" | "other";
+                            sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
+                            /** Format: date-time */
+                            receivedAt?: string;
+                            originalFilename?: string;
+                            externalMessageId?: string;
+                            sender?: string;
+                            faxReference?: string;
+                            notes?: string;
+                        } | null;
                         status: "active" | "superseded" | "legal_hold" | "destroyed_tombstone";
                         version: number;
                         versionsCount: number;
@@ -37373,6 +37430,66 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DocumentsByIdLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    patientId?: string | null;
+                    admissionId?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        patientId: string | null;
+                        admissionId: string | null;
+                        retentionClass: "compliance" | "clinical_record" | "bereavement" | "operational" | "intake_artifact" | "compliance_42cfr_part2";
+                        aggregateType: string;
+                        aggregateId: string | null;
+                        title: string;
+                        patientFacing: boolean;
+                        attachToDisclosures: boolean;
+                        metadata: {
+                            documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "intake_source" | "other";
+                            sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
+                            /** Format: date-time */
+                            receivedAt?: string;
+                            originalFilename?: string;
+                            externalMessageId?: string;
+                            sender?: string;
+                            faxReference?: string;
+                            notes?: string;
+                        } | null;
+                        status: "active" | "superseded" | "legal_hold" | "destroyed_tombstone";
+                        version: number;
+                        versionsCount: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

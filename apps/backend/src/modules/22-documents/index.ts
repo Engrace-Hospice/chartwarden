@@ -21,6 +21,7 @@
 import type { DbClient } from "@wardenx/db";
 import { DegradedError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
+import { getSeam } from "../../bootstrap/index";
 import { registerDocumentAbacPredicates as _registerM22Abac } from "./abac-predicates";
 import { createDbDocumentBackend } from "./documents-route-service-db";
 import { registerDocumentRoutes as _registerM22Routes } from "./routes/documents-routes";
@@ -60,11 +61,27 @@ export function mountDocumentRoutes(app: FastifyInstance, db: DbClient): void {
                 "no object-storage presigner is bound (MINIO_* is not configured)",
               );
             },
-          },
+      },
       resolver: backend.objectResolver,
     }),
+    referralReader: {
+      canAccessReferral(input) {
+        return getSeam("ReferralReader").canAccessReferral(input);
+      },
+    },
   });
-  registerVerifiedUploadRoutes(app, createVerifiedUploadService({ db, objects }));
+  registerVerifiedUploadRoutes(
+    app,
+    createVerifiedUploadService({
+      db,
+      objects,
+      referralReader: {
+        canAccessReferral(input) {
+          return getSeam("ReferralReader").canAccessReferral(input);
+        },
+      },
+    }),
+  );
 }
 
 export {

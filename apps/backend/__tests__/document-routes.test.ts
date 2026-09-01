@@ -30,6 +30,8 @@ import {
   createSignedUrlService,
   registerDocumentAbacPredicates,
   registerDocumentRoutes,
+  registerVerifiedUploadRoutes,
+  type VerifiedUploadService,
 } from "../src/modules/22-documents/index";
 
 function headerAuth(request: FastifyRequest): void {
@@ -55,6 +57,7 @@ const DOC_B = "c0000000-0000-4000-8000-0000000000bb";
 const DOC_HOLD = "c0000000-0000-4000-8000-0000000000cc";
 const VERSION = "d0000000-0000-4000-8000-000000000001";
 const BATCH = "b0000000-0000-4000-8000-0000000000aa";
+const REFERRAL = "66666666-6666-4666-8666-666666666666";
 const PATIENT = "11111111-1111-4111-8111-111111111111";
 const PATIENT_OFF = "22222222-2222-4222-8222-222222222222";
 
@@ -83,6 +86,7 @@ const PERMISSION_SEED = [
 const sharedBackend = createInMemoryDocumentBackend({
   documents: [
     { id: DOC, organizationId: ORG, patientId: PATIENT },
+    { id: "c0000000-0000-4000-8000-0000000000dd", organizationId: ORG, aggregateType: "referral", aggregateId: REFERRAL },
     { id: DOC_B, organizationId: ORG_B, patientId: PATIENT },
     { id: DOC_HOLD, organizationId: ORG, patientId: PATIENT, legalHoldActive: true },
   ],
@@ -102,7 +106,14 @@ const sharedObjectResolver: SignedUrlObjectResolver = {
 const isInCaseload = async (q: { userId: string; patientId: string }): Promise<boolean> =>
   q.userId === "rn_1" && q.patientId === PATIENT;
 
-function makeServer(service: DocumentRouteService = sharedBackend.service) {
+function makeServer(
+  service: DocumentRouteService = sharedBackend.service,
+  referralReader: { canAccessReferral(input: { organizationId: string; userId: string; referralId: string }): Promise<boolean> } = {
+    async canAccessReferral(input) {
+      return input.organizationId === ORG && input.referralId === REFERRAL;
+    },
+  },
+) {
   const grantStore = createInMemoryEffectivePermissionStore(
     PERMISSION_SEED.flatMap((s) =>
       [ORG, ORG_B].map((org) => ({
@@ -132,7 +143,7 @@ function makeServer(service: DocumentRouteService = sharedBackend.service) {
   });
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerDocumentRoutes(app, { service, signedUrl });
+  registerDocumentRoutes(app, { service, signedUrl, referralReader });
   return { app };
 }
 
@@ -161,6 +172,41 @@ afterEach(() => {
 });
 
 describe("M22-T07 — document routes (§4.1, §4.6 RBAC gating)", () => {
+  it("DELETE /document-uploads/:id returns an idempotency-safe abort body", async () => {
+    const uploadId = "b6032e5c-c3c6-4d6c-8ece-452b39b29733";
+    const aborted: string[] = [];
+    const verifiedUpload: VerifiedUploadService = {
+      async initiate() {
+        throw new Error("not used");
+      },
+      async complete() {
+        throw new Error("not used");
+      },
+      async abort(args) {
+        aborted.push(args.uploadId);
+      },
+    };
+    const { app } = makeServer();
+    registerVerifiedUploadRoutes(app, verifiedUpload);
+
+    const first = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/document-uploads/${uploadId}`,
+      headers: { ...RN, "idempotency-key": "abort-upload-1" },
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json()).toEqual({ aborted: true });
+
+    const replay = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/document-uploads/${uploadId}`,
+      headers: { ...RN, "idempotency-key": "abort-upload-1" },
+    });
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json()).toEqual({ aborted: true });
+    expect(aborted).toEqual([uploadId]);
+  });
+
   it("POST /documents uploads a document for an authorized caller (201)", async () => {
     const { app } = makeServer();
     const res = await app.inject({
@@ -358,6 +404,36 @@ describe("M22-T07 — §4.7 publish authority predicates", () => {
 });
 
 describe("M22-T07 — cursor pagination (§4.1 / SD-052)", () => {
+  it("filters documents by referral aggregate id after validating referral access", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/documents?aggregateType=referral&aggregateId=${REFERRAL}`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items).toHaveLength(1);
+    expect(res.json().items[0]).toMatchObject({
+      aggregateType: "referral",
+      aggregateId: REFERRAL,
+      patientId: null,
+    });
+  });
+
+  it("does not leak referral documents when referral access validation fails", async () => {
+    const { app } = makeServer(sharedBackend.service, {
+      async canAccessReferral() {
+        return false;
+      },
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/documents?aggregateType=referral&aggregateId=${REFERRAL}`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
   it("a paginated list returns next_cursor + has_more and the cursor pages forward", async () => {
     const backend = createInMemoryDocumentBackend({});
     // seed 3 documents via the upload route so the in-memory list has > one page.
@@ -404,6 +480,46 @@ describe("M22-T07 — cursor pagination (§4.1 / SD-052)", () => {
       headers: RN,
     });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+describe("M22 Phase 1 — document link metadata action", () => {
+  it("attaches a referral document to a patient/admission without creating a new version", async () => {
+    const backend = createInMemoryDocumentBackend({
+      documents: [
+        {
+          id: DOC,
+          organizationId: ORG,
+          patientId: null,
+          admissionId: null,
+          aggregateType: "referral",
+          aggregateId: REFERRAL,
+        },
+      ],
+    });
+    const { app } = makeServer(backend.service);
+    const before = await app.inject({ method: "GET", url: `/api/v1/documents/${DOC}`, headers: RN });
+    expect(before.statusCode).toBe(200);
+    expect(before.json().versionsCount).toBe(1);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/documents/${DOC}/links`,
+      headers: { ...RN, "idempotency-key": "doc-link-1" },
+      payload: {
+        patientId: PATIENT,
+        admissionId: "55555555-5555-4555-8555-555555555555",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      id: DOC,
+      patientId: PATIENT,
+      admissionId: "55555555-5555-4555-8555-555555555555",
+      aggregateType: "referral",
+      aggregateId: REFERRAL,
+      versionsCount: 1,
+    });
   });
 });
 

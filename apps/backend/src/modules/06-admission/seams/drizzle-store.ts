@@ -3,12 +3,10 @@
 // slice store (seeded empty in prod), so every downstream consumer — M23 claim/period binding, the
 // recert CTI/F2F gates, M26 cap LOC-days, M14 queues, M30 census — read nothing.
 //
-// TENANCY. The id-keyed reads (periods / summary / LOC / CTI / F2F) open `withOrgContextFromRequest`:
-// `app.org_id` is pinned from the CONSUMER'S ambient request context and RLS scopes the statement —
-// the store never selects by a caller-passed org id, and called outside a request scope it THROWS
-// rather than reading unscoped (the M21 store-drizzle precedent). The one org-explicit read,
-// `activeAdmissions`, takes the census scope's `orgId` (worker-callable) and self-scopes via
-// `withOrgContext` with the explicit `organization_id` predicate as the second wall (M7 precedent).
+// TENANCY. Most id-keyed reads (periods / LOC / CTI / F2F) open `withOrgContextFromRequest`:
+// `app.org_id` is pinned from the CONSUMER'S ambient request context and RLS scopes the statement. The
+// worker-callable reads (`admissionSummary`, `activeAdmissions`) take an explicit org id and self-scope
+// via `withOrgContext`, with RLS as the wall rather than an ambient HTTP request context.
 //
 // PROJECTION GAPS — never fabricated. Three M6 facts the seam DTOs require non-null are nullable at
 // draft in §3.3 (migration 0123): `admission.admission_at` / `provider_entity_id`, and a period's
@@ -39,6 +37,7 @@ import { and, asc, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import type { AdmissionReaderStore, ElectionPeriodRecord } from "./store";
 
 const ADM = schema.admissions;
+const REF = schema.referrals;
 const EP = schema.electionPeriods;
 const CTI = schema.certificationsOfTerminalIllness;
 const F2F = schema.faceToFaceEncounters;
@@ -63,7 +62,9 @@ export function admissionIsActiveForOrg(
       const [row] = await tx
         .select({ status: ADM.status })
         .from(ADM)
-        .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
+        .where(
+          and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)),
+        )
         .limit(1);
       return row?.status === "active";
     },
@@ -112,17 +113,30 @@ export function activeAdmissionDraftContextForPatient(
       if (!row) return null;
       const providerEntityId = row.providerEntityId;
       const locationId = row.locationId;
-      const orderingPhysicianMdmId = row.attendingPhysicianId ?? row.admittedByPhysicianId;
+      const orderingPhysicianMdmId =
+        row.attendingPhysicianId ?? row.admittedByPhysicianId;
       const missing = [
         providerEntityId === null ? "provider_entity_id" : null,
         locationId === null ? "location_id" : null,
-        orderingPhysicianMdmId === null ? "attending_physician_id|admitted_by_physician_id" : null,
+        orderingPhysicianMdmId === null
+          ? "attending_physician_id|admitted_by_physician_id"
+          : null,
       ].filter((value): value is string => value !== null);
       if (missing.length > 0) {
-        throw new AdmissionSeamDataGapError("admission", row.admissionId, missing);
+        throw new AdmissionSeamDataGapError(
+          "admission",
+          row.admissionId,
+          missing,
+        );
       }
-      if (providerEntityId === null || locationId === null || orderingPhysicianMdmId === null) {
-        throw new Error("unreachable admission draft context narrowing failure");
+      if (
+        providerEntityId === null ||
+        locationId === null ||
+        orderingPhysicianMdmId === null
+      ) {
+        throw new Error(
+          "unreachable admission draft context narrowing failure",
+        );
       }
       return {
         admissionId: row.admissionId,
@@ -132,6 +146,22 @@ export function activeAdmissionDraftContextForPatient(
       };
     },
   );
+}
+
+/** M6-owned, RLS-backed referral visibility probe for referral-bound document artifacts. */
+export function createReferralReader(db: DbClient): import("@wardenx/types").ReferralReader {
+  return {
+    async canAccessReferral({ organizationId, userId, referralId }) {
+      return withOrgContext(db, { organizationId, userId }, async (tx) => {
+        const [row] = await tx
+          .select({ id: REF.id })
+          .from(REF)
+          .where(and(eq(REF.organizationId, organizationId), eq(REF.id, referralId)))
+          .limit(1);
+        return !!row;
+      });
+    },
+  };
 }
 
 /**
@@ -155,7 +185,8 @@ export class AdmissionSeamDataGapError extends Error {
 
 const localDate = (d: Date | string): string =>
   d instanceof Date ? d.toISOString().slice(0, 10) : d.slice(0, 10);
-const localDateN = (d: Date | string | null): string | null => (d === null ? null : localDate(d));
+const localDateN = (d: Date | string | null): string | null =>
+  d === null ? null : localDate(d);
 
 /** The joined election-period row shape both period reads project from. */
 interface PeriodRow {
@@ -183,7 +214,9 @@ const periodCols = {
 } as const;
 
 /** Build the production Drizzle-backed {@link AdmissionReaderStore}. */
-export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReaderStore {
+export function createDrizzleAdmissionReaderStore(
+  db: DbClient,
+): AdmissionReaderStore {
   /** Current LOC per admission for a batch (ONE query, never N+1): the open period, else the most
    *  recent by `effective_at` — the `getCurrentLevelOfCare` rule. Admissions absent from the map have
    *  no LOC ledger row at all. `assigning` (IRC/GIP awaiting M37 bed confirmation, confirm-handshake
@@ -202,7 +235,12 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
         endedAt: LOC.endedAt,
       })
       .from(LOC)
-      .where(and(inArray(LOC.admissionId, admissionIds as string[]), ne(LOC.status, "assigning")))
+      .where(
+        and(
+          inArray(LOC.admissionId, admissionIds as string[]),
+          ne(LOC.status, "assigning"),
+        ),
+      )
       .orderBy(asc(LOC.effectiveAt));
     const open = new Map<string, LevelOfCare>();
     for (const r of rows) {
@@ -219,7 +257,9 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
     tx: Tx,
     rows: readonly PeriodRow[],
   ): Promise<ElectionPeriodRecord[]> {
-    const locBy = await currentLocByAdmission(tx, [...new Set(rows.map((r) => r.admissionId))]);
+    const locBy = await currentLocByAdmission(tx, [
+      ...new Set(rows.map((r) => r.admissionId)),
+    ]);
     const records: ElectionPeriodRecord[] = [];
     for (const r of rows) {
       if (r.effectiveAt === null || r.scheduledEndAt === null) continue;
@@ -263,9 +303,11 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
   ): AdmissionSummary {
     const admissionAt = row.admissionAt ?? row.activatedAt;
     const missing: string[] = [];
-    if (admissionAt === null) missing.push("admission_at (and no activated_at fallback)");
+    if (admissionAt === null)
+      missing.push("admission_at (and no activated_at fallback)");
     if (row.providerEntityId === null) missing.push("provider_entity_id");
-    if (missing.length > 0) throw new AdmissionSeamDataGapError("admission", row.id, missing);
+    if (missing.length > 0)
+      throw new AdmissionSeamDataGapError("admission", row.id, missing);
     return {
       admissionId: row.id,
       patientId: row.patientId,
@@ -303,7 +345,12 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
     const rows = await tx
       .select({ id: EP.id, admissionId: EP.admissionId })
       .from(EP)
-      .where(and(inArray(EP.admissionId, admissionIds as string[]), eq(EP.status, "active")))
+      .where(
+        and(
+          inArray(EP.admissionId, admissionIds as string[]),
+          eq(EP.status, "active"),
+        ),
+      )
       .orderBy(asc(EP.sequenceNumber));
     // ≤1 active period per admission by the §2.3.2 machine; ascending order makes a violation stable.
     return new Map(rows.map((r) => [r.admissionId, r.id] as const));
@@ -346,8 +393,8 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
       });
     },
 
-    async admissionSummary(admissionId) {
-      return withOrgContextFromRequest(db, async (tx): Promise<AdmissionSummary | null> => {
+    async admissionSummary(organizationId, admissionId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [row] = await tx
           .select(admissionCols)
           .from(ADM)
@@ -358,7 +405,11 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
           await activePeriodByAdmission(tx, [row.id]),
           await currentLocByAdmission(tx, [row.id]),
         ];
-        return summaryOf(row, periodBy.get(row.id) ?? null, locBy.get(row.id) ?? null);
+        return summaryOf(
+          row,
+          periodBy.get(row.id) ?? null,
+          locBy.get(row.id) ?? null,
+        );
       });
     },
 
@@ -391,74 +442,84 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
     },
 
     async activeCertification(electionPeriodId) {
-      return withOrgContextFromRequest(db, async (tx): Promise<CertificationSummary | null> => {
-        // The partial unique `cti_period_active_idx` guarantees ≤1 non-voided CTI per period. The
-        // in-memory reference prefers a non-terminal CTI and falls back to the latest row; here
-        // "latest" is newest by created_at (rows come back ascending, `.at(-1)` is the newest).
-        const rows = await tx
-          .select({
-            id: CTI.id,
-            electionPeriodId: CTI.electionPeriodId,
-            status: CTI.status,
-            hospiceMdSignedAt: CTI.hospiceMdSignedAt,
-            signedLate: CTI.signedLate,
-            sequenceNumber: EP.sequenceNumber,
-          })
-          .from(CTI)
-          .innerJoin(EP, eq(CTI.electionPeriodId, EP.id))
-          .where(eq(CTI.electionPeriodId, electionPeriodId))
-          .orderBy(asc(CTI.createdAt));
-        const pick =
-          rows.find((r) => r.status !== "voided" && r.status !== "superseded") ?? rows.at(-1);
-        if (!pick) return null;
-        return {
-          certificationId: pick.id,
-          electionPeriodId: pick.electionPeriodId,
-          status: pick.status,
-          hospiceMdSignedAt: localDateN(pick.hospiceMdSignedAt),
-          signedLate: pick.signedLate,
-          // No stored is_recert column — derived from the CMS definition: the first benefit period is
-          // the initial certification, every subsequent sequence is a recertification (§2.2).
-          isRecert: Number(pick.sequenceNumber) > 1,
-        } as CertificationSummary;
-      });
+      return withOrgContextFromRequest(
+        db,
+        async (tx): Promise<CertificationSummary | null> => {
+          // The partial unique `cti_period_active_idx` guarantees ≤1 non-voided CTI per period. The
+          // in-memory reference prefers a non-terminal CTI and falls back to the latest row; here
+          // "latest" is newest by created_at (rows come back ascending, `.at(-1)` is the newest).
+          const rows = await tx
+            .select({
+              id: CTI.id,
+              electionPeriodId: CTI.electionPeriodId,
+              status: CTI.status,
+              hospiceMdSignedAt: CTI.hospiceMdSignedAt,
+              signedLate: CTI.signedLate,
+              sequenceNumber: EP.sequenceNumber,
+            })
+            .from(CTI)
+            .innerJoin(EP, eq(CTI.electionPeriodId, EP.id))
+            .where(eq(CTI.electionPeriodId, electionPeriodId))
+            .orderBy(asc(CTI.createdAt));
+          const pick =
+            rows.find(
+              (r) => r.status !== "voided" && r.status !== "superseded",
+            ) ?? rows.at(-1);
+          if (!pick) return null;
+          return {
+            certificationId: pick.id,
+            electionPeriodId: pick.electionPeriodId,
+            status: pick.status,
+            hospiceMdSignedAt: localDateN(pick.hospiceMdSignedAt),
+            signedLate: pick.signedLate,
+            // No stored is_recert column — derived from the CMS definition: the first benefit period is
+            // the initial certification, every subsequent sequence is a recertification (§2.2).
+            isRecert: Number(pick.sequenceNumber) > 1,
+          } as CertificationSummary;
+        },
+      );
     },
 
     async attestedF2f(electionPeriodId) {
-      return withOrgContextFromRequest(db, async (tx): Promise<FaceToFaceSummary | null> => {
-        // The partial unique `f2f_period_attested_idx` guarantees ≤1 attested F2F per period. The
-        // in-memory reference prefers the attested row and falls back to any row for the period
-        // (the reader's `?.status === "attested"` check is the actual gate).
-        const rows = await tx
-          .select({
-            id: F2F.id,
-            electionPeriodId: F2F.electionPeriodId,
-            status: F2F.status,
-            performerRole: F2F.performerRole,
-            encounterDate: F2F.encounterDate,
-            attestationSignedAt: F2F.attestationSignedAt,
-            windowOverride: F2F.windowOverride,
-          })
-          .from(F2F)
-          .where(eq(F2F.electionPeriodId, electionPeriodId))
-          .orderBy(asc(F2F.createdAt));
-        const pick = rows.find((r) => r.status === "attested") ?? rows[0];
-        if (!pick) return null;
-        if (pick.encounterDate === null) {
-          throw new AdmissionSeamDataGapError("face_to_face_encounter", pick.id, [
-            "encounter_date",
-          ]);
-        }
-        return {
-          faceToFaceEncounterId: pick.id,
-          electionPeriodId: pick.electionPeriodId,
-          status: pick.status,
-          performerRole: pick.performerRole,
-          encounterDate: localDate(pick.encounterDate),
-          attestedAt: localDateN(pick.attestationSignedAt),
-          windowOverride: pick.windowOverride,
-        } as FaceToFaceSummary;
-      });
+      return withOrgContextFromRequest(
+        db,
+        async (tx): Promise<FaceToFaceSummary | null> => {
+          // The partial unique `f2f_period_attested_idx` guarantees ≤1 attested F2F per period. The
+          // in-memory reference prefers the attested row and falls back to any row for the period
+          // (the reader's `?.status === "attested"` check is the actual gate).
+          const rows = await tx
+            .select({
+              id: F2F.id,
+              electionPeriodId: F2F.electionPeriodId,
+              status: F2F.status,
+              performerRole: F2F.performerRole,
+              encounterDate: F2F.encounterDate,
+              attestationSignedAt: F2F.attestationSignedAt,
+              windowOverride: F2F.windowOverride,
+            })
+            .from(F2F)
+            .where(eq(F2F.electionPeriodId, electionPeriodId))
+            .orderBy(asc(F2F.createdAt));
+          const pick = rows.find((r) => r.status === "attested") ?? rows[0];
+          if (!pick) return null;
+          if (pick.encounterDate === null) {
+            throw new AdmissionSeamDataGapError(
+              "face_to_face_encounter",
+              pick.id,
+              ["encounter_date"],
+            );
+          }
+          return {
+            faceToFaceEncounterId: pick.id,
+            electionPeriodId: pick.electionPeriodId,
+            status: pick.status,
+            performerRole: pick.performerRole,
+            encounterDate: localDate(pick.encounterDate),
+            attestedAt: localDateN(pick.attestationSignedAt),
+            windowOverride: pick.windowOverride,
+          } as FaceToFaceSummary;
+        },
+      );
     },
 
     async activeAdmissions(scope) {
@@ -466,7 +527,10 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
       // explicit organization_id predicate as the second wall (the M7 drizzle-store precedent).
       return withOrgContext(
         db,
-        { organizationId: scope.orgId, userId: ADMISSION_READER_SYSTEM_USER_ID },
+        {
+          organizationId: scope.orgId,
+          userId: ADMISSION_READER_SYSTEM_USER_ID,
+        },
         async (tx) => {
           const rows = await tx
             .select(admissionCols)
@@ -486,7 +550,9 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
           const locBy = await currentLocByAdmission(tx, ids);
           // summaryOf THROWS on an unprojectable active row rather than silently dropping a patient
           // from the census (an invisible active patient is the worse failure for M30 dashboards).
-          return rows.map((r) => summaryOf(r, periodBy.get(r.id) ?? null, locBy.get(r.id) ?? null));
+          return rows.map((r) =>
+            summaryOf(r, periodBy.get(r.id) ?? null, locBy.get(r.id) ?? null),
+          );
         },
       );
     },

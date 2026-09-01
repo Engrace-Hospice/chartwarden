@@ -2,7 +2,7 @@
 //
 // The provisioning side-effects of the `provisioning → onboarding` transition (§2.5 r2 / §7.1 step 2):
 //   (1) insert `tenant_key_ring` (v1 DEK) via the `m34_provision_tenant_key_ring` SECURITY DEFINER fn,
-//   (2) create the per-tenant MinIO prefix `tenants/<orgId>/{…}` via M1's MinIO helper,
+//   (2) create the per-tenant MinIO bucket `tenant-<orgId>` and confirm the logical prefix set,
 //   (3) create / attach the M2 organization,
 //   (4) materialize the eleven canonical `onboarding_task` rows from `onboarding_task_template`,
 //   (5) issue the first-admin `tenant_invitation` (+ dispatch the M36 PHI-sanitized magic-link email),
@@ -25,8 +25,9 @@
 import { TenantLifecycleError, require_ } from "./lifecycle-errors";
 import { transitionTenant } from "./lifecycle-transition";
 
-/** The canonical per-tenant MinIO prefix bucket-set created at provisioning (§7.1 step 2 / Ops Runbook
- *  §6.6). The retention policy per prefix is the MinIO helper adapter's concern; the handler names the set. */
+/** The canonical logical prefix set confirmed after the per-tenant MinIO bucket `tenant-<orgId>` is
+ *  ensured (§7.1 step 2 / Ops Runbook §6.6). S3/MinIO prefixes are logical; the adapter does not create
+ *  `.keep` objects unless a future contract explicitly requires materialized folders. */
 export const PROVISION_MINIO_PREFIXES = [
   "documents",
   "generated",
@@ -109,9 +110,9 @@ export interface ProvisionWorkerPorts {
     organizationId: string;
   }): Promise<{ tenantKeyRingId: string }>;
 
-  // ── step (2): per-tenant MinIO prefix (M1's helper — via an M1 seam at boot) ────────────────────
-  /** Ensure the per-tenant MinIO prefix set `tenants/<orgId>/{…}` with the Ops-Runbook §6.6 retention
-   *  policies (idempotent ensure — already-present prefixes are a no-op). Bound to M1's MinIO helper. */
+  // ── step (2): per-tenant MinIO bucket + logical prefixes ───────────────────────────────────────
+  /** Ensure the per-tenant MinIO bucket `tenant-<orgId>` and confirm the logical prefix set with the
+   *  Ops-Runbook §6.6 retention policies (idempotent ensure — already-present buckets are a no-op). */
   ensureTenantStoragePrefixes(input: {
     organizationId: string;
     prefixes: readonly string[];
@@ -223,7 +224,7 @@ export async function runTenantProvision(
     organizationId: job.organizationId,
   });
 
-  // 2. per-tenant MinIO prefix set (M1 helper) — tenants/<orgId>/{documents,generated,…}.
+  // 2. per-tenant MinIO bucket + logical prefix set — tenant-<orgId>/{documents,generated,…}.
   const { prefixesEnsured } = await ports.ensureTenantStoragePrefixes({
     organizationId: job.organizationId,
     prefixes: PROVISION_MINIO_PREFIXES,

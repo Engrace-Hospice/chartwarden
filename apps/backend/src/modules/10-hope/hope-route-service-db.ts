@@ -235,7 +235,10 @@ export function createDbHopeBackend(
     admissionId: string,
   ): Promise<{ providerEntityId: string; locationId: string } | null> {
     try {
-      const summary = await getSeam("AdmissionStatusReader").getAdmissionSummary(admissionId);
+      const summary = await getSeam("AdmissionStatusReader").getAdmissionSummary(
+        organizationId,
+        admissionId,
+      );
       if (summary.organizationId !== organizationId || summary.patientId !== patientId) return null;
       const providerEntityId = summary.providerEntityId;
       const locationId = summary.locationId ?? null;
@@ -404,7 +407,10 @@ export function createDbHopeBackend(
         dischargedAt?: string | null;
       } | null = null;
       try {
-        const summary = await getSeam("AdmissionStatusReader").getAdmissionSummary(admissionId);
+        const summary = await getSeam("AdmissionStatusReader").getAdmissionSummary(
+          organizationId,
+          admissionId,
+        );
         if (summary.organizationId === organizationId) {
           admission = {
             patientId: summary.patientId,

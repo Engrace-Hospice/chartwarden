@@ -208,7 +208,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       reason: Type.String({ minLength: 1 }),
       heldAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14", "m30"],
+    declaredConsumers: ["m14", "m17", "m30"],
     isOutboxOnly: true,
   },
   {
@@ -219,7 +219,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       admissionId: Type.String({ minLength: 1 }),
       resumedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14", "m30"],
+    declaredConsumers: ["m14", "m17", "m30"],
     isOutboxOnly: true,
   },
   {
@@ -235,6 +235,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       "m14",
       "m7",
       "m16",
+      "m17",
       "m22",
       "m23",
       "m26",

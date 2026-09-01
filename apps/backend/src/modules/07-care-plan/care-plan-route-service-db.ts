@@ -1233,6 +1233,8 @@ export function createDbCarePlanRouteService(
             await emit(t, org, "m7.care_plan.version_signed", "care_plan_version", versionId, {
               planId,
               versionId,
+              patientId: plan.patientId,
+              admissionId: plan.admissionId,
               kind: v.kind,
               snapshotRef: versionId,
             });

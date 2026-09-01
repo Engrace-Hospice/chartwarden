@@ -99,7 +99,11 @@ function genPassword(): string {
   return `Wx-${randomBytes(9).toString("base64url")}-Zq9!`;
 }
 
-async function signUp(email: string, password: string, name: string): Promise<string> {
+async function signUp(
+  email: string,
+  password: string,
+  name: string,
+): Promise<string> {
   const res = await fetchAuthWithRateLimitRetry(
     `${AUTH_URL}/api/auth/sign-up/email`,
     {
@@ -110,15 +114,19 @@ async function signUp(email: string, password: string, name: string): Promise<st
     `sign-up for ${email}`,
   );
   if (!res.ok) {
-    throw new Error(`sign-up failed for ${email}: HTTP ${res.status} ${await res.text()}`);
+    throw new Error(
+      `sign-up failed for ${email}: HTTP ${res.status} ${await res.text()}`,
+    );
   }
   const body = (await res.json()) as { user?: { id?: string } };
-  if (!body.user?.id) throw new Error(`sign-up for ${email} returned no user id`);
+  if (!body.user?.id)
+    throw new Error(`sign-up for ${email} returned no user id`);
   return body.user.id;
 }
 
 async function main(): Promise<void> {
-  if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
+  if (!ADMIN_URL)
+    throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
   const db = new Client({ connectionString: ADMIN_URL });
   await db.connect();
   // Seed as a replication session: suppress the M4 write-audit triggers (seeding is not an audited
@@ -138,35 +146,84 @@ async function main(): Promise<void> {
          resource = EXCLUDED.resource, action = EXCLUDED.action,
          category = EXCLUDED.category, default_abac = EXCLUDED.default_abac,
          description = EXCLUDED.description`,
-      [row.key, row.resource, row.action, row.category, row.defaultAbac, row.description],
+      [
+        row.key,
+        row.resource,
+        row.action,
+        row.category,
+        row.defaultAbac,
+        row.description,
+      ],
     );
   }
   console.log(`permission catalog synced (${allRows.length} keys)`);
 
   // --- Idempotent cleanup: drop prior demo org + demo users (+ Better Auth child rows) ---
   await db.query("BEGIN");
-  const prior = await db.query<{ id: string }>("SELECT id FROM organization WHERE slug = $1", [
-    ORG.slug,
-  ]);
+  const prior = await db.query<{ id: string }>(
+    "SELECT id FROM organization WHERE slug = $1",
+    [ORG.slug],
+  );
   if (prior.rowCount) {
     const orgId = prior.rows[0].id;
-    await db.query("DELETE FROM membership_role WHERE organization_id = $1", [orgId]);
-    await db.query("DELETE FROM role_permission WHERE organization_id = $1", [orgId]);
-    await db.query("DELETE FROM membership WHERE organization_id = $1", [orgId]);
+
+    // M34 tenant lifecycle rows must disappear before the demo organization.
+    const tenantAccounts = await db.query<{ id: string }>(
+      "SELECT id FROM tenant_account WHERE organization_id = $1",
+      [orgId],
+    );
+
+    const tenantAccountIds = tenantAccounts.rows.map((row) => row.id);
+
+    if (tenantAccountIds.length) {
+      await db.query(
+        "DELETE FROM onboarding_task WHERE tenant_account_id = ANY($1::uuid[])",
+        [tenantAccountIds],
+      );
+      await db.query(
+        "DELETE FROM tenant_invitation WHERE tenant_account_id = ANY($1::uuid[])",
+        [tenantAccountIds],
+      );
+      await db.query(
+        "DELETE FROM tenant_account_status_event WHERE tenant_account_id = ANY($1::uuid[])",
+        [tenantAccountIds],
+      );
+      await db.query("DELETE FROM tenant_account WHERE organization_id = $1", [
+        orgId,
+      ]);
+    }
+
+    await db.query("DELETE FROM membership_role WHERE organization_id = $1", [
+      orgId,
+    ]);
+    await db.query("DELETE FROM membership_role WHERE organization_id = $1", [
+      orgId,
+    ]);
+    await db.query("DELETE FROM role_permission WHERE organization_id = $1", [
+      orgId,
+    ]);
+    await db.query("DELETE FROM membership WHERE organization_id = $1", [
+      orgId,
+    ]);
     await db.query("DELETE FROM role WHERE organization_id = $1", [orgId]);
     // audit_event has ON DELETE RESTRICT to organization (and is normally append-only);
     // as the seed superuser we clear the demo org's trail so the org row can be removed.
-    await db.query("DELETE FROM audit_event WHERE organization_id = $1", [orgId]).catch(() => {});
+    await db
+      .query("DELETE FROM audit_event WHERE organization_id = $1", [orgId])
+      .catch(() => {});
     await db.query("DELETE FROM organization WHERE id = $1", [orgId]);
   }
   // Better Auth child rows (FKs vary) then the user rows.
-  const uids = await db.query<{ id: string }>('SELECT id FROM "user" WHERE email = ANY($1)', [
-    emails,
-  ]);
+  const uids = await db.query<{ id: string }>(
+    'SELECT id FROM "user" WHERE email = ANY($1)',
+    [emails],
+  );
   const ids = uids.rows.map((r) => r.id);
   if (ids.length) {
     for (const t of ["session", "account", "two_factor", "passkey"]) {
-      await db.query(`DELETE FROM ${t} WHERE user_id = ANY($1)`, [ids]).catch(() => {});
+      await db
+        .query(`DELETE FROM ${t} WHERE user_id = ANY($1)`, [ids])
+        .catch(() => {});
     }
     await db.query('DELETE FROM "user" WHERE id = ANY($1)', [ids]);
   }
@@ -181,7 +238,51 @@ async function main(): Promise<void> {
   const orgId = org.rows[0].id;
   console.log(`org ${ORG.slug} → ${orgId}`);
 
-  const creds: Array<{ user: SeedUser; password: string; userId: string; perms: number }> = [];
+  await db.query(
+    `INSERT INTO tenant_account (
+     organization_id,
+     status,
+     legal_business_name,
+     billing_contact_email,
+     breach_notification_email,
+     provisioned_at,
+     activated_at,
+     metadata
+   )
+   VALUES (
+     $1,
+     'active'::tenant_account_status,
+     $2,
+     $3,
+     $3,
+     now(),
+     now(),
+     $4::json
+   )
+   ON CONFLICT (organization_id) DO UPDATE SET
+     status = EXCLUDED.status,
+     legal_business_name = EXCLUDED.legal_business_name,
+     billing_contact_email = EXCLUDED.billing_contact_email,
+     breach_notification_email = EXCLUDED.breach_notification_email,
+     provisioned_at = COALESCE(tenant_account.provisioned_at, EXCLUDED.provisioned_at),
+     activated_at = COALESCE(tenant_account.activated_at, EXCLUDED.activated_at),
+     updated_at = now()`,
+    [
+      orgId,
+      ORG.legal,
+      "admin@wardenx.local",
+      JSON.stringify({ source: "dev_seed" }),
+    ],
+  );
+
+  console.log(`tenant account ${ORG.slug} → active`);
+
+  const creds: Array<{
+    user: SeedUser;
+    password: string;
+    userId: string;
+    perms: number;
+  }> = [];
 
   // --- Pass 1: create each distinct org-scoped role once (a role is owned by the USER whose primary
   // `roleKey` it is) and grant its permissions. `role` is unique on (organization_id, key), so a role a
@@ -193,14 +294,22 @@ async function main(): Promise<void> {
     const r = await db.query<{ id: string }>(
       `INSERT INTO role (organization_id, key, name, category, scope_level, enabled, description)
        VALUES ($1,$2,$3,$4::role_category,'organization', true, $5) RETURNING id`,
-      [orgId, u.roleKey, u.roleName, u.roleCategory, `${u.roleName} (dev seed)`],
+      [
+        orgId,
+        u.roleKey,
+        u.roleName,
+        u.roleCategory,
+        `${u.roleName} (dev seed)`,
+      ],
     );
     const roleId = r.rows[0].id;
     roleIdByKey.set(u.roleKey, roleId);
 
     const keys = u.grantAll
       ? allRows.map((x) => x.key)
-      : allRows.filter((row) => u.permCats.includes(row.category as Cat)).map((x) => x.key);
+      : allRows
+          .filter((row) => u.permCats.includes(row.category as Cat))
+          .map((x) => x.key);
     for (const key of keys) {
       await db.query(
         "INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,$3)",
@@ -226,7 +335,8 @@ async function main(): Promise<void> {
     const effectivePerms = new Set<string>();
     for (const key of boundRoleKeys) {
       const roleId = roleIdByKey.get(key);
-      if (!roleId) throw new Error(`user ${u.email} references undefined role '${key}'`);
+      if (!roleId)
+        throw new Error(`user ${u.email} references undefined role '${key}'`);
       await db.query(
         "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
         [orgId, membershipId, roleId],

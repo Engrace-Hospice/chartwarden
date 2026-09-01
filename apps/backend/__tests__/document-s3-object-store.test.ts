@@ -16,6 +16,8 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PRESIGN_TTL_SECONDS,
   createS3ObjectStore,
+  createS3TenantStorageProvisioner,
+  deriveTenantBucket,
   parseListObjectVersionsXml,
   s3ObjectStoreConfigFromEnv,
   sigV4AmzDate,
@@ -477,6 +479,98 @@ describe("createS3ObjectStore putObject (mocked fetch)", () => {
     expect(err!.message).toContain("403");
     expect(err!.message).not.toContain(AWS_EXAMPLE_SECRET_KEY);
     expect(err!.message).not.toContain("http://");
+  });
+});
+
+describe("createS3TenantStorageProvisioner (mocked fetch)", () => {
+  const prefixes = [
+    "documents",
+    "generated",
+    "intake",
+    "claims",
+    "cost-reports",
+    "exports",
+  ] as const;
+  const organizationId = "4f84bc52-d63e-49a6-9faf-a79496bed824";
+
+  it("creates the exact M22 tenant bucket when absent and confirms every logical prefix", async () => {
+    const { fetchImpl, calls } = mockFetch(
+      (_, index) => new Response(null, { status: index === 0 ? 404 : 200 }),
+    );
+    const storage = createS3TenantStorageProvisioner(testConfig, { fetchImpl, now: fixedNow });
+
+    await expect(storage.ensureTenantPrefixes({ organizationId, prefixes })).resolves.toEqual({
+      bucket: deriveTenantBucket(organizationId as OrgId),
+      created: true,
+      prefixesEnsured: [...prefixes],
+    });
+    expect(calls.map((c) => c.method)).toEqual(["HEAD", "PUT"]);
+    expect(calls.map((c) => c.url)).toEqual([
+      "http://minio.local:9000/tenant-4f84bc52-d63e-49a6-9faf-a79496bed824",
+      "http://minio.local:9000/tenant-4f84bc52-d63e-49a6-9faf-a79496bed824",
+    ]);
+    expect(calls[1]?.body).toEqual(new Uint8Array());
+  });
+
+  it("is a no-op when the tenant bucket already exists", async () => {
+    const { fetchImpl, calls } = mockFetch(() => new Response(null, { status: 200 }));
+    const storage = createS3TenantStorageProvisioner(testConfig, { fetchImpl, now: fixedNow });
+
+    await expect(storage.ensureTenantPrefixes({ organizationId, prefixes })).resolves.toEqual({
+      bucket: deriveTenantBucket(organizationId as OrgId),
+      created: false,
+      prefixesEnsured: [...prefixes],
+    });
+    expect(calls.map((c) => c.method)).toEqual(["HEAD"]);
+  });
+
+  it("is idempotent across two successive calls", async () => {
+    let exists = false;
+    const { fetchImpl, calls } = mockFetch((call) => {
+      if (call.method === "HEAD") return new Response(null, { status: exists ? 200 : 404 });
+      exists = true;
+      return new Response(null, { status: 200 });
+    });
+    const storage = createS3TenantStorageProvisioner(testConfig, { fetchImpl, now: fixedNow });
+
+    await storage.ensureTenantPrefixes({ organizationId, prefixes });
+    await storage.ensureTenantPrefixes({ organizationId, prefixes });
+    expect(calls.map((c) => c.method)).toEqual(["HEAD", "PUT", "HEAD"]);
+  });
+
+  it("treats a concurrent already-created bucket as idempotent", async () => {
+    const { fetchImpl } = mockFetch(
+      (call) => new Response(null, { status: call.method === "HEAD" ? 404 : 409 }),
+    );
+    const storage = createS3TenantStorageProvisioner(testConfig, { fetchImpl, now: fixedNow });
+
+    await expect(storage.ensureTenantPrefixes({ organizationId, prefixes })).resolves.toMatchObject(
+      {
+        bucket: deriveTenantBucket(organizationId as OrgId),
+        created: false,
+        prefixesEnsured: [...prefixes],
+      },
+    );
+  });
+
+  it("fails explicitly when MinIO rejects the existence check or creation", async () => {
+    const deniedHead = createS3TenantStorageProvisioner(testConfig, {
+      fetchImpl: mockFetch(() => new Response(null, { status: 403 })).fetchImpl,
+      now: fixedNow,
+    });
+    await expect(deniedHead.ensureTenantPrefixes({ organizationId, prefixes })).rejects.toThrow(
+      /bucketExists.*403/,
+    );
+
+    const deniedCreate = createS3TenantStorageProvisioner(testConfig, {
+      fetchImpl: mockFetch(
+        (call) => new Response(null, { status: call.method === "HEAD" ? 404 : 500 }),
+      ).fetchImpl,
+      now: fixedNow,
+    });
+    await expect(deniedCreate.ensureTenantPrefixes({ organizationId, prefixes })).rejects.toThrow(
+      /createBucket.*500/,
+    );
   });
 });
 

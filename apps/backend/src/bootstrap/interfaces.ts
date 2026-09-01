@@ -86,6 +86,7 @@ export type {
   OrganizationSummary,
   ReconciliationProvider,
   RefillInboxProvider,
+  ReferralReader,
   ScaleSeriesProvider,
   SignedEncountersReader,
   OrgScope,

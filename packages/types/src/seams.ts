@@ -9,6 +9,7 @@ import type {
   FaceToFaceReader,
   LevelOfCarePeriodReader,
   LevelOfCareReader,
+  ReferralReader,
 } from "./admission";
 import type { LatestAssessmentProvider, ScaleSeriesProvider } from "./assessment";
 import type {
@@ -196,6 +197,7 @@ export type SeamName =
   | "LevelOfCareReader" // M6 — current LOC + LOC-days by level over a range (M26 aggregate cap)
   | "AdmissionStatusReader" // M6 — admission state projection (M14 queues, M30 dashboard)
   | "AdmissionCensusReader" // M6 — active-admission census/list (M30 dashboards, M22 form prep)
+  | "ReferralReader" // M6 — referral existence/visibility for Referral Inbox document artifacts
   | "DeathDischargeReader" // M6 — death-discharge census for a period (M30 HVLDL measure denominator, §4.11)
   | "LevelOfCarePeriodReader" // M6 — election-period × CHC/GIP-day coverage counts (M30 HCI indicator 1)
   | "DischargeReader" // M6 — ALL-discharge-type census + early/late live-discharge counts (M30 HCI 3/4)
@@ -854,6 +856,7 @@ export interface SeamContracts {
   LevelOfCareReader: LevelOfCareReader;
   AdmissionStatusReader: AdmissionStatusReader;
   AdmissionCensusReader: AdmissionCensusReader;
+  ReferralReader: ReferralReader;
   // M6's death-discharge census reader (§4.11) is LEAF-TYPED too — interface in ./admission. M6 registers the
   // real Drizzle-backed reader over the deny-stub; M30's HVLDL measure-recompute worker (which lists `6` in its
   // manifest `dependsOn`) resolves it through the typed accessor with no schema import edge.

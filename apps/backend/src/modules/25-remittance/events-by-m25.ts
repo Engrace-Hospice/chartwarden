@@ -40,7 +40,7 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       minioObjectKey: str,
       fileSha256: str,
     }),
-    declaredConsumers: [],
+    declaredConsumers: ["m25"],
     isOutboxOnly: true,
   },
   {

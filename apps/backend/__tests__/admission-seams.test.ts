@@ -120,12 +120,21 @@ describe("ElectionPeriodReader (§4.7)", () => {
 describe("AdmissionStatusReader (§4.7)", () => {
   it("returns the summary for a known admission", async () => {
     const reader = createAdmissionStatusReader(store());
-    expect(await reader.getAdmissionSummary(ADM)).toEqual(admission);
+    expect(await reader.getAdmissionSummary(ORG, ADM)).toEqual(admission);
+  });
+
+  it("throws AdmissionNotFoundError for an admission outside the requested org", async () => {
+    const reader = createAdmissionStatusReader(store());
+    await expect(reader.getAdmissionSummary("org-2", ADM)).rejects.toBeInstanceOf(
+      AdmissionNotFoundError,
+    );
   });
 
   it("throws AdmissionNotFoundError for an unknown admission", async () => {
     const reader = createAdmissionStatusReader(store());
-    await expect(reader.getAdmissionSummary("nope")).rejects.toBeInstanceOf(AdmissionNotFoundError);
+    await expect(reader.getAdmissionSummary(ORG, "nope")).rejects.toBeInstanceOf(
+      AdmissionNotFoundError,
+    );
   });
 });
 
@@ -221,7 +230,7 @@ describe("boot wiring (registerAdmissionSeams)", () => {
     registerAdmissionSeams({ store: store() });
     expect(() => validateSeams()).not.toThrow();
     const status = getSeam("AdmissionStatusReader");
-    expect((await status.getAdmissionSummary(ADM)).admissionId).toBe(ADM);
+    expect((await status.getAdmissionSummary(ORG, ADM)).admissionId).toBe(ADM);
   });
 
   it("falls back to a fail-closed deny-stub when M6 does not register (default in-memory still works)", async () => {

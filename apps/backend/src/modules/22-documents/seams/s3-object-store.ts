@@ -34,6 +34,7 @@
 // `sigV4*` helpers are verified against the official AWS SigV4 test-suite example values).
 import { createHash, createHmac } from "node:crypto";
 import type { IsoInstant, OrgId, SignedUrlDescriptor } from "@wardenx/types";
+import { deriveTenantBucket } from "../lifecycle/storage";
 import type { ObjectStorePort } from "./store";
 
 // ── config ──────────────────────────────────────────────────────────────────────────────────────
@@ -56,6 +57,13 @@ export interface S3ObjectStoreDeps {
   readonly fetchImpl?: typeof fetch;
   /** The clock every signature/expiry derives from; defaults to `() => new Date()`. */
   readonly now?: () => Date;
+}
+
+/** Result of an idempotent tenant-bucket ensure. Prefixes are logical S3 prefixes, not folders. */
+export interface TenantStorageEnsureResult {
+  readonly bucket: string;
+  readonly created: boolean;
+  readonly prefixesEnsured: readonly string[];
 }
 
 /**
@@ -288,29 +296,40 @@ interface ResolvedTarget {
   readonly canonicalUri: string;
 }
 
-/**
- * Build the production MinIO/S3 {@link ObjectStorePort} — dependency-free SigV4 over `fetch` +
- * `node:crypto`. Fails fast at construction on an invalid endpoint (a boot-time misconfiguration
- * must never surface as a runtime signing error). See the file header for the per-op contract.
- */
-export function createS3ObjectStore(
-  config: S3ObjectStoreConfig,
-  deps: S3ObjectStoreDeps = {},
-): ObjectStorePort {
-  let endpointUrl: URL;
+function parseS3Endpoint(endpoint: string, constructorName: string): URL {
   try {
-    endpointUrl = new URL(config.endpoint);
+    const endpointUrl = new URL(endpoint);
+    if (endpointUrl.protocol !== "http:" && endpointUrl.protocol !== "https:") {
+      throw new Error("protocol");
+    }
+    return endpointUrl;
   } catch {
     throw new Error(
-      "createS3ObjectStore: `endpoint` must be an absolute URL (e.g. http://minio.internal:9000)",
+      `${constructorName}: \`endpoint\` must be an absolute URL using http(s) (e.g. http://minio.internal:9000)`,
     );
   }
-  if (endpointUrl.protocol !== "http:" && endpointUrl.protocol !== "https:") {
-    throw new Error("createS3ObjectStore: `endpoint` must use http(s)");
-  }
+}
+
+function assertS3Credentials(config: S3ObjectStoreConfig, constructorName: string): void {
   if (!config.accessKeyId || !config.secretAccessKey) {
-    throw new Error("createS3ObjectStore: accessKeyId and secretAccessKey are required");
+    throw new Error(`${constructorName}: accessKeyId and secretAccessKey are required`);
   }
+}
+
+function createS3SignedFetch(
+  config: S3ObjectStoreConfig,
+  deps: S3ObjectStoreDeps,
+  constructorName: string,
+): (args: {
+  readonly method: "GET" | "PUT" | "DELETE" | "HEAD";
+  readonly bucket: string;
+  readonly objectKey: string | null;
+  readonly query: readonly (readonly [string, string])[];
+  readonly payload: Uint8Array | null;
+  readonly extraHeaders?: Readonly<Record<string, string>>;
+}) => Promise<Response> {
+  const endpointUrl = parseS3Endpoint(config.endpoint, constructorName);
+  assertS3Credentials(config, constructorName);
   const region = config.region?.trim() || DEFAULT_REGION;
   const pathStyle = config.forcePathStyle !== false; // MinIO default: path-style
   const fetchImpl = deps.fetchImpl ?? fetch;
@@ -326,15 +345,7 @@ export function createS3ObjectStore(
   const scopeFor = (dateStamp: string): string =>
     `${dateStamp}/${region}/${S3_SERVICE}/aws4_request`;
 
-  /** Sign + send one header-authorized request (never logs the URL, secret, or headers). */
-  const signedFetch = async (args: {
-    readonly method: "GET" | "PUT" | "DELETE" | "HEAD";
-    readonly bucket: string;
-    readonly objectKey: string | null;
-    readonly query: readonly (readonly [string, string])[];
-    readonly payload: Uint8Array | null;
-    readonly extraHeaders?: Readonly<Record<string, string>>;
-  }): Promise<Response> => {
+  return async (args): Promise<Response> => {
     const at = now();
     const amzDate = sigV4AmzDate(at);
     const dateStamp = amzDate.slice(0, 8);
@@ -355,15 +366,16 @@ export function createS3ObjectStore(
       payloadHash,
     });
     const scope = scopeFor(dateStamp);
-    const stringToSign = sigV4StringToSign({ amzDate, scope, canonicalRequest });
-    const signingKey = sigV4SigningKey({
-      secretAccessKey: config.secretAccessKey,
-      dateStamp,
-      region,
-      service: S3_SERVICE,
-    });
-    const signature = sigV4Signature(signingKey, stringToSign);
-    const { host: _hostHeader, ...sendHeaders } = headers; // fetch sets Host from the URL itself
+    const signature = sigV4Signature(
+      sigV4SigningKey({
+        secretAccessKey: config.secretAccessKey,
+        dateStamp,
+        region,
+        service: S3_SERVICE,
+      }),
+      sigV4StringToSign({ amzDate, scope, canonicalRequest }),
+    );
+    const { host: _hostHeader, ...sendHeaders } = headers;
     const url = `${t.origin}${t.canonicalUri}${canonicalQuery ? `?${canonicalQuery}` : ""}`;
     return fetchImpl(url, {
       method: args.method,
@@ -371,13 +383,37 @@ export function createS3ObjectStore(
         ...sendHeaders,
         authorization: `${SIGV4_ALGORITHM} Credential=${config.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
       },
-      // fetch's BodyInit name is unavailable under this tsconfig's lib set — extract the body type
-      // from fetch's own signature (a Uint8Array is a valid body at runtime under bun/undici).
       ...(args.payload === null
         ? {}
         : { body: args.payload as unknown as NonNullable<Parameters<typeof fetch>[1]>["body"] }),
     });
   };
+}
+
+/**
+ * Build the production MinIO/S3 {@link ObjectStorePort} — dependency-free SigV4 over `fetch` +
+ * `node:crypto`. Fails fast at construction on an invalid endpoint (a boot-time misconfiguration
+ * must never surface as a runtime signing error). See the file header for the per-op contract.
+ */
+export function createS3ObjectStore(
+  config: S3ObjectStoreConfig,
+  deps: S3ObjectStoreDeps = {},
+): ObjectStorePort {
+  const region = config.region?.trim() || DEFAULT_REGION;
+  const now = deps.now ?? ((): Date => new Date());
+  const signedFetch = createS3SignedFetch(config, deps, "createS3ObjectStore");
+
+  const target = (bucket: string, objectKey: string | null): ResolvedTarget => {
+    const endpointUrl = parseS3Endpoint(config.endpoint, "createS3ObjectStore");
+    const pathStyle = config.forcePathStyle !== false;
+    const host = pathStyle ? endpointUrl.host : `${bucket}.${endpointUrl.host}`;
+    const keyPath = objectKey === null ? "" : `/${sigV4UriEncode(objectKey, false)}`;
+    const canonicalUri = pathStyle ? `/${sigV4UriEncode(bucket, true)}${keyPath}` : keyPath || "/";
+    return { origin: `${endpointUrl.protocol}//${host}`, host, canonicalUri };
+  };
+
+  const scopeFor = (dateStamp: string): string =>
+    `${dateStamp}/${region}/${S3_SERVICE}/aws4_request`;
 
   const opError = (op: string, status: number, bucket: string, objectKey: string): Error =>
     // PHI-free by construction: D11 opaque key + tenant bucket; NEVER the URL or any header.
@@ -557,6 +593,51 @@ export function createS3ObjectStore(
         versionIdMarker = page.nextVersionIdMarker;
         if (page.nextKeyMarker === null && page.nextVersionIdMarker === null) return; // no markers ⇒ cannot page further safely
       }
+    },
+  };
+}
+
+/**
+ * Idempotently provision the M22 tenant bucket (`tenant-<organizationId>`) for M34 lifecycle jobs.
+ * Prefixes remain logical S3 key prefixes; no `.keep` objects are materialized.
+ */
+export function createS3TenantStorageProvisioner(
+  config: S3ObjectStoreConfig,
+  deps: S3ObjectStoreDeps = {},
+): {
+  ensureTenantPrefixes(input: {
+    readonly organizationId: string;
+    readonly prefixes: readonly string[];
+  }): Promise<TenantStorageEnsureResult>;
+} {
+  const signedFetch = createS3SignedFetch(config, deps, "createS3TenantStorageProvisioner");
+
+  const opError = (op: string, status: number, bucket: string): Error =>
+    new Error(`m34 s3 tenant storage: '${op}' failed with HTTP ${status} for bucket ${bucket}`);
+
+  return {
+    async ensureTenantPrefixes({ organizationId, prefixes }) {
+      const bucket = deriveTenantBucket(organizationId as OrgId);
+      const head = await signedFetch({
+        method: "HEAD",
+        bucket,
+        objectKey: null,
+        query: [],
+        payload: null,
+      });
+      if (head.ok) return { bucket, created: false, prefixesEnsured: [...prefixes] };
+      if (head.status !== 404) throw opError("bucketExists", head.status, bucket);
+
+      const created = await signedFetch({
+        method: "PUT",
+        bucket,
+        objectKey: null,
+        query: [],
+        payload: new Uint8Array(),
+      });
+      if (!created.ok && created.status !== 409)
+        throw opError("createBucket", created.status, bucket);
+      return { bucket, created: created.ok, prefixesEnsured: [...prefixes] };
     },
   };
 }

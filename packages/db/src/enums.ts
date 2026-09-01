@@ -1965,6 +1965,7 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   "comfort_kit_return_receipt", // M21 — the DEA-1304 controlled-substance return receipt (mig 0196)
   "report_export", // M33 — an ad-hoc "export now" PDF/XLSX render (mig 0197)
   "report_schedule_run", // M33 — one scheduled-report OCCURRENCE's rendered artifact (mig 0197)
+  "referral", // M6 — referral inbox artifact (mig 0219)
   "idg_patient_packet",
   "idg_minutes",
   "aide_poc",

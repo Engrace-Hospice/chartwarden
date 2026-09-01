@@ -18,11 +18,13 @@ import type {
   FaceToFaceReader,
   LevelOfCarePeriodReader,
   LevelOfCareReader,
+  ReferralReader,
 } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import { createAdmissionOnsetReader } from "./admission-onset-reader";
 import { createDeathDischargeReader } from "./death-discharge-reader";
 import { createDischargeReader } from "./discharge-reader";
+import { createReferralReader } from "./drizzle-store";
 import { createLevelOfCarePeriodReader } from "./level-of-care-period-reader";
 import {
   createAdmissionCensusReader,
@@ -44,6 +46,7 @@ export {
   activeAdmissionDraftContextForPatient,
   admissionIsActiveForOrg,
   createDrizzleAdmissionReaderStore,
+  createReferralReader,
 } from "./drizzle-store";
 export {
   type AdmissionReaderStore,
@@ -84,6 +87,8 @@ export interface AdmissionSeamDeps {
   /** Explicit admission-onset reader (an in-memory double in tests). Takes precedence over {@link db}; when
    * neither is supplied M30's opioid_on_admission_rate seam falls through to the fail-closed boot deny-stub. */
   admissionOnsetReader?: AdmissionOnsetReader;
+  /** Explicit referral reader. Takes precedence over {@link db}; without either, the deny-stub stands. */
+  referralReader?: ReferralReader;
 }
 
 /**
@@ -102,6 +107,11 @@ export function registerAdmissionSeams(deps: AdmissionSeamDeps = {}): void {
   registerSeam("LevelOfCareReader", createLevelOfCareReader(store));
   registerSeam("AdmissionStatusReader", createAdmissionStatusReader(store));
   registerSeam("AdmissionCensusReader", createAdmissionCensusReader(store));
+
+  const referralReader = deps.referralReader ?? (deps.db ? createReferralReader(deps.db) : undefined);
+  if (referralReader) {
+    registerSeam("ReferralReader", referralReader);
+  }
 
   const deathDischargeReader =
     deps.deathDischargeReader ?? (deps.db ? createDeathDischargeReader(deps.db) : undefined);
@@ -156,6 +166,11 @@ export function getAdmissionStatusReader(): AdmissionStatusReader {
 /** Typed resolver for M6's AdmissionCensusReader. */
 export function getAdmissionCensusReader(): AdmissionCensusReader {
   return getSeam("AdmissionCensusReader");
+}
+
+/** Typed resolver for M6's ReferralReader. */
+export function getReferralReader(): ReferralReader {
+  return getSeam("ReferralReader");
 }
 
 /** Typed resolver for M6's §4.11 DeathDischargeReader (registered when a db/reader is present; M30 HVLDL). */
