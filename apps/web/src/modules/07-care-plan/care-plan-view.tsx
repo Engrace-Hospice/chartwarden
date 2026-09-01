@@ -99,6 +99,15 @@ function snapshotOf(version: Version | null): ClinicalSnapshot | null {
   return version.stateSnapshot as ClinicalSnapshot;
 }
 
+function uniqueBlockers(readiness: Readiness | null, activeTerminal?: Problem): string[] {
+  const labels = new Set<string>();
+  if (!activeTerminal) labels.add("Active terminal problem required");
+  for (const blocker of readiness?.blockers ?? []) {
+    labels.add(blockerLabel(blocker.code, blocker.message).replace(/[.]$/, ""));
+  }
+  return [...labels];
+}
+
 export function CarePlanView(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
@@ -240,8 +249,7 @@ export function CarePlanView(): JSX.Element {
 
   const age = patient ? ageYears(patient.dob) : null;
   const activeTerminal = plan.problems.find((p) => p.kind === "terminal" && p.status === "active");
-  const reviewTone =
-    review?.status === "overdue" ? "error" : review?.status === "due" ? "warning" : "neutral";
+  const blockers = uniqueBlockers(readiness, activeTerminal);
 
   return (
     <PatientWorkspaceLayout
@@ -275,106 +283,69 @@ export function CarePlanView(): JSX.Element {
           <header style={topRow}>
             <div>
               <h1 style={title}>Patient Care Plan</h1>
-              <p style={muted}>
-                {activeVersion
-                  ? `Current v${activeVersion.sequence} · ${cap(activeVersion.kind)} · signed ${formatDate(activeVersion.signedAt)}`
-                  : openVersion
-                    ? `${cap(openVersion.status)} v${openVersion.sequence} · ${cap(openVersion.kind)}`
-                    : "No signed version yet"}
-              </p>
+              <div style={summaryMeta}>
+                <span>
+                  {activeVersion
+                    ? `Current v${activeVersion.sequence} · ${cap(activeVersion.kind)}`
+                    : openVersion
+                      ? `${cap(openVersion.kind)} v${openVersion.sequence} · ${cap(openVersion.status)}`
+                      : "No signed version yet"}
+                </span>
+                <span aria-hidden="true">·</span>
+                <span>
+                  Next review{" "}
+                  {review?.status === "overdue"
+                    ? `overdue by ${review.overdueByDays} day${review.overdueByDays === 1 ? "" : "s"}`
+                    : review?.status === "review_in_progress"
+                      ? "in progress"
+                      : formatDate(review?.nextReviewDueAt)}
+                </span>
+              </div>
             </div>
-            <div style={actionsRow}>
-              {openVersion ? (
-                <button type="button" style={ghostBtn} onClick={() => setTab("revision")}>
-                  Continue {openVersion.kind === "idg_review" ? "review" : "revision"}
-                </button>
-              ) : (
-                <>
-                  {canAuthor && plan.status !== "discharged" ? (
-                    <button
-                      type="button"
-                      style={ghostBtn}
-                      onClick={() => void startVersion("interim_revision")}
-                    >
-                      Start revision
-                    </button>
-                  ) : null}
-                  {canAuthor && review?.canStartReview ? (
-                    <button
-                      type="button"
-                      style={primaryBtn}
-                      onClick={() => void startVersion("idg_review")}
-                    >
-                      Start review
-                    </button>
-                  ) : null}
-                </>
-              )}
-              <button
-                type="button"
-                style={ghostBtn}
-                onClick={() => navigate(`/care-plans/${plan.id}/versions`)}
-              >
-                Version history
-              </button>
-            </div>
+            <button
+              type="button"
+              style={ghostBtn}
+              onClick={() => navigate(`/care-plans/${plan.id}/versions`)}
+            >
+              Version history
+            </button>
           </header>
 
           {error ? <Notice tone="error">{error}</Notice> : null}
           {notice ? <Notice tone="success">{notice}</Notice> : null}
 
-          <section style={statusGrid} aria-label="Care Plan status">
-            <StatusCard label="Status" value={cap(plan.status)} tone={toneFor(plan.status)} />
-            <StatusCard
-              label="Current version"
-              value={
-                activeVersion
-                  ? `v${activeVersion.sequence} ${cap(activeVersion.kind)}`
-                  : "Pending signatures"
-              }
-              tone={activeVersion ? "success" : "warning"}
-            />
-            <StatusCard
-              label="Next review"
-              value={
-                review?.status === "overdue"
-                  ? `Overdue by ${review.overdueByDays} day${review.overdueByDays === 1 ? "" : "s"}`
-                  : review?.status === "review_in_progress"
-                    ? "Review in progress"
-                    : formatDate(review?.nextReviewDueAt)
-              }
-              tone={reviewTone}
-            />
-            <StatusCard
-              label="Readiness"
-              value={
-                readiness?.canFinalize
-                  ? "Ready to send"
-                  : readiness?.canSign
-                    ? "Ready for signatures"
-                    : "Needs attention"
-              }
-              tone={readiness?.canFinalize || readiness?.canSign ? "success" : "warning"}
-            />
-          </section>
-
-          <AttentionPanel
+          <WorkflowGuide
+            plan={plan}
+            openVersion={openVersion}
+            activeVersion={activeVersion}
             readiness={readiness}
             review={review}
-            openVersion={openVersion}
             proposed={proposed}
-            activeTerminal={activeTerminal}
-            onRevision={() => setTab("revision")}
-            onStartReview={() => void startVersion("idg_review")}
+            blockers={blockers}
             canAuthor={canAuthor}
+            canFinalize={canFinalize}
+            canSign={canSign}
+            busy={busy}
+            onAddTerminal={() => setModal({ kind: "problem" })}
+            onContinue={() => setTab(openVersion?.status === "in_review" ? "revision" : "current")}
+            onOpenRevision={() => setTab("revision")}
+            onStartRevision={() => void startVersion("interim_revision")}
+            onStartReview={() => void startVersion("idg_review")}
+            onFinalize={() => {
+              if (openVersion) void finalize(openVersion);
+            }}
+            onSign={() => {
+              if (openVersion) setModal({ kind: "sign", version: openVersion });
+            }}
           />
 
           <div style={tabs} role="tablist" aria-label="Care Plan workspace views">
             <TabButton active={tab === "current"} onClick={() => setTab("current")}>
-              Current Plan
+              Care Plan
             </TabButton>
             <TabButton active={tab === "revision"} onClick={() => setTab("revision")}>
-              Revision / Review
+              Revision & Review
+              {openVersion ? <span style={tabCount}>1</span> : null}
             </TabButton>
             <TabButton active={tab === "history"} onClick={() => setTab("history")}>
               History
@@ -383,7 +354,7 @@ export function CarePlanView(): JSX.Element {
 
           {tab === "current" ? (
             <ClinicalContent
-              title="Working clinical plan"
+              title="Care Plan"
               readonly={
                 plan.status === "discharged" || !openVersion || openVersion.status === "in_review"
               }
@@ -446,6 +417,7 @@ export function CarePlanView(): JSX.Element {
           ) : null}
         </main>
       </div>
+
       {modal ? (
         <CarePlanModal
           state={modal}
@@ -461,99 +433,201 @@ export function CarePlanView(): JSX.Element {
   );
 }
 
-function AttentionPanel({
+function WorkflowGuide({
+  plan,
+  openVersion,
+  activeVersion,
   readiness,
   review,
-  openVersion,
   proposed,
-  activeTerminal,
+  blockers,
   canAuthor,
-  onRevision,
+  canFinalize,
+  canSign,
+  busy,
+  onAddTerminal,
+  onContinue,
+  onOpenRevision,
+  onStartRevision,
   onStartReview,
+  onFinalize,
+  onSign,
 }: {
+  plan: CarePlan;
+  openVersion: Version | null;
+  activeVersion: Version | null;
   readiness: Readiness | null;
   review: ReviewStatus | null;
-  openVersion: Version | null;
   proposed: ProposedChanges | null;
-  activeTerminal?: Problem;
+  blockers: string[];
   canAuthor: boolean;
-  onRevision: () => void;
+  canFinalize: boolean;
+  canSign: boolean;
+  busy: boolean;
+  onAddTerminal: () => void;
+  onContinue: () => void;
+  onOpenRevision: () => void;
+  onStartRevision: () => void;
   onStartReview: () => void;
+  onFinalize: () => void;
+  onSign: () => void;
 }): JSX.Element {
-  const items: {
-    key: string;
-    tone: "info" | "warning" | "error";
-    text: string;
-    action?: ReactNode;
-  }[] = [];
-  if (!activeTerminal)
-    items.push({ key: "terminal", tone: "warning", text: "Active terminal problem required." });
-  for (const blocker of readiness?.blockers ?? []) {
-    items.push({
-      key: blocker.code,
-      tone: "warning",
-      text: blockerLabel(blocker.code, blocker.message),
-    });
+  const inReview = openVersion?.status === "in_review";
+  const hasOpenDraft = openVersion?.status === "draft";
+  const isDischarged = plan.status === "discharged";
+  const reviewDue = review?.status === "due" || review?.status === "overdue";
+  const missingSignatures = readiness?.signatures.missing.length ?? 0;
+
+  let currentStep: 0 | 1 | 2 | 3 = 0;
+  if (inReview) currentStep = 2;
+  else if (activeVersion && !openVersion) currentStep = 3;
+  else if (hasOpenDraft && readiness?.canFinalize) currentStep = 1;
+
+  let heading = "Complete the Care Plan";
+  let description =
+    blockers[0] ??
+    "Build the clinical plan, review it, then send the governed version for required signatures.";
+  let action: ReactNode = null;
+
+  if (isDischarged) {
+    heading = "Care Plan is read-only";
+    description = "This admission is discharged. Historical Care Plan content remains available.";
+  } else if (inReview) {
+    heading = missingSignatures > 0 ? "Collect required signatures" : "Review version in progress";
+    description =
+      missingSignatures > 0
+        ? `${missingSignatures} required signer slot${missingSignatures === 1 ? "" : "s"} remain before this version can become the active Care Plan.`
+        : "The candidate version is frozen while it is in review.";
+    action =
+      canSign && readiness?.canSign ? (
+        <button type="button" style={primaryBtn} disabled={busy} onClick={onSign}>
+          Review & sign
+        </button>
+      ) : (
+        <button type="button" style={primaryBtn} onClick={onOpenRevision}>
+          View signature status
+        </button>
+      );
+  } else if (hasOpenDraft && blockers.length > 0) {
+    heading = openVersion?.kind === "idg_review" ? "Complete the Care Plan review" : "Complete the Care Plan";
+    description = blockers[0] as string;
+    const terminalMissing = blockers.some((b) => b.toLowerCase().includes("terminal problem"));
+    action =
+      terminalMissing && canAuthor ? (
+        <button type="button" style={primaryBtn} onClick={onAddTerminal}>
+          Add terminal problem
+        </button>
+      ) : (
+        <button type="button" style={primaryBtn} onClick={onContinue}>
+          Continue Care Plan
+        </button>
+      );
+  } else if (hasOpenDraft && readiness?.canFinalize) {
+    heading = "Care Plan is ready for review";
+    description = "Clinical content passes the current readiness checks. Review it before requesting signatures.";
+    action = canFinalize ? (
+      <button type="button" style={primaryBtn} disabled={busy} onClick={onFinalize}>
+        Review & send for signatures
+      </button>
+    ) : (
+      <button type="button" style={primaryBtn} onClick={onOpenRevision}>
+        Review version
+      </button>
+    );
+  } else if (!openVersion && reviewDue && canAuthor && review?.canStartReview) {
+    heading = review?.status === "overdue" ? "Care Plan review is overdue" : "Care Plan review is due";
+    description =
+      review?.status === "overdue"
+        ? `The scheduled review is overdue by ${review.overdueByDays} day${review.overdueByDays === 1 ? "" : "s"}.`
+        : "Start the scheduled review to evaluate the active Care Plan.";
+    action = (
+      <button type="button" style={primaryBtn} onClick={onStartReview}>
+        Start review
+      </button>
+    );
+  } else if (!openVersion && activeVersion) {
+    heading = "Care Plan is active";
+    description = review?.nextReviewDueAt
+      ? `No immediate action is required. Next review: ${formatDate(review.nextReviewDueAt)}.`
+      : "No immediate action is required.";
+    action = canAuthor ? (
+      <button type="button" style={ghostBtn} onClick={onStartRevision}>
+        Start revision
+      </button>
+    ) : null;
+  } else if (!openVersion && canAuthor) {
+    heading = "Start the Care Plan";
+    description = "Open a revision to begin authoring the clinical Care Plan.";
+    action = (
+      <button type="button" style={primaryBtn} onClick={onStartRevision}>
+        Start revision
+      </button>
+    );
   }
-  if (readiness?.signatures.missing.length)
-    items.push({
-      key: "signatures",
-      tone: "info",
-      text: `${readiness.signatures.missing.map((s) => `${cap(s.role)} (${s.count})`).join(", ")} signature${readiness.signatures.missing.length === 1 ? "" : "s"} missing.`,
-      action: (
-        <button type="button" style={miniBtn} onClick={onRevision}>
-          Review signatures
-        </button>
-      ),
-    });
-  if (review?.status === "due" || review?.status === "overdue")
-    items.push({
-      key: "review",
-      tone: review.status === "overdue" ? "error" : "warning",
-      text:
-        review.status === "overdue"
-          ? `Care Plan review overdue by ${review.overdueByDays} day${review.overdueByDays === 1 ? "" : "s"}.`
-          : "Care Plan review is due.",
-      action:
-        canAuthor && review.canStartReview ? (
-          <button type="button" style={miniBtn} onClick={onStartReview}>
-            Start review
-          </button>
-        ) : undefined,
-    });
-  if (openVersion)
-    items.push({
-      key: "open",
-      tone: "info",
-      text: `${cap(openVersion.kind)} v${openVersion.sequence} is ${cap(openVersion.status)}.`,
-      action: (
-        <button type="button" style={miniBtn} onClick={onRevision}>
-          Continue
-        </button>
-      ),
-    });
-  if (proposed?.changes.length)
-    items.push({
-      key: "idg",
-      tone: "info",
-      text: `${proposed.changes.length} IDG proposed change${proposed.changes.length === 1 ? "" : "s"} awaiting governed review.`,
-      action: (
-        <button type="button" style={miniBtn} onClick={onRevision}>
-          Review IDG changes
-        </button>
-      ),
-    });
-  if (items.length === 0)
-    return <Notice tone="success">No Care Plan blockers require attention.</Notice>;
+
   return (
-    <section style={attentionWrap} aria-label="Care Plan attention">
-      {items.map((item) => (
-        <Notice key={item.key} tone={item.tone}>
-          <span>{item.text}</span>
-          {item.action}
-        </Notice>
-      ))}
+    <section style={workflowCard} aria-label="Care Plan next step">
+      <div style={workflowTop}>
+        <div style={{ minWidth: 0 }}>
+          <div style={eyebrow}>NEXT STEP</div>
+          <h2 style={workflowTitle}>{heading}</h2>
+          <p style={workflowDescription}>{description}</p>
+        </div>
+        {action}
+      </div>
+
+      <WorkflowSteps current={currentStep} />
+
+      <div style={workflowDetails}>
+        {blockers.length > 1 ? (
+          <details>
+            <summary style={detailsSummary}>
+              {blockers.length} items need attention
+            </summary>
+            <ul style={compactList}>
+              {blockers.map((blocker) => (
+                <li key={blocker}>{blocker}</li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+
+        {proposed?.changes.length ? (
+          <button type="button" style={textAction} onClick={onOpenRevision}>
+            {proposed.changes.length} IDG proposed change{proposed.changes.length === 1 ? "" : "s"} to review
+          </button>
+        ) : null}
+
+        {reviewDue && openVersion ? (
+          <span style={warningText}>
+            {review?.status === "overdue"
+              ? `Scheduled review overdue by ${review.overdueByDays} day${review.overdueByDays === 1 ? "" : "s"}`
+              : "Scheduled review is due"}
+          </span>
+        ) : null}
+      </div>
     </section>
+  );
+}
+
+function WorkflowSteps({ current }: { current: 0 | 1 | 2 | 3 }): JSX.Element {
+  const steps = ["Build plan", "Review", "Signatures", "Active"] as const;
+  return (
+    <ol style={stepper} aria-label="Care Plan workflow">
+      {steps.map((label, index) => {
+        const complete = index < current || current === 3;
+        const active = index === current && current !== 3;
+        return (
+          <li key={label} style={stepItem}>
+            <span style={complete ? stepDotComplete : active ? stepDotActive : stepDot}>
+              {complete ? "✓" : index + 1}
+            </span>
+            <span style={active ? stepLabelActive : stepLabel}>{label}</span>
+            {index < steps.length - 1 ? <span style={stepLine} /> : null}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -589,94 +663,105 @@ function ClinicalContent({
       (KIND_ORDER[a.kind] ?? 9) - (KIND_ORDER[b.kind] ?? 9) ||
       a.description.localeCompare(b.description),
   );
+
+  const problemCount = problems.length;
+  const goalCount = goals.length;
+  const interventionCount = interventions.length;
+
   return (
     <section style={panel}>
       <div style={sectionHeader}>
         <div>
           <h2 style={sectionTitle}>{heading}</h2>
           <p style={muted}>
-            Interventions are Care Plan intent. Orders and scheduling remain explicit downstream
-            workflows.
+            {problemCount} problem{problemCount === 1 ? "" : "s"} · {goalCount} goal
+            {goalCount === 1 ? "" : "s"} · {interventionCount} intervention
+            {interventionCount === 1 ? "" : "s"}
           </p>
         </div>
+
         {canAuthor ? (
           <button type="button" style={primaryBtn} onClick={() => onProblem()}>
-            Add problem
+            + Add problem
           </button>
         ) : null}
       </div>
+
       {readonly ? (
         <Notice tone="info">
-          This view is read-only while a version is in review or discharged.
+          This view is read-only while a version is in review or the admission is discharged.
         </Notice>
       ) : null}
+
       {sorted.length === 0 ? (
         <EmptyState
           title="No problems recorded"
-          description="Add the first clinical problem to anchor goals and interventions."
+          description="Start with the clinical problem that anchors goals and interventions."
         />
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: t.space3 }}>
-          {sorted.map((problem) => (
-            <article key={problem.id} style={problemCard}>
-              <div style={sectionHeader}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={lineWrap}>
+        <div style={problemStack}>
+          {sorted.map((problem) => {
+            const problemGoals = goals.filter((g) => g.problemId === problem.id);
+            const problemInterventions = interventions.filter((i) => i.problemId === problem.id);
+
+            return (
+              <article key={problem.id} style={problemCard}>
+                <div style={problemHeader}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={problemBadges}>
+                      <StatusPill
+                        label={cap(problem.kind)}
+                        tone={problem.kind === "terminal" ? "warning" : "neutral"}
+                      />
+                      <StatusPill label={cap(problem.status)} tone={toneFor(problem.status)} />
+                      {problem.sudRelated ? (
+                        <span style={restricted}>
+                          <Glyph name="lock" size={12} /> SUD
+                        </span>
+                      ) : null}
+                    </div>
+
                     <h3 style={problemTitle}>{problem.description}</h3>
-                    <StatusPill
-                      label={cap(problem.kind)}
-                      tone={problem.kind === "terminal" ? "warning" : "neutral"}
-                    />
-                    <StatusPill label={cap(problem.status)} tone={toneFor(problem.status)} />
-                    {problem.sudRelated ? (
-                      <span style={restricted}>
-                        <Glyph name="lock" size={12} /> SUD
-                      </span>
-                    ) : null}
+                    <p style={muted}>
+                      {cap(problem.source)}
+                      {problem.icd10Code ? ` · ICD-10 ${problem.icd10Code}` : ""}
+                      {problem.snomedCode ? ` · SNOMED ${problem.snomedCode}` : ""}
+                      {problem.onsetAt ? ` · onset ${formatDate(problem.onsetAt)}` : ""}
+                      {problem.resolvedAt ? ` · resolved ${formatDate(problem.resolvedAt)}` : ""}
+                    </p>
+                    {problem.resolutionNote ? <p style={muted}>{problem.resolutionNote}</p> : null}
                   </div>
-                  <p style={muted}>
-                    Source {cap(problem.source)}
-                    {problem.icd10Code ? ` · ICD-10 ${problem.icd10Code}` : ""}
-                    {problem.snomedCode ? ` · SNOMED ${problem.snomedCode}` : ""}
-                    {problem.onsetAt ? ` · onset ${formatDate(problem.onsetAt)}` : ""}
-                    {problem.resolvedAt ? ` · resolved ${formatDate(problem.resolvedAt)}` : ""}
-                  </p>
-                  {problem.resolutionNote ? <p style={muted}>{problem.resolutionNote}</p> : null}
+
+                  {canAuthor && !readonly ? (
+                    <details style={menuWrap}>
+                      <summary style={menuButton} aria-label={`Actions for ${problem.description}`}>
+                        <span aria-hidden="true">⋯</span>
+                      </summary>
+                      <div style={menuPopover}>
+                        <button type="button" style={menuItem} onClick={() => onProblem(problem)}>
+                          Edit problem
+                        </button>
+                        {problem.status === "active" ? (
+                          <button
+                            type="button"
+                            style={menuItem}
+                            onClick={() => onResolveProblem(problem)}
+                          >
+                            Resolve problem
+                          </button>
+                        ) : null}
+                      </div>
+                    </details>
+                  ) : null}
                 </div>
-                {canAuthor && !readonly ? (
-                  <div style={actionsRow}>
-                    <button type="button" style={ghostBtn} onClick={() => onProblem(problem)}>
-                      Edit
-                    </button>
-                    {problem.status === "active" ? (
-                      <button
-                        type="button"
-                        style={ghostBtn}
-                        onClick={() => onResolveProblem(problem)}
-                      >
-                        Resolve
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-              <Subsection
-                title="Goals"
-                action={
-                  canAuthor && !readonly ? (
-                    <button
-                      type="button"
-                      style={miniBtn}
-                      onClick={() => onGoal(undefined, problem.id)}
-                    >
-                      Add goal
-                    </button>
-                  ) : null
-                }
-              >
-                {goals
-                  .filter((g) => g.problemId === problem.id)
-                  .map((goal) => (
+
+                <div style={problemCounts}>
+                  <span>{problemGoals.length} goal{problemGoals.length === 1 ? "" : "s"}</span>
+                  <span>{problemInterventions.length} intervention{problemInterventions.length === 1 ? "" : "s"}</span>
+                </div>
+
+                <Subsection title="Goals">
+                  {problemGoals.map((goal) => (
                     <GoalRow
                       key={goal.id}
                       goal={goal}
@@ -684,24 +769,10 @@ function ClinicalContent({
                       onEdit={() => onGoal(goal, problem.id)}
                     />
                   ))}
-              </Subsection>
-              <Subsection
-                title="Interventions"
-                action={
-                  canAuthor && !readonly ? (
-                    <button
-                      type="button"
-                      style={miniBtn}
-                      onClick={() => onIntervention(undefined, problem.id)}
-                    >
-                      Add intervention
-                    </button>
-                  ) : null
-                }
-              >
-                {interventions
-                  .filter((i) => i.problemId === problem.id)
-                  .map((iv) => (
+                </Subsection>
+
+                <Subsection title="Interventions">
+                  {problemInterventions.map((iv) => (
                     <InterventionRow
                       key={iv.id}
                       intervention={iv}
@@ -711,9 +782,32 @@ function ClinicalContent({
                       onDiscontinue={() => onDiscontinueIntervention(iv)}
                     />
                   ))}
-              </Subsection>
-            </article>
-          ))}
+                </Subsection>
+
+                {canAuthor && !readonly ? (
+                  <details style={addToProblem}>
+                    <summary style={addToProblemSummary}>+ Add to this problem</summary>
+                    <div style={addToProblemActions}>
+                      <button
+                        type="button"
+                        style={menuItem}
+                        onClick={() => onGoal(undefined, problem.id)}
+                      >
+                        Goal
+                      </button>
+                      <button
+                        type="button"
+                        style={menuItem}
+                        onClick={() => onIntervention(undefined, problem.id)}
+                      >
+                        Intervention
+                      </button>
+                    </div>
+                  </details>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
       )}
     </section>
@@ -764,33 +858,41 @@ function RevisionPanel({
   if (!version) {
     return (
       <section style={panel}>
-        <h2 style={sectionTitle}>Revision / Review</h2>
-        <p style={muted}>No draft or in-review version is open.</p>
-        <div style={actionsRow}>
-          {canAuthor ? (
-            <button type="button" style={ghostBtn} onClick={onStartRevision}>
-              Start revision
-            </button>
-          ) : null}
-          {canAuthor && review?.canStartReview ? (
-            <button type="button" style={primaryBtn} onClick={onStartReview}>
-              Start review
-            </button>
-          ) : null}
+        <div style={emptyRevision}>
+          <div>
+            <h2 style={sectionTitle}>Revision & Review</h2>
+            <p style={muted}>There is no open draft or review version.</p>
+          </div>
+          <div style={actionsRow}>
+            {canAuthor ? (
+              <button type="button" style={ghostBtn} onClick={onStartRevision}>
+                Start revision
+              </button>
+            ) : null}
+            {canAuthor && review?.canStartReview ? (
+              <button type="button" style={primaryBtn} onClick={onStartReview}>
+                Start scheduled review
+              </button>
+            ) : null}
+          </div>
         </div>
       </section>
     );
   }
+
   const candidate = snapshotOf(version);
   const readonly = version.status === "in_review";
+  const blockers = uniqueBlockers(
+    readiness,
+    plan.problems.find((p) => p.kind === "terminal" && p.status === "active"),
+  );
+
   return (
     <section style={panel}>
-      <div style={sectionHeader}>
+      <div style={revisionHeader}>
         <div>
-          <h2 style={sectionTitle}>
-            {version.kind === "idg_review" ? "IDG review" : "Care Plan revision"} v
-            {version.sequence}
-          </h2>
+          <div style={eyebrow}>{version.kind === "idg_review" ? "IDG REVIEW" : "REVISION"}</div>
+          <h2 style={sectionTitle}>Version v{version.sequence}</h2>
           <p style={muted}>
             {cap(version.status)} ·{" "}
             {version.idgMeetingId
@@ -798,48 +900,91 @@ function RevisionPanel({
               : "Scheduled/manual review"}
           </p>
         </div>
-        <div style={actionsRow}>
-          {version.status === "draft" && canFinalize ? (
-            <button
-              type="button"
-              style={readiness?.canFinalize ? primaryBtn : disabledBtn}
-              disabled={!readiness?.canFinalize || busy}
-              onClick={() => void onFinalize(version)}
-            >
-              Review & send for signatures
-            </button>
-          ) : null}
-          {version.status === "in_review" && canAuthor ? (
-            <button type="button" style={ghostBtn} onClick={() => onReturn(version)}>
-              Return to draft
-            </button>
-          ) : null}
-          {version.status === "in_review" && canSign && readiness?.canSign ? (
-            <button type="button" style={primaryBtn} onClick={() => onSign(version)}>
-              Sign
-            </button>
-          ) : null}
-        </div>
+
+        <StatusPill label={cap(version.status)} tone={toneFor(version.status)} />
       </div>
-      {version.status === "draft" && readiness && !readiness.canFinalize ? (
-        <Notice tone="warning">
-          Cannot send for signatures:{" "}
-          {readiness.blockers.map((b) => blockerLabel(b.code, b.message)).join("; ")}
-        </Notice>
+
+      <div style={revisionProgress}>
+        <WorkflowSteps current={version.status === "in_review" ? 2 : readiness?.canFinalize ? 1 : 0} />
+      </div>
+
+      {version.status === "draft" ? (
+        <section style={subPanel}>
+          <div style={sectionHeader}>
+            <div>
+              <h3 style={smallTitle}>
+                {readiness?.canFinalize ? "Ready for review" : "Before you can send this version"}
+              </h3>
+              <p style={muted}>
+                {readiness?.canFinalize
+                  ? "The current draft passes readiness checks."
+                  : "Resolve the remaining requirements, then review the candidate version."}
+              </p>
+            </div>
+
+            {canFinalize ? (
+              <button
+                type="button"
+                style={readiness?.canFinalize ? primaryBtn : disabledBtn}
+                disabled={!readiness?.canFinalize || busy}
+                onClick={() => void onFinalize(version)}
+              >
+                Review & send for signatures
+              </button>
+            ) : null}
+          </div>
+
+          {blockers.length ? (
+            <ul style={requirementList}>
+              {blockers.map((blocker) => (
+                <li key={blocker} style={requirementItem}>
+                  <span style={requirementDot} />
+                  <span>{blocker}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div style={readyLine}>
+              <Glyph name="check-circle" size={16} />
+              Ready to continue
+            </div>
+          )}
+        </section>
       ) : null}
+
       {version.status === "in_review" ? (
-        <Notice tone="info">
-          Candidate content is frozen. Return to draft if edits are needed; existing signatures will
-          be invalidated.
-        </Notice>
+        <section style={subPanel}>
+          <div style={sectionHeader}>
+            <div>
+              <h3 style={smallTitle}>Signatures</h3>
+              <p style={muted}>
+                Candidate content is frozen. Return to draft only when clinical edits are required.
+              </p>
+            </div>
+            <div style={actionsRow}>
+              {canAuthor ? (
+                <button type="button" style={ghostBtn} onClick={() => onReturn(version)}>
+                  Return to draft
+                </button>
+              ) : null}
+              {canSign && readiness?.canSign ? (
+                <button type="button" style={primaryBtn} onClick={() => onSign(version)}>
+                  Sign version
+                </button>
+              ) : null}
+            </div>
+          </div>
+          <SignaturePanel readiness={readiness} version={version} />
+        </section>
       ) : null}
+
       {proposed?.changes.length ? <IdgProposal proposed={proposed} /> : null}
-      <SignaturePanel readiness={readiness} version={version} />
+
       {version.status === "in_review" && candidate ? (
         <SnapshotContent snapshot={candidate} />
       ) : (
         <ClinicalContent
-          title="Draft working content"
+          title="Draft clinical content"
           plan={plan}
           problems={plan.problems}
           goals={plan.goals}
@@ -860,10 +1005,12 @@ function RevisionPanel({
 function IdgProposal({ proposed }: { proposed: ProposedChanges }): JSX.Element {
   return (
     <section style={subPanel}>
-      <h3 style={smallTitle}>IDG proposed changes</h3>
-      <p style={muted}>
-        These changes are proposed until the governed review version is signed and published.
-      </p>
+      <div>
+        <h3 style={smallTitle}>IDG proposed changes</h3>
+        <p style={muted}>
+          These changes remain proposed until the governed review version is signed and published.
+        </p>
+      </div>
       <div style={{ display: "flex", flexDirection: "column", gap: t.space2 }}>
         {proposed.changes.map((change) => (
           <div key={change.id} style={diffRow}>
@@ -892,7 +1039,10 @@ function HistoryPanel({
 }): JSX.Element {
   return (
     <section style={panel}>
-      <h2 style={sectionTitle}>Version history</h2>
+      <div>
+        <h2 style={sectionTitle}>Version history</h2>
+        <p style={muted}>Inspect signed, superseded, draft, and review versions without changing the active plan.</p>
+      </div>
       <div style={historyGrid}>
         <div style={{ display: "flex", flexDirection: "column", gap: t.space2 }}>
           {[...plan.versions]
@@ -997,8 +1147,7 @@ function SignaturePanel({
     ? readiness.signatures.collected
     : version.signatures;
   return (
-    <section style={subPanel}>
-      <h3 style={smallTitle}>Required signatures</h3>
+    <div style={signaturePanelInner}>
       <SignatureList slots={slots} signatures={signatures} />
       {readiness?.signatures.missing.length ? (
         <p style={muted}>
@@ -1008,7 +1157,7 @@ function SignaturePanel({
       ) : (
         <p style={muted}>No missing signatures reported by the backend.</p>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -1041,7 +1190,7 @@ function GoalRow({
 }: { goal: Goal; editable: boolean; onEdit: () => void }): JSX.Element {
   return (
     <div style={row}>
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <p style={rowTitle}>{goal.revisedText ?? goal.originalText}</p>
         <p style={muted}>
           {goal.measurableOutcome ?? "No measurable outcome"} · target {formatDate(goal.targetAt)}
@@ -1050,7 +1199,7 @@ function GoalRow({
       </div>
       <StatusPill label={cap(goal.status)} tone={toneFor(goal.status)} />
       {editable ? (
-        <button type="button" style={miniBtn} onClick={onEdit}>
+        <button type="button" style={iconTextBtn} onClick={onEdit}>
           Edit
         </button>
       ) : null}
@@ -1074,7 +1223,7 @@ function InterventionRow({
   const linkedGoals = goals.filter((g) => intervention.goalRefs.includes(g.id));
   return (
     <div style={row}>
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <p style={rowTitle}>{intervention.scopeText}</p>
         <p style={muted}>
           {cap(intervention.discipline)} · {intervention.frequencyText} ·{" "}
@@ -1090,14 +1239,21 @@ function InterventionRow({
       </div>
       <StatusPill label={cap(intervention.status)} tone={toneFor(intervention.status)} />
       {editable ? (
-        <button type="button" style={miniBtn} onClick={onEdit}>
-          Edit
-        </button>
-      ) : null}
-      {editable && intervention.status === "active" ? (
-        <button type="button" style={miniBtn} onClick={onDiscontinue}>
-          Discontinue
-        </button>
+        <details style={menuWrap}>
+          <summary style={rowMenuButton} aria-label="Intervention actions">
+            <span aria-hidden="true">⋯</span>
+          </summary>
+          <div style={menuPopover}>
+            <button type="button" style={menuItem} onClick={onEdit}>
+              Edit intervention
+            </button>
+            {intervention.status === "active" ? (
+              <button type="button" style={menuItem} onClick={onDiscontinue}>
+                Discontinue
+              </button>
+            ) : null}
+          </div>
+        </details>
       ) : null}
     </div>
   );
@@ -1693,16 +1849,13 @@ function Select({
 
 function Subsection({
   title: heading,
-  action,
   children,
-}: { title: string; action?: ReactNode; children: ReactNode }): JSX.Element {
-  const hasChildren = Array.isArray(children) ? children.length > 0 : Boolean(children);
+}: { title: string; children: ReactNode }): JSX.Element {
+  const childArray = Array.isArray(children) ? children : [children];
+  const hasChildren = childArray.some(Boolean);
   return (
     <div style={subsection}>
-      <div style={sectionHeader}>
-        <h4 style={miniTitle}>{heading}</h4>
-        {action}
-      </div>
+      <h4 style={miniTitle}>{heading}</h4>
       {hasChildren ? children : <p style={muted}>None recorded.</p>}
     </div>
   );
@@ -1747,19 +1900,6 @@ function DiffValue({ label, value }: { label: string; value: unknown }): JSX.Ele
     <div>
       <span style={fieldLabel}>{label}</span>
       <p style={muted}>{String(text)}</p>
-    </div>
-  );
-}
-
-function StatusCard({
-  label,
-  value,
-  tone,
-}: { label: string; value: string; tone: Parameters<typeof StatusPill>[0]["tone"] }): JSX.Element {
-  return (
-    <div style={statusCard}>
-      <span style={fieldLabel}>{label}</span>
-      <StatusPill label={value} tone={tone} />
     </div>
   );
 }
@@ -1833,6 +1973,15 @@ const title: CSSProperties = {
   fontSize: "1.45rem",
   color: t.onSurface,
 };
+const summaryMeta: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: t.space2,
+  flexWrap: "wrap",
+  marginTop: "0.2rem",
+  color: t.onSurfaceVariant,
+  fontSize: "0.82rem",
+};
 const sectionTitle: CSSProperties = {
   margin: 0,
   fontFamily: t.fontDisplay,
@@ -1843,16 +1992,16 @@ const sectionTitle: CSSProperties = {
 const smallTitle: CSSProperties = {
   margin: 0,
   fontFamily: t.fontDisplay,
-  fontWeight: 500,
+  fontWeight: 600,
   fontSize: "0.96rem",
   color: t.onSurface,
 };
 const miniTitle: CSSProperties = {
   margin: 0,
-  fontSize: "0.78rem",
-  fontWeight: 700,
+  fontSize: "0.73rem",
+  fontWeight: 800,
   textTransform: "uppercase",
-  letterSpacing: 0,
+  letterSpacing: "0.035em",
   color: t.onSurfaceVariant,
 };
 const muted: CSSProperties = { margin: 0, color: t.onSurfaceVariant, fontSize: "0.82rem" };
@@ -1869,11 +2018,11 @@ const primaryBtn: CSSProperties = {
   color: t.onPrimary,
   cursor: "pointer",
   fontWeight: 700,
-  padding: "0.48rem 0.8rem",
+  padding: "0.52rem 0.82rem",
   fontSize: "0.82rem",
 };
 const ghostBtn: CSSProperties = {
-  border: "none",
+  border: ghostBorder,
   borderRadius: t.radiusMd,
   background: t.surfaceContainer,
   color: t.onSurface,
@@ -1884,7 +2033,19 @@ const ghostBtn: CSSProperties = {
   textDecoration: "none",
 };
 const disabledBtn: CSSProperties = { ...ghostBtn, cursor: "not-allowed", opacity: 0.55 };
-const miniBtn: CSSProperties = { ...ghostBtn, padding: "0.28rem 0.55rem", fontSize: "0.76rem" };
+const iconTextBtn: CSSProperties = {
+  border: "none",
+  background: "transparent",
+  color: t.primary,
+  cursor: "pointer",
+  fontWeight: 700,
+  fontSize: "0.76rem",
+  padding: "0.15rem 0.2rem",
+};
+const textAction: CSSProperties = {
+  ...iconTextBtn,
+  padding: 0,
+};
 const panel: CSSProperties = {
   ...cardSurface,
   display: "flex",
@@ -1899,20 +2060,114 @@ const subPanel: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: t.space3,
+  background: t.surfaceLow,
 };
-const statusGrid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))",
-  gap: t.space3,
-};
-const statusCard: CSSProperties = {
+const workflowCard: CSSProperties = {
   ...cardSurface,
-  padding: t.space4,
+  border: ghostBorder,
+  padding: t.space5,
   display: "flex",
   flexDirection: "column",
-  gap: t.space2,
+  gap: t.space4,
 };
-const attentionWrap: CSSProperties = { display: "grid", gap: t.space2 };
+const workflowTop: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: t.space4,
+  flexWrap: "wrap",
+};
+const eyebrow: CSSProperties = {
+  color: t.onSurfaceVariant,
+  fontSize: "0.68rem",
+  fontWeight: 800,
+  letterSpacing: "0.08em",
+  marginBottom: "0.35rem",
+};
+const workflowTitle: CSSProperties = {
+  ...sectionTitle,
+  fontSize: "1.12rem",
+};
+const workflowDescription: CSSProperties = {
+  ...muted,
+  marginTop: "0.35rem",
+  maxWidth: "48rem",
+  lineHeight: 1.5,
+};
+const stepper: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+  gap: 0,
+  listStyle: "none",
+  padding: 0,
+  margin: 0,
+};
+const stepItem: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  minWidth: 0,
+};
+const stepDot: CSSProperties = {
+  width: "1.55rem",
+  height: "1.55rem",
+  borderRadius: "999px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  border: ghostBorder,
+  color: t.onSurfaceVariant,
+  fontSize: "0.72rem",
+  fontWeight: 800,
+  flexShrink: 0,
+};
+const stepDotActive: CSSProperties = {
+  ...stepDot,
+  background: t.primary,
+  color: t.onPrimary,
+  border: "none",
+};
+const stepDotComplete: CSSProperties = {
+  ...stepDot,
+  color: t.success,
+};
+const stepLabel: CSSProperties = {
+  marginLeft: "0.45rem",
+  color: t.onSurfaceVariant,
+  fontSize: "0.76rem",
+  whiteSpace: "nowrap",
+};
+const stepLabelActive: CSSProperties = {
+  ...stepLabel,
+  color: t.onSurface,
+  fontWeight: 800,
+};
+const stepLine: CSSProperties = {
+  height: "1px",
+  background: t.surfaceContainer,
+  flex: 1,
+  margin: "0 0.55rem",
+  minWidth: "0.5rem",
+};
+const workflowDetails: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: t.space3,
+  flexWrap: "wrap",
+  color: t.onSurfaceVariant,
+  fontSize: "0.78rem",
+};
+const detailsSummary: CSSProperties = {
+  cursor: "pointer",
+  color: t.warning,
+  fontWeight: 700,
+};
+const compactList: CSSProperties = {
+  margin: "0.5rem 0 0",
+  paddingLeft: "1.2rem",
+  display: "grid",
+  gap: "0.3rem",
+};
+const warningText: CSSProperties = { color: t.warning, fontWeight: 700 };
 const noticeStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
@@ -1926,19 +2181,49 @@ const noticeStyle: CSSProperties = {
 };
 const tabs: CSSProperties = {
   display: "flex",
-  gap: t.space2,
+  gap: "0.25rem",
   borderBottom: ghostBorder,
-  paddingBottom: t.space2,
   flexWrap: "wrap",
 };
-const tabBtn: CSSProperties = { ...ghostBtn, background: "transparent" };
-const activeTab: CSSProperties = { ...ghostBtn, background: t.surfaceContainer };
+const tabBtn: CSSProperties = {
+  border: "none",
+  borderBottom: "2px solid transparent",
+  background: "transparent",
+  color: t.onSurfaceVariant,
+  cursor: "pointer",
+  fontWeight: 700,
+  padding: "0.65rem 0.8rem",
+  fontSize: "0.82rem",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.4rem",
+};
+const activeTab: CSSProperties = {
+  ...tabBtn,
+  color: t.onSurface,
+  borderBottom: `2px solid ${t.primary}`,
+};
+const tabCount: CSSProperties = {
+  minWidth: "1.1rem",
+  height: "1.1rem",
+  borderRadius: "999px",
+  background: t.surfaceContainer,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: "0.66rem",
+};
 const sectionHeader: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-start",
   gap: t.space3,
   flexWrap: "wrap",
+};
+const problemStack: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: t.space3,
 };
 const problemCard: CSSProperties = {
   border: ghostBorder,
@@ -1947,27 +2232,115 @@ const problemCard: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: t.space3,
+  background: t.surfaceLow,
 };
-const problemTitle: CSSProperties = { margin: 0, fontSize: "0.96rem", color: t.onSurface };
+const problemHeader: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: t.space3,
+};
+const problemBadges: CSSProperties = {
+  display: "flex",
+  gap: t.space2,
+  flexWrap: "wrap",
+  alignItems: "center",
+  marginBottom: "0.45rem",
+};
+const problemTitle: CSSProperties = {
+  margin: 0,
+  fontSize: "0.98rem",
+  fontWeight: 650,
+  color: t.onSurface,
+};
+const problemCounts: CSSProperties = {
+  display: "flex",
+  gap: t.space3,
+  color: t.onSurfaceVariant,
+  fontSize: "0.76rem",
+  paddingBottom: t.space2,
+  borderBottom: `1px solid ${t.surfaceContainer}`,
+};
 const subsection: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: t.space2,
-  paddingLeft: t.space2,
 };
 const row: CSSProperties = {
   display: "flex",
   alignItems: "flex-start",
   gap: t.space2,
-  borderTop: `1px solid ${t.surfaceContainer}`,
-  paddingTop: t.space2,
+  padding: "0.5rem 0",
+  borderBottom: `1px solid ${t.surfaceContainer}`,
 };
-const rowTitle: CSSProperties = { margin: 0, color: t.onSurface, fontSize: "0.86rem" };
+const rowTitle: CSSProperties = {
+  margin: 0,
+  color: t.onSurface,
+  fontSize: "0.86rem",
+  fontWeight: 550,
+};
 const lineWrap: CSSProperties = {
   display: "flex",
   gap: t.space2,
   flexWrap: "wrap",
   alignItems: "center",
+};
+const menuWrap: CSSProperties = { position: "relative" };
+const menuButton: CSSProperties = {
+  listStyle: "none",
+  cursor: "pointer",
+  width: "2rem",
+  height: "2rem",
+  borderRadius: t.radiusMd,
+  border: ghostBorder,
+  background: t.surfaceContainer,
+  color: t.onSurface,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+const rowMenuButton: CSSProperties = {
+  ...menuButton,
+  width: "1.8rem",
+  height: "1.8rem",
+};
+const menuPopover: CSSProperties = {
+  position: "absolute",
+  right: 0,
+  top: "calc(100% + 0.3rem)",
+  zIndex: 20,
+  minWidth: "10rem",
+  ...cardSurface,
+  border: ghostBorder,
+  padding: "0.3rem",
+  display: "grid",
+  gap: "0.15rem",
+};
+const menuItem: CSSProperties = {
+  border: "none",
+  background: "transparent",
+  color: t.onSurface,
+  textAlign: "left",
+  cursor: "pointer",
+  borderRadius: t.radiusMd,
+  padding: "0.48rem 0.55rem",
+  fontSize: "0.8rem",
+  fontWeight: 650,
+};
+const addToProblem: CSSProperties = {
+  alignSelf: "flex-start",
+  position: "relative",
+};
+const addToProblemSummary: CSSProperties = {
+  cursor: "pointer",
+  color: t.primary,
+  fontWeight: 750,
+  fontSize: "0.78rem",
+};
+const addToProblemActions: CSSProperties = {
+  ...menuPopover,
+  left: 0,
+  right: "auto",
 };
 const restricted: CSSProperties = {
   display: "inline-flex",
@@ -1977,6 +2350,57 @@ const restricted: CSSProperties = {
   fontSize: "0.75rem",
   fontWeight: 700,
 };
+const revisionHeader: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: t.space3,
+};
+const revisionProgress: CSSProperties = {
+  borderTop: ghostBorder,
+  borderBottom: ghostBorder,
+  padding: `${t.space3} 0`,
+};
+const requirementList: CSSProperties = {
+  listStyle: "none",
+  margin: 0,
+  padding: 0,
+  display: "grid",
+  gap: t.space2,
+};
+const requirementItem: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: t.space2,
+  color: t.onSurface,
+  fontSize: "0.82rem",
+};
+const requirementDot: CSSProperties = {
+  width: "0.45rem",
+  height: "0.45rem",
+  borderRadius: "999px",
+  background: t.warning,
+  flexShrink: 0,
+};
+const readyLine: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: t.space2,
+  color: t.success,
+  fontSize: "0.82rem",
+  fontWeight: 700,
+};
+const emptyRevision: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: t.space4,
+  flexWrap: "wrap",
+};
+const signaturePanelInner: CSSProperties = {
+  display: "grid",
+  gap: t.space2,
+};
 const historyGrid: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "minmax(14rem, 18rem) minmax(0, 1fr)",
@@ -1984,9 +2408,11 @@ const historyGrid: CSSProperties = {
 };
 const versionBtn: CSSProperties = {
   ...ghostBtn,
+  display: "flex",
   alignItems: "flex-start",
   flexDirection: "column",
   textAlign: "left",
+  gap: t.space2,
 };
 const selectedVersionBtn: CSSProperties = { ...versionBtn, outline: `2px solid ${t.primary}` };
 const signatureChip: CSSProperties = {
@@ -2024,7 +2450,7 @@ const fieldLabel: CSSProperties = {
   fontWeight: 700,
 };
 const input: CSSProperties = {
-  border: "none",
+  border: ghostBorder,
   borderRadius: t.radiusMd,
   background: t.surfaceLow,
   color: t.onSurface,

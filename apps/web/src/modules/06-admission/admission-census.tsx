@@ -27,6 +27,15 @@ interface AdmissionRow {
   id: string;
   state: string;
   version: number;
+  patientId?: string | null;
+}
+
+interface PatientSummary {
+  id: string;
+  mrn?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  dob?: string | null;
 }
 
 const ADMISSION_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
@@ -37,6 +46,7 @@ export function AdmissionCensus(): JSX.Element {
   const [state, setState] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [items, setItems] = useState<AdmissionRow[]>([]);
+  const [patientsById, setPatientsById] = useState<Record<string, PatientSummary>>({});
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,8 +66,27 @@ export function AdmissionCensus(): JSX.Element {
         setLoading(false);
         return;
       }
-      const page = data?.items ?? [];
+      const page = (data?.items ?? []) as AdmissionRow[];
       setItems((prev) => (cursor ? [...prev, ...page] : page));
+      const patientIds = [
+        ...new Set(
+          page.map((row) => row.patientId).filter((patientId): patientId is string => !!patientId),
+        ),
+      ];
+      if (patientIds.length > 0) {
+        const results = await Promise.all(
+          patientIds.map((patientId) =>
+            client.GET("/api/v1/patients/{id}", { params: { path: { id: patientId } } }),
+          ),
+        );
+        setPatientsById((prev) => {
+          const next = { ...prev };
+          results.forEach((result, index) => {
+            if (result.data) next[patientIds[index]!] = result.data as PatientSummary;
+          });
+          return next;
+        });
+      }
       setNextCursor(data?.nextCursor ?? null);
       setLoading(false);
     },
@@ -70,7 +99,14 @@ export function AdmissionCensus(): JSX.Element {
 
   const filtered = items.filter((a) => {
     const q = searchQuery.trim().toLowerCase();
-    return !q || a.id.toLowerCase().includes(q) || a.state.toLowerCase().includes(q);
+    const patient = a.patientId ? (patientsById[a.patientId] ?? null) : null;
+    return (
+      !q ||
+      a.id.toLowerCase().includes(q) ||
+      a.state.toLowerCase().includes(q) ||
+      patientDisplayName(patient, a.patientId).toLowerCase().includes(q) ||
+      (patient?.mrn ?? "").toLowerCase().includes(q)
+    );
   });
   const activeCount = items.filter((a) => a.state === "active").length;
   const pendingCount = items.filter(
@@ -248,6 +284,7 @@ export function AdmissionCensus(): JSX.Element {
           <>
             <AdmissionTable
               items={pagedItems}
+              patientsById={patientsById}
               loading={loading}
               onOpen={(id) => navigate(`/admissions/${id}`)}
             />
@@ -287,10 +324,12 @@ export function AdmissionCensus(): JSX.Element {
 
 function AdmissionTable({
   items,
+  patientsById,
   loading,
   onOpen,
 }: {
   items: AdmissionRow[];
+  patientsById: Record<string, PatientSummary>;
   loading: boolean;
   onOpen: (id: string) => void;
 }): JSX.Element {
@@ -299,65 +338,85 @@ function AdmissionTable({
       <table style={tableStyle}>
         <thead>
           <tr style={tableHeadRowStyle}>
-            <th style={{ ...thStyle, width: "48%" }}>Admission</th>
-            <th style={{ ...thStyle, width: "18%" }}>State</th>
-            <th style={{ ...thStyle, width: "18%" }}>Version</th>
-            <th style={{ ...thStyle, width: "16%", textAlign: "right" }}>Action</th>
+            <th style={{ ...thStyle, width: "34%" }}>Admission</th>
+            <th style={{ ...thStyle, width: "30%" }}>Patient</th>
+            <th style={{ ...thStyle, width: "16%" }}>State</th>
+            <th style={{ ...thStyle, width: "10%" }}>Version</th>
+            <th style={{ ...thStyle, width: "10%", textAlign: "right" }}>Action</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((a) => (
-            <tr
-              key={a.id}
-              // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-              role="button"
-              tabIndex={0}
-              onClick={() => onOpen(a.id)}
-              onKeyDown={(ev) => {
-                if (ev.key === "Enter" || ev.key === " ") {
-                  ev.preventDefault();
-                  onOpen(a.id);
-                }
-              }}
-              style={{ cursor: "pointer" }}
-            >
-              <td style={tdStyle}>
-                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", minWidth: 0 }}>
-                  <div style={rowIconStyle}>
-                    <Glyph name="clipboard-check" size={16} />
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="wx-data-md" style={{ fontWeight: 650 }}>
-                      {a.id}
-                    </div>
-                    <div style={rowSubtextStyle}>Admission record</div>
-                  </div>
-                </div>
-              </td>
-              <td style={tdStyle}>
-                <StatusPill
-                  label={stateLabel(a.state)}
-                  tone={ADMISSION_TONE[a.state] ?? "neutral"}
-                />
-              </td>
-              <td className="wx-data-md" style={tdStyle}>
-                v{a.version}
-              </td>
-              <td style={{ ...tdStyle, textAlign: "right" }}>
-                <Button
-                  size="sm"
-                  tone="secondary"
-                  onClick={(event) => {
-                    event.stopPropagation();
+          {items.map((a) => {
+            const patient = a.patientId ? (patientsById[a.patientId] ?? null) : null;
+            return (
+              <tr
+                key={a.id}
+                // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                role="button"
+                tabIndex={0}
+                onClick={() => onOpen(a.id)}
+                onKeyDown={(ev) => {
+                  if (ev.key === "Enter" || ev.key === " ") {
+                    ev.preventDefault();
                     onOpen(a.id);
-                  }}
-                  disabled={loading}
-                >
-                  Open
-                </Button>
-              </td>
-            </tr>
-          ))}
+                  }
+                }}
+                style={{ cursor: "pointer" }}
+              >
+                <td style={tdStyle}>
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: "0.75rem", minWidth: 0 }}
+                  >
+                    <div style={rowIconStyle}>
+                      <Glyph name="clipboard-check" size={16} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="wx-data-md" style={{ fontWeight: 650 }}>
+                        {a.id}
+                      </div>
+                      <div style={rowSubtextStyle}>Admission record</div>
+                    </div>
+                  </div>
+                </td>
+                <td style={tdStyle}>
+                  {a.patientId ? (
+                    <Link
+                      to={`/patients/${a.patientId}`}
+                      style={patientLinkStyle}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      {patientDisplayName(patient, a.patientId)}
+                      <span style={patientMetaStyle}>{patientMeta(patient)}</span>
+                    </Link>
+                  ) : (
+                    <span style={rowSubtextStyle}>Unresolved</span>
+                  )}
+                </td>
+                <td style={tdStyle}>
+                  <StatusPill
+                    label={stateLabel(a.state)}
+                    tone={ADMISSION_TONE[a.state] ?? "neutral"}
+                  />
+                </td>
+                <td className="wx-data-md" style={tdStyle}>
+                  v{a.version}
+                </td>
+                <td style={{ ...tdStyle, textAlign: "right" }}>
+                  <Button
+                    size="sm"
+                    tone="secondary"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onOpen(a.id);
+                    }}
+                    disabled={loading}
+                  >
+                    Open
+                  </Button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -476,3 +535,37 @@ const rowSubtextStyle: CSSProperties = {
   color: "var(--color-on-surface-variant)",
   fontSize: "0.75rem",
 };
+
+const patientLinkStyle: CSSProperties = {
+  display: "inline-flex",
+  flexDirection: "column",
+  gap: "0.15rem",
+  color: "var(--color-primary)",
+  fontWeight: 700,
+  textDecoration: "none",
+};
+
+const patientMetaStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+  fontWeight: 500,
+};
+
+function patientDisplayName(patient: PatientSummary | null, patientId?: string | null): string {
+  const name = [patient?.firstName, patient?.lastName].filter(Boolean).join(" ").trim();
+  return name || patient?.mrn || patientId || "Unresolved";
+}
+
+function patientMeta(patient: PatientSummary | null): string {
+  if (!patient) return "Patient chart";
+  return [
+    patient.dob ? `DOB ${formatDate(patient.dob)}` : null,
+    patient.mrn ? `MRN ${patient.mrn}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value));
+}

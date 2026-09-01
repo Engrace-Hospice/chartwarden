@@ -67,11 +67,7 @@ export class ExternalReferralAlreadyIngestedError extends WardenXError {
 /** 409 INVALID_STATE — a referral transition attempted from the wrong state (§4.2.1 / W-RF-03). */
 export class InvalidReferralStateError extends WardenXError {
   constructor(id: string, state: string, action: string) {
-    super(
-      "INVALID_STATE",
-      `referral ${id} cannot ${action} from state '${state}'`,
-      409,
-    );
+    super("INVALID_STATE", `referral ${id} cannot ${action} from state '${state}'`, 409);
   }
 }
 
@@ -87,9 +83,7 @@ export class ReferralNotTriagedError extends WardenXError {
 }
 
 export class ReferralNotReadyError extends WardenXError {
-  constructor(
-    public readonly blockers: readonly { code: string; message: string }[],
-  ) {
+  constructor(public readonly blockers: readonly { code: string; message: string }[]) {
     super(
       "REFERRAL_NOT_READY",
       "referral is not ready to qualify",
@@ -105,11 +99,7 @@ export class ReferralNotReadyError extends WardenXError {
 
 export class ReferralAlreadyConvertedError extends WardenXError {
   constructor(id: string) {
-    super(
-      "REFERRAL_ALREADY_CONVERTED",
-      `referral ${id} has already produced an admission`,
-      409,
-    );
+    super("REFERRAL_ALREADY_CONVERTED", `referral ${id} has already produced an admission`, 409);
   }
 }
 
@@ -223,46 +213,22 @@ export interface ComplianceWindowFacts {
  * never reaches a mutation method.
  */
 export interface AdmissionAbacResolver {
-  loadReferral(
-    organizationId: string,
-    id: string,
-  ): Promise<ReferralFacts | null>;
-  loadAdmission(
-    organizationId: string,
-    id: string,
-  ): Promise<AdmissionFacts | null>;
+  loadReferral(organizationId: string, id: string): Promise<ReferralFacts | null>;
+  loadAdmission(organizationId: string, id: string): Promise<AdmissionFacts | null>;
   loadCti(organizationId: string, id: string): Promise<CtiFacts | null>;
   loadF2f(organizationId: string, id: string): Promise<F2fFacts | null>;
-  loadComplianceWindow(
-    organizationId: string,
-    id: string,
-  ): Promise<ComplianceWindowFacts | null>;
+  loadComplianceWindow(organizationId: string, id: string): Promise<ComplianceWindowFacts | null>;
   // GAP-011 (§4.6 `admission.scope`) — the six resource kinds `admission.scope` is asked to scope
   // that are NOT keyed by an admission id directly: each resolves the admission the resource belongs
   // to (election_period/level_of_care_period carry `admission_id` directly; election_statement/CTI/
   // face_to_face carry it only via `election_period_id`, a two-hop join) and returns the SAME
   // `AdmissionFacts` shape `loadAdmission` does, so `admission.scope`'s one predicate body stays
   // resource-agnostic once it has the right loader.
-  loadElectionPeriodScope(
-    organizationId: string,
-    id: string,
-  ): Promise<AdmissionFacts | null>;
-  loadElectionStatementScope(
-    organizationId: string,
-    id: string,
-  ): Promise<AdmissionFacts | null>;
-  loadCtiScope(
-    organizationId: string,
-    id: string,
-  ): Promise<AdmissionFacts | null>;
-  loadF2fScope(
-    organizationId: string,
-    id: string,
-  ): Promise<AdmissionFacts | null>;
-  loadLocScope(
-    organizationId: string,
-    id: string,
-  ): Promise<AdmissionFacts | null>;
+  loadElectionPeriodScope(organizationId: string, id: string): Promise<AdmissionFacts | null>;
+  loadElectionStatementScope(organizationId: string, id: string): Promise<AdmissionFacts | null>;
+  loadCtiScope(organizationId: string, id: string): Promise<AdmissionFacts | null>;
+  loadF2fScope(organizationId: string, id: string): Promise<AdmissionFacts | null>;
+  loadLocScope(organizationId: string, id: string): Promise<AdmissionFacts | null>;
 }
 
 /** The capture contracts the routes hand the service (§4.2; abbreviated to the load-bearing fields). */
@@ -371,10 +337,7 @@ export interface CtiDraftInput {
  * TASK-034 fixes the ones that do rather than widening this type to fields that would still be dropped.
  */
 export interface NorAcknowledgeInput {
-  readonly deliveryMethod:
-    | "wet_ink_scanned"
-    | "electronic_witnessed"
-    | "verbal_with_witness";
+  readonly deliveryMethod: "wet_ink_scanned" | "electronic_witnessed" | "verbal_with_witness";
   readonly acknowledgedByRole: "patient" | "legal_representative";
 }
 export interface F2fScheduleInput {
@@ -451,6 +414,7 @@ export interface SummaryRow {
   readonly id: string;
   readonly state: string;
   readonly version: number;
+  readonly patientId?: string | null;
 }
 
 /** The admission aggregate (route 10) — summary + the R-AC-01 activation gate (§7.2 / §5.2.5). */
@@ -552,10 +516,7 @@ export interface AdmissionRouteService {
     },
     actorUserId?: string,
   ): Promise<Page<ReferralReadView>>;
-  getReferral(
-    organizationId: string,
-    id: string,
-  ): Promise<ReferralReadView | null>;
+  getReferral(organizationId: string, id: string): Promise<ReferralReadView | null>;
   updateReferral(
     organizationId: string,
     id: string,
@@ -625,10 +586,7 @@ export interface AdmissionRouteService {
     input: ReferralNoteInput,
     actorUserId: string,
   ): Promise<ReferralNoteView>;
-  listReferralNotes(
-    organizationId: string,
-    id: string,
-  ): Promise<readonly ReferralNoteView[]>;
+  listReferralNotes(organizationId: string, id: string): Promise<readonly ReferralNoteView[]>;
   listReferralActivity(
     organizationId: string,
     id: string,
@@ -678,10 +636,7 @@ export interface AdmissionRouteService {
     organizationId: string,
     query: { state?: string; patientId?: string; cursor?: string; limit?: number },
   ): Promise<Page<SummaryRow>>;
-  getAdmission(
-    organizationId: string,
-    id: string,
-  ): Promise<AdmissionDetail | null>;
+  getAdmission(organizationId: string, id: string): Promise<AdmissionDetail | null>;
   getAdmissionReadiness(
     organizationId: string,
     id: string,
@@ -703,26 +658,15 @@ export interface AdmissionRouteService {
     reason: string,
     ifVersion: number,
   ): Promise<MutationResult>;
-  resumeAdmission(
-    organizationId: string,
-    id: string,
-    ifVersion: number,
-  ): Promise<MutationResult>;
-  activateAdmission(
-    organizationId: string,
-    id: string,
-    ifVersion: number,
-  ): Promise<MutationResult>;
+  resumeAdmission(organizationId: string, id: string, ifVersion: number): Promise<MutationResult>;
+  activateAdmission(organizationId: string, id: string, ifVersion: number): Promise<MutationResult>;
   // Election (routes 15–21)
   draftElectionStatement(
     organizationId: string,
     admissionId: string,
     electionPeriodId: string,
   ): Promise<MutationResult>;
-  getElectionStatement(
-    organizationId: string,
-    id: string,
-  ): Promise<SummaryRow | null>;
+  getElectionStatement(organizationId: string, id: string): Promise<SummaryRow | null>;
   signElection(
     organizationId: string,
     id: string,
@@ -739,10 +683,7 @@ export interface AdmissionRouteService {
     organizationId: string,
     admissionId: string,
   ): Promise<readonly SummaryRow[] | null>;
-  createElectionPeriod(
-    organizationId: string,
-    admissionId: string,
-  ): Promise<MutationResult>;
+  createElectionPeriod(organizationId: string, admissionId: string): Promise<MutationResult>;
   patchElectionPeriod(
     organizationId: string,
     id: string,
@@ -779,16 +720,9 @@ export interface AdmissionRouteService {
     ifVersion: number,
   ): Promise<MutationResult & { writtenCertDeadlineAt: string }>;
   // F2F (routes 28–32)
-  scheduleF2f(
-    organizationId: string,
-    input: F2fScheduleInput,
-  ): Promise<MutationResult>;
+  scheduleF2f(organizationId: string, input: F2fScheduleInput): Promise<MutationResult>;
   getF2f(organizationId: string, id: string): Promise<SummaryRow | null>;
-  completeF2f(
-    organizationId: string,
-    id: string,
-    ifVersion: number,
-  ): Promise<MutationResult>;
+  completeF2f(organizationId: string, id: string, ifVersion: number): Promise<MutationResult>;
   attestF2f(
     organizationId: string,
     id: string,
@@ -811,10 +745,7 @@ export interface AdmissionRouteService {
     effectiveStart?: string,
     reason?: string,
   ): Promise<MutationResult>;
-  listLoc(
-    organizationId: string,
-    admissionId: string,
-  ): Promise<readonly SummaryRow[] | null>;
+  listLoc(organizationId: string, admissionId: string): Promise<readonly SummaryRow[] | null>;
   patchLoc(
     organizationId: string,
     id: string,
@@ -868,10 +799,7 @@ export interface AdmissionRouteService {
     input: NorAcknowledgeInput,
     actorUserId: string,
   ): Promise<MutationResult>;
-  getNor(
-    organizationId: string,
-    admissionId: string,
-  ): Promise<SummaryRow | null>;
+  getNor(organizationId: string, admissionId: string): Promise<SummaryRow | null>;
   // Compliance windows (routes 43–46)
   listComplianceWindowsForAdmission(
     organizationId: string,
@@ -937,11 +865,7 @@ interface Rec {
   referrerPhone?: string;
   patientNameAtReceipt?: string;
   patientDobAtReceipt?: string;
-  patientResolutionStatus?:
-    | "unresolved"
-    | "possible_match"
-    | "matched"
-    | "created";
+  patientResolutionStatus?: "unresolved" | "possible_match" | "matched" | "created";
   electionPeriodId?: string;
   sequence?: number;
   primaryDiagnosisIcd10?: string;
@@ -1008,9 +932,7 @@ export interface AdmissionBackendSeed {
  * `events` array records emitted outbox event names for assertion. Deterministic — no I/O, injected
  * clock.
  */
-export function createInMemoryAdmissionBackend(
-  seed: AdmissionBackendSeed = {},
-): {
+export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}): {
   service: AdmissionRouteService;
   resolver: AdmissionAbacResolver;
   events: string[];
@@ -1058,11 +980,7 @@ export function createInMemoryAdmissionBackend(
     byId.set(id, rec);
     return rec;
   };
-  const get = (
-    organizationId: string,
-    id: string,
-    kind?: string,
-  ): Rec | null => {
+  const get = (organizationId: string, id: string, kind?: string): Rec | null => {
     const rec = byId.get(id);
     if (!rec || rec.organizationId !== organizationId) return null; // §6.6 cross-tenant non-leak
     if (kind && rec.kind !== kind) return null;
@@ -1087,14 +1005,13 @@ export function createInMemoryAdmissionBackend(
     id: rec.id,
     state: rec.state,
     version: rec.version,
+    patientId: rec.patientId ?? null,
   });
   const referralView = (rec: Rec): ReferralReadView => {
     const blockers: Array<{ code: string; message: string }> = [];
     if (
       !rec.patientId ||
-      !["matched", "created"].includes(
-        rec.patientResolutionStatus ?? "unresolved",
-      )
+      !["matched", "created"].includes(rec.patientResolutionStatus ?? "unresolved")
     ) {
       blockers.push({
         code: "PATIENT_UNRESOLVED",
@@ -1104,19 +1021,13 @@ export function createInMemoryAdmissionBackend(
     if (!rec.referringDxText && !rec.externalReferralId) {
       blockers.push({
         code: "CLINICAL_INDICATION_MISSING",
-        message:
-          "A referral reason or clinical indication is required before qualification.",
+        message: "A referral reason or clinical indication is required before qualification.",
       });
     }
-    if (
-      !rec.referrerName &&
-      !rec.referrerOrganization &&
-      !rec.externalReferralId
-    ) {
+    if (!rec.referrerName && !rec.referrerOrganization && !rec.externalReferralId) {
       blockers.push({
         code: "SOURCE_INFORMATION_MISSING",
-        message:
-          "Referral source information is required before qualification.",
+        message: "Referral source information is required before qualification.",
       });
     }
     return {
@@ -1159,9 +1070,7 @@ export function createInMemoryAdmissionBackend(
     };
   };
   const listOfKind = (organizationId: string, kind: string): Rec[] =>
-    [...byId.values()].filter(
-      (r) => r.organizationId === organizationId && r.kind === kind,
-    );
+    [...byId.values()].filter((r) => r.organizationId === organizationId && r.kind === kind);
 
   /**
    * Compute the R-AC-01 activation gate (§7.2 / §5.2.5) over an admission's period-1 bundle. Both the
@@ -1171,35 +1080,25 @@ export function createInMemoryAdmissionBackend(
    */
   const gateFor = (adm: Rec): ActivationGate => {
     const childrenOf = (kind: string): Rec[] =>
-      listOfKind(adm.organizationId, kind).filter(
-        (r) => r.admissionId === adm.id,
-      );
+      listOfKind(adm.organizationId, kind).filter((r) => r.admissionId === adm.id);
     const period =
-      childrenOf("election_period").sort(
-        (a, b) => (a.sequence ?? 1) - (b.sequence ?? 1),
-      )[0] ?? null;
-    const cti = childrenOf("cti").find(
-      (c) => !period || c.electionPeriodId === period.id,
-    );
+      childrenOf("election_period").sort((a, b) => (a.sequence ?? 1) - (b.sequence ?? 1))[0] ??
+      null;
+    const cti = childrenOf("cti").find((c) => !period || c.electionPeriodId === period.id);
     return computeActivationGate({
       periodSequence: period?.sequence ?? 1,
       electionSigned: childrenOf("election_statement").some(
         (s) => s.state === "signed" && (s.signedAtPresent ?? true),
       ),
-      norAcknowledged: childrenOf("nor").some(
-        (n) => n.state === "acknowledged",
-      ),
-      ctiHospiceMdSigned:
-        cti?.state === "awaiting_attending" || cti?.state === "signed",
+      norAcknowledged: childrenOf("nor").some((n) => n.state === "acknowledged"),
+      ctiHospiceMdSigned: cti?.state === "awaiting_attending" || cti?.state === "signed",
       ctiAttendingSigned: cti?.state === "signed",
     });
   };
 
   const readinessFor = (adm: Rec): AdmissionReadinessResult => {
     const childrenOf = (kind: string): Rec[] =>
-      listOfKind(adm.organizationId, kind).filter(
-        (r) => r.admissionId === adm.id,
-      );
+      listOfKind(adm.organizationId, kind).filter((r) => r.admissionId === adm.id);
     const periods = childrenOf("election_period").sort(
       (a, b) => (a.sequence ?? 1) - (b.sequence ?? 1),
     );
@@ -1207,24 +1106,16 @@ export function createInMemoryAdmissionBackend(
     const election = childrenOf("election_statement").find(
       (s) => !period || s.electionPeriodId === period.id,
     );
-    const cti = childrenOf("cti").find(
-      (c) => !period || c.electionPeriodId === period.id,
-    );
+    const cti = childrenOf("cti").find((c) => !period || c.electionPeriodId === period.id);
     const nor = childrenOf("nor")[0];
-    const f2f = childrenOf("f2f").find(
-      (f) => !period || f.electionPeriodId === period.id,
-    );
+    const f2f = childrenOf("f2f").find((f) => !period || f.electionPeriodId === period.id);
     const facts: AdmissionReadinessFacts = {
       admissionId: adm.id,
 
       patientIdentity: {
         patientId: adm.patientId ?? null,
-        referralPatientId: adm.externalReferralId
-          ? (adm.patientId ?? null)
-          : undefined,
-        referralPatientResolutionStatus: adm.externalReferralId
-          ? "created"
-          : undefined,
+        referralPatientId: adm.externalReferralId ? (adm.patientId ?? null) : undefined,
+        referralPatientResolutionStatus: adm.externalReferralId ? "created" : undefined,
       },
 
       admissionDetails: {
@@ -1247,19 +1138,15 @@ export function createInMemoryAdmissionBackend(
       electionStatement: {
         exists: !!election,
         status: election?.state ?? null,
-        signedAtPresent:
-          election?.signedAtPresent ?? election?.state === "signed",
-        belongsToCurrentPeriod:
-          !!election && (!period || election.electionPeriodId === period.id),
+        signedAtPresent: election?.signedAtPresent ?? election?.state === "signed",
+        belongsToCurrentPeriod: !!election && (!period || election.electionPeriodId === period.id),
       },
 
       cti: {
         exists: !!cti,
         status: cti?.state ?? null,
-        hospiceMdSigned:
-          cti?.state === "awaiting_attending" || cti?.state === "signed",
-        attendingRequired:
-          (period?.sequence ?? 1) === 1 && !!cti?.attendingPhysicianId,
+        hospiceMdSigned: cti?.state === "awaiting_attending" || cti?.state === "signed",
+        attendingRequired: (period?.sequence ?? 1) === 1 && !!cti?.attendingPhysicianId,
         attendingSigned: cti?.state === "signed",
       },
 
@@ -1287,10 +1174,7 @@ export function createInMemoryAdmissionBackend(
         const dup = listOfKind(organizationId, "referral").find(
           (r) => r.externalReferralId === input.externalReferralId,
         );
-        if (dup)
-          throw new ExternalReferralAlreadyIngestedError(
-            input.externalReferralId,
-          );
+        if (dup) throw new ExternalReferralAlreadyIngestedError(input.externalReferralId);
       }
       const rec = insert("referral", organizationId, "received", {
         locationId: null,
@@ -1317,14 +1201,10 @@ export function createInMemoryAdmissionBackend(
       if (query.source) rows = rows.filter((r) => r.source === query.source);
       if (query.patientResolutionStatus)
         rows = rows.filter(
-          (r) =>
-            (r.patientResolutionStatus ?? "unresolved") ===
-            query.patientResolutionStatus,
+          (r) => (r.patientResolutionStatus ?? "unresolved") === query.patientResolutionStatus,
         );
-      if (query.priority)
-        rows = rows.filter((r) => (r.priority ?? "routine") === query.priority);
-      if (query.assigned === "unassigned")
-        rows = rows.filter((r) => !r.assignedToUserId);
+      if (query.priority) rows = rows.filter((r) => (r.priority ?? "routine") === query.priority);
+      if (query.assigned === "unassigned") rows = rows.filter((r) => !r.assignedToUserId);
       if (query.assigned === "mine" && actorUserId)
         rows = rows.filter((r) => r.assignedToUserId === actorUserId);
       if (query.q?.trim()) {
@@ -1356,28 +1236,18 @@ export function createInMemoryAdmissionBackend(
       const rec = get(organizationId, id, "referral") ?? notFound(id);
       // Optimistic lock first (§7.1 concurrency edge): a stale write is a VERSION_MISMATCH, even when
       // the winning write already advanced the state out of `received`.
-      if (rec.version !== ifVersion)
-        throw new VersionMismatchError(id, rec.version, ifVersion);
-      if (rec.state !== "received")
-        throw new InvalidReferralStateError(id, rec.state, "triage");
+      if (rec.version !== ifVersion) throw new VersionMismatchError(id, rec.version, ifVersion);
+      if (rec.state !== "received") throw new InvalidReferralStateError(id, rec.state, "triage");
       const next = outcome === "eligible" ? "under_review" : "declined";
       return transition(
         rec,
         next,
         ifVersion,
-        outcome === "eligible"
-          ? "m6.referral.review_started"
-          : "m6.referral.declined",
+        outcome === "eligible" ? "m6.referral.review_started" : "m6.referral.declined",
       );
     },
     async acceptReferral(organizationId, id, input, ifVersion, actorUserId) {
-      return this.convertReferral(
-        organizationId,
-        id,
-        input,
-        ifVersion,
-        actorUserId,
-      );
+      return this.convertReferral(organizationId, id, input, ifVersion, actorUserId);
     },
     async startReferralReview(organizationId, id, ifVersion, actorUserId) {
       void actorUserId;
@@ -1385,39 +1255,21 @@ export function createInMemoryAdmissionBackend(
       if (rec.state !== "received" && rec.state !== "pending_information") {
         throw new InvalidReferralStateError(id, rec.state, "start review");
       }
-      return transition(
-        rec,
-        "under_review",
-        ifVersion,
-        "m6.referral.review_started",
-      );
+      return transition(rec, "under_review", ifVersion, "m6.referral.review_started");
     },
-    async runReferralPatientMatching(
-      organizationId,
-      id,
-      ifVersion,
-      actorUserId,
-    ) {
+    async runReferralPatientMatching(organizationId, id, ifVersion, actorUserId) {
       void actorUserId;
       const rec = get(organizationId, id, "referral") ?? notFound(id);
-      if (rec.version !== ifVersion)
-        throw new VersionMismatchError(id, rec.version, ifVersion);
+      if (rec.version !== ifVersion) throw new VersionMismatchError(id, rec.version, ifVersion);
       rec.patientResolutionStatus = "possible_match";
       rec.version += 1;
       events.push("m6.referral.patient_match_suggested");
       return { ...summary(rec), candidates: [] };
     },
-    async confirmReferralPatient(
-      organizationId,
-      id,
-      patientId,
-      ifVersion,
-      actorUserId,
-    ) {
+    async confirmReferralPatient(organizationId, id, patientId, ifVersion, actorUserId) {
       void actorUserId;
       const rec = get(organizationId, id, "referral") ?? notFound(id);
-      if (rec.version !== ifVersion)
-        throw new VersionMismatchError(id, rec.version, ifVersion);
+      if (rec.version !== ifVersion) throw new VersionMismatchError(id, rec.version, ifVersion);
       rec.patientId = patientId;
       rec.patientResolutionStatus = "matched";
       rec.version += 1;
@@ -1426,8 +1278,7 @@ export function createInMemoryAdmissionBackend(
     async createReferralPatient(organizationId, id, ifVersion, actorUserId) {
       void actorUserId;
       const rec = get(organizationId, id, "referral") ?? notFound(id);
-      if (rec.version !== ifVersion)
-        throw new VersionMismatchError(id, rec.version, ifVersion);
+      if (rec.version !== ifVersion) throw new VersionMismatchError(id, rec.version, ifVersion);
       const patientId = nextId("patient");
       rec.patientId = patientId;
       rec.patientResolutionStatus = "created";
@@ -1441,15 +1292,12 @@ export function createInMemoryAdmissionBackend(
         throw new InvalidReferralStateError(id, rec.state, "qualify");
       if (
         !rec.patientId ||
-        !["matched", "created"].includes(
-          rec.patientResolutionStatus ?? "unresolved",
-        )
+        !["matched", "created"].includes(rec.patientResolutionStatus ?? "unresolved")
       ) {
         throw new ReferralNotReadyError([
           {
             code: "PATIENT_UNRESOLVED",
-            message:
-              "A patient must be confirmed or created before qualification.",
+            message: "A patient must be confirmed or created before qualification.",
           },
         ]);
       }
@@ -1468,24 +1316,16 @@ export function createInMemoryAdmissionBackend(
       if (rec.state !== "qualified") throw new ReferralNotTriagedError(id);
       if (
         !rec.patientId ||
-        !["matched", "created"].includes(
-          rec.patientResolutionStatus ?? "unresolved",
-        )
+        !["matched", "created"].includes(rec.patientResolutionStatus ?? "unresolved")
       ) {
         throw new ReferralNotReadyError([
           {
             code: "PATIENT_UNRESOLVED",
-            message:
-              "A patient must be confirmed or created before qualification.",
+            message: "A patient must be confirmed or created before qualification.",
           },
         ]);
       }
-      const res = transition(
-        rec,
-        "converted",
-        ifVersion,
-        "m6.referral.converted",
-      );
+      const res = transition(rec, "converted", ifVersion, "m6.referral.converted");
       const patientId = rec.patientId;
       const adm = insert("admission", organizationId, "pending", {
         patientId,
@@ -1558,61 +1398,31 @@ export function createInMemoryAdmissionBackend(
           createdAt: a.createdAt ?? now().toISOString(),
         }));
     },
-    async updateReferralPriority(
-      organizationId,
-      id,
-      priority,
-      ifVersion,
-      actorUserId,
-    ) {
+    async updateReferralPriority(organizationId, id, priority, ifVersion, actorUserId) {
       void actorUserId;
       const rec = get(organizationId, id, "referral") ?? notFound(id);
-      if (rec.version !== ifVersion)
-        throw new VersionMismatchError(id, rec.version, ifVersion);
+      if (rec.version !== ifVersion) throw new VersionMismatchError(id, rec.version, ifVersion);
       rec.priority = priority;
       rec.version += 1;
       return summary(rec);
     },
-    async assignReferral(
-      organizationId,
-      id,
-      assignedToUserId,
-      ifVersion,
-      actorUserId,
-    ) {
+    async assignReferral(organizationId, id, assignedToUserId, ifVersion, actorUserId) {
       void actorUserId;
       const rec = get(organizationId, id, "referral") ?? notFound(id);
-      if (rec.version !== ifVersion)
-        throw new VersionMismatchError(id, rec.version, ifVersion);
+      if (rec.version !== ifVersion) throw new VersionMismatchError(id, rec.version, ifVersion);
       rec.assignedToUserId = assignedToUserId ?? null;
       rec.version += 1;
       return summary(rec);
     },
-    async markReferralPendingInformation(
-      organizationId,
-      id,
-      reason,
-      ifVersion,
-      actorUserId,
-    ) {
+    async markReferralPendingInformation(organizationId, id, reason, ifVersion, actorUserId) {
       void actorUserId;
       const rec = get(organizationId, id, "referral") ?? notFound(id);
       if (rec.state !== "under_review")
-        throw new InvalidReferralStateError(
-          id,
-          rec.state,
-          "mark pending information",
-        );
+        throw new InvalidReferralStateError(id, rec.state, "mark pending information");
       rec.rejectionReason = reason;
       return transition(rec, "pending_information", ifVersion);
     },
-    async markReferralDuplicate(
-      organizationId,
-      id,
-      reason,
-      ifVersion,
-      actorUserId,
-    ) {
+    async markReferralDuplicate(organizationId, id, reason, ifVersion, actorUserId) {
       void actorUserId;
       const rec = get(organizationId, id, "referral") ?? notFound(id);
       if (rec.state === "converted")
@@ -1623,8 +1433,7 @@ export function createInMemoryAdmissionBackend(
     async withdrawReferral(organizationId, id, reason, ifVersion, actorUserId) {
       void actorUserId;
       const rec = get(organizationId, id, "referral") ?? notFound(id);
-      if (rec.state === "converted")
-        throw new InvalidReferralStateError(id, rec.state, "withdraw");
+      if (rec.state === "converted") throw new InvalidReferralStateError(id, rec.state, "withdraw");
       rec.rejectionReason = reason ?? "Referral withdrawn";
       return transition(rec, "withdrawn", ifVersion);
     },
@@ -1688,9 +1497,7 @@ export function createInMemoryAdmissionBackend(
       const adm = admissions.length ? admissions[admissions.length - 1] : null;
       if (!adm) return { admission: null, periods: [], complianceWindows: [] };
       const childrenOf = (kind: string): Rec[] =>
-        listOfKind(organizationId, kind).filter(
-          (r) => r.admissionId === adm.id,
-        );
+        listOfKind(organizationId, kind).filter((r) => r.admissionId === adm.id);
       // Election statement / CTI / F2F link to a period via `electionPeriodId`.
       const byPeriod = (kind: string): Map<string, Rec> => {
         const m = new Map<string, Rec>();
@@ -1730,9 +1537,7 @@ export function createInMemoryAdmissionBackend(
                   id: cti.id,
                   status: cti.state,
                   version: Number(cti.version),
-                  hospiceMdSigned:
-                    cti.state === "awaiting_attending" ||
-                    cti.state === "signed",
+                  hospiceMdSigned: cti.state === "awaiting_attending" || cti.state === "signed",
                   attendingMdSigned: cti.state === "signed",
                   signedLate: false,
                   periodStart: p.periodStartDate ?? null,
@@ -1786,8 +1591,7 @@ export function createInMemoryAdmissionBackend(
       }
       Object.assign(rec, {
         admissionAt: input.admissionAt ?? rec.admissionAt,
-        attendingPhysicianId:
-          input.attendingPhysicianId ?? rec.attendingPhysicianId,
+        attendingPhysicianId: input.attendingPhysicianId ?? rec.attendingPhysicianId,
         providerEntityId: finalProviderEntityId ?? null,
         locationId: finalLocationId ?? null,
       });
@@ -1808,20 +1612,12 @@ export function createInMemoryAdmissionBackend(
       const readiness = readinessFor(rec);
       const gate = gateFor(rec);
       if (!readiness.canActivate)
-        throw new ActivationPreconditionError(
-          gate.missing,
-          readiness.requirements,
-        );
+        throw new ActivationPreconditionError(gate.missing, readiness.requirements);
       return transition(rec, "active", ifVersion, "m6.admission.activated");
     },
 
-    async draftElectionStatement(
-      organizationId,
-      admissionId,
-      electionPeriodId,
-    ) {
-      const adm =
-        get(organizationId, admissionId, "admission") ?? notFound(admissionId);
+    async draftElectionStatement(organizationId, admissionId, electionPeriodId) {
+      const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
       const rec = insert("election_statement", organizationId, "drafted", {
         admissionId: adm.id,
         patientId: adm.patientId,
@@ -1851,8 +1647,7 @@ export function createInMemoryAdmissionBackend(
         .map(summary);
     },
     async createElectionPeriod(organizationId, admissionId) {
-      const adm =
-        get(organizationId, admissionId, "admission") ?? notFound(admissionId);
+      const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
       const rec = insert("election_period", organizationId, "pending", {
         admissionId: adm.id,
         patientId: adm.patientId,
@@ -1868,11 +1663,7 @@ export function createInMemoryAdmissionBackend(
     async draftCti(organizationId, input, actorUserId) {
       void actorUserId;
       // Resolve the period → admission so the activation gate can find this CTI in the period-1 bundle.
-      const period = get(
-        organizationId,
-        input.electionPeriodId,
-        "election_period",
-      );
+      const period = get(organizationId, input.electionPeriodId, "election_period");
       const rec = insert("cti", organizationId, "drafted", {
         admissionId: period?.admissionId,
         electionPeriodId: input.electionPeriodId,
@@ -1910,11 +1701,7 @@ export function createInMemoryAdmissionBackend(
         outcome.fullySigned ? "m6.cti.signed" : undefined,
       );
       if (outcome.activatesPeriod && rec.electionPeriodId) {
-        const period = get(
-          organizationId,
-          rec.electionPeriodId,
-          "election_period",
-        );
+        const period = get(organizationId, rec.electionPeriodId, "election_period");
         if (period && period.state !== "active") {
           period.state = "active";
           period.version += 1;
@@ -1938,23 +1725,15 @@ export function createInMemoryAdmissionBackend(
       const res = transition(rec, rec.state, ifVersion, "m6.cti.late_flagged");
       // D4 (§7.3 late-cert path): written-cert deadline = period_start + 2 calendar days at 23:59
       // org-TZ. Fall back to the org-local day of `now()` only when no period start is on file.
-      const periodStart =
-        rec.periodStartDate ?? now().toISOString().slice(0, 10);
-      const writtenCertDeadlineAt = computeWrittenCertDeadline(
-        periodStart,
-        orgTimeZone,
-      );
+      const periodStart = rec.periodStartDate ?? now().toISOString().slice(0, 10);
+      const writtenCertDeadlineAt = computeWrittenCertDeadline(periodStart, orgTimeZone);
       return { ...res, writtenCertDeadlineAt };
     },
 
     async scheduleF2f(organizationId, input) {
       // W-F2F-01: the scheduled date must fall inside the CMS 418.22 prior-to window, computed
       // server-side in org TZ off the period start. Validated only when the period start is on file.
-      const period = get(
-        organizationId,
-        input.electionPeriodId,
-        "election_period",
-      );
+      const period = get(organizationId, input.electionPeriodId, "election_period");
       if (input.scheduledDate && period?.periodStartDate) {
         const window = computeF2fWindow(period.periodStartDate, orgTimeZone);
         if (!isF2fScheduledWithinWindow(input.scheduledDate, window)) {
@@ -1987,13 +1766,7 @@ export function createInMemoryAdmissionBackend(
       const rec = get(organizationId, id, "f2f") ?? notFound(id);
       return transition(rec, "attested", ifVersion, "m6.f2f.attested");
     },
-    async overrideF2fWindow(
-      organizationId,
-      id,
-      reason,
-      ifVersion,
-      actorUserId,
-    ) {
+    async overrideF2fWindow(organizationId, id, reason, ifVersion, actorUserId) {
       void reason;
       void actorUserId;
       const rec = get(organizationId, id, "f2f") ?? notFound(id);
@@ -2009,16 +1782,11 @@ export function createInMemoryAdmissionBackend(
       reason = "",
     ) {
       void effectiveStart;
-      const adm =
-        get(organizationId, admissionId, "admission") ?? notFound(admissionId);
+      const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
       const needsIpuBed =
-        newLevel === "inpatient_respite_care" ||
-        newLevel === "general_inpatient_care";
+        newLevel === "inpatient_respite_care" || newLevel === "general_inpatient_care";
       if (needsIpuBed && !facilityId) {
-        throw new AdmissionStateError(
-          "IPU_FACILITY_REQUIRED",
-          "IRC/GIP requires a facility_id",
-        );
+        throw new AdmissionStateError("IPU_FACILITY_REQUIRED", "IRC/GIP requires a facility_id");
       }
       if (newLevel === "general_inpatient_care" && reason.trim().length < 30) {
         throw new AdmissionStateError(
@@ -2026,15 +1794,10 @@ export function createInMemoryAdmissionBackend(
           "GIP requires ≥ 30 characters of uncontrolled-symptom / end-of-life documentation",
         );
       }
-      const rec = insert(
-        "loc",
-        organizationId,
-        needsIpuBed ? "assigning" : "active",
-        {
-          admissionId: adm.id,
-          patientId: adm.patientId,
-        },
-      );
+      const rec = insert("loc", organizationId, needsIpuBed ? "assigning" : "active", {
+        admissionId: adm.id,
+        patientId: adm.patientId,
+      });
       if (!needsIpuBed) events.push("m6.loc.changed");
       return summary(rec);
     },
@@ -2050,8 +1813,7 @@ export function createInMemoryAdmissionBackend(
       return transition(rec, rec.state, ifVersion);
     },
     async confirmLocBedAssignment(organizationId, locPeriodId, ifVersion) {
-      const rec =
-        get(organizationId, locPeriodId, "loc") ?? notFound(locPeriodId);
+      const rec = get(organizationId, locPeriodId, "loc") ?? notFound(locPeriodId);
       if (rec.state !== "assigning") {
         throw new AdmissionStateError(
           "ILLEGAL_TRANSITION",
@@ -2063,8 +1825,7 @@ export function createInMemoryAdmissionBackend(
 
     async createRevocation(organizationId, admissionId, input, actorUserId) {
       void actorUserId;
-      const adm =
-        get(organizationId, admissionId, "admission") ?? notFound(admissionId);
+      const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
       adm.state = "discharged";
       adm.version += 1;
       const rec = insert("revocation", organizationId, "created", {
@@ -2072,10 +1833,7 @@ export function createInMemoryAdmissionBackend(
         patientId: adm.patientId,
         effectiveAt: input.revocationDate,
         signedAt: input.revocationDate,
-        signerKind:
-          input.signingRole === "legal_representative"
-            ? "representative"
-            : "patient",
+        signerKind: input.signingRole === "legal_representative" ? "representative" : "patient",
         revocationReason: input.revocationReason,
         narrative: input.narrative,
         // signingPatientName intentionally not stored — see RevocationInput's doc comment.
@@ -2086,8 +1844,7 @@ export function createInMemoryAdmissionBackend(
     },
     async transferOut(organizationId, admissionId, input, actorUserId) {
       void actorUserId;
-      const adm =
-        get(organizationId, admissionId, "admission") ?? notFound(admissionId);
+      const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
       adm.state = "discharged";
       adm.version += 1;
       const rec = insert("transfer", organizationId, "created", {
@@ -2105,8 +1862,7 @@ export function createInMemoryAdmissionBackend(
     },
     async transferIn(organizationId, admissionId, input, actorUserId) {
       void actorUserId;
-      const adm =
-        get(organizationId, admissionId, "admission") ?? notFound(admissionId);
+      const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
       // W-DC-03 / D9: the receiving hospice inherits the carried sequence as the ACTIVE period (no CTI
       // required from us) and opens the next PENDING period (our CTI required). No counter restart.
       const plan = planTransferIn(input);
@@ -2116,16 +1872,11 @@ export function createInMemoryAdmissionBackend(
         sequence: plan.inherited.sequence,
         periodStartDate: input.priorElectionStartDate,
       });
-      const nextPeriod = insert(
-        "election_period",
-        organizationId,
-        plan.next.state,
-        {
-          admissionId: adm.id,
-          patientId: adm.patientId,
-          sequence: plan.next.sequence,
-        },
-      );
+      const nextPeriod = insert("election_period", organizationId, plan.next.state, {
+        admissionId: adm.id,
+        patientId: adm.patientId,
+        sequence: plan.next.sequence,
+      });
       // D9 — draft OUR CTI against the next period (the inherited period runs on the sending
       // hospice's certification, no CTI required from us).
       insert("cti", organizationId, "drafted", {
@@ -2154,8 +1905,7 @@ export function createInMemoryAdmissionBackend(
     },
     async discharge(organizationId, admissionId, input, actorUserId) {
       void actorUserId;
-      const adm =
-        get(organizationId, admissionId, "admission") ?? notFound(admissionId);
+      const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
       // §6.3 — the per-reason narrative gates (D11 tightens no_longer_terminal/other; for_cause needs a
       // forCauseReason). The reason→permission key is already enforced at the route preHandler.
       const issue = checkDischargeNarrative(
@@ -2165,9 +1915,7 @@ export function createInMemoryAdmissionBackend(
         input.deathCertifierId,
       );
       if (issue) throw new AdmissionStateError(issue.code, issue.message);
-      const requiresMedicalDirectorCosign = dischargeRequiresCosign(
-        input.reason,
-      );
+      const requiresMedicalDirectorCosign = dischargeRequiresCosign(input.reason);
       events.push("m6.discharge.created");
       if (requiresMedicalDirectorCosign) {
         // W-DC-02 / D11 — filing a for-cause discharge does NOT discharge the admission; it stays
@@ -2204,9 +1952,7 @@ export function createInMemoryAdmissionBackend(
           .filter((p) => p.admissionId === adm.id && p.periodStartDate)
           .map((p) => p.periodStartDate as LocalDate)
           .sort()[0];
-        const days = periodStart
-          ? daysBetween(periodStart, input.dischargeDate)
-          : 1;
+        const days = periodStart ? daysBetween(periodStart, input.dischargeDate) : 1;
         const { eligible } = decideBereavementEligibility({
           reason: input.reason,
           daysOnActiveElectionBeforeDeath: days,
@@ -2227,12 +1973,7 @@ export function createInMemoryAdmissionBackend(
       // W-DC-02 — the medical-director cosign completes the discharge AND discharges the admission that
       // was held `active` with the pending flag while awaiting governance sign-off (D11).
       const outcome = resolveForCauseDischarge("cosign");
-      const res = transition(
-        rec,
-        outcome.dischargeState,
-        ifVersion,
-        "m6.discharge.cosigned",
-      );
+      const res = transition(rec, outcome.dischargeState, ifVersion, "m6.discharge.cosigned");
       if (rec.admissionId) {
         const adm = get(organizationId, rec.admissionId, "admission");
         if (adm) {
@@ -2247,8 +1988,7 @@ export function createInMemoryAdmissionBackend(
 
     async acknowledgeNor(organizationId, admissionId, input, actorUserId) {
       void actorUserId;
-      const adm =
-        get(organizationId, admissionId, "admission") ?? notFound(admissionId);
+      const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
       const rec = insert("nor", organizationId, "acknowledged", {
         admissionId: adm.id,
         patientId: adm.patientId,
@@ -2269,9 +2009,7 @@ export function createInMemoryAdmissionBackend(
     },
     async getNor(organizationId, admissionId) {
       if (!get(organizationId, admissionId, "admission")) return null;
-      const rec = listOfKind(organizationId, "nor").find(
-        (r) => r.admissionId === admissionId,
-      );
+      const rec = listOfKind(organizationId, "nor").find((r) => r.admissionId === admissionId);
       return rec ? summary(rec) : null;
     },
 
@@ -2288,29 +2026,13 @@ export function createInMemoryAdmissionBackend(
     },
     async closeComplianceWindow(organizationId, id, ifVersion) {
       const rec = get(organizationId, id, "compliance_window") ?? notFound(id);
-      return transition(
-        rec,
-        "closed",
-        ifVersion,
-        "m6.compliance.window.closed",
-      );
+      return transition(rec, "closed", ifVersion, "m6.compliance.window.closed");
     },
-    async overrideComplianceWindow(
-      organizationId,
-      id,
-      reason,
-      ifVersion,
-      actorUserId,
-    ) {
+    async overrideComplianceWindow(organizationId, id, reason, ifVersion, actorUserId) {
       void reason;
       void actorUserId;
       const rec = get(organizationId, id, "compliance_window") ?? notFound(id);
-      return transition(
-        rec,
-        "closed",
-        ifVersion,
-        "m6.compliance.window.overridden",
-      );
+      return transition(rec, "closed", ifVersion, "m6.compliance.window.overridden");
     },
   };
 
@@ -2361,9 +2083,7 @@ export function createInMemoryAdmissionBackend(
     },
     async loadF2f(organizationId, id) {
       const rec = get(organizationId, id, "f2f");
-      return rec?.scheduledClinicianId
-        ? { scheduledClinicianId: rec.scheduledClinicianId }
-        : null;
+      return rec?.scheduledClinicianId ? { scheduledClinicianId: rec.scheduledClinicianId } : null;
     },
     async loadComplianceWindow(organizationId, id) {
       const rec = get(organizationId, id, "compliance_window");

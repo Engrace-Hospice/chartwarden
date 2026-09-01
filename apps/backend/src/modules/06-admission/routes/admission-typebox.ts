@@ -403,6 +403,7 @@ export const SummaryRowResponseSchema = Type.Object({
   id: Type.String(),
   state: Type.String(),
   version: Type.Integer(),
+  patientId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 
 /** Route 6 (accept) — the referral's post-accept summary + the `admission.draft_from_referral` seed's id. */

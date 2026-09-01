@@ -121,6 +121,11 @@ bun --cwd=apps/backend run worker
 bun run dev:web
 ```
 
+```bash
+# Terminal 4 - Mimio
+docker compose up -d minio
+```
+
 The web development server proxies `/api` requests to the API at port 3000, so open
 `http://localhost:5173` rather than the API URL in your browser.
 

@@ -160,6 +160,16 @@ function clientFor(readinessResponse = readiness()): ApiClient {
             },
           ],
         });
+      if (path === "/api/v1/patients/{id}")
+        return ok({
+          id: "patient-1",
+          organizationId: "org-1",
+          mrn: "MRN-1001",
+          lastName: "Rivera",
+          firstName: "Elena",
+          dob: "1946-04-12",
+          status: "active",
+        });
       if (path === "/api/v1/admissions/{id}/compliance-windows")
         return ok({ items: [], nextCursor: null });
       return ok({ items: [], nextCursor: null });
@@ -197,6 +207,9 @@ describe("Admission intake workspace", () => {
     ).toBeGreaterThan(0);
     expect(screen.getAllByText("Election Statement must be signed.").length).toBeGreaterThan(0);
     expect(screen.getByText("HOPE Admission Assessment")).toBeTruthy();
+    const patientLinks = screen.getAllByRole("link", { name: "Elena Rivera" });
+    expect(patientLinks.length).toBeGreaterThan(0);
+    expect(patientLinks[0]?.getAttribute("href")).toBe("/patients/patient-1");
     expect(screen.getAllByText("1 overdue or missed").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Due soon").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Open HOPE" })).toBeTruthy();

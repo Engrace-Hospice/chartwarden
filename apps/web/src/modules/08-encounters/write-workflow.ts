@@ -7,12 +7,10 @@
 // caller into a loop step-up can't resolve.
 //
 // M8's sign/cosign routes gate on a real M2 step-up now (requireStepUp, PARAM-004/CoP-418.104(c)
-// follow-up), but packages/auth's requireAbac/requireStepUp still don't emit a distinguishable
-// STEP_UP_REQUIRED error code on denial (a pre-existing, cross-module gap — every requireStepUp caller,
-// not just M8; not this ceremony's to fix). So a stale step-up here still falls through to the generic
-// 403 message rather than this redirect; see encounter-read.tsx. This helper stays generic and
-// future-proof rather than dropping the branch, matching the copy this file mirrors in
-// apps/web/src/modules/23-billing-medicare.
+// follow-up), but packages/auth's requireAbac/requireStepUp can surface that denial as a plain
+// FORBIDDEN envelope whose message names `step_up_recent`. Treat that as the same user-recoverable
+// ceremony gap as STEP_UP_REQUIRED so the user lands on the existing `/step-up` screen instead of a
+// dead-end permission error.
 //
 // Cross-module imports are architecture-fitness-enforced (each module owns its own web codePaths), so
 // this is a local copy, not a shared import — see encounter-status.ts for the same per-module-helper
@@ -23,8 +21,10 @@ export function authFailureRedirect(
   status: number | undefined,
   code: string | undefined,
   currentPath: string,
+  message?: string,
 ): string | null {
   if (status === 401) return "/login";
-  if (code === "STEP_UP_REQUIRED") return `/step-up?returnTo=${encodeURIComponent(currentPath)}`;
+  if (code === "STEP_UP_REQUIRED" || (status === 403 && message?.includes("step_up_recent")))
+    return `/step-up?returnTo=${encodeURIComponent(currentPath)}`;
   return null;
 }
