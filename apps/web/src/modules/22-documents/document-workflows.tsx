@@ -8,11 +8,20 @@ import {
 } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CSSProperties, DragEvent, JSX, ReactNode } from "react";
+import type {
+  CSSProperties,
+  DragEvent,
+  JSX,
+  ReactNode,
+} from "react";
 import { lifecycleTone } from "./lantern";
 
 type DocumentContext =
-  | { kind: "patient"; patientId: string; admissionId?: string | null }
+  | {
+      kind: "patient";
+      patientId: string;
+      admissionId?: string | null;
+    }
   | {
       kind: "referral";
       referralId: string;
@@ -64,12 +73,14 @@ type UploadStage =
   | "uploading"
   | "verifying"
   | "complete";
+
 type DocumentTypeValue =
   | "code_status_directive"
   | "consent_record"
   | "referral"
   | "intake_source"
   | "other";
+
 type RetentionClass =
   | "compliance"
   | "clinical_record"
@@ -77,12 +88,14 @@ type RetentionClass =
   | "operational"
   | "intake_artifact"
   | "compliance_42cfr_part2";
+
 type AcceptedMime =
   | "application/pdf"
   | "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   | "image/jpeg"
   | "image/png"
   | "image/tiff";
+
 type SourceChannel =
   | "email"
   | "fax"
@@ -119,9 +132,12 @@ const FILTERS = [
   { value: "consent_record", label: "Consent forms" },
   { value: "intake_source", label: "Intake" },
   { value: "other", label: "Other" },
-];
+] as const;
 
-const SOURCE_OPTIONS: ReadonlyArray<{ value: SourceChannel; label: string }> = [
+const SOURCE_OPTIONS: ReadonlyArray<{
+  value: SourceChannel;
+  label: string;
+}> = [
   { value: "email", label: "Email" },
   { value: "fax", label: "Fax" },
   { value: "scanned_physical", label: "Scanned physical copy" },
@@ -137,9 +153,9 @@ export function PatientDocumentWorkspace({
     <DocumentCollection
       context={{ kind: "patient", patientId }}
       title="Documents"
-      subtitle="POLST, consent forms, intake documents, and other patient records."
-      emptyTitle="No patient documents yet."
-      emptyDescription="Upload POLST, consent forms, intake documents, or other patient records."
+      subtitle="Manage POLST, consent forms, intake files and other patient records."
+      emptyTitle="No patient documents yet"
+      emptyDescription="Upload a patient document to make it available in the chart."
       defaultDocumentType="code_status_directive"
       showPatientFacing
     />
@@ -157,11 +173,16 @@ export function ReferralDocumentsPanel({
 }): JSX.Element {
   return (
     <DocumentCollection
-      context={{ kind: "referral", referralId, patientId, admissionId }}
-      title="Referral Documents"
-      subtitle="Files received for this referral remain linked here after patient matching."
-      emptyTitle="No documents received yet."
-      emptyDescription="Upload files received by fax, email, PDF, Word, or from a scanned physical copy."
+      context={{
+        kind: "referral",
+        referralId,
+        patientId,
+        admissionId,
+      }}
+      title="Referral documents"
+      subtitle="Files received for this referral remain linked after patient matching."
+      emptyTitle="No documents received yet"
+      emptyDescription="Upload a fax, email attachment, Word/PDF document or scanned physical copy."
       defaultDocumentType="referral"
       compact
     />
@@ -188,14 +209,23 @@ function DocumentCollection({
   showPatientFacing?: boolean;
 }): JSX.Element {
   const client = useApiClient();
+
   const [rows, setRows] = useState<DocumentRow[]>([]);
   const [versions, setVersions] = useState<Record<string, VersionRow[]>>({});
+
   const [filter, setFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [newVersionFor, setNewVersionFor] = useState<DocumentRow | null>(null);
+  const [newVersionFor, setNewVersionFor] =
+    useState<DocumentRow | null>(null);
   const [detail, setDetail] = useState<DocumentRow | null>(null);
+
   const [preview, setPreview] = useState<{
     doc: DocumentRow;
     version: VersionRow;
@@ -205,34 +235,61 @@ function DocumentCollection({
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+
     const query =
       context.kind === "patient"
         ? { patientId: context.patientId }
-        : { aggregateType: "referral", aggregateId: context.referralId };
-    const { data, error: err } = await client.GET("/api/v1/documents", {
-      params: { query },
-    });
+        : {
+            aggregateType: "referral",
+            aggregateId: context.referralId,
+          };
+
+    const { data, error: err } = await client.GET(
+      "/api/v1/documents",
+      {
+        params: { query },
+      },
+    );
+
     if (err) {
       setError(errorMessage(err, "Could not load documents."));
       setLoading(false);
       return;
     }
+
     const items = ((data?.items ?? []) as DocumentRow[])
-      .filter((doc) => Boolean(doc?.id && doc?.title && doc?.aggregateType))
-      .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+      .filter((doc) =>
+        Boolean(doc?.id && doc?.title && doc?.aggregateType),
+      )
+      .sort(
+        (a, b) =>
+          Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
+      );
+
     setRows(items);
     setLoading(false);
+
     const versionPairs = await Promise.all(
       items.map(async (doc) => {
-        const response = await client.GET("/api/v1/documents/{id}/versions", {
-          params: { path: { id: doc.id }, query: { limit: 25 } },
-        });
+        const response = await client.GET(
+          "/api/v1/documents/{id}/versions",
+          {
+            params: {
+              path: { id: doc.id },
+              query: { limit: 25 },
+            },
+          },
+        );
+
         return [
           doc.id,
-          response.error ? [] : ((response.data?.items ?? []) as VersionRow[]),
+          response.error
+            ? []
+            : ((response.data?.items ?? []) as VersionRow[]),
         ] as const;
       }),
     );
+
     setVersions(Object.fromEntries(versionPairs));
   }, [client, context]);
 
@@ -240,138 +297,475 @@ function DocumentCollection({
     void load();
   }, [load]);
 
-  const visible = useMemo(
+  const counts = useMemo(() => {
+    const result: Record<string, number> = {
+      "": rows.length,
+    };
+
+    for (const option of FILTERS) {
+      if (!option.value) continue;
+
+      result[option.value] = rows.filter(
+        (doc) =>
+          displayDocumentTypeValue(doc) === option.value,
+      ).length;
+    }
+
+    return result;
+  }, [rows]);
+
+  const sourceOptions = useMemo(
     () =>
-      rows.filter((doc) => !filter || displayDocumentTypeValue(doc) === filter),
-    [filter, rows],
+      [
+        ...new Set(
+          rows
+            .map((doc) => doc.metadata?.sourceChannel)
+            .filter(Boolean),
+        ),
+      ] as SourceChannel[],
+    [rows],
   );
+
+  const statusOptions = useMemo(
+    () =>
+      [...new Set(rows.map((doc) => doc.status).filter(Boolean))].sort(),
+    [rows],
+  );
+
+  const visible = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return rows.filter((doc) => {
+      const type = displayDocumentTypeValue(doc);
+      const source = doc.metadata?.sourceChannel ?? "";
+
+      const matchesType = !filter || type === filter;
+      const matchesSource =
+        !sourceFilter || source === sourceFilter;
+      const matchesStatus =
+        !statusFilter || doc.status === statusFilter;
+
+      const matchesSearch =
+        !query ||
+        doc.title.toLowerCase().includes(query) ||
+        displayDocumentType(doc)
+          .toLowerCase()
+          .includes(query) ||
+        provenanceLabel(doc.metadata)
+          .toLowerCase()
+          .includes(query) ||
+        doc.metadata?.originalFilename
+          ?.toLowerCase()
+          .includes(query) ||
+        doc.metadata?.notes
+          ?.toLowerCase()
+          .includes(query);
+
+      return (
+        matchesType &&
+        matchesSource &&
+        matchesStatus &&
+        matchesSearch
+      );
+    });
+  }, [filter, rows, search, sourceFilter, statusFilter]);
+
+  const activeSecondaryFilters =
+    Number(Boolean(search.trim())) +
+    Number(Boolean(sourceFilter)) +
+    Number(Boolean(statusFilter));
+
+  const clearSecondaryFilters = (): void => {
+    setSearch("");
+    setSourceFilter("");
+    setStatusFilter("");
+  };
+
+  const clearAllFilters = (): void => {
+    setFilter("");
+    clearSecondaryFilters();
+  };
 
   const openSigned = async (
     doc: DocumentRow,
     mode: "preview" | "download",
   ): Promise<void> => {
     const current = currentVersion(doc, versions[doc.id]);
+
     if (!current) {
-      setError("This document has no current uploaded version yet.");
+      setError(
+        "This document has no current uploaded version yet.",
+      );
       return;
     }
+
     const { data, error: err } = await client.GET(
       "/api/v1/documents/{id}/versions/{versionId}/content",
       {
         params: {
-          path: { id: doc.id, versionId: current.id },
-          query: { purpose: "treatment", ttlSeconds: 300 },
+          path: {
+            id: doc.id,
+            versionId: current.id,
+          },
+          query: {
+            purpose: "treatment",
+            ttlSeconds: 300,
+          },
         },
       },
     );
+
     if (err || !data?.url) {
-      setError(errorMessage(err, "Signed URL is unavailable."));
+      setError(
+        errorMessage(err, "Signed URL is unavailable."),
+      );
       return;
     }
-    if (mode === "preview" && canInlinePreview(current.mimeType)) {
-      setPreview({ doc, version: current, url: data.url });
+
+    if (
+      mode === "preview" &&
+      canInlinePreview(current.mimeType)
+    ) {
+      setPreview({
+        doc,
+        version: current,
+        url: data.url,
+      });
     } else {
-      window.open(data.url, "_blank", "noopener,noreferrer");
+      window.open(
+        data.url,
+        "_blank",
+        "noopener,noreferrer",
+      );
     }
   };
 
   return (
     <section style={compact ? referralShell : patientShell}>
-      <div style={sectionHead}>
-        <div>
-          <h2 style={compact ? compactTitle : pageTitle}>{title}</h2>
+      <header style={collectionHeader}>
+        <div style={headerCopy}>
+          {!compact ? (
+            <span style={eyebrow}>Patient record</span>
+          ) : null}
+
+          <h2 style={compact ? compactTitle : pageTitle}>
+            {title}
+          </h2>
+
           <p style={muted}>{subtitle}</p>
         </div>
-        <Button tone="primary" onClick={() => setUploadOpen(true)}>
-          Upload document
+
+        <Button
+          tone="primary"
+          onClick={() => setUploadOpen(true)}
+        >
+          + Upload document
         </Button>
-      </div>
+      </header>
 
       {error ? (
         <div role="alert" style={alert}>
-          {error}
+          <span>{error}</span>
+
+          <button
+            type="button"
+            aria-label="Dismiss error"
+            style={dismissAlert}
+            onClick={() => setError(null)}
+          >
+            ×
+          </button>
         </div>
       ) : null}
 
-      <div style={filters}>
-        {FILTERS.map((option) => (
-          <button
-            key={option.value || "all"}
-            type="button"
-            style={option.value === filter ? filterActive : filterButton}
-            onClick={() => setFilter(option.value)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
+      <div style={libraryShell}>
+        <div style={categoryBar}>
+          {FILTERS.map((option) => {
+            const active = option.value === filter;
 
-      {loading ? (
-        <LoadingSpinner />
-      ) : visible.length === 0 ? (
-        <EmptyState
-          title={emptyTitle}
-          description={emptyDescription}
-          action={
-            <Button tone="primary" onClick={() => setUploadOpen(true)}>
-              Upload document
-            </Button>
-          }
-        />
-      ) : (
-        <div style={list}>
-          {visible.map((doc) => {
-            const current = currentVersion(doc, versions[doc.id]);
             return (
-              <article key={doc.id} style={rowShell}>
-                <div style={typeBadge(displayDocumentTypeValue(doc))}>
-                  {displayDocumentType(doc)}
-                </div>
-                <div style={rowMain}>
-                  <strong style={rowTitle}>{doc.title}</strong>
-                  <div style={rowMeta}>
-                    {current ? formatMime(current.mimeType) : "File"} • v
-                    {doc.version || current?.versionNumber || 1}
-                    {" • "}
-                    {formatDate(doc.updatedAt)}
-                    {doc.admissionId
-                      ? ` • Admission ${shortId(doc.admissionId)}`
-                      : ""}
-                  </div>
-                  <div style={rowMeta}>{provenanceLabel(doc.metadata)}</div>
-                </div>
-                <StatusPill
-                  label={labelize(doc.status)}
-                  tone={lifecycleTone(doc.status)}
-                />
-                <div style={rowActions}>
-                  <button
-                    type="button"
-                    style={linkButton}
-                    onClick={() => void openSigned(doc, "preview")}
-                  >
-                    View
-                  </button>
-                  <button
-                    type="button"
-                    style={linkButton}
-                    onClick={() => void openSigned(doc, "download")}
-                  >
-                    Download
-                  </button>
-                  <button
-                    type="button"
-                    style={linkButton}
-                    onClick={() => setDetail(doc)}
-                  >
-                    History
-                  </button>
-                </div>
-              </article>
+              <button
+                key={option.value || "all"}
+                type="button"
+                style={
+                  active
+                    ? categoryButtonActive
+                    : categoryButton
+                }
+                onClick={() => setFilter(option.value)}
+              >
+                <span>{option.label}</span>
+
+                <span
+                  style={
+                    active
+                      ? categoryCountActive
+                      : categoryCount
+                  }
+                >
+                  {counts[option.value] ?? 0}
+                </span>
+              </button>
             );
           })}
         </div>
-      )}
+
+        <div style={toolbar}>
+          <div style={searchField}>
+            <SearchIcon />
+
+            <input
+              type="search"
+              aria-label="Search documents"
+              placeholder="Search documents..."
+              value={search}
+              onChange={(event) =>
+                setSearch(event.target.value)
+              }
+              style={searchInput}
+            />
+
+            {search ? (
+              <button
+                type="button"
+                aria-label="Clear search"
+                style={clearSearch}
+                onClick={() => setSearch("")}
+              >
+                ×
+              </button>
+            ) : null}
+          </div>
+
+          <div style={filterControls}>
+            <select
+              aria-label="Source"
+              value={sourceFilter}
+              onChange={(event) =>
+                setSourceFilter(event.target.value)
+              }
+              style={select}
+            >
+              <option value="">Source: All</option>
+
+              {sourceOptions.map((source) => (
+                <option key={source} value={source}>
+                  {sourceLabel(source)}
+                </option>
+              ))}
+            </select>
+
+            <select
+              aria-label="Status"
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(event.target.value)
+              }
+              style={select}
+            >
+              <option value="">Status: All</option>
+
+              {statusOptions.map((status) => (
+                <option key={status} value={status}>
+                  {labelize(status)}
+                </option>
+              ))}
+            </select>
+
+            {activeSecondaryFilters > 0 ? (
+              <button
+                type="button"
+                style={resetButton}
+                onClick={clearSecondaryFilters}
+              >
+                Reset
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <div style={resultSummary}>
+          <span>
+            <strong>{visible.length}</strong>{" "}
+            {visible.length === 1
+              ? "document"
+              : "documents"}
+          </span>
+
+          {filter ||
+          activeSecondaryFilters > 0 ? (
+            <button
+              type="button"
+              style={clearAllButton}
+              onClick={clearAllFilters}
+            >
+              Clear all filters
+            </button>
+          ) : null}
+        </div>
+
+        <div style={contentArea}>
+          {loading ? (
+            <div style={loadingState}>
+              <LoadingSpinner />
+            </div>
+          ) : visible.length === 0 ? (
+            <div style={emptyWrap}>
+              <EmptyState
+                title={
+                  rows.length === 0
+                    ? emptyTitle
+                    : "No matching documents"
+                }
+                description={
+                  rows.length === 0
+                    ? emptyDescription
+                    : "Try changing the search or filters."
+                }
+                action={
+                  rows.length === 0 ? (
+                    <Button
+                      tone="primary"
+                      onClick={() =>
+                        setUploadOpen(true)
+                      }
+                    >
+                      Upload document
+                    </Button>
+                  ) : (
+                    <Button
+                      tone="secondary"
+                      onClick={clearAllFilters}
+                    >
+                      Clear filters
+                    </Button>
+                  )
+                }
+              />
+            </div>
+          ) : (
+            <div style={documentList}>
+              <div style={listHeader}>
+                <span>Document</span>
+                <span>Type</span>
+                <span>Status</span>
+                <span>Updated</span>
+                <span aria-hidden="true" />
+              </div>
+
+              {visible.map((doc) => {
+                const current = currentVersion(
+                  doc,
+                  versions[doc.id],
+                );
+
+                return (
+                  <article
+                    key={doc.id}
+                    style={documentRow}
+                  >
+                    <button
+                      type="button"
+                      style={documentIdentityButton}
+                      onClick={() => setDetail(doc)}
+                    >
+                      <FileIcon
+                        type={displayDocumentTypeValue(
+                          doc,
+                        )}
+                      />
+
+                      <span style={documentIdentity}>
+                        <strong style={rowTitle}>
+                          {doc.title}
+                        </strong>
+
+                        <span style={rowMeta}>
+                          {current
+                            ? formatMime(
+                                current.mimeType,
+                              )
+                            : "File"}
+                          {" · "}v
+                          {current?.versionNumber ??
+                            doc.version ??
+                            1}
+                          {current
+                            ? ` · ${formatBytes(
+                                current.byteSize,
+                              )}`
+                            : ""}
+                        </span>
+
+                        <span style={provenanceMeta}>
+                          {provenanceLabel(
+                            doc.metadata,
+                          )}
+                        </span>
+                      </span>
+                    </button>
+
+                    <div>
+                      <TypePill
+                        value={displayDocumentTypeValue(
+                          doc,
+                        )}
+                      />
+                    </div>
+
+                    <div>
+                      <StatusPill
+                        label={labelize(doc.status)}
+                        tone={lifecycleTone(
+                          doc.status,
+                        )}
+                      />
+                    </div>
+
+                    <div style={dateCell}>
+                      <span>{formatDate(doc.updatedAt)}</span>
+
+                      {doc.admissionId ? (
+                        <span style={secondaryMeta}>
+                          Admission{" "}
+                          {shortId(doc.admissionId)}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div style={rowActions}>
+                      <button
+                        type="button"
+                        style={viewButton}
+                        onClick={() =>
+                          void openSigned(
+                            doc,
+                            "preview",
+                          )
+                        }
+                      >
+                        View
+                      </button>
+
+                      <button
+                        type="button"
+                        aria-label={`More actions for ${doc.title}`}
+                        title="Document details and actions"
+                        style={moreButton}
+                        onClick={() =>
+                          setDetail(doc)
+                        }
+                      >
+                        •••
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
 
       {uploadOpen ? (
         <DocumentUploadDialog
@@ -385,12 +779,15 @@ function DocumentCollection({
           }}
         />
       ) : null}
+
       {newVersionFor ? (
         <DocumentUploadDialog
           context={context}
           mode="new_version"
           targetDocument={newVersionFor}
-          defaultDocumentType={displayDocumentTypeValue(newVersionFor)}
+          defaultDocumentType={displayDocumentTypeValue(
+            newVersionFor,
+          )}
           showPatientFacing={showPatientFacing}
           onClose={() => setNewVersionFor(null)}
           onUploaded={() => {
@@ -399,20 +796,27 @@ function DocumentCollection({
           }}
         />
       ) : null}
+
       {detail ? (
         <DocumentDetail
           doc={detail}
           versions={versions[detail.id] ?? []}
           onClose={() => setDetail(null)}
-          onOpen={(mode) => void openSigned(detail, mode)}
+          onOpen={(mode) =>
+            void openSigned(detail, mode)
+          }
           onNewVersion={() => {
             setDetail(null);
             setNewVersionFor(detail);
           }}
         />
       ) : null}
+
       {preview ? (
-        <PreviewModal preview={preview} onClose={() => setPreview(null)} />
+        <PreviewModal
+          preview={preview}
+          onClose={() => setPreview(null)}
+        />
       ) : null}
     </section>
   );
@@ -436,38 +840,65 @@ function DocumentUploadDialog({
   onUploaded: () => void;
 }): JSX.Element {
   const client = useApiClient();
-  const [documentType, setDocumentType] = useState<DocumentTypeValue>(
-    asDocumentType(defaultDocumentType),
-  );
-  const [sourceChannel, setSourceChannel] = useState<SourceChannel>(
-    context.kind === "referral" ? "fax" : "manual_upload",
-  );
-  const [receivedAt, setReceivedAt] = useState("");
-  const [title, setTitle] = useState(
-    targetDocument?.title ?? defaultTitle(defaultDocumentType),
-  );
-  const [patientFacing, setPatientFacing] = useState(
-    targetDocument?.patientFacing ?? false,
-  );
-  const [file, setFile] = useState<File | null>(null);
-  const [sender, setSender] = useState("");
-  const [externalMessageId, setExternalMessageId] = useState("");
-  const [faxReference, setFaxReference] = useState("");
-  const [notes, setNotes] = useState("");
-  const [stage, setStage] = useState<UploadStage>("idle");
-  const [error, setError] = useState<string | null>(null);
 
-  const onDrop = (event: DragEvent<HTMLLabelElement>): void => {
+  const [documentType, setDocumentType] =
+    useState<DocumentTypeValue>(
+      asDocumentType(defaultDocumentType),
+    );
+
+  const [sourceChannel, setSourceChannel] =
+    useState<SourceChannel>(
+      context.kind === "referral"
+        ? "fax"
+        : "manual_upload",
+    );
+
+  const [receivedAt, setReceivedAt] = useState("");
+
+  const [title, setTitle] = useState(
+    targetDocument?.title ??
+      defaultTitle(defaultDocumentType),
+  );
+
+  const [patientFacing, setPatientFacing] =
+    useState(
+      targetDocument?.patientFacing ?? false,
+    );
+
+  const [file, setFile] = useState<File | null>(
+    null,
+  );
+
+  const [sender, setSender] = useState("");
+  const [externalMessageId, setExternalMessageId] =
+    useState("");
+  const [faxReference, setFaxReference] =
+    useState("");
+  const [notes, setNotes] = useState("");
+
+  const [stage, setStage] =
+    useState<UploadStage>("idle");
+
+  const [error, setError] =
+    useState<string | null>(null);
+
+  const onDrop = (
+    event: DragEvent<HTMLLabelElement>,
+  ): void => {
     event.preventDefault();
     setFile(event.dataTransfer.files[0] ?? null);
   };
 
   const submit = async (): Promise<void> => {
     if (!file) {
-      setError("Choose a PDF, DOCX, JPG, PNG or TIFF file.");
+      setError(
+        "Choose a PDF, DOCX, JPG, PNG or TIFF file.",
+      );
       return;
     }
+
     setError(null);
+
     try {
       await verifiedUpload(client, {
         context,
@@ -491,18 +922,38 @@ function DocumentUploadDialog({
         }),
         onStage: setStage,
       });
+
       onUploaded();
     } catch (err) {
-      setError(errorMessage(err, "The upload could not be completed."));
-      if (stage !== "complete") setStage("idle");
+      setError(
+        errorMessage(
+          err,
+          "The upload could not be completed.",
+        ),
+      );
+
+      if (stage !== "complete") {
+        setStage("idle");
+      }
     }
   };
 
   const isVersion = mode === "new_version";
+  const busy = stage !== "idle";
+
   return (
     <Modal
       onClose={onClose}
-      title={isVersion ? "Upload new version" : "Upload document"}
+      title={
+        isVersion
+          ? "Upload new version"
+          : "Upload document"
+      }
+      subtitle={
+        isVersion
+          ? "Add a new version without replacing the document history."
+          : "Add a verified file to this record."
+      }
     >
       <div style={form}>
         {error ? (
@@ -510,136 +961,312 @@ function DocumentUploadDialog({
             {error}
           </div>
         ) : null}
-        {!isVersion ? (
-          <label style={field}>
-            Document type
-            <select
-              value={documentType}
-              onChange={(event) => {
-                const next = asDocumentType(event.target.value);
-                setDocumentType(next);
-                if (!title || title === defaultTitle(documentType))
-                  setTitle(defaultTitle(next));
-              }}
-              style={input}
-            >
-              {DOCUMENT_TYPE_OPTIONS.filter(
-                (option) =>
-                  context.kind === "referral" || option.value !== "referral",
-              ).map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+
+        {isVersion && targetDocument ? (
+          <div style={versionTarget}>
+            <FileIcon
+              type={displayDocumentTypeValue(
+                targetDocument,
+              )}
+            />
+
+            <div>
+              <div style={versionTargetLabel}>
+                New version of
+              </div>
+
+              <strong>{targetDocument.title}</strong>
+            </div>
+          </div>
         ) : null}
-        <label style={field}>
-          Title
-          <input
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            style={input}
-          />
-        </label>
-        {context.kind === "referral" ? (
-          <>
-            <label style={field}>
-              Source
-              <select
-                value={sourceChannel}
-                onChange={(event) =>
-                  setSourceChannel(asSourceChannel(event.target.value))
-                }
-                style={input}
-              >
-                {SOURCE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label style={field}>
-              Received at
-              <input
-                type="datetime-local"
-                value={receivedAt}
-                onChange={(event) => setReceivedAt(event.target.value)}
-                style={input}
-              />
-            </label>
-            <div style={optionalGrid}>
+
+        {!isVersion ? (
+          <FormSection
+            title="Document details"
+            description="Choose the category and name that staff will see in the chart."
+          >
+            <div style={twoColumnGrid}>
               <label style={field}>
-                Sender
-                <input
-                  value={sender}
-                  onChange={(event) => setSender(event.target.value)}
+                <span style={fieldLabelText}>
+                  Document type
+                </span>
+
+                <select
+                  value={documentType}
+                  onChange={(event) => {
+                    const next = asDocumentType(
+                      event.target.value,
+                    );
+
+                    setDocumentType(next);
+
+                    if (
+                      !title ||
+                      title ===
+                        defaultTitle(documentType)
+                    ) {
+                      setTitle(defaultTitle(next));
+                    }
+                  }}
                   style={input}
-                />
+                >
+                  {DOCUMENT_TYPE_OPTIONS.filter(
+                    (option) =>
+                      context.kind === "referral" ||
+                      option.value !== "referral",
+                  ).map((option) => (
+                    <option
+                      key={option.value}
+                      value={option.value}
+                    >
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </label>
+
               <label style={field}>
-                Message ID
+                <span style={fieldLabelText}>
+                  Title
+                </span>
+
                 <input
-                  value={externalMessageId}
-                  onChange={(event) => setExternalMessageId(event.target.value)}
-                  style={input}
-                />
-              </label>
-              <label style={field}>
-                Fax reference
-                <input
-                  value={faxReference}
-                  onChange={(event) => setFaxReference(event.target.value)}
+                  value={title}
+                  onChange={(event) =>
+                    setTitle(event.target.value)
+                  }
+                  placeholder="Document title"
                   style={input}
                 />
               </label>
             </div>
-          </>
-        ) : showPatientFacing ? (
-          <label style={check}>
-            <input
-              type="checkbox"
-              checked={patientFacing}
-              onChange={(event) => setPatientFacing(event.target.checked)}
-            />
-            Visible in patient portal
-          </label>
+          </FormSection>
         ) : null}
-        <label
-          style={dropZone}
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={onDrop}
+
+        <FormSection
+          title="File"
+          description="Accepted formats: PDF, DOCX, JPG, PNG or TIFF. Maximum 25 MB."
         >
-          <input
-            type="file"
-            accept=".pdf,.docx,.jpg,.jpeg,.png,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/tiff"
-            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-            style={{ display: "none" }}
-          />
-          <strong>{file ? file.name : "Choose file or drag and drop"}</strong>
-          <span style={muted}>PDF, DOCX, JPG, PNG or TIFF • Maximum 25 MB</span>
-        </label>
-        <label style={field}>
-          Notes
-          <textarea
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            rows={3}
-            style={input}
-          />
-        </label>
-        <div style={stageLine}>{stageLabel(stage)}</div>
+          <label
+            style={
+              file ? dropZoneSelected : dropZone
+            }
+            onDragOver={(event) =>
+              event.preventDefault()
+            }
+            onDrop={onDrop}
+          >
+            <input
+              type="file"
+              accept=".pdf,.docx,.jpg,.jpeg,.png,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/tiff"
+              onChange={(event) =>
+                setFile(
+                  event.target.files?.[0] ?? null,
+                )
+              }
+              style={{ display: "none" }}
+            />
+
+            <div style={uploadIconWrap}>
+              <UploadIcon />
+            </div>
+
+            {file ? (
+              <>
+                <strong style={dropTitle}>
+                  {file.name}
+                </strong>
+
+                <span style={dropHelp}>
+                  {formatBytes(file.size)} · Click
+                  or drop another file to replace
+                </span>
+              </>
+            ) : (
+              <>
+                <strong style={dropTitle}>
+                  Drop a file here
+                </strong>
+
+                <span style={dropHelp}>
+                  or click to browse your device
+                </span>
+              </>
+            )}
+          </label>
+        </FormSection>
+
+        {context.kind === "referral" ? (
+          <FormSection
+            title="Source"
+            description="Record how this referral document was received."
+          >
+            <div style={twoColumnGrid}>
+              <label style={field}>
+                <span style={fieldLabelText}>
+                  Source
+                </span>
+
+                <select
+                  value={sourceChannel}
+                  onChange={(event) =>
+                    setSourceChannel(
+                      asSourceChannel(
+                        event.target.value,
+                      ),
+                    )
+                  }
+                  style={input}
+                >
+                  {SOURCE_OPTIONS.map(
+                    (option) => (
+                      <option
+                        key={option.value}
+                        value={option.value}
+                      >
+                        {option.label}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </label>
+
+              <label style={field}>
+                <span style={fieldLabelText}>
+                  Received at
+                </span>
+
+                <input
+                  type="datetime-local"
+                  value={receivedAt}
+                  onChange={(event) =>
+                    setReceivedAt(
+                      event.target.value,
+                    )
+                  }
+                  style={input}
+                />
+              </label>
+            </div>
+
+            <div style={optionalGrid}>
+              <label style={field}>
+                <span style={fieldLabelText}>
+                  Sender
+                </span>
+
+                <input
+                  value={sender}
+                  onChange={(event) =>
+                    setSender(event.target.value)
+                  }
+                  style={input}
+                />
+              </label>
+
+              <label style={field}>
+                <span style={fieldLabelText}>
+                  Message ID
+                </span>
+
+                <input
+                  value={externalMessageId}
+                  onChange={(event) =>
+                    setExternalMessageId(
+                      event.target.value,
+                    )
+                  }
+                  style={input}
+                />
+              </label>
+
+              <label style={field}>
+                <span style={fieldLabelText}>
+                  Fax reference
+                </span>
+
+                <input
+                  value={faxReference}
+                  onChange={(event) =>
+                    setFaxReference(
+                      event.target.value,
+                    )
+                  }
+                  style={input}
+                />
+              </label>
+            </div>
+          </FormSection>
+        ) : showPatientFacing ? (
+          <div style={portalVisibility}>
+            <label style={check}>
+              <input
+                type="checkbox"
+                checked={patientFacing}
+                onChange={(event) =>
+                  setPatientFacing(
+                    event.target.checked,
+                  )
+                }
+              />
+
+              <span>
+                <strong style={checkTitle}>
+                  Visible in patient portal
+                </strong>
+
+                <span style={checkDescription}>
+                  Allow the patient to access this
+                  document from their portal.
+                </span>
+              </span>
+            </label>
+          </div>
+        ) : null}
+
+        <FormSection
+          title="Notes"
+          description="Optional internal context about this document."
+        >
+          <label style={field}>
+            <textarea
+              value={notes}
+              onChange={(event) =>
+                setNotes(event.target.value)
+              }
+              rows={3}
+              placeholder="Add an optional note..."
+              style={{
+                ...input,
+                resize: "vertical",
+              }}
+            />
+          </label>
+        </FormSection>
+
+        {busy ? (
+          <UploadProgress stage={stage} />
+        ) : null}
+
         <div style={dialogActions}>
-          <Button tone="tertiary" onClick={onClose} disabled={stage !== "idle"}>
+          <Button
+            tone="tertiary"
+            onClick={onClose}
+            disabled={busy}
+          >
             Cancel
           </Button>
+
           <Button
             tone="primary"
             onClick={() => void submit()}
-            disabled={stage !== "idle"}
+            disabled={busy || !file}
           >
-            Upload
+            {busy
+              ? stageLabel(stage)
+              : isVersion
+                ? "Upload new version"
+                : "Upload document"}
           </Button>
         </div>
       </div>
@@ -657,76 +1284,238 @@ function DocumentDetail({
   doc: DocumentRow;
   versions: VersionRow[];
   onClose: () => void;
-  onOpen: (mode: "preview" | "download") => void;
+  onOpen: (
+    mode: "preview" | "download",
+  ) => void;
   onNewVersion: () => void;
 }): JSX.Element {
   const current = currentVersion(doc, versions);
+
   return (
-    <Modal onClose={onClose} title={doc.title}>
-      <div style={form}>
-        <div style={detailGrid}>
-          <Field label="Type" value={displayDocumentType(doc)} />
-          <Field label="Status" value={labelize(doc.status)} />
-          <Field
-            label="Uploaded"
-            value={formatDateTime(current?.uploadedAt ?? doc.createdAt)}
+    <Modal
+      onClose={onClose}
+      title={doc.title}
+      subtitle={`${displayDocumentType(doc)} · ${
+        current
+          ? `v${current.versionNumber}`
+          : `v${doc.version || 1}`
+      }`}
+    >
+      <div style={detailBody}>
+        <div style={detailHero}>
+          <FileIcon
+            type={displayDocumentTypeValue(doc)}
+            large
           />
-          <Field label="Source" value={provenanceLabel(doc.metadata)} />
-          <Field
-            label="Patient"
-            value={doc.patientId ? shortId(doc.patientId) : "Not linked"}
-          />
-          <Field
-            label="Admission"
-            value={doc.admissionId ? shortId(doc.admissionId) : "Not linked"}
-          />
-          <Field
-            label="Current version"
-            value={`v${current?.versionNumber ?? doc.version ?? 1}`}
-          />
-          <Field
-            label="File type"
-            value={current ? formatMime(current.mimeType) : "Unknown"}
-          />
-          <Field
-            label="File size"
-            value={current ? formatBytes(current.byteSize) : "Unknown"}
-          />
+
+          <div style={detailHeroCopy}>
+            <div style={detailPills}>
+              <TypePill
+                value={displayDocumentTypeValue(
+                  doc,
+                )}
+              />
+
+              <StatusPill
+                label={labelize(doc.status)}
+                tone={lifecycleTone(doc.status)}
+              />
+            </div>
+
+            <strong style={detailTitle}>
+              {doc.title}
+            </strong>
+
+            <span style={muted}>
+              {provenanceLabel(doc.metadata)}
+            </span>
+          </div>
         </div>
-        <div style={dialogActions}>
-          <Button tone="secondary" onClick={() => onOpen("preview")}>
-            View
+
+        <div style={primaryActions}>
+          <Button
+            tone="primary"
+            onClick={() => onOpen("preview")}
+          >
+            View document
           </Button>
-          <Button tone="secondary" onClick={() => onOpen("download")}>
-            Download/Open
+
+          <Button
+            tone="secondary"
+            onClick={() => onOpen("download")}
+          >
+            Download
           </Button>
-          <Button tone="primary" onClick={onNewVersion}>
+
+          <Button
+            tone="tertiary"
+            onClick={onNewVersion}
+          >
             Upload new version
           </Button>
         </div>
-        <h3 style={smallHeading}>Version history</h3>
-        <table style={table}>
-          <thead>
-            <tr>
-              <th style={th}>Version</th>
-              <th style={th}>Type</th>
-              <th style={th}>Size</th>
-              <th style={th}>Uploaded</th>
-              <th style={th}>Current</th>
-            </tr>
-          </thead>
-          <tbody>
-            {versions.map((version) => (
-              <tr key={version.id}>
-                <td style={td}>v{version.versionNumber}</td>
-                <td style={td}>{formatMime(version.mimeType)}</td>
-                <td style={td}>{formatBytes(version.byteSize)}</td>
-                <td style={td}>{formatDateTime(version.uploadedAt)}</td>
-                <td style={td}>{version.id === current?.id ? "Active" : ""}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+
+        <section style={detailSection}>
+          <h3 style={smallHeading}>
+            Document information
+          </h3>
+
+          <div style={detailGrid}>
+            <Field
+              label="Uploaded"
+              value={formatDateTime(
+                current?.uploadedAt ??
+                  doc.createdAt,
+              )}
+            />
+
+            <Field
+              label="Current version"
+              value={`v${
+                current?.versionNumber ??
+                doc.version ??
+                1
+              }`}
+            />
+
+            <Field
+              label="File type"
+              value={
+                current
+                  ? formatMime(current.mimeType)
+                  : "Unknown"
+              }
+            />
+
+            <Field
+              label="File size"
+              value={
+                current
+                  ? formatBytes(current.byteSize)
+                  : "Unknown"
+              }
+            />
+
+            <Field
+              label="Patient"
+              value={
+                doc.patientId
+                  ? shortId(doc.patientId)
+                  : "Not linked"
+              }
+            />
+
+            <Field
+              label="Admission"
+              value={
+                doc.admissionId
+                  ? shortId(doc.admissionId)
+                  : "Not linked"
+              }
+            />
+
+            <Field
+              label="Portal visibility"
+              value={
+                doc.patientFacing
+                  ? "Visible"
+                  : "Not visible"
+              }
+            />
+
+            <Field
+              label="Versions"
+              value={String(
+                doc.versionsCount ||
+                  versions.length ||
+                  1,
+              )}
+            />
+          </div>
+        </section>
+
+        {doc.metadata?.notes ? (
+          <section style={detailSection}>
+            <h3 style={smallHeading}>Notes</h3>
+
+            <div style={notesBox}>
+              {doc.metadata.notes}
+            </div>
+          </section>
+        ) : null}
+
+        <section style={detailSection}>
+          <div style={versionHeading}>
+            <div>
+              <h3 style={smallHeading}>
+                Version history
+              </h3>
+
+              <p style={sectionDescription}>
+                Previous versions remain available
+                for audit and record history.
+              </p>
+            </div>
+
+            <span style={versionCount}>
+              {versions.length}
+            </span>
+          </div>
+
+          {versions.length === 0 ? (
+            <div style={noVersions}>
+              No version history available.
+            </div>
+          ) : (
+            <div style={versionList}>
+              {[...versions]
+                .sort(
+                  (a, b) =>
+                    b.versionNumber -
+                    a.versionNumber,
+                )
+                .map((version) => {
+                  const active =
+                    version.id === current?.id;
+
+                  return (
+                    <div
+                      key={version.id}
+                      style={versionRow}
+                    >
+                      <div style={versionNumber}>
+                        v{version.versionNumber}
+                      </div>
+
+                      <div style={versionMeta}>
+                        <strong>
+                          {formatMime(
+                            version.mimeType,
+                          )}
+                        </strong>
+
+                        <span style={muted}>
+                          {formatBytes(
+                            version.byteSize,
+                          )}
+                          {" · "}
+                          {formatDateTime(
+                            version.uploadedAt,
+                          )}
+                        </span>
+                      </div>
+
+                      {active ? (
+                        <span style={currentBadge}>
+                          Current
+                        </span>
+                      ) : null}
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </section>
       </div>
     </Modal>
   );
@@ -736,23 +1525,127 @@ function PreviewModal({
   preview,
   onClose,
 }: {
-  preview: { doc: DocumentRow; version: VersionRow; url: string };
+  preview: {
+    doc: DocumentRow;
+    version: VersionRow;
+    url: string;
+  };
   onClose: () => void;
 }): JSX.Element {
   return (
-    <Modal onClose={onClose} title={`View ${preview.doc.title}`}>
+    <Modal
+      onClose={onClose}
+      title={preview.doc.title}
+      subtitle={`Preview · v${preview.version.versionNumber}`}
+      wide
+    >
       <div style={previewFrame}>
-        {preview.version.mimeType === "application/pdf" ? (
+        {preview.version.mimeType ===
+        "application/pdf" ? (
           <iframe
             title={preview.doc.title}
             src={preview.url}
             style={previewMedia}
           />
         ) : (
-          <img src={preview.url} alt={preview.doc.title} style={previewImage} />
+          <img
+            src={preview.url}
+            alt={preview.doc.title}
+            style={previewImage}
+          />
         )}
       </div>
     </Modal>
+  );
+}
+
+function Modal({
+  title,
+  subtitle,
+  children,
+  onClose,
+  wide = false,
+}: {
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+  onClose: () => void;
+  wide?: boolean;
+}): JSX.Element {
+  return (
+    <div
+      style={modalBackdrop}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <section
+        style={{
+          ...modal,
+          width: wide
+            ? "min(72rem, 100%)"
+            : "min(48rem, 100%)",
+        }}
+      >
+        <header style={modalHeader}>
+          <div style={modalHeading}>
+            <h2 style={modalTitle}>{title}</h2>
+
+            {subtitle ? (
+              <p style={modalSubtitle}>
+                {subtitle}
+              </p>
+            ) : null}
+          </div>
+
+          <button
+            type="button"
+            style={iconButton}
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </header>
+
+        <div style={modalContent}>{children}</div>
+      </section>
+    </div>
+  );
+}
+
+function FormSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <section style={formSection}>
+      <div style={formSectionHead}>
+        <strong style={formSectionTitle}>
+          {title}
+        </strong>
+
+        {description ? (
+          <span style={formSectionDescription}>
+            {description}
+          </span>
+        ) : null}
+      </div>
+
+      <div style={formSectionBody}>
+        {children}
+      </div>
+    </section>
   );
 }
 
@@ -764,44 +1657,168 @@ function Field({
   value: ReactNode;
 }): JSX.Element {
   return (
-    <div>
+    <div style={detailField}>
       <div style={fieldLabel}>{label}</div>
-      <div>{value}</div>
+      <div style={fieldValue}>{value}</div>
     </div>
   );
 }
 
-function Modal({
-  title,
-  children,
-  onClose,
+function UploadProgress({
+  stage,
 }: {
-  title: string;
-  children: ReactNode;
-  onClose: () => void;
+  stage: UploadStage;
+}): JSX.Element {
+  const stages: Array<{
+    value: UploadStage;
+    label: string;
+  }> = [
+    { value: "preparing", label: "Preparing" },
+    { value: "uploading", label: "Uploading" },
+    { value: "verifying", label: "Verifying" },
+    { value: "complete", label: "Complete" },
+  ];
+
+  const currentIndex = stages.findIndex(
+    (item) => item.value === stage,
+  );
+
+  return (
+    <div style={progressShell}>
+      <div style={progressTop}>
+        <span>{stageLabel(stage)}</span>
+
+        <span style={muted}>
+          Please keep this window open.
+        </span>
+      </div>
+
+      <div style={progressSteps}>
+        {stages.map((item, index) => (
+          <div
+            key={item.value}
+            style={progressStep}
+          >
+            <span
+              style={{
+                ...progressDot,
+                ...(index <= currentIndex
+                  ? progressDotActive
+                  : {}),
+              }}
+            />
+
+            <span
+              style={{
+                ...progressLabel,
+                ...(index <= currentIndex
+                  ? progressLabelActive
+                  : {}),
+              }}
+            >
+              {item.label}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SearchIcon(): JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="17"
+      height="17"
+      aria-hidden="true"
+      fill="none"
+    >
+      <circle
+        cx="11"
+        cy="11"
+        r="6.5"
+        stroke="currentColor"
+        strokeWidth="1.7"
+      />
+      <path
+        d="m16 16 4 4"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function UploadIcon(): JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      aria-hidden="true"
+      fill="none"
+    >
+      <path
+        d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 15.5V19h14v-3.5"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function FileIcon({
+  type,
+  large = false,
+}: {
+  type: string;
+  large?: boolean;
 }): JSX.Element {
   return (
-    <div
-      style={modalBackdrop}
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
+    <span
+      style={{
+        ...fileIcon,
+        ...(large ? largeFileIcon : {}),
+        ...fileIconTone(type),
+      }}
     >
-      <section style={modal}>
-        <div style={sectionHead}>
-          <h2 style={compactTitle}>{title}</h2>
-          <button
-            type="button"
-            style={iconButton}
-            onClick={onClose}
-            aria-label="Close"
-          >
-            x
-          </button>
-        </div>
-        {children}
-      </section>
-    </div>
+      <svg
+        viewBox="0 0 24 24"
+        width={large ? 25 : 19}
+        height={large ? 25 : 19}
+        aria-hidden="true"
+        fill="none"
+      >
+        <path
+          d="M7 3.5h6.5L18 8v12.5H7v-17Z"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M13.5 3.5V8H18"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
+  );
+}
+
+function TypePill({
+  value,
+}: {
+  value: string;
+}): JSX.Element {
+  return (
+    <span style={typePill(value)}>
+      {labelForType(value)}
+    </span>
   );
 }
 
@@ -820,16 +1837,23 @@ async function verifiedUpload(
   },
 ): Promise<void> {
   const mimeType = normalizeMime(input.file);
+
   if (!mimeType) {
     throw new Error(
       "Unsupported file type. Upload PDF, DOCX, JPG, PNG or TIFF.",
     );
   }
+
   if (input.file.size > 25 * 1024 * 1024) {
-    throw new Error("File is too large. Maximum size is 25 MB.");
+    throw new Error(
+      "File is too large. Maximum size is 25 MB.",
+    );
   }
+
   input.onStage("preparing");
+
   const sha256Hex = await sha256(input.file);
+
   const body = {
     mode: input.mode,
     targetDocumentId: input.targetDocumentId,
@@ -837,12 +1861,19 @@ async function verifiedUpload(
       input.context.kind === "patient"
         ? input.context.patientId
         : (input.context.patientId ?? undefined),
-    admissionId: input.context.admissionId ?? undefined,
-    retentionClass: retentionFor(input.documentType),
+    admissionId:
+      input.context.admissionId ?? undefined,
+    retentionClass: retentionFor(
+      input.documentType,
+    ),
     aggregateType:
-      input.context.kind === "referral" ? "referral" : input.documentType,
+      input.context.kind === "referral"
+        ? "referral"
+        : input.documentType,
     aggregateId:
-      input.context.kind === "referral" ? input.context.referralId : undefined,
+      input.context.kind === "referral"
+        ? input.context.referralId
+        : undefined,
     title: input.title,
     patientFacing: input.patientFacing,
     mimeType,
@@ -850,35 +1881,64 @@ async function verifiedUpload(
     sha256Hex,
     sourceMetadata: input.sourceMetadata,
   };
-  const initiated = await client.POST("/api/v1/document-uploads", { body });
+
+  const initiated = await client.POST(
+    "/api/v1/document-uploads",
+    { body },
+  );
+
   if (initiated.error || !initiated.data) {
     throw new Error(
-      errorMessage(initiated.error, "Upload could not be prepared."),
+      errorMessage(
+        initiated.error,
+        "Upload could not be prepared.",
+      ),
     );
   }
+
   input.onStage("uploading");
+
   const uploadId = initiated.data.uploadId;
+
   try {
-    const uploadHeaders = new Headers(initiated.data.requiredHeaders);
+    const uploadHeaders = new Headers(
+      initiated.data.requiredHeaders,
+    );
 
     if (!uploadHeaders.has("content-type")) {
-      uploadHeaders.set("content-type", mimeType);
+      uploadHeaders.set(
+        "content-type",
+        mimeType,
+      );
     }
 
-    const put = await fetch(initiated.data.uploadUrl, {
-      method: "PUT",
-      headers: uploadHeaders,
-      body: input.file,
-    });
-    if (!put.ok) throw new Error(storageError(put.status));
+    const put = await fetch(
+      initiated.data.uploadUrl,
+      {
+        method: "PUT",
+        headers: uploadHeaders,
+        body: input.file,
+      },
+    );
+
+    if (!put.ok) {
+      throw new Error(
+        storageError(put.status),
+      );
+    }
+
     input.onStage("verifying");
+
     const completed = await client.POST(
       "/api/v1/document-uploads/{id}/complete",
       {
-        params: { path: { id: uploadId } },
+        params: {
+          path: { id: uploadId },
+        },
         body: {},
       },
     );
+
     if (completed.error) {
       throw new Error(
         errorMessage(
@@ -887,83 +1947,166 @@ async function verifiedUpload(
         ),
       );
     }
+
     input.onStage("complete");
   } catch (err) {
     await client
-      .DELETE("/api/v1/document-uploads/{id}", {
-        params: { path: { id: uploadId } },
-      })
+      .DELETE(
+        "/api/v1/document-uploads/{id}",
+        {
+          params: {
+            path: { id: uploadId },
+          },
+        },
+      )
       .catch(() => undefined);
+
     throw err;
   }
 }
 
-async function sha256(file: File): Promise<string> {
-  if (!globalThis.crypto?.subtle)
-    throw new Error("This browser cannot verify file integrity.");
+async function sha256(
+  file: File,
+): Promise<string> {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error(
+      "This browser cannot verify file integrity.",
+    );
+  }
+
   const bytes =
     typeof file.arrayBuffer === "function"
       ? await file.arrayBuffer()
       : await new Response(file).arrayBuffer();
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+
+  const digest =
+    await globalThis.crypto.subtle.digest(
+      "SHA-256",
+      bytes,
+    );
+
   return [...new Uint8Array(digest)]
-    .map((b) => b.toString(16).padStart(2, "0"))
+    .map((byte) =>
+      byte.toString(16).padStart(2, "0"),
+    )
     .join("");
 }
 
-function normalizeMime(file: File): AcceptedMime | "" {
-  if (isAcceptedMime(file.type)) return file.type;
+function normalizeMime(
+  file: File,
+): AcceptedMime | "" {
+  if (isAcceptedMime(file.type)) {
+    return file.type;
+  }
+
   const name = file.name.toLowerCase();
-  if (name.endsWith(".docx"))
+
+  if (name.endsWith(".docx")) {
     return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-  if (name.endsWith(".pdf")) return "application/pdf";
-  if (name.endsWith(".jpg") || name.endsWith(".jpeg")) return "image/jpeg";
-  if (name.endsWith(".png")) return "image/png";
-  if (name.endsWith(".tif") || name.endsWith(".tiff")) return "image/tiff";
+  }
+
+  if (name.endsWith(".pdf"))
+    return "application/pdf";
+  if (
+    name.endsWith(".jpg") ||
+    name.endsWith(".jpeg")
+  )
+    return "image/jpeg";
+  if (name.endsWith(".png"))
+    return "image/png";
+  if (
+    name.endsWith(".tif") ||
+    name.endsWith(".tiff")
+  )
+    return "image/tiff";
+
   return "";
 }
 
-function isAcceptedMime(value: string): value is AcceptedMime {
-  return ACCEPTED_MIME.has(value as AcceptedMime);
+function isAcceptedMime(
+  value: string,
+): value is AcceptedMime {
+  return ACCEPTED_MIME.has(
+    value as AcceptedMime,
+  );
 }
 
-function displayDocumentType(doc: DocumentRow): string {
-  return labelForType(displayDocumentTypeValue(doc));
+function displayDocumentType(
+  doc: DocumentRow,
+): string {
+  return labelForType(
+    displayDocumentTypeValue(doc),
+  );
 }
 
-function displayDocumentTypeValue(doc: DocumentRow): string {
-  return doc.metadata?.documentType ?? doc.aggregateType;
+function displayDocumentTypeValue(
+  doc: DocumentRow,
+): string {
+  return (
+    doc.metadata?.documentType ??
+    doc.aggregateType
+  );
 }
 
 function labelForType(value: string): string {
   return (
-    DOCUMENT_TYPE_OPTIONS.find((option) => option.value === value)?.label ??
-    labelize(value)
+    DOCUMENT_TYPE_OPTIONS.find(
+      (option) => option.value === value,
+    )?.label ?? labelize(value)
   );
 }
 
-function asDocumentType(value: string): DocumentTypeValue {
-  return DOCUMENT_TYPE_OPTIONS.some((option) => option.value === value)
+function asDocumentType(
+  value: string,
+): DocumentTypeValue {
+  return DOCUMENT_TYPE_OPTIONS.some(
+    (option) => option.value === value,
+  )
     ? (value as DocumentTypeValue)
     : "other";
 }
 
-function asSourceChannel(value: string): SourceChannel {
-  return SOURCE_OPTIONS.some((option) => option.value === value)
+function asSourceChannel(
+  value: string,
+): SourceChannel {
+  return SOURCE_OPTIONS.some(
+    (option) => option.value === value,
+  )
     ? (value as SourceChannel)
     : "manual_upload";
 }
 
+function sourceLabel(
+  value: SourceChannel,
+): string {
+  return (
+    SOURCE_OPTIONS.find(
+      (option) => option.value === value,
+    )?.label ?? labelize(value)
+  );
+}
+
 function defaultTitle(value: string): string {
-  if (value === "code_status_directive") return "Patient POLST";
-  if (value === "consent_record") return "Hospice consent";
-  if (value === "referral") return "Referral packet";
-  if (value === "intake_source") return "Intake document";
+  if (value === "code_status_directive")
+    return "Patient POLST";
+
+  if (value === "consent_record")
+    return "Hospice consent";
+
+  if (value === "referral")
+    return "Referral packet";
+
+  if (value === "intake_source")
+    return "Intake document";
+
   return "Patient document";
 }
 
-function retentionFor(documentType: DocumentTypeValue): RetentionClass {
-  return documentType === "referral" || documentType === "intake_source"
+function retentionFor(
+  documentType: DocumentTypeValue,
+): RetentionClass {
+  return documentType === "referral" ||
+    documentType === "intake_source"
     ? "intake_artifact"
     : "clinical_record";
 }
@@ -973,36 +2116,70 @@ function currentVersion(
   versions: VersionRow[] | undefined,
 ): VersionRow | null {
   if (!versions?.length) return null;
+
   return (
-    [...versions].sort((a, b) => b.versionNumber - a.versionNumber)[0] ?? null
+    [...versions].sort(
+      (a, b) =>
+        b.versionNumber - a.versionNumber,
+    )[0] ?? null
   );
 }
 
-function provenanceLabel(metadata: DocumentMetadata | null): string {
-  if (!metadata?.sourceChannel) return "Source not recorded";
-  const source =
-    SOURCE_OPTIONS.find((option) => option.value === metadata.sourceChannel)
-      ?.label ?? labelize(metadata.sourceChannel);
+function provenanceLabel(
+  metadata: DocumentMetadata | null,
+): string {
+  if (!metadata?.sourceChannel) {
+    return "Source not recorded";
+  }
+
+  const source = sourceLabel(
+    metadata.sourceChannel,
+  );
+
   const received = metadata.receivedAt
-    ? ` • Received ${formatDateTime(metadata.receivedAt)}`
+    ? ` · Received ${formatDateTime(
+        metadata.receivedAt,
+      )}`
     : "";
-  const sender = metadata.sender ? ` • ${metadata.sender}` : "";
+
+  const sender = metadata.sender
+    ? ` · ${metadata.sender}`
+    : "";
+
   return `${source}${received}${sender}`;
 }
 
 function formatMime(mime: string): string {
-  return ACCEPTED_MIME.get(mime as AcceptedMime) ?? mime;
+  return (
+    ACCEPTED_MIME.get(
+      mime as AcceptedMime,
+    ) ?? mime
+  );
 }
 
-function canInlinePreview(mime: string): boolean {
+function canInlinePreview(
+  mime: string,
+): boolean {
   return (
-    mime === "application/pdf" || mime === "image/jpeg" || mime === "image/png"
+    mime === "application/pdf" ||
+    mime === "image/jpeg" ||
+    mime === "image/png"
   );
 }
 
 function formatBytes(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  if (bytes >= 1024 * 1024) {
+    return `${(
+      bytes /
+      1024 /
+      1024
+    ).toFixed(1)} MB`;
+  }
+
+  if (bytes >= 1024) {
+    return `${Math.round(bytes / 1024)} KB`;
+  }
+
   return `${bytes} B`;
 }
 
@@ -1014,7 +2191,9 @@ function formatDate(value: string): string {
   }).format(new Date(value));
 }
 
-function formatDateTime(value: string): string {
+function formatDateTime(
+  value: string,
+): string {
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
@@ -1024,298 +2203,1103 @@ function formatDateTime(value: string): string {
   }).format(new Date(value));
 }
 
-function labelize(value: string | undefined): string {
+function labelize(
+  value: string | undefined,
+): string {
   if (!value) return "Unknown";
-  return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) =>
+      character.toUpperCase(),
+    );
 }
 
 function shortId(id: string): string {
-  return id.length > 8 ? id.slice(0, 8) : id;
+  return id.length > 8
+    ? id.slice(0, 8)
+    : id;
 }
 
-function prune(metadata: DocumentMetadata): DocumentMetadata {
+function prune(
+  metadata: DocumentMetadata,
+): DocumentMetadata {
   return Object.fromEntries(
     Object.entries(metadata).filter(
-      ([, value]) => value != null && value !== "",
+      ([, value]) =>
+        value != null && value !== "",
     ),
   ) as DocumentMetadata;
 }
 
-function errorMessage(err: unknown, fallback: string): string {
-  const e = err as {
-    error?: { message?: string; details?: Array<{ message?: string }> };
+function errorMessage(
+  err: unknown,
+  fallback: string,
+): string {
+  const error = err as {
+    error?: {
+      message?: string;
+      details?: Array<{
+        message?: string;
+      }>;
+    };
     message?: string;
   };
+
   const message =
-    e?.error?.details?.[0]?.message ??
-    e?.error?.message ??
-    e?.message ??
+    error?.error?.details?.[0]?.message ??
+    error?.error?.message ??
+    error?.message ??
     fallback;
-  if (/mime|unsupported/i.test(message))
+
+  if (/mime|unsupported/i.test(message)) {
     return "Unsupported file type. Upload PDF, DOCX, JPG, PNG or TIFF.";
-  if (/size|too large/i.test(message))
+  }
+
+  if (/size|too large/i.test(message)) {
     return "File is too large. Maximum size is 25 MB.";
-  if (/sha|checksum|integrity/i.test(message))
+  }
+
+  if (
+    /sha|checksum|integrity/i.test(message)
+  ) {
     return "The upload failed integrity verification. Choose the file again and retry.";
-  if (/expired/i.test(message))
+  }
+
+  if (/expired/i.test(message)) {
     return "The upload expired. Start a new upload and try again.";
-  if (/referral/i.test(message) && /not found|denied|access/i.test(message))
+  }
+
+  if (
+    /referral/i.test(message) &&
+    /not found|denied|access/i.test(message)
+  ) {
     return "Referral not accessible.";
-  if (/patient/i.test(message) && /not found|denied|access/i.test(message))
+  }
+
+  if (
+    /patient/i.test(message) &&
+    /not found|denied|access/i.test(message)
+  ) {
     return "Patient not accessible.";
-  if (/VERSION_MISMATCH|412/i.test(message))
+  }
+
+  if (
+    /VERSION_MISMATCH|412/i.test(message)
+  ) {
     return "This document changed since you opened it. Refresh and try again.";
-  if (/storage|s3|minio/i.test(message))
+  }
+
+  if (/storage|s3|minio/i.test(message)) {
     return "Document storage is temporarily unavailable.";
+  }
+
   return message;
 }
 
 function storageError(status: number): string {
-  if (status >= 500) return "Document storage is temporarily unavailable.";
-  if (status === 403)
+  if (status >= 500) {
+    return "Document storage is temporarily unavailable.";
+  }
+
+  if (status === 403) {
     return "The upload URL is no longer valid. Start a new upload and try again.";
+  }
+
   return "The file could not be uploaded to document storage.";
 }
 
-function stageLabel(stage: UploadStage): string {
-  const labels: Record<UploadStage, string> = {
+function stageLabel(
+  stage: UploadStage,
+): string {
+  const labels: Record<
+    UploadStage,
+    string
+  > = {
     idle: "Ready",
     preparing: "Preparing upload",
-    uploading: "Uploading",
-    verifying: "Verifying",
+    uploading: "Uploading file",
+    verifying: "Verifying file",
     complete: "Complete",
   };
+
   return labels[stage];
 }
 
-const patientShell: CSSProperties = { display: "grid", gap: "1rem" };
+/* -------------------------------------------------------------------------- */
+/* Styles                                                                     */
+/* -------------------------------------------------------------------------- */
+
+const patientShell: CSSProperties = {
+  width: "100%",
+  maxWidth: "1500px",
+  margin: "0 auto",
+  display: "grid",
+  gap: "1.15rem",
+};
+
 const referralShell: CSSProperties = {
-  border: "1px solid var(--color-outline-variant)",
-  borderRadius: "8px",
+  border:
+    "1px solid var(--color-outline-variant)",
+  borderRadius: "12px",
   background: "var(--color-surface)",
   padding: "1rem",
   display: "grid",
-  gap: "0.85rem",
+  gap: "1rem",
 };
-const sectionHead: CSSProperties = {
+
+const collectionHeader: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: "1.5rem",
+  flexWrap: "wrap",
+};
+
+const headerCopy: CSSProperties = {
+  display: "grid",
+  gap: "0.3rem",
+  minWidth: 0,
+};
+
+const eyebrow: CSSProperties = {
+  color: "var(--color-primary)",
+  fontSize: "0.72rem",
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: "0.07em",
+};
+
+const pageTitle: CSSProperties = {
+  margin: 0,
+  fontFamily: t.fontDisplay,
+  fontWeight: 650,
+  fontSize: "1.55rem",
+  lineHeight: 1.2,
+  color: t.onSurface,
+};
+
+const compactTitle: CSSProperties = {
+  margin: 0,
+  fontFamily: t.fontDisplay,
+  fontWeight: 650,
+  fontSize: "1.05rem",
+  color: "var(--color-on-surface)",
+};
+
+const muted: CSSProperties = {
+  margin: 0,
+  color:
+    "var(--color-on-surface-variant)",
+  fontSize: "0.84rem",
+  lineHeight: 1.45,
+};
+
+const alert: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
   gap: "1rem",
-  flexWrap: "wrap",
-};
-const pageTitle: CSSProperties = {
-  margin: 0,
-  fontFamily: t.fontDisplay,
-  fontWeight: 500,
-  fontSize: "1.375rem",
-  color: t.onSurface,
-};
-const compactTitle: CSSProperties = {
-  margin: 0,
-  fontSize: "1rem",
-  color: "var(--color-on-surface)",
-};
-const muted: CSSProperties = {
-  margin: 0,
-  color: "var(--color-on-surface-variant)",
-  fontSize: "0.875rem",
-};
-const alert: CSSProperties = {
-  border: "1px solid color-mix(in srgb, var(--color-error) 35%, transparent)",
-  borderRadius: "8px",
+  border:
+    "1px solid color-mix(in srgb, var(--color-error) 28%, transparent)",
+  borderRadius: "10px",
   color: "var(--color-error)",
-  padding: "0.75rem 1rem",
+  background:
+    "color-mix(in srgb, var(--color-error) 7%, var(--color-surface))",
+  padding: "0.72rem 0.85rem",
+  fontSize: "0.85rem",
 };
-const filters: CSSProperties = {
-  display: "flex",
-  gap: "0.5rem",
-  flexWrap: "wrap",
+
+const dismissAlert: CSSProperties = {
+  border: 0,
+  background: "transparent",
+  color: "inherit",
+  cursor: "pointer",
+  fontSize: "1.25rem",
+  lineHeight: 1,
 };
-const filterButton: CSSProperties = {
-  border: "1px solid var(--color-outline-variant)",
-  borderRadius: "999px",
+
+const libraryShell: CSSProperties = {
   background: "var(--color-surface)",
-  color: "var(--color-on-surface)",
-  padding: "0.45rem 0.75rem",
+  border:
+    "1px solid var(--color-outline-variant)",
+  borderRadius: "14px",
+  overflow: "hidden",
+  boxShadow:
+    "0 1px 2px rgba(0,0,0,0.025)",
+};
+
+const categoryBar: CSSProperties = {
+  display: "flex",
+  gap: "0.25rem",
+  overflowX: "auto",
+  padding: "0.75rem 1rem 0",
+  borderBottom:
+    "1px solid var(--color-outline-variant)",
+};
+
+const categoryButton: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.45rem",
+  border: 0,
+  borderBottom: "2px solid transparent",
+  background: "transparent",
+  color:
+    "var(--color-on-surface-variant)",
+  padding: "0.65rem 0.55rem 0.75rem",
+  fontSize: "0.84rem",
+  fontWeight: 550,
+  whiteSpace: "nowrap",
   cursor: "pointer",
 };
-const filterActive: CSSProperties = {
-  ...filterButton,
-  borderColor: "var(--color-primary)",
-  background:
-    "color-mix(in srgb, var(--color-primary) 12%, var(--color-surface))",
+
+const categoryButtonActive: CSSProperties = {
+  ...categoryButton,
+  color: "var(--color-primary)",
+  borderBottomColor:
+    "var(--color-primary)",
   fontWeight: 700,
 };
-const list: CSSProperties = { display: "grid", gap: "0.65rem" };
-const rowShell: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 11rem), 1fr))",
-  gap: "0.85rem",
-  alignItems: "center",
-  border: "1px solid var(--color-outline-variant)",
-  borderRadius: "8px",
-  background: "var(--color-surface)",
-  padding: "0.85rem",
+
+const categoryCount: CSSProperties = {
+  minWidth: "1.35rem",
+  height: "1.35rem",
+  display: "inline-grid",
+  placeItems: "center",
+  borderRadius: "999px",
+  background:
+    "var(--color-surface-container)",
+  color:
+    "var(--color-on-surface-variant)",
+  padding: "0 0.3rem",
+  fontSize: "0.68rem",
+  fontVariantNumeric: "tabular-nums",
 };
-const rowMain: CSSProperties = { display: "grid", gap: "0.2rem", minWidth: 0 };
+
+const categoryCountActive: CSSProperties = {
+  ...categoryCount,
+  background:
+    "color-mix(in srgb, var(--color-primary) 12%, var(--color-surface))",
+  color: "var(--color-primary)",
+};
+
+const toolbar: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "0.75rem",
+  flexWrap: "wrap",
+  padding: "0.85rem 1rem 0.65rem",
+};
+
+const searchField: CSSProperties = {
+  minWidth: "15rem",
+  flex: "1 1 22rem",
+  height: "2.4rem",
+  display: "flex",
+  alignItems: "center",
+  gap: "0.45rem",
+  padding: "0 0.7rem",
+  border:
+    "1px solid var(--color-outline-variant)",
+  borderRadius: "9px",
+  background:
+    "var(--color-surface-container-low, var(--color-surface))",
+  color:
+    "var(--color-on-surface-variant)",
+};
+
+const searchInput: CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  height: "100%",
+  border: 0,
+  outline: 0,
+  background: "transparent",
+  color: "var(--color-on-surface)",
+  font: "inherit",
+  fontSize: "0.85rem",
+};
+
+const clearSearch: CSSProperties = {
+  border: 0,
+  background: "transparent",
+  color:
+    "var(--color-on-surface-variant)",
+  cursor: "pointer",
+  fontSize: "1rem",
+};
+
+const filterControls: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.45rem",
+  flexWrap: "wrap",
+};
+
+const select: CSSProperties = {
+  height: "2.4rem",
+  border:
+    "1px solid var(--color-outline-variant)",
+  borderRadius: "9px",
+  padding: "0 2rem 0 0.7rem",
+  background: "var(--color-surface)",
+  color: "var(--color-on-surface)",
+  font: "inherit",
+  fontSize: "0.8rem",
+  cursor: "pointer",
+};
+
+const resetButton: CSSProperties = {
+  height: "2.4rem",
+  border: 0,
+  background: "transparent",
+  color: "var(--color-primary)",
+  fontSize: "0.8rem",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const resultSummary: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "0.75rem",
+  padding: "0 1rem 0.75rem",
+  color:
+    "var(--color-on-surface-variant)",
+  fontSize: "0.76rem",
+};
+
+const clearAllButton: CSSProperties = {
+  border: 0,
+  background: "transparent",
+  color: "var(--color-primary)",
+  fontSize: "0.76rem",
+  fontWeight: 650,
+  cursor: "pointer",
+};
+
+const contentArea: CSSProperties = {
+  borderTop:
+    "1px solid var(--color-outline-variant)",
+};
+
+const loadingState: CSSProperties = {
+  minHeight: "18rem",
+  display: "grid",
+  placeItems: "center",
+};
+
+const emptyWrap: CSSProperties = {
+  padding: "3rem 1.5rem",
+};
+
+const documentList: CSSProperties = {
+  width: "100%",
+};
+
+const listHeader: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "minmax(18rem, 1fr) 9rem 8rem 10rem 6.5rem",
+  alignItems: "center",
+  gap: "1rem",
+  padding: "0.6rem 1rem",
+  background:
+    "var(--color-surface-low, var(--color-surface-container-low))",
+  color:
+    "var(--color-on-surface-variant)",
+  fontSize: "0.69rem",
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+};
+
+const documentRow: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "minmax(18rem, 1fr) 9rem 8rem 10rem 6.5rem",
+  alignItems: "center",
+  gap: "1rem",
+  minHeight: "5rem",
+  padding: "0.75rem 1rem",
+  borderTop:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 65%, transparent)",
+};
+
+const documentIdentityButton: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.8rem",
+  minWidth: 0,
+  width: "100%",
+  textAlign: "left",
+  padding: 0,
+  border: 0,
+  background: "transparent",
+  color: "inherit",
+  cursor: "pointer",
+};
+
+const documentIdentity: CSSProperties = {
+  display: "grid",
+  gap: "0.16rem",
+  minWidth: 0,
+};
+
 const rowTitle: CSSProperties = {
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
+  color: "var(--color-on-surface)",
+  fontSize: "0.88rem",
+  fontWeight: 650,
 };
+
 const rowMeta: CSSProperties = {
-  color: "var(--color-on-surface-variant)",
-  fontSize: "0.8rem",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  color:
+    "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
 };
+
+const provenanceMeta: CSSProperties = {
+  ...rowMeta,
+  fontSize: "0.72rem",
+};
+
+const dateCell: CSSProperties = {
+  display: "grid",
+  gap: "0.15rem",
+  fontSize: "0.79rem",
+  color: "var(--color-on-surface)",
+};
+
+const secondaryMeta: CSSProperties = {
+  color:
+    "var(--color-on-surface-variant)",
+  fontSize: "0.7rem",
+};
+
 const rowActions: CSSProperties = {
   display: "flex",
-  gap: "0.45rem",
-  flexWrap: "wrap",
   justifyContent: "flex-end",
+  alignItems: "center",
+  gap: "0.25rem",
 };
-const linkButton: CSSProperties = {
+
+const viewButton: CSSProperties = {
   border: 0,
   background: "transparent",
   color: "var(--color-primary)",
+  fontSize: "0.79rem",
   fontWeight: 700,
   cursor: "pointer",
-  padding: "0.25rem",
+  padding: "0.4rem",
 };
+
+const moreButton: CSSProperties = {
+  width: "2rem",
+  height: "2rem",
+  display: "grid",
+  placeItems: "center",
+  border:
+    "1px solid var(--color-outline-variant)",
+  borderRadius: "8px",
+  background: "var(--color-surface)",
+  color:
+    "var(--color-on-surface-variant)",
+  cursor: "pointer",
+  letterSpacing: "-0.08em",
+};
+
+const fileIcon: CSSProperties = {
+  width: "2.3rem",
+  height: "2.3rem",
+  flexShrink: 0,
+  display: "grid",
+  placeItems: "center",
+  borderRadius: "9px",
+};
+
+const largeFileIcon: CSSProperties = {
+  width: "3rem",
+  height: "3rem",
+  borderRadius: "11px",
+};
+
+function fileIconTone(
+  value: string,
+): CSSProperties {
+  if (value === "code_status_directive") {
+    return {
+      background:
+        "color-mix(in srgb, var(--color-warning) 13%, var(--color-surface))",
+      color:
+        "var(--color-warning, var(--color-on-surface))",
+    };
+  }
+
+  if (value === "consent_record") {
+    return {
+      background:
+        "color-mix(in srgb, var(--color-primary) 10%, var(--color-surface))",
+      color: "var(--color-primary)",
+    };
+  }
+
+  if (
+    value === "intake_source" ||
+    value === "referral"
+  ) {
+    return {
+      background:
+        "color-mix(in srgb, var(--color-info, var(--color-primary)) 10%, var(--color-surface))",
+      color:
+        "var(--color-info, var(--color-primary))",
+    };
+  }
+
+  return {
+    background:
+      "var(--color-surface-container)",
+    color:
+      "var(--color-on-surface-variant)",
+  };
+}
+
+function typePill(
+  value: string,
+): CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    maxWidth: "100%",
+    borderRadius: "999px",
+    padding: "0.28rem 0.55rem",
+    background:
+      value === "code_status_directive"
+        ? "color-mix(in srgb, var(--color-warning) 11%, var(--color-surface))"
+        : value === "consent_record"
+          ? "color-mix(in srgb, var(--color-primary) 9%, var(--color-surface))"
+          : "var(--color-surface-container)",
+    color: "var(--color-on-surface)",
+    fontSize: "0.72rem",
+    fontWeight: 650,
+    whiteSpace: "nowrap",
+  };
+}
+
 const modalBackdrop: CSSProperties = {
   position: "fixed",
   inset: 0,
-  background: "rgba(17, 24, 39, 0.36)",
+  zIndex: 50,
   display: "grid",
   placeItems: "center",
-  zIndex: 50,
   padding: "1rem",
+  background: "rgba(15, 23, 42, 0.42)",
+  backdropFilter: "blur(2px)",
 };
+
 const modal: CSSProperties = {
-  width: "min(56rem, 100%)",
-  maxHeight: "90vh",
-  overflow: "auto",
+  maxHeight: "92vh",
+  overflow: "hidden",
   background: "var(--color-surface)",
-  borderRadius: "8px",
-  boxShadow: "var(--shadow-soft)",
-  padding: "1rem",
-  display: "grid",
-  gap: "1rem",
+  border:
+    "1px solid var(--color-outline-variant)",
+  borderRadius: "14px",
+  boxShadow:
+    "0 24px 70px rgba(15, 23, 42, 0.22)",
+  display: "flex",
+  flexDirection: "column",
 };
+
+const modalHeader: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: "1rem",
+  padding: "1rem 1.15rem",
+  borderBottom:
+    "1px solid var(--color-outline-variant)",
+};
+
+const modalHeading: CSSProperties = {
+  display: "grid",
+  gap: "0.2rem",
+  minWidth: 0,
+};
+
+const modalTitle: CSSProperties = {
+  margin: 0,
+  fontFamily: t.fontDisplay,
+  color: "var(--color-on-surface)",
+  fontSize: "1.1rem",
+  fontWeight: 650,
+};
+
+const modalSubtitle: CSSProperties = {
+  margin: 0,
+  color:
+    "var(--color-on-surface-variant)",
+  fontSize: "0.78rem",
+};
+
+const modalContent: CSSProperties = {
+  overflow: "auto",
+  padding: "1.15rem",
+};
+
 const iconButton: CSSProperties = {
   width: "2rem",
   height: "2rem",
-  borderRadius: "999px",
-  border: "1px solid var(--color-outline-variant)",
+  flexShrink: 0,
+  border:
+    "1px solid var(--color-outline-variant)",
+  borderRadius: "8px",
   background: "var(--color-surface)",
+  color:
+    "var(--color-on-surface-variant)",
   cursor: "pointer",
+  fontSize: "1.15rem",
 };
-const form: CSSProperties = { display: "grid", gap: "0.8rem" };
+
+const form: CSSProperties = {
+  display: "grid",
+  gap: "1rem",
+};
+
+const formSection: CSSProperties = {
+  display: "grid",
+  gap: "0.75rem",
+};
+
+const formSectionHead: CSSProperties = {
+  display: "grid",
+  gap: "0.1rem",
+};
+
+const formSectionTitle: CSSProperties = {
+  color: "var(--color-on-surface)",
+  fontSize: "0.88rem",
+};
+
+const formSectionDescription: CSSProperties = {
+  color:
+    "var(--color-on-surface-variant)",
+  fontSize: "0.75rem",
+};
+
+const formSectionBody: CSSProperties = {
+  display: "grid",
+  gap: "0.75rem",
+};
+
 const field: CSSProperties = {
   display: "grid",
   gap: "0.35rem",
-  fontSize: "0.85rem",
-  fontWeight: 600,
 };
+
+const fieldLabelText: CSSProperties = {
+  color:
+    "var(--color-on-surface-variant)",
+  fontSize: "0.76rem",
+  fontWeight: 650,
+};
+
 const input: CSSProperties = {
-  border: "1px solid var(--color-outline-variant)",
-  borderRadius: "8px",
-  padding: "0.6rem 0.7rem",
+  width: "100%",
+  boxSizing: "border-box",
+  border:
+    "1px solid var(--color-outline-variant)",
+  borderRadius: "9px",
+  padding: "0.62rem 0.7rem",
   background: "var(--color-surface)",
   color: "var(--color-on-surface)",
   font: "inherit",
+  fontSize: "0.84rem",
+  outline: 0,
   minWidth: 0,
 };
+
+const twoColumnGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(14rem, 1fr))",
+  gap: "0.75rem",
+};
+
 const optionalGrid: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(11rem, 1fr))",
   gap: "0.7rem",
 };
-const check: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
-  fontSize: "0.9rem",
-};
+
 const dropZone: CSSProperties = {
-  border: "1px dashed var(--color-outline)",
-  borderRadius: "8px",
-  padding: "1rem",
+  minHeight: "8.5rem",
+  border:
+    "1.5px dashed var(--color-outline)",
+  borderRadius: "11px",
+  padding: "1.2rem",
   display: "grid",
   placeItems: "center",
+  alignContent: "center",
   textAlign: "center",
-  gap: "0.25rem",
+  gap: "0.3rem",
   cursor: "pointer",
-  background: "var(--color-surface-low)",
+  background:
+    "var(--color-surface-low, var(--color-surface-container-low))",
 };
-const stageLine: CSSProperties = {
-  color: "var(--color-on-surface-variant)",
-  fontSize: "0.875rem",
+
+const dropZoneSelected: CSSProperties = {
+  ...dropZone,
+  borderColor:
+    "color-mix(in srgb, var(--color-primary) 55%, var(--color-outline))",
+  background:
+    "color-mix(in srgb, var(--color-primary) 4%, var(--color-surface))",
 };
+
+const uploadIconWrap: CSSProperties = {
+  width: "2.8rem",
+  height: "2.8rem",
+  display: "grid",
+  placeItems: "center",
+  borderRadius: "999px",
+  color: "var(--color-primary)",
+  background:
+    "color-mix(in srgb, var(--color-primary) 9%, var(--color-surface))",
+  marginBottom: "0.2rem",
+};
+
+const dropTitle: CSSProperties = {
+  fontSize: "0.86rem",
+  color: "var(--color-on-surface)",
+};
+
+const dropHelp: CSSProperties = {
+  fontSize: "0.74rem",
+  color:
+    "var(--color-on-surface-variant)",
+};
+
+const portalVisibility: CSSProperties = {
+  border:
+    "1px solid var(--color-outline-variant)",
+  borderRadius: "10px",
+  background:
+    "var(--color-surface-low, var(--color-surface-container-low))",
+  padding: "0.75rem",
+};
+
+const check: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: "0.65rem",
+  cursor: "pointer",
+};
+
+const checkTitle: CSSProperties = {
+  display: "block",
+  fontSize: "0.83rem",
+  color: "var(--color-on-surface)",
+};
+
+const checkDescription: CSSProperties = {
+  display: "block",
+  marginTop: "0.12rem",
+  fontSize: "0.74rem",
+  lineHeight: 1.4,
+  color:
+    "var(--color-on-surface-variant)",
+};
+
+const versionTarget: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.7rem",
+  border:
+    "1px solid var(--color-outline-variant)",
+  borderRadius: "10px",
+  background:
+    "var(--color-surface-low, var(--color-surface-container-low))",
+  padding: "0.7rem",
+};
+
+const versionTargetLabel: CSSProperties = {
+  color:
+    "var(--color-on-surface-variant)",
+  fontSize: "0.7rem",
+  marginBottom: "0.1rem",
+};
+
 const dialogActions: CSSProperties = {
   display: "flex",
   justifyContent: "flex-end",
+  alignItems: "center",
+  gap: "0.5rem",
+  paddingTop: "0.25rem",
+};
+
+const progressShell: CSSProperties = {
+  border:
+    "1px solid var(--color-outline-variant)",
+  borderRadius: "10px",
+  padding: "0.75rem",
+  background:
+    "var(--color-surface-low, var(--color-surface-container-low))",
+  display: "grid",
+  gap: "0.65rem",
+};
+
+const progressTop: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "1rem",
+  fontSize: "0.78rem",
+  fontWeight: 650,
+};
+
+const progressSteps: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, 1fr)",
+  gap: "0.4rem",
+};
+
+const progressStep: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.3rem",
+  minWidth: 0,
+};
+
+const progressDot: CSSProperties = {
+  width: "0.45rem",
+  height: "0.45rem",
+  flexShrink: 0,
+  borderRadius: "999px",
+  background:
+    "var(--color-outline-variant)",
+};
+
+const progressDotActive: CSSProperties = {
+  background: "var(--color-primary)",
+};
+
+const progressLabel: CSSProperties = {
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  color:
+    "var(--color-on-surface-variant)",
+  fontSize: "0.68rem",
+};
+
+const progressLabelActive: CSSProperties = {
+  color: "var(--color-on-surface)",
+  fontWeight: 650,
+};
+
+const detailBody: CSSProperties = {
+  display: "grid",
+  gap: "1.25rem",
+};
+
+const detailHero: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.85rem",
+};
+
+const detailHeroCopy: CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gap: "0.3rem",
+};
+
+const detailPills: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.4rem",
+  flexWrap: "wrap",
+};
+
+const detailTitle: CSSProperties = {
+  fontSize: "1rem",
+  color: "var(--color-on-surface)",
+};
+
+const primaryActions: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
   gap: "0.5rem",
   flexWrap: "wrap",
 };
+
+const detailSection: CSSProperties = {
+  display: "grid",
+  gap: "0.7rem",
+  paddingTop: "0.2rem",
+};
+
 const detailGrid: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))",
-  gap: "0.8rem",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(10rem, 1fr))",
+  gap: "0.75rem",
 };
+
+const detailField: CSSProperties = {
+  minHeight: "4.2rem",
+  display: "grid",
+  alignContent: "start",
+  gap: "0.22rem",
+  padding: "0.65rem",
+  border:
+    "1px solid var(--color-outline-variant)",
+  borderRadius: "9px",
+  background:
+    "var(--color-surface-low, var(--color-surface-container-low))",
+};
+
 const fieldLabel: CSSProperties = {
-  color: "var(--color-on-surface-variant)",
-  fontSize: "0.75rem",
+  color:
+    "var(--color-on-surface-variant)",
+  fontSize: "0.67rem",
+  fontWeight: 700,
   textTransform: "uppercase",
-  letterSpacing: 0,
+  letterSpacing: "0.045em",
 };
+
+const fieldValue: CSSProperties = {
+  color: "var(--color-on-surface)",
+  fontSize: "0.82rem",
+  fontWeight: 550,
+};
+
 const smallHeading: CSSProperties = {
-  margin: "0.5rem 0 0",
-  fontSize: "0.95rem",
+  margin: 0,
+  fontSize: "0.9rem",
+  color: "var(--color-on-surface)",
 };
-const table: CSSProperties = { width: "100%", borderCollapse: "collapse" };
-const th: CSSProperties = {
-  textAlign: "left",
-  color: "var(--color-on-surface-variant)",
-  fontSize: "0.78rem",
-  padding: "0.55rem",
+
+const sectionDescription: CSSProperties = {
+  margin: "0.15rem 0 0",
+  color:
+    "var(--color-on-surface-variant)",
+  fontSize: "0.73rem",
 };
-const td: CSSProperties = {
-  borderTop: "1px solid var(--color-outline-variant)",
-  padding: "0.55rem",
-  fontSize: "0.85rem",
+
+const notesBox: CSSProperties = {
+  border:
+    "1px solid var(--color-outline-variant)",
+  borderRadius: "9px",
+  padding: "0.75rem",
+  background:
+    "var(--color-surface-low, var(--color-surface-container-low))",
+  color: "var(--color-on-surface)",
+  fontSize: "0.82rem",
+  lineHeight: 1.5,
 };
-const previewFrame: CSSProperties = {
-  height: "70vh",
-  border: "1px solid var(--color-outline-variant)",
-  borderRadius: "8px",
+
+const versionHeading: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: "1rem",
+};
+
+const versionCount: CSSProperties = {
+  minWidth: "1.5rem",
+  height: "1.5rem",
+  display: "grid",
+  placeItems: "center",
+  borderRadius: "999px",
+  background:
+    "var(--color-surface-container)",
+  color:
+    "var(--color-on-surface-variant)",
+  fontSize: "0.7rem",
+  fontWeight: 700,
+};
+
+const versionList: CSSProperties = {
+  border:
+    "1px solid var(--color-outline-variant)",
+  borderRadius: "10px",
   overflow: "hidden",
-  background: "var(--color-surface-low)",
 };
+
+const versionRow: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns:
+    "3rem minmax(0, 1fr) auto",
+  alignItems: "center",
+  gap: "0.75rem",
+  padding: "0.7rem",
+  borderTop:
+    "1px solid var(--color-outline-variant)",
+};
+
+const versionNumber: CSSProperties = {
+  fontFamily: t.fontMono,
+  color: "var(--color-on-surface)",
+  fontSize: "0.78rem",
+  fontWeight: 700,
+};
+
+const versionMeta: CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gap: "0.12rem",
+  fontSize: "0.78rem",
+};
+
+const currentBadge: CSSProperties = {
+  display: "inline-flex",
+  borderRadius: "999px",
+  padding: "0.22rem 0.48rem",
+  background:
+    "color-mix(in srgb, var(--color-success) 12%, var(--color-surface))",
+  color:
+    "var(--color-success, var(--color-primary))",
+  fontSize: "0.67rem",
+  fontWeight: 700,
+};
+
+const noVersions: CSSProperties = {
+  border:
+    "1px dashed var(--color-outline-variant)",
+  borderRadius: "9px",
+  padding: "1rem",
+  textAlign: "center",
+  color:
+    "var(--color-on-surface-variant)",
+  fontSize: "0.8rem",
+};
+
+const previewFrame: CSSProperties = {
+  height: "72vh",
+  border:
+    "1px solid var(--color-outline-variant)",
+  borderRadius: "10px",
+  overflow: "hidden",
+  background:
+    "var(--color-surface-low, var(--color-surface-container-low))",
+};
+
 const previewMedia: CSSProperties = {
   width: "100%",
   height: "100%",
   border: 0,
 };
+
 const previewImage: CSSProperties = {
   width: "100%",
   height: "100%",
   objectFit: "contain",
 };
-
-function typeBadge(value: string): CSSProperties {
-  const polst = value === "code_status_directive";
-  return {
-    borderRadius: "8px",
-    padding: "0.55rem 0.65rem",
-    background: polst
-      ? "color-mix(in srgb, var(--color-warning) 18%, var(--color-surface))"
-      : "var(--color-surface-low)",
-    color: polst
-      ? "var(--color-on-surface)"
-      : "var(--color-on-surface-variant)",
-    fontWeight: 800,
-    textAlign: "center",
-    fontSize: "0.84rem",
-  };
-}
