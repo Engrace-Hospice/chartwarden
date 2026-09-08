@@ -16,6 +16,8 @@ import {
 import { registerAdmissionRoutes as _registerM6Routes } from "./routes/admission-routes";
 
 export * from "./state-machines";
+export * from "./admission-evidence-service";
+export * from "./admission-uploaded-evidence";
 
 /**
  * M6L-T01 — mount the M6 admission routes over the PRODUCTION Drizzle route service + ABAC resolver

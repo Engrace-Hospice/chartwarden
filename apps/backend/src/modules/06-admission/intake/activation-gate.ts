@@ -27,10 +27,21 @@ export type RequirementAction =
   | "RESOLVE_PATIENT"
   | "COMPLETE_ADMISSION_DETAILS"
   | "REVIEW_PRIVACY"
-  | "ACKNOWLEDGE_NOR"
-  | "COMPLETE_ELECTION"
-  | "REVIEW_CTI"
+  | "COMPLETE_NOTICE_OF_RIGHTS"
+  | "COMPLETE_ELECTION_STATEMENT"
+  | "COMPLETE_ELECTION_SIGNATURE"
+  | "COMPLETE_CTI"
+  | "COMPLETE_CTI_SIGNATURE"
   | "REVIEW_F2F";
+
+export interface AdmissionRequirementEvidence {
+  readonly sourceType: "structured" | "uploaded";
+  readonly evidenceId: string;
+  readonly documentId?: string;
+  readonly documentVersionId?: string;
+  readonly structuredEntityId?: string;
+  readonly completedAt?: string;
+}
 
 export interface AdmissionReadinessRequirement {
   readonly code: RequirementCode;
@@ -40,6 +51,7 @@ export interface AdmissionReadinessRequirement {
   readonly message?: string;
   readonly action?: RequirementAction;
   readonly satisfiedBy?: "normal" | "override";
+  readonly evidence?: AdmissionRequirementEvidence;
 }
 
 export interface AdmissionReadinessResult {
@@ -76,19 +88,22 @@ export interface AdmissionReadinessFacts {
     readonly acknowledgedAtPresent: boolean;
     readonly signerValid: boolean;
     readonly methodValid: boolean;
+    readonly evidence?: AdmissionRequirementEvidence;
   };
   readonly electionStatement: {
     readonly exists: boolean;
     readonly status: string | null;
     readonly signedAtPresent: boolean;
     readonly belongsToCurrentPeriod: boolean;
+    readonly evidence?: AdmissionRequirementEvidence;
+    readonly signatureEvidence?: AdmissionRequirementEvidence;
   };
   readonly cti: {
     readonly exists: boolean;
     readonly status: string | null;
+    readonly evidence?: AdmissionRequirementEvidence;
+    readonly signatureEvidence?: AdmissionRequirementEvidence;
     readonly hospiceMdSigned: boolean;
-    readonly attendingRequired: boolean;
-    readonly attendingSigned: boolean;
   };
   readonly f2f: {
     readonly required: boolean;
@@ -102,11 +117,16 @@ export interface AdmissionReadinessFacts {
   };
 }
 
-const complete = (code: RequirementCode, label: string): AdmissionReadinessRequirement => ({
+const complete = (
+  code: RequirementCode,
+  label: string,
+  evidence?: AdmissionRequirementEvidence,
+): AdmissionReadinessRequirement => ({
   code,
   label,
   status: "complete",
   blocking: true,
+  ...(evidence ? { evidence } : {}),
 });
 
 export function evaluateAdmissionReadiness(
@@ -179,27 +199,39 @@ export function evaluateAdmissionReadiness(
     facts.noticeOfRights.methodValid;
   requirements.push(
     norComplete
-      ? complete("notice_of_rights", "Notice of Rights")
+      ? complete("notice_of_rights", "Notice of Rights", facts.noticeOfRights.evidence)
       : {
           code: "notice_of_rights",
           label: "Notice of Rights",
           status: "action_required",
           blocking: true,
           message: "Notice of Rights acknowledgment is required.",
-          action: "ACKNOWLEDGE_NOR",
+          action: "COMPLETE_NOTICE_OF_RIGHTS",
         },
   );
 
-  const electionSigned =
+  const electionStatementSatisfied = facts.electionStatement.evidence
+    ? true
+    : facts.electionStatement.exists;
+  const electionSignatureSatisfied = facts.electionStatement.signatureEvidence
+    ? true
+    : facts.electionStatement.status === "signed" && facts.electionStatement.signedAtPresent;
+  const electionComplete =
     facts.electionStatement.exists &&
-    facts.electionStatement.status === "signed" &&
-    facts.electionStatement.signedAtPresent &&
+    electionStatementSatisfied &&
+    electionSignatureSatisfied &&
     facts.electionStatement.belongsToCurrentPeriod;
   const electionStatus =
-    facts.electionStatement.status === "awaiting_signature" ? "awaiting_signature" : "action_required";
+    facts.electionStatement.status === "awaiting_signature"
+      ? "awaiting_signature"
+      : "action_required";
   requirements.push(
-    electionSigned
-      ? complete("election_statement", "Election Statement")
+    electionComplete
+      ? complete(
+          "election_statement",
+          "Election Statement",
+          facts.electionStatement.signatureEvidence,
+        )
       : {
           code: "election_statement",
           label: "Election Statement",
@@ -208,40 +240,39 @@ export function evaluateAdmissionReadiness(
           message: facts.electionStatement.exists
             ? "Election Statement must be signed."
             : "Election Statement is required.",
-          action: "COMPLETE_ELECTION",
+          action: facts.electionStatement.exists
+            ? "COMPLETE_ELECTION_SIGNATURE"
+            : "COMPLETE_ELECTION_STATEMENT",
         },
   );
 
   let ctiRequirement: AdmissionReadinessRequirement;
-  if (!facts.cti.exists || facts.cti.status === "voided") {
+  const ctiSatisfied = facts.cti.evidence ? true : facts.cti.exists;
+  const ctiSignatureSatisfied = facts.cti.signatureEvidence ? true : facts.cti.hospiceMdSigned;
+  if (!facts.cti.exists || facts.cti.status === "voided" || !ctiSatisfied) {
     ctiRequirement = {
       code: "cti",
       label: "Certification of Terminal Illness",
       status: "action_required",
       blocking: true,
       message: "Certification of Terminal Illness is required.",
-      action: "REVIEW_CTI",
+      action: "COMPLETE_CTI",
     };
-  } else if (!facts.cti.hospiceMdSigned) {
+  } else if (!ctiSignatureSatisfied) {
     ctiRequirement = {
       code: "cti",
       label: "Certification of Terminal Illness",
       status: "awaiting_signature",
       blocking: true,
       message: "Hospice medical director signature is required.",
-      action: "REVIEW_CTI",
-    };
-  } else if (facts.cti.attendingRequired && !facts.cti.attendingSigned) {
-    ctiRequirement = {
-      code: "cti",
-      label: "Certification of Terminal Illness",
-      status: "awaiting_signature",
-      blocking: true,
-      message: "Attending physician signature is required.",
-      action: "REVIEW_CTI",
+      action: "COMPLETE_CTI_SIGNATURE",
     };
   } else {
-    ctiRequirement = complete("cti", "Certification of Terminal Illness");
+    ctiRequirement = complete(
+      "cti",
+      "Certification of Terminal Illness",
+      facts.cti.signatureEvidence,
+    );
   }
   requirements.push(ctiRequirement);
 
@@ -321,20 +352,15 @@ export function evaluateAdmissionReadiness(
 }
 
 /** The §4.2.2 precondition codes the legacy activation gate reports as unmet. */
-export type ActivationGap =
-  | "election_signed"
-  | "nor_acknowledged"
-  | "cti_signed"
-  | "attending_signed";
+export type ActivationGap = "election_signed" | "nor_acknowledged" | "cti_signed";
 
 /** Period-1 bundle facts the gate decides over (loaded org-scoped; never from client input). */
 export interface ActivationFacts {
-  /** The benefit-period sequence being activated; the attending signature gates period 1 only (D3). */
+  /** The benefit-period sequence being activated. */
   readonly periodSequence: number;
   readonly electionSigned: boolean;
   readonly norAcknowledged: boolean;
   readonly ctiHospiceMdSigned: boolean;
-  readonly ctiAttendingSigned: boolean;
 }
 
 /** The gate verdict: `ready` to activate, plus the ordered list of still-missing preconditions. */
@@ -345,8 +371,8 @@ export interface ActivationGate {
 
 /**
  * R-AC-01 — an admission activates only when, for period 1: the election statement is signed, the NOR
- * is acknowledged, and the CTI is signed by the hospice medical director. The attending-physician CTI
- * signature is required for **period 1 only** (D3); periods ≥2 do not gate on it. The order of
+ * is acknowledged, and the CTI is signed by the selected hospice physician. The attending-physician CTI
+ * signature is not an activation prerequisite. The order of
  * `missing` matches the §5.2.5 checklist top-to-bottom so the UI can render server truth verbatim.
  */
 export function computeActivationGate(facts: ActivationFacts): ActivationGate {
@@ -374,17 +400,15 @@ export function computeActivationGate(facts: ActivationFacts): ActivationGate {
       belongsToCurrentPeriod: facts.electionSigned,
     },
     cti: {
-      exists: facts.ctiHospiceMdSigned || facts.ctiAttendingSigned,
-      status:
-        facts.ctiHospiceMdSigned &&
-        (facts.periodSequence !== 1 || facts.ctiAttendingSigned)
-          ? "signed"
-          : facts.ctiHospiceMdSigned
-            ? "awaiting_attending"
-            : null,
+      exists: facts.ctiHospiceMdSigned,
+      status: facts.ctiHospiceMdSigned ? "signed" : null,
+      evidence: facts.ctiHospiceMdSigned
+        ? { sourceType: "structured", evidenceId: "legacy", structuredEntityId: "legacy" }
+        : undefined,
+      signatureEvidence: facts.ctiHospiceMdSigned
+        ? { sourceType: "structured", evidenceId: "legacy", structuredEntityId: "legacy" }
+        : undefined,
       hospiceMdSigned: facts.ctiHospiceMdSigned,
-      attendingRequired: facts.periodSequence === 1,
-      attendingSigned: facts.ctiAttendingSigned,
     },
     f2f: {
       required: false,
@@ -396,27 +420,13 @@ export function computeActivationGate(facts: ActivationFacts): ActivationGate {
     },
   });
   const missing: ActivationGap[] = [];
-  if (readiness.requirements.some((r) => r.code === "election_statement" && r.status !== "complete"))
+  if (
+    readiness.requirements.some((r) => r.code === "election_statement" && r.status !== "complete")
+  )
     missing.push("election_signed");
   if (readiness.requirements.some((r) => r.code === "notice_of_rights" && r.status !== "complete"))
     missing.push("nor_acknowledged");
-  if (
-    readiness.requirements.some(
-      (r) =>
-        r.code === "cti" &&
-        r.status !== "complete" &&
-        r.message !== "Attending physician signature is required.",
-    )
-  )
+  if (readiness.requirements.some((r) => r.code === "cti" && r.status !== "complete"))
     missing.push("cti_signed");
-  if (
-    readiness.requirements.some(
-      (r) =>
-        r.code === "cti" &&
-        r.status !== "complete" &&
-        r.message === "Attending physician signature is required.",
-    )
-  )
-    missing.push("attending_signed");
   return { ready: missing.length === 0, missing };
 }

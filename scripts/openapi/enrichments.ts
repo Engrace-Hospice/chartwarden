@@ -1429,8 +1429,10 @@ import {
   AssembleSubmissionSchema as M10AssembleSubmissionSchema,
   CorrectTimepointSchema as M10CorrectTimepointSchema,
   DashboardQuerySchema as M10DashboardQuerySchema,
+  HopeAnswerPatchResponseSchema as M10HopeAnswerPatchResponseSchema,
   HopeAssessmentListResponseSchema as M10HopeAssessmentListResponseSchema,
   HopeAssessmentResponseSchema as M10HopeAssessmentResponseSchema,
+  HopeAssessmentWorkspaceResponseSchema as M10HopeAssessmentWorkspaceResponseSchema,
   HopeComplianceResponseSchema as M10HopeComplianceResponseSchema,
   HopeRegenerateResponseSchema as M10HopeRegenerateResponseSchema,
   HopeScheduleListResponseSchema as M10HopeScheduleListResponseSchema,
@@ -1442,6 +1444,7 @@ import {
   HopeSummaryRequestedResponseSchema as M10HopeSummaryRequestedResponseSchema,
   HopeValidationResponseSchema as M10HopeValidationResponseSchema,
   HopeWorkflowStateResponseSchema as M10HopeWorkflowStateResponseSchema,
+  PatchAnswersSchema as M10PatchAnswersSchema,
   RecordSfvSchema as M10RecordSfvSchema,
   RecordTimepointSchema as M10RecordTimepointSchema,
   RegenerateSchedulesSchema as M10RegenerateSchedulesSchema,
@@ -6153,7 +6156,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
 });
 
-// ── M10 HOPE Engine (20 routes) ───────────────────────────────────────────────────────────────────
+// ── M10 HOPE Engine (22 routes) ───────────────────────────────────────────────────────────────────
 Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/admissions/:admissionId/hope": {
     summary: "Admission-scoped HOPE workflow summary",
@@ -6201,6 +6204,15 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/hope/assessments/:id": {
     summary: "One assessment (sections, snapshot, validation findings)",
     response: M10HopeAssessmentResponseSchema,
+  },
+  "GET /api/v1/hope/assessments/:id/workspace": {
+    summary: "Canonical HOPE assessment workspace from frozen spec and current answers",
+    response: M10HopeAssessmentWorkspaceResponseSchema,
+  },
+  "PATCH /api/v1/hope/assessments/:id/answers": {
+    summary: "Patch canonical HOPE item answers on a draft assessment",
+    body: M10PatchAnswersSchema,
+    response: M10HopeAnswerPatchResponseSchema,
   },
   "GET /api/v1/patients/:patientId/hope/assessments": {
     summary: "Patient HOPE timeline",

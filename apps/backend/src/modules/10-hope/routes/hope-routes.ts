@@ -1,4 +1,4 @@
-// apps/backend/src/modules/10-hope/routes/hope-routes.ts — M10-T06 the §4.1 route inventory (20 routes)
+// apps/backend/src/modules/10-hope/routes/hope-routes.ts — M10-T06 the §4.1 route inventory (22 routes)
 // behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth, M3) on the
 // §4.6 keys M10 registers into M3's catalog (M10_CONTRIBUTED_PERMISSIONS). Org binding is server-side
 // (`request.context`, never the body). Handlers compose over the injected HopeRouteService (in-memory
@@ -29,8 +29,11 @@ import {
   AssessmentParamsSchema,
   CorrectTimepointSchema,
   DashboardQuerySchema,
+  HopeAnswerPatchResponseSchema,
+  HopeAssessmentWorkspaceResponseSchema,
   HopeWorkflowStateResponseSchema,
   PatientParamsSchema,
+  PatchAnswersSchema,
   RecordSfvSchema,
   RecordTimepointSchema,
   RegenerateSchedulesSchema,
@@ -307,6 +310,35 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const { organizationId } = actorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       return service.getAssessment(organizationId, id);
+    },
+  );
+
+  // 9B — canonical answer workspace: active assessment items + current item-level states.
+  app.get(
+    "/api/v1/hope/assessments/:id/workspace",
+    {
+      preHandler: [READ_TIMEPOINT, SCOPE("hope.timepoint.read")],
+      config: { auditRead: { resourceKind: "hope_assessment_workspace", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(AssessmentParamsSchema, request.params);
+      return parse(HopeAssessmentWorkspaceResponseSchema, await service.getAssessmentWorkspace(organizationId, id));
+    },
+  );
+
+  // 9C — canonical answer patch. Public API supports only set/clear; skipped remains internal.
+  app.patch(
+    "/api/v1/hope/assessments/:id/answers",
+    { preHandler: [WRITE, SCOPE("hope.timepoint.write")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(AssessmentParamsSchema, request.params);
+      const body = parse(PatchAnswersSchema, request.body);
+      return parse(
+        HopeAnswerPatchResponseSchema,
+        await service.patchAssessmentAnswers(organizationId, userId, id, body),
+      );
     },
   );
 

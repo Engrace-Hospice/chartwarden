@@ -31,6 +31,7 @@
     "db:seed:consent-types": "bun run scripts/db/seed-consent-types.ts",
     "db:seed:org-structure": "bun run scripts/db/seed-org-structure.ts",
     "db:seed:staff": "bun run scripts/db/seed-staff-personas.ts",
+    "db:import:hope-spec": "bun run scripts/db/import-hope-spec.ts",
     "db:seed:scenario-admissions": "bun run scripts/db/seed-scenario-admission-outcomes.ts",
     "db:seed:scenario-clinical": "bun run scripts/db/seed-scenario-clinical-core.ts",
     "db:seed:scenario-orders-idg": "bun run scripts/db/seed-scenario-orders-meds-idg.ts",

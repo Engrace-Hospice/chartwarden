@@ -18,6 +18,7 @@ import {
 import { admissionStatus } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
+import { patientAddresses } from "../patient/patient-addresses";
 import { providerEntities } from "../provider-entities";
 import { referrals } from "./referrals";
 
@@ -34,6 +35,16 @@ export const admissions = pgTable(
       onDelete: "restrict",
     }),
     locationId: uuid("location_id").references(() => locations.id, { onDelete: "restrict" }),
+    patientResidenceAddressId: uuid("patient_residence_address_id").references(
+      () => patientAddresses.id,
+      { onDelete: "restrict" },
+    ),
+    serviceAddressLine1: text("service_address_line1"),
+    serviceAddressLine2: text("service_address_line2"),
+    serviceAddressCity: text("service_address_city"),
+    serviceAddressState: text("service_address_state"),
+    serviceAddressPostalCode: text("service_address_postal_code"),
+    serviceAddressCountry: text("service_address_country"),
     patientId: uuid("patient_id").notNull(), // M5 patient (app-validated; no cross-module FK)
     referralId: uuid("referral_id").references(() => referrals.id, { onDelete: "set null" }),
     status: admissionStatus("status").notNull().default("referred"),
@@ -44,6 +55,7 @@ export const admissions = pgTable(
     holdReason: text("hold_reason"),
     dischargedAt: timestamp("discharged_at", { withTimezone: true }),
     admittedByPhysicianId: uuid("admitted_by_physician_id"), // M40 physician; nullable at draft (0123)
+    hospicePhysicianId: uuid("hospice_physician_id"), // M40 physician selected to certify CTI (app-validated)
     attendingPhysicianId: uuid("attending_physician_id"), // M40 physician (app-validated)
     primaryCaregiverId: uuid("primary_caregiver_id"), // M5 caregiver (app-validated)
     transferredIn: boolean("transferred_in").notNull().default(false),
@@ -64,6 +76,10 @@ export const admissions = pgTable(
       t.admissionAt,
     ),
     peStatusIdx: index("admission_pe_status_idx").on(t.providerEntityId, t.status),
+    patientResidenceAddressIdx: index("admission_patient_residence_address_idx").on(
+      t.patientResidenceAddressId,
+    ),
+    hospicePhysicianIdx: index("admission_hospice_physician_idx").on(t.hospicePhysicianId),
     attendingIdx: index("admission_attending_idx").on(t.attendingPhysicianId),
     referralOnceIdx: uniqueIndex("admission_org_referral_once_uidx")
       .on(t.organizationId, t.referralId)

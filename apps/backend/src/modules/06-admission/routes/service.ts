@@ -27,6 +27,7 @@ import {
   type ActivationGap,
   type ActivationGate,
   type AdmissionReadinessFacts,
+  type AdmissionRequirementEvidence,
   type AdmissionReadinessResult,
   computeActivationGate,
   evaluateAdmissionReadiness,
@@ -254,9 +255,31 @@ export interface AdmissionCreateInput {
 }
 export interface AdmissionUpdateInput {
   readonly admissionAt?: string;
+  readonly hospicePhysicianId?: string | null;
   readonly attendingPhysicianId?: string;
   readonly providerEntityId?: string | null;
   readonly locationId?: string | null;
+}
+export interface UploadedNoticeOfRightsInput {
+  readonly documentId: string;
+  readonly documentVersionId: string;
+  readonly acknowledgedAt?: string;
+  readonly acknowledgedByName?: string;
+  readonly acknowledgedByRole?: "patient" | "legal_representative" | "caregiver";
+}
+export interface UploadedElectionInput {
+  readonly documentId: string;
+  readonly documentVersionId: string;
+  readonly documentState: "unsigned" | "signed";
+  readonly signerName?: string;
+  readonly signerRole?: "patient" | "legal_representative" | "caregiver";
+  readonly signedAt?: string;
+}
+export interface UploadedCtiInput {
+  readonly documentId: string;
+  readonly documentVersionId: string;
+  readonly documentState: "unsigned" | "signed";
+  readonly signedAt?: string;
 }
 /** §4.2.1 accept body — links/creates the M5 patient and supplies the primary dx (W-RF-04). */
 export interface AcceptReferralInput {
@@ -425,6 +448,21 @@ export interface AdmissionDetail extends SummaryRow {
   readonly activatedAt?: string | null;
   readonly providerEntityId?: string | null;
   readonly locationId?: string | null;
+  readonly patientResidenceAddressId?: string | null;
+  readonly serviceAddressSnapshot?: {
+    readonly line1: string;
+    readonly line2: string | null;
+    readonly city: string;
+    readonly state: string | null;
+    readonly postalCode: string;
+    readonly country: string;
+  } | null;
+  readonly hospicePhysicianId?: string | null;
+  readonly hospicePhysician?: {
+    readonly id: string;
+    readonly displayName: string;
+    readonly npi?: string | null;
+  } | null;
   readonly activationGate: ActivationGate;
   readonly readiness?: AdmissionReadinessResult;
 }
@@ -652,6 +690,30 @@ export interface AdmissionRouteService {
     input: AdmissionUpdateInput,
     ifVersion: number,
   ): Promise<MutationResult>;
+  attachUploadedNoticeOfRights(
+    organizationId: string,
+    admissionId: string,
+    input: UploadedNoticeOfRightsInput,
+    actorUserId: string,
+  ): Promise<MutationResult>;
+  attachUploadedElectionStatement(
+    organizationId: string,
+    electionPeriodId: string,
+    input: UploadedElectionInput,
+    actorUserId: string,
+  ): Promise<MutationResult>;
+  attachUploadedElectionSignature(
+    organizationId: string,
+    electionStatementId: string,
+    input: UploadedElectionInput,
+    actorUserId: string,
+  ): Promise<MutationResult>;
+  attachUploadedCti(
+    organizationId: string,
+    electionPeriodId: string,
+    input: UploadedCtiInput,
+    actorUserId: string,
+  ): Promise<MutationResult>;
   holdAdmission(
     organizationId: string,
     id: string,
@@ -835,6 +897,7 @@ interface Rec {
   patientId?: string;
   providerEntityId?: string | null;
   locationId?: string | null;
+  patientResidenceAddressId?: string | null;
   admissionId?: string;
   admissionAt?: string | null;
   hospiceMedicalDirectorId?: string;
@@ -888,6 +951,7 @@ interface Rec {
   // revocation facts (§4.2.7 route 36) — what was actually submitted, not a hardcoded default.
   signedAt?: string;
   signerKind?: "patient" | "representative";
+  evidence?: Partial<Record<"notice_of_rights" | "election_statement" | "election_signature" | "cti" | "cti_signature", AdmissionRequirementEvidence>>;
   revocationReason?: RevocationInput["revocationReason"];
   signingPatientName?: string;
   privacyAdmissionAllowed?: boolean;
@@ -1092,7 +1156,6 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       ),
       norAcknowledged: childrenOf("nor").some((n) => n.state === "acknowledged"),
       ctiHospiceMdSigned: cti?.state === "awaiting_attending" || cti?.state === "signed",
-      ctiAttendingSigned: cti?.state === "signed",
     });
   };
 
@@ -1121,7 +1184,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       admissionDetails: {
         admissionDatePresent: !!adm.admissionAt,
         providerEntityPresent: !!adm.providerEntityId,
-        locationPresent: !!adm.locationId,
+        locationPresent: !!adm.locationId || !!adm.patientResidenceAddressId,
       },
 
       patientPrivacy: {
@@ -1133,21 +1196,38 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         acknowledgedAtPresent: nor?.acknowledgedAtPresent ?? !!nor,
         signerValid: nor?.signerValid ?? !!nor?.acknowledgedByRole,
         methodValid: nor?.methodValid ?? !!nor?.deliveryMethod,
+        evidence: nor
+          ? { sourceType: "structured", evidenceId: nor.id, structuredEntityId: nor.id }
+          : adm.evidence?.notice_of_rights,
       },
 
       electionStatement: {
-        exists: !!election,
+        exists: !!election || !!adm.evidence?.election_statement,
         status: election?.state ?? null,
         signedAtPresent: election?.signedAtPresent ?? election?.state === "signed",
-        belongsToCurrentPeriod: !!election && (!period || election.electionPeriodId === period.id),
+        belongsToCurrentPeriod:
+          !!adm.evidence?.election_statement ||
+          (!!election && (!period || election.electionPeriodId === period.id)),
+        evidence: election
+          ? { sourceType: "structured", evidenceId: election.id, structuredEntityId: election.id }
+          : adm.evidence?.election_statement,
+        signatureEvidence:
+          election?.state === "signed"
+            ? { sourceType: "structured", evidenceId: election.id, structuredEntityId: election.id }
+            : adm.evidence?.election_signature,
       },
 
       cti: {
-        exists: !!cti,
+        exists: !!cti || !!adm.evidence?.cti,
         status: cti?.state ?? null,
+        evidence: cti
+          ? { sourceType: "structured", evidenceId: cti.id, structuredEntityId: cti.id }
+          : adm.evidence?.cti,
+        signatureEvidence:
+          cti?.state === "awaiting_attending" || cti?.state === "signed"
+            ? { sourceType: "structured", evidenceId: cti.id, structuredEntityId: cti.id }
+            : adm.evidence?.cti_signature,
         hospiceMdSigned: cti?.state === "awaiting_attending" || cti?.state === "signed",
-        attendingRequired: (period?.sequence ?? 1) === 1 && !!cti?.attendingPhysicianId,
-        attendingSigned: cti?.state === "signed",
       },
 
       f2f: {
@@ -1594,8 +1674,105 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         attendingPhysicianId: input.attendingPhysicianId ?? rec.attendingPhysicianId,
         providerEntityId: finalProviderEntityId ?? null,
         locationId: finalLocationId ?? null,
+        patientResidenceAddressId:
+          input.providerEntityId !== undefined || input.admissionAt !== undefined
+            ? (rec.patientResidenceAddressId ?? nextId("patient_address"))
+            : rec.patientResidenceAddressId,
       });
       return transition(rec, rec.state, ifVersion);
+    },
+    async attachUploadedNoticeOfRights(organizationId, admissionId, input, actorUserId) {
+      void actorUserId;
+      const rec = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
+      rec.evidence = {
+        ...rec.evidence,
+        notice_of_rights: {
+          sourceType: "uploaded",
+          evidenceId: nextId("admission_evidence"),
+          documentId: input.documentId,
+          documentVersionId: input.documentVersionId,
+          completedAt: input.acknowledgedAt ?? now().toISOString(),
+        },
+      };
+      return summary(rec);
+    },
+    async attachUploadedElectionStatement(organizationId, electionPeriodId, input, actorUserId) {
+      void actorUserId;
+      const period = get(organizationId, electionPeriodId, "election_period") ?? notFound(electionPeriodId);
+      const rec = get(organizationId, period.admissionId ?? "", "admission") ?? notFound(period.admissionId ?? "");
+      rec.evidence = {
+        ...rec.evidence,
+        election_statement: {
+          sourceType: "uploaded",
+          evidenceId: nextId("admission_evidence"),
+          documentId: input.documentId,
+          documentVersionId: input.documentVersionId,
+          completedAt: now().toISOString(),
+        },
+        ...(input.documentState === "signed"
+          ? {
+              election_signature: {
+                sourceType: "uploaded" as const,
+                evidenceId: nextId("admission_evidence"),
+                documentId: input.documentId,
+                documentVersionId: input.documentVersionId,
+                completedAt: input.signedAt ?? now().toISOString(),
+              },
+            }
+          : {}),
+      };
+      return summary(rec);
+    },
+    async attachUploadedElectionSignature(organizationId, electionStatementId, input, actorUserId) {
+      void actorUserId;
+      const election = get(organizationId, electionStatementId, "election_statement") ?? notFound(electionStatementId);
+      if (election.state === "signed") throw new WardenXError("ELECTION_ALREADY_SIGNED", "This Election Statement is already signed.", 409);
+      const rec = get(organizationId, election.admissionId ?? "", "admission") ?? notFound(election.admissionId ?? "");
+      rec.evidence = {
+        ...rec.evidence,
+        election_signature: {
+          sourceType: "uploaded",
+          evidenceId: nextId("admission_evidence"),
+          documentId: input.documentId,
+          documentVersionId: input.documentVersionId,
+          completedAt: input.signedAt ?? now().toISOString(),
+        },
+      };
+      return summary(rec);
+    },
+    async attachUploadedCti(organizationId, electionPeriodId, input, actorUserId) {
+      void actorUserId;
+      const period = get(organizationId, electionPeriodId, "election_period") ?? notFound(electionPeriodId);
+      const rec = get(organizationId, period.admissionId ?? "", "admission") ?? notFound(period.admissionId ?? "");
+      if (!rec.hospiceMedicalDirectorId) {
+        throw new WardenXError(
+          "ADMISSION_HOSPICE_PHYSICIAN_REQUIRED",
+          "Select a Hospice Physician before creating the CTI.",
+          400,
+        );
+      }
+      rec.evidence = {
+        ...rec.evidence,
+        cti: {
+          sourceType: "uploaded",
+          evidenceId: nextId("admission_evidence"),
+          documentId: input.documentId,
+          documentVersionId: input.documentVersionId,
+          completedAt: now().toISOString(),
+        },
+        ...(input.documentState === "signed"
+          ? {
+              cti_signature: {
+                sourceType: "uploaded" as const,
+                evidenceId: nextId("admission_evidence"),
+                documentId: input.documentId,
+                documentVersionId: input.documentVersionId,
+                completedAt: input.signedAt ?? now().toISOString(),
+              },
+            }
+          : {}),
+      };
+      return summary(rec);
     },
     async holdAdmission(organizationId, id, reason, ifVersion) {
       void reason;

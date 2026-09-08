@@ -1,9 +1,9 @@
 // @wardenx/db — `hope_assessment` (M10 §3.3, D11). One row per HOPE timepoint capture across all five
 // RFAs (Admission / HUV1 / HUV2 / SFV / Discharge): the per-section CMS HOPE payload in the `data`
 // jsonb, the server-authoritative J2051 trigger result, the PPS/ESAS-r clinical-context snapshot at
-// sign (D8), and the draft→signed→superseded lifecycle (§2.2.2). PHI-bearing → the three-column tenancy
-// rule (provider_entity_id + location_id NOT NULL, denormalized from the admission, §3.3 tenancy note)
-// so submission batching and the iQIES ccn_at_election match run without joining M6. High-volume,
+// sign (D8), and the draft→signed→superseded lifecycle (§2.2.2). PHI-bearing → org-scoped RLS; provider
+// entity/location are nullable after migration 0130 because thin write routes may not have siting yet.
+// High-volume,
 // retention-extended → PARTITION BY RANGE (target_date) monthly (§3.6): the Drizzle definition is the
 // logical shape (composite PK incl. the partition key); the actual PARTITION BY + monthly partitions +
 // the DEFERRABLE self-FK (corrects_assessment_id) + the correction-supersede / schedule-mark-completed
@@ -17,6 +17,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
+  integer,
   jsonb,
   pgTable,
   primaryKey,
@@ -24,11 +25,18 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { hopeAssessmentStatus, hopeDischargeReason, hopeRfaKind, j2051Severity } from "../../enums";
+import {
+  hopeAssessmentStatus,
+  hopeDischargeReason,
+  hopeIsc,
+  hopeRfaKind,
+  j2051Severity,
+} from "../../enums";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
+import { hopeSpecVersions } from "./hope-spec-versions";
 import { hopeTimepointSchedules } from "./hope-timepoint-schedules";
 
 export const hopeAssessments = pgTable(
@@ -51,6 +59,10 @@ export const hopeAssessments = pgTable(
     sourceEncounterId: uuid("source_encounter_id"), // M8 encounter (logical; FK deferred until M8 lock, D5)
 
     rfaKind: hopeRfaKind("rfa_kind").notNull(),
+    specVersionId: uuid("spec_version_id").references(() => hopeSpecVersions.id, {
+      onDelete: "restrict",
+    }),
+    isc: hopeIsc("isc"),
     dischargeReason: hopeDischargeReason("discharge_reason"), // required when rfa_kind='05_discharge'
     status: hopeAssessmentStatus("status").notNull().default("draft"),
     data: jsonb("data").notNull(), // per-Section discriminated union (free-text denylisted from audit)
@@ -65,6 +77,7 @@ export const hopeAssessments = pgTable(
 
     // PPS / ESAS-r snapshot at sign (D8).
     clinicalContextSnapshot: jsonb("clinical_context_snapshot"), // ClinicalContextSnapshot (§3.3)
+    version: integer("version").notNull().default(1), // optimistic lock for canonical answer patches
 
     // Correction chain (self-refs; DEFERRABLE composite FK added in the RLS migration).
     correctsAssessmentId: uuid("corrects_assessment_id"),
@@ -102,6 +115,11 @@ export const hopeAssessments = pgTable(
     byCorrectsId: index("idx_hope_assess_corrects")
       .on(t.correctsAssessmentId)
       .where(sql`corrects_assessment_id IS NOT NULL`),
+    bySpecIscTarget: index("idx_hope_assess_spec_isc_target").on(
+      t.specVersionId,
+      t.isc,
+      t.targetDate,
+    ),
   }),
 );
 

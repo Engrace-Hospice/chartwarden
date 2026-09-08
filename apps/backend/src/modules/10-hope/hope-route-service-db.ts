@@ -30,11 +30,18 @@ import {
   require_,
 } from "@wardenx/hope";
 import { withOrgContext } from "@wardenx/tenancy";
-import type { J2051Severity, LatestAssessment, ScaleType } from "@wardenx/types";
+import type { HopeRfaKind, J2051Severity, LatestAssessment, ScaleType } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import type { HopeAbacResolver, HopeAssessmentAbacFacts } from "./abac-predicates";
+import { createHopeAssessmentAnswerService } from "./hope-answer-service";
+import {
+  createHopeAssessmentAnswerWriter,
+  initializeHopeCorrection,
+  initializeNewHopeRecord,
+} from "./hope-record-initializer";
+import { createHopeSpecRegistry } from "./hope-spec-registry";
 import type {
   CorrectTimepointArgs,
   HopeAssessmentView,
@@ -54,6 +61,9 @@ const SCHED = schema.hopeTimepointSchedules;
 const SFV = schema.symptomFollowUpVisits;
 const SUB = schema.hopeSubmissions;
 const FINDING = schema.hopeValidationFindings;
+const ANSWER = schema.hopeAssessmentAnswers;
+const ITEM = schema.hopeSpecItems;
+const answerWriter = createHopeAssessmentAnswerWriter();
 
 type ScheduleRow = typeof SCHED.$inferSelect;
 type AssessmentRow = typeof ASSESS.$inferSelect;
@@ -113,6 +123,15 @@ const j2051EntriesOf = (data: Record<string, unknown>): J2051SymptomReading[] =>
   );
 };
 
+const J2051_ITEM_CODES = ["J2051A", "J2051B", "J2051C", "J2051D", "J2051E", "J2051F", "J2051G", "J2051H"];
+const J2051_VALUE_TO_SEVERITY: Record<string, J2051Severity | null> = {
+  "0": "none",
+  "1": "mild",
+  "2": "moderate",
+  "3": "severe",
+  "9": null,
+};
+
 // `hope_assessment` carries no author_discipline / version column (the correction chain is append-only;
 // the discipline is a request-time attribute, not persisted). Reads project the stable view defaults.
 const toAssessmentView = (r: AssessmentRow): HopeAssessmentView => ({
@@ -131,7 +150,11 @@ const toAssessmentView = (r: AssessmentRow): HopeAssessmentView => ({
   correctsAssessmentId: r.correctsAssessmentId ?? null,
   supersededByAssessmentId: r.supersededById ?? null,
   snapshot: (r.clinicalContextSnapshot as Record<string, number | null> | null) ?? null,
-  version: 1,
+  regulatory: {
+    specVersionId: r.specVersionId ?? null,
+    isc: (r.isc as HopeAssessmentView["regulatory"]["isc"]) ?? null,
+  },
+  version: r.version,
 });
 
 const toScheduleView = (r: ScheduleRow): HopeScheduleView => ({
@@ -178,6 +201,7 @@ export function createDbHopeBackend(
   db: DbClient,
   outbox: HopeWriteOutboxPort = NOOP_OUTBOX,
 ): HopeRouteService {
+  const answerService = createHopeAssessmentAnswerService(db);
   /** Emit one `m10.hope.*` event on the caller's tx (validated + persisted by the bound publisher). */
   async function emit(
     tx: unknown,
@@ -247,6 +271,29 @@ export function createDbHopeBackend(
     } catch {
       return null;
     }
+  }
+
+  async function canonicalJ2051Entries(
+    tx: DbClient,
+    assessmentId: string,
+  ): Promise<J2051SymptomReading[] | null> {
+    const rows = await tx
+      .select({ itemCode: ITEM.itemCode, value: ANSWER.value })
+      .from(ANSWER)
+      .innerJoin(ITEM, eq(ITEM.id, ANSWER.specItemId))
+      .where(
+        and(
+          eq(ANSWER.hopeAssessmentId, assessmentId),
+          eq(ANSWER.state, "answered"),
+          inArray(ITEM.itemCode, J2051_ITEM_CODES),
+        ),
+      );
+    if (rows.length === 0) return null;
+    return rows.flatMap((row) => {
+      const value = typeof row.value === "string" ? row.value : null;
+      const severity = value ? J2051_VALUE_TO_SEVERITY[value] : null;
+      return severity ? [{ symptomCode: row.itemCode, severity }] : [];
+    });
   }
 
   async function loadA(t: DbClient, id: string): Promise<AssessmentRow> {
@@ -529,6 +576,10 @@ export function createDbHopeBackend(
     async recordTimepoint(organizationId, userId, admissionId, args: RecordTimepointArgs) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
+        const init = await initializeNewHopeRecord(createHopeSpecRegistry(t), {
+          rfaKind: args.rfaKind,
+          targetDate: args.targetDate,
+        });
         // Link the draft to the open schedule for (admission, rfa) so the sign trigger can close it.
         const [sched] = (await t
           .select()
@@ -568,8 +619,11 @@ export function createDbHopeBackend(
               admissionId,
               scheduleId: sched?.id ?? null,
               rfaKind: args.rfaKind,
+              specVersionId: init.specVersionId,
+              isc: init.isc,
               status: "draft",
               data: args.data,
+              dischargeReason: args.dischargeReason as AssessmentRow["dischargeReason"],
               targetDate: new Date(args.targetDate),
               sourceEncounterId: args.sourceEncounterId ?? null,
               wasLate: capture.wasLate,
@@ -579,6 +633,14 @@ export function createDbHopeBackend(
             .returning(),
           "hope_assessment insert returned no row",
         );
+        await answerWriter.writeDerivedControlAnswers(t, {
+          organizationId,
+          providerEntityId: row.providerEntityId,
+          locationId: row.locationId,
+          hopeAssessmentId: row.id,
+          specVersionId: init.specVersionId,
+          controlAnswers: init.controlAnswers,
+        });
         return toAssessmentView(row);
       });
     },
@@ -654,11 +716,19 @@ export function createDbHopeBackend(
         const merged = { ...(r.data as Record<string, unknown>), ...data };
         const rows = (await t
           .update(ASSESS)
-          .set({ data: merged, updatedAt: new Date() })
+          .set({ data: merged, version: r.version + 1, updatedAt: new Date() })
           .where(eq(ASSESS.id, id))
           .returning()) as AssessmentRow[];
         return toAssessmentView(firstOrThrow(rows, "updateDraft matched no row"));
       });
+    },
+
+    async getAssessmentWorkspace(organizationId, id) {
+      return answerService.getWorkspace(organizationId, id);
+    },
+
+    async patchAssessmentAnswers(organizationId, userId, id, input) {
+      return answerService.patchAnswers(organizationId, userId, id, input);
     },
 
     // ── Sign a draft (§2.2.2 — server-authoritative J2051 verdict; triggers close the schedule + open the SFV) ─
@@ -688,9 +758,9 @@ export function createDbHopeBackend(
           `Assessment ${id} is not a draft and cannot be signed.`,
         );
         const at = new Date();
-        const verdict = evaluateJ2051Trigger({
-          entries: j2051EntriesOf(r.data as Record<string, unknown>),
-        }); // D4
+        const canonicalJ2051 =
+          (await canonicalJ2051Entries(t, id)) ?? j2051EntriesOf(r.data as Record<string, unknown>);
+        const verdict = evaluateJ2051Trigger({ entries: canonicalJ2051 }); // D4
         // The AFTER-UPDATE `trg_hope_schedule_mark_completed` closes the linked open schedule on draft→signed.
         const signed = firstOrThrow(
           await t
@@ -705,6 +775,7 @@ export function createDbHopeBackend(
               clinicalContextSnapshot: snapshot,
               j2051MaxSeverity: verdict.maxSeverity ?? "none",
               j2051TriggerFired: verdict.triggerFired,
+              version: r.version + 1,
               updatedAt: at,
             })
             .where(eq(ASSESS.id, id))
@@ -803,6 +874,11 @@ export function createDbHopeBackend(
           `Assessment ${id} is already superseded; correct the latest instead.`,
         );
         const at = new Date();
+        const init = await initializeHopeCorrection(createHopeSpecRegistry(t), {
+          id: original.id,
+          rfaKind: original.rfaKind as HopeRfaKind,
+          specVersionId: original.specVersionId,
+        });
         const correction = firstOrThrow(
           await t
             .insert(ASSESS)
@@ -811,6 +887,8 @@ export function createDbHopeBackend(
               patientId: original.patientId,
               admissionId: original.admissionId,
               rfaKind: original.rfaKind,
+              specVersionId: init.specVersionId,
+              isc: init.isc,
               status: "signed",
               data: args.data,
               // The composite self-FK forces the correction to REUSE the original's target_date.
@@ -827,6 +905,14 @@ export function createDbHopeBackend(
             .returning(),
           "hope_assessment (correction) insert returned no row",
         );
+        await answerWriter.writeDerivedControlAnswers(t, {
+          organizationId,
+          providerEntityId: correction.providerEntityId,
+          locationId: correction.locationId,
+          hopeAssessmentId: correction.id,
+          specVersionId: init.specVersionId,
+          controlAnswers: init.controlAnswers,
+        });
         await emit(
           t,
           organizationId,

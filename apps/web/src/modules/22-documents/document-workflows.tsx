@@ -16,7 +16,7 @@ import type {
 } from "react";
 import { lifecycleTone } from "./lantern";
 
-type DocumentContext =
+export type DocumentContext =
   | {
       kind: "patient";
       patientId: string;
@@ -46,7 +46,7 @@ interface DocumentRow {
   updatedAt: string;
 }
 
-interface DocumentMetadata {
+export interface DocumentMetadata {
   documentType?: DocumentTypeValue;
   sourceChannel?: SourceChannel;
   receivedAt?: string;
@@ -67,16 +67,19 @@ interface VersionRow {
   createdAt: string;
 }
 
-type UploadStage =
+export type UploadStage =
   | "idle"
   | "preparing"
   | "uploading"
   | "verifying"
   | "complete";
 
-type DocumentTypeValue =
+export type DocumentTypeValue =
   | "code_status_directive"
   | "consent_record"
+  | "notice_of_rights"
+  | "election_statement"
+  | "cti"
   | "referral"
   | "intake_source"
   | "other";
@@ -96,7 +99,7 @@ type AcceptedMime =
   | "image/png"
   | "image/tiff";
 
-type SourceChannel =
+export type SourceChannel =
   | "email"
   | "fax"
   | "scanned_physical"
@@ -121,6 +124,9 @@ const DOCUMENT_TYPE_OPTIONS: ReadonlyArray<{
 }> = [
   { value: "code_status_directive", label: "POLST" },
   { value: "consent_record", label: "Consent form" },
+  { value: "notice_of_rights", label: "Notice of Rights" },
+  { value: "election_statement", label: "Election Statement" },
+  { value: "cti", label: "Certification of Terminal Illness" },
   { value: "referral", label: "Referral document" },
   { value: "intake_source", label: "Intake document" },
   { value: "other", label: "Other" },
@@ -1822,7 +1828,7 @@ function TypePill({
   );
 }
 
-async function verifiedUpload(
+export async function verifiedUpload(
   client: ApiClient,
   input: {
     context: DocumentContext;
@@ -1835,7 +1841,7 @@ async function verifiedUpload(
     sourceMetadata: DocumentMetadata;
     onStage: (stage: UploadStage) => void;
   },
-): Promise<void> {
+): Promise<{ documentId: string; documentVersionId: string; versionNumber: number }> {
   const mimeType = normalizeMime(input.file);
 
   if (!mimeType) {
@@ -1884,7 +1890,7 @@ async function verifiedUpload(
 
   const initiated = await client.POST(
     "/api/v1/document-uploads",
-    { body },
+    { body: body as never },
   );
 
   if (initiated.error || !initiated.data) {
@@ -1939,7 +1945,7 @@ async function verifiedUpload(
       },
     );
 
-    if (completed.error) {
+    if (completed.error || !completed.data) {
       throw new Error(
         errorMessage(
           completed.error,
@@ -1949,6 +1955,11 @@ async function verifiedUpload(
     }
 
     input.onStage("complete");
+    return {
+      documentId: completed.data.documentId,
+      documentVersionId: completed.data.versionId,
+      versionNumber: completed.data.versionNumber,
+    };
   } catch (err) {
     await client
       .DELETE(

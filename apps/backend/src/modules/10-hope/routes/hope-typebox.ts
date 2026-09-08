@@ -13,6 +13,8 @@ import { Value } from "@sinclair/typebox/value";
 import { HOPE_RFA_KINDS } from "@wardenx/types";
 import { ValidationError } from "@wardenx/types";
 import type {
+  HopeAnswerPatchResult as ServiceAnswerPatchResult,
+  HopeAssessmentWorkspace as ServiceAssessmentWorkspace,
   HopeAssessmentView as ServiceAssessmentView,
   HopeComplianceView as ServiceComplianceView,
   HopeScheduleView as ServiceScheduleView,
@@ -110,6 +112,24 @@ export const RecordSfvSchema = Type.Object({
   data: HopeData,
 });
 export const UpdateDraftSchema = Type.Object({ data: HopeData });
+const AnswerValueSchema = Type.Union([Type.String(), Type.Number(), Type.Boolean()]);
+export const PatchAnswersSchema = Type.Object({
+  ifVersion: Type.Integer({ minimum: 1 }),
+  changes: Type.Array(
+    Type.Union([
+      Type.Object({
+        itemCode: Type.String({ minLength: 1, maxLength: 32 }),
+        action: Type.Literal("set"),
+        value: AnswerValueSchema,
+      }),
+      Type.Object({
+        itemCode: Type.String({ minLength: 1, maxLength: 32 }),
+        action: Type.Literal("clear"),
+      }),
+    ]),
+    { minItems: 1, maxItems: 32 },
+  ),
+});
 export const SignTimepointSchema = Type.Object({ attestationConfirmed: Type.Literal(true) });
 export const CorrectTimepointSchema = Type.Object({
   correctionReason: Type.String({ minLength: 1, maxLength: 2000 }),
@@ -196,7 +216,72 @@ export const HopeAssessmentResponseSchema = Type.Object({
     Type.Record(Type.String(), Type.Union([Type.Number(), Type.Null()])),
     Type.Null(),
   ]),
+  regulatory: Type.Object({
+    specVersionId: NullableString(),
+    isc: Type.Union([Type.Literal("HA"), Type.Literal("HUV"), Type.Literal("HD"), Type.Literal("XX"), Type.Null()]),
+  }),
   version: Type.Integer(),
+});
+const ANSWER_SOURCE = Type.Union([
+  Type.Literal("user"),
+  Type.Literal("patient_prefill"),
+  Type.Literal("admission_prefill"),
+  Type.Literal("derived"),
+  Type.Literal("imported"),
+  Type.Literal("correction_copy"),
+]);
+const ANSWER_STATE = Type.Union([
+  Type.Literal("unanswered"),
+  Type.Literal("answered"),
+  Type.Literal("skipped"),
+]);
+const HopeItemStateSchema = Type.Object({
+  itemCode: Type.String(),
+  active: Type.Boolean(),
+  state: ANSWER_STATE,
+  value: Type.Union([AnswerValueSchema, Type.Null()]),
+  source: Type.Union([ANSWER_SOURCE, Type.Null()]),
+  answeredAt: NullableString(),
+  answeredByMembershipId: NullableString(),
+});
+const HopeWorkspaceItemSchema = Type.Composite([
+  HopeItemStateSchema,
+  Type.Object({
+    label: Type.String(),
+    section: Type.String(),
+    kind: Type.Literal("assessment"),
+    options: Type.Array(
+      Type.Object({
+        valueCode: Type.String(),
+        label: Type.String(),
+        sortOrder: Type.Integer(),
+      }),
+    ),
+  }),
+]);
+export const HopeAssessmentWorkspaceResponseSchema = Type.Object({
+  assessment: Type.Object({
+    id: Type.String(),
+    status: ASSESSMENT_STATUS,
+    rfaKind: RFA_KIND,
+    targetDate: Type.String(),
+    isc: Type.Union([Type.Literal("HA"), Type.Literal("HUV"), Type.Literal("HD"), Type.Literal("XX")]),
+    specVersionId: Type.String(),
+    specVersion: Type.String(),
+    version: Type.Integer(),
+  }),
+  sections: Type.Array(
+    Type.Object({
+      code: Type.String(),
+      label: Type.String(),
+      items: Type.Array(HopeWorkspaceItemSchema),
+    }),
+  ),
+});
+export const HopeAnswerPatchResponseSchema = Type.Object({
+  assessmentId: Type.String(),
+  version: Type.Integer(),
+  answers: Type.Array(HopeItemStateSchema),
 });
 /** One HOPE timepoint-schedule view (window + late-deadline + provenance). */
 export const HopeScheduleResponseSchema = Type.Object({
@@ -390,6 +475,14 @@ export const HopeRegenerateResponseSchema = Type.Object({
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
 type Conforms<T extends V, V> = T;
 type _Assessment = Conforms<Static<typeof HopeAssessmentResponseSchema>, ServiceAssessmentView>;
+type _Workspace = Conforms<
+  Static<typeof HopeAssessmentWorkspaceResponseSchema>,
+  ServiceAssessmentWorkspace
+>;
+type _AnswerPatch = Conforms<
+  Static<typeof HopeAnswerPatchResponseSchema>,
+  ServiceAnswerPatchResult
+>;
 type _Schedule = Conforms<Static<typeof HopeScheduleResponseSchema>, ServiceScheduleView>;
 type _Sfv = Conforms<Static<typeof HopeSfvResponseSchema>, ServiceSfvView>;
 type _Submission = Conforms<Static<typeof HopeSubmissionResponseSchema>, ServiceSubmissionView>;

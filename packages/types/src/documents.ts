@@ -65,6 +65,7 @@ export type DocumentAggregateType =
   | "election_statement"
   | "cti"
   | "f2f"
+  | "notice_of_rights"
   | "nor"
   | "revocation"
   | "discharge_summary"

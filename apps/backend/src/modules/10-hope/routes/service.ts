@@ -29,6 +29,11 @@ import type {
 } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
 import type { HopeAbacResolver, HopeAssessmentAbacFacts } from "../abac-predicates";
+import type {
+  HopeAnswerPatchChange,
+  HopeAnswerPatchResult,
+  HopeAssessmentWorkspace,
+} from "../hope-answer-service";
 
 // ── §2.4 outbox events the service records (the relay wraps them in the M1 envelope) ───────────────────
 export interface RecordedHopeEvent {
@@ -54,6 +59,10 @@ export interface HopeAssessmentView {
   readonly correctsAssessmentId: string | null;
   readonly supersededByAssessmentId: string | null;
   readonly snapshot: Readonly<Record<string, number | null>> | null;
+  readonly regulatory: {
+    readonly specVersionId: string | null;
+    readonly isc: "HA" | "HUV" | "HD" | "XX" | null;
+  };
   readonly version: number;
 }
 export interface HopeScheduleView {
@@ -199,6 +208,13 @@ export interface HopeRouteService extends HopeAbacResolver {
     id: string,
     data: Record<string, unknown>,
   ): Promise<HopeAssessmentView>;
+  getAssessmentWorkspace(organizationId: string, id: string): Promise<HopeAssessmentWorkspace>;
+  patchAssessmentAnswers(
+    organizationId: string,
+    userId: string,
+    id: string,
+    input: { readonly ifVersion: number; readonly changes: readonly HopeAnswerPatchChange[] },
+  ): Promise<HopeAnswerPatchResult>;
   signTimepoint(organizationId: string, userId: string, id: string): Promise<HopeAssessmentView>;
   correctTimepoint(
     organizationId: string,
@@ -516,6 +532,19 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
   const now = seed.now ?? (() => new Date().toISOString());
   const tz = seed.timeZone ?? "UTC";
   const assessments = new Map<string, AssessmentRecord>();
+  const canonicalAnswers = new Map<
+    string,
+    Map<
+      string,
+      {
+        state: "answered" | "skipped";
+        value: unknown | null;
+        source: "user" | "derived";
+        answeredAt: string | null;
+        answeredByMembershipId: string | null;
+      }
+    >
+  >();
   const schedules = new Map<string, ScheduleRecord>();
   const sfvs = new Map<string, SfvRecord>();
   const submissions = new Map<string, SubmissionRecord>();
@@ -535,6 +564,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       correctsAssessmentId: null,
       supersededByAssessmentId: null,
       snapshot: null,
+      regulatory: { specVersionId: null, isc: null },
       version: 1,
       data: {},
       ...s,
@@ -678,6 +708,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         correctsAssessmentId: null,
         supersededByAssessmentId: null,
         snapshot: null,
+        regulatory: { specVersionId: null, isc: null },
         version: 1,
         data: args.data,
       };
@@ -716,6 +747,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         correctsAssessmentId: null,
         supersededByAssessmentId: null,
         snapshot: null,
+        regulatory: { specVersionId: null, isc: null },
         version: 1,
         data: args.data,
       };
@@ -746,6 +778,69 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       r.data = { ...r.data, ...data };
       r.version += 1;
       return viewA(r);
+    },
+
+    async getAssessmentWorkspace(organizationId, id) {
+      const r = findA(organizationId, id);
+      return {
+        assessment: {
+          id: r.id,
+          status: r.status,
+          rfaKind: r.rfaKind,
+          targetDate: r.targetDate,
+          isc: (r.regulatory.isc ?? "HA") as never,
+          specVersionId: r.regulatory.specVersionId ?? "in-memory-spec",
+          specVersion: "in-memory",
+          version: r.version,
+        },
+        sections: [],
+      };
+    },
+
+    async patchAssessmentAnswers(organizationId, userId, id, input) {
+      const r = findA(organizationId, id);
+      require_(r.status === "draft", "M10_ASSESSMENT_IMMUTABLE", `Assessment ${id} is not a draft.`);
+      require_(r.version === input.ifVersion, "M10_VERSION_CONFLICT", `Assessment ${id} version is stale.`);
+      const seen = new Set<string>();
+      const byItem = canonicalAnswers.get(id) ?? new Map();
+      const answers = input.changes.map((change) => {
+        require_(!seen.has(change.itemCode), "M10_DUPLICATE_ANSWER", `${change.itemCode} appears more than once.`);
+        seen.add(change.itemCode);
+        require_(!["A0050", "A0250", "Z0350", "Z0500B"].includes(change.itemCode), "M10_PROTECTED_ANSWER", `${change.itemCode} is workflow-controlled.`);
+        if (change.action === "clear") {
+          byItem.delete(change.itemCode);
+          return {
+            itemCode: change.itemCode,
+            active: true,
+            state: "unanswered" as const,
+            value: null,
+            source: null,
+            answeredAt: null,
+            answeredByMembershipId: null,
+          };
+        }
+        require_(change.value != null, "M10_INVALID_ANSWER", `${change.itemCode} answered values cannot be null.`);
+        const answeredAt = now();
+        byItem.set(change.itemCode, {
+          state: "answered",
+          value: change.value,
+          source: "user",
+          answeredAt,
+          answeredByMembershipId: userId,
+        });
+        return {
+          itemCode: change.itemCode,
+          active: true,
+          state: "answered" as const,
+          value: change.value,
+          source: "user" as const,
+          answeredAt,
+          answeredByMembershipId: userId,
+        };
+      });
+      canonicalAnswers.set(id, byItem);
+      r.version += 1;
+      return { assessmentId: id, version: r.version, answers };
     },
 
     async signTimepoint(organizationId, userId, id) {
@@ -864,6 +959,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         correctsAssessmentId: id,
         supersededByAssessmentId: null,
         snapshot: original.snapshot,
+        regulatory: original.regulatory,
         version: 1,
         data: args.data,
       };

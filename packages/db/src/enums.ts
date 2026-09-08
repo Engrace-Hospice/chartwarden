@@ -1314,6 +1314,30 @@ export const hopeValidationSeverity = pgEnum("hope_validation_severity", ["error
 /** `j2051_severity` — the CMS-defined four-level symptom-impact item (D4; drives the 2-day SFV trigger). */
 export const j2051Severity = pgEnum("j2051_severity", ["none", "mild", "moderate", "severe"]);
 
+/** `hope_isc` — WardenX's internal HOPE item-set code for routing active CMS items by timepoint. */
+export const hopeIsc = pgEnum("hope_isc", ["HA", "HUV", "HD", "XX"]);
+
+/** `hope_answer_state` — canonical item answer state; skipped+NULL serializes to CMS `^`. */
+export const hopeAnswerState = pgEnum("hope_answer_state", ["answered", "skipped"]);
+
+/** `hope_answer_source` — provenance of a canonical HOPE item answer. */
+export const hopeAnswerSource = pgEnum("hope_answer_source", [
+  "user",
+  "patient_prefill",
+  "admission_prefill",
+  "derived",
+  "imported",
+  "correction_copy",
+]);
+
+/** `hope_spec_item_kind` — coarse internal classification for CMS item master rows. */
+export const hopeSpecItemKind = pgEnum("hope_spec_item_kind", [
+  "assessment",
+  "control",
+  "calculated",
+  "filler",
+]);
+
 /** `hope_schedule_generated_by` — provenance of a timepoint schedule row (§2 `generated_by`). */
 export const hopeScheduleGeneratedBy = pgEnum("hope_schedule_generated_by", [
   "auto_admission",
@@ -1947,6 +1971,7 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   "election_statement",
   "cti",
   "f2f",
+  "notice_of_rights",
   "nor",
   "revocation",
   "discharge_summary",

@@ -31,6 +31,46 @@ export function mountHopeRoutes(
 
 export { type HopeWriteOutboxPort, createDbHopeBackend } from "./hope-route-service-db";
 export {
+  type HopeAnswerPatchAction,
+  type HopeAnswerPatchChange,
+  type HopeAnswerPatchResult,
+  type HopeAssessmentAnswerService,
+  HopeAssessmentImmutableError,
+  HopeAssessmentSpecMissingError,
+  type HopeAssessmentItemState,
+  type HopeAssessmentWorkspace,
+  HopeAnswerVersionConflictError,
+  HopeDuplicateAnswerChangeError,
+  HopeInvalidAnswerValueError,
+  HopeItemInactiveForIscError,
+  HopeProtectedItemWriteError,
+  type HopeWorkspaceItem,
+  type HopeWorkspaceSection,
+  createHopeAssessmentAnswerService,
+  normalizeHopeAnswerValue,
+} from "./hope-answer-service";
+export {
+  type HopeIsc,
+  type HopeSpecRegistry,
+  HopeAssessmentSpecNotInitializedError,
+  HopeSpecItemNotFoundError,
+  HopeSpecItemValueNotAllowedError,
+  HopeSpecNotFoundForTargetDateError,
+  HopeSpecRegistryError,
+  HopeSpecVersionOverlapError,
+  createHopeSpecRegistry,
+} from "./hope-spec-registry";
+export {
+  type HopeAssessmentAnswerWriter,
+  type HopeReasonForRecord,
+  type HopeRecordInitialization,
+  type HopeRecordType,
+  HopeUnsupportedOfficialRecordKindError,
+  createHopeAssessmentAnswerWriter,
+  initializeHopeCorrection,
+  initializeNewHopeRecord,
+} from "./hope-record-initializer";
+export {
   type HopeOrgRollupSeed,
   type HopeOrgRollupStore,
   type HopeSeamDeps,

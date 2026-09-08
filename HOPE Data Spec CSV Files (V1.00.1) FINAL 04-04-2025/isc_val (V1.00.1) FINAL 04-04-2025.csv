@@ -1,0 +1,10 @@
+isc_id_key,isc_id,isc_mstr_key,A0050_val,A0050_txt,A0250_val,A0250_txt
+3366,HA,37,1,Add new record,0,Admission
+3367,HD,38,1,Add new record,9,Discharge
+3382,HA,37,2,Modify existing record,1,Admission
+3383,HD,38,2,Modify existing record,9,Discharge
+3384,XX,35,3,Inactivate existing record,1,Admission
+3385,XX,35,3,Inactivate existing record,9,Discharge
+3386,HUV,39,1,Add new record,2,HOPE Update Visit
+3387,HUV,39,2,Modify existing record,2,HOPE Update Visit
+3388,HUV,39,3,Inactivate existing record,2,HOPE Update Visit

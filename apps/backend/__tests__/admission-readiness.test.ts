@@ -30,8 +30,6 @@ function facts(overrides: Partial<AdmissionReadinessFacts> = {}): AdmissionReadi
       exists: true,
       status: "signed",
       hospiceMdSigned: true,
-      attendingRequired: true,
-      attendingSigned: true,
     },
     f2f: {
       required: false,
@@ -176,25 +174,21 @@ describe("admission readiness evaluator", () => {
           exists: true,
           status: "drafted",
           hospiceMdSigned: false,
-          attendingRequired: true,
-          attendingSigned: false,
         },
       }),
     );
     expect(req(draft, "cti")).toMatchObject({ status: "awaiting_signature" });
 
-    const attending = evaluateAdmissionReadiness(
+    const hospiceSigned = evaluateAdmissionReadiness(
       facts({
         cti: {
           exists: true,
           status: "awaiting_attending",
           hospiceMdSigned: true,
-          attendingRequired: true,
-          attendingSigned: false,
         },
       }),
     );
-    expect(req(attending, "cti")?.message).toContain("Attending physician");
+    expect(req(hospiceSigned, "cti")).toMatchObject({ status: "complete" });
   });
 
   it("treats F2F not applicable as non-blocking", () => {

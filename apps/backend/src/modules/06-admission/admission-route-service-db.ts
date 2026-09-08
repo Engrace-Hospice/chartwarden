@@ -34,7 +34,13 @@ import {
   sql,
 } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
-import { decideRecertSign } from "./certification/recert";
+import { getMdmEntityProvider } from "../40-mdm/seams";
+import { createAdmissionEvidenceService } from "./admission-evidence-service";
+import {
+  requirementsForUploadedCti,
+  requirementsForUploadedElectionStatement,
+  requirementsForUploadedNoticeOfRights,
+} from "./admission-uploaded-evidence";
 import { computeWrittenCertDeadline } from "./certification/window-math";
 import { resolveForCauseDischarge } from "./discharge/for-cause";
 import {
@@ -147,6 +153,9 @@ function firstOrThrow<T>(rows: readonly T[], msg: string): T {
 
 const REF = schema.referrals;
 const ADM = schema.admissions;
+const ADDR = schema.patientAddresses;
+const DOC = schema.documents;
+const DV = schema.documentVersions;
 const EP = schema.electionPeriods;
 const ES = schema.electionStatements;
 const CTI = schema.certificationsOfTerminalIllness;
@@ -295,6 +304,73 @@ export function createDbAdmissionRouteService(
   ipuBedAssignmentReader?: IpuBedAssignmentReaderPort,
 ): AdmissionRouteService {
   const now = () => new Date();
+
+  async function currentResidence(tx: DbClient, organizationId: string, patientId: string) {
+    const [addr] = await tx
+      .select({
+        id: ADDR.id,
+        line1: ADDR.line1,
+        line2: ADDR.line2,
+        city: ADDR.city,
+        state: ADDR.state,
+        postalCode: ADDR.postalCode,
+        country: ADDR.country,
+      })
+      .from(ADDR)
+      .where(
+        and(
+          eq(ADDR.organizationId, organizationId),
+          eq(ADDR.patientId, patientId),
+          isNull(ADDR.effectiveTo),
+          or(eq(ADDR.kind, "home"), eq(ADDR.isPrimary, true)),
+        ),
+      )
+      .orderBy(desc(ADDR.isPrimary), desc(ADDR.effectiveFrom))
+      .limit(1);
+    return addr ?? null;
+  }
+
+  const admissionDocumentValidator = (tx: DbClient) => ({
+    async validateAdmissionEvidenceDocumentVersion(args: {
+      organizationId: string;
+      admissionId: string;
+      patientId: string;
+      documentId: string;
+      documentVersionId: string;
+    }) {
+      const [row] = await tx
+        .select({
+          documentId: DOC.id,
+          patientId: DOC.patientId,
+          admissionId: DOC.admissionId,
+          activeVersionId: DOC.activeVersionId,
+        })
+        .from(DOC)
+        .innerJoin(DV, eq(DV.documentId, DOC.id))
+        .where(
+          and(
+            eq(DOC.organizationId, args.organizationId),
+            eq(DOC.id, args.documentId),
+            eq(DV.id, args.documentVersionId),
+          ),
+        )
+        .limit(1);
+      if (!row || row.activeVersionId !== args.documentVersionId) {
+        throw new WardenXError(
+          "DOCUMENT_VERSION_UNAVAILABLE",
+          "The document version is no longer available.",
+          400,
+        );
+      }
+      if (row.patientId !== args.patientId || row.admissionId !== args.admissionId) {
+        throw new WardenXError(
+          "ADMISSION_EVIDENCE_DOCUMENT_MISMATCH",
+          "The uploaded document is not linked to this admission and patient.",
+          400,
+        );
+      }
+    },
+  });
 
   /** Optimistic lock: a stale `ifVersion` is a 409 VERSION_MISMATCH (matches the in-memory slice). */
   function assertVersion(id: string, current: number, expected: number): void {
@@ -531,27 +607,24 @@ export function createDbAdmissionRouteService(
   }
 
   /**
-   * The R-AC-01 gate facts (§7.2). TASK-031 fix: mirrors `getAdmission` (route 10)'s inline query
-   * exactly, including `ctiAttendingSigned` — this function used to omit it entirely, so
-   * `activateAdmission`'s write-path guard never checked the attending-physician CTI signature (period
-   * 1) that the read-side `computeActivationGate` (and the §5.2.5 UI checklist) has always required,
-   * a real divergence between what the checklist showed as blocking and what the server enforced. Also
-   * returns the period-1 id/dates (not part of the gate itself) so `activateAdmission` can build the
+   * The R-AC-01 gate facts (§7.2). This now resolves NOR/election/CTI completion through admission
+   * evidence, and returns the period-1 id/dates so `activateAdmission` can build the
    * `m6.election.period_started` outbox payload without a second query.
    */
   async function gateFacts(
     tx: DbClient,
+    organizationId: string,
     admissionId: string,
   ): Promise<{
     electionSigned: boolean;
     ctiHospiceMdSigned: boolean;
-    ctiAttendingSigned: boolean;
     norAcknowledged: boolean;
     periodSequence: number;
     periodId: string | null;
     periodEffectiveAt: string | null;
     periodScheduledEndAt: string | null;
   }> {
+    await backfillLegacyEvidenceForAdmission(tx, organizationId, admissionId);
     const [period] = await tx
       .select({
         id: EP.id,
@@ -564,43 +637,197 @@ export function createDbAdmissionRouteService(
       .limit(1);
     let electionSigned = false;
     let ctiHospiceMdSigned = false;
-    let ctiAttendingSigned = false;
     if (period) {
-      const [es] = await tx
-        .select({ id: ES.id })
-        .from(ES)
-        .where(
-          and(
-            eq(ES.electionPeriodId, period.id),
-            eq(ES.status, "signed"),
-            sql`${ES.signedAt} is not null`,
-          ),
-        )
-        .limit(1);
-      electionSigned = !!es;
-      const [cti] = await tx
-        .select({ h: CTI.hospiceMdSignedAt, a: CTI.attendingMdSignedAt })
-        .from(CTI)
-        .where(eq(CTI.electionPeriodId, period.id))
-        .limit(1);
-      ctiHospiceMdSigned = !!cti?.h;
-      ctiAttendingSigned = !!cti?.a;
+      const evidence = createAdmissionEvidenceService(tx);
+      electionSigned =
+        (await evidence.hasValidEvidence({
+          organizationId,
+          admissionId,
+          electionPeriodId: period.id,
+          requirementType: "election_statement",
+        })) &&
+        (await evidence.hasValidEvidence({
+          organizationId,
+          admissionId,
+          electionPeriodId: period.id,
+          requirementType: "election_signature",
+        }));
+      ctiHospiceMdSigned =
+        (await evidence.hasValidEvidence({
+          organizationId,
+          admissionId,
+          electionPeriodId: period.id,
+          requirementType: "cti",
+        })) &&
+        (await evidence.hasValidEvidence({
+          organizationId,
+          admissionId,
+          electionPeriodId: period.id,
+          requirementType: "cti_signature",
+        }));
     }
-    const [nor] = await tx
-      .select({ id: NOR.id })
-      .from(NOR)
-      .where(eq(NOR.admissionId, admissionId))
-      .limit(1);
+    const evidence = createAdmissionEvidenceService(tx);
+    const norAcknowledged = await evidence.hasValidEvidence({
+      organizationId,
+      admissionId,
+      electionPeriodId: null,
+      requirementType: "notice_of_rights",
+    });
     return {
       electionSigned,
       ctiHospiceMdSigned,
-      ctiAttendingSigned,
-      norAcknowledged: !!nor,
+      norAcknowledged,
       periodSequence: period?.sequenceNumber ?? 1,
       periodId: period?.id ?? null,
       periodEffectiveAt: period?.effectiveAt ?? null,
       periodScheduledEndAt: period?.scheduledEndAt ?? null,
     };
+  }
+
+  async function backfillLegacyEvidenceForAdmission(
+    tx: DbClient,
+    organizationId: string,
+    admissionId: string,
+  ): Promise<void> {
+    const evidence = createAdmissionEvidenceService(tx);
+    const [nor] = await tx
+      .select({
+        id: NOR.id,
+        patientId: NOR.patientId,
+        acknowledgedAt: NOR.acknowledgedAt,
+      })
+      .from(NOR)
+      .where(eq(NOR.admissionId, admissionId))
+      .limit(1);
+    if (nor) {
+      const existing = await evidence.findValidEvidence({
+        organizationId,
+        admissionId,
+        electionPeriodId: null,
+        requirementType: "notice_of_rights",
+      });
+      if (!existing) {
+        await evidence.recordStructuredEvidence({
+          organizationId,
+          admissionId,
+          patientId: nor.patientId,
+          requirementType: "notice_of_rights",
+          structuredEntityType: "notice_of_rights",
+          structuredEntityId: nor.id,
+          completedAt: new Date(`${nor.acknowledgedAt}T00:00:00.000Z`),
+          metadata: { legacyFallback: true },
+        });
+      }
+    }
+    const [period] = await tx
+      .select({ id: EP.id })
+      .from(EP)
+      .where(eq(EP.admissionId, admissionId))
+      .orderBy(EP.sequenceNumber)
+      .limit(1);
+    if (!period) return;
+    const [es] = await tx
+      .select({ id: ES.id, patientId: ES.patientId, status: ES.status, signedAt: ES.signedAt })
+      .from(ES)
+      .where(eq(ES.electionPeriodId, period.id))
+      .limit(1);
+    if (es && es.status !== "voided") {
+      if (
+        !(await evidence.findValidEvidence({
+          organizationId,
+          admissionId,
+          electionPeriodId: period.id,
+          requirementType: "election_statement",
+        }))
+      ) {
+        await evidence.recordStructuredEvidence({
+          organizationId,
+          admissionId,
+          electionPeriodId: period.id,
+          patientId: es.patientId,
+          requirementType: "election_statement",
+          structuredEntityType: "election_statement",
+          structuredEntityId: es.id,
+          metadata: { legacyFallback: true },
+        });
+      }
+      if (
+        es.status === "signed" &&
+        es.signedAt &&
+        !(await evidence.findValidEvidence({
+          organizationId,
+          admissionId,
+          electionPeriodId: period.id,
+          requirementType: "election_signature",
+        }))
+      ) {
+        await evidence.recordStructuredEvidence({
+          organizationId,
+          admissionId,
+          electionPeriodId: period.id,
+          patientId: es.patientId,
+          requirementType: "election_signature",
+          structuredEntityType: "election_statement",
+          structuredEntityId: es.id,
+          completedAt: new Date(`${es.signedAt}T00:00:00.000Z`),
+          metadata: { legacyFallback: true },
+        });
+      }
+    }
+    const [cti] = await tx
+      .select({ id: CTI.id, status: CTI.status, hospiceMdSignedAt: CTI.hospiceMdSignedAt })
+      .from(CTI)
+      .where(and(eq(CTI.electionPeriodId, period.id), ne(CTI.status, "voided")))
+      .limit(1);
+    if (cti) {
+      const [adm] = await tx
+        .select({ patientId: ADM.patientId })
+        .from(ADM)
+        .where(eq(ADM.id, admissionId))
+        .limit(1);
+      if (adm) {
+        if (
+          !(await evidence.findValidEvidence({
+            organizationId,
+            admissionId,
+            electionPeriodId: period.id,
+            requirementType: "cti",
+          }))
+        ) {
+          await evidence.recordStructuredEvidence({
+            organizationId,
+            admissionId,
+            electionPeriodId: period.id,
+            patientId: adm.patientId,
+            requirementType: "cti",
+            structuredEntityType: "cti",
+            structuredEntityId: cti.id,
+            metadata: { legacyFallback: true },
+          });
+        }
+        if (
+          cti.hospiceMdSignedAt &&
+          !(await evidence.findValidEvidence({
+            organizationId,
+            admissionId,
+            electionPeriodId: period.id,
+            requirementType: "cti_signature",
+          }))
+        ) {
+          await evidence.recordStructuredEvidence({
+            organizationId,
+            admissionId,
+            electionPeriodId: period.id,
+            patientId: adm.patientId,
+            requirementType: "cti_signature",
+            structuredEntityType: "cti",
+            structuredEntityId: cti.id,
+            completedAt: cti.hospiceMdSignedAt,
+            metadata: { legacyFallback: true, signedBy: "hospice_physician" },
+          });
+        }
+      }
+    }
   }
 
   async function readinessForAdmission(
@@ -616,12 +843,15 @@ export function createDbAdmissionRouteService(
         admissionAt: ADM.admissionAt,
         providerEntityId: ADM.providerEntityId,
         locationId: ADM.locationId,
+        patientResidenceAddressId: ADM.patientResidenceAddressId,
+        serviceAddressLine1: ADM.serviceAddressLine1,
         attendingPhysicianId: ADM.attendingPhysicianId,
       })
       .from(ADM)
       .where(eq(ADM.id, admissionId))
       .limit(1);
     if (!adm) return null;
+    await backfillLegacyEvidenceForAdmission(tx, organizationId, admissionId);
 
     const [ref] = adm.referralId
       ? await tx
@@ -694,6 +924,11 @@ export function createDbAdmissionRouteService(
           .orderBy(desc(F2F.createdAt))
           .limit(1)
       : [null];
+    const evidenceFacts = await createAdmissionEvidenceService(tx).readFacts({
+      organizationId,
+      admissionId,
+      electionPeriodId: period?.id ?? null,
+    });
 
     let clearance: PatientAdmissionClearance;
     try {
@@ -721,7 +956,7 @@ export function createDbAdmissionRouteService(
         // hospiceMedicalDirectorPresent: !!cti?.hospiceMdId,
 
         providerEntityPresent: !!adm.providerEntityId,
-        locationPresent: !!adm.locationId,
+        locationPresent: !!adm.patientResidenceAddressId || !!adm.serviceAddressLine1 || !!adm.locationId,
       },
       patientPrivacy: {
         allowed: clearance.allowed,
@@ -729,23 +964,29 @@ export function createDbAdmissionRouteService(
         overrideAllowed: clearance.overrideAllowed,
       },
       noticeOfRights: {
-        acknowledged: !!nor,
-        acknowledgedAtPresent: !!nor?.acknowledgedAt,
-        signerValid: nor?.signerKind === "patient" || nor?.signerKind === "representative",
-        methodValid: !!nor?.acknowledgmentMethod,
+        acknowledged: !!evidenceFacts.noticeOfRights,
+        acknowledgedAtPresent: !!evidenceFacts.noticeOfRights?.completedAt || !!nor?.acknowledgedAt,
+        signerValid:
+          !!evidenceFacts.noticeOfRights ||
+          nor?.signerKind === "patient" ||
+          nor?.signerKind === "representative",
+        methodValid: !!evidenceFacts.noticeOfRights || !!nor?.acknowledgmentMethod,
+        evidence: evidenceFacts.noticeOfRights,
       },
       electionStatement: {
-        exists: !!es,
+        exists: !!evidenceFacts.electionStatement,
         status: es?.status ?? null,
-        signedAtPresent: !!es?.signedAt,
-        belongsToCurrentPeriod: !!es && !!period && es.electionPeriodId === period.id,
+        signedAtPresent: !!evidenceFacts.electionSignature?.completedAt || !!es?.signedAt,
+        belongsToCurrentPeriod: !!period && !!evidenceFacts.electionStatement,
+        evidence: evidenceFacts.electionStatement,
+        signatureEvidence: evidenceFacts.electionSignature,
       },
       cti: {
-        exists: !!cti,
+        exists: !!evidenceFacts.cti,
         status: cti?.status ?? null,
-        hospiceMdSigned: !!cti?.hospiceMdSignedAt,
-        attendingRequired: (period?.sequenceNumber ?? 1) === 1 && !!cti?.attendingMdId,
-        attendingSigned: !!cti?.attendingMdSignedAt,
+        evidence: evidenceFacts.cti,
+        signatureEvidence: evidenceFacts.ctiSignature,
+        hospiceMdSigned: !!evidenceFacts.ctiSignature,
       },
       f2f: {
         required: (period?.sequenceNumber ?? 1) >= 3,
@@ -1097,14 +1338,25 @@ export function createDbAdmissionRouteService(
             activatedAt: ADM.activatedAt,
             providerEntityId: ADM.providerEntityId,
             locationId: ADM.locationId,
+            patientResidenceAddressId: ADM.patientResidenceAddressId,
+            serviceAddressLine1: ADM.serviceAddressLine1,
+            serviceAddressLine2: ADM.serviceAddressLine2,
+            serviceAddressCity: ADM.serviceAddressCity,
+            serviceAddressState: ADM.serviceAddressState,
+            serviceAddressPostalCode: ADM.serviceAddressPostalCode,
+            serviceAddressCountry: ADM.serviceAddressCountry,
+            hospicePhysicianId: ADM.hospicePhysicianId,
           })
           .from(ADM)
           .where(eq(ADM.id, id))
           .limit(1);
         if (!adm) return null;
         const readiness = await readinessForAdmission(tx, organizationId, id);
-        const legacy = await gateFacts(tx, id);
+        const legacy = await gateFacts(tx, organizationId, id);
         const activationGate = computeActivationGate(legacy);
+        const physician = adm.hospicePhysicianId
+          ? await getMdmEntityProvider().resolvePhysician(organizationId, adm.hospicePhysicianId)
+          : null;
         return {
           id: adm.id,
           state: adm.status,
@@ -1115,6 +1367,26 @@ export function createDbAdmissionRouteService(
           activatedAt: adm.activatedAt?.toISOString() ?? null,
           providerEntityId: adm.providerEntityId ?? null,
           locationId: adm.locationId ?? null,
+          patientResidenceAddressId: adm.patientResidenceAddressId ?? null,
+          serviceAddressSnapshot:
+            adm.serviceAddressLine1 && adm.serviceAddressCity && adm.serviceAddressPostalCode
+              ? {
+                  line1: adm.serviceAddressLine1,
+                  line2: adm.serviceAddressLine2,
+                  city: adm.serviceAddressCity,
+                  state: adm.serviceAddressState,
+                  postalCode: adm.serviceAddressPostalCode,
+                  country: adm.serviceAddressCountry ?? "US",
+                }
+              : null,
+          hospicePhysicianId: adm.hospicePhysicianId ?? null,
+          hospicePhysician: physician
+            ? {
+                id: physician.id,
+                displayName: physician.canonical.displayName,
+                npi: physician.canonical.identifierValue ?? null,
+              }
+            : null,
           activationGate,
           readiness: readiness ?? undefined,
         };
@@ -2225,6 +2497,7 @@ export function createDbAdmissionRouteService(
               organizationId,
               patientId: input.patientId,
               referralId: input.referralId ?? null,
+              hospicePhysicianId: input.hospiceMedicalDirectorId,
               attendingPhysicianId: input.attendingPhysicianId ?? null,
               status: t.to,
             })
@@ -2285,7 +2558,7 @@ export function createDbAdmissionRouteService(
               organizationId,
               electionPeriodId: period.id,
               hospiceMdId: input.hospiceMedicalDirectorId,
-              attendingMdId: input.attendingPhysicianId ?? null,
+              attendingMdId: null,
             })
             .returning({ id: CTI.id }),
           "cti insert returned no row",
@@ -2301,6 +2574,17 @@ export function createDbAdmissionRouteService(
           aggregateKind: "certification_of_terminal_illness",
           aggregateId: cti.id,
         });
+        await createAdmissionEvidenceService(tx).recordStructuredEvidence({
+          organizationId,
+          admissionId: adm.id,
+          electionPeriodId: period.id,
+          patientId: input.patientId,
+          requirementType: "cti",
+          structuredEntityType: "cti",
+          structuredEntityId: cti.id,
+          metadata: { createdBy: "direct_intake" },
+          createdByMembershipId: actorUserId,
+        });
         return {
           id: adm.id,
           state: adm.status,
@@ -2315,10 +2599,13 @@ export function createDbAdmissionRouteService(
           updatedAt: now(),
         };
         if (input.admissionAt !== undefined) updates.admissionAt = new Date(input.admissionAt);
+        if (input.hospicePhysicianId !== undefined)
+          updates.hospicePhysicianId = input.hospicePhysicianId;
         if (input.attendingPhysicianId !== undefined)
           updates.attendingPhysicianId = input.attendingPhysicianId;
         const [current] = await tx
           .select({
+            patientId: ADM.patientId,
             providerEntityId: ADM.providerEntityId,
             locationId: ADM.locationId,
           })
@@ -2343,7 +2630,24 @@ export function createDbAdmissionRouteService(
         if (input.providerEntityId !== undefined) {
           updates.providerEntityId = input.providerEntityId;
         }
-        if (input.locationId !== undefined) {
+        if (input.providerEntityId !== undefined || input.admissionAt !== undefined) {
+          const residence = await currentResidence(tx, organizationId, current.patientId);
+          if (!residence) {
+            throw new WardenXError(
+              "PATIENT_RESIDENCE_ADDRESS_REQUIRED",
+              "A patient residence address is required before completing admission details.",
+              422,
+            );
+          }
+          updates.patientResidenceAddressId = residence.id;
+          updates.serviceAddressLine1 = residence.line1;
+          updates.serviceAddressLine2 = residence.line2;
+          updates.serviceAddressCity = residence.city;
+          updates.serviceAddressState = residence.state;
+          updates.serviceAddressPostalCode = residence.postalCode;
+          updates.serviceAddressCountry = residence.country;
+          updates.locationId = null;
+        } else if (input.locationId !== undefined) {
           updates.locationId = input.locationId;
         }
         const [r] = await tx
@@ -2353,6 +2657,200 @@ export function createDbAdmissionRouteService(
           .returning({ id: ADM.id, status: ADM.status, version: ADM.version });
         if (!r) return failStale(tx, ADM, id, ifVersion);
         return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async attachUploadedNoticeOfRights(organizationId, admissionId, input, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [adm] = await tx
+          .select({ patientId: ADM.patientId, status: ADM.status, version: ADM.version })
+          .from(ADM)
+          .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
+          .limit(1);
+        if (!adm) throw new ResourceNotFoundError(admissionId);
+        const svc = createAdmissionEvidenceService(tx, admissionDocumentValidator(tx));
+        for (const requirementType of requirementsForUploadedNoticeOfRights(input)) {
+          await svc.recordUploadedEvidence({
+            organizationId,
+            admissionId,
+            patientId: adm.patientId,
+            requirementType,
+            documentId: input.documentId,
+            documentVersionId: input.documentVersionId,
+            completedAt: input.acknowledgedAt ? new Date(input.acknowledgedAt) : undefined,
+            metadata: { ...input },
+            createdByMembershipId: actorUserId,
+          });
+        }
+        return { id: admissionId, state: adm.status, version: Number(adm.version) };
+      });
+    },
+    async attachUploadedElectionStatement(organizationId, electionPeriodId, input, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [period] = await tx
+          .select({ admissionId: EP.admissionId })
+          .from(EP)
+          .where(and(eq(EP.organizationId, organizationId), eq(EP.id, electionPeriodId)))
+          .limit(1);
+        if (!period) throw new ResourceNotFoundError(electionPeriodId);
+        const [adm] = await tx
+          .select({ patientId: ADM.patientId, status: ADM.status, version: ADM.version })
+          .from(ADM)
+          .where(eq(ADM.id, period.admissionId))
+          .limit(1);
+        if (!adm) throw new ResourceNotFoundError(period.admissionId);
+        if (
+          input.documentState === "signed" &&
+          (!input.signerName || !input.signerRole || !input.signedAt)
+        ) {
+          throw new WardenXError(
+            "UPLOADED_ELECTION_SIGNATURE_METADATA_REQUIRED",
+            "Signer name, signer role, and signature date are required for a signed Election Statement.",
+            400,
+          );
+        }
+        const metadata =
+          input.documentState === "signed"
+            ? {
+                documentState: "signed" as const,
+                signedAt: input.signedAt,
+                signerRole: input.signerRole ?? "patient",
+                signerName: input.signerName,
+              }
+            : { documentState: "unsigned" as const };
+        const svc = createAdmissionEvidenceService(tx, admissionDocumentValidator(tx));
+        for (const requirementType of requirementsForUploadedElectionStatement(metadata)) {
+          await svc.recordUploadedEvidence({
+            organizationId,
+            admissionId: period.admissionId,
+            electionPeriodId,
+            patientId: adm.patientId,
+            requirementType,
+            documentId: input.documentId,
+            documentVersionId: input.documentVersionId,
+            completedAt: input.signedAt ? new Date(input.signedAt) : undefined,
+            metadata,
+            createdByMembershipId: actorUserId,
+          });
+        }
+        return { id: period.admissionId, state: adm.status, version: Number(adm.version) };
+      });
+    },
+    async attachUploadedElectionSignature(organizationId, electionStatementId, input, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [es] = await tx
+          .select({
+            id: ES.id,
+            patientId: ES.patientId,
+            electionPeriodId: ES.electionPeriodId,
+            status: ES.status,
+          })
+          .from(ES)
+          .where(and(eq(ES.organizationId, organizationId), eq(ES.id, electionStatementId)))
+          .limit(1);
+        if (!es) throw new ResourceNotFoundError(electionStatementId);
+        if (es.status === "signed") {
+          throw new WardenXError(
+            "ELECTION_ALREADY_SIGNED",
+            "This Election Statement is already signed.",
+            409,
+          );
+        }
+        if (!input.signerName || !input.signerRole || !input.signedAt) {
+          throw new WardenXError(
+            "UPLOADED_ELECTION_SIGNATURE_METADATA_REQUIRED",
+            "Signer name, signer role, and signature date are required for a signed Election Statement.",
+            400,
+          );
+        }
+        const [period] = await tx
+          .select({ admissionId: EP.admissionId })
+          .from(EP)
+          .where(eq(EP.id, es.electionPeriodId))
+          .limit(1);
+        if (!period) throw new ResourceNotFoundError(es.electionPeriodId);
+        const [adm] = await tx
+          .select({ status: ADM.status, version: ADM.version })
+          .from(ADM)
+          .where(eq(ADM.id, period.admissionId))
+          .limit(1);
+        if (!adm) throw new ResourceNotFoundError(period.admissionId);
+        await createAdmissionEvidenceService(tx, admissionDocumentValidator(tx)).recordUploadedEvidence({
+          organizationId,
+          admissionId: period.admissionId,
+          electionPeriodId: es.electionPeriodId,
+          patientId: es.patientId,
+          requirementType: "election_signature",
+          documentId: input.documentId,
+          documentVersionId: input.documentVersionId,
+          completedAt: new Date(input.signedAt),
+          metadata: {
+            documentState: "signed",
+            signerName: input.signerName,
+            signerRole: input.signerRole,
+            signedAt: input.signedAt,
+          },
+          createdByMembershipId: actorUserId,
+        });
+        return { id: period.admissionId, state: adm.status, version: Number(adm.version) };
+      });
+    },
+    async attachUploadedCti(organizationId, electionPeriodId, input, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [period] = await tx
+          .select({ admissionId: EP.admissionId })
+          .from(EP)
+          .where(and(eq(EP.organizationId, organizationId), eq(EP.id, electionPeriodId)))
+          .limit(1);
+        if (!period) throw new ResourceNotFoundError(electionPeriodId);
+        const [adm] = await tx
+          .select({
+            patientId: ADM.patientId,
+            status: ADM.status,
+            version: ADM.version,
+            hospicePhysicianId: ADM.hospicePhysicianId,
+          })
+          .from(ADM)
+          .where(eq(ADM.id, period.admissionId))
+          .limit(1);
+        if (!adm) throw new ResourceNotFoundError(period.admissionId);
+        if (!adm.hospicePhysicianId) {
+          throw new WardenXError(
+            "ADMISSION_HOSPICE_PHYSICIAN_REQUIRED",
+            "Select a Hospice Physician before creating the CTI.",
+            400,
+          );
+        }
+        if (input.documentState === "signed" && !input.signedAt) {
+          throw new WardenXError(
+            "UPLOADED_CTI_SIGNATURE_DATE_REQUIRED",
+            "Signature date is required for a signed CTI.",
+            400,
+          );
+        }
+        const metadata =
+          input.documentState === "signed"
+            ? {
+                documentState: "signed" as const,
+                signedAt: input.signedAt,
+                signingPhysicianId: adm.hospicePhysicianId,
+              }
+            : { documentState: "unsigned" as const };
+        const svc = createAdmissionEvidenceService(tx, admissionDocumentValidator(tx));
+        for (const requirementType of requirementsForUploadedCti(metadata, adm.hospicePhysicianId)) {
+          await svc.recordUploadedEvidence({
+            organizationId,
+            admissionId: period.admissionId,
+            electionPeriodId,
+            patientId: adm.patientId,
+            requirementType,
+            documentId: input.documentId,
+            documentVersionId: input.documentVersionId,
+            completedAt: input.signedAt ? new Date(input.signedAt) : undefined,
+            metadata,
+            createdByMembershipId: actorUserId,
+          });
+        }
+        return { id: period.admissionId, state: adm.status, version: Number(adm.version) };
       });
     },
     async holdAdmission(organizationId, id, reason, ifVersion): Promise<MutationResult> {
@@ -2384,12 +2882,10 @@ export function createDbAdmissionRouteService(
         assertVersion(id, cur.version, ifVersion);
         const readiness = await readinessForAdmission(tx, organizationId, id);
         if (!readiness) throw new ResourceNotFoundError(id);
-        const facts = await gateFacts(tx, id);
-        // TASK-031 fix: `computeActivationGate` is the declared single source of truth for BOTH this
-        // write-path guard and the read-side checklist (getAdmission/route 10) — call it here instead
-        // of re-deriving a subset of its logic via `transitionAdmission`'s ad-hoc "activate" guards,
-        // which never checked `ctiAttendingSigned` at all. A caller that bypasses the UI and posts
-        // directly now gets the SAME 412 PRECONDITION_FAILED { missing } the checklist would have shown.
+        const facts = await gateFacts(tx, organizationId, id);
+        // `computeActivationGate` is the declared single source of truth for BOTH this write-path guard
+        // and the read-side checklist (getAdmission/route 10). A caller that bypasses the UI and posts
+        // directly gets the SAME 412 PRECONDITION_FAILED { missing } the checklist would have shown.
         const gate = computeActivationGate(facts);
         if (!readiness.canActivate) {
           throw new ActivationPreconditionError(gate.missing, readiness.requirements);
@@ -2497,6 +2993,16 @@ export function createDbAdmissionRouteService(
             .returning({ id: ES.id, status: ES.status, version: ES.version }),
           "election statement insert returned no row",
         );
+        await createAdmissionEvidenceService(tx).recordStructuredEvidence({
+          organizationId,
+          admissionId,
+          electionPeriodId,
+          patientId: adm.patientId,
+          requirementType: "election_statement",
+          structuredEntityType: "election_statement",
+          structuredEntityId: es.id,
+          metadata: { status: "drafted" },
+        });
         await outbox.publish(tx, {
           eventName: "m6.election.drafted",
           payload: {
@@ -2522,6 +3028,7 @@ export function createDbAdmissionRouteService(
             status: ES.status,
             version: ES.version,
             electionPeriodId: ES.electionPeriodId,
+            patientId: ES.patientId,
           })
           .from(ES)
           .where(eq(ES.id, id))
@@ -2544,6 +3051,23 @@ export function createDbAdmissionRouteService(
           .where(and(eq(ES.id, id), eq(ES.version, ifVersion)))
           .returning({ id: ES.id, status: ES.status, version: ES.version });
         if (!r) throw new ResourceNotFoundError(id);
+        const [period] = await tx
+          .select({ admissionId: EP.admissionId })
+          .from(EP)
+          .where(eq(EP.id, cur.electionPeriodId))
+          .limit(1);
+        if (!period) throw new ResourceNotFoundError(cur.electionPeriodId);
+        await createAdmissionEvidenceService(tx).recordStructuredEvidence({
+          organizationId,
+          admissionId: period.admissionId,
+          electionPeriodId: cur.electionPeriodId,
+          patientId: cur.patientId,
+          requirementType: "election_signature",
+          structuredEntityType: "election_statement",
+          structuredEntityId: id,
+          completedAt: new Date(`${signedAt}T00:00:00.000Z`),
+          metadata: { signatureMethod: "electronic_witnessed" },
+        });
         await outbox.publish(tx, {
           eventName: "m6.election.signed",
           // Same payload-schema-drift bug class as `m6.election.drafted` (fixed above) — this call
@@ -2639,7 +3163,6 @@ export function createDbAdmissionRouteService(
 
     // ── M6L-T03: certification of terminal illness (CTI) ────────────────────────────────────────
     async draftCti(organizationId, input: CtiDraftInput, actorUserId): Promise<MutationResult> {
-      void actorUserId;
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const existing = await tx
           .select({
@@ -2665,19 +3188,39 @@ export function createDbAdmissionRouteService(
           );
         }
         const [period] = await tx
-          .select({ id: EP.id })
+          .select({ id: EP.id, admissionId: EP.admissionId })
           .from(EP)
           .where(eq(EP.id, input.electionPeriodId))
           .limit(1);
         if (!period) throw new ResourceNotFoundError(input.electionPeriodId);
+        const [adm] = await tx
+          .select({ patientId: ADM.patientId, hospicePhysicianId: ADM.hospicePhysicianId })
+          .from(ADM)
+          .where(eq(ADM.id, period.admissionId))
+          .limit(1);
+        if (!adm) throw new ResourceNotFoundError(period.admissionId);
+        if (!adm.hospicePhysicianId) {
+          throw new WardenXError(
+            "ADMISSION_HOSPICE_PHYSICIAN_REQUIRED",
+            "Select the admission hospice physician before drafting the CTI.",
+            400,
+          );
+        }
+        if (input.hospiceMedicalDirectorId !== adm.hospicePhysicianId) {
+          throw new WardenXError(
+            "CTI_HOSPICE_PHYSICIAN_MISMATCH",
+            "CTI hospice physician must match the admission selected hospice physician.",
+            400,
+          );
+        }
         const cti = firstOrThrow(
           await tx
             .insert(CTI)
             .values({
               organizationId,
               electionPeriodId: input.electionPeriodId,
-              hospiceMdId: input.hospiceMedicalDirectorId,
-              attendingMdId: input.attendingPhysicianId ?? null,
+              hospiceMdId: adm.hospicePhysicianId,
+              attendingMdId: null,
               terminalDiagnosisIcd10: input.terminalDiagnosisIcd10,
               narrative: input.narrative,
             })
@@ -2688,6 +3231,17 @@ export function createDbAdmissionRouteService(
             }),
           "cti insert returned no row",
         );
+        await createAdmissionEvidenceService(tx).recordStructuredEvidence({
+          organizationId,
+          admissionId: period.admissionId,
+          electionPeriodId: input.electionPeriodId,
+          patientId: adm.patientId,
+          requirementType: "cti",
+          structuredEntityType: "cti",
+          structuredEntityId: cti.id,
+          metadata: { status: "drafted" },
+          createdByMembershipId: actorUserId,
+        });
         // TASK-034: was missing `electionPeriodId`/`isRecert` — declared required by events-by-m6.ts,
         // silently dropped here, same payload-schema-drift pattern TASK-031 fixed elsewhere in M6.
         await outbox.publish(tx, {
@@ -2705,14 +3259,13 @@ export function createDbAdmissionRouteService(
       });
     },
     async signCtiHospiceMd(organizationId, id, ifVersion, actorUserId): Promise<MutationResult> {
-      void actorUserId;
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cti] = await tx
           .select({
             status: CTI.status,
             version: CTI.version,
             epId: CTI.electionPeriodId,
-            att: CTI.attendingMdId,
+            hospiceMdId: CTI.hospiceMdId,
           })
           .from(CTI)
           .where(eq(CTI.id, id))
@@ -2726,25 +3279,51 @@ export function createDbAdmissionRouteService(
           .from(EP)
           .where(eq(EP.id, cti.epId))
           .limit(1);
-        // W-CTI-03/04: period-1-with-attending → awaiting_attending; a recert signs on the MD alone and
-        // advances its period to active (§7.3).
-        const outcome = decideRecertSign({
-          sequence: period?.seq ?? 1,
-          patientHasAttending: cti.att != null,
-          hospiceMdSigned: true,
-          attendingSigned: false,
-        });
+        if (!period) throw new ResourceNotFoundError(cti.epId);
+        const [adm] = await tx
+          .select({ patientId: ADM.patientId, hospicePhysicianId: ADM.hospicePhysicianId })
+          .from(ADM)
+          .where(eq(ADM.id, period.admissionId))
+          .limit(1);
+        if (!adm) throw new ResourceNotFoundError(period.admissionId);
+        if (!adm.hospicePhysicianId) {
+          throw new WardenXError(
+            "ADMISSION_HOSPICE_PHYSICIAN_REQUIRED",
+            "Select the admission hospice physician before signing the CTI.",
+            400,
+          );
+        }
+        if (cti.hospiceMdId !== adm.hospicePhysicianId) {
+          throw new WardenXError(
+            "CTI_HOSPICE_PHYSICIAN_MISMATCH",
+            "CTI hospice physician must match the admission selected hospice physician.",
+            400,
+          );
+        }
+        const hospiceMdSignedAt = now();
         const [r] = await tx
           .update(CTI)
           .set({
-            status: outcome.progress,
-            hospiceMdSignedAt: now(),
+            status: "signed",
+            hospiceMdSignedAt,
             version: sql`${CTI.version} + 1`,
           })
           .where(and(eq(CTI.id, id), eq(CTI.version, ifVersion)))
           .returning({ id: CTI.id, status: CTI.status, version: CTI.version });
         if (!r) throw new ResourceNotFoundError(id);
-        if (outcome.activatesPeriod && cti.epId) {
+        await createAdmissionEvidenceService(tx).recordStructuredEvidence({
+          organizationId,
+          admissionId: period.admissionId,
+          electionPeriodId: cti.epId,
+          patientId: adm.patientId,
+          requirementType: "cti_signature",
+          structuredEntityType: "cti",
+          structuredEntityId: id,
+          completedAt: hospiceMdSignedAt,
+          metadata: { signedBy: "hospice_physician", physicianId: adm.hospicePhysicianId },
+          createdByMembershipId: actorUserId,
+        });
+        if (period.seq >= 2 && cti.epId) {
           await tx
             .update(EP)
             .set({ status: "active", version: sql`${EP.version} + 1` })
@@ -2763,20 +3342,17 @@ export function createDbAdmissionRouteService(
             aggregateId: cti.epId,
           });
         }
-        if (outcome.fullySigned) {
-          await outbox.publish(tx, {
-            eventName: "m6.cti.signed",
-            // Same class of bug as above — `electionPeriodId`/`signedAt` are required, previously omitted.
-            payload: {
-              ctiId: id,
-              electionPeriodId: cti.epId,
-              signedAt: now().toISOString(),
-            },
-            organizationId,
-            aggregateKind: "certification_of_terminal_illness",
-            aggregateId: id,
-          });
-        }
+        await outbox.publish(tx, {
+          eventName: "m6.cti.signed",
+          payload: {
+            ctiId: id,
+            electionPeriodId: cti.epId,
+            signedAt: hospiceMdSignedAt.toISOString(),
+          },
+          organizationId,
+          aggregateKind: "certification_of_terminal_illness",
+          aggregateId: id,
+        });
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
@@ -3437,8 +4013,30 @@ export function createDbAdmissionRouteService(
       actorUserId,
     ): Promise<MutationResult & { currentElectionPeriodSequence: number }> {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
-        if (!(await admissionExists(tx as DbClient, admissionId)))
-          throw new ResourceNotFoundError(admissionId);
+        const [adm] = await tx
+          .select({ patientId: ADM.patientId, hospicePhysicianId: ADM.hospicePhysicianId })
+          .from(ADM)
+          .where(eq(ADM.id, admissionId))
+          .limit(1);
+        if (!adm) throw new ResourceNotFoundError(admissionId);
+        const selectedHospicePhysicianId = adm.hospicePhysicianId ?? input.hospiceMedicalDirectorId;
+        if (input.hospiceMedicalDirectorId !== selectedHospicePhysicianId) {
+          throw new WardenXError(
+            "CTI_HOSPICE_PHYSICIAN_MISMATCH",
+            "Transfer-in CTI physician must match the admission selected hospice physician.",
+            400,
+          );
+        }
+        if (!adm.hospicePhysicianId) {
+          await tx
+            .update(ADM)
+            .set({
+              hospicePhysicianId: selectedHospicePhysicianId,
+              version: sql`${ADM.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(eq(ADM.id, admissionId));
+        }
         // W-DC-03 / D9 — inherit the carried sequence as the ACTIVE period (no CTI required from us) and
         // open the next PENDING period (our CTI required). The sequence counter never restarts.
         const plan = planTransferIn(input);
@@ -3477,12 +4075,23 @@ export function createDbAdmissionRouteService(
             .values({
               organizationId,
               electionPeriodId: nextPeriod.id,
-              hospiceMdId: input.hospiceMedicalDirectorId,
-              attendingMdId: input.attendingPhysicianId ?? null,
+              hospiceMdId: selectedHospicePhysicianId,
+              attendingMdId: null,
             })
             .returning({ id: CTI.id }),
           "cti insert returned no row",
         );
+        await createAdmissionEvidenceService(tx).recordStructuredEvidence({
+          organizationId,
+          admissionId,
+          electionPeriodId: nextPeriod.id,
+          patientId: adm.patientId,
+          requirementType: "cti",
+          structuredEntityType: "cti",
+          structuredEntityId: cti.id,
+          metadata: { createdBy: "transfer_in" },
+          createdByMembershipId: actorUserId,
+        });
         await outbox.publish(tx, {
           eventName: "m6.cti.drafted",
           payload: {
@@ -3755,6 +4364,20 @@ export function createDbAdmissionRouteService(
             .returning({ id: NOR.id }),
           "NOR insert returned no row",
         );
+        await createAdmissionEvidenceService(tx).recordStructuredEvidence({
+          organizationId,
+          admissionId,
+          patientId: adm.patientId,
+          requirementType: "notice_of_rights",
+          structuredEntityType: "notice_of_rights",
+          structuredEntityId: nor.id,
+          completedAt: acknowledgedAt,
+          metadata: {
+            acknowledgedByRole: input.acknowledgedByRole,
+            deliveryMethod: input.deliveryMethod,
+          },
+          createdByMembershipId: actorUserId,
+        });
         const r = firstOrThrow(
           await tx
             .update(ADM)

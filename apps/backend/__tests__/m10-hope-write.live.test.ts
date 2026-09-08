@@ -30,6 +30,7 @@ import {
   createDrizzleAdmissionReaderStore,
 } from "../src/modules/06-admission/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { importHopeSpec } from "../../../scripts/db/import-hope-spec";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -135,6 +136,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     await admin.connect();
     await resetSchema();
     await applyMigrations();
+    await importHopeSpec({ databaseUrl: DB_URL });
     await admin.query(
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
       [ORG_A, ORG_B],

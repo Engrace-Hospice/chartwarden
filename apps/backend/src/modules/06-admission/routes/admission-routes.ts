@@ -70,6 +70,9 @@ import {
   RevocationCreateSchema,
   TransferInSchema,
   TransferOutSchema,
+  UploadedCtiEvidenceSchema,
+  UploadedElectionEvidenceSchema,
+  UploadedNoticeOfRightsSchema,
   parse,
 } from "./admission-typebox";
 import { type AdmissionRouteService, ResourceNotFoundError } from "./service";
@@ -660,6 +663,7 @@ export function registerAdmissionRoutes(
         idOf(request),
         {
           admissionAt: body.admissionAt,
+          hospicePhysicianId: body.hospicePhysicianId,
           attendingPhysicianId: body.attendingPhysicianId,
           providerEntityId: body.providerEntityId,
           locationId: body.locationId,
@@ -792,6 +796,48 @@ export function registerAdmissionRoutes(
     },
   );
 
+  app.post(
+    "/api/v1/election-periods/:id/election-statement/uploaded-evidence",
+    {
+      preHandler: [
+        ELECTION_DRAFT,
+        admissionScope("election.draft", "electionPeriod"),
+      ],
+    },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(UploadedElectionEvidenceSchema, request.body);
+      const res = await service.attachUploadedElectionStatement(
+        organizationId,
+        idOf(request),
+        body,
+        userId,
+      );
+      return reply.code(201).send(res);
+    },
+  );
+
+  app.post(
+    "/api/v1/election-statements/:id/sign/uploaded-evidence",
+    {
+      preHandler: [
+        ELECTION_SIGN,
+        admissionScope("election.sign", "electionStatement"),
+      ],
+    },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(UploadedElectionEvidenceSchema, request.body);
+      const res = await service.attachUploadedElectionSignature(
+        organizationId,
+        idOf(request),
+        { ...body, documentState: "signed" },
+        userId,
+      );
+      return reply.code(201).send(res);
+    },
+  );
+
   app.get(
     "/api/v1/admissions/:id/election-periods",
     {
@@ -864,6 +910,17 @@ export function registerAdmissionRoutes(
         },
         userId,
       );
+      return reply.code(201).send(res);
+    },
+  );
+
+  app.post(
+    "/api/v1/election-periods/:id/cti/uploaded-evidence",
+    { preHandler: [CTI_DRAFT, admissionScope("cti.draft", "electionPeriod")] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(UploadedCtiEvidenceSchema, request.body);
+      const res = await service.attachUploadedCti(organizationId, idOf(request), body, userId);
       return reply.code(201).send(res);
     },
   );
@@ -1198,6 +1255,22 @@ export function registerAdmissionRoutes(
           deliveryMethod: body.deliveryMethod,
           acknowledgedByRole: body.acknowledgedByRole,
         },
+        userId,
+      );
+      return reply.code(201).send(res);
+    },
+  );
+
+  app.post(
+    "/api/v1/admissions/:id/nor/uploaded-evidence",
+    { preHandler: [NOR_ACKNOWLEDGE, admissionScope("nor.acknowledge")] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(UploadedNoticeOfRightsSchema, request.body);
+      const res = await service.attachUploadedNoticeOfRights(
+        organizationId,
+        idOf(request),
+        body,
         userId,
       );
       return reply.code(201).send(res);

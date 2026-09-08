@@ -390,6 +390,7 @@ export const MODULES: ModuleDef[] = [
       "referral_note",
       "notice_of_rights_acknowledgment",
       "compliance_window",
+      "admission_evidence",
     ],
   },
   {
@@ -460,7 +461,12 @@ export const MODULES: ModuleDef[] = [
     dependsOn: [1, 9, 36, 38], // +M1: registers HOPE seams into the M1-owned bootstrap registry (M10-T05); +iqies-client ADR-0028; +web: Track B in-task screens (ADR-0030), land in M10-T08
     ownedTables: [
       "hope_timepoint_schedule",
+      "hope_spec_version",
+      "hope_spec_item",
+      "hope_spec_item_isc",
+      "hope_spec_item_option",
       "hope_assessment",
+      "hope_assessment_answer",
       "symptom_follow_up_visit",
       "hope_validation_finding",
       "hope_submission",

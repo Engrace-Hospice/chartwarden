@@ -92,6 +92,9 @@ const DOCUMENT_AGGREGATE_TYPE = [
   "evv_verification",
   "patient_amendment_statement_of_disagreement",
   "consent_record",
+  "notice_of_rights",
+  "election_statement",
+  "cti",
   "intake_source",
   "other",
 ] as const;

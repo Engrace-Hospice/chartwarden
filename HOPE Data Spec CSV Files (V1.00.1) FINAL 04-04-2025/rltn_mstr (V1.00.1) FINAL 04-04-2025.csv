@@ -1,0 +1,290 @@
+rltn_key,rltn_id,rltn_srt_id,rltn_type_cd,rltn_type_txt,rltn_svrty,rltn_txt,rltn_vrsn_notes
+1,-3001,1F3001,FORMAT,Format,Fatal,"If this item is not equal to one of the special values (if any) that are listed in the Item Values table of the Detailed Data Specifications Report, then the length of the submitted value must match exactly the maximum length that is listed for the item.",
+2,-3002,1F3002,FORMAT,Format,Fatal,"If the value is not equal to [^], the first three characters must not be equal to [000].",
+3,-3003,1F3003,FORMAT,Format,Fatal,"The value must not be equal to any of the following: [111111111, 333333333, 123456789, 999999999].",
+5,-9001,5I9001,INFO,Information,None,Vendor's version number for the software that was used to create the hospice data submission file.,
+7,-9003,5I9003,INFO,Information,None,Valid federal tax ID (EIN) for the company that developed the software used to create the hospice data submission file.,
+8,-9004,5I9004,INFO,Information,None,Name of the software that was used to create the hospice data submission file.,
+9,-9005,5I9005,INFO,Information,None,Email address of the vendor who created the software that was used to produce the hospice submission file.,
+10,-9006,5I9006,INFO,Information,None,"Any letters that are contained in this item may be submitted as lower case or upper case, but will be converted and stored as upper case in iQIES.  System reports will therefore display upper case values.",
+13,-9007,5I9007,INFO,Information,None,Submit [+] (the plus sign) to indicate that Medicaid number is pending.,
+14,-9008,5I9008,INFO,Information,None,Submit [N] to indicate that the resident is non-Medicaid.,
+16,-3008,2C3008,CONSIST,Consistency,Fatal,A0900 (birthdate) cannot be more than 140 years earlier than the submission date.,
+17,-3009,1F3009,FORMAT,Format,Fatal,"Values of Code and Checklist Items:
+Only the coded values listed in the ""Item Values"" table of the Detailed Data Specifications Report may be submitted for this item.",[V1.00.1]-Removed mapping to item J2052B and mapped it to the date format edit -3010.  Removed mapping to deleted item A0800 and added mapping to new item A0810.  Added mapping to ASMT_SYS_CD.
+18,-3010,1F3010,FORMAT,Format,Fatal,"Values of Date Items:
+This item must contain either (a) a valid date in YYYYMMDD format, or (b) one of the special values (if any) that are listed in the ""Item Values"" table of the Detailed Data Specifications Report.  
+
+Note that if a date in YYYYMMDD format is submitted, it must be 8 characters in length and each of the 8 characters must contain the digits 0 (zero) through 9.  YYYY, MM, and DD must be zero filled, where necessary.  For example, January 1, 2026 must be submitted as ""20260101"".",[V1.00.1]-Added mapping to item J2052B.
+19,-3011,1F3011,FORMAT,Format,Fatal,"Formatting of Birthdate:
+This item must contain either (a) a valid date in YYYYMMDD, YYYYMM, or YYYY format, or (b) one of the special values (if any) that are listed in the ""Item Values"" table of the Detailed Data Specifications Report.
+
+Note that if a date in YYYYMMDD format is submitted, it must be 8 characters in length and each of the 8 characters must contain the digits 0 (zero) through 9.  YYYY, MM, and DD must be zero filled, where necessary.  For example, January 1, 1949 must be submitted as ""19490101"".
+
+If a date is submitted in YYYYMM format, it must be 6 characters in length and each of the 6 characters must contain the digits 0 (zero) through 9.  YYYY and MM must be zero filled, where necessary.  For example, January, 1949 must be submitted as ""194901"".
+
+If a date is submitted in YYYY format, it must be 4 characters in length and each of the 4 characters must contain the digits 0 (zero) through 9.  YYYY must be zero filled, where necessary.  For example, 1949 must be submitted as ""1949"".",
+20,-3012,1F3012,FORMAT,Format,Fatal,"Values of Numeric Items:
+Only the values listed in the ""Item Values"" table of the Detailed Data Specifications Report may be submitted for this item.  The submitted value must be greater than or equal to the minimum value listed in the table and less than or equal to the maximum value listed in the table, or it must match one of the remaining special values (if any) that are listed in the table.  The length of the submitted value must not exceed the allowed maximum length for the item.  Signed numbers (with a leading plus or minus sign) will not be accepted.",
+21,-3013,1F3013,FORMAT,Format,Fatal,"Formatting of Positive Integer Numeric Items:
+Only positive integer values and the special values (if any) that are listed in the ""Item Values"" table of the Detailed Data Specifications Report will be accepted for this item.  Leading zeroes may be included or omitted from the submitted value as long as the resulting length of the string does not exceed the allowed maximum length for the item.  A decimal point and decimal values are not allowed.  A sign will not be accepted.
+
+The following examples are allowable if the value to be submitted is equal to [1] and the maximum length is equal to 2: [1], [01].  The following values are NOT allowed and will lead to a fatal error:  [1.], [1.0], [01.], [01.0], [1.1], [01.1], [1.01], [+1], [-2], [+1.3], [-4.5].",
+23,-3015,1F3015,FORMAT,Format,Fatal,"Formatting of Numeric Text Items:
+If this item is not equal to one of the special values (if any) that are listed in the Item Values table of the Detailed Data Specifications Report, then it must contain a text string.  This text string may contain only the characters [0] through [9].",
+24,-3016,1F3016,FORMAT,Format,Fatal,"Formatting of Alphanumeric Text Items:
+If this item is not equal to one of the special values (if any) that are listed in the Item Values table of the Detailed Data Specifications Report, then it must contain a text string.  This text string may contain only the following characters:
+a) The numeric characters: [0] through [9].
+b) The letters [A] through [Z] and [a] through [z].",
+25,-3017,1F3017,FORMAT,Format,Fatal,"Formatting of Alphanumeric Text Items That Can Contain Dashes, Spaces, and Special Characters:
+If this item is not equal to one of the special values (if any) that are listed in the Item Values table of the Detailed Data Specifications Report, then it must contain a text string.  This text string may contain only the following characters:
+a) The numeric characters: [0] through [9].
+b) The letters [A] through [Z] and [a] through [z].
+c) The character [-], as long as the dash is not the only character in the text string.
+d) The following special characters: 
+      [@]  (at sign)
+      [']  (single quote)
+      [/] (forward slash)
+      [+] (plus sign)
+      [,] (comma)
+      [.] (period)
+      [_] (underscore)
+e) Embedded spaces (spaces surrounded by any of the characters listed above).  For example, [LEGAL TEXT] would be allowed.",
+26,-3018,1F3018,FORMAT,Format,Fatal,"Formatting of Alphanumeric Text Items That Can Contain Special Characters:
+If this item is not equal to one of the special values (if any) that are listed in the Item Values table of the Detailed Data Specifications Report, then it must contain a text string.  This text string may contain only the following characters:
+a) The numeric characters: [0] through [9].
+b) The letters [A] through [Z] and [a] through [z].
+c) The following special characters: 
+      [@] (at sign)
+      ['] (single quote)
+      [/] (forward slash)
+      [+] (plus sign)
+      [,] (comma)
+      [.] (period)
+      [_] (underscore)",
+27,-3019,1F3019,FORMAT,Format,Fatal,"Formatting of email address.
+Any valid email address will be accepted. The text string may contain any printable characters except the following:
+'   single quote 
+""  double quote 
+,  comma 
+;  semi-colon 
+:   colon 
+\   back slash 
+( )  right and left parentheses 
+[ ]  right and left brackets 
+{ }  right and left braces 
+<   less than 
+>   greater than 
+space (embedded space)",
+28,-3020,2C3020,CONSIST,Consistency,Fatal,"FAC_ID is the facility/provider ID.
+a) This must be the FAC_ID assigned to the provider upon registration. The submitted value must match the FAC_ID in iQIES for the facility or provider.
+b) A user submitting a file for a provider must be authorized to submit for the provider identified by the FAC_ID item in the file.",
+29,-3021,2C3021,CONSIST,Consistency,Warning,"The value submitted for A0100B (provider's CMS Certification Number -- CCN) will be compared with the value that is currently in the iQIES database.  If the values do not match, a warning will be issued.",
+30,-3022,1F3022,FORMAT,Format,Fatal,This is a required text item.  A valid non-blank value must be submitted.,
+31,-3023,2C3023,CONSIST,Consistency,Fatal,"In order to modify or inactivate a record that has previously been accepted by the submission system, the system must be able to locate the previous record.  Appropriate values from the record to be corrected must therefore be submitted for the following locator items:
+
+a) A0250 (reason for record)
+b) A0500A (patient first name)
+c) A0500C (patient last name)
+d) A0810 (sex)
+e) A0600A (social security number)
+f) A0900 (birth date)
+g) A0220 (admission date)
+h) A0270 (discharge date)
+i) Z0350 (date assessment was completed)
+
+If a matching previously accepted record cannot be located, a fatal error will result and the submitted record will be rejected.",[V1.00.1]-Removed mapping to deleted item A0800 and added mapping to new item A0810.
+34,-3025,2C3025,CONSIST,Consistency,Fatal,"The first record that is submitted to correct or inactivate an existing record must have a value of ""01"" in CRCTN_NUM (correction number).  If that correction/inactivation is accepted and if a subsequent correction/inactivation is required, it must have a value of ""02"", and so on.  In other words, the correction number in CRCTN_NUM on the first correction/inactivation must be ""01"", and the value on each subsequent correction/inactivation must be incremented by 1.  If the value submitted in CRCTN_NUM is incorrect, a fatal error will result and the submitted record will be rejected.",
+35,-3026,1F3026,FORMAT,Format,Fatal,The length of the text submitted for a free-form text item must not exceed the maximum length specified for that item.,
+36,-3027,2C3027,CONSIST,Consistency,Fatal,"a) If SFTWR_PROD_NAME is equal to [^], then SFTWR_PROD_VRSN_CD must be equal to [^].
+
+b) If SFTWR_PROD_NAME is not equal to [^], then SFTWR_PROD_VRSN_CD must not be equal to [^].",
+37,-3028,2C3028,CONSIST,Consistency,Fatal,"The Item Subset Code (ISC) is a two- or three-character code that indicates the type of record that is being submitted.  The set of active items is controlled by the ISC.  
+
+The submission system will recalculate the ISC and compare the recalculated value with the value that is submitted in ITM_SBST_CD.  If the recalculated value does not match the value submitted in ITM_SBST_CD, a fatal error will result.
+
+The ISC is defined as follows:
+
+If A0050 = [1,2] and A0250 = [1] then ITM_SBST_CD = [HA]
+If A0050 = [1,2] and A0250 = [2,3] then ITM_SBST_CD = [HUV]
+If A0050 = [1,2] and A0250 = [9] then ITM_SBST_CD = [HD]
+If A0050 = [3] and A0250 = [1,2,3,9] then ITM_SBST_CD = [XX]
+
+For a more complete explanation of the meaning and use of the ISC codes, please refer to the documentation that accompanies these data specifications.",
+38,-3029,1F3029,FORMAT,Format,Fatal,"Formatting of Alphanumeric Text Items That Can Contain Dashes, Spaces, Ampersands, and Other Special Characters:
+If this item is not equal to one of the special values (if any) that are listed in the Item Values table of the Detailed Data Specifications Report, then it must contain a text string.  This text string may contain only the following characters:
+a) The numeric characters: [0] through [9].
+b) The letters [A] through [Z] and [a] through [z].
+c) The character [-], as long as the dash is not the only character in the text string.
+d) The following special characters:
+      [&] (ampersand) 
+      [@]  (at sign)
+      [']  (single quote)
+      [/] (forward slash)
+      [+] (plus sign)
+      [,] (comma)
+      [.] (period)
+      [_] (underscore)
+e) Embedded spaces (spaces surrounded by any of the characters listed above).  For example, [LEGAL TEXT] would be allowed.",
+40,-3034,2C3034,CONSIST,Consistency,Warning,"RECORD SUBMISSION TIMING RULES
+The following rules specify the maximum number of days which should elapse between each date listed and the submission date.  Violation of these rules will result in warnings.  These rules apply only to new records (where A0050=[1]).  They do not apply to modification or inactivation records (where A0050=[2,3]).
+
+a) If A0250=[1] (admission record), then submission date minus A0220 (admission date) should be less than or equal to 30 days.
+
+b) If A0250=[2] (HUV 1 record), then submission date minus Z0350 (date assessment was completed) should be less than or equal to 30 days.
+
+c) If A0250=[3] (HUV 2 record), then submission date minus Z0350 (date assessment was completed) should be less than or equal to 30 days.
+
+d) If A0250=[9] (discharge record), then submission date minus A0270 (discharge date) should be less than or equal to 30 days.",
+42,-3032,2C3032,CONSIST,Consistency,Fatal,"DATE ITEM CONSISTENCY RULES
+Date items fall into three groups - designated Group A, Group B and Group C -  see below. Each group has its own consistency rules.
+------------------------------------------
+GROUP A RULES (Edit -3032a)
+Group A items are listed below. Each active item in this list that contains a valid date (not blank) must be in the specified order: 
+
+A0900 (birth date) <= 
+A0220 (admission date) <=Z0350 (date assessment was completed) <=
+A0270 (discharge date) <= 
+Z0500B (date of signature of person verifying record completion) <= 
+submission date
+------------------------------------------
+GROUP B RULES (Edit -3032b)
+Group B items are listed below. Each active item in this list that contains a valid date (not blank) must obey all of the following rules:
+
+1. Each Group B date must be greater than or equal to A0220 (admission date).
+2. Each Group B date must be less than or equal to Z0500B (date of signature of person verifying record completion).
+3. For date pairs shown below, the first date listed must be less than or equal to the second date listed.
+4. Otherwise, the Group B dates may be in any order.
+
+The following is a list of Group B dates:
+
+a) J0900B (date of first screening for pain) <= J0910B (date of comprehensive pain assessment)
+b) J2030B (date of first screening for shortness of breath) 
+c) J2040B (date treatment for shortness of breath initiated)
+d) J2050B (date of symptom impact screening)
+e) J2052B (date of in-person SFV)
+f) N0500B (date scheduled opioid initiated or continued)
+g) N0510B (date PRN opioid initiated or continued)
+h) N0520B (date bowel regimen initiated or continued)
+------------------------------------------
+GROUP C RULES (Edit -3032c)
+Group C items are listed below. Each Group C date must be less than or equal to Z0500B (date record completion was verified).
+
+The following is a list of Group C dates: 
+a) F2000B (date asked about CPR)
+b) F2100B (date asked about treatment other than CPR)
+c) F2200B (date asked about hospitalization)
+d) F3000B (date asked about spiritual/existential concerns)","[V1.00.1]-Revised Group A date order such that Z0350 is earlier than or equal to A0270.  Added mappings to J2050B and J2052B, since they are Group B dates."
+43,-3035,3S3035,SKIP,Skip pattern,Fatal,"a) If F2000A=[0], then if F2000B is active it must equal [^].
+b) If F2000A=[1,2], then if F2000B is active it must not equal [^].",
+44,-3036,3S3036,SKIP,Skip pattern,Fatal,"a) If F2100A=[0], then if F2100B is active it must equal [^].
+b) If F2100A=[1,2], then if F2100B is active it must not equal [^].",
+45,-3037,3S3037,SKIP,Skip pattern,Fatal,"a) If F2200A=[0], then if F2200B is active it must equal [^].
+b) If F2200A=[1,2], then if F2200B is active it must not equal [^].",
+46,-3038,3S3038,SKIP,Skip pattern,Fatal,"a) If F3000A=[0], then if F3000B is active it must equal [^].
+b) If F3000A=[1,2], then if F3000B is active it must not equal [^].",
+48,-3040,3S3040,SKIP,Skip pattern,Fatal,"a) If J0910A=[0], then all active items from J0910B through J0910C9 must equal [^].
+b) If J0910A=[1], then all active items from J0910B through J0910C9 must not equal [^].",
+49,-3041,4N3041,NOA,None of above,Fatal,"If J0910C1 through J0910C7 and J0910C9 are all active, then the following rules apply:
+(a) If J0910C9=[0], then at least one item from J0910C1 through J0910C7 must equal [1].
+(b) If J0910C9=[1], then all items from J0910C1 through J0910C7 must equal [0].",
+51,-3043,3S3043,SKIP,Skip pattern,Fatal,"If J2030A=[0], then all active items from J2030B through J2040B must equal [^].",
+52,-3044,3S3044,SKIP,Skip pattern,Fatal,"If J2030A=[1], then all active items from J2030B through J2030C must not equal [^].",
+53,-3045,3S3045,SKIP,Skip pattern,Fatal,"If J2030C=[0], then all active items from J2040A through J2040B must equal [^].",
+54,-3046,3S3046,SKIP,Skip pattern,Fatal,"If J2030C=[1], then if J2040A is active it must not equal [^].",
+55,-3047,3S3047,SKIP,Skip pattern,Fatal,"a) If J2040A=[0,1], then J2040B must equal [^].
+b) If J2040A=[2], then J2040B must not equal [^].",
+56,-3048,2C3048,CONSIST,Consistency,Fatal,***THIS EDIT WAS DELETED IN V1.00.1***,"[V1.00.1]-This edit was deleted, as items J2040C1 through J2040C4 are not a part of HOPE."
+57,-3049,3S3049,SKIP,Skip pattern,Fatal,"a) If N0500A=[0], then if N0500B is active it must equal [^].
+b) If N0500A=[1], then if N0500B is active it must not equal [^].",
+58,-3050,3S3050,SKIP,Skip pattern,Fatal,"a) If N0510A=[0], then if N0510B is active it must equal [^].
+b) If N0510A=[1], then if N0510B is active it must not equal [^].",
+59,-3051,3S3051,SKIP,Skip pattern,Fatal,"a) If N0520A=[0,1], then if N0520B is active it must equal [^].
+b) If N0520A=[2], then if N0520B is active it must not equal [^].",
+61,-3052,2C3052,CONSIST,Consistency,Fatal,"If A0050=[1], then CRCTN_NUM must equal [00].",
+62,-9009,5I9009,INFO,Information,None,"a) If A0250=[1] (admission record), then TARGET_DATE is equal to A0220 (admission date).
+b) If A0250=[2,3] (HUV record), then TARGET_DATE is equal to Z0350 (date assessment was completed).
+c) If A0250=[9] (discharge record), then TARGET_DATE is equal to A0270 (discharge date).",
+64,-3054,1F3054,FORMAT,Format,Fatal,SFTWR_VNDR_ID must contain an Employer ID Number which is 9 digits long.,
+69,-9011,5I9011,INFO,Information,None,"The CMS Certification Number (CCN) for hospices is currently 6 digits in
+length and only contains numbers.  However, the specs for this item allow
+letters and a maximum length of 12 to accommodate changes to the CCN that
+might occur in the future.",
+70,-3059,2C3059,CONSIST,Consistency,Fatal,"If N0500A=[1] or N0510A=[1], then if N0520A is active it must not equal [^].",
+71,-3060,2C3060,CONSIST,Consistency,Fatal,"If N0500A=[0] and N0510A=[0], then all active items from N0520A through N0520B must equal [^].",
+74,-3063,2C3063,CONSIST,Consistency,Warning,"Section F Date Rules:
+
+(a) If F2000B is active and not equal to [^], then A0220 - F2000B <= 7.
+(b) If F2100B is active and not equal to [^], then A0220 - F2100B <= 7.
+(c) If F2200B is active and not equal to [^], then A0220 - F2200B <= 7.
+(d) If F3000B is active and not equal to [^], then A0220 - F3000B <= 7.",[V1.00.1}-Revised to provide more detailed logic.
+77,-3065,1F3065,FORMAT,Format,Warning,Version Code Values:  The version code submitted should match one of the values listed in the Item Values table of the Detailed Data Specifications Report.,
+78,-3066,3S3066,SKIP,Skip pattern,Fatal,"a) If J0900A=[0], then all active items from J0900B through J0900D must equal [^].
+b) If J0900A=[1], then all active items from J0900B through J0900D must not equal [^].",
+79,-3067,3S3067,SKIP,Skip pattern,Fatal,"If J0905=[0], then all active items J0910A through J0910C9 must equal [^].",
+80,-3068,1F3068,FORMAT,Format,Fatal,The patient ZIP code must be either 5 or 9 bytes in length.  Do not include a dash if a ZIP+4 code is submitted.,
+81,-3069,2C3069,CONSIST,Consistency,Warning,"If A1400K=[1], then A1400A through A1400D, A1400G through A1400J, A1400X and A1400Y must equal [0].",
+88,-3076,2C3076,CONSIST,Consistency,Fatal,"If J0900C=[1,2,3], then J0905 must be equal to [1].",
+89,-3077,2C3077,CONSIST,Consistency,Warning,"If N0500A=[1] or N0510A=[1], indicating a scheduled or PRN opioid was initiated or continued, and J0905 = [0], then:
+(a) If the opioid was used to treat pain, J0905 should be equal to [1].
+(b) If the opioid was used to treat another symptom (e.g., shortness of breath) AND there is no further evidence that pain is an active problem for the patient, leave J0905 equal to [0] and disregard this warning message.",
+91,-3079,1F3079,FORMAT,Format,Fatal,"Incorrect Medicare Beneficiary Identifier (MBI):  This item must conform to the following format:
+
+The MBI shall be eleven characters in length.  The first character must be numeric, excluding zero (0).  The second, fifth, eighth and ninth characters must be alphabetic, excluding the following letters:  S, L, O, I, B, and Z.  The fourth, seventh, tenth and eleventh characters must be numeric.  The third and sixth characters  must be alphabetic (excluding S, L, O, I, B, and Z) or numeric.",
+93,-3080,2C3080,CONSIST,Consistency,Fatal,"(a) At least one active item from A1005A to A1005Y must equal [1].  
+(b) If A1005A=[1], then all active items from A1005B through A1005E must equal [0], and A1005Y must equal [0].
+(c) If A1005B=[1] or A1005C=[1] or A1005D=[1] or A1005E=[1], then A1005A must equal [0] and A1005Y must equal [0].
+(d) If A1005X=[1], then A1005Y must equal [0].
+(e) If A1005Y=[1], then all active items from A1005A to A1005X must equal [0].",
+94,-3081,2C3081,CONSIST,Consistency,Fatal,At least one active item from A1400A through A1400Y must equal [1].,
+95,-3082,2C3082,CONSIST,Consistency,Fatal,"(a) If A1400X=[1], then A1400A through A1400K should equal [0].
+(b) If A1400X=[1], then A1400Y should equal [0].",
+96,-3083,2C3083,CONSIST,Consistency,Fatal,"If A1400A=[1], then A1400B must equal [0].",
+97,-3084,2C3084,CONSIST,Consistency,Fatal,"If A1400C=[1], then A1400D must equal [0].",
+98,-3085,2C3085,CONSIST,Consistency,Warning,"If A1400C=[1], then A1400H should equal [0].",
+99,-3086,2C3086,CONSIST,Consistency,Warning,"If A1400C=[1], then A1400I should equal [0].",
+100,-3087,2C3087,CONSIST,Consistency,Warning,"If A1400D=[1], then A1400H should equal [0].",
+101,-3088,2C3088,CONSIST,Consistency,Warning,"If A1400D=[1], then A1400I should equal [0].",
+102,-3089,2C3089,CONSIST,Consistency,Warning,"If A1400J=[1], then A1400Y should equal [0].",
+103,-3090,2C3090,CONSIST,Consistency,Fatal,"(a) At least one active item from A1010A through A1010Z must equal [1].
+(b) If any item from A1010A through A1010N=[1], then A1010Y must equal [0] and A1010Z must equal [0].
+(c) If A1010X=[1], then A1010Y must equal [0].
+(d) If A1010Y=[1], then all active items from A1010A to A1010X must equal [0], and A1010Z must equal [0].
+(e) If A1010Z=[1], then all active items from A1010A to A1010N must equal [0], and A1010Y must equal [0].",
+104,-3091,3S3091,SKIP,Skip pattern,Fatal,"(a) If J2050A=[0], then J2050B through J2053H must be equal to [^].
+(b) If J2050A=[1], then J2050B through J2051H must not be equal to [^].",
+105,-3092,3S3092,SKIP,Skip pattern,Fatal,"(a) If J2052A=[0], then J2052B (Date of In-person SFV) must equal [^].
+(b) If J2052A=[1], then J2052B (Date of In-person SFV) must not equal [^].",
+106,-3093,3S3093,SKIP,Skip pattern,Fatal,"(a) If M1190=[0], then M1195A through M1200Z must equal [^].
+(b) If M1190=[1], then M1195A through M1200Z must not equal [^].",
+107,-3094,4N3094,NOA,None of above,Fatal,"(a) If M1195Z=[0], then at least one item from M1195A through M1195H must equal [1].
+(b) If M1195Z=[1], then all items from M1195A through M1195H must equal [0].",
+108,-3095,4N3095,NOA,None of above,Fatal,"(a) If M1200Z=[0], then at least one item from M1200A through M1200J must equal [1].
+(b) If M1200Z=[1], then all items from M1200A through M1200J must equal [0].",
+110,-3097,2C3097,CONSIST,Consistency,Fatal,If I0010=[02] then I4801 must equal [0].,
+111,-3098,2C3098,CONSIST,Consistency,Fatal,"If I0010=[03], then I5150 must equal [0].",
+112,-3099,2C3099,CONSIST,Consistency,Fatal,"If I0010=[04], then I4501 must equal [0].",
+113,-3100,2C3100,CONSIST,Consistency,Fatal,"If I0010=[05], then I6202 must equal [0].",
+114,-3101,2C3101,CONSIST,Consistency,Fatal,"If I0010=[06], then I0950 must equal [0].",
+115,-3102,2C3102,CONSIST,Consistency,Fatal,"If I0010=[07], then I0600 must equal [0].",
+116,-3103,2C3103,CONSIST,Consistency,Fatal,"If I0010=[08], then I1101 must equal [0].",
+117,-3104,2C3104,CONSIST,Consistency,Fatal,"If I0010=[09], then I1510 must equal [0].",
+118,-3105,2C3105,CONSIST,Consistency,Warning,"IF A0250=[1,2,3] AND 
+(J2051A=[2,3] OR J2051B=[2,3] OR J2051C=[2,3] OR J2051D=[2,3] OR J2051E=[2,3] OR J2051F=[2,3] OR J2051G=[2,3] OR J2051H=[2,3]) 
+THEN J2052B (Date of in-person SFV) minus J2050B (Date of symptom impact screening) should be less than or equal to 2 calendar days.",
+120,-3106,3S3106,SKIP,Skip pattern,Fatal,"(a) If J2052A=[0], then J2052C (Reason SFV Not Completed) must not equal [^].
+(b) If J2052A=[1], then J2052C (Reason SFV Not Completed) must equal [^].",
+122,-3107,2C3107,CONSIST,Consistency,Fatal,"(a) If A0050=[3] (inactivation record) and A0250=[1,2,3] (admission or HUV record), then A0270 (discharge date) must equal [^].
+(b) If A0250=[9] (discharge record), then A0270 (discharge date) must not equal [^].",
+124,-3108,3S3108,SKIP,Skip pattern,Fatal,"(a) IF (J2051A=[2,3] OR J2051B=[2,3] OR J2051C=[2,3] OR J2051D=[2,3] OR J2051E=[2,3] OR J2051F=[2,3] OR J2051G=[2,3] OR J2051H=[2,3]) THEN J2052A must not equal [^].
+(b) IF (J2051A=[0,1,9] AND J2051B=[0,1,9] AND J2051C=[0,1,9] AND J2051D=[0,1,9] AND J2051E=[0,1,9] AND J2051F=[0,1,9] AND J2051G=[0,1,9] AND J2051H=[0,1,9]) THEN J2052A through J2053H must equal [^].",
+126,-3109,3S3109,SKIP,Skip pattern,Fatal,"(a) If J2052A=[0], then J2053A through J2053H must equal [^].
+(b) If J2052A=[1], then J2053A through J2053H must not equal [^].",
+127,-3110,2C3110,CONSIST,Consistency,Warning,"HUV Timing Rules
+
+(a) If A0250 = [2], then A0220 + 6 should be <= Z0350.
+(b) If A0250 = [2], then A0220 + 15 should be >= Z0350.
+(c) If A0250 = [3], then A0220 + 16 should be <= Z0350.
+(d) If A0250 = [3], then A0220 + 30 should be >= Z0350.",[V1.00.1]-New edit.
+128,-3111,2C3111,CONSIST,Consistency,Fatal,"(a) IF A0050=[3] AND A0250=[2,3] THEN Z0350 must not equal [^].
+(b) IF A0050=[3] AND A0250=[1,9] THEN Z0350 must equal [^].",[V1.00.1]-New edit.

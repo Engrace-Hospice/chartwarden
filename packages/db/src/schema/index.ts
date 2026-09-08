@@ -189,13 +189,13 @@ export * from "./consent/delegated-access";
 export * from "./consent/consent-document-link";
 export * from "./consent/consent-eval-audit";
 export * from "./consent/consent-renewal-cycle";
-// M6-T02 — Admission, Election & Certification tables (M6 spec §3.3). M6 owns 12 tables: the
+// M6-T02 — Admission, Election & Certification tables (M6 spec §3.3). M6 owns the
 // admission episode root + referral intake + the benefit-period ledger (election_period /
 // election_statement / certification_of_terminal_illness / face_to_face_encounter) +
 // level_of_care_period + the terminal events (revocation_event / transfer_event / discharge_event) +
-// notice_of_rights_acknowledgment + compliance_window. The five patient/encounter-bearing tables
+// notice_of_rights_acknowledgment + compliance_window + admission_evidence. Patient/encounter-bearing tables
 // (referral / admission / election_statement / face_to_face_encounter /
-// notice_of_rights_acknowledgment) carry the three-column tenancy rule; the rest are org-scoped via
+// notice_of_rights_acknowledgment / admission_evidence) carry the three-column tenancy rule; the rest are org-scoped via
 // their admission/election_period FK. Cross-module refs (M5 patient/caregiver, M40 physician/facility/
 // referral-source, M39 consent, M22 document) are plain uuid app-validated, not cross-module FKs. RLS
 // + grants + M4 write-audit triggers + migration land in M6-T03 (§3.6–3.7).
@@ -213,6 +213,7 @@ export * from "./admission/transfer-events";
 export * from "./admission/discharge-events";
 export * from "./admission/notice-of-rights-acknowledgments";
 export * from "./admission/compliance-windows";
+export * from "./admission/admission-evidence";
 
 // ── Module 7 (Care Plan / IPOC) — the interdisciplinary plan of care (§3.3) ──────────────────
 // M7 owns 6 tables (M7-T02): the care_plan root + the immutable care_plan_version snapshot ledger +
@@ -276,22 +277,18 @@ export * from "./assessment/scale-licenses";
 export * from "./assessment/scale-policies";
 
 // ── Module 10 (HOPE Engine) — the CMS HOPE timepoint + iQIES submission spine (§3.3) ─────────
-// M10 owns 6 tables (M10-T02): hope_timepoint_schedule (the §2.2.1 window ledger) + hope_assessment
-// (the per-RFA capture, PARTITIONED BY RANGE (target_date) monthly per D11/§3.6) + symptom_follow_up_visit
-// (the J2051-triggered SFV, D4) + hope_validation_finding (the CMS pre-submission rule output) +
-// hope_submission / hope_submission_item (the per-CCN iQIES batch + its assessment join rows). The four
-// patient-level PHI tables (hope_timepoint_schedule / hope_assessment / symptom_follow_up_visit /
-// hope_validation_finding) carry the three-column tenancy rule (organization_id + provider_entity_id +
-// location_id all NOT NULL, denormalized from the admission so per-CCN batching + location dashboards run
-// without joining M6, §3.3 tenancy note); hope_submission is per-CCN (organization_id + provider_entity_id,
-// NO location/patient) and hope_submission_item is a join row (organization_id only) — both outside the
-// PHI three-column rule. Cross-module refs (M5 patient, M6 admission, M8 source_encounter) are plain uuid
-// app-validated, NOT cross-module FKs; actor refs go to M1 `membership`. `hope_assessment` is PARTITION BY
-// RANGE (target_date) monthly — converted from the logical Drizzle shape in the RLS migration alongside the
-// DEFERRABLE self-FK + the correction-supersede / schedule-mark-completed triggers. RLS + grants + M4
-// write-audit triggers + the partition conversion land in migration 0035 (M10-T02, §3.4/§3.5/§3.6).
+// M10 owns 11 tables: the existing HOPE workflow infrastructure (timepoint schedule, partitioned
+// hope_assessment aggregate root, SFV, validation findings, submissions/items) plus the Phase 1A
+// versioned CMS specification reference tables and canonical item answer table. The spec tables are
+// platform reference, while hope_assessment_answer is org-scoped and links to hope_assessment by logical
+// UUID because the parent is partitioned with a composite PK.
 export * from "./hope/hope-timepoint-schedules";
+export * from "./hope/hope-spec-versions";
+export * from "./hope/hope-spec-items";
+export * from "./hope/hope-spec-item-isc";
+export * from "./hope/hope-spec-item-options";
 export * from "./hope/hope-assessments";
+export * from "./hope/hope-assessment-answers";
 export * from "./hope/symptom-follow-up-visits";
 export * from "./hope/hope-validation-findings";
 export * from "./hope/hope-submissions";

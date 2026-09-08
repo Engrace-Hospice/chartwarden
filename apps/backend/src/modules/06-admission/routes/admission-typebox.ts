@@ -196,6 +196,7 @@ export const AdmissionListQuerySchema = Type.Object({
 
 export const AdmissionUpdateSchema = Type.Object({
   intakeMethod: Type.Optional(Type.Union(INTAKE_METHODS.map((m) => Type.Literal(m)))),
+  hospicePhysicianId: Type.Optional(Uuid()),
   attendingPhysicianId: Type.Optional(Uuid()),
   admissionAt: Type.Optional(Type.String({ format: "date-time" })),
 
@@ -208,6 +209,40 @@ export const AdmissionUpdateSchema = Type.Object({
 export const AdmissionActivateSchema = Type.Object({ ifVersion: Version() });
 export const AdmissionHoldSchema = Type.Object({ reason: Reason(10, 500), ifVersion: Version() });
 export const AdmissionResumeSchema = Type.Object({ ifVersion: Version() });
+const UploadedEvidenceBaseSchema = {
+  documentId: Uuid(),
+  documentVersionId: Uuid(),
+};
+export const UploadedNoticeOfRightsSchema = Type.Object({
+  ...UploadedEvidenceBaseSchema,
+  acknowledgedAt: Type.Optional(Type.String({ format: "date-time" })),
+  acknowledgedByName: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  acknowledgedByRole: Type.Optional(
+    Type.Union([
+      Type.Literal("patient"),
+      Type.Literal("legal_representative"),
+      Type.Literal("caregiver"),
+    ]),
+  ),
+});
+export const UploadedElectionEvidenceSchema = Type.Object({
+  ...UploadedEvidenceBaseSchema,
+  documentState: Type.Union([Type.Literal("unsigned"), Type.Literal("signed")]),
+  signerName: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  signerRole: Type.Optional(
+    Type.Union([
+      Type.Literal("patient"),
+      Type.Literal("legal_representative"),
+      Type.Literal("caregiver"),
+    ]),
+  ),
+  signedAt: Type.Optional(Type.String({ format: "date-time" })),
+});
+export const UploadedCtiEvidenceSchema = Type.Object({
+  ...UploadedEvidenceBaseSchema,
+  documentState: Type.Union([Type.Literal("unsigned"), Type.Literal("signed")]),
+  signedAt: Type.Optional(Type.String({ format: "date-time" })),
+});
 
 // ── Election statement & period (routes 15–21) ───────────────────────────────────────────────────
 export const ElectionStatementDraftSchema = Type.Object({
@@ -222,7 +257,11 @@ export const ElectionStatementDraftSchema = Type.Object({
 
 export const ElectionSignSchema = Type.Object({
   signingPatientName: Type.String({ minLength: 1, maxLength: 200 }),
-  signingRole: Type.Union([Type.Literal("patient"), Type.Literal("legal_representative")]),
+  signingRole: Type.Union([
+    Type.Literal("patient"),
+    Type.Literal("legal_representative"),
+    Type.Literal("caregiver"),
+  ]),
   ifVersion: Version(),
 });
 
@@ -249,11 +288,7 @@ export const CtiDraftSchema = Type.Object({
   isRecert: Type.Boolean(),
 });
 
-export const CtiSignSchema = Type.Object({
-  signingPhysicianName: Type.String({ minLength: 1, maxLength: 200 }),
-  signingPhysicianNpi: Npi(),
-  ifVersion: Version(),
-});
+export const CtiSignSchema = Type.Object({ ifVersion: Version() });
 
 export const CtiVoidSchema = Type.Object({ reason: Reason(10, 500), ifVersion: Version() });
 
@@ -418,7 +453,6 @@ const ActivationGapSchema = Type.Union([
   Type.Literal("election_signed"),
   Type.Literal("nor_acknowledged"),
   Type.Literal("cti_signed"),
-  Type.Literal("attending_signed"),
 ]);
 
 /** Route 10 — the admission aggregate: summary + the R-AC-01 activation gate (§7.2 / §5.2.5). */
@@ -432,6 +466,31 @@ export const AdmissionDetailResponseSchema = Type.Object({
   activatedAt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   providerEntityId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   locationId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  patientResidenceAddressId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  serviceAddressSnapshot: Type.Optional(
+    Type.Union([
+      Type.Object({
+        line1: Type.String(),
+        line2: Type.Union([Type.String(), Type.Null()]),
+        city: Type.String(),
+        state: Type.Union([Type.String(), Type.Null()]),
+        postalCode: Type.String(),
+        country: Type.String(),
+      }),
+      Type.Null(),
+    ]),
+  ),
+  hospicePhysicianId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  hospicePhysician: Type.Optional(
+    Type.Union([
+      Type.Object({
+        id: Type.String(),
+        displayName: Type.String(),
+        npi: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+      }),
+      Type.Null(),
+    ]),
+  ),
   activationGate: Type.Object({
     ready: Type.Boolean(),
     missing: Type.Array(ActivationGapSchema),
@@ -452,11 +511,22 @@ const RequirementActionSchema = Type.Union([
   Type.Literal("RESOLVE_PATIENT"),
   Type.Literal("COMPLETE_ADMISSION_DETAILS"),
   Type.Literal("REVIEW_PRIVACY"),
-  Type.Literal("ACKNOWLEDGE_NOR"),
-  Type.Literal("COMPLETE_ELECTION"),
-  Type.Literal("REVIEW_CTI"),
+  Type.Literal("COMPLETE_NOTICE_OF_RIGHTS"),
+  Type.Literal("COMPLETE_ELECTION_STATEMENT"),
+  Type.Literal("COMPLETE_ELECTION_SIGNATURE"),
+  Type.Literal("COMPLETE_CTI"),
+  Type.Literal("COMPLETE_CTI_SIGNATURE"),
   Type.Literal("REVIEW_F2F"),
 ]);
+
+const RequirementEvidenceSchema = Type.Object({
+  sourceType: Type.Union([Type.Literal("structured"), Type.Literal("uploaded")]),
+  evidenceId: Type.String(),
+  documentId: Type.Optional(Type.String()),
+  documentVersionId: Type.Optional(Type.String()),
+  structuredEntityId: Type.Optional(Type.String()),
+  completedAt: Type.Optional(Type.String()),
+});
 
 const RequirementCodeSchema = Type.Union([
   Type.Literal("patient_identity"),
@@ -487,6 +557,7 @@ export const AdmissionReadinessResponseSchema = Type.Object({
       message: Type.Optional(Type.String()),
       action: Type.Optional(RequirementActionSchema),
       satisfiedBy: Type.Optional(Type.Union([Type.Literal("normal"), Type.Literal("override")])),
+      evidence: Type.Optional(RequirementEvidenceSchema),
     }),
   ),
 });

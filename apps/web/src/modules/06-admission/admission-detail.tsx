@@ -10,6 +10,7 @@ import {
   RightDetailPanel,
   StatusPill,
   type StatusTone,
+  type ApiClient,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/06-admission — Admission Detail (M6 §5.2.4 + §5.2.5 activation gate, Track B).
@@ -35,12 +36,16 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
-  LocationLookupField,
   MdmEntityLookupField,
   ProviderEntityLookupField,
 } from "../../shared/entity-lookups";
 import { ADMISSION_TONE, WINDOW_TONE, stateLabel } from "./admission-status";
 import { authFailureRedirect } from "./write-workflow";
+import {
+  type DocumentTypeValue,
+  type UploadStage,
+  verifiedUpload,
+} from "../22-documents/document-workflows";
 
 const NOR_METHODS = [
   { value: "electronic_witnessed", label: "Electronic (witnessed)" },
@@ -61,8 +66,29 @@ interface AdmissionDetailView extends SummaryRow {
   activatedAt?: string | null;
   providerEntityId?: string | null;
   locationId?: string | null;
+  patientResidenceAddressId?: string | null;
+  serviceAddressSnapshot?: AddressView | null;
+  hospicePhysicianId?: string | null;
+  hospicePhysician?: PhysicianSummary | null;
   activationGate: { ready: boolean; missing: string[] };
   readiness?: AdmissionReadiness;
+}
+interface PhysicianSummary {
+  id: string;
+  displayName: string;
+  npi?: string | null;
+}
+interface AddressView {
+  id?: string;
+  kind?: string;
+  line1: string;
+  line2: string | null;
+  city: string;
+  state: string | null;
+  postalCode: string;
+  country: string;
+  isPrimary?: boolean;
+  current?: boolean;
 }
 interface PatientSummary {
   id: string;
@@ -87,6 +113,12 @@ interface ReadinessRequirement {
   message?: string;
   action?: string;
   satisfiedBy?: "normal" | "override";
+  evidence?: {
+    sourceType: "structured" | "uploaded";
+    documentId?: string;
+    documentVersionId?: string;
+    completedAt?: string;
+  };
 }
 interface AdmissionReadiness {
   admissionId: string;
@@ -158,10 +190,6 @@ const GATE_ROWS: { code: string; label: string }[] = [
   { code: "election_signed", label: "Election statement signed (period 1)" },
   { code: "nor_acknowledged", label: "Notice of Rights acknowledged" },
   { code: "cti_signed", label: "CTI signed by hospice medical director" },
-  {
-    code: "attending_signed",
-    label: "CTI signed by attending physician (period 1)",
-  },
 ];
 
 export function AdmissionDetail(): JSX.Element {
@@ -174,6 +202,7 @@ export function AdmissionDetail(): JSX.Element {
   const [windows, setWindows] = useState<SummaryRow[]>([]);
   const [hope, setHope] = useState<HopeSummary | null>(null);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
+  const [patientAddresses, setPatientAddresses] = useState<AddressView[] | null>(null);
   const [electionCert, setElectionCert] = useState<ElectionCertificationView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -181,18 +210,32 @@ export function AdmissionDetail(): JSX.Element {
   const [ceremony, setCeremony] = useState<
     | "activate"
     | "nor"
+    | "nor-record"
+    | "nor-upload"
     | "admission-details"
     | "election"
+    | "election-create"
+    | "election-upload"
     | "sign-election"
+    | "election-sign-record"
+    | "election-sign-upload"
     | "cti"
+    | "cti-create"
+    | "cti-upload"
     | "sign-cti-hospice-md"
-    | "sign-cti-attending"
     | null
   >(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [uploadStage, setUploadStage] = useState<UploadStage>("idle");
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [uploadedSignedState, setUploadedSignedState] = useState<"unsigned" | "signed">("unsigned");
+  const [uploadedSignerName, setUploadedSignerName] = useState("");
+  const [uploadedSignerRole, setUploadedSignerRole] = useState<
+    "patient" | "legal_representative" | "caregiver"
+  >("patient");
+  const [uploadedSignatureDate, setUploadedSignatureDate] = useState("");
 
-  const [formVersionId, setFormVersionId] = useState("");
   const [deliveryMethod, setDeliveryMethod] = useState<NorMethod>("electronic_witnessed");
   const [acknowledgedByName, setAcknowledgedByName] = useState("");
   const [acknowledgedByRole, setAcknowledgedByRole] = useState<"patient" | "legal_representative">(
@@ -200,7 +243,7 @@ export function AdmissionDetail(): JSX.Element {
   );
   const [admissionDate, setAdmissionDate] = useState("");
   const [providerEntityId, setProviderEntityId] = useState("");
-  const [locationId, setLocationId] = useState("");
+  const [hospicePhysicianId, setHospicePhysicianId] = useState("");
   const [electionEffectiveDate, setElectionEffectiveDate] = useState("");
   const [primaryDiagnosisIcd10, setPrimaryDiagnosisIcd10] = useState("");
   const [electedProviderEntityId, setElectedProviderEntityId] = useState("");
@@ -208,18 +251,16 @@ export function AdmissionDetail(): JSX.Element {
   const [waiverAcknowledged, setWaiverAcknowledged] = useState(false);
   const [stateAddendum, setStateAddendum] = useState("");
   const [electionSignerName, setElectionSignerName] = useState("");
-  const [electionSignerRole, setElectionSignerRole] = useState<"patient" | "legal_representative">(
+  const [electionSignerRole, setElectionSignerRole] = useState<
+    "patient" | "legal_representative" | "caregiver"
+  >(
     "patient",
   );
-  const [ctiHospiceMdId, setCtiHospiceMdId] = useState("");
-  const [ctiAttendingMdId, setCtiAttendingMdId] = useState("");
   const [ctiDiagnosisIcd10, setCtiDiagnosisIcd10] = useState("");
   const [ctiPrognosis, setCtiPrognosis] = useState(
     "Life expectancy is six months or less if the illness runs its normal course.",
   );
   const [ctiNarrative, setCtiNarrative] = useState("");
-  const [ctiSignerName, setCtiSignerName] = useState("");
-  const [ctiSignerNpi, setCtiSignerNpi] = useState("");
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -237,8 +278,8 @@ export function AdmissionDetail(): JSX.Element {
     setAdmission(detail);
     setAdmissionDate(toDateInput(detail.admissionAt));
     setProviderEntityId(detail.providerEntityId ?? "");
-    setLocationId(detail.locationId ?? "");
-    const [p, w, r, h, ec, patientResult] = await Promise.all([
+    setHospicePhysicianId(detail.hospicePhysicianId ?? "");
+    const [p, w, r, h, ec, patientResult, addressResult] = await Promise.all([
       client.GET("/api/v1/admissions/{id}/election-periods", {
         params: { path: { id } },
       }),
@@ -261,6 +302,11 @@ export function AdmissionDetail(): JSX.Element {
             params: { path: { id: detail.patientId } },
           })
         : Promise.resolve({ data: null }),
+      detail.patientId
+        ? client.GET("/api/v1/patients/{id}/addresses", {
+            params: { path: { id: detail.patientId } },
+          })
+        : Promise.resolve({ data: null }),
     ]);
     setPeriods(p.data?.items ?? []);
     setWindows(w.data?.items ?? []);
@@ -268,6 +314,9 @@ export function AdmissionDetail(): JSX.Element {
     setHope(h.data ? (h.data as HopeSummary) : null);
     setElectionCert(ec.data ? (ec.data as unknown as ElectionCertificationView) : null);
     setPatient(patientResult.data ? (patientResult.data as PatientSummary) : null);
+    setPatientAddresses(
+      (addressResult.data as { addresses?: AddressView[] } | null | undefined)?.addresses ?? null,
+    );
     setLoading(false);
   }, [client, id]);
 
@@ -278,8 +327,12 @@ export function AdmissionDetail(): JSX.Element {
   const closeCeremony = useCallback(() => {
     setCeremony(null);
     setActionError(null);
-    setFormVersionId("");
     setAcknowledgedByName("");
+    setUploadedFile(null);
+    setUploadedSignedState("unsigned");
+    setUploadedSignerName("");
+    setUploadedSignatureDate("");
+    setUploadStage("idle");
   }, []);
 
   const branchError = useCallback(
@@ -320,8 +373,8 @@ export function AdmissionDetail(): JSX.Element {
 
   const acknowledgeNor = useCallback(async () => {
     if (!id) return;
-    if (formVersionId.trim().length === 0 || acknowledgedByName.trim().length === 0) {
-      setActionError("Provide the NOR form version id and the acknowledging person's name.");
+    if (acknowledgedByName.trim().length === 0) {
+      setActionError("Provide the acknowledging person's name.");
       return;
     }
     setBusy(true);
@@ -329,12 +382,11 @@ export function AdmissionDetail(): JSX.Element {
     const { error: err, response } = await client.POST("/api/v1/admissions/{id}/nor", {
       params: { path: { id } },
       body: {
-        formVersionId: formVersionId.trim(),
         deliveryMethod,
         acknowledgedAt: new Date().toISOString(),
         acknowledgedByName: acknowledgedByName.trim(),
         acknowledgedByRole,
-      },
+      } as never,
     });
     if (err) {
       branchError(response?.status, err?.error?.code, "Could not record the acknowledgment.");
@@ -345,7 +397,6 @@ export function AdmissionDetail(): JSX.Element {
     void load();
   }, [
     id,
-    formVersionId,
     deliveryMethod,
     acknowledgedByName,
     acknowledgedByRole,
@@ -357,9 +408,12 @@ export function AdmissionDetail(): JSX.Element {
 
   const completeAdmissionDetails = useCallback(async () => {
     if (!id || !admission) return;
-    if (!admissionDate || !providerEntityId || !locationId) {
+    const residence = currentResidenceAddress(patientAddresses);
+    if (!admissionDate || !providerEntityId || !hospicePhysicianId || !residence) {
       setActionError(
-        "Choose the admission/SOC date, hospice provider, and service location before saving.",
+        !residence
+          ? "A patient residence address is required before completing admission details."
+          : "Choose the admission/SOC date, hospice provider, and Hospice Physician before saving.",
       );
       return;
     }
@@ -371,7 +425,7 @@ export function AdmissionDetail(): JSX.Element {
         ifVersion: admission.version,
         admissionAt: dateInputToIso(admissionDate),
         providerEntityId,
-        locationId,
+        hospicePhysicianId,
       } as never,
     });
     if (err) {
@@ -386,7 +440,8 @@ export function AdmissionDetail(): JSX.Element {
     admission,
     admissionDate,
     providerEntityId,
-    locationId,
+    hospicePhysicianId,
+    patientAddresses,
     client,
     branchError,
     closeCeremony,
@@ -449,6 +504,164 @@ export function AdmissionDetail(): JSX.Element {
     load,
   ]);
 
+  const attachUploadedEvidence = useCallback(
+    async (
+      documentType: DocumentTypeValue,
+      title: string,
+      attach: (ids: { documentId: string; documentVersionId: string }) => Promise<{
+        error?: unknown;
+        response?: Response;
+      }>,
+    ) => {
+      if (!admission?.patientId) return;
+      if (!uploadedFile) {
+        setActionError("Choose a document to upload.");
+        return;
+      }
+      setBusy(true);
+      setActionError(null);
+      try {
+        const uploaded = await verifiedUpload(client, {
+          context: {
+            kind: "patient",
+            patientId: admission.patientId,
+            admissionId: admission.id,
+          } as never,
+          mode: "new_document",
+          file: uploadedFile,
+          title,
+          documentType,
+          patientFacing: false,
+          sourceMetadata: {
+            documentType,
+            sourceChannel: "scanned_physical",
+            receivedAt: new Date().toISOString(),
+            originalFilename: uploadedFile.name,
+          },
+          onStage: setUploadStage,
+        });
+        const attached = await attach({
+          documentId: uploaded.documentId,
+          documentVersionId: uploaded.documentVersionId,
+        });
+        if (attached.error) {
+          branchError(
+            attached.response?.status,
+            (attached.error as { error?: { code?: string } })?.error?.code,
+            "The document uploaded, but the admission evidence could not be attached.",
+          );
+          return;
+        }
+        setBusy(false);
+        closeCeremony();
+        void load();
+      } catch (err) {
+        setBusy(false);
+        setActionError(err instanceof Error ? err.message : "Upload failed.");
+      }
+    },
+    [admission, uploadedFile, client, branchError, closeCeremony, load],
+  );
+
+  const uploadNor = useCallback(async () => {
+    await attachUploadedEvidence("notice_of_rights", "Notice of Rights", ({ documentId, documentVersionId }) =>
+      postUntyped(client, `/api/v1/admissions/${id}/nor/uploaded-evidence`, {
+        documentId,
+        documentVersionId,
+        acknowledgedAt: new Date().toISOString(),
+        acknowledgedByName: acknowledgedByName.trim() || undefined,
+        acknowledgedByRole,
+      }),
+    );
+  }, [attachUploadedEvidence, client, id, acknowledgedByName, acknowledgedByRole]);
+
+  const uploadElection = useCallback(async () => {
+    const period = currentPeriod(electionCert, periods);
+    if (!period) return;
+    const state = ceremony === "election-sign-upload" ? "signed" : uploadedSignedState;
+    if (state === "signed" && (!uploadedSignerName.trim() || !uploadedSignatureDate)) {
+      setActionError("Signer name, signer role, and signature date are required for a signed Election Statement.");
+      return;
+    }
+    await attachUploadedEvidence("election_statement", "Election Statement", ({ documentId, documentVersionId }) =>
+      postUntyped(
+        client,
+        ceremony === "election-sign-upload" && period.electionStatement?.id
+          ? `/api/v1/election-statements/${period.electionStatement.id}/sign/uploaded-evidence`
+          : `/api/v1/election-periods/${period.id}/election-statement/uploaded-evidence`,
+        {
+        documentId,
+        documentVersionId,
+        documentState: state,
+        signerName: state === "signed" ? uploadedSignerName.trim() : undefined,
+        signerRole: state === "signed" ? uploadedSignerRole : undefined,
+        signedAt: state === "signed" ? dateInputToIso(uploadedSignatureDate) : undefined,
+        },
+      ),
+    );
+  }, [
+    attachUploadedEvidence,
+    client,
+    ceremony,
+    electionCert,
+    periods,
+    uploadedSignedState,
+    uploadedSignerName,
+    uploadedSignatureDate,
+    uploadedSignerRole,
+  ]);
+
+  const uploadCti = useCallback(async () => {
+    const period = currentPeriod(electionCert, periods);
+    if (!period) return;
+    if (!admission?.hospicePhysicianId) {
+      setActionError("Select a Hospice Physician before creating the CTI.");
+      return;
+    }
+    if (uploadedSignedState === "signed" && !uploadedSignatureDate) {
+      setActionError("Signature date is required for a signed CTI.");
+      return;
+    }
+    await attachUploadedEvidence("cti", "Certification of Terminal Illness", ({ documentId, documentVersionId }) =>
+      postUntyped(client, `/api/v1/election-periods/${period.id}/cti/uploaded-evidence`, {
+        documentId,
+        documentVersionId,
+        documentState: uploadedSignedState,
+        signedAt: uploadedSignedState === "signed" ? dateInputToIso(uploadedSignatureDate) : undefined,
+      }),
+    );
+  }, [
+    admission,
+    attachUploadedEvidence,
+    client,
+    electionCert,
+    periods,
+    uploadedSignedState,
+    uploadedSignatureDate,
+  ]);
+
+  const viewDocument = useCallback(
+    async (evidence: ReadinessRequirement["evidence"]) => {
+      if (!evidence?.documentId || !evidence.documentVersionId) return;
+      const getContent = client.GET as unknown as (
+        path: string,
+        init: { params: { path: { id: string; versionId: string } } },
+      ) => Promise<{ data?: { url?: string }; error?: unknown; response?: Response }>;
+      const res = await getContent(
+        "/api/v1/documents/{id}/versions/{versionId}/content",
+        {
+          params: { path: { id: evidence.documentId, versionId: evidence.documentVersionId } },
+        },
+      );
+      if (res.error || !res.data?.url) {
+        setActionError("The document version is no longer available.");
+        return;
+      }
+      window.open(res.data.url, "_blank", "noopener,noreferrer");
+    },
+    [client],
+  );
+
   const signElectionStatement = useCallback(async () => {
     const election = currentPeriod(electionCert, periods)?.electionStatement;
 
@@ -496,7 +709,7 @@ export function AdmissionDetail(): JSX.Element {
         signingPatientName: electionSignerName.trim(),
         signingRole: electionSignerRole,
         ifVersion: currentElection.version,
-      },
+      } as never,
     });
 
     if (err) {
@@ -521,12 +734,13 @@ export function AdmissionDetail(): JSX.Element {
   const createCti = useCallback(async () => {
     const period = currentPeriod(electionCert, periods);
     if (!period) return;
-    if (
-      ctiHospiceMdId.trim().length === 0 ||
-      ctiDiagnosisIcd10.trim().length === 0 ||
-      ctiNarrative.trim().length === 0
-    ) {
-      setActionError("Provide the hospice medical director, diagnosis, and CTI narrative.");
+    const selectedPhysicianId = admission?.hospicePhysicianId ?? hospicePhysicianId;
+    if (!selectedPhysicianId) {
+      setActionError("Select a Hospice Physician before creating the CTI.");
+      return;
+    }
+    if (ctiDiagnosisIcd10.trim().length === 0 || ctiNarrative.trim().length === 0) {
+      setActionError("Provide the diagnosis and CTI narrative.");
       return;
     }
     setBusy(true);
@@ -534,8 +748,7 @@ export function AdmissionDetail(): JSX.Element {
     const { error: err, response } = await client.POST("/api/v1/election-periods/{id}/cti", {
       params: { path: { id: period.id } },
       body: {
-        hospiceMedicalDirectorId: ctiHospiceMdId,
-        attendingPhysicianId: ctiAttendingMdId || undefined,
+        hospiceMedicalDirectorId: selectedPhysicianId,
         terminalDiagnosisIcd10: ctiDiagnosisIcd10.trim().toUpperCase(),
         prognosisStatement: ctiPrognosis.trim(),
         narrative: ctiNarrative.trim(),
@@ -553,8 +766,8 @@ export function AdmissionDetail(): JSX.Element {
   }, [
     electionCert,
     periods,
-    ctiHospiceMdId,
-    ctiAttendingMdId,
+    admission,
+    hospicePhysicianId,
     ctiDiagnosisIcd10,
     ctiPrognosis,
     ctiNarrative,
@@ -565,13 +778,12 @@ export function AdmissionDetail(): JSX.Element {
   ]);
 
   const signCti = useCallback(
-    async (kind: "hospice-md" | "attending") => {
+    async () => {
       const cti = currentPeriod(electionCert, periods)?.cti;
 
       if (!cti) return;
-
-      if (ctiSignerName.trim().length === 0 || ctiSignerNpi.trim().length === 0) {
-        setActionError("Provide the signing physician name and NPI.");
+      if (!admission?.hospicePhysicianId) {
+        setActionError("Select a Hospice Physician before signing the CTI.");
         return;
       }
 
@@ -599,22 +811,15 @@ export function AdmissionDetail(): JSX.Element {
         return;
       }
 
-      const path =
-        kind === "hospice-md"
-          ? "/api/v1/cti/{id}/sign-hospice-md"
-          : "/api/v1/cti/{id}/sign-attending";
-
-      const { error: err, response } = await client.POST(path, {
+      const { error: err, response } = await client.POST("/api/v1/cti/{id}/sign-hospice-md", {
         params: {
           path: {
             id: cti.id,
           },
         },
-        body: {
-          signingPhysicianName: ctiSignerName.trim(),
-          signingPhysicianNpi: ctiSignerNpi.trim(),
-          ifVersion: currentCti.version,
-        },
+      body: {
+        ifVersion: currentCti.version,
+      } as never,
       });
 
       if (err) {
@@ -626,7 +831,7 @@ export function AdmissionDetail(): JSX.Element {
       closeCeremony();
       void load();
     },
-    [electionCert, periods, ctiSignerName, ctiSignerNpi, client, branchError, closeCeremony, load],
+    [electionCert, periods, admission, client, branchError, closeCeremony, load],
   );
 
   if (loading) return <LoadingSpinner />;
@@ -646,13 +851,13 @@ export function AdmissionDetail(): JSX.Element {
   const nextRequirement = readiness?.requirements.find(
     (r) => r.blocking && r.status !== "complete" && r.status !== "not_applicable",
   );
-  console.log(readiness?.requirements, nextRequirement);
   const triggerAction = (action: string | undefined): void => {
     if (!action) return;
-    if (action === "ACKNOWLEDGE_NOR") setCeremony("nor");
+    if (action === "ACKNOWLEDGE_NOR" || action === "COMPLETE_NOTICE_OF_RIGHTS") setCeremony("nor");
     else if (action === "COMPLETE_ADMISSION_DETAILS") setCeremony("admission-details");
-    else if (action === "COMPLETE_ELECTION")
+    else if (action === "COMPLETE_ELECTION" || action === "COMPLETE_ELECTION_STATEMENT")
       setCeremony(electionStatement ? "sign-election" : "election");
+    else if (action === "COMPLETE_ELECTION_SIGNATURE") setCeremony("sign-election");
     else if (action === "REVIEW_CTI") {
       if (!cti) {
         setCeremony("cti");
@@ -663,12 +868,8 @@ export function AdmissionDetail(): JSX.Element {
         setCeremony("sign-cti-hospice-md");
         return;
       }
-
-      if (!cti.attendingMdSigned) {
-        setCeremony("sign-cti-attending");
-        return;
-      }
-    }
+    } else if (action === "COMPLETE_CTI") setCeremony("cti");
+    else if (action === "COMPLETE_CTI_SIGNATURE") setCeremony("sign-cti-hospice-md");
   };
 
   if (pendingWorkspace) {
@@ -853,7 +1054,7 @@ export function AdmissionDetail(): JSX.Element {
               />
               {canAcknowledgeNor ? (
                 <button type="button" onClick={() => setCeremony("nor")} style={ghostBtn}>
-                  Record acknowledgment
+                  Complete Notice of Rights
                 </button>
               ) : null}
             </div>
@@ -884,8 +1085,8 @@ export function AdmissionDetail(): JSX.Element {
                   {electionStatement?.state === "signed"
                     ? "Election signed"
                     : electionStatement
-                      ? "Sign Election Statement"
-                      : "Create Election Statement"}
+                      ? "Complete Election signature"
+                      : "Complete Election Statement"}
                 </button>
               </div>
             </div>
@@ -898,20 +1099,8 @@ export function AdmissionDetail(): JSX.Element {
               <div style={fieldGridStyle}>
                 <Field label="CTI" value={cti ? stateLabel(cti.state) : "Not created"} />
                 <Field
-                  label="Hospice MD"
-                  value={cti?.hospiceMdSigned ? "Signed" : cti ? "Awaiting signature" : "Not set"}
-                />
-                <Field
-                  label="Attending"
-                  value={
-                    !cti
-                      ? "Not set"
-                      : cti.attendingMdSigned
-                        ? "Signed"
-                        : cti.state === "awaiting_attending"
-                          ? "Awaiting signature"
-                          : "Not required yet"
-                  }
+                  label="Hospice Physician"
+                  value={physicianLabel(admission.hospicePhysician, admission.hospicePhysicianId)}
                 />
               </div>
               <div>
@@ -923,21 +1112,19 @@ export function AdmissionDetail(): JSX.Element {
                         ? "cti"
                         : !cti.hospiceMdSigned
                           ? "sign-cti-hospice-md"
-                          : "sign-cti-attending",
+                          : "sign-cti-hospice-md",
                     )
                   }
                   style={ghostBtn}
-                  disabled={!period || cti?.state === "signed"}
+                  disabled={!period || cti?.state === "signed" || !admission.hospicePhysicianId}
                 >
                   {!cti
-                    ? "Create CTI"
+                    ? "Complete CTI"
                     : cti.state === "signed"
                       ? "CTI signed"
                       : !cti.hospiceMdSigned
-                        ? "Sign CTI as Hospice MD"
-                        : !cti.attendingMdSigned
-                          ? "Sign CTI as Attending"
-                          : "Review CTI"}
+                        ? "Complete CTI signature"
+                        : "Review CTI"}
                 </button>
               </div>
             </div>
@@ -946,9 +1133,7 @@ export function AdmissionDetail(): JSX.Element {
             <RequirementLine requirement={readiness?.requirements.find((r) => r.code === "f2f")} />
           </Section>
           <Section title="Documents">
-            <p id="documents" style={emptyTextStyle}>
-              Admission-linked documents will appear here when available through the document APIs.
-            </p>
+            <AdmissionDocuments requirements={readiness?.requirements ?? []} onView={viewDocument} />
           </Section>
           <Section title="Activity">
             <RowList
@@ -1084,26 +1269,20 @@ export function AdmissionDetail(): JSX.Element {
               <ProviderEntityLookupField
                 label="Hospice provider"
                 value={providerEntityId}
-                onChange={(value) => {
-                  setProviderEntityId((current) => {
-                    if (current !== value) setLocationId("");
-                    return value;
-                  });
-                }}
+                onChange={setProviderEntityId}
                 valueLabel={providerEntityId ? "Selected provider" : undefined}
                 required
               />
-              <LocationLookupField
-                label="Service location"
-                providerEntityId={providerEntityId}
-                value={locationId}
-                onChange={(value) => setLocationId(value)}
-                valueLabel={locationId ? "Selected location" : undefined}
-                hint={
-                  providerEntityId
-                    ? undefined
-                    : "Choose a hospice provider before selecting a service location."
-                }
+              <ServiceLocationBlock
+                patientId={admission!.patientId}
+                address={currentResidenceAddress(patientAddresses)}
+              />
+              <MdmEntityLookupField
+                kind="physician"
+                label="Hospice Physician"
+                value={hospicePhysicianId}
+                onChange={setHospicePhysicianId}
+                valueLabel={admission!.hospicePhysician?.displayName}
                 required
               />
               {actionError ? (
@@ -1120,7 +1299,191 @@ export function AdmissionDetail(): JSX.Element {
         />
 
         <CeremonyModal
+          open={ceremony === "nor"}
+          title="Complete Notice of Rights"
+          attestation={
+            <RequirementMethodPicker
+              options={[
+                {
+                  title: "Record in WardenX",
+                  description: "Enter acknowledgment information manually.",
+                  onChoose: () => setCeremony("nor-record"),
+                },
+                {
+                  title: "Upload document",
+                  description: "Upload an existing scanned or completed Notice of Rights.",
+                  onChoose: () => setCeremony("nor-upload"),
+                },
+              ]}
+            />
+          }
+          signer={{ name: "Admission coordinator", role: "This session" }}
+          commitLabel="Close"
+          onCommit={closeCeremony}
+          onCancel={closeCeremony}
+        />
+
+        <CeremonyModal
           open={ceremony === "election"}
+          title="Complete Election Statement"
+          attestation={
+            <RequirementMethodPicker
+              options={[
+                {
+                  title: "Create in WardenX",
+                  description: "Prepare the Election Statement here, then collect signature.",
+                  onChoose: () => setCeremony("election-create"),
+                },
+                {
+                  title: "Upload document",
+                  description: "Upload an existing Election Statement.",
+                  onChoose: () => setCeremony("election-upload"),
+                },
+              ]}
+            />
+          }
+          signer={{ name: "Admission coordinator", role: "This session" }}
+          commitLabel="Close"
+          onCommit={closeCeremony}
+          onCancel={closeCeremony}
+        />
+
+        <CeremonyModal
+          open={ceremony === "sign-election"}
+          title="Complete Election signature"
+          attestation={
+            <RequirementMethodPicker
+              options={[
+                {
+                  title: "Sign in WardenX",
+                  description: "Capture the signer attestation electronically.",
+                  onChoose: () => setCeremony("election-sign-record"),
+                },
+                {
+                  title: "Upload signed document",
+                  description: "Attach the signed paper Election Statement.",
+                  onChoose: () => {
+                    setUploadedSignedState("signed");
+                    setCeremony("election-sign-upload");
+                  },
+                },
+              ]}
+            />
+          }
+          signer={{ name: "Admission coordinator", role: "This session" }}
+          commitLabel="Close"
+          onCommit={closeCeremony}
+          onCancel={closeCeremony}
+        />
+
+        <CeremonyModal
+          open={ceremony === "cti"}
+          title="Complete CTI"
+          attestation={
+            <div style={formStackStyle}>
+              <Field
+                label="Hospice Physician"
+                value={physicianLabel(admission!.hospicePhysician, admission!.hospicePhysicianId)}
+              />
+              {!admission!.hospicePhysicianId ? (
+                <div role="alert" style={blockerBoxStyle}>
+                  Select a Hospice Physician in Admission Details before completing the CTI.
+                </div>
+              ) : (
+                <RequirementMethodPicker
+                  options={[
+                    {
+                      title: "Create in WardenX",
+                      description: "Enter CTI clinical information here.",
+                      onChoose: () => setCeremony("cti-create"),
+                    },
+                    {
+                      title: "Upload document",
+                      description: "Upload an existing CTI.",
+                      onChoose: () => setCeremony("cti-upload"),
+                    },
+                  ]}
+                />
+              )}
+            </div>
+          }
+          signer={{ name: "Admission coordinator", role: "This session" }}
+          commitLabel="Close"
+          onCommit={closeCeremony}
+          onCancel={closeCeremony}
+        />
+
+        <CeremonyModal
+          open={ceremony === "nor-upload"}
+          title="Upload Notice of Rights"
+          attestation={
+            <UploadedEvidenceForm
+              file={uploadedFile}
+              onFile={setUploadedFile}
+              stage={uploadStage}
+              error={actionError}
+            />
+          }
+          signer={{ name: "Admission coordinator", role: "This session" }}
+          commitLabel={busy ? "Uploading..." : "Attach document"}
+          onCommit={() => void uploadNor()}
+          onCancel={closeCeremony}
+        />
+
+        <CeremonyModal
+          open={ceremony === "election-upload" || ceremony === "election-sign-upload"}
+          title={
+            ceremony === "election-sign-upload"
+              ? "Upload signed Election Statement"
+              : "Upload Election Statement"
+          }
+          attestation={
+            <UploadedEvidenceForm
+              file={uploadedFile}
+              onFile={setUploadedFile}
+              stage={uploadStage}
+              signedState={uploadedSignedState}
+              onSignedState={setUploadedSignedState}
+              signerName={uploadedSignerName}
+              onSignerName={setUploadedSignerName}
+              signerRole={uploadedSignerRole}
+              onSignerRole={setUploadedSignerRole}
+              signatureDate={uploadedSignatureDate}
+              onSignatureDate={setUploadedSignatureDate}
+              signedOnly={ceremony === "election-sign-upload"}
+              error={actionError}
+            />
+          }
+          signer={{ name: "Admission coordinator", role: "This session" }}
+          commitLabel={busy ? "Uploading..." : "Attach document"}
+          onCommit={() => void uploadElection()}
+          onCancel={closeCeremony}
+        />
+
+        <CeremonyModal
+          open={ceremony === "cti-upload"}
+          title="Upload CTI"
+          attestation={
+            <UploadedEvidenceForm
+              file={uploadedFile}
+              onFile={setUploadedFile}
+              stage={uploadStage}
+              signedState={uploadedSignedState}
+              onSignedState={setUploadedSignedState}
+              signatureDate={uploadedSignatureDate}
+              onSignatureDate={setUploadedSignatureDate}
+              signedByLabel={physicianLabel(admission!.hospicePhysician, admission!.hospicePhysicianId)}
+              error={actionError}
+            />
+          }
+          signer={{ name: "Admission coordinator", role: "This session" }}
+          commitLabel={busy ? "Uploading..." : "Attach document"}
+          onCommit={() => void uploadCti()}
+          onCancel={closeCeremony}
+        />
+
+        <CeremonyModal
+          open={ceremony === "election-create"}
           title="Create Election Statement"
           attestation={
             <div style={formStackStyle}>
@@ -1195,7 +1558,7 @@ export function AdmissionDetail(): JSX.Element {
         />
 
         <CeremonyModal
-          open={ceremony === "sign-election"}
+          open={ceremony === "election-sign-record"}
           title="Sign Election Statement"
           attestation={
             <div style={formStackStyle}>
@@ -1219,11 +1582,14 @@ export function AdmissionDetail(): JSX.Element {
                 id="election-signer-role"
                 value={electionSignerRole}
                 onChange={(ev) =>
-                  setElectionSignerRole(ev.target.value as "patient" | "legal_representative")
+                  setElectionSignerRole(
+                    ev.target.value as "patient" | "legal_representative" | "caregiver",
+                  )
                 }
               >
                 <option value="patient">Patient</option>
                 <option value="legal_representative">Legal representative</option>
+                <option value="caregiver">Caregiver</option>
               </select>
               {actionError ? (
                 <p role="alert" aria-live="assertive" style={alertStyle}>
@@ -1240,29 +1606,17 @@ export function AdmissionDetail(): JSX.Element {
         />
 
         <CeremonyModal
-          open={ceremony === "cti"}
+          open={ceremony === "cti-create"}
           title="Create Certification of Terminal Illness"
           attestation={
             <div style={formStackStyle}>
               <span style={hintTextStyle}>
-                Create the CTI draft with the certifying physician, terminal diagnosis, and
-                narrative. Signature is a separate governed action.
+                Create the CTI with the selected Hospice Physician, terminal diagnosis, prognosis,
+                and clinical narrative. Signature is a separate governed action.
               </span>
-              <MdmEntityLookupField
-                kind="physician"
-                label="Hospice medical director"
-                value={ctiHospiceMdId}
-                onChange={(value) => setCtiHospiceMdId(value)}
-                valueLabel={ctiHospiceMdId ? "Selected physician" : undefined}
-                required
-              />
-              <MdmEntityLookupField
-                kind="physician"
-                label="Attending physician"
-                value={ctiAttendingMdId}
-                onChange={(value) => setCtiAttendingMdId(value)}
-                valueLabel={ctiAttendingMdId ? "Selected physician" : undefined}
-                clearable
+              <Field
+                label="Certifying Hospice Physician"
+                value={physicianLabel(admission!.hospicePhysician, admission!.hospicePhysicianId)}
               />
               <label htmlFor="cti-diagnosis" style={fieldLabel}>
                 Terminal diagnosis ICD-10
@@ -1307,35 +1661,16 @@ export function AdmissionDetail(): JSX.Element {
         />
 
         <CeremonyModal
-          open={ceremony === "sign-cti-hospice-md" || ceremony === "sign-cti-attending"}
-          title={
-            ceremony === "sign-cti-attending"
-              ? "Attending CTI signature"
-              : "Hospice MD CTI signature"
-          }
+          open={ceremony === "sign-cti-hospice-md"}
+          title="Hospice Physician CTI signature"
           attestation={
             <div style={formStackStyle}>
               <span style={hintTextStyle}>
-                Capture the physician signature for the CTI. The backend determines whether an
-                attending signature is also required for this period.
+                Capture the CTI signature for the Hospice Physician selected in Admission Details.
               </span>
-              <label htmlFor="cti-signer-name" style={fieldLabel}>
-                Signing physician name
-              </label>
-              <input
-                id="cti-signer-name"
-                value={ctiSignerName}
-                onChange={(ev) => setCtiSignerName(ev.target.value)}
-                style={inputStyle}
-              />
-              <label htmlFor="cti-signer-npi" style={fieldLabel}>
-                Signing physician NPI
-              </label>
-              <input
-                id="cti-signer-npi"
-                value={ctiSignerNpi}
-                onChange={(ev) => setCtiSignerNpi(ev.target.value)}
-                style={inputStyle}
+              <Field
+                label="Signing physician"
+                value={physicianLabel(admission!.hospicePhysician, admission!.hospicePhysicianId)}
               />
               {actionError ? (
                 <p role="alert" aria-live="assertive" style={alertStyle}>
@@ -1347,14 +1682,12 @@ export function AdmissionDetail(): JSX.Element {
           legalText="I attest this physician signature applies to the Certification of Terminal Illness."
           signer={{ name: "Recording user", role: "This session" }}
           commitLabel={busy ? "Signing..." : "Sign CTI"}
-          onCommit={() =>
-            void signCti(ceremony === "sign-cti-attending" ? "attending" : "hospice-md")
-          }
+          onCommit={() => void signCti()}
           onCancel={closeCeremony}
         />
 
         <CeremonyModal
-          open={ceremony === "nor"}
+          open={ceremony === "nor-record"}
           title="Acknowledge Notice of Rights"
           attestation={
             <div style={formStackStyle}>
@@ -1362,15 +1695,6 @@ export function AdmissionDetail(): JSX.Element {
                 Records that the patient (or their legal representative) received and acknowledged
                 the Notice of Rights. Required before the admission can activate.
               </span>
-              <label htmlFor="nor-form-version" style={fieldLabel}>
-                NOR form version id
-              </label>
-              <input
-                id="nor-form-version"
-                value={formVersionId}
-                onChange={(ev) => setFormVersionId(ev.target.value)}
-                style={inputStyle}
-              />
               <label htmlFor="nor-method" style={fieldLabel}>
                 Delivery method
               </label>
@@ -1623,6 +1947,261 @@ function currentPeriod(
   );
 }
 
+function currentResidenceAddress(addresses: AddressView[] | null): AddressView | null {
+  if (!addresses?.length) return null;
+  return (
+    addresses.find((a) => a.current && a.isPrimary && a.kind === "home") ??
+    addresses.find((a) => a.current && a.kind === "home") ??
+    addresses.find((a) => a.current && a.isPrimary) ??
+    null
+  );
+}
+
+function addressLines(address: AddressView | null | undefined): string[] {
+  if (!address) return [];
+  return [
+    address.line1,
+    address.line2,
+    [address.city, [address.state, address.postalCode].filter(Boolean).join(" ")]
+      .filter(Boolean)
+      .join(", "),
+    address.country && address.country !== "US" ? address.country : null,
+  ].filter(Boolean) as string[];
+}
+
+function ServiceLocationBlock({
+  patientId,
+  address,
+}: {
+  patientId?: string;
+  address: AddressView | null;
+}): JSX.Element {
+  return (
+    <div style={formStackStyle}>
+      <span style={fieldLabel}>Service location</span>
+      {address ? (
+        <div style={addressBoxStyle}>
+          <strong>Patient residence</strong>
+          {addressLines(address).map((line) => (
+            <span key={line}>{line}</span>
+          ))}
+        </div>
+      ) : (
+        <div role="alert" style={blockerBoxStyle}>
+          <strong>Patient residence address is missing.</strong>
+          <div>Add a residence address to the patient record before completing admission.</div>
+          {patientId ? (
+            <Link to={`/patients/${patientId}`} style={patientLinkStyle}>
+              Open patient record
+            </Link>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+async function postUntyped(
+  client: ApiClient,
+  path: string,
+  body: Record<string, unknown>,
+): Promise<{ error?: unknown; response?: Response }> {
+  const post = client.POST as unknown as (
+    path: string,
+    init: { body: Record<string, unknown> },
+  ) => Promise<{ error?: unknown; response?: Response }>;
+  return post(path, { body });
+}
+
+function RequirementMethodPicker({
+  options,
+}: {
+  options: Array<{ title: string; description: string; onChoose: () => void }>;
+}): JSX.Element {
+  return (
+    <div style={methodGridStyle}>
+      {options.map((option) => (
+        <button key={option.title} type="button" onClick={option.onChoose} style={methodButtonStyle}>
+          <strong>{option.title}</strong>
+          <span>{option.description}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function UploadedEvidenceForm({
+  file,
+  onFile,
+  stage,
+  signedState,
+  onSignedState,
+  signerName,
+  onSignerName,
+  signerRole,
+  onSignerRole,
+  signatureDate,
+  onSignatureDate,
+  signedByLabel,
+  signedOnly,
+  error,
+}: {
+  file: File | null;
+  onFile: (file: File | null) => void;
+  stage: UploadStage;
+  signedState?: "unsigned" | "signed";
+  onSignedState?: (state: "unsigned" | "signed") => void;
+  signerName?: string;
+  onSignerName?: (value: string) => void;
+  signerRole?: "patient" | "legal_representative" | "caregiver";
+  onSignerRole?: (value: "patient" | "legal_representative" | "caregiver") => void;
+  signatureDate?: string;
+  onSignatureDate?: (value: string) => void;
+  signedByLabel?: string;
+  signedOnly?: boolean;
+  error: string | null;
+}): JSX.Element {
+  const effectiveState = signedOnly ? "signed" : signedState;
+  return (
+    <div style={formStackStyle}>
+      <label htmlFor="evidence-upload-file" style={fieldLabel}>
+        Document
+      </label>
+      <input
+        id="evidence-upload-file"
+        type="file"
+        accept=".pdf,.docx,.jpg,.jpeg,.png,.tif,.tiff,application/pdf,image/*"
+        onChange={(ev) => onFile(ev.target.files?.[0] ?? null)}
+      />
+      {file ? <span style={hintTextStyle}>{file.name}</span> : null}
+      {onSignedState ? (
+        <div style={segmentedStyle} role="radiogroup" aria-label="Document signature status">
+          {(["unsigned", "signed"] as const).map((state) => (
+            <button
+              key={state}
+              type="button"
+              role="radio"
+              aria-checked={effectiveState === state}
+              onClick={() => onSignedState(state)}
+              disabled={signedOnly && state === "unsigned"}
+              style={effectiveState === state ? selectedSegmentStyle : segmentStyle}
+            >
+              {state === "signed" ? "Signed" : "Unsigned"}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {effectiveState === "signed" ? (
+        <>
+          {signedByLabel ? <Field label="Signed by" value={signedByLabel} /> : null}
+          {onSignerName ? (
+            <>
+              <label htmlFor="uploaded-signer-name" style={fieldLabel}>
+                Signer name
+              </label>
+              <input
+                id="uploaded-signer-name"
+                value={signerName ?? ""}
+                onChange={(ev) => onSignerName(ev.target.value)}
+                style={inputStyle}
+              />
+            </>
+          ) : null}
+          {onSignerRole ? (
+            <>
+              <label htmlFor="uploaded-signer-role" style={fieldLabel}>
+                Signer role
+              </label>
+              <select
+                id="uploaded-signer-role"
+                value={signerRole ?? "patient"}
+                onChange={(ev) =>
+                  onSignerRole(ev.target.value as "patient" | "legal_representative" | "caregiver")
+                }
+              >
+                <option value="patient">Patient</option>
+                <option value="legal_representative">Legal representative</option>
+                <option value="caregiver">Caregiver</option>
+              </select>
+            </>
+          ) : null}
+          {onSignatureDate ? (
+            <>
+              <label htmlFor="uploaded-signature-date" style={fieldLabel}>
+                Signature date
+              </label>
+              <input
+                id="uploaded-signature-date"
+                type="date"
+                value={signatureDate ?? ""}
+                onChange={(ev) => onSignatureDate(ev.target.value)}
+                style={inputStyle}
+              />
+            </>
+          ) : null}
+        </>
+      ) : null}
+      {stage !== "idle" ? <span style={hintTextStyle}>{uploadStageLabel(stage)}</span> : null}
+      {error ? (
+        <p role="alert" aria-live="assertive" style={alertStyle}>
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function uploadStageLabel(stage: UploadStage): string {
+  if (stage === "preparing") return "Preparing upload";
+  if (stage === "uploading") return "Uploading document";
+  if (stage === "verifying") return "Verifying document";
+  if (stage === "complete") return "Document uploaded";
+  return "";
+}
+
+function AdmissionDocuments({
+  requirements,
+  onView,
+}: {
+  requirements: ReadinessRequirement[];
+  onView: (evidence: ReadinessRequirement["evidence"]) => void;
+}): JSX.Element {
+  const rows = requirements.filter((r) => r.evidence?.documentId && r.evidence.documentVersionId);
+  if (rows.length === 0) {
+    return <p id="documents" style={emptyTextStyle}>No admission intake documents are attached yet.</p>;
+  }
+  return (
+    <table id="documents" style={tableStyle}>
+      <thead>
+        <tr style={rowStyle}>
+          <th style={thStyle}>Document type</th>
+          <th style={thStyle}>Source</th>
+          <th style={thStyle}>Date</th>
+          <th style={thStyle}>Status</th>
+          <th style={thStyle}>View</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={`${r.code}-${r.evidence?.documentVersionId}`} style={rowStyle}>
+            <td style={tdStyle}>{r.label}</td>
+            <td style={tdStyle}>Uploaded document</td>
+            <td style={tdStyle}>{fmtDate(r.evidence?.completedAt)}</td>
+            <td style={tdStyle}>
+              <StatusPill label={stateLabel(r.status)} tone={requirementTone(r.status)} />
+            </td>
+            <td style={tdStyle}>
+              <button type="button" style={ghostBtn} onClick={() => onView(r.evidence)}>
+                View document
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function actionLabel(
   action: string,
   context: {
@@ -1630,15 +2209,19 @@ function actionLabel(
     cti: CtiView | null;
   },
 ): string {
-  if (action === "ACKNOWLEDGE_NOR") return "Record acknowledgment";
+  if (action === "ACKNOWLEDGE_NOR" || action === "COMPLETE_NOTICE_OF_RIGHTS")
+    return "Complete Notice of Rights";
 
   if (action === "COMPLETE_ADMISSION_DETAILS") {
     return "Complete admission details";
   }
 
-  if (action === "COMPLETE_ELECTION") {
-    return context.electionStatement ? "Sign Election Statement" : "Create Election Statement";
+  if (action === "COMPLETE_ELECTION" || action === "COMPLETE_ELECTION_STATEMENT") {
+    return context.electionStatement ? "Complete Election signature" : "Complete Election Statement";
   }
+  if (action === "COMPLETE_ELECTION_SIGNATURE") return "Complete Election signature";
+  if (action === "COMPLETE_CTI") return "Complete CTI";
+  if (action === "COMPLETE_CTI_SIGNATURE") return "Complete CTI signature";
 
   if (action === "REVIEW_CTI") {
     if (!context.cti) {
@@ -1649,9 +2232,6 @@ function actionLabel(
       return "Sign CTI as Hospice MD";
     }
 
-    if (!context.cti.attendingMdSigned) {
-      return "Sign CTI as Attending";
-    }
     return "Review CTI";
   }
 
@@ -1703,6 +2283,16 @@ const inputStyle: CSSProperties = {
   padding: "0.5rem 0.625rem",
   borderRadius: "var(--radius-md)",
   border: "1px solid var(--color-outline-variant)",
+};
+const addressBoxStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.2rem",
+  padding: "0.65rem 0.75rem",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid var(--color-outline-variant)",
+  background: "var(--color-surface-container)",
+  fontSize: "0.85rem",
 };
 const alertStyle: CSSProperties = {
   margin: 0,
@@ -1815,6 +2405,14 @@ const tableStyle: CSSProperties = {
 const tdStyle: CSSProperties = {
   padding: "0.55rem 0.75rem",
   color: "var(--color-on-surface)",
+};
+const thStyle: CSSProperties = {
+  ...tdStyle,
+  textAlign: "left",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.72rem",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
 };
 
 const rowStyle: CSSProperties = {
@@ -1965,6 +2563,42 @@ const requirementLineStyle: CSSProperties = {
   color: "var(--color-on-surface)",
   fontSize: "0.9rem",
 };
+const methodGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))",
+  gap: "0.75rem",
+};
+const methodButtonStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.35rem",
+  textAlign: "left",
+  padding: "0.8rem",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid var(--color-outline-variant)",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface)",
+  cursor: "pointer",
+};
+const segmentedStyle: CSSProperties = {
+  display: "inline-flex",
+  alignSelf: "flex-start",
+  border: "1px solid var(--color-outline-variant)",
+  borderRadius: "var(--radius-md)",
+  overflow: "hidden",
+};
+const segmentStyle: CSSProperties = {
+  padding: "0.45rem 0.75rem",
+  border: "none",
+  background: "var(--color-surface-lowest)",
+  color: "var(--color-on-surface)",
+  cursor: "pointer",
+};
+const selectedSegmentStyle: CSSProperties = {
+  ...segmentStyle,
+  background: "var(--color-primary)",
+  color: "var(--color-on-primary)",
+};
 
 // §5.2.5 activation gate as a Guardrail treatment: a blocked GuardChip summary (or a success pill when
 // ready) over a GateStepper whose rows render server-truth — each unmet precondition is `blocked`
@@ -2101,6 +2735,13 @@ function patientMeta(patient: PatientSummary | null): string | null {
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+function physicianLabel(physician: PhysicianSummary | null | undefined, fallbackId?: string | null): string {
+  if (physician?.displayName) {
+    return physician.npi ? `${physician.displayName} · NPI ${physician.npi}` : physician.displayName;
+  }
+  return fallbackId ? `Physician ${fallbackId.slice(0, 8)}` : "Not selected";
 }
 
 function AdmissionPatientLink({

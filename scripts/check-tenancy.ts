@@ -91,6 +91,13 @@ const NON_ORG_SCOPED = new Set<string>([
   "deprecation_mapping",
   "concept_embedding",
   "terminology_update_log",
+  // M10 HOPE modernization Phase 1A: CMS HOPE Data Specification reference tables.
+  // These carry no tenant data and are immutable platform reference rows shared by every org.
+  // The tenant-scoped item answers live in hope_assessment_answer, which is intentionally NOT listed.
+  "hope_spec_version",
+  "hope_spec_item",
+  "hope_spec_item_isc",
+  "hope_spec_item_option",
   // M36 Secure Messaging (§3.4–3.6, §3.11): five tables carry no organization_id BY DESIGN.
   // `presence` + `delivery_endpoint` are user-owned and cross-org (the human, not the tenant —
   // same posture as `session`). `message_attachment` + `notification_delivery` are pure children

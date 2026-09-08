@@ -4,6 +4,7 @@
 // backend (routes/service.ts) where they own the dataset, but enforce the same §7.1/§7.2 contract.
 export {
   type AdmissionReadinessFacts,
+  type AdmissionRequirementEvidence,
   type AdmissionReadinessRequirement,
   type AdmissionReadinessResult,
   type AdmissionReadinessStatus,
